@@ -2,563 +2,755 @@
 
 ## 目的
 
-Source Adapter SDK は、外部サービス・ファイル・共有テキスト・会話ログを Memory OS に取り込むための実装契約である。
+Source Adapter SDK は、外部サービス・ファイル・共有入力を Memory OS に取り込むための実装境界である。
 
-目的は「何でも深く読むこと」ではない。外部データを、人生の文脈として安全に、説明可能に、削除可能に、低コストで取り込むための入口境界を固定することである。
+このSDKの目的は、外部データを賢く解釈することではない。
 
-## 上位原則
+**安全に受け取り、出典を失わず、日付と検索性を整え、ユーザー本人の記憶として扱える最小単位へ変換すること**である。
 
-Adapter は Memory Constitution v1 / Import Specification / Third Party Data Policy / Memory Schema v1 の下位仕様である。
+Memory OS は ChatGPT / Claude の代替ではない。Adapter は会話AIを作らない。人格を再現しない。人生の重要度を勝手に決めない。
 
-守ること:
+## 最上位原則
 
-- ChatGPT / Claude / Character.AI の代替にならない
-- 故人・家族・恋人・友人・キャラクターを演じるための人格素材を作らない
-- 保存時に人生の重要度をAIが勝手に決めない
-- 保存時は安全チェック、出典、日付、検索性を優先する
-- 分析・意味づけ・人格傾向化はユーザー要求時だけ行う
-- 他人の秘密、会社情報、未成年情報、故人情報を便利さのために取り込まない
-- 小さな記録を捨てないが、大きなイベントとして押し付けない
-
-## Adapter の責務
+### 1. Adapter は分析器ではなく変換器
 
 Adapter が行うこと:
 
-1. source を検出する
-2. ファイル・レコード・期間・件数を棚卸しする
-3. secret / company / third-party / minor / deceased / roleplay risk を事前検査する
-4. ユーザーに scope 選択可能な inspection summary を返す
-5. 許可された範囲だけ RawRecord draft に変換する
-6. 検索可能な NormalizedRecord draft に正規化する
-7. SourceRef / Evidence に必要な出典情報を保持する
-8. 削除・再インポート・差分同期に必要な contentHash を作る
+- 入力形式の検出
+- コンテナの安全検査
+- ファイル棚卸し
+- 秘密情報・会社情報・第三者情報の事前検知
+- ユーザーに見せる import preview の生成
+- RawRecord / NormalizedRecord / SourceRef の生成
+- 日付・出典・検索テキストの整形
+- Policy Engine に渡すための risk hints 付与
 
-Adapter が行ってはいけないこと:
+Adapter が行わないこと:
 
-1. 人生の重要度を順位付けする
-2. 人格診断・相性診断・親子診断・恋人診断を生成する
-3. 故人や家族の本人シミュレーション用 profile を作る
-4. 相手の秘密をユーザーの記憶価値として保存する
-5. 会社情報検索、顧客情報検索、同僚分析に使える形で保存する
-6. 保存前にLLMへ全文を送る
-7. unknown source を深く解析する
-8. コスト見積もりなしに embedding / LLM 処理へ進む
+- 「この記憶は重要」と決める
+- 「あなたはこういう人」と分析する
+- 相手の性格・本心・嘘を推測する
+- 故人・家族・恋人・架空キャラとして返答する
+- 会社情報検索を便利にする
+- パスワード・秘密情報を記憶化する
 
-## SDK Contract
+### 2. Save First は Value Judge ではない
+
+Import Specification の Save First, Judge Later は、「人生価値を保存時に判定しない」という意味である。
+
+保存時に行ってよい判断:
+
+- セキュリティリスク
+- 法務・会社情報リスク
+- 第三者プライバシーリスク
+- 未成年・家族・故人リスク
+- LLM送信可否
+- raw保存可否
+- embedding可否
+- export / share 可否の初期値
+
+保存時に行ってはいけない判断:
+
+- 人生にとって重要かどうか
+- 思い出として上位か下位か
+- 人格傾向・診断・ランク
+- 家族や恋人の良し悪し
+- 仕事能力や人間関係の勝敗
+
+### 3. Inspect Before Analyze
+
+Adapter は、ファイルやアーカイブを受け取っても即座にLLMへ送らない。
+
+必ず以下の順に進める。
+
+```txt
+receive
+-> container precheck
+-> source detect
+-> inventory
+-> secret scan
+-> risk prefilter
+-> cost estimate
+-> user scope selection
+-> extraction
+-> normalization
+-> source ref creation
+-> policy evaluation
+-> indexing
+-> optional user review
+```
+
+### 4. Unknown は inspect only
+
+sourceType が unknown、または detect confidence が低い場合、Adapter は深い抽出をしない。
+
+許可:
+
+- ファイル数
+- サイズ
+- 拡張子
+- 推定期間
+- 危険ファイル種別
+- 秘密情報らしき断片の存在フラグ
+
+禁止:
+
+- 全文LLM解析
+- 全文embedding
+- raw全文保存の既定ON
+- 自動Memory化
+
+## SDK Package Structure
+
+```txt
+packages/source-adapter-sdk/
+  src/
+    types.ts
+    adapter.ts
+    detection.ts
+    inspection.ts
+    extraction.ts
+    normalization.ts
+    safety.ts
+    cost.ts
+    provenance.ts
+    test-harness.ts
+  adapters/
+    manual/
+    chatgpt/
+    line/
+    calendar/
+    photos-metadata/
+    github-metadata/
+  fixtures/
+    safe/
+    risky/
+    malformed/
+```
+
+MVPでは monorepo 化していない場合でも、同等の境界を `src/source-adapters/` に置いてよい。
+
+重要なのはディレクトリ名ではなく、**Adapter が Policy / Schema / Cost / Provenance に従う実装境界を持つこと**である。
+
+## Core Interfaces
+
+### SourceAdapter
 
 ```ts
 type SourceAdapter = {
-  id: AdapterId;
-  displayName: string;
-  version: string;
-  supportedSourceTypes: SourceType[];
-  supportedInputKinds: SourceInputKind[];
-  capabilities: AdapterCapabilities;
+  readonly id: SourceAdapterId;
+  readonly sourceType: SourceType;
+  readonly version: string;
+  readonly capabilities: AdapterCapabilities;
 
-  detect(input: AdapterInput, context: AdapterContext): Promise<DetectResult>;
-  inspect(input: AdapterInput, context: AdapterContext): Promise<AdapterInspection>;
-  plan(input: AdapterInput, inspection: AdapterInspection, scope: ImportScope, context: AdapterContext): Promise<ImportPlan>;
-  extract(input: AdapterInput, plan: ImportPlan, context: AdapterContext): AsyncIterable<RawRecordDraft>;
-  normalize(record: RawRecordDraft, context: AdapterContext): Promise<NormalizedRecordDraft>;
-  finalize?(result: AdapterRunResult, context: AdapterContext): Promise<AdapterFinalizeResult>;
+  detect(input: AdapterInput): Promise<DetectResult>;
+  inspect(input: AdapterInput, ctx: AdapterContext): Promise<ImportInspection>;
+  estimateCost(input: AdapterInput, inspection: ImportInspection, ctx: AdapterContext): Promise<CostEstimate>;
+  plan(input: AdapterInput, inspection: ImportInspection, scope: ImportScope, ctx: AdapterContext): Promise<ExtractionPlan>;
+  extract(input: AdapterInput, plan: ExtractionPlan, ctx: AdapterContext): AsyncIterable<RawRecordEnvelope>;
+  normalize(record: RawRecordEnvelope, ctx: AdapterContext): Promise<NormalizedRecordEnvelope>;
+  finalize?(job: ImportJob, ctx: AdapterContext): Promise<AdapterFinalizeResult>;
 };
 ```
 
-既存 Import Specification の `detect / inspect / extract / normalize` に、ユーザー選択後の処理計画である `plan` を追加する。`plan` がないAdapterは、inspect後に勝手に全解析へ進みやすいため禁止する。
-
-## AdapterId
+### AdapterContext
 
 ```ts
-type AdapterId =
-  | 'manual.share_text.v1'
-  | 'manual.paste.v1'
-  | 'generic.conversation_text.v1'
-  | 'openai.chatgpt_export.v1'
-  | 'anthropic.claude_export.v1'
-  | 'google.calendar.v1'
-  | 'google.photos_metadata.v1'
-  | 'line.text_export.v1'
-  | 'x.archive_public_posts.v1'
-  | 'github.selected_repo_metadata.v1'
-  | 'notion.selected_pages.v1'
-  | 'unknown.inspect_only.v1';
-```
-
-命名は `provider.source.variant.version`。同じ sourceType でも、raw本文を扱うAdapterとmetadata only Adapterは分ける。unknown は必ず inspect only にする。
-
-## Capabilities
-
-```ts
-type AdapterCapabilities = {
-  canReadRawText: boolean;
-  canReadAttachments: boolean;
-  canReadImages: boolean;
-  canReadMetadataOnly: boolean;
-  canDetectSpeakers: boolean;
-  canDetectTimeRange: boolean;
-  canGenerateStableExternalIds: boolean;
-  canIncrementalSync: boolean;
-  supportsDryRun: boolean;
-  supportsUserScopedExtraction: boolean;
-  requiresNetwork: boolean;
-  maxRecommendedInputBytes: number;
-};
-```
-
-`canReadRawText: true` は高リスク capability として扱う。写真AdapterはMVPでは `canReadImages: false`, `canReadMetadataOnly: true` を標準にする。Gmail / Slack / work chat は初期MVPでは inspect only または selected event summary only に限定する。
-
-## Input / Context
-
-```ts
-type AdapterInput = {
-  importJobId: string;
-  userId: string;
-  inputKind: SourceInputKind;
-  files?: AdapterFileRef[];
-  text?: string;
-  url?: string;
-  metadata?: Record<string, unknown>;
-  receivedAt: string;
-};
-
-type AdapterFileRef = {
-  id: string;
-  path: string;
-  originalName: string;
-  mediaType?: string;
-  byteSize: number;
-  sha256: string;
-  containerPath?: string;
-};
-
 type AdapterContext = {
+  userId: string;
+  importJobId: string;
+  policyVersion: string;
+  schemaVersion: string;
+  adapterRuntime: 'server' | 'client' | 'local_cli' | 'worker';
   now: string;
-  userLocale?: string;
-  defaultTimezone?: string;
-  policy: PolicySnapshot;
-  costBudget: CostBudget;
-  secrets: SecretScanService;
-  risk: RiskClassifier;
-  hashing: HashService;
+  locale?: string;
+  userTimezone?: string;
+  limits: AdapterLimits;
+  permissions: AdapterPermissions;
   logger: AdapterLogger;
 };
 ```
 
-Adapter は `path` を信用しない。zip slip、symlink、実行ファイル、archive内archive、hidden file、大容量ファイル、高エントロピーblobを安全検査する。
+### AdapterLimits
+
+```ts
+type AdapterLimits = {
+  maxInputBytes: number;
+  maxFiles: number;
+  maxRecords: number;
+  maxRecordBytes: number;
+  maxExtractedTextBytes: number;
+  maxEmbeddingRecords: number;
+  maxLlmBytes: number;
+  wallClockMs: number;
+};
+```
+
+Adapter は limits を超えたら失敗ではなく、原則 `partial` として止める。
+
+大量データを受け取った時に、コスト攻撃・誤課金・全履歴解析を避けるためである。
+
+### AdapterPermissions
+
+```ts
+type AdapterPermissions = {
+  canStoreRaw: boolean;
+  canStoreSummary: boolean;
+  canCreateEmbedding: boolean;
+  canSendToLlm: boolean;
+  canExtractThirdPartyText: boolean;
+  canExtractCorporateData: boolean;
+  canProcessMinorData: boolean;
+};
+```
+
+permissions は UI だけでなく Adapter 実行時にも強制する。
+
+## Input Model
+
+```ts
+type AdapterInput =
+  | ShareTextInput
+  | ShareUrlInput
+  | ManualPasteInput
+  | UploadedFileInput
+  | UploadedArchiveInput
+  | ApiImportInput
+  | LocalExportInput;
+```
+
+```ts
+type AdapterInputBase = {
+  inputId: string;
+  inputKind: SourceInputKind;
+  receivedAt: string;
+  declaredSourceType?: SourceType;
+  userProvidedLabel?: string;
+  userProvidedNote?: string;
+  sizeBytes?: number;
+  contentHash?: string;
+};
+```
+
+Adapter は userProvidedLabel を記憶本文と混ぜてはいけない。
+
+ラベルは出典・整理用であり、事実の証拠ではない。
 
 ## Detection
+
+### DetectResult
 
 ```ts
 type DetectResult = {
   sourceType: SourceType | 'unknown';
-  adapterId: AdapterId;
-  confidence: number;
-  matchedFiles: string[];
+  confidence: number; // 0-100
   matchedSignals: DetectSignal[];
+  matchedFiles: string[];
   warnings: AdapterWarning[];
-  nextAction: 'inspect_allowed' | 'inspect_only' | 'reject';
-};
-
-type DetectSignal = {
-  kind: 'filename' | 'schema' | 'header' | 'metadata' | 'text_pattern' | 'user_declared';
-  value: string;
-  confidenceImpact: number;
+  safeToInspect: boolean;
 };
 ```
 
-判定:
+### DetectSignal
 
-- confidence < 40: `unknown.inspect_only.v1`
-- 40 <= confidence < 70: inspect only、extract不可
-- 70 <= confidence: inspect可能
-- work / company / secret heavy source は confidence に関係なく追加承認
+```ts
+type DetectSignal = {
+  kind: 'filename' | 'mime' | 'json_shape' | 'csv_header' | 'html_marker' | 'text_pattern' | 'archive_structure' | 'metadata';
+  value: string;
+  confidenceDelta: number;
+};
+```
+
+### Detection Thresholds
+
+| Confidence | Mode | Allowed |
+|---:|---|---|
+| 90-100 | strong | inspect + scoped extract |
+| 70-89 | probable | inspect + user confirmation before extract |
+| 40-69 | weak | inventory only + manual mapping |
+| 0-39 | unknown | inspect only |
 
 ## Inspection
 
-```ts
-type AdapterInspection = ImportInspection & {
-  adapterId: AdapterId;
-  files: FileInventoryItem[];
-  recordPreview: RecordPreview[];
-  riskSummary: AdapterRiskSummary;
-  policyBlocks: PolicyBlock[];
-  scopeOptions: ImportScopeOption[];
-  costEstimate: AdapterCostEstimate;
-  defaultPlan: 'metadata_only' | 'summary_only' | 'owner_text_only' | 'raw_allowed' | 'inspect_only' | 'reject';
-};
-```
-
-Inspection で許すこと:
-
-- 件数・期間・ファイル種別の棚卸し
-- サンプル数件の安全preview
-- secret / company / third-party / minor / deceased / roleplay risk の検出
-- コスト帯の見積もり
-
-Inspection で禁止すること:
-
-- 人格傾向を出す
-- 人間関係を評価する
-- 重要な記憶を決める
-- 感情分析を大量実行する
-- LLMへ全文を送る
-- 他人の発言を長文previewする
-
-## Preview / Inventory
+Inspection はユーザーが「何を渡したのか」を理解するための画面を作る。
 
 ```ts
-type FileInventoryItem = {
-  fileId: string;
-  originalName: string;
-  normalizedPath: string;
-  mediaType?: string;
-  byteSize: number;
-  sha256: string;
-  detectedKind: 'conversation' | 'message_export' | 'calendar' | 'photo_metadata' | 'note' | 'post_archive' | 'repo_metadata' | 'unknown' | 'ignored';
+type ImportInspection = {
+  sourceType: SourceType | 'unknown';
+  adapterId: string;
+  adapterVersion: string;
   detectedRange?: DateRange;
-  estimatedRecords?: number;
-  defaultAction: 'include' | 'exclude' | 'metadata_only' | 'needs_review';
-  reasons: string[];
-};
-
-type RecordPreview = {
-  previewId: string;
-  sourceFileId?: string;
-  occurredAt?: string;
-  speakerRole?: 'user' | 'assistant' | 'third_party' | 'system' | 'unknown';
-  safeSnippet: string;
-  redactions: Redaction[];
-  riskFlags: RiskClass[];
+  inventory: FileInventorySummary;
+  counts: ImportCounts;
+  sensitiveFindings: SensitiveFinding[];
+  thirdPartyPreview: ThirdPartyPreview;
+  corporatePreview: CorporatePreview;
+  minorPreview: MinorPreview;
+  deceasedOrLegacyPreview: LegacyPreview;
+  excludedByDefault: ExclusionPreview[];
+  recommendedScopes: ImportScopeSuggestion[];
+  estimatedCostClass: CostClass;
+  warnings: AdapterWarning[];
 };
 ```
 
-Preview はユーザーのスコープ選択を助けるためのもので、記憶の意味づけではない。第三者発言、未成年情報、会社情報、secret候補は redaction 済みの `safeSnippet` のみ表示する。
+### Inspection Must Not Leak Secrets
 
-## ImportPlan
+Inspection UI に秘密情報の値を表示してはいけない。
+
+悪い例:
+
+```txt
+API key found: sk-xxxx...
+```
+
+良い例:
+
+```txt
+APIキーらしき文字列を2件検出しました。値は表示せず、保存・解析から除外します。
+```
+
+## Scope Selection
+
+Adapter はユーザーに解析範囲を選ばせる。
 
 ```ts
-type ImportPlan = {
-  id: string;
+type ImportScope = {
+  includeDateRange?: DateRange;
+  includeConversationIds?: string[];
+  includeFileIds?: string[];
+  includeKinds?: RawRecordType[];
+  excludeKinds?: RawRecordType[];
+  rawStoragePreference: 'none' | 'metadata_only' | 'safe_raw' | 'ask_each_time';
+  llmPreference: 'never' | 'safe_summary_only' | 'masked_only' | 'allow_low_risk';
+  embeddingPreference: 'never' | 'metadata_only' | 'safe_text_only';
+  thirdPartyMode: 'exclude' | 'relationship_summary_only' | 'ask_each_time';
+  corporateMode: 'exclude' | 'personal_work_context_only';
+};
+```
+
+Default scope:
+
+- rawStoragePreference: `metadata_only`
+- llmPreference: `safe_summary_only`
+- embeddingPreference: `metadata_only`
+- thirdPartyMode: `relationship_summary_only`
+- corporateMode: `exclude`
+
+## Extraction
+
+### RawRecordEnvelope
+
+```ts
+type RawRecordEnvelope = {
+  raw: RawRecord;
+  source: SourceRefDraft;
+  extraction: ExtractionMetadata;
+  safetyHints: SafetyHint[];
+  costHints: CostHint[];
+  provenance: ProvenanceDraft;
+};
+```
+
+### ExtractionMetadata
+
+```ts
+type ExtractionMetadata = {
+  adapterId: string;
+  adapterVersion: string;
+  inputId: string;
+  filePath?: string;
+  byteRange?: { start: number; end: number };
+  recordIndex?: number;
+  parserName: string;
+  parserVersion: string;
+  extractedAt: string;
+  extractionMode: 'full' | 'metadata_only' | 'summary_seed' | 'masked';
+};
+```
+
+### Extraction Rules
+
+- 1 record must be independently deletable.
+- 1 record must carry sourceRefId or SourceRefDraft.
+- Large conversations must be chunked by date / topic / message window.
+- Chunking must not create fake events.
+- Missing dates must remain missing; Adapter must not invent occurredAt.
+- Speaker inference must be marked as inference.
+- Attachments are excluded by default unless adapter explicitly supports safe metadata.
+
+## Normalization
+
+Normalization は検索可能性のための整形であり、人格分析ではない。
+
+```ts
+type NormalizedRecordEnvelope = {
+  normalized: NormalizedRecord;
+  evidenceDrafts: EvidenceDraft[];
+  policyInputs: PolicyInputDraft[];
+  quality: NormalizationQuality;
+};
+```
+
+```ts
+type NormalizationQuality = {
+  textExtracted: boolean;
+  dateResolved: boolean;
+  speakerResolved: boolean;
+  sourceLinked: boolean;
+  language?: string;
+  confidence: ConfidenceScore;
+  warnings: AdapterWarning[];
+};
+```
+
+Allowed normalization:
+
+- 改行・引用符・絵文字の軽微な整形
+- 日付形式の標準化
+- URL・電話番号・メールの masking
+- 自分発言 / 相手発言の分離
+- 検索用 keyword hints の抽出
+- 場所名の丸め
+
+Forbidden normalization:
+
+- 感情の断定
+- 人格診断
+- 相手の本心推測
+- 出来事の美化
+- 複数記録を混ぜた事実生成
+- 危険な原文を displayText に残すこと
+
+## SourceRef Draft
+
+```ts
+type SourceRefDraft = {
+  sourceType: SourceType;
+  sourceName?: string;
   importJobId: string;
-  adapterId: AdapterId;
-  sourceType: SourceType | 'unknown';
-  mode: ImportMode;
-  scope: ImportScope;
-  policySnapshotId: string;
-  expectedRecords: number;
-  expectedRawStorageBytes: number;
-  estimatedCost: AdapterCostEstimate;
-  llmUse: LlmUsePolicy;
-  embeddingUse: EmbeddingUsePolicy;
+  externalId?: string;
+  externalUrl?: string;
+  capturedAt?: string;
+  importedAt: string;
+  rawStored: boolean;
+  rawStoragePath?: string;
   rawRetentionPolicy: RawRetentionPolicy;
-  exclusionRules: ImportExclusionRule[];
-  createdAt: string;
+  riskClass: RiskClass[];
+  adapterId: string;
+  adapterVersion: string;
 };
-
-type ImportMode = 'inspect_only' | 'metadata_only' | 'summary_only' | 'owner_text_only' | 'raw_extract_allowed';
 ```
 
-Default mode:
+SourceRef は Memory OS の信頼性の根である。
 
-| Source | Default | 理由 |
-|---|---|---|
-| manual/share_text | summary_only | ユーザー明示入力だがsecret scan必須 |
-| ChatGPT export subset | owner_text_only | assistant文を人格素材化しない |
-| LINE text export | summary_only | 第三者発言が多い |
-| Google Photos | metadata_only | 顔・位置・未成年リスクが高い |
-| Google Calendar | metadata_only / summary_only | 会社予定混入に注意 |
-| GitHub selected repo | metadata_only | 会社情報・secret混入に注意 |
-| Slack / Gmail | inspect_only | MVPでは高リスク |
-| unknown | inspect_only | source未確定 |
+Adapter は SourceRef を省略してはいけない。
 
-## Record Drafts
+## Safety Hints
+
+Adapter は最終判断をしないが、Policy Engine に渡すヒントを必ず作る。
 
 ```ts
-type RawRecordDraft = {
-  userId: string;
-  sourceRefDraft: SourceRefDraft;
-  importJobId: string;
-  externalId?: string;
-  recordType: RawRecordType;
-  occurredAt?: string;
-  speaker?: SpeakerRef;
-  text?: string;
-  metadata?: Record<string, unknown>;
-  contentHash: string;
-  riskFlags: RiskClass[];
-  rawStoragePolicy: RawStoragePolicy;
-  redactions: Redaction[];
-};
-
-type NormalizedRecordDraft = {
-  userId: string;
-  rawContentHash: string;
-  occurredAt?: string;
-  canonicalText?: string;
-  searchableText?: string;
-  displayText?: string;
-  peopleHints: string[];
-  topicHints: string[];
-  placeHints: string[];
-  timeHints: string[];
-  safetyFlags: RiskClass[];
-  llmEligibility: LlmEligibility;
-  embeddingEligibility: EmbeddingEligibility;
-  normalizationNotes: string[];
+type SafetyHint = {
+  riskClass: RiskClass;
+  confidence: number;
+  location?: 'filename' | 'metadata' | 'text' | 'speaker' | 'attachment' | 'unknown';
+  actionSuggestion:
+    | 'allow'
+    | 'mask'
+    | 'summary_only'
+    | 'exclude'
+    | 'require_user_approval'
+    | 'deny';
+  explanation: string;
 };
 ```
 
-正規化の目的は検索性であり、人生評価ではない。ラーメン、焼肉、帰り道、卒業式後の写真、何気ない会話を低価値扱いしない。一方で、大きなイベントを勝手に人生の中心へ押し上げない。
+Required risk checks:
 
-## Adapter Risk Classes
+- secret_or_credential
+- corporate_confidential
+- third_party_private
+- minor_sensitive
+- medical_or_mental
+- self_harm_or_crisis
+- grief_or_death
+- romantic_or_sexual
+- surveillance_or_blame_intent
+- impersonation_or_roleplay_intent
+
+## Cost Guardrails
+
+Adapter は Cost Engine に入力する見積もりを作る。
 
 ```ts
-type AdapterRiskClass =
-  | 'secret_or_credential'
-  | 'company_confidential'
-  | 'third_party_private'
-  | 'minor_data'
-  | 'deceased_person_data'
-  | 'medical_or_mental_health'
-  | 'financial_private'
-  | 'sexual_or_romantic_private'
-  | 'location_sensitive'
-  | 'surveillance_or_evidence_seeking'
-  | 'harassment_or_blame_material'
-  | 'self_harm_or_violence'
-  | 'identity_document'
-  | 'raw_personality_material'
-  | 'roleplay_or_character_ai_material'
-  | 'copyright_heavy_content'
-  | 'unknown_high_entropy_blob';
-```
-
-`raw_personality_material` は、本人シミュレーションやAI恋人化に転用されやすい長文会話・口調データに付与する。`roleplay_or_character_ai_material` は、架空キャラ会話を本人文脈と混ぜないために使う。
-
-## LLM / Embedding Eligibility
-
-```ts
-type LlmUsePolicy = {
-  allowed: boolean;
-  mode: 'none' | 'redacted_summary_only' | 'selected_records_only' | 'full_text_allowed';
-  reason: string;
-};
-
-type EmbeddingUsePolicy = {
-  allowed: boolean;
-  textSource: 'none' | 'searchableText' | 'displayText' | 'redactedSummary';
-  reason: string;
-};
-```
-
-原則:
-
-- secret候補: LLM不可、embedding不可
-- 会社情報: LLM不可、embedding不可
-- 他人の秘密: LLM不可、embedding不可
-- LINE/DM相手発言: 原則 redacted summary only
-- 写真: metadata only。顔認識embeddingは禁止
-- Character.AIログ: 本人文脈と混ぜない。roleplay archive として隔離または除外
-
-## Secret / Company / Third-party Boundary
-
-Secret は人生の文脈ではなく事故原因として扱う。password、API key、token、SSH key、cookie、DB URL、identity document、`.env` は保存・LLM・embeddingすべて不可を原則にする。
-
-会社情報は Memory OS の対象外を原則とする。work Slack、Teams、Gmail、顧客情報、private roadmap、契約、NDA、社外秘、repository secret は exclude / inspect only を優先する。例外は、ユーザー本人の仕事上の転機、公開OSSのcommit metadata、公開登壇、公開記事などに限定する。
-
-第三者データは、相手そのものではなくユーザーから見た関係性・出来事・影響だけを扱う。相手の秘密、病気、金銭、恋愛、家庭、性、メンタル、嘘、浮気、弱点を推測するindexを作らない。
-
-```ts
-type SpeakerRef = {
-  role: 'user' | 'assistant' | 'third_party' | 'system' | 'unknown';
-  displayName?: string;
-  stableHash?: string;
-  relationshipHint?: string;
-};
-```
-
-`relationshipHint` は「ユーザーから見た関係性」に限定する。
-
-## Minor / Family / Deceased Boundary
-
-未成年:
-
-- 顔・学校・住所・位置情報は default exclude / redact
-- 子どもの性格固定につながる要約は禁止
-- 成長記録は明示承認がある場合のみ最小化して保存
-
-家族:
-
-- 家族イベントは保存可能
-- 家族の秘密・診断・責任追及材料は保存しない
-- 家族共有 export には混入させない
-
-故人:
-
-- 故人の記録は追悼・整理・出典保持として扱う
-- 故人の口調・人格を再現する素材化は禁止
-- `deceased_person_data` と `raw_personality_material` の組み合わせは高リスク扱い
-
-## Roleplay / Character.AI Boundary
-
-架空キャラクターとの会話は、ユーザーの創作・嗜好・支えとして扱える場合がある。ただし、キャラクター人格を再利用・再演してはならない。
-
-方針:
-
-- sourceType は `character_ai` または `roleplay_or_character_ai_material` として分離
-- キャラクターの口調・台詞集・人格設定をMemory化しない
-- ユーザー側の嗜好・創作関心・当時の支えとして要約する
-- AI恋人化・依存強化に見える再提示をしない
-
-許容:
-
-```txt
-当時、ユーザーは架空キャラクターとの物語的な会話を、創作や気分転換として使っていた可能性がある。
-```
-
-禁止:
-
-```txt
-このキャラクターは今後あなたにこう話しかけます。
-```
-
-## Cost Guard
-
-```ts
-type AdapterCostEstimate = {
-  class: 'free_or_tiny' | 'low' | 'medium' | 'high' | 'requires_credit' | 'blocked';
-  estimatedInputBytes: number;
+type CostEstimate = {
+  costClass: CostClass;
+  inputBytes: number;
   estimatedRecords: number;
-  estimatedTokens?: number;
-  estimatedEmbeddingUnits?: number;
-  requiresUserConfirmation: boolean;
-  reasons: string[];
+  estimatedTextBytes: number;
+  estimatedEmbeddingRecords: number;
+  estimatedLlmBytes: number;
+  hardStopReasons: string[];
+  userWarnings: string[];
 };
 ```
-
-原則:
-
-- 保存前の棚卸しは低コストにする
-- 大量ログは sampling / metadata only を先に提示する
-- embedding は redacted searchableText に限定する
-- ユーザーが求めていない分析にトークンを使わない
-- 無料プランでは大容量 import を分割・待機・上限提示する
-- 同一巨大ファイル・高重複・高エントロピーblobを検出する
-
-## Deduplication / Idempotency
 
 ```ts
-type StableRecordKey = {
-  sourceType: SourceType | 'unknown';
-  adapterId: AdapterId;
-  externalId?: string;
-  occurredAt?: string;
-  normalizedSpeakerHash?: string;
-  contentHash: string;
+type CostClass = 'free_or_tiny' | 'low' | 'medium' | 'high' | 'requires_credit' | 'blocked';
+```
+
+Rules:
+
+- ZIP / Takeout / 全履歴は `requires_credit` 以上にしてよい。
+- unknown source の全解析は `blocked`。
+- LINE / Gmail / Slack / Discord の全文LLM解析は `blocked` default。
+- Embedding は safe normalized text のみ。
+- Cost estimate は実行前に UI に出す。
+- ユーザーが無料枠でも、勝手に大量処理しない。
+
+## Adapter Capability Matrix
+
+```ts
+type AdapterCapabilities = {
+  supportsDetect: boolean;
+  supportsInspect: boolean;
+  supportsExtract: boolean;
+  supportsNormalize: boolean;
+  supportsIncrementalImport: boolean;
+  supportsDeletionByExternalId: boolean;
+  supportsRawStorage: boolean;
+  supportsMetadataOnly: boolean;
+  supportsClientSideProcessing: boolean;
+  supportedInputKinds: SourceInputKind[];
+  supportedRecordTypes: RawRecordType[];
+  defaultRiskLevel: 'low' | 'medium' | 'high' | 'very_high';
 };
 ```
 
-原文そのものではなく正規化済みcontentをhash化する。third_party displayName は直接hashに入れず、stableHashに丸める。タイムゾーン差異を吸収できるよう occurredAt normalization を行う。
+MVP defaults:
 
-## Deletion Hooks
+| Adapter | Risk | Raw | LLM | Embedding | Notes |
+|---|---|---|---|---|---|
+| manual_paste | medium | ask | safe_summary_only | safe_text_only | User-selected |
+| share_text | medium | ask | safe_summary_only | safe_text_only | Small scope |
+| chatgpt_export_subset | medium | metadata/default | masked/safe | selected only | Not full history by default |
+| line_text | high | hidden/default | masked summary | summary only | Third-party default |
+| google_calendar | medium | metadata | safe | metadata + title | Event context only |
+| photos_metadata | high | metadata only | no image LLM default | metadata only | No face recognition |
+| github_metadata | high | metadata only | no code default | metadata only | Personal work context only |
+| gmail_takeout | very_high | no/default | blocked/default | blocked/default | Post-MVP |
+| slack_export | very_high | no/default | blocked/default | blocked/default | Company data risk |
 
-Adapter は次を辿れる形を壊してはならない。
+## Adapter-specific Boundaries
 
-```txt
-Memory -> Evidence -> NormalizedRecord -> RawRecord -> SourceRef -> ImportJob -> AdapterId
+### ChatGPT / Claude / Gemini Exports
+
+Allowed:
+
+- conversation title
+- user messages
+- assistant messages as context
+- timestamps
+- user-selected subset
+- safe summary seeds
+
+Default excluded:
+
+- attachments
+- hidden system metadata
+- secrets pasted into prompts
+- third-party private data inside conversations
+- roleplay / AI companion logs from automatic Memory creation
+
+Special rule:
+
+AI chat logs are not automatically treated as truth. They are evidence of what the user discussed or explored, not evidence that the discussed event happened.
+
+### LINE / DM
+
+Allowed:
+
+- relationship summary
+- shared event summary
+- user's own feeling or action
+- date range
+
+Default excluded:
+
+- other person's raw messages
+- other person's secrets
+- medical / money / sexual / family trouble details
+- blame evidence search
+
+Special rule:
+
+Adapter must preserve speaker separation. If speaker cannot be resolved, output must be high-risk and summary-only.
+
+### Photos
+
+MVP should prefer metadata only.
+
+Allowed:
+
+- date
+- coarse location
+- album name if safe
+- user-provided caption
+- event grouping
+
+Forbidden by default:
+
+- face recognition
+- child profiling
+- location precision without consent
+- other person identity inference
+- image LLM analysis at import time
+
+### GitHub
+
+GitHub can be personal context but also company risk.
+
+Allowed:
+
+- selected personal repo metadata
+- commit dates
+- commit messages after secret scan
+- project phase summary
+- user's own development timeline
+
+Forbidden by default:
+
+- private company code content
+- credentials
+- issue comments about coworkers as personality evidence
+- customer / client information
+- repo-wide code search as company search tool
+
+## Error Handling
+
+```ts
+type AdapterError = {
+  code:
+    | 'UNSUPPORTED_INPUT'
+    | 'LOW_CONFIDENCE_SOURCE'
+    | 'LIMIT_EXCEEDED'
+    | 'MALFORMED_FILE'
+    | 'SECRET_DETECTED'
+    | 'POLICY_DENIED'
+    | 'USER_SCOPE_REQUIRED'
+    | 'COST_APPROVAL_REQUIRED'
+    | 'PARTIAL_EXTRACTION'
+    | 'INTERNAL_ADAPTER_ERROR';
+  message: string;
+  safeUserMessage: string;
+  retryable: boolean;
+};
 ```
 
-削除単位:
+Errors must not expose raw secrets, private text, or file contents.
 
-- source単位削除
-- importJob単位削除
-- file単位削除
-- conversation単位削除
-- person/speaker hint単位の非表示
-- rawのみ削除してsummary/searchableTextだけ残す
-- embedding削除
-- export除外
+## Deletion and Re-import
 
-Adapter は、削除後に再生成できない interpretation を勝手に混ぜない。
+Adapter output must support deletion.
 
-## Adapter Test Contract
+Requirements:
 
-全Adapterに必須:
+- Every RawRecord has contentHash.
+- Every SourceRef has importJobId.
+- externalId is stored when available.
+- Deleting an import job can delete all linked RawRecord / NormalizedRecord / Memory candidates.
+- Re-import must dedupe by sourceType + externalId or contentHash.
+- If user deleted a record, re-import must not silently restore it.
 
-1. detect confidence test
-2. unknown source inspect-only test
-3. secret exclusion test
-4. third-party redaction test
-5. company data exclusion test
-6. minor data minimization test
-7. deceased simulation prevention test
-8. roleplay separation test
-9. cost estimate test
-10. duplicate import idempotency test
-11. deletion traceability test
-12. malformed archive safety test
-13. timezone normalization test
-14. raw retention policy test
-15. LLM / embedding eligibility test
+```ts
+type ImportTombstone = {
+  userId: string;
+  sourceType: SourceType;
+  externalId?: string;
+  contentHash?: string;
+  deletedAt: string;
+  deletionScope: 'raw_only' | 'normalized' | 'memory' | 'entire_import';
+};
+```
 
-fixture は `fixtures/adapters/{adapterId}/small|medium|risky` に置く。risky fixture に本物のsecretや実在個人情報を入れてはならない。
+## Test Harness
 
-## MVP Priority
+Every Adapter must pass shared tests.
 
-P0:
+### Required Test Categories
 
-1. `manual.share_text.v1`
-2. `manual.paste.v1`
-3. `generic.conversation_text.v1`
-4. `openai.chatgpt_export.v1` subset
-5. `unknown.inspect_only.v1`
+1. Detect known safe fixture.
+2. Refuse or inspect-only unknown fixture.
+3. Secret is detected and not displayed.
+4. Third-party private text is summary-only or excluded.
+5. Company data is excluded by default.
+6. Minor data is high-risk and no-tip.
+7. Missing date is not invented.
+8. Speaker ambiguity is not treated as fact.
+9. Large input stops at limits with partial result.
+10. Deleted tombstone is not resurrected on re-import.
+11. Adapter output contains SourceRef.
+12. Adapter output can be exported without raw secrets.
+13. LLM eligibility is denied for blocked data.
+14. Embedding eligibility is denied for unsafe raw.
+15. Error messages do not leak sensitive content.
 
-P1:
+### Fixture Layout
 
-1. `line.text_export.v1` summary only
-2. `google.calendar.v1` metadata / event summary
-3. `google.photos_metadata.v1` metadata only
-4. `x.archive_public_posts.v1`
-5. `github.selected_repo_metadata.v1`
+```txt
+fixtures/<adapter>/
+  safe/
+  risky-secret/
+  risky-third-party/
+  risky-corporate/
+  risky-minor/
+  malformed/
+  huge/
+  unknown/
+```
 
-P2:
+## MVP Implementation Order
 
-1. `anthropic.claude_export.v1`
-2. `notion.selected_pages.v1`
-3. `obsidian.markdown_subset.v1`
-4. `apple_notes.selected_export.v1`
-5. `day_one.export.v1`
+1. `manual_paste` adapter
+2. `share_text` adapter
+3. `chatgpt_export_subset` adapter
+4. `line_text` adapter in summary-only mode
+5. `google_calendar` adapter
+6. `photos_metadata` adapter
+7. `github_metadata` adapter
 
-Deferred:
+Do not start with Gmail / Slack / Discord full imports. They are useful but can easily break the product philosophy and safety boundary.
 
-1. Gmail full import
-2. Slack full import
-3. Work chat full import
-4. Photo face recognition
-5. Voice full transcription
-6. Password manager import
-7. Full device backup import
+## Acceptance Criteria
 
-## Adapter Review Checklist
+Source Adapter SDK is ready when:
 
-新しいAdapterを追加する前に確認する。
+- Adapter interface compiles as TypeScript types.
+- One safe fixture can produce SourceRef + RawRecord + NormalizedRecord.
+- One risky fixture is blocked before LLM / embedding.
+- Import preview can show counts, date range, cost class, and exclusions.
+- Policy Engine receives risk hints for every extracted record.
+- User can select scope before extraction.
+- Deletion tombstone prevents silent resurrection.
+- No Adapter can bypass raw / LLM / embedding permissions.
+- Tests include at least the 15 shared categories above.
 
-- 人生文脈に必要か
-- ChatGPT代替・Character.AI化に寄っていないか
-- 本人シミュレーション素材を作っていないか
-- 他人の秘密を保存価値にしていないか
-- 会社情報検索になっていないか
-- 未成年・故人・家族データを最小化しているか
-- 保存時に分析しすぎていないか
-- SourceRef / Evidence / contentHash が残るか
-- ユーザーが後から削除・非表示・export除外できるか
-- 無料ユーザーでも破綻しない cost guard があるか
-- unknown / malformed / huge / duplicate input に耐えるか
+## Non-goals
+
+- Build a universal scraper.
+- Parse every export format perfectly.
+- Turn all chat logs into memories.
+- Analyze personality at import time.
+- Preserve every raw message forever.
+- Make work search, password search, or surveillance easier.
 
 ## 結論
 
-Source Adapter SDK は、Memory OS の入口である。
+Source Adapter SDK は Memory OS の入口である。
 
-入口が強すぎると、サービスは監視・診断・人格再現・会社検索・AI恋人へ崩れる。入口が弱すぎると、小さな記録が消え、人生の文脈が残らない。
+入口でやるべきことは、人生を評価することではない。
 
-したがって Adapter は、保存時に評価しすぎず、安全・出典・日付・検索性・削除可能性を守る薄い境界層として設計する。
+安全に受け取り、危険を止め、出典と日付を守り、後から本人が探せる形にすること。
+
+その先の意味づけは、ユーザーが求めた時にだけ、Policy Engine と Evidence に基づいて慎重に行う。
