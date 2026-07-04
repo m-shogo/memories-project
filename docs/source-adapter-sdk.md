@@ -114,6 +114,8 @@ packages/source-adapter-sdk/
     safety.ts
     cost.ts
     provenance.ts
+    approval-gates.ts
+    sync-state.ts
     test-harness.ts
   adapters/
     manual/
@@ -132,12 +134,62 @@ MVPでは monorepo 化していない場合でも、同等の境界を `src/sour
 
 重要なのはディレクトリ名ではなく、**Adapter が Policy / Schema / Cost / Provenance に従う実装境界を持つこと**である。
 
+## Adapter Manifest
+
+各 Adapter は、実行コードとは別に Manifest を持つ。
+
+Manifest は UI・Policy Engine・Cost Engine・Test Harness が、Adapter を実行する前に安全境界を理解するための契約である。
+
+```ts
+type AdapterManifest = {
+  id: SourceAdapterId;
+  sourceType: SourceType;
+  displayName: string;
+  version: string;
+  schemaVersion: string;
+  minPolicyVersion: string;
+  supportedInputKinds: SourceInputKind[];
+  supportedRecordTypes: RawRecordType[];
+  defaultRiskLevel: 'low' | 'medium' | 'high' | 'very_high';
+  capabilities: AdapterCapabilities;
+  defaultPermissions: AdapterPermissions;
+  defaultScope: ImportScope;
+  requiredUserApprovals: AdapterApprovalKind[];
+  forbiddenActions: PolicyAction[];
+  piiClassesExpected: RiskClass[];
+  costProfile: AdapterCostProfile;
+  deletionSupport: AdapterDeletionSupport;
+};
+```
+
+```ts
+type AdapterApprovalKind =
+  | 'store_raw'
+  | 'create_embedding'
+  | 'send_to_llm'
+  | 'include_third_party_text'
+  | 'include_corporate_context'
+  | 'include_minor_data'
+  | 'include_legacy_or_deceased_context'
+  | 'process_large_archive'
+  | 'export_with_warnings';
+```
+
+Manifest rules:
+
+- Manifest の default は安全側に倒す。
+- 実行時 permissions は Manifest より緩くしてはいけない。ただし、ユーザー承認と PolicyDecision が揃った場合だけ scope を拡張できる。
+- Adapter は Manifest に書いていない inputKind / recordType を処理してはいけない。
+- Manifest 変更は breaking / non-breaking を明示する。
+- Test Harness は Manifest から必須fixtureを自動生成できる必要がある。
+
 ## Core Interfaces
 
 ### SourceAdapter
 
 ```ts
 type SourceAdapter = {
+  readonly manifest: AdapterManifest;
   readonly id: SourceAdapterId;
   readonly sourceType: SourceType;
   readonly version: string;
@@ -167,6 +219,8 @@ type AdapterContext = {
   userTimezone?: string;
   limits: AdapterLimits;
   permissions: AdapterPermissions;
+  approvalState: AdapterApprovalState;
+  syncState?: AdapterSyncState;
   logger: AdapterLogger;
 };
 ```
@@ -337,6 +391,38 @@ Default scope:
 - thirdPartyMode: `relationship_summary_only`
 - corporateMode: `exclude`
 
+## Approval Gates
+
+ユーザーが scope を広げたとしても、Adapter は即実行してはいけない。
+
+Scope request、Manifest、PolicyDecision、CostEstimate、ApprovalState が揃った時だけ危険操作を許可する。
+
+```ts
+type AdapterApprovalState = {
+  approvals: AdapterApproval[];
+  denied: AdapterApprovalKind[];
+};
+```
+
+```ts
+type AdapterApproval = {
+  kind: AdapterApprovalKind;
+  approvedAt: string;
+  approvedBy: 'user';
+  scopeFingerprint: string;
+  expiresAt?: string;
+};
+```
+
+Approval rules:
+
+- `send_to_llm` approval は `store_raw` approval を意味しない。
+- `create_embedding` approval は `send_to_llm` approval を意味しない。
+- `include_third_party_text` は raw保存・embedding・LLM送信の各 approval と別で必要。
+- `include_corporate_context` は初期状態では deny。MVPでは personal_work_context_only に限定する。
+- scopeFingerprint が変わったら approval は再取得する。
+- Approval UI は「便利になります」ではなく「何が保存/除外/送信されるか」を表示する。
+
 ## Extraction
 
 ### RawRecordEnvelope
@@ -446,6 +532,68 @@ SourceRef は Memory OS の信頼性の根である。
 
 Adapter は SourceRef を省略してはいけない。
 
+## Idempotency and Deduplication
+
+Adapter は、同じ入力を複数回取り込んでも記憶を増殖させてはいけない。
+
+```ts
+type AdapterIdempotencyKey = {
+  userId: string;
+  sourceType: SourceType;
+  adapterId: string;
+  externalId?: string;
+  contentHash?: string;
+  occurredAt?: string;
+  speakerStableId?: string;
+};
+```
+
+Dedup priority:
+
+1. `sourceType + externalId`
+2. `sourceType + externalId + occurredAt` when externalId is conversation-level only
+3. `contentHash + occurredAt + speakerStableId`
+4. `contentHash` only for exact duplicate files
+
+Rules:
+
+- contentHash は masking 前の秘密値を直接ハッシュしてはいけない。必要なら secret-safe canonical hash を使う。
+- AI要約の hash を RawRecord dedupe に使ってはいけない。
+- Dedup は「重要度が低いから捨てる」ではなく「同じ記録の二重登録を避ける」ためだけに使う。
+- 衝突時は古い record を上書きせず、SourceRef を追加するか conflict として保持する。
+- 既存Memoryと似ているだけでは dedupe しない。
+
+## Incremental Sync
+
+API import や継続接続型 Adapter は、差分同期をサポートできる。
+
+ただし、Memory OS は監視ツールではない。Incremental Sync はユーザー本人が選んだ source scope の更新取り込みであり、他人や会社の監視ではない。
+
+```ts
+type AdapterSyncState = {
+  userId: string;
+  adapterId: string;
+  sourceType: SourceType;
+  sourceAccountId?: string;
+  cursor?: string;
+  lastImportedAt?: string;
+  lastExternalUpdatedAt?: string;
+  scopeFingerprint: string;
+  permissionFingerprint: string;
+  status: 'active' | 'paused' | 'needs_reauth' | 'scope_changed' | 'disabled';
+};
+```
+
+Incremental sync rules:
+
+- Sync は user-selected scope の外に出てはいけない。
+- permissionFingerprint が変わったら停止して再承認を要求する。
+- scopeFingerprint が変わったら差分を続行せず、inspection からやり直す。
+- 会社・DM・家族・未成年・故人関連の source は自動同期を default off にする。
+- 同期失敗時に raw error body を保存してはいけない。
+- 削除済み tombstone に一致する record は復活させない。
+- 「毎日自動で相手の発言を取り込む」体験は監視化しやすいため、MVPでは禁止する。
+
 ## Safety Hints
 
 Adapter は最終判断をしないが、Policy Engine に渡すヒントを必ず作る。
@@ -500,6 +648,16 @@ type CostEstimate = {
 type CostClass = 'free_or_tiny' | 'low' | 'medium' | 'high' | 'requires_credit' | 'blocked';
 ```
 
+```ts
+type AdapterCostProfile = {
+  pricingUnit: 'record' | 'byte' | 'file' | 'conversation' | 'event' | 'metadata_only';
+  defaultCostClass: CostClass;
+  llmCostRisk: 'none' | 'low' | 'medium' | 'high' | 'blocked';
+  embeddingCostRisk: 'none' | 'low' | 'medium' | 'high' | 'blocked';
+  archiveExplosionRisk: boolean;
+};
+```
+
 Rules:
 
 - ZIP / Takeout / 全履歴は `requires_credit` 以上にしてよい。
@@ -508,6 +666,7 @@ Rules:
 - Embedding は safe normalized text のみ。
 - Cost estimate は実行前に UI に出す。
 - ユーザーが無料枠でも、勝手に大量処理しない。
+- Cost estimate と実処理量が大きく乖離した場合は partial stop する。
 
 ## Adapter Capability Matrix
 
@@ -627,6 +786,36 @@ Forbidden by default:
 - customer / client information
 - repo-wide code search as company search tool
 
+## Runtime Job State
+
+Adapter 実行は ImportJob の状態機械として扱う。
+
+```ts
+type AdapterJobState =
+  | 'created'
+  | 'detected'
+  | 'inspected'
+  | 'awaiting_scope'
+  | 'awaiting_approval'
+  | 'planned'
+  | 'extracting'
+  | 'normalizing'
+  | 'policy_evaluating'
+  | 'indexing'
+  | 'completed'
+  | 'partial_completed'
+  | 'failed'
+  | 'cancelled';
+```
+
+State rules:
+
+- `awaiting_scope` から `extracting` へ直接遷移してはいけない。
+- `awaiting_approval` のまま background job を開始してはいけない。
+- `failed` error は safeUserMessage と内部原因を分離する。
+- `partial_completed` は成功扱いではなく、UIで「どこまで取り込んだか」を出す。
+- Cancel は best-effort ではなく、以後の RawRecord / NormalizedRecord / Memory 作成を止める。
+
 ## Error Handling
 
 ```ts
@@ -639,7 +828,10 @@ type AdapterError = {
     | 'SECRET_DETECTED'
     | 'POLICY_DENIED'
     | 'USER_SCOPE_REQUIRED'
+    | 'USER_APPROVAL_REQUIRED'
     | 'COST_APPROVAL_REQUIRED'
+    | 'SYNC_SCOPE_CHANGED'
+    | 'DELETED_TOMBSTONE_MATCH'
     | 'PARTIAL_EXTRACTION'
     | 'INTERNAL_ADAPTER_ERROR';
   message: string;
@@ -674,6 +866,62 @@ type ImportTombstone = {
 };
 ```
 
+```ts
+type AdapterDeletionSupport = {
+  canDeleteByImportJobId: boolean;
+  canDeleteByExternalId: boolean;
+  canDeleteByContentHash: boolean;
+  canPropagateSourceDeletion: boolean;
+  tombstoneRequired: boolean;
+};
+```
+
+Deletion rules:
+
+- `entire_import` deletion は SourceRef / RawRecord / NormalizedRecord / Memory candidate / embeddings を対象にする。
+- Memory に昇格済みのものは、ユーザーに「記憶本文も消すか、出典だけ外すか」を選ばせる。
+- external service 側で消えたデータを、Memory OS が勝手に消すかは source ごとに決める。MVPでは自動削除しない。
+- Re-import は tombstone を尊重する。
+- Backup / Export は tombstone も含める。別環境で復元した時に削除済み記録が復活しないようにする。
+
+## Security Requirements
+
+Adapter は untrusted input parser である。
+
+必須:
+
+- Archive extraction は zip slip / path traversal を拒否する。
+- MIME type は拡張子だけで信じない。
+- HTML / Markdown は script / remote resource を無効化して扱う。
+- CSV / spreadsheet は formula injection を sanitize する。
+- Image / media metadata は precise location を default masked にする。
+- Logs に raw text / secret / third-party private text を出さない。
+- Parser crash は job failure に閉じ込め、他ユーザーの import に影響させない。
+- Adapter runtime は最小権限にする。
+
+禁止:
+
+- Adapter が任意URLを内部ネットワークへ fetch すること。
+- Adapter が外部サービスへ raw data を送ること。
+- Adapter がユーザー承認なしにLLM providerへ本文を送ること。
+- Adapter が secret scan 前に全文embeddingすること。
+
+## Privacy Requirements
+
+Adapter は「保存できるもの」を増やすより、「保存しない初期値」を明確にする。
+
+Privacy defaults:
+
+- third-party raw text: exclude or summary-only
+- minor data: high-risk, no tip, no sharing default
+- deceased / legacy data: warning + no impersonation
+- corporate data: exclude default
+- precise location: masked default
+- face / identity inference: disabled default
+- medical / mental / crisis: no proactive tip
+
+Adapter は本人の記憶の入口であり、他人の秘密の保管庫ではない。
+
 ## Test Harness
 
 Every Adapter must pass shared tests.
@@ -695,6 +943,11 @@ Every Adapter must pass shared tests.
 13. LLM eligibility is denied for blocked data.
 14. Embedding eligibility is denied for unsafe raw.
 15. Error messages do not leak sensitive content.
+16. Manifest default permissions are not weaker than Policy defaults.
+17. Approval gates are required for raw / LLM / embedding expansion.
+18. Incremental sync stops when scopeFingerprint changes.
+19. Idempotency prevents duplicate records without merging merely similar memories.
+20. CSV / HTML / archive security fixtures are sanitized.
 
 ### Fixture Layout
 
@@ -705,9 +958,15 @@ fixtures/<adapter>/
   risky-third-party/
   risky-corporate/
   risky-minor/
+  risky-legacy/
+  risky-roleplay/
+  risky-surveillance/
   malformed/
   huge/
   unknown/
+  security-archive-traversal/
+  security-html-script/
+  security-csv-formula/
 ```
 
 ## MVP Implementation Order
@@ -727,14 +986,17 @@ Do not start with Gmail / Slack / Discord full imports. They are useful but can 
 Source Adapter SDK is ready when:
 
 - Adapter interface compiles as TypeScript types.
+- Adapter Manifest can be loaded before Adapter execution.
 - One safe fixture can produce SourceRef + RawRecord + NormalizedRecord.
 - One risky fixture is blocked before LLM / embedding.
 - Import preview can show counts, date range, cost class, and exclusions.
 - Policy Engine receives risk hints for every extracted record.
 - User can select scope before extraction.
+- Approval gates block raw / LLM / embedding expansion without explicit approval.
 - Deletion tombstone prevents silent resurrection.
+- Incremental sync respects scopeFingerprint and permissionFingerprint.
 - No Adapter can bypass raw / LLM / embedding permissions.
-- Tests include at least the 15 shared categories above.
+- Tests include at least the 20 shared categories above.
 
 ## Non-goals
 
