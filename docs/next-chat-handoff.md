@@ -29,24 +29,21 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - 大きなイベントも押し付けない
 - 本人の記憶を作るサービスであり、本人を分析するサービスではない
 
-## Product Boundaries
+## Absolute Non-goals
 
-このサービスは以下ではない。
-
-- 汎用AIチャット代替
-- キャラクター会話アプリ
-- 故人や家族の本人再現
-- AI恋人サービス
+- ChatGPT代替
+- Character.AI化
+- 故人再現
+- 親/妻/恋人の本人シミュレーション
+- AI恋人化
 - 人格診断
 - 人生ランキング
 - パスワード管理
 - 会社情報検索
 - 他人の秘密の記憶化
-- 監視 / 証拠探し
+- 監視/証拠探し
 
-## Core Docs
-
-必ず読む:
+## Core Docs To Read
 
 - `docs/memory-constitution-v1.md`
 - `docs/memory-schema-v1.md`
@@ -65,125 +62,154 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - `docs/test-strategy.md`
 - `docs/data-model-delta.md`
 - `docs/mvp-scope.md`
+- `docs/schema-v1-1-proposal.md`
+- `docs/policy-test-cases.md`
+- `docs/engineering-tasks-mvp.md`
 
-## RFC Docs Added
+## RFC Docs
 
 - `docs/rfcs/0000-template.md`
 - `docs/rfcs/0001-source-adapter-sdk.md`
 - `docs/rfcs/0002-export-specification.md`
 - `docs/rfcs/0003-cost-engine.md`
+- `docs/rfcs/0004-search-ranking-engine.md`
+- `docs/rfcs/0005-deletion-backup-semantics.md`
 
-## Latest Work Summary
+## Latest Additions
 
-### RFC Template
+### RFC-0004 Search & Ranking Engine
 
-`docs/rfcs/0000-template.md`
+- Search ranking is relevance, not worth.
+- importanceScore/lifeScore/personImportance forbidden.
+- Policy filter before scoring.
+- hidden/sealed/deleted excluded by default.
+- surveillance/blame search denied or redirected.
+- Tip policy stricter than search.
 
-- RFC必須セクションを固定。
-- Constitution Check を必須化。
-- Policy / Privacy / Security / Third-party / Minor / Legacy / Corporate / Cost / UX / Deletion / Export を必ず見る。
-- abuse cases 最低10件を必須化。
-- accepted判断前にCost Impactを必須化。
+### RFC-0005 Deletion / Backup Semantics
 
-### RFC-0001 Source Adapter SDK
+- Delete means do not resurrect.
+- pending_deletion blocks search/tip/LLM/export immediately.
+- tombstone prevents re-import resurrection.
+- raw-only delete supported.
+- backup restore must replay tombstones.
+- deletion UI must not guilt-frame.
 
-`docs/rfcs/0001-source-adapter-sdk.md`
+### Schema v1.1 Proposal
 
-- `accepted_with_limits`。
-- Adapterは分析器ではなく変換器。
-- detect -> inspect -> estimateCost -> userScope -> extract -> normalize -> policy -> index。
-- unknown source full analysis blocked。
-- Gmail/Slack/Discord full import はMVP外。
+`docs/schema-v1-1-proposal.md`
 
-### RFC-0002 Export Specification
+Additive MVP schema proposal:
 
-`docs/rfcs/0002-export-specification.md`
+- AdapterMetadata
+- ImportScope
+- SurfaceVisibility
+- PrivacyContext
+- PolicyDecisionRecord
+- DeletionTombstone
+- CostEstimateRecord
+- CostLedgerEntry
+- ExportJob
+- EmbeddingRecord
 
-- `accepted_with_limits`。
-- Exportは権利だがraw leak toolではない。
-- secrets / corporate / third-party raw / minor raw は除外またはsummary-only。
-- Markdownは人生ランキング・人格診断見出し禁止。
-- short-lived download + audit。
+Forbidden fields:
 
-### RFC-0003 Cost Engine
+- importanceScore
+- lifeScore
+- personalityScore
+- personRank
+- topMemory
+- bestMemory
+- deceasedPersona
 
-`docs/rfcs/0003-cost-engine.md`
+### Policy Test Cases
 
-- `accepted_with_limits`。
-- Cost is consent。
-- Planや課金でPolicy denyは越えられない。
-- CostLedgerはraw text禁止。
-- full history processing default off。
+`docs/policy-test-cases.md`
 
-### Implementation Roadmap
+P0-001〜P0-020 concrete cases added:
 
-`docs/implementation-roadmap.md`
+- secret storage/embedding/export deny
+- corporate raw LLM deny
+- third-party raw quote deny
+- surveillance/blame deny
+- deceased impersonation deny
+- minor tip/export deny
+- self-harm tip deny
+- AI roleplay persona creation deny
+- hidden/sealed/deleted restrictions
+- low-risk manual memory allow
 
-- Safe core before smart AI。
-- Manual capture -> Policy -> Adapter -> Search -> Export -> Deletion -> Cost -> Safe integrations -> Reflection。
-- AI分析より前に削除・出典・Export・Policyを作る。
-- Never Buildリストを固定。
+### Engineering Tasks MVP
 
-### Test Strategy
+`docs/engineering-tasks-mvp.md`
 
-`docs/test-strategy.md`
+Implementation tasks broken into phases:
 
-- Policy / Adapter / Search / Export / Deletion / Security / Privacy / Cost / UX copy / Red Team をP0化。
-- dangerous success is failure。
-- forbidden phrase scan を定義。
-- Red Team cases を回帰テストへ変換する方針。
+0. repo guardrails / forbidden phrase scanner / fixtures
+1. schema v1.1 additive types
+2. Policy Engine P0
+3. manual/share adapters
+4. memory creation MVP
+5. visibility/deletion/tombstone
+6. search MVP
+7. export MVP
+8. cost MVP
+9. UX copy
+10. MVP CI gate
 
-### Data Model Delta
+## Current State
 
-`docs/data-model-delta.md`
+Design is now connected from philosophy to implementation:
 
-- schema v1 に対する追加差分。
-- AdapterMetadata / ImportScope / DeletionTombstone / PolicyDecisionRecord / CostEstimateRecord / ExportJob / EmbeddingLifecycle / PrivacyContext。
-- forbidden field names: importanceScore, lifeScore, personalityScore 等。
+```txt
+Constitution
+-> RFC process
+-> Source/Export/Cost/Search/Delete RFCs
+-> Roadmap
+-> Test strategy
+-> Schema v1.1 proposal
+-> Policy concrete test cases
+-> MVP engineering tasks
+```
 
-### MVP Scope
-
-`docs/mvp-scope.md`
-
-- MVP North Star: 小さな記録を、AIに評価されず、安全に残し、後から探せて、消せて、持ち出せる。
-- P0: manual/share capture, SourceRef/Evidence, Policy P0, basic adapter, safe search, visibility/deletion, safe export, cost estimate, UX boundary。
-- Out of MVP: Gmail, Slack, full imports, AI-heavy features, family share, risky search。
-- Never Build: AI companion, deceased simulation, personality diagnosis, life score, surveillance, company search。
+This is no longer only concept docs. It is close to implementation-ready.
 
 ## Next Recommended Work
 
-次にやるなら、設計から実装準備へさらに進める。
+Continue with remaining RFCs and implementation prep:
 
-1. `docs/rfcs/0004-search-ranking-engine.md`
-2. `docs/rfcs/0005-deletion-backup-semantics.md`
-3. `docs/rfcs/0006-security-architecture.md`
-4. `docs/rfcs/0007-privacy-architecture.md`
-5. `docs/rfcs/0008-ux-guidelines.md`
-6. `docs/adapter-implementation-plan.md`
-7. `docs/policy-test-cases.md`
-8. `docs/schema-v1-1-proposal.md`
-9. `docs/engineering-tasks-mvp.md`
+1. `docs/rfcs/0006-security-architecture.md`
+2. `docs/rfcs/0007-privacy-architecture.md`
+3. `docs/rfcs/0008-ux-guidelines.md`
+4. `docs/adapter-implementation-plan.md`
+5. `docs/storage-architecture.md`
+6. `docs/local-first-backup-strategy.md`
+7. `docs/incident-response-playbook.md`
+8. then start actual implementation from `docs/engineering-tasks-mvp.md` T0-001.
 
-## Current Implementation Direction
+## First Implementation Order
 
-最初に実装する順番:
+When implementation starts, do this order:
 
-1. schema additive types
-2. Policy Engine P0
-3. manual/share adapter
-4. SourceRef + Memory create
-5. hide/seal/delete/tombstone
-6. basic search
-7. safe export
-8. cost estimate
-9. fixture tests
+1. T0-002 forbidden phrase scanner
+2. T0-003 fixture directory structure
+3. T1-001 schema v1.1 additive types
+4. T1-002 lifecycle helpers
+5. T2-001 PolicyContext and PolicyDecision
+6. T2-002 hard deny rules
+7. T2-004 P0 policy tests
+8. T3-001 adapter interface
+9. T3-002 manual paste adapter
+10. T5-003 delete memory + tombstone
+
+Do not begin with LLM summaries, semantic search, Gmail/Slack, or proactive tips.
 
 ## Copy-paste Prompt For Next Chat
 
 ```txt
 https://github.com/m-shogo/memories-project.git
 
-このrepoの `so` ブランチで、AI記憶体サービス Memory OS の設計を続けてください。
+このrepoの `so` ブランチで、AI記憶体サービス Memory OS の設計/実装準備を続けてください。
 作業したら毎回 GitHub に commit / push してください。
 
 目的:
@@ -217,30 +243,22 @@ ChatGPT/Claudeの代替ではなく、AI時代に「自分の人生の文脈」�
 既存docsを必ず読んで整合してください。
 特に以下を重視:
 - docs/memory-constitution-v1.md
-- docs/source-adapter-sdk.md
-- docs/export-specification.md
-- docs/memory-rfc-series.md
-- docs/cost-engine.md
-- docs/search-ranking-engine.md
-- docs/deletion-backup-semantics.md
-- docs/security-architecture.md
-- docs/privacy-architecture.md
-- docs/ux-guidelines.md
-- docs/implementation-roadmap.md
-- docs/test-strategy.md
-- docs/data-model-delta.md
+- docs/schema-v1-1-proposal.md
+- docs/policy-test-cases.md
+- docs/engineering-tasks-mvp.md
 - docs/mvp-scope.md
+- docs/test-strategy.md
+- docs/rfcs/0004-search-ranking-engine.md
+- docs/rfcs/0005-deletion-backup-semantics.md
 
 次にやる優先順位:
-1. docs/rfcs/0004-search-ranking-engine.md
-2. docs/rfcs/0005-deletion-backup-semantics.md
-3. docs/rfcs/0006-security-architecture.md
-4. docs/rfcs/0007-privacy-architecture.md
-5. docs/rfcs/0008-ux-guidelines.md
-6. docs/adapter-implementation-plan.md
-7. docs/policy-test-cases.md
-8. docs/schema-v1-1-proposal.md
-9. docs/engineering-tasks-mvp.md
+1. docs/rfcs/0006-security-architecture.md
+2. docs/rfcs/0007-privacy-architecture.md
+3. docs/rfcs/0008-ux-guidelines.md
+4. docs/adapter-implementation-plan.md
+5. docs/storage-architecture.md
+6. docs/local-first-backup-strategy.md
+7. docs/incident-response-playbook.md
 
 進め方:
 - 1ファイルずつ設計書を追加
@@ -254,17 +272,22 @@ ChatGPT/Claudeの代替ではなく、AI時代に「自分の人生の文脈」�
 
 ## Last Known Commits From This Session
 
-- `a532794cfdc84b25692f0fa4312a2b79805e9374` docs: add memory rfc template
-- `47f7f90cf1649f4ecf30bdbefb09eea008cb941e` docs: add rfc for source adapter sdk
-- `2428670de45a3c0bde0452a133ecaab76278dd14` docs: add rfc for export specification
-- `89cda9706d191474fa7d62fe9591b125dc60311f` docs: add rfc for cost engine
-- `484b152891f27f05fb909f9b084c20f5e4c2e7a0` docs: add implementation roadmap
-- `ed902c97bad0f78c3b45b3906785b80aa43f3585` docs: add test strategy
-- `125fc306be64fbb8db784791e1c97c64341c5bba` docs: add data model delta
-- `78ed1d4db7db76f6e7bd0b640d496a2e5dd68743` docs: add mvp scope
+- `c206b98cfec93b87c2304439d63af59a24a3c497` docs: add rfc for search ranking engine
+- `a1d235b4991ebe31a51ce1662b1063875f759fe4` docs: add rfc for deletion backup semantics
+- `f665c02a823aae41b54d3f81e6c0744203d20170` docs: add schema v1.1 proposal
+- `4257d5e6c95b71d6cba0ffb10c859ec6759c4fbf` docs: add policy test cases
+- `3d98a0307068509ecabdf668c5f8ac0174dcb55a` docs: add mvp engineering tasks
 
-## Current State
+## Current Assessment
 
-設計の土台は、思想 → RFC → Roadmap → Test → Schema Delta → MVP Scope まで繋がった。
+Completion is roughly 92-94% for design readiness.
 
-次は残りの主要設計をRFC化し、その後 `schema-v1-1-proposal` と `engineering-tasks-mvp` で実装着手できる粒度へ落とす。
+Remaining before implementation should be:
+
+- security/privacy/UX RFCs
+- storage architecture
+- local-first backup/export strategy
+- incident response playbook
+- adapter implementation plan
+
+Then implementation can safely start with guardrails and Policy P0 tests.
