@@ -22,6 +22,8 @@ AIは変わる。モデルも変わる。サービスも変わる。
 - Character.AI ではない
 - 日記アプリだけでもない
 - 写真管理アプリでもない
+- パスワード管理ツールではない
+- 会社の便利検索ツールではない
 
 作るものは、人生の断片を集め、意味でつなぎ、必要な時に思い出せる **人生の文脈レイヤー**。
 
@@ -65,6 +67,7 @@ ChatGPT、Claude、Gemini、X、Googleフォト、GitHub、Notion、カレンダ
 
 - [Concept](docs/concept.md)
 - [Product Principles](docs/product-principles.md)
+- [Product Boundaries](docs/product-boundaries.md)
 - [Import / Export Strategy](docs/import-export-strategy.md)
 - [Export Format Research](docs/export-format-research.md)
 - [Niche AI Imports](docs/niche-ai-imports.md)
