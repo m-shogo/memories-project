@@ -66,6 +66,8 @@ ChatGPT、Claude、Gemini、X、Googleフォト、GitHub、Notion、カレンダ
 - [Concept](docs/concept.md)
 - [Product Principles](docs/product-principles.md)
 - [Import / Export Strategy](docs/import-export-strategy.md)
+- [Export Format Research](docs/export-format-research.md)
+- [Import Security Checklist](docs/import-security-checklist.md)
 - [MVP Roadmap](docs/mvp-roadmap.md)
 - [Pricing and Cost Guardrails](docs/pricing-cost-guardrails.md)
 - [Memory Data Model](docs/memory-data-model.md)
