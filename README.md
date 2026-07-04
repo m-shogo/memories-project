@@ -68,6 +68,8 @@ ChatGPT、Claude、Gemini、X、Googleフォト、GitHub、Notion、カレンダ
 - [Concept](docs/concept.md)
 - [Product Principles](docs/product-principles.md)
 - [Product Boundaries](docs/product-boundaries.md)
+- [Personal Context Model](docs/personal-context-model.md)
+- [Personal Memory Extraction Rules](docs/personal-memory-extraction-rules.md)
 - [Import / Export Strategy](docs/import-export-strategy.md)
 - [Export Format Research](docs/export-format-research.md)
 - [Niche AI Imports](docs/niche-ai-imports.md)
