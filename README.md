@@ -68,6 +68,7 @@ ChatGPT、Claude、Gemini、X、Googleフォト、GitHub、Notion、カレンダ
 - [Concept](docs/concept.md)
 - [Product Principles](docs/product-principles.md)
 - [Product Boundaries](docs/product-boundaries.md)
+- [Memory Constitution v1](docs/memory-constitution-v1.md)
 - [Personal Context Model](docs/personal-context-model.md)
 - [Personal Memory Extraction Rules](docs/personal-memory-extraction-rules.md)
 - [Sensitive Response Guardrails](docs/sensitive-response-guardrails.md)
