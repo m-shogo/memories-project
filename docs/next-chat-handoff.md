@@ -1,6 +1,6 @@
 # Next Chat Handoff
 
-このファイルは、次のChatGPT/Codex/GitHub作業チャットで、同じ前提のまま設計を続けるための実務用引き継ぎである。
+このファイルは、次のChatGPT/Codex/GitHub作業チャットで、同じ前提のまま設計/実装を続けるための実務用引き継ぎである。
 
 ## Repository
 
@@ -43,28 +43,20 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - 他人の秘密の記憶化
 - 監視/証拠探し
 
-## Core Docs To Read
+## Core Docs To Read First
 
 - `docs/memory-constitution-v1.md`
 - `docs/memory-schema-v1.md`
-- `docs/policy-engine.md`
-- `docs/third-party-data-policy.md`
-- `docs/source-adapter-sdk.md`
-- `docs/export-specification.md`
-- `docs/memory-rfc-series.md`
-- `docs/cost-engine.md`
-- `docs/search-ranking-engine.md`
-- `docs/deletion-backup-semantics.md`
-- `docs/security-architecture.md`
-- `docs/privacy-architecture.md`
-- `docs/ux-guidelines.md`
-- `docs/implementation-roadmap.md`
-- `docs/test-strategy.md`
-- `docs/data-model-delta.md`
-- `docs/mvp-scope.md`
 - `docs/schema-v1-1-proposal.md`
+- `docs/policy-engine.md`
 - `docs/policy-test-cases.md`
 - `docs/engineering-tasks-mvp.md`
+- `docs/mvp-scope.md`
+- `docs/test-strategy.md`
+- `docs/storage-architecture.md`
+- `docs/adapter-implementation-plan.md`
+- `docs/local-first-backup-strategy.md`
+- `docs/incident-response-playbook.md`
 
 ## RFC Docs
 
@@ -74,142 +66,147 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - `docs/rfcs/0003-cost-engine.md`
 - `docs/rfcs/0004-search-ranking-engine.md`
 - `docs/rfcs/0005-deletion-backup-semantics.md`
+- `docs/rfcs/0006-security-architecture.md`
+- `docs/rfcs/0007-privacy-architecture.md`
+- `docs/rfcs/0008-ux-guidelines.md`
 
 ## Latest Additions
 
-### RFC-0004 Search & Ranking Engine
+### RFC-0006 Security Architecture
 
-- Search ranking is relevance, not worth.
-- importanceScore/lifeScore/personImportance forbidden.
-- Policy filter before scoring.
-- hidden/sealed/deleted excluded by default.
-- surveillance/blame search denied or redirected.
-- Tip policy stricter than search.
+- Security is not only encryption.
+- Do not store/search/export/send dangerous raw.
+- Admin metadata-only default.
+- LLM boundary requires security + policy + cost preflight.
+- Prompt injection from imported text must not override policy.
+- Embedding lifecycle must respect hidden/sealed/deleted.
 
-### RFC-0005 Deletion / Backup Semantics
+### RFC-0007 Privacy Architecture
 
-- Delete means do not resurrect.
-- pending_deletion blocks search/tip/LLM/export immediately.
-- tombstone prevents re-import resurrection.
-- raw-only delete supported.
-- backup restore must replay tombstones.
-- deletion UI must not guilt-frame.
+- User context is allowed; other people's secrets are not value.
+- third-party raw no/default.
+- minor data stricter than family data.
+- deceased/legacy memory allowed, simulation denied.
+- corporate data excluded by default.
 
-### Schema v1.1 Proposal
+### RFC-0008 UX Guidelines
 
-`docs/schema-v1-1-proposal.md`
+- UX must not make Memory OS look like diagnosis, ranking, AI companion, or deceased simulation.
+- Capture must not require importance score.
+- Search explanations cannot say AI judged importance.
+- Deletion copy must be guilt-free.
+- Export must show exclusions and raw status.
 
-Additive MVP schema proposal:
+### Storage Architecture
 
-- AdapterMetadata
-- ImportScope
-- SurfaceVisibility
-- PrivacyContext
-- PolicyDecisionRecord
-- DeletionTombstone
-- CostEstimateRecord
-- CostLedgerEntry
-- ExportJob
-- EmbeddingRecord
+`docs/storage-architecture.md`
 
-Forbidden fields:
+- relational core vs raw object storage vs search index vs vector index vs audit/export/backup separated.
+- raw is dangerous.
+- metadata is durable.
+- vector is derived.
+- lifecycle is source of truth.
+- delete propagates across DB/search/vector/object/export/backup.
 
-- importanceScore
-- lifeScore
-- personalityScore
-- personRank
-- topMemory
-- bestMemory
-- deceasedPersona
+### Local-first Backup Strategy
 
-### Policy Test Cases
+`docs/local-first-backup-strategy.md`
 
-`docs/policy-test-cases.md`
+- User keeps context.
+- Export is not enough; backup strategy needed.
+- open formats: JSONL / Markdown / SQLite later.
+- emergency exit package defined.
+- raw optional/default off.
+- no vendor/LLM dependency required to read backup.
 
-P0-001〜P0-020 concrete cases added:
+### Incident Response Playbook
 
-- secret storage/embedding/export deny
-- corporate raw LLM deny
-- third-party raw quote deny
-- surveillance/blame deny
-- deceased impersonation deny
-- minor tip/export deny
-- self-harm tip deny
-- AI roleplay persona creation deny
-- hidden/sealed/deleted restrictions
-- low-risk manual memory allow
+`docs/incident-response-playbook.md`
 
-### Engineering Tasks MVP
+- Playbooks for secrets, third-party leak, corporate leak, deleted resurrection, hidden/sealed exposure, wrong export, LLM policy bypass, admin access violation, cost attack.
+- Stop exposure first.
+- Preserve evidence without raw spreading.
+- Add regression tests after incident.
 
-`docs/engineering-tasks-mvp.md`
+### Adapter Implementation Plan
 
-Implementation tasks broken into phases:
+`docs/adapter-implementation-plan.md`
 
-0. repo guardrails / forbidden phrase scanner / fixtures
-1. schema v1.1 additive types
-2. Policy Engine P0
-3. manual/share adapters
-4. memory creation MVP
-5. visibility/deletion/tombstone
-6. search MVP
-7. export MVP
-8. cost MVP
-9. UX copy
-10. MVP CI gate
+- Adapter core implementation order.
+- MVP adapters: manual.paste, manual.share_text, generic.conversation_text, ChatGPT subset later/flagged.
+- Post-MVP: LINE summary-only, Calendar, Photos metadata, GitHub metadata.
+- Deferred: Gmail/Slack/Discord full import, image analysis, face recognition.
 
 ## Current State
 
-Design is now connected from philosophy to implementation:
+The design is now close to implementation-ready.
+
+Architecture chain:
 
 ```txt
 Constitution
--> RFC process
--> Source/Export/Cost/Search/Delete RFCs
--> Roadmap
--> Test strategy
--> Schema v1.1 proposal
--> Policy concrete test cases
--> MVP engineering tasks
+-> RFC Process
+-> RFC-0001〜0008
+-> Schema v1.1 Proposal
+-> Policy P0 Test Cases
+-> Storage Architecture
+-> Adapter Implementation Plan
+-> MVP Engineering Tasks
+-> Test Strategy
+-> Incident Response
+-> Local-first Backup
 ```
 
-This is no longer only concept docs. It is close to implementation-ready.
+## Completion Assessment
 
-## Next Recommended Work
+Design readiness: 97〜98%。
 
-Continue with remaining RFCs and implementation prep:
+まだ100%と言い切らない理由:
 
-1. `docs/rfcs/0006-security-architecture.md`
-2. `docs/rfcs/0007-privacy-architecture.md`
-3. `docs/rfcs/0008-ux-guidelines.md`
-4. `docs/adapter-implementation-plan.md`
-5. `docs/storage-architecture.md`
-6. `docs/local-first-backup-strategy.md`
-7. `docs/incident-response-playbook.md`
-8. then start actual implementation from `docs/engineering-tasks-mvp.md` T0-001.
+- 実装コードがまだない。
+- actual repository structure / package manager / runtime が未確認。
+- DB migration files が未作成。
+- CI scripts が未実装。
+- fixture files が未作成。
 
-## First Implementation Order
+ただし、思想・安全・削除・Export・Privacy・Cost・Search・Storage・Incident の設計穴はかなり潰れている。
 
-When implementation starts, do this order:
+## Next Work: Start Implementation Safely
 
-1. T0-002 forbidden phrase scanner
-2. T0-003 fixture directory structure
-3. T1-001 schema v1.1 additive types
-4. T1-002 lifecycle helpers
-5. T2-001 PolicyContext and PolicyDecision
-6. T2-002 hard deny rules
-7. T2-004 P0 policy tests
-8. T3-001 adapter interface
-9. T3-002 manual paste adapter
-10. T5-003 delete memory + tombstone
+次は設計追加より、実装準備に入ってよい。
 
-Do not begin with LLM summaries, semantic search, Gmail/Slack, or proactive tips.
+Start from `docs/engineering-tasks-mvp.md`.
+
+Recommended exact order:
+
+1. inspect repo structure and package manager
+2. add forbidden phrase scanner
+3. add fixture directory structure
+4. add schema v1.1 TypeScript types
+5. add lifecycle helper functions
+6. add PolicyContext / PolicyDecision types
+7. implement hard deny rules
+8. convert `docs/policy-test-cases.md` P0-001〜P0-020 into tests
+9. add adapter core interface
+10. add manual.paste.v1 adapter
+
+Do not start with:
+
+- LLM summaries
+- semantic search
+- Gmail
+- Slack
+- image analysis
+- proactive tips
+- family share
+- deceased/legacy workflows
 
 ## Copy-paste Prompt For Next Chat
 
 ```txt
 https://github.com/m-shogo/memories-project.git
 
-このrepoの `so` ブランチで、AI記憶体サービス Memory OS の設計/実装準備を続けてください。
+このrepoの `so` ブランチで、AI記憶体サービス Memory OS の実装準備/実装を始めてください。
 作業したら毎回 GitHub に commit / push してください。
 
 目的:
@@ -240,54 +237,47 @@ ChatGPT/Claudeの代替ではなく、AI時代に「自分の人生の文脈」�
 - 他人の秘密の記憶化
 - 監視/証拠探し
 
-既存docsを必ず読んで整合してください。
-特に以下を重視:
-- docs/memory-constitution-v1.md
+必ず読む:
+- docs/engineering-tasks-mvp.md
 - docs/schema-v1-1-proposal.md
 - docs/policy-test-cases.md
-- docs/engineering-tasks-mvp.md
+- docs/adapter-implementation-plan.md
+- docs/storage-architecture.md
 - docs/mvp-scope.md
 - docs/test-strategy.md
-- docs/rfcs/0004-search-ranking-engine.md
-- docs/rfcs/0005-deletion-backup-semantics.md
+- docs/memory-constitution-v1.md
 
-次にやる優先順位:
-1. docs/rfcs/0006-security-architecture.md
-2. docs/rfcs/0007-privacy-architecture.md
-3. docs/rfcs/0008-ux-guidelines.md
-4. docs/adapter-implementation-plan.md
-5. docs/storage-architecture.md
-6. docs/local-first-backup-strategy.md
-7. docs/incident-response-playbook.md
+最初にやる順番:
+1. repo構造とpackage manager確認
+2. forbidden phrase scanner追加
+3. fixture directory structure追加
+4. schema v1.1 additive types追加
+5. lifecycle helper追加
+6. PolicyContext / PolicyDecision types追加
+7. hard deny rules追加
+8. P0 policy tests追加
 
 進め方:
-- 1ファイルずつ設計書を追加
-- 毎回 commit / push
-- 思いつきではなく実装で使える設計にする
-- 安全・削除・第三者・未成年・故人・会社情報・コスト攻撃を常に見る
-- 便利でも思想を壊す機能は入れない
-- 既存docsと矛盾しないようにする
-- 最後に、次チャットへそのまま貼れる実務レベルの引き継ぎを更新する
+- 小さく実装
+- 1作業ごとに commit / push
+- raw textをログに出さない
+- importanceScore / lifeScore / personalityScore など禁止語をコードに入れない
+- LLM/semantic search/Gmail/Slack/画像解析/proactive tips はまだ実装しない
+- 最後に next-chat-handoff を更新する
 ```
 
 ## Last Known Commits From This Session
 
-- `c206b98cfec93b87c2304439d63af59a24a3c497` docs: add rfc for search ranking engine
-- `a1d235b4991ebe31a51ce1662b1063875f759fe4` docs: add rfc for deletion backup semantics
-- `f665c02a823aae41b54d3f81e6c0744203d20170` docs: add schema v1.1 proposal
-- `4257d5e6c95b71d6cba0ffb10c859ec6759c4fbf` docs: add policy test cases
-- `3d98a0307068509ecabdf668c5f8ac0174dcb55a` docs: add mvp engineering tasks
+- `a3b490e21f7cff7906847f92f7ceddf08d703ffb` docs: add rfc for security architecture
+- `e55894889ee40c0681149067578270e177ac1893` docs: add rfc for privacy architecture
+- `cceb68a7f0ca6bd1296fa0101ec64b6fab91c1c7` docs: add rfc for ux guidelines
+- `24f803ecf825bfab92c3ae6a8d0ad3105b918ec1` docs: add storage architecture
+- `8341801a9d4c76e42b832db0ac48c00707b1862f` docs: add local first backup strategy
+- `021d8b886150406df8b7b1743218dd089dd90d2d` docs: add incident response playbook
+- `4531a55d1246326f849854f1101d11fd32a2793c` docs: add adapter implementation plan
 
-## Current Assessment
+## Final Note
 
-Completion is roughly 92-94% for design readiness.
+ここから先は、設計を増やし続けるより、P0 guardrails と Policy tests から実装に入るのが良い。
 
-Remaining before implementation should be:
-
-- security/privacy/UX RFCs
-- storage architecture
-- local-first backup/export strategy
-- incident response playbook
-- adapter implementation plan
-
-Then implementation can safely start with guardrails and Policy P0 tests.
+100点に近い設計とは、完璧な文章ではなく、危険な実装をテストで止められる状態である。
