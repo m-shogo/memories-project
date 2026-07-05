@@ -1,6 +1,6 @@
 # Next Chat Handoff
 
-このファイルは、次のChatGPT/Codex/GitHub作業チャットで、同じ前提のまま設計/実装を続けるための実務用引き継ぎである。
+このファイルは、次のChatGPT/Codex/GitHub作業チャットで、同じ前提のまま設計を続けるための実務用引き継ぎである。
 
 ## Repository
 
@@ -8,11 +8,15 @@
 - Branch: `so`
 - Rule: 作業したら毎回 GitHub に commit / push する
 
+## Important Current Instruction
+
+実装はまだ始めない。
+
+現在のフェーズは、Memory OS の設計を100点に近づけるための最終設計・学習・仕様固定フェーズである。
+
 ## Product Goal
 
 ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生の文脈」を持ち続ける Memory OS を作る。
-
-このサービスは、AIと会話するためではなく、ユーザー本人の人生の記録・文脈・関係・思い出を長く持ち運ぶためのものである。
 
 本人の記憶を作るサービスであり、本人を分析するサービスではない。
 
@@ -43,24 +47,93 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - 他人の秘密の記憶化
 - 監視/証拠探し
 
-## Core Docs To Read First
+## Latest Final Design Layers Added
 
-- `docs/memory-constitution-v1.md`
-- `docs/memory-schema-v1.md`
-- `docs/schema-v1-1-proposal.md`
-- `docs/policy-engine.md`
-- `docs/policy-test-cases.md`
-- `docs/engineering-tasks-mvp.md`
-- `docs/mvp-scope.md`
-- `docs/test-strategy.md`
-- `docs/storage-architecture.md`
-- `docs/adapter-implementation-plan.md`
-- `docs/local-first-backup-strategy.md`
-- `docs/incident-response-playbook.md`
+今回追加した、実装前に入れた上位設計レイヤー:
 
-## Architecture Learning Docs
+- `docs/formal-invariants.md`
+- `docs/state-machine.md`
+- `docs/threat-model.md`
+- `docs/data-governance.md`
+- `docs/compatibility-policy.md`
+- `docs/api-design-guide.md`
+- `docs/performance-budget.md`
+- `docs/reliability-sre.md`
+- `docs/failure-injection.md`
+- `docs/adr.md`
 
-今回追加した、業界設計ルールをMemory OS向けに学べるdocs:
+## What They Add
+
+### Formal Invariants
+
+Memory OSで絶対に破ってはいけない法則。
+
+Examples:
+
+- Memory must have SourceRef.
+- Interpretation is not fact.
+- Policy before LLM.
+- Deleted never appears.
+- Raw must not be logged.
+- No life ranking fields.
+- Admin is not owner.
+- AuthZ allow cannot override Policy deny.
+
+### State Machine
+
+active / hidden / sealed / pending_deletion / deleted / tombstoned の遷移を固定。
+
+ImportJob / ExportJob / RawRecord / Embedding の状態遷移も定義。
+
+### Threat Model
+
+STRIDE風に、攻撃者・資産・境界・脅威・対策を整理。
+
+Import / LLM / Export / Search / Deletion / Admin / Cost の境界を見る。
+
+### Data Governance
+
+データ定義・変更・保持・削除・移行の運営ルール。
+
+Schema change review, retention, lineage, migration governance を定義。
+
+### Compatibility Policy
+
+schema / export / adapter / policy / API / event / backup の互換性ルール。
+
+5年後・10年後も読めるMemory OSにするための時間軸設計。
+
+### API Design Guide
+
+REST/GraphQL以前のAPI境界設計。
+
+Idempotency、stable error codes、safe errors、job-based import/export、paginationを定義。
+
+### Performance Budget
+
+manual capture, search, delete, import, export の性能・容量・コスト目標。
+
+Delete access block immediate、LLM not on hot path を固定。
+
+### Reliability / SRE
+
+Safety over availability。
+
+LLMやVectorが落ちてもcore capture/search/deleteを守る。
+
+Policy/Export/Search lifecycleなど安全系はerror budget zero。
+
+### Failure Injection
+
+LLM down, vector down, object storage down, policy error, stale search, backup restore issueなどを意図的に壊すテスト計画。
+
+### ADR
+
+小さな設計判断を残す仕組み。
+
+RFCより小さく、SQLite/JSONL/raw default off/keyword before vectorなどの判断を記録する。
+
+## Architecture Learning Docs Already Added
 
 - `docs/domain-driven-design.md`
 - `docs/clean-hexagonal-architecture.md`
@@ -68,45 +141,6 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - `docs/authn-authz-model.md`
 - `docs/observability-model.md`
 - `docs/architecture-learning-map.md`
-
-## What These Architecture Docs Add
-
-### Domain-driven Design
-
-- RawRecord / Memory / Interpretation / Evidence / SourceRef を混ぜない。
-- Capture / Import / Memory / Policy / Search / Export / Deletion のBounded Contextを整理。
-- AdapterをAnti-corruption Layerとして定義。
-
-### Clean / Hexagonal Architecture
-
-- PolicyEvaluator / Domain rules をDB・UI・LLMから独立させる。
-- UseCase / Port / Infrastructure の責務を定義。
-- OpenAIやPostgreSQLを変えても思想が変わらない構造。
-
-### Event-driven Design
-
-- MemoryDeleted / RawDeleted / PolicyDenied / ExportExpired などをraw-free Domain Eventとして扱う。
-- 完全Event SourcingはMVPでは不要。
-- DB Outbox Patternで削除・Export・Search/Vector更新の副作用を安全に処理。
-
-### AuthN / AuthZ Model
-
-- AuthN = 誰か。
-- AuthZ = それをしてよいか。
-- owner / system_worker / ai_worker / support_admin / security_admin を分離。
-- AuthZ allow でも Policy deny ならdeny。
-- Adminはownerではない。
-
-### Observability Model
-
-- raw contentをログ・メトリクス・トレースに入れない。
-- Policy deny / Export redaction / Deletion lag / LLM block を観測。
-- dangerous successをalertする。
-
-### Architecture Learning Map
-
-- RFC / DDD / Clean Architecture / Event-driven / AuthZ / Storage / Observability / Incident Response / Local-first / Guardrails の学習地図。
-- Memory OSでなぜ必要かを一覧化。
 
 ## RFC Docs
 
@@ -120,7 +154,24 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - `docs/rfcs/0007-privacy-architecture.md`
 - `docs/rfcs/0008-ux-guidelines.md`
 
+## Core Docs To Read First
+
+- `docs/memory-constitution-v1.md`
+- `docs/memory-schema-v1.md`
+- `docs/schema-v1-1-proposal.md`
+- `docs/formal-invariants.md`
+- `docs/state-machine.md`
+- `docs/threat-model.md`
+- `docs/policy-test-cases.md`
+- `docs/engineering-tasks-mvp.md`
+- `docs/storage-architecture.md`
+- `docs/data-governance.md`
+- `docs/compatibility-policy.md`
+- `docs/incident-response-playbook.md`
+
 ## Current State
+
+Design readiness is extremely high.
 
 The project now has:
 
@@ -143,14 +194,36 @@ Clean Architecture
 Event-driven Design
 AuthZ
 Observability
+Formal Invariants
+State Machines
+Threat Model
+Data Governance
+Compatibility Policy
+API Design
+Performance Budget
+Reliability/SRE
+Failure Injection
+ADR Process
 MVP Engineering Tasks
 Policy P0 Tests
 Schema v1.1 Proposal
 ```
 
-Design readiness is extremely high. The remaining gap is no longer conceptual; it is implementation/CI/fixtures.
+## Next Recommended Non-Implementation Work
 
-## Next Work: Start Implementation Safely
+If still not implementing, useful remaining docs:
+
+1. `docs/adrs/0000-template.md`
+2. initial ADRs:
+   - JSONL + Markdown export
+   - raw default off
+   - keyword search before vector
+   - PolicyEvaluator as pure domain service
+   - no LLM in capture path
+3. `docs/design-review-checklist.md`
+4. `docs/pre-implementation-readiness-review.md`
+
+## If Implementation Starts Later
 
 Start from `docs/engineering-tasks-mvp.md`.
 
@@ -178,87 +251,21 @@ Do not start with:
 - family share
 - deceased/legacy workflows
 
-## Copy-paste Prompt For Next Chat
-
-```txt
-https://github.com/m-shogo/memories-project.git
-
-このrepoの `so` ブランチで、AI記憶体サービス Memory OS の実装準備/実装を始めてください。
-作業したら毎回 GitHub に commit / push してください。
-
-目的:
-ChatGPT/Claudeの代替ではなく、AI時代に「自分の人生の文脈」を持ち続ける Memory OS を作る。
-本人の記憶を作るサービスであり、本人を分析するサービスではない。
-
-最重要思想:
-- AIは人生を評価しない
-- AIは人生を忘れないための索引
-- ラーメン、焼肉、帰り道、卒業式後の写真も全部人生
-- 重要度をAIが決めない
-- 保存時に分析しすぎない
-- 保存時は安全チェック、ソース、日付、検索性が中心
-- 分析はユーザーが求めた時だけ
-- 小さな記録を捨てない
-- 大きなイベントも押し付けない
-
-絶対やらない:
-- ChatGPT代替
-- Character.AI化
-- 故人再現
-- 親/妻/恋人の本人シミュレーション
-- AI恋人化
-- 人格診断
-- 人生ランキング
-- パスワード管理
-- 会社情報検索
-- 他人の秘密の記憶化
-- 監視/証拠探し
-
-必ず読む:
-- docs/engineering-tasks-mvp.md
-- docs/schema-v1-1-proposal.md
-- docs/policy-test-cases.md
-- docs/adapter-implementation-plan.md
-- docs/storage-architecture.md
-- docs/domain-driven-design.md
-- docs/clean-hexagonal-architecture.md
-- docs/event-driven-design.md
-- docs/authn-authz-model.md
-- docs/observability-model.md
-- docs/mvp-scope.md
-- docs/test-strategy.md
-- docs/memory-constitution-v1.md
-
-最初にやる順番:
-1. repo構造とpackage manager確認
-2. forbidden phrase scanner追加
-3. fixture directory structure追加
-4. schema v1.1 additive types追加
-5. lifecycle helper追加
-6. PolicyContext / PolicyDecision types追加
-7. hard deny rules追加
-8. P0 policy tests追加
-
-進め方:
-- 小さく実装
-- 1作業ごとに commit / push
-- raw textをログに出さない
-- importanceScore / lifeScore / personalityScore など禁止語をコードに入れない
-- LLM/semantic search/Gmail/Slack/画像解析/proactive tips はまだ実装しない
-- 最後に next-chat-handoff を更新する
-```
-
 ## Last Known Commits From This Session
 
-- `9f8f8c9dcdfc6077b8cd7062d5c771424c53dac2` docs: add domain driven design guide
-- `69d36c826ded1aeeacf62210e71ab49931deaf33` docs: add clean hexagonal architecture guide
-- `2a7300e1062bc7978c89aa9c1aef12744351fe67` docs: add event driven design guide
-- `87e682bb4307825b040316a8f2eab2f31129a517` docs: add authn authz model
-- `9605c1038f87fb66927ce1da302618cad118f3c3` docs: add observability model
-- `2e9ef0ddccb0a8bffc7f2d73a1a623a8058554c1` docs: add architecture learning map
+- `27bdd7af0a57d20c5b64c6a3a06a98cb96696459` docs: add formal invariants
+- `b271a54d2c31791da474170b53300be53d56ec65` docs: add state machine specification
+- `d1923c9309db0d4ee90bdefe4a1841419d26fac0` docs: add threat model
+- `5238e304308517a2f396b25f6a0c3f70fb2757ab` docs: add data governance policy
+- `502e7c531cfd926de7c5ba4425be8bc1f80f8b4f` docs: add compatibility policy
+- `ac01a1bfa3aa4621522b9f12bc7c4fb46b5ee094` docs: add api design guide
+- `18a143b54f6650c14d68bbb6846ef453d835f7cd` docs: add performance budget
+- `a4f770a843b730a77e3fa017013b3c11b9d56161` docs: add reliability sre guide
+- `ff7546ee41627d92600ee2270c628bc25d49d4ee` docs: add failure injection plan
+- `8dca138e714905fbd818e2bda2074751acd0939e` docs: add adr process
 
 ## Final Note
 
-ここまでで「世界/業界の設計ルール」をMemory OS用にかなり綺麗に翻訳できた。
+ここまでで、設計はほぼ実装前レビューに耐えるレベルまで来ている。
 
-次は実装に入ってよいが、最初は必ず guardrails / tests から始める。
+実装はまだ始めない場合でも、次はADR初期セットと設計レビューchecklistを作るのが良い。
