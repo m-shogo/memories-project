@@ -58,6 +58,56 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - `docs/local-first-backup-strategy.md`
 - `docs/incident-response-playbook.md`
 
+## Architecture Learning Docs
+
+今回追加した、業界設計ルールをMemory OS向けに学べるdocs:
+
+- `docs/domain-driven-design.md`
+- `docs/clean-hexagonal-architecture.md`
+- `docs/event-driven-design.md`
+- `docs/authn-authz-model.md`
+- `docs/observability-model.md`
+- `docs/architecture-learning-map.md`
+
+## What These Architecture Docs Add
+
+### Domain-driven Design
+
+- RawRecord / Memory / Interpretation / Evidence / SourceRef を混ぜない。
+- Capture / Import / Memory / Policy / Search / Export / Deletion のBounded Contextを整理。
+- AdapterをAnti-corruption Layerとして定義。
+
+### Clean / Hexagonal Architecture
+
+- PolicyEvaluator / Domain rules をDB・UI・LLMから独立させる。
+- UseCase / Port / Infrastructure の責務を定義。
+- OpenAIやPostgreSQLを変えても思想が変わらない構造。
+
+### Event-driven Design
+
+- MemoryDeleted / RawDeleted / PolicyDenied / ExportExpired などをraw-free Domain Eventとして扱う。
+- 完全Event SourcingはMVPでは不要。
+- DB Outbox Patternで削除・Export・Search/Vector更新の副作用を安全に処理。
+
+### AuthN / AuthZ Model
+
+- AuthN = 誰か。
+- AuthZ = それをしてよいか。
+- owner / system_worker / ai_worker / support_admin / security_admin を分離。
+- AuthZ allow でも Policy deny ならdeny。
+- Adminはownerではない。
+
+### Observability Model
+
+- raw contentをログ・メトリクス・トレースに入れない。
+- Policy deny / Export redaction / Deletion lag / LLM block を観測。
+- dangerous successをalertする。
+
+### Architecture Learning Map
+
+- RFC / DDD / Clean Architecture / Event-driven / AuthZ / Storage / Observability / Incident Response / Local-first / Guardrails の学習地図。
+- Memory OSでなぜ必要かを一覧化。
+
 ## RFC Docs
 
 - `docs/rfcs/0000-template.md`
@@ -70,110 +120,37 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - `docs/rfcs/0007-privacy-architecture.md`
 - `docs/rfcs/0008-ux-guidelines.md`
 
-## Latest Additions
-
-### RFC-0006 Security Architecture
-
-- Security is not only encryption.
-- Do not store/search/export/send dangerous raw.
-- Admin metadata-only default.
-- LLM boundary requires security + policy + cost preflight.
-- Prompt injection from imported text must not override policy.
-- Embedding lifecycle must respect hidden/sealed/deleted.
-
-### RFC-0007 Privacy Architecture
-
-- User context is allowed; other people's secrets are not value.
-- third-party raw no/default.
-- minor data stricter than family data.
-- deceased/legacy memory allowed, simulation denied.
-- corporate data excluded by default.
-
-### RFC-0008 UX Guidelines
-
-- UX must not make Memory OS look like diagnosis, ranking, AI companion, or deceased simulation.
-- Capture must not require importance score.
-- Search explanations cannot say AI judged importance.
-- Deletion copy must be guilt-free.
-- Export must show exclusions and raw status.
-
-### Storage Architecture
-
-`docs/storage-architecture.md`
-
-- relational core vs raw object storage vs search index vs vector index vs audit/export/backup separated.
-- raw is dangerous.
-- metadata is durable.
-- vector is derived.
-- lifecycle is source of truth.
-- delete propagates across DB/search/vector/object/export/backup.
-
-### Local-first Backup Strategy
-
-`docs/local-first-backup-strategy.md`
-
-- User keeps context.
-- Export is not enough; backup strategy needed.
-- open formats: JSONL / Markdown / SQLite later.
-- emergency exit package defined.
-- raw optional/default off.
-- no vendor/LLM dependency required to read backup.
-
-### Incident Response Playbook
-
-`docs/incident-response-playbook.md`
-
-- Playbooks for secrets, third-party leak, corporate leak, deleted resurrection, hidden/sealed exposure, wrong export, LLM policy bypass, admin access violation, cost attack.
-- Stop exposure first.
-- Preserve evidence without raw spreading.
-- Add regression tests after incident.
-
-### Adapter Implementation Plan
-
-`docs/adapter-implementation-plan.md`
-
-- Adapter core implementation order.
-- MVP adapters: manual.paste, manual.share_text, generic.conversation_text, ChatGPT subset later/flagged.
-- Post-MVP: LINE summary-only, Calendar, Photos metadata, GitHub metadata.
-- Deferred: Gmail/Slack/Discord full import, image analysis, face recognition.
-
 ## Current State
 
-The design is now close to implementation-ready.
-
-Architecture chain:
+The project now has:
 
 ```txt
-Constitution
--> RFC Process
--> RFC-0001〜0008
--> Schema v1.1 Proposal
--> Policy P0 Test Cases
--> Storage Architecture
--> Adapter Implementation Plan
--> MVP Engineering Tasks
--> Test Strategy
--> Incident Response
--> Local-first Backup
+Philosophy / Constitution
+RFC Governance
+Source Adapter SDK
+Export Specification
+Cost Engine
+Search Ranking
+Deletion Backup
+Security
+Privacy
+UX
+Storage
+Local-first Backup
+Incident Response
+DDD
+Clean Architecture
+Event-driven Design
+AuthZ
+Observability
+MVP Engineering Tasks
+Policy P0 Tests
+Schema v1.1 Proposal
 ```
 
-## Completion Assessment
-
-Design readiness: 97〜98%。
-
-まだ100%と言い切らない理由:
-
-- 実装コードがまだない。
-- actual repository structure / package manager / runtime が未確認。
-- DB migration files が未作成。
-- CI scripts が未実装。
-- fixture files が未作成。
-
-ただし、思想・安全・削除・Export・Privacy・Cost・Search・Storage・Incident の設計穴はかなり潰れている。
+Design readiness is extremely high. The remaining gap is no longer conceptual; it is implementation/CI/fixtures.
 
 ## Next Work: Start Implementation Safely
-
-次は設計追加より、実装準備に入ってよい。
 
 Start from `docs/engineering-tasks-mvp.md`.
 
@@ -243,6 +220,11 @@ ChatGPT/Claudeの代替ではなく、AI時代に「自分の人生の文脈」�
 - docs/policy-test-cases.md
 - docs/adapter-implementation-plan.md
 - docs/storage-architecture.md
+- docs/domain-driven-design.md
+- docs/clean-hexagonal-architecture.md
+- docs/event-driven-design.md
+- docs/authn-authz-model.md
+- docs/observability-model.md
 - docs/mvp-scope.md
 - docs/test-strategy.md
 - docs/memory-constitution-v1.md
@@ -268,16 +250,15 @@ ChatGPT/Claudeの代替ではなく、AI時代に「自分の人生の文脈」�
 
 ## Last Known Commits From This Session
 
-- `a3b490e21f7cff7906847f92f7ceddf08d703ffb` docs: add rfc for security architecture
-- `e55894889ee40c0681149067578270e177ac1893` docs: add rfc for privacy architecture
-- `cceb68a7f0ca6bd1296fa0101ec64b6fab91c1c7` docs: add rfc for ux guidelines
-- `24f803ecf825bfab92c3ae6a8d0ad3105b918ec1` docs: add storage architecture
-- `8341801a9d4c76e42b832db0ac48c00707b1862f` docs: add local first backup strategy
-- `021d8b886150406df8b7b1743218dd089dd90d2d` docs: add incident response playbook
-- `4531a55d1246326f849854f1101d11fd32a2793c` docs: add adapter implementation plan
+- `9f8f8c9dcdfc6077b8cd7062d5c771424c53dac2` docs: add domain driven design guide
+- `69d36c826ded1aeeacf62210e71ab49931deaf33` docs: add clean hexagonal architecture guide
+- `2a7300e1062bc7978c89aa9c1aef12744351fe67` docs: add event driven design guide
+- `87e682bb4307825b040316a8f2eab2f31129a517` docs: add authn authz model
+- `9605c1038f87fb66927ce1da302618cad118f3c3` docs: add observability model
+- `2e9ef0ddccb0a8bffc7f2d73a1a623a8058554c1` docs: add architecture learning map
 
 ## Final Note
 
-ここから先は、設計を増やし続けるより、P0 guardrails と Policy tests から実装に入るのが良い。
+ここまでで「世界/業界の設計ルール」をMemory OS用にかなり綺麗に翻訳できた。
 
-100点に近い設計とは、完璧な文章ではなく、危険な実装をテストで止められる状態である。
+次は実装に入ってよいが、最初は必ず guardrails / tests から始める。
