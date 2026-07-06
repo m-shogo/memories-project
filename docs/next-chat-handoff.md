@@ -47,127 +47,106 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - 他人の秘密の記憶化
 - 監視/証拠探し
 
-## Latest Final Design Layers Added
+## Human-centered Design Docs Added
 
-今回追加した、実装前に入れた上位設計レイヤー:
+今回追加した、人間中心・心理・言葉・AI責任に関するdocs:
 
-- `docs/formal-invariants.md`
-- `docs/state-machine.md`
-- `docs/threat-model.md`
-- `docs/data-governance.md`
-- `docs/compatibility-policy.md`
-- `docs/api-design-guide.md`
-- `docs/performance-budget.md`
-- `docs/reliability-sre.md`
-- `docs/failure-injection.md`
-- `docs/adr.md`
+- `docs/value-sensitive-design.md`
+- `docs/privacy-by-design-memory-os.md`
+- `docs/safety-by-design-memory-os.md`
+- `docs/responsible-ai-memory-os.md`
+- `docs/human-data-interaction-memory-os.md`
+- `docs/digital-wellbeing-memory-os.md`
 
 ## What They Add
 
-### Formal Invariants
+### Value Sensitive Design
 
-Memory OSで絶対に破ってはいけない法則。
+- Memory OS の中心価値を明示。
+- self_context_continuity / user_agency / non_judgment / small_memory_dignity / third_party_dignity / delete_and_forget_right などを定義。
+- 価値衝突を整理: portability vs privacy, remembering vs forgetting, searchability vs safety。
+- 新機能ごとに「誰の価値を守るか、誰を傷つけるか」を見る。
 
-Examples:
+### Privacy by Design
 
-- Memory must have SourceRef.
-- Interpretation is not fact.
-- Policy before LLM.
-- Deleted never appears.
-- Raw must not be logged.
-- No life ranking fields.
-- Admin is not owner.
-- AuthZ allow cannot override Policy deny.
+- 7原則を Memory OS に具体化。
+- proactive prevention, privacy default, embedded privacy, positive-sum, lifecycle security, transparency, user-centric control。
+- raw default off / source privacy context / export redaction / backup tombstone replay を原則に対応。
 
-### State Machine
+### Safety by Design
 
-active / hidden / sealed / pending_deletion / deleted / tombstoned の遷移を固定。
+- 事故後のBANや通報ではなく、危険な使い方を最初から起きにくくする。
+- safe defaults, user empowerment, transparency, harm anticipation, friction for risky actions, fast containment, no abuse amplification。
+- surveillance / partner diagnosis / deceased simulation / minor tips / self-harm resurfacing を明確に抑止。
 
-ImportJob / ExportJob / RawRecord / Embedding の状態遷移も定義。
+### Responsible AI
 
-### Threat Model
+- AIは人生を評価する主体ではなく補助。
+- human_control / transparency / explainability / contestability / fairness / privacy / robustness / accountability / bounded_use。
+- AI出力は必ず summary / interpretation として扱い、事実を上書きしない。
+- personality profile, life score, deceased message, partner intent analysis, child prediction を禁止出力として定義。
 
-STRIDE風に、攻撃者・資産・境界・脅威・対策を整理。
+### Human Data Interaction
 
-Import / LLM / Export / Search / Deletion / Admin / Cost の境界を見る。
+- ユーザーが自分のデータを理解・操作・交渉できるようにする。
+- legibility / agency / negotiability / provenance / contestability / portability / reversibility。
+- Memory detail に source/date/rawStored/AI summary/privacy/lifecycle/export eligibility を表示する設計。
+- Data Control Panel構想を追加。
 
-### Data Governance
+### Digital Wellbeing
 
-データ定義・変更・保持・削除・移行の運営ルール。
-
-Schema change review, retention, lineage, migration governance を定義。
-
-### Compatibility Policy
-
-schema / export / adapter / policy / API / event / backup の互換性ルール。
-
-5年後・10年後も読めるMemory OSにするための時間軸設計。
-
-### API Design Guide
-
-REST/GraphQL以前のAPI境界設計。
-
-Idempotency、stable error codes、safe errors、job-based import/export、paginationを定義。
-
-### Performance Budget
-
-manual capture, search, delete, import, export の性能・容量・コスト目標。
-
-Delete access block immediate、LLM not on hot path を固定。
-
-### Reliability / SRE
-
-Safety over availability。
-
-LLMやVectorが落ちてもcore capture/search/deleteを守る。
-
-Policy/Export/Search lifecycleなど安全系はerror budget zero。
-
-### Failure Injection
-
-LLM down, vector down, object storage down, policy error, stale search, backup restore issueなどを意図的に壊すテスト計画。
-
-### ADR
-
-小さな設計判断を残す仕組み。
-
-RFCより小さく、SQLite/JSONL/raw default off/keyword before vectorなどの判断を記録する。
-
-## Architecture Learning Docs Already Added
-
-- `docs/domain-driven-design.md`
-- `docs/clean-hexagonal-architecture.md`
-- `docs/event-driven-design.md`
-- `docs/authn-authz-model.md`
-- `docs/observability-model.md`
-- `docs/architecture-learning-map.md`
-
-## RFC Docs
-
-- `docs/rfcs/0000-template.md`
-- `docs/rfcs/0001-source-adapter-sdk.md`
-- `docs/rfcs/0002-export-specification.md`
-- `docs/rfcs/0003-cost-engine.md`
-- `docs/rfcs/0004-search-ranking-engine.md`
-- `docs/rfcs/0005-deletion-backup-semantics.md`
-- `docs/rfcs/0006-security-architecture.md`
-- `docs/rfcs/0007-privacy-architecture.md`
-- `docs/rfcs/0008-ux-guidelines.md`
+- 使わせ続けるのではなく、安心して離れられるMemory OSにする。
+- no engagement maximization / no shame / no guilt / no FOMO / notification restraint / session completion。
+- streak, daily pressure, grief/crisis proactive surfacing, emotional retention loops を禁止。
+- 成功指標は滞在時間ではなく、task completion / deletion works / export success / safe search。
 
 ## Core Docs To Read First
 
 - `docs/memory-constitution-v1.md`
-- `docs/memory-schema-v1.md`
-- `docs/schema-v1-1-proposal.md`
 - `docs/formal-invariants.md`
+- `docs/ux-guidelines.md`
+- `docs/value-sensitive-design.md`
+- `docs/privacy-by-design-memory-os.md`
+- `docs/safety-by-design-memory-os.md`
+- `docs/responsible-ai-memory-os.md`
+- `docs/human-data-interaction-memory-os.md`
+- `docs/digital-wellbeing-memory-os.md`
+- `docs/policy-test-cases.md`
+- `docs/schema-v1-1-proposal.md`
 - `docs/state-machine.md`
 - `docs/threat-model.md`
-- `docs/policy-test-cases.md`
-- `docs/engineering-tasks-mvp.md`
-- `docs/storage-architecture.md`
-- `docs/data-governance.md`
-- `docs/compatibility-policy.md`
-- `docs/incident-response-playbook.md`
+
+## Language and UX Warnings
+
+Never use product copy that implies:
+
+- AI judges life importance
+- user has insufficient life data
+- deletion is bad
+- forgetting is failure
+- daily usage is success
+- family/partner can be diagnosed
+- deceased can speak
+- small memories are low value
+
+Forbidden examples:
+
+- 重要な記憶がありません
+- あなたの人生TOP10
+- AIが重要と判断しました
+- 本当にこの大切な思い出を消しますか？
+- 忘れる前に保存しましょう
+- 奥様の性格分析
+- 故人からのメッセージ
+- 今日も記録して連続日数を伸ばしましょう
+
+Preferred examples:
+
+- まだ記録はありません。短いメモや共有から始められます。
+- この検索に近い記録です。
+- この記録を削除できます。削除後は検索・Tip・Exportに表示されません。
+- 残したいことがあれば記録できます。
+- 安全のため、相手の原文は保存せず要約だけ残します。
 
 ## Current State
 
@@ -204,6 +183,12 @@ Performance Budget
 Reliability/SRE
 Failure Injection
 ADR Process
+Value Sensitive Design
+Privacy by Design
+Safety by Design
+Responsible AI
+Human Data Interaction
+Digital Wellbeing
 MVP Engineering Tasks
 Policy P0 Tests
 Schema v1.1 Proposal
@@ -213,59 +198,27 @@ Schema v1.1 Proposal
 
 If still not implementing, useful remaining docs:
 
-1. `docs/adrs/0000-template.md`
-2. initial ADRs:
+1. `docs/design-review-checklist.md`
+2. `docs/pre-implementation-readiness-review.md`
+3. `docs/adrs/0000-template.md`
+4. initial ADRs:
    - JSONL + Markdown export
    - raw default off
    - keyword search before vector
    - PolicyEvaluator as pure domain service
    - no LLM in capture path
-3. `docs/design-review-checklist.md`
-4. `docs/pre-implementation-readiness-review.md`
-
-## If Implementation Starts Later
-
-Start from `docs/engineering-tasks-mvp.md`.
-
-Recommended exact order:
-
-1. inspect repo structure and package manager
-2. add forbidden phrase scanner
-3. add fixture directory structure
-4. add schema v1.1 TypeScript types
-5. add lifecycle helper functions
-6. add PolicyContext / PolicyDecision types
-7. implement hard deny rules
-8. convert `docs/policy-test-cases.md` P0-001〜P0-020 into tests
-9. add adapter core interface
-10. add manual.paste.v1 adapter
-
-Do not start with:
-
-- LLM summaries
-- semantic search
-- Gmail
-- Slack
-- image analysis
-- proactive tips
-- family share
-- deceased/legacy workflows
 
 ## Last Known Commits From This Session
 
-- `27bdd7af0a57d20c5b64c6a3a06a98cb96696459` docs: add formal invariants
-- `b271a54d2c31791da474170b53300be53d56ec65` docs: add state machine specification
-- `d1923c9309db0d4ee90bdefe4a1841419d26fac0` docs: add threat model
-- `5238e304308517a2f396b25f6a0c3f70fb2757ab` docs: add data governance policy
-- `502e7c531cfd926de7c5ba4425be8bc1f80f8b4f` docs: add compatibility policy
-- `ac01a1bfa3aa4621522b9f12bc7c4fb46b5ee094` docs: add api design guide
-- `18a143b54f6650c14d68bbb6846ef453d835f7cd` docs: add performance budget
-- `a4f770a843b730a77e3fa017013b3c11b9d56161` docs: add reliability sre guide
-- `ff7546ee41627d92600ee2270c628bc25d49d4ee` docs: add failure injection plan
-- `8dca138e714905fbd818e2bda2074751acd0939e` docs: add adr process
+- `d275b8f4cac673b70ffdf6a1baeb9612a6d2cbbd` docs: add value sensitive design for memory os
+- `969f5810771b77569e0554995e90a188b01ec39e` docs: add privacy by design mapping
+- `ee4f1825c94fac799bdd5646378ccb4505665439` docs: add safety by design mapping
+- `bbacb8ec4548efb8ec8ae7866310ee0b11afb0e4` docs: add responsible ai mapping
+- `a350f2b1f254b6d950c887807af96cf7e657f846` docs: add human data interaction mapping
+- `55f12c37941a25e5b725c9a46d66cf14dceeb1d4` docs: add digital wellbeing mapping
 
 ## Final Note
 
-ここまでで、設計はほぼ実装前レビューに耐えるレベルまで来ている。
+ここまでで、Memory OS は技術設計だけでなく、心理・言葉・人間中心設計・AI責任・データ主体性・デジタルウェルビーイングまで設計に入った。
 
-実装はまだ始めない場合でも、次はADR初期セットと設計レビューchecklistを作るのが良い。
+実装はまだ始めない。
