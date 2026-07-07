@@ -49,11 +49,55 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - 本人なりすまし
 - AI本人代弁
 
+## User Priority S Rank Imports
+
+`docs/user-priority-s-rank-imports.md` を追加済み。
+
+このdocは、実装しやすさよりも、ユーザー本人が実際に使っていてやる気が出るサービスをSランク優先する。
+
+Sランク対象:
+
+- Apple Music
+- Twitter / X
+- Netflix
+- Amazon Prime Video
+- Disney+
+- U-NEXT
+- LINE
+- 食べログ
+- RADIO / radio apps
+- GERA
+- Spotify
+- Podcast
+- Filmarks
+- manga outside listed services
+- movie outside listed services
+- radio outside listed services
+- anime outside listed services
+
+最重要方針:
+
+- User-priority S Rank overrides generic technical priority.
+- APIが無理でもSランクから落とさない。
+- API / official export / CSV / RSS / OPML / Takeout / email / URL clip / copy-paste / manual entry をすべて正式ルートにする。
+- 履歴画面・一覧画面からのコピー貼り付けをfirst-class importとして扱う。
+- まず作るべきは Universal paste/manual import foundation。
+- login scraping は禁止。
+- LINE raw、X likes/bookmarks、視聴履歴、食べログの同行者/位置情報はprivate/sensitive default。
+
+S Rank implementation order:
+
+1. Phase S0: Universal paste/manual import foundation
+2. Phase S1: Netflix CSV, LINE text/copy, X archive, Filmarks copy/URL, 食べログ URL/list, Podcast OPML/RSS, GERA episode URL/list, manga/anime manual progress
+3. Phase S2: Spotify API, AniList API, Last.fm API, Apple Music/MusicKit research, TMDb enrichment
+4. Phase S3: Amazon Prime Video, Disney+, U-NEXT copy/paste/manual bridges
+
 ## Hobby Import Docs
 
 - `docs/hobby-import-source-research.md`
 - `docs/hobby-import-service-method-matrix.md`
 - `docs/import-sanitization-and-private-content.md`
+- `docs/user-priority-s-rank-imports.md`
 
 ### Hobby Import Source Research
 
@@ -108,35 +152,6 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - private titles はbulk import summaryやlogsに出さない。
 - folder-level ruleで import_as_sensitive / redact_titles / metadata_only / skip_folder を選べるようにする。
 
-MVP寄り:
-
-- AniList API
-- Last.fm API
-- Spotify API
-- Letterboxd CSV / RSS
-- Google Books API
-- Open Library API
-- NDL Search API
-- Calil API
-- Steam API
-- TMDb catalog API
-- MusicBrainz catalog API
-- Browser bookmarks export
-- Google Takeout / YouTube Takeout
-
-manual / file-first:
-
-- Amazon Music
-- Filmarks
-- Cookpad
-- 読書メーター
-- ブクログ
-- BookWalker
-- ebookjapan
-- Kindle purchase/library history
-- manga app reading history
-- streaming service watch history
-
 避ける:
 
 - login scraping
@@ -187,19 +202,6 @@ manual / file-first:
 
 `docs/identity-and-impersonation-safety.md` を追加済み。
 
-守る対象:
-
-- account takeover
-- device sharing / peek
-- false user claim
-- third-party input as owner
-- AI speaks as user
-- deceased / absent person speak-as
-- export for impersonation
-- memory graph identity reconstruction
-- reimported fake context
-- support/admin impersonation
-
 最重要ルール:
 
 - 記録は真実そのものではない。
@@ -208,158 +210,6 @@ manual / file-first:
 - raw / sealed unlock / Export / 外部送信などは再認証対象。
 - AIが本人として自動送信しない。
 - Memory OSは本人の文脈を守るが、本人の人格を再現しない。
-
-## Safety Feature Candidates
-
-`docs/safety-feature-candidates.md` には、実装前提で見るべき安全機能候補を追加済み。
-
-Must before launch:
-
-- Crisis Mode
-- Loop Detector
-- Evidence Package Blocker
-- Sensitive Export Review
-- Human Review Without Raw
-- Model Drift Safety Eval if LLM ships
-- Sensitive Search Snippet Suppression
-
-Should after core:
-
-- Reflection Pause
-- Sensitive Memory Cooldown
-- Safe Support Note Generator
-- Boundary Note Generator
-- Grounding Mode
-- Session-Length Safety Guard
-- Re-Import Resurrection Guard UX
-
-Future optional:
-
-- Trusted Support Contact
-
-## Why These Safety Features Matter
-
-安全機能は、なくても動くことが多い。
-
-しかし、なくても動くことと、安全に動くことは違う。
-
-これらを入れないと、Memory OS は以下に変質しうる。
-
-- 危機時に重い記録を深掘りするAI
-- パートナー/家族/同僚を責める証拠生成ツール
-- 疑念や依存を強める確認ループ
-- 第三者や未成年情報を誤Exportするツール
-- 安全レビュー名目でrawを管理者が見られる運用
-- 本人になりすます人格材料セット
-
-## Human-centered Design Docs
-
-- `docs/value-sensitive-design.md`
-- `docs/privacy-by-design-memory-os.md`
-- `docs/safety-by-design-memory-os.md`
-- `docs/responsible-ai-memory-os.md`
-- `docs/human-data-interaction-memory-os.md`
-- `docs/digital-wellbeing-memory-os.md`
-
-## Core Architecture / Governance Docs
-
-- `docs/memory-constitution-v1.md`
-- `docs/formal-invariants.md`
-- `docs/state-machine.md`
-- `docs/threat-model.md`
-- `docs/data-governance.md`
-- `docs/compatibility-policy.md`
-- `docs/api-design-guide.md`
-- `docs/performance-budget.md`
-- `docs/reliability-sre.md`
-- `docs/failure-injection.md`
-- `docs/adr.md`
-- `docs/domain-driven-design.md`
-- `docs/clean-hexagonal-architecture.md`
-- `docs/event-driven-design.md`
-- `docs/authn-authz-model.md`
-- `docs/observability-model.md`
-- `docs/architecture-learning-map.md`
-
-## Product / Implementation Planning Docs
-
-- `docs/memory-schema-v1.md`
-- `docs/schema-v1-1-proposal.md`
-- `docs/policy-engine.md`
-- `docs/policy-test-cases.md`
-- `docs/engineering-tasks-mvp.md`
-- `docs/mvp-scope.md`
-- `docs/test-strategy.md`
-- `docs/storage-architecture.md`
-- `docs/adapter-implementation-plan.md`
-- `docs/local-first-backup-strategy.md`
-- `docs/incident-response-playbook.md`
-
-## Language and UX Warnings
-
-Never use product copy that implies:
-
-- AI judges life importance
-- user has insufficient life data
-- deletion is bad
-- forgetting is failure
-- daily usage is success
-- family/partner can be diagnosed
-- deceased can speak
-- small memories are low value
-- AI is the only trusted support
-- memory search can be used to punish or surveil people
-- AI understands the user's true intent
-- AI can send as the user
-- a user claim is verified fact
-- Export is safe because SMS/email was confirmed
-- full Export is a normal one-click convenience feature
-- hobby data reveals personality essence
-- watch/listen/read history should be ranked as life value
-- private bookmarks are shameful
-
-Forbidden examples:
-
-- 重要な記憶がありません
-- あなたの人生TOP10
-- AIが重要と判断しました
-- 本当にこの大切な思い出を消しますか？
-- 忘れる前に保存しましょう
-- 奥様の性格分析
-- 故人からのメッセージ
-- 今日も記録して連続日数を伸ばしましょう
-- 相手の嘘を暴く証拠を探します
-- 私だけがあなたを理解しています
-- あなたとして送信します
-- AIがあなたの本心を理解しました
-- この記録は真実です
-- SMS認証でExportは安全です
-- ワンクリックで全データをExportできます
-- あなたの本当の趣味を分析します
-- この作品群からあなたの本質が分かります
-- 恥ずかしいお気に入りが見つかりました
-- あなたの私的な趣味を分析します
-
-Preferred examples:
-
-- まだ記録はありません。短いメモや共有から始められます。
-- この検索に近い記録です。
-- この記録を削除できます。削除後は検索・Tip・Exportに表示されません。
-- 残したいことがあれば記録できます。
-- 安全のため、相手の原文は保存せず要約だけ残します。
-- この記録だけから相手の本心を断定することはできません。
-- 今は記憶の分析より、安全を優先します。
-- この記録はユーザー入力に基づきます。
-- この部分はAIによる推測です。
-- 送信前に本人の確認が必要です。
-- Exportには、本人確認と内容確認が必要です。
-- メール/SMSは通知には使いますが、これだけでは本人確認になりません。
-- rawやsealed記録は既定では含まれません。
-- この時期によく記録されていた作品です。
-- このサービスは公式Exportファイルから取り込めます。
-- このサービスは公開APIが確認できないため、手入力またはファイル取込のみ対応します。
-- 一部の記録はプライベート性が高い可能性があります。
-- これらは既定ではAI分析・Tip・Exportから除外されます。
 
 ## Current State
 
@@ -376,6 +226,7 @@ Export Safety and Re-authentication
 Hobby Import Source Research
 Hobby Import Service Method Matrix
 Import Sanitization and Private Content
+User Priority S Rank Imports
 Cost Engine
 Search Ranking
 Deletion Backup
@@ -426,24 +277,18 @@ Schema v1.1 Proposal
 
 If still not implementing, useful remaining docs:
 
-1. `docs/design-review-checklist.md`
-2. `docs/pre-implementation-readiness-review.md`
-3. `docs/adrs/0000-template.md`
-4. initial ADRs:
-   - JSONL + Markdown export
-   - raw default off
-   - keyword search before vector
-   - PolicyEvaluator as pure domain service
-   - no LLM in capture path
-5. expand `docs/policy-test-cases.md` with AI safety net, impersonation, Export, hobby import, and import sanitization P0 cases.
-6. create concrete source adapter specs for Tier 1 hobby imports.
+1. `docs/s-rank-import-adapter-specs.md`
+2. `docs/universal-paste-import-spec.md`
+3. `docs/import-preview-ux-spec.md`
+4. expand `docs/policy-test-cases.md` with S Rank import and paste import P0 cases.
+5. create concrete adapter specs for Netflix CSV, X archive, LINE text export, Filmarks paste, 食べログ URL/list, Podcast OPML/RSS, GERA URL/list, Spotify API, AniList API.
 
 ## Last Known Commits From This Session
 
-- `79094ec8d3d348b5f1f730d7197dda77d2d4bc2f` docs: add import sanitization and private content handling
+- `17f26aeb62b0098c0c0bae4c95ccc4fa8e2d86df` docs: add user priority s rank imports
 
 ## Final Note
 
-ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネット、具体的な安全機能候補、本人なりすまし防止、Export安全設計、趣味インポート設計、サービス別Import方式表、Import sanitize/private content保護を持つ状態になった。
+ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネット、本人なりすまし防止、Export安全設計、趣味インポート設計、サービス別Import方式表、Import sanitize/private content保護、ユーザー優先SランクImport方針を持つ状態になった。
 
 実装はまだ始めない。
