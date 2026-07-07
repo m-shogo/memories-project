@@ -46,6 +46,8 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - 会社情報検索
 - 他人の秘密の記憶化
 - 監視/証拠探し
+- 本人なりすまし
+- AI本人代弁
 
 ## AI Safety Net Docs
 
@@ -61,6 +63,33 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - `docs/human-support-and-escalation.md`
 - `docs/ai-safety-net-map.md`
 - `docs/safety-feature-candidates.md`
+- `docs/identity-and-impersonation-safety.md`
+
+## Identity and Impersonation Safety
+
+`docs/identity-and-impersonation-safety.md` を追加済み。
+
+守る対象:
+
+- account takeover
+- device sharing / peek
+- false user claim
+- third-party input as owner
+- AI speaks as user
+- deceased / absent person speak-as
+- export for impersonation
+- memory graph identity reconstruction
+- reimported fake context
+- support/admin impersonation
+
+最重要ルール:
+
+- 記録は真実そのものではない。
+- user input は `user_claimed` であり、verified factではない。
+- AIは本人の人格・本心・意思を代弁しない。
+- raw / sealed unlock / Export / 外部送信などは再認証対象。
+- AIが本人として自動送信しない。
+- Memory OSは本人の文脈を守るが、本人の人格を再現しない。
 
 ## Safety Feature Candidates
 
@@ -103,6 +132,7 @@ Future optional:
 - 疑念や依存を強める確認ループ
 - 第三者や未成年情報を誤Exportするツール
 - 安全レビュー名目でrawを管理者が見られる運用
+- 本人になりすます人格材料セット
 
 ## Human-centered Design Docs
 
@@ -161,6 +191,9 @@ Never use product copy that implies:
 - small memories are low value
 - AI is the only trusted support
 - memory search can be used to punish or surveil people
+- AI understands the user's true intent
+- AI can send as the user
+- a user claim is verified fact
 
 Forbidden examples:
 
@@ -174,6 +207,9 @@ Forbidden examples:
 - 今日も記録して連続日数を伸ばしましょう
 - 相手の嘘を暴く証拠を探します
 - 私だけがあなたを理解しています
+- あなたとして送信します
+- AIがあなたの本心を理解しました
+- この記録は真実です
 
 Preferred examples:
 
@@ -184,6 +220,9 @@ Preferred examples:
 - 安全のため、相手の原文は保存せず要約だけ残します。
 - この記録だけから相手の本心を断定することはできません。
 - 今は記憶の分析より、安全を優先します。
+- この記録はユーザー入力に基づきます。
+- この部分はAIによる推測です。
+- 送信前に本人の確認が必要です。
 
 ## Current State
 
@@ -236,6 +275,7 @@ Safety Evaluation / Red Team
 Human Support / Escalation
 AI Safety Net Map
 Safety Feature Candidates
+Identity and Impersonation Safety
 MVP Engineering Tasks
 Policy P0 Tests
 Schema v1.1 Proposal
@@ -254,14 +294,14 @@ If still not implementing, useful remaining docs:
    - keyword search before vector
    - PolicyEvaluator as pure domain service
    - no LLM in capture path
-5. expand `docs/policy-test-cases.md` with AI safety net P0 cases.
+5. expand `docs/policy-test-cases.md` with AI safety net and impersonation P0 cases.
 
 ## Last Known Commits From This Session
 
-- `867ac7716c673469385fcd5ccd54811cb2cee1f5` docs: add safety feature candidates
+- `61d3edd9a2334a433a35ca58e368376c41248fcf` docs: add identity and impersonation safety
 
 ## Final Note
 
-ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネットと具体的な安全機能候補を持つ設計になった。
+ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネット、具体的な安全機能候補、本人なりすまし防止の設計を持つ状態になった。
 
 実装はまだ始めない。
