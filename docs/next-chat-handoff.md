@@ -49,6 +49,85 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - 本人なりすまし
 - AI本人代弁
 
+## Hobby Import Source Research
+
+`docs/hobby-import-source-research.md` を追加済み。
+
+趣味系Importの対象:
+
+- music
+- movie / tv
+- anime
+- manga
+- book
+- library
+- recipe / cooking
+- game
+- podcast
+- video
+- web_bookmark
+- event / place
+
+最重要方針:
+
+- API直結だけを前提にしない。
+- official API / CSV / Takeout / RSS / user uploaded file / manual entry を同列のImport Sourceにする。
+- スクレイピングfirstにしない。
+- Catalog metadata と Personal activity を分ける。
+- 「今見ている / 今読んでいる / 途中 / 積み」を独立状態にする。
+- 趣味から人格・人生価値・本質を断定しない。
+
+MVP優先:
+
+- AniList
+- Last.fm
+- Spotify
+- Letterboxd CSV / RSS
+- Google Books
+- Open Library
+- NDL Search
+- Calil
+- Steam
+- TMDb
+- MusicBrainz
+- Browser bookmarks export
+- Google Takeout / YouTube Takeout
+
+後回しまたは慎重:
+
+- Apple Music
+- MyAnimeList
+- Kitsu
+- Trakt
+- Simkl
+- Goodreads CSV
+- StoryGraph CSV
+- Kindle highlights / My Clippings
+- Readwise
+- Pocket / Raindrop / Instapaper
+
+manual / file-first:
+
+- Amazon Music
+- Filmarks
+- Cookpad
+- 読書メーター
+- ブクログ
+- BookWalker
+- ebookjapan
+- Kindle purchase/library history
+- manga app reading history
+- streaming service watch history
+
+避ける:
+
+- login scraping
+- unauthorized recipe scraping
+- manga app scraping
+- streaming service scraping
+- raw recipe/content copying
+- 趣味データを使った人格診断
+
 ## AI Safety Net Docs
 
 人を傷つけないためのAI安全ネットdocs:
@@ -214,6 +293,8 @@ Never use product copy that implies:
 - a user claim is verified fact
 - Export is safe because SMS/email was confirmed
 - full Export is a normal one-click convenience feature
+- hobby data reveals personality essence
+- watch/listen/read history should be ranked as life value
 
 Forbidden examples:
 
@@ -232,6 +313,8 @@ Forbidden examples:
 - この記録は真実です
 - SMS認証でExportは安全です
 - ワンクリックで全データをExportできます
+- あなたの本当の趣味を分析します
+- この作品群からあなたの本質が分かります
 
 Preferred examples:
 
@@ -248,6 +331,9 @@ Preferred examples:
 - Exportには、本人確認と内容確認が必要です。
 - メール/SMSは通知には使いますが、これだけでは本人確認になりません。
 - rawやsealed記録は既定では含まれません。
+- この時期によく記録されていた作品です。
+- このサービスは公式Exportファイルから取り込めます。
+- このサービスは公開APIが確認できないため、手入力またはファイル取込のみ対応します。
 
 ## Current State
 
@@ -261,6 +347,7 @@ RFC Governance
 Source Adapter SDK
 Export Specification
 Export Safety and Re-authentication
+Hobby Import Source Research
 Cost Engine
 Search Ranking
 Deletion Backup
@@ -320,14 +407,15 @@ If still not implementing, useful remaining docs:
    - keyword search before vector
    - PolicyEvaluator as pure domain service
    - no LLM in capture path
-5. expand `docs/policy-test-cases.md` with AI safety net, impersonation, and Export P0 cases.
+5. expand `docs/policy-test-cases.md` with AI safety net, impersonation, Export, and hobby import P0 cases.
+6. create concrete source adapter specs for Tier 1 hobby imports.
 
 ## Last Known Commits From This Session
 
-- `68b4205fd8ff166ce11a71468cd46460d789c6b2` docs: add export safety and reauthentication design
+- `947533746e0aa59544ba42bd473ca83291ef6f3a` docs: add hobby import source research
 
 ## Final Note
 
-ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネット、具体的な安全機能候補、本人なりすまし防止、Export安全設計を持つ状態になった。
+ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネット、具体的な安全機能候補、本人なりすまし防止、Export安全設計、趣味インポート設計を持つ状態になった。
 
 実装はまだ始めない。
