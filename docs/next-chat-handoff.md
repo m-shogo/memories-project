@@ -49,14 +49,114 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - 本人なりすまし
 - AI本人代弁
 
+## Import Architecture Decision
+
+新規追加済み:
+
+- `docs/import-architecture-decision.md`
+- `docs/universal-paste-import-spec.md`
+- `docs/import-preview-ux-spec.md`
+- `docs/s-rank-import-adapter-specs.md`
+- `docs/import-preimplementation-readiness.md`
+
+最重要結論:
+
+- Import機能は1つの共通Import Coreで作る。
+- ただし、サービスごとのSource Adapterを持つ。
+- ファイル形式ごとのParser Registryを持つ。
+- Content Detectorが中身・manifest・ユーザー選択・confidenceで判定する。
+- 拡張子だけでは分けない。拡張子はhintでしかない。
+- Universal Paste Importはfallbackではなくfirst-class Import。
+- Import Previewは必須。Previewなし保存は禁止。
+- Policy Evaluation後にSafe Commitする。
+
+採用構成:
+
+```txt
+One Import Core
++ Source Adapters
++ Parser Registry
++ Content Detectors
++ Normalizers
++ Import Preview
++ Policy Evaluation
++ Safe Commit
+```
+
+Pipeline:
+
+```txt
+1. Intake
+2. Security Gate
+3. Type Detection
+4. Source Detection
+5. Parser Selection
+6. Parse to RawImportRecords
+7. Normalize to CanonicalImportRecords
+8. Deduplicate
+9. Privacy/Safety Classification
+10. Import Preview
+11. User Correction / Scope Selection
+12. Policy Evaluation
+13. Commit to Memory Records
+14. Audit without raw
+```
+
+## Import Implementation Priority
+
+実装に入るならまずS0から。
+
+### Phase S0: Universal paste/manual import foundation
+
+- ImportJob model
+- ImportIntake type
+- SecurityGate for paste/text/file metadata
+- UniversalPasteParser
+- SourceSelector
+- ImportPreview DTO
+- Preview-only prototype first
+- Safe commit later
+
+### Phase S1: First concrete adapters
+
+- Browser bookmarks
+- Netflix CSV
+- LINE text/copy
+- X archive
+- Filmarks paste/URL
+- 食べログ URL/list
+- Podcast OPML/RSS
+- GERA URL/list
+- Manga/anime manual progress
+
+### Phase S2: API adapters
+
+- Spotify API
+- AniList API
+- Last.fm API
+- TMDb enrichment
+- Google Books/Open Library/NDL/Calil enrichment
+- Apple Music research spike
+
+### Phase S3: Streaming manual bridges
+
+- Prime Video paste/email/manual
+- Disney+ paste/manual
+- U-NEXT paste/email/manual
+
+Non-negotiable gates:
+
+- Do not implement API connectors before Import Preview exists.
+- Do not implement API connectors before Policy Evaluation exists.
+- Do not implement API connectors before token encryption plan exists.
+- Do not implement LINE bulk import before summary-only default and Evidence Package Blocker.
+- Do not implement Export from imports before Export Safety and Re-authentication.
+
 ## User Priority S Rank Imports
 
 - `docs/user-priority-s-rank-imports.md`
 - `docs/s-rank-import-user-guides.md`
-
-`docs/user-priority-s-rank-imports.md` は、実装しやすさよりも、ユーザー本人が実際に使っていてやる気が出るサービスをSランク優先する。
-
-`docs/s-rank-import-user-guides.md` は、Sランク各サービスの具体的な取込手順を扱う。
+- `docs/s-rank-import-adapter-specs.md`
 
 Sランク対象:
 
@@ -87,16 +187,8 @@ Sランク対象:
 - 1サービスにつき複数Importルートを用意する。
 - API取得手順があるものはDeveloper Console / OAuth / scope / token handlingまで書く。
 - Export手順があるものは公式Export画面からMemory OS uploadまで書く。
-- まず作るべきは Universal paste/manual import foundation。
 - login scraping は禁止。
 - LINE raw、X likes/bookmarks、視聴履歴、食べログの同行者/位置情報はprivate/sensitive default。
-
-S Rank implementation order:
-
-1. Phase S0: Universal paste/manual import foundation
-2. Phase S1: Netflix CSV, LINE text/copy, X archive, Filmarks copy/URL, 食べログ URL/list, Podcast OPML/RSS, GERA episode URL/list, manga/anime manual progress
-3. Phase S2: Spotify API, AniList API, Last.fm API, Apple Music/MusicKit research, TMDb enrichment
-4. Phase S3: Amazon Prime Video, Disney+, U-NEXT copy/paste/manual bridges
 
 ## Hobby Import Docs
 
@@ -105,6 +197,11 @@ S Rank implementation order:
 - `docs/import-sanitization-and-private-content.md`
 - `docs/user-priority-s-rank-imports.md`
 - `docs/s-rank-import-user-guides.md`
+- `docs/import-architecture-decision.md`
+- `docs/universal-paste-import-spec.md`
+- `docs/import-preview-ux-spec.md`
+- `docs/s-rank-import-adapter-specs.md`
+- `docs/import-preimplementation-readiness.md`
 
 ## Import Security
 
@@ -138,6 +235,11 @@ Hobby Import Service Method Matrix
 Import Sanitization and Private Content
 User Priority S Rank Imports
 S Rank Import User Guides
+Import Architecture Decision
+Universal Paste Import Spec
+Import Preview UX Spec
+S Rank Import Adapter Specs
+Import Pre-implementation Readiness
 Cost Engine
 Search Ranking
 Deletion Backup
@@ -188,18 +290,22 @@ Schema v1.1 Proposal
 
 If still not implementing, useful remaining docs:
 
-1. `docs/universal-paste-import-spec.md`
-2. `docs/import-preview-ux-spec.md`
-3. `docs/s-rank-import-adapter-specs.md`
-4. expand `docs/policy-test-cases.md` with S Rank import and paste import P0 cases.
-5. create concrete adapter specs for Netflix CSV, X archive, LINE text export, Filmarks paste, 食べログ URL/list, Podcast OPML/RSS, GERA URL/list, Spotify API, AniList API.
+1. create parser fixture specification.
+2. expand `docs/policy-test-cases.md` with S Rank import and paste import P0 cases.
+3. create UI wireframe notes for Import Preview mobile.
+4. create token encryption / OAuth connector security spec before API implementation.
+5. create DB schema proposal for ImportJob / ImportPreview / SourceRef.
 
 ## Last Known Commits From This Session
 
-- `a812dbb7f09c76929e03f06a72e7031dee8d49bd` docs: add s rank import user guides
+- `430c52acee968f3e044cfa210198ca34f4ae0713` docs: add import architecture decision
+- `8f2f20b88a10cceb8df908b0287a9ed59cb6f89b` docs: add universal paste import spec
+- `dabd5eba651b6c281e785865399b5ceca254e7fd` docs: add import preview ux spec
+- `d1bf8c715dabd32c727996bee58c806567731533` docs: add s rank import adapter specs
+- `7cba4d488139a228d3db275907c9b67e020d3677` docs: add import preimplementation readiness checklist
 
 ## Final Note
 
-ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネット、本人なりすまし防止、Export安全設計、趣味インポート設計、サービス別Import方式表、Import sanitize/private content保護、ユーザー優先SランクImport方針、Sランク各サービスの具体的な取込手順を持つ状態になった。
+ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネット、本人なりすまし防止、Export安全設計、趣味インポート設計、サービス別Import方式表、Import sanitize/private content保護、ユーザー優先SランクImport方針、Sランク各サービスの具体的な取込手順、そして実装直前のImportアーキテクチャ判断を持つ状態になった。
 
 実装はまだ始めない。
