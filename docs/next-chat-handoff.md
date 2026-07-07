@@ -49,14 +49,76 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - 本人なりすまし
 - AI本人代弁
 
-## Long-term Database Architecture
+## DB Hardening Verdict
 
 新規追加済み:
+
+- `docs/db-edge-cases-and-hardening.md`
+- `docs/db-implementation-preflight-checklist.md`
+
+現時点の判定:
+
+```txt
+ready_with_known_risks
+```
+
+「完璧」とは言わない。
+
+大枠は強いが、実装前に以下を必ず確認する:
+
+- sensitive dedupe/tombstone keys must use HMAC, not plain SHA.
+- dedupe_key / deletion_tombstone must carry key_algorithm and key_version.
+- source_account_ref is needed for multi-account / shared-profile imports.
+- occurred_at_precision / timezone / timezone_source are needed for ambiguous dates.
+- parser_id / parser_version / adapter_id / adapter_version / source_schema_version are needed for reprocessing and schema drift.
+- key_reference is needed for raw object encryption, OAuth token encryption, dedupe HMAC, tombstone HMAC, export package encryption.
+- RLS is defense-in-depth only; app runtime role must not be table owner.
+- shared profile contamination must be visible in Import Preview.
+- large import blast radius must be limited.
+- restore drill must replay deletion_tombstones and invalidate derived search/embedding.
+
+Blocking before DB implementation:
+
+- Import Preview missing.
+- dedupe_key missing.
+- deletion_tombstone missing.
+- raw expiration missing.
+- token/key encryption plan missing.
+- private/sealed/deleted lifecycle does not affect search/export.
+- embedding all imported rows is planned.
+- RLS/admin role plan missing.
+
+Recommended first migration slice:
+
+```txt
+app_user
+source_ref
+source_account_ref
+import_job
+import_input_file
+import_detection_result
+import_preview
+import_preview_candidate
+raw_object_ref
+dedupe_key
+deletion_tombstone
+policy_decision
+lifecycle_event
+audit_event
+outbox_event
+key_reference
+```
+
+## Long-term Database Architecture
+
+追加済み:
 
 - `docs/db-long-term-architecture.md`
 - `docs/db-table-design-v1.md`
 - `docs/import-deduplication-and-entity-resolution.md`
 - `docs/db-operational-guardrails.md`
+- `docs/db-edge-cases-and-hardening.md`
+- `docs/db-implementation-preflight-checklist.md`
 
 最重要結論:
 
@@ -90,6 +152,7 @@ Minimum implementation tables:
 ```txt
 app_user
 source_ref
+source_account_ref
 import_job
 import_input_file
 import_detection_result
@@ -101,6 +164,7 @@ source_item_key
 dedupe_key
 canonical_item
 canonical_item_external_id
+canonical_item_alias
 user_activity
 user_activity_source_link
 memory_record
@@ -114,6 +178,9 @@ embedding_record
 audit_event
 outbox_event
 cost_ledger_entry
+key_reference
+entity_match_candidate
+merge_decision
 ```
 
 破産防止ガードレール:
@@ -131,7 +198,7 @@ cost_ledger_entry
 
 ## Import Architecture Decision
 
-新規追加済み:
+追加済み:
 
 - `docs/import-architecture-decision.md`
 - `docs/universal-paste-import-spec.md`
@@ -286,6 +353,8 @@ Sランク対象:
 - `docs/db-table-design-v1.md`
 - `docs/import-deduplication-and-entity-resolution.md`
 - `docs/db-operational-guardrails.md`
+- `docs/db-edge-cases-and-hardening.md`
+- `docs/db-implementation-preflight-checklist.md`
 
 ## Import Security
 
@@ -304,7 +373,7 @@ Sランク対象:
 
 ## Current State
 
-Design readiness is extremely high.
+Design readiness is extremely high, but not called perfect.
 
 The project now has:
 
@@ -328,6 +397,8 @@ DB Long-term Architecture
 DB Table Design v1
 Import Deduplication and Entity Resolution
 DB Operational Guardrails
+DB Edge Cases and Hardening
+DB Implementation Preflight Checklist
 Cost Engine
 Search Ranking
 Deletion Backup
@@ -380,19 +451,17 @@ If still not implementing, useful remaining docs:
 
 1. create parser fixture specification.
 2. expand `docs/policy-test-cases.md` with DB/dedup/import P0 cases.
-3. create DB migration plan and migration safety checklist.
+3. create DB migration safety checklist.
 4. create token encryption / OAuth connector security spec before API implementation.
 5. create concrete DB schema migration files only when implementation starts.
 
 ## Last Known Commits From This Session
 
-- `47299843123f19fd7eecf468fbd09920bf563baf` docs: add long term database architecture
-- `513be5322c49409ccc5781eec658e015e4053cbf` docs: add database table design v1
-- `fda4cf78a04319bffdee42defa28bfa13fd8a537` docs: add import deduplication and entity resolution design
-- `e1e3284b6d3f61fbfe48694f1faf2a41fbe642ab` docs: add database operational guardrails
+- `f26e996ef6d5b81dd2ff8b2b0fa00aae4afe4e2e` docs: add database edge cases and hardening
+- `9cff6815403d600256770265ed6297b2ebfbd8f8` docs: add database implementation preflight checklist
 
 ## Final Note
 
-ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネット、本人なりすまし防止、Export安全設計、趣味インポート設計、サービス別Import方式表、Import sanitize/private content保護、ユーザー優先SランクImport方針、Sランク各サービスの具体的な取込手順、実装直前のImportアーキテクチャ判断、そして何十年運用しても破産しにくいDB/重複排除/運用ガードレール設計を持つ状態になった。
+ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネット、本人なりすまし防止、Export安全設計、趣味インポート設計、サービス別Import方式表、Import sanitize/private content保護、ユーザー優先SランクImport方針、Sランク各サービスの具体的な取込手順、実装直前のImportアーキテクチャ判断、何十年運用しても破産しにくいDB/重複排除/運用ガードレール、さらにDB edge case hardeningとpreflight checklistを持つ状態になった。
 
 実装はまだ始めない。
