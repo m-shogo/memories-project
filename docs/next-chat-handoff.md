@@ -64,6 +64,24 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - `docs/ai-safety-net-map.md`
 - `docs/safety-feature-candidates.md`
 - `docs/identity-and-impersonation-safety.md`
+- `docs/export-safety-and-reauthentication.md`
+
+## Export Safety and Re-authentication
+
+`docs/export-safety-and-reauthentication.md` を追加済み。
+
+最重要ルール:
+
+- Exportは通常操作ではなく high-risk ceremony。
+- Exportはユーザーの権利だが、最も危険な出口。
+- raw / sealed / full archive Export は意図的に重くする。
+- ログイン中であることは高リスクExportの本人性を保証しない。
+- メール/SMSは通知には使えるが、raw/full/sealed Exportの唯一の本人確認にしない。
+- PCとスマホ両方でログイン中でも、それだけでは安全とは限らない。
+- 「自分だけがわかる質問」は、Memory OS内の記録から推測できる内容にしない。
+- 使うなら Export専用の合言葉 / recovery phrase / backup code を使う。
+- sealed records / third-party raw / minor data / deleted records は既定でExport除外。
+- pending Export + delay + cancellation + no-raw audit を基本にする。
 
 ## Identity and Impersonation Safety
 
@@ -194,6 +212,8 @@ Never use product copy that implies:
 - AI understands the user's true intent
 - AI can send as the user
 - a user claim is verified fact
+- Export is safe because SMS/email was confirmed
+- full Export is a normal one-click convenience feature
 
 Forbidden examples:
 
@@ -210,6 +230,8 @@ Forbidden examples:
 - あなたとして送信します
 - AIがあなたの本心を理解しました
 - この記録は真実です
+- SMS認証でExportは安全です
+- ワンクリックで全データをExportできます
 
 Preferred examples:
 
@@ -223,6 +245,9 @@ Preferred examples:
 - この記録はユーザー入力に基づきます。
 - この部分はAIによる推測です。
 - 送信前に本人の確認が必要です。
+- Exportには、本人確認と内容確認が必要です。
+- メール/SMSは通知には使いますが、これだけでは本人確認になりません。
+- rawやsealed記録は既定では含まれません。
 
 ## Current State
 
@@ -235,6 +260,7 @@ Philosophy / Constitution
 RFC Governance
 Source Adapter SDK
 Export Specification
+Export Safety and Re-authentication
 Cost Engine
 Search Ranking
 Deletion Backup
@@ -294,14 +320,14 @@ If still not implementing, useful remaining docs:
    - keyword search before vector
    - PolicyEvaluator as pure domain service
    - no LLM in capture path
-5. expand `docs/policy-test-cases.md` with AI safety net and impersonation P0 cases.
+5. expand `docs/policy-test-cases.md` with AI safety net, impersonation, and Export P0 cases.
 
 ## Last Known Commits From This Session
 
-- `61d3edd9a2334a433a35ca58e368376c41248fcf` docs: add identity and impersonation safety
+- `68b4205fd8ff166ce11a71468cd46460d789c6b2` docs: add export safety and reauthentication design
 
 ## Final Note
 
-ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネット、具体的な安全機能候補、本人なりすまし防止の設計を持つ状態になった。
+ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネット、具体的な安全機能候補、本人なりすまし防止、Export安全設計を持つ状態になった。
 
 実装はまだ始めない。
