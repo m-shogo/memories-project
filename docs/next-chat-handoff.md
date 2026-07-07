@@ -47,9 +47,79 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - 他人の秘密の記憶化
 - 監視/証拠探し
 
-## Human-centered Design Docs Added
+## AI Safety Net Docs Added
 
-今回追加した、人間中心・心理・言葉・AI責任に関するdocs:
+今回追加した、人を傷つけないためのAI安全ネットdocs:
+
+- `docs/ai-harm-prevention-policy.md`
+- `docs/crisis-safety-response.md`
+- `docs/abuse-and-coercive-control-prevention.md`
+- `docs/non-reinforcement-and-dependency-safety.md`
+- `docs/vulnerable-user-safety.md`
+- `docs/content-safety-taxonomy.md`
+- `docs/safety-evaluation-and-red-team.md`
+- `docs/human-support-and-escalation.md`
+- `docs/ai-safety-net-map.md`
+
+## What The AI Safety Net Adds
+
+### AI Harm Prevention
+
+- 自傷・暴力・違法行為・監視・支配・依存・妄想強化を助けない。
+- 危険な目的ではMemory search / Export / LLM / Tipを止める。
+- safe redirect patternを定義。
+
+### Crisis Safety Response
+
+- 危機では記憶分析より安全。
+- self-harm / imminent violence / targeted threat では crisis mode。
+- reflection/search expansion/proactive tips を止める。
+- 現実の支援へつなぐ。
+
+### Abuse and Coercive Control Prevention
+
+- partner surveillance / family blame evidence / workplace targeting / stalking / coercive messages を防ぐ。
+- Memory OSを証拠パッケージ生成ツールにしない。
+- 自分の状況整理や相談準備へredirectする。
+
+### Non-Reinforcement and Dependency Safety
+
+- 相手の本心や故人の意思を断定しない。
+- 事実・感情・AI推測を分ける。
+- AIが「唯一の理解者」にならない。
+- repeated confirmation-seeking searchを止める。
+
+### Vulnerable User Safety
+
+- minors / grief / crisis / isolation / long AI session / family conflict を高慎重に扱う。
+- 未成年のpersonality profiling、precise location、proactive tipsを禁止/制限。
+- 喪失記録の自動再提示を避ける。
+
+### Content Safety Taxonomy
+
+- S0〜S5の分類を定義。
+- action matrix: store raw / search / raw quote / LLM / Tip / Export。
+- highest risk wins。
+- intent escalationを定義。
+
+### Safety Evaluation and Red Team
+
+- self-harm, violence, abuse/surveillance, delusion/dependency, minor, deceased, corporate/secrets, privacy/export, long-session, prompt injection の評価suite。
+- dangerous success is failure。
+- long-session degradationをテスト。
+
+### Human Support and Escalation
+
+- AIは最後の安全網ではない。
+- Trusted Contactは将来案。opt-in、confirmed、no transcript sharing default。
+- emergency/support/professional promptsを定義。
+
+### AI Safety Net Map
+
+- safety layersを1枚に統合。
+- Crisis Mode, Reflection Pause, Sensitive Memory Cooldown, Loop Detector, Trusted Support Contact, Grounding Mode などの今後アイディアを追加。
+
+## Human-centered Design Docs Added
 
 - `docs/value-sensitive-design.md`
 - `docs/privacy-by-design-memory-os.md`
@@ -58,52 +128,19 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - `docs/human-data-interaction-memory-os.md`
 - `docs/digital-wellbeing-memory-os.md`
 
-## What They Add
-
-### Value Sensitive Design
-
-- Memory OS の中心価値を明示。
-- self_context_continuity / user_agency / non_judgment / small_memory_dignity / third_party_dignity / delete_and_forget_right などを定義。
-- 価値衝突を整理: portability vs privacy, remembering vs forgetting, searchability vs safety。
-- 新機能ごとに「誰の価値を守るか、誰を傷つけるか」を見る。
-
-### Privacy by Design
-
-- 7原則を Memory OS に具体化。
-- proactive prevention, privacy default, embedded privacy, positive-sum, lifecycle security, transparency, user-centric control。
-- raw default off / source privacy context / export redaction / backup tombstone replay を原則に対応。
-
-### Safety by Design
-
-- 事故後のBANや通報ではなく、危険な使い方を最初から起きにくくする。
-- safe defaults, user empowerment, transparency, harm anticipation, friction for risky actions, fast containment, no abuse amplification。
-- surveillance / partner diagnosis / deceased simulation / minor tips / self-harm resurfacing を明確に抑止。
-
-### Responsible AI
-
-- AIは人生を評価する主体ではなく補助。
-- human_control / transparency / explainability / contestability / fairness / privacy / robustness / accountability / bounded_use。
-- AI出力は必ず summary / interpretation として扱い、事実を上書きしない。
-- personality profile, life score, deceased message, partner intent analysis, child prediction を禁止出力として定義。
-
-### Human Data Interaction
-
-- ユーザーが自分のデータを理解・操作・交渉できるようにする。
-- legibility / agency / negotiability / provenance / contestability / portability / reversibility。
-- Memory detail に source/date/rawStored/AI summary/privacy/lifecycle/export eligibility を表示する設計。
-- Data Control Panel構想を追加。
-
-### Digital Wellbeing
-
-- 使わせ続けるのではなく、安心して離れられるMemory OSにする。
-- no engagement maximization / no shame / no guilt / no FOMO / notification restraint / session completion。
-- streak, daily pressure, grief/crisis proactive surfacing, emotional retention loops を禁止。
-- 成功指標は滞在時間ではなく、task completion / deletion works / export success / safe search。
-
 ## Core Docs To Read First
 
 - `docs/memory-constitution-v1.md`
 - `docs/formal-invariants.md`
+- `docs/ai-safety-net-map.md`
+- `docs/ai-harm-prevention-policy.md`
+- `docs/crisis-safety-response.md`
+- `docs/abuse-and-coercive-control-prevention.md`
+- `docs/non-reinforcement-and-dependency-safety.md`
+- `docs/vulnerable-user-safety.md`
+- `docs/content-safety-taxonomy.md`
+- `docs/safety-evaluation-and-red-team.md`
+- `docs/human-support-and-escalation.md`
 - `docs/ux-guidelines.md`
 - `docs/value-sensitive-design.md`
 - `docs/privacy-by-design-memory-os.md`
@@ -128,6 +165,8 @@ Never use product copy that implies:
 - family/partner can be diagnosed
 - deceased can speak
 - small memories are low value
+- AI is the only trusted support
+- memory search can be used to punish or surveil people
 
 Forbidden examples:
 
@@ -139,6 +178,8 @@ Forbidden examples:
 - 奥様の性格分析
 - 故人からのメッセージ
 - 今日も記録して連続日数を伸ばしましょう
+- 相手の嘘を暴く証拠を探します
+- 私だけがあなたを理解しています
 
 Preferred examples:
 
@@ -147,6 +188,8 @@ Preferred examples:
 - この記録を削除できます。削除後は検索・Tip・Exportに表示されません。
 - 残したいことがあれば記録できます。
 - 安全のため、相手の原文は保存せず要約だけ残します。
+- この記録だけから相手の本心を断定することはできません。
+- 今は記憶の分析より、安全を優先します。
 
 ## Current State
 
@@ -189,6 +232,15 @@ Safety by Design
 Responsible AI
 Human Data Interaction
 Digital Wellbeing
+AI Harm Prevention
+Crisis Safety Response
+Abuse / Coercive Control Prevention
+Non-Reinforcement / Dependency Safety
+Vulnerable User Safety
+Content Safety Taxonomy
+Safety Evaluation / Red Team
+Human Support / Escalation
+AI Safety Net Map
 MVP Engineering Tasks
 Policy P0 Tests
 Schema v1.1 Proposal
@@ -207,18 +259,22 @@ If still not implementing, useful remaining docs:
    - keyword search before vector
    - PolicyEvaluator as pure domain service
    - no LLM in capture path
+5. expand `docs/policy-test-cases.md` with AI safety net P0 cases.
 
 ## Last Known Commits From This Session
 
-- `d275b8f4cac673b70ffdf6a1baeb9612a6d2cbbd` docs: add value sensitive design for memory os
-- `969f5810771b77569e0554995e90a188b01ec39e` docs: add privacy by design mapping
-- `ee4f1825c94fac799bdd5646378ccb4505665439` docs: add safety by design mapping
-- `bbacb8ec4548efb8ec8ae7866310ee0b11afb0e4` docs: add responsible ai mapping
-- `a350f2b1f254b6d950c887807af96cf7e657f846` docs: add human data interaction mapping
-- `55f12c37941a25e5b725c9a46d66cf14dceeb1d4` docs: add digital wellbeing mapping
+- `947fabe727ab4d6069b094e0a968b80df9d503c8` docs: add ai harm prevention policy
+- `4585d78d08be616b8ee81257fff0e0d2b194da94` docs: add crisis safety response
+- `60538007541c60d403cbbe67c52c3d826044752c` docs: add abuse and coercive control prevention
+- `b29686883abbb37150b0b03f9ec85f79eaef4831` docs: add non reinforcement and dependency safety
+- `b71b01e08236283424af6feb303d561ede1a7c21` docs: add vulnerable user safety
+- `dfa5f0c432df1493313cdb0e934dd11ad5b8b879` docs: add content safety taxonomy
+- `f845dc39ed3d1752b89035b27c42c5facb76314d` docs: add safety evaluation and red team plan
+- `a1f965e5ef2ac244e4fb4d3d7841968e798237ca` docs: add human support and escalation design
+- `57db3c9730dfa1ece77105cbd2239d8e11b0ff26` docs: add ai safety net map
 
 ## Final Note
 
-ここまでで、Memory OS は技術設計だけでなく、心理・言葉・人間中心設計・AI責任・データ主体性・デジタルウェルビーイングまで設計に入った。
+ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネットを持つ設計になった。
 
 実装はまだ始めない。
