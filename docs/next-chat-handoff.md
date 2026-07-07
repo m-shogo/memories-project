@@ -49,6 +49,86 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - 本人なりすまし
 - AI本人代弁
 
+## Long-term Database Architecture
+
+新規追加済み:
+
+- `docs/db-long-term-architecture.md`
+- `docs/db-table-design-v1.md`
+- `docs/import-deduplication-and-entity-resolution.md`
+- `docs/db-operational-guardrails.md`
+
+最重要結論:
+
+- PostgreSQLをsystem of recordにする。
+- raw本体はobject storageへ分離する。
+- source_item / user_activity / memory_record を分ける。
+- canonical_itemは作品/店/曲などの現実対象、user_activityはユーザーが見た/聴いた/読んだ/行ったという活動。
+- memory_recordは人間が見返す記憶単位。
+- search_document / embedding_record は派生データ。source of truthではない。
+- dedupe_keyで多層重複排除する。
+- deletion_tombstoneで再Import復活を防ぐ。
+- Import/merge/delete/export/policy/lifecycleはevent/auditとして残す。ただしrawは残さない。
+- UUIDは基本。PostgreSQL対応環境ではUUIDv7を優先検討。
+- 拡張子やtitle/dateだけで重複判定しない。
+- embeddingはImport時に乱発しない。safe summary/memory_recordに限定し、lazy/budgetedにする。
+
+Durable core:
+
+```txt
+SourceRef
+→ SourceItem
+→ CanonicalItem
+→ UserActivity
+→ MemoryRecord
+→ Evidence / Interpretation
+→ Search / Embedding derived projections
+```
+
+Minimum implementation tables:
+
+```txt
+app_user
+source_ref
+import_job
+import_input_file
+import_detection_result
+import_preview
+import_preview_candidate
+raw_object_ref
+source_item
+source_item_key
+dedupe_key
+canonical_item
+canonical_item_external_id
+user_activity
+user_activity_source_link
+memory_record
+memory_source_link
+evidence_record
+policy_decision
+lifecycle_event
+deletion_tombstone
+search_document
+embedding_record
+audit_event
+outbox_event
+cost_ledger_entry
+```
+
+破産防止ガードレール:
+
+- rawは短期/明示保存。
+- Importはidempotent。
+- API syncは差分優先。
+- search/embeddingは派生で再生成可能。
+- private/sealed/deletedはsearch/tip/exportから即除外。
+- GIN indexを貼りすぎない。
+- partitionは必要になるまで増やしすぎない。
+- partition tableのunique制約制限を避けるためdedupe_keyを独立させる。
+- backup restore時はdeletion_tombstoneをreplayする。
+- Export stagingはTTL必須。
+
 ## Import Architecture Decision
 
 新規追加済み:
@@ -202,6 +282,10 @@ Sランク対象:
 - `docs/import-preview-ux-spec.md`
 - `docs/s-rank-import-adapter-specs.md`
 - `docs/import-preimplementation-readiness.md`
+- `docs/db-long-term-architecture.md`
+- `docs/db-table-design-v1.md`
+- `docs/import-deduplication-and-entity-resolution.md`
+- `docs/db-operational-guardrails.md`
 
 ## Import Security
 
@@ -240,6 +324,10 @@ Universal Paste Import Spec
 Import Preview UX Spec
 S Rank Import Adapter Specs
 Import Pre-implementation Readiness
+DB Long-term Architecture
+DB Table Design v1
+Import Deduplication and Entity Resolution
+DB Operational Guardrails
 Cost Engine
 Search Ranking
 Deletion Backup
@@ -291,21 +379,20 @@ Schema v1.1 Proposal
 If still not implementing, useful remaining docs:
 
 1. create parser fixture specification.
-2. expand `docs/policy-test-cases.md` with S Rank import and paste import P0 cases.
-3. create UI wireframe notes for Import Preview mobile.
+2. expand `docs/policy-test-cases.md` with DB/dedup/import P0 cases.
+3. create DB migration plan and migration safety checklist.
 4. create token encryption / OAuth connector security spec before API implementation.
-5. create DB schema proposal for ImportJob / ImportPreview / SourceRef.
+5. create concrete DB schema migration files only when implementation starts.
 
 ## Last Known Commits From This Session
 
-- `430c52acee968f3e044cfa210198ca34f4ae0713` docs: add import architecture decision
-- `8f2f20b88a10cceb8df908b0287a9ed59cb6f89b` docs: add universal paste import spec
-- `dabd5eba651b6c281e785865399b5ceca254e7fd` docs: add import preview ux spec
-- `d1bf8c715dabd32c727996bee58c806567731533` docs: add s rank import adapter specs
-- `7cba4d488139a228d3db275907c9b67e020d3677` docs: add import preimplementation readiness checklist
+- `47299843123f19fd7eecf468fbd09920bf563baf` docs: add long term database architecture
+- `513be5322c49409ccc5781eec658e015e4053cbf` docs: add database table design v1
+- `fda4cf78a04319bffdee42defa28bfa13fd8a537` docs: add import deduplication and entity resolution design
+- `e1e3284b6d3f61fbfe48694f1faf2a41fbe642ab` docs: add database operational guardrails
 
 ## Final Note
 
-ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネット、本人なりすまし防止、Export安全設計、趣味インポート設計、サービス別Import方式表、Import sanitize/private content保護、ユーザー優先SランクImport方針、Sランク各サービスの具体的な取込手順、そして実装直前のImportアーキテクチャ判断を持つ状態になった。
+ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネット、本人なりすまし防止、Export安全設計、趣味インポート設計、サービス別Import方式表、Import sanitize/private content保護、ユーザー優先SランクImport方針、Sランク各サービスの具体的な取込手順、実装直前のImportアーキテクチャ判断、そして何十年運用しても破産しにくいDB/重複排除/運用ガードレール設計を持つ状態になった。
 
 実装はまだ始めない。
