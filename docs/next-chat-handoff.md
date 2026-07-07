@@ -49,11 +49,16 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - 本人なりすまし
 - AI本人代弁
 
-## Hobby Import Source Research
+## Hobby Import Docs
 
-`docs/hobby-import-source-research.md` を追加済み。
+- `docs/hobby-import-source-research.md`
+- `docs/hobby-import-service-method-matrix.md`
 
-趣味系Importの対象:
+### Hobby Import Source Research
+
+`docs/hobby-import-source-research.md` は、趣味系Import全体の候補・優先度・共通schemaを扱う。
+
+対象:
 
 - music
 - movie / tv
@@ -68,43 +73,37 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - web_bookmark
 - event / place
 
+### Hobby Import Service Method Matrix
+
+`docs/hobby-import-service-method-matrix.md` は、サービスごとに取り込み方法を分ける実務表。
+
 最重要方針:
 
-- API直結だけを前提にしない。
-- official API / CSV / Takeout / RSS / user uploaded file / manual entry を同列のImport Sourceにする。
-- スクレイピングfirstにしない。
+- 全部APIではない。
+- サービスごとに API / Export / CSV / RSS / Takeout / email / URL / manual / no scraping を選ぶ。
+- APIが強いサービスはAPI。
+- Exportが強いサービスはファイル。
+- APIもExportも弱いサービスはURL保存・手入力。
+- login scraping は原則禁止。
 - Catalog metadata と Personal activity を分ける。
 - 「今見ている / 今読んでいる / 途中 / 積み」を独立状態にする。
 - 趣味から人格・人生価値・本質を断定しない。
 
-MVP優先:
+MVP寄り:
 
-- AniList
-- Last.fm
-- Spotify
+- AniList API
+- Last.fm API
+- Spotify API
 - Letterboxd CSV / RSS
-- Google Books
-- Open Library
-- NDL Search
-- Calil
-- Steam
-- TMDb
-- MusicBrainz
+- Google Books API
+- Open Library API
+- NDL Search API
+- Calil API
+- Steam API
+- TMDb catalog API
+- MusicBrainz catalog API
 - Browser bookmarks export
 - Google Takeout / YouTube Takeout
-
-後回しまたは慎重:
-
-- Apple Music
-- MyAnimeList
-- Kitsu
-- Trakt
-- Simkl
-- Goodreads CSV
-- StoryGraph CSV
-- Kindle highlights / My Clippings
-- Readwise
-- Pocket / Raindrop / Instapaper
 
 manual / file-first:
 
@@ -348,6 +347,7 @@ Source Adapter SDK
 Export Specification
 Export Safety and Re-authentication
 Hobby Import Source Research
+Hobby Import Service Method Matrix
 Cost Engine
 Search Ranking
 Deletion Backup
@@ -412,10 +412,10 @@ If still not implementing, useful remaining docs:
 
 ## Last Known Commits From This Session
 
-- `947533746e0aa59544ba42bd473ca83291ef6f3a` docs: add hobby import source research
+- `3e42fbfaf2ea2b876d20eadffd322b31d6bccf6b` docs: add hobby import service method matrix
 
 ## Final Note
 
-ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネット、具体的な安全機能候補、本人なりすまし防止、Export安全設計、趣味インポート設計を持つ状態になった。
+ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネット、具体的な安全機能候補、本人なりすまし防止、Export安全設計、趣味インポート設計、サービス別Import方式表を持つ状態になった。
 
 実装はまだ始めない。
