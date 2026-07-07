@@ -14,7 +14,7 @@
 
 現在のフェーズは、Memory OS の設計を100点に近づけるための最終設計・学習・仕様固定フェーズである。
 
-ただし、実装開始直前の順番・gate・fixture・migration・RLS・OAuth security・media/persona safety・Go/No-Go・媒体別Import roadmap・Detector confidence・Service Adapter Registry・Import Preview mobile wireframe は固定済み。
+ただし、実装開始直前の順番・gate・fixture・migration・RLS・OAuth security・media/persona safety・Go/No-Go・媒体別Import roadmap・Detector confidence・Service Adapter Registry・Import Preview UI・first fixture examples・provider review・implementation day one checklist は固定済み。
 
 ## Product Goal
 
@@ -65,12 +65,15 @@ ready_with_known_risks
 Go:
 
 - synthetic fixture planning
+- first fixture concrete examples
 - first migration slice planning
 - RLS negative test planning
 - Import Preview-only prototype planning
 - Universal Paste / Source Adapter / Parser Registry planning
 - Import medium roadmap / parser contracts / fixture backlog / MVP tickets
 - Detector confidence / Service Adapter Registry / mobile Preview UI planning
+- Provider review template and first pass planning
+- Implementation day one checklist
 - Token encryption / OAuth security planning
 - Media/persona Import/Export safety planning
 - Policy P0-001〜P0-055
@@ -88,7 +91,67 @@ No-Go:
 - vector DB / Graph DB as source of truth
 - one-table JSON memories design
 
-## Newly Added Import Medium Execution Specs
+## Newly Added Final Execution Docs
+
+追加済み:
+
+- `docs/import-first-fixture-examples.md`
+- `docs/provider-review-template-and-first-pass.md`
+- `docs/implementation-day-one-checklist.md`
+
+最重要結論:
+
+- 実装初日は、機能を作る日ではなく、壊れない実装順を証明する日。
+- 最初に作るのは fixtures / SecurityGate / ParserRegistry / Detector / Preview DTO。
+- 保存・API・Export・Embedding・OCR・persona activationはDay Oneでは作らない。
+- Provider実装は勢いで始めない。Provider Review Templateを通す。
+- API仕様・scope・termsは変わりうるため、実装直前に公式docsを再確認する。
+
+First 10 fixture examples:
+
+```txt
+1. security/unsafe-url-schemes.txt
+2. universal/title-list-basic.txt
+3. universal/url-list-basic.txt
+4. streaming/netflix-viewing-activity-standard.csv
+5. anime-manga/manga-progress-list.txt
+6. restaurant/tabelog-url-list.txt
+7. audio/gera-episode-list.txt
+8. message/line-copy-selected.txt
+9. media/photo-with-exif.meta.json
+10. persona/character-card.json
+```
+
+Day One goals:
+
+```txt
+synthetic fixtures directory skeleton
+first 10 fixture files
+expected detection/preview/policy snapshots
+fixture lint placeholder
+first migration slice draft
+RLS negative test skeleton
+SecurityGate v0
+ParserRegistry v0
+Detector confidence v0
+Preview DTO v0
+```
+
+Day One No-Go:
+
+```txt
+memory_record保存
+source_item/user_activity本保存
+API connector
+OAuth provider connection
+Export package
+Embedding
+OCR
+persona activation
+LINE bulk import
+```
+
+## Import Medium Execution Specs
 
 追加済み:
 
@@ -120,17 +183,6 @@ Detector signal trust order:
 8. extension / MIME only
 ```
 
-Service registry rule:
-
-```txt
-New service must map to primaryMedium.
-New service must have at least one non-scraping method.
-No service may bypass Import Preview.
-No service may set AI analysis on by default.
-Sensitive services default Export excluded.
-Every service must list noGo strings.
-```
-
 Preview mobile flow:
 
 ```txt
@@ -154,6 +206,7 @@ Paste / Upload / Select Source
 - `docs/import-detector-confidence-ranking.md`
 - `docs/import-preview-mobile-wireframes.md`
 - `docs/import-service-adapter-registry.md`
+- `docs/import-first-fixture-examples.md`
 
 最重要結論:
 
@@ -164,8 +217,6 @@ Medium-first capabilities
 + Policy Evaluation
 + Safe Commit
 ```
-
-サービス別の寄せ集めではなく、媒体カテゴリごとの能力を積み上げる。
 
 Medium categories:
 
@@ -204,21 +255,6 @@ F4/M4: Spotify / AniList / Last.fm / Steam / TMDb / Book catalog API
 F5/M5: Safe Commit low-risk manual/paste only
 ```
 
-First fixture order:
-
-```txt
-1. security/unsafe-url-schemes.txt
-2. universal/title-list-basic.txt
-3. universal/url-list-basic.txt
-4. streaming/netflix-viewing-activity-standard.csv
-5. anime-manga/manga-progress-list.txt
-6. restaurant/tabelog-url-list.txt
-7. audio/gera-episode-list.txt
-8. message/line-copy-selected.txt
-9. media/photo-with-exif.meta.json
-10. persona/character-card.json
-```
-
 ## Service Adapter Registry Highlights
 
 Primary S-rank mapping:
@@ -250,6 +286,30 @@ Browser Bookmarks → web_bookmark → BrowserBookmarkAdapter
 YouTube Takeout → streaming_watch_activity/export_archive_context → YouTubeTakeoutAdapter
 Steam → game_activity → SteamAdapter
 ```
+
+## Provider Review First Pass
+
+追加済み: `docs/provider-review-template-and-first-pass.md`
+
+First provider review order:
+
+```txt
+1. Netflix
+2. LINE selected copy
+3. 食べログ
+4. Manga / Anime Progress Manual
+5. GERA / Podcast
+6. Filmarks
+7. Browser Bookmarks
+8. Spotify
+9. AniList
+10. Last.fm
+```
+
+Special handling:
+
+- Apple Music is S-rank but not first API implementation. paste/export/manual + research spike first.
+- X/Twitter is S-rank but not first API implementation. archive/url/paste first; API only after cost/terms review.
 
 ## Media / Image / Persona Import Export Safety
 
@@ -336,12 +396,6 @@ export_package
 persona_agent
 ```
 
-Reason:
-
-- Preview-onlyを先に安全に作る。
-- Dedupe/Tombstone/Raw TTL/Policy/Audit/Key Referenceを先に証明する。
-- 本保存・検索・Embedding・Export・persona activationは後。
-
 ## RLS / Role Model
 
 追加済み: `docs/rls-policy-and-negative-tests.md`
@@ -394,16 +448,12 @@ Explicitly excluded:
 - OAuth/API connectors
 - persona/character activation
 
-Success:
-
-- paste text/list/url → structured candidates → preview
-- no MemoryRecord save
-- no AI analysis
-- no raw logs
-
 ## API Provider OAuth Scope Review
 
-追加済み: `docs/api-provider-oauth-scope-review.md`
+追加済み:
+
+- `docs/api-provider-oauth-scope-review.md`
+- `docs/provider-review-template-and-first-pass.md`
 
 API connector implementation requires:
 
@@ -418,6 +468,7 @@ API connector implementation requires:
 - provider terms reviewed
 - minimal read-only scopes selected
 - fixture/API response sample exists
+- official docs checked again at implementation time
 
 Provider order:
 
@@ -430,9 +481,6 @@ Provider order:
 7. X API only after cost/terms review
 
 Apple Music and X are not API-first.
-
-- Apple Music: research/export/paste/Last.fm fallback first.
-- X: archive/url/paste first.
 
 ## Policy Test Cases
 
@@ -507,99 +555,6 @@ SourceRef
 → Search / Embedding derived projections
 ```
 
-## Import Architecture
-
-主要docs:
-
-- `docs/import-architecture-decision.md`
-- `docs/universal-paste-import-spec.md`
-- `docs/import-preview-ux-spec.md`
-- `docs/s-rank-import-adapter-specs.md`
-- `docs/import-preimplementation-readiness.md`
-- `docs/import-parser-fixture-specification.md`
-- `docs/import-preview-prototype-plan.md`
-- `docs/media-image-import-export-safety.md`
-- `docs/persona-import-export-safety.md`
-- `docs/import-export-eligibility-matrix.md`
-- `docs/import-medium-roadmap.md`
-- `docs/import-medium-parser-contracts.md`
-- `docs/import-medium-fixture-backlog.md`
-- `docs/import-medium-mvp-tickets.md`
-- `docs/import-detector-confidence-ranking.md`
-- `docs/import-preview-mobile-wireframes.md`
-- `docs/import-service-adapter-registry.md`
-
-最重要結論:
-
-- Import機能は1つの共通Import Coreで作る。
-- サービスごとのSource Adapterを持つ。
-- ファイル形式/媒体ごとのParser Registryを持つ。
-- Content Detectorが中身・manifest・ユーザー選択・confidenceで判定する。
-- 拡張子だけでは分けない。拡張子はhint。
-- Universal Paste Importはfallbackではなくfirst-class Import。
-- Import Previewは必須。Previewなし保存は禁止。
-- Import allowed / Export allowed / Re-import allowed は別判定。
-- Policy Evaluation後にSafe Commitする。
-- Parser実装前にfixtureとexpected snapshotsを作る。
-
-Pipeline:
-
-```txt
-1. Intake
-2. Security Gate
-3. Type Detection
-4. Source Detection
-5. Parser Selection
-6. Parse to RawImportRecords
-7. Normalize to CanonicalImportRecords
-8. Deduplicate
-9. Privacy/Safety Classification
-10. Import Preview
-11. User Correction / Scope Selection
-12. Policy Evaluation
-13. Commit to Memory Records
-14. Audit without raw
-```
-
-## User Priority S Rank Imports
-
-主要docs:
-
-- `docs/user-priority-s-rank-imports.md`
-- `docs/s-rank-import-user-guides.md`
-- `docs/s-rank-import-adapter-specs.md`
-- `docs/api-provider-oauth-scope-review.md`
-- `docs/import-service-adapter-registry.md`
-
-Sランク対象:
-
-- Apple Music
-- Twitter / X
-- Netflix
-- Amazon Prime Video
-- Disney+
-- U-NEXT
-- LINE
-- 食べログ
-- RADIO / radio apps
-- GERA
-- Spotify
-- Podcast
-- Filmarks
-- manga outside listed services
-- movie outside listed services
-- radio outside listed services
-- anime outside listed services
-
-最重要方針:
-
-- User-priority S Rank overrides generic technical priority.
-- APIが無理でもSランクから落とさない。
-- API / official export / CSV / RSS / OPML / Takeout / email / URL clip / copy-paste / manual entry をすべて正式ルートにする。
-- 履歴画面・一覧画面からのコピー貼り付けをfirst-class importとして扱う。
-- login scraping は禁止。
-- LINE raw、X likes/bookmarks、視聴履歴、食べログの同行者/位置情報はprivate/sensitive default。
-
 ## Import Security
 
 主要docs:
@@ -657,6 +612,9 @@ Import Medium MVP Tickets
 Import Detector Confidence Ranking
 Import Preview Mobile Wireframes
 Import Service Adapter Registry
+Import First Fixture Examples
+Provider Review Template and First Pass
+Implementation Day One Checklist
 Media Image Import Export Safety
 Persona Import Export Safety
 Import Export Eligibility Matrix
@@ -722,9 +680,9 @@ Schema v1.1 Proposal
 
 If still not implementing:
 
-1. concrete fixture file contents when coding begins.
-2. provider-specific detailed reviews one by one when needed.
-3. Import Preview component spec for desktop/tablet if needed.
+1. concrete provider-specific review files for Netflix / LINE / 食べログ / Manga-Anime.
+2. Import Preview desktop/tablet component spec if needed.
+3. DB migration SQL draft only when implementation begins.
 
 If implementing next:
 
@@ -739,12 +697,12 @@ If implementing next:
 
 ## Last Known Commits From This Session
 
-- `dd176b93d09c1a64ed68b1ca6e72c92e1aae5da4` docs: add import detector confidence ranking
-- `098208fa52831038955c38ef6f3c318a4b22eb28` docs: add import preview mobile wireframes
-- `7703321c27ffca360adbde2a852f85533ff8084b` docs: add import service adapter registry
+- `c47ca691a725c0d45ae164bc434ab8aa5d6f16ea` docs: add first import fixture examples
+- `94d988b08cb48267c9329a8dd258063bc9ea7b3b` docs: add provider review template and first pass
+- `f8703b3f98baafaaaf64b1b159eb89c1ede1616d` docs: add implementation day one checklist
 
 ## Final Note
 
-ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネット、本人なりすまし防止、Export安全設計、趣味インポート設計、サービス別Import方式表、媒体カテゴリ別Import設計、Detector confidence、Service Adapter Registry、Import Preview mobile UI、Import sanitize/private content保護、ユーザー優先SランクImport方針、Sランク各サービスの具体的な取込手順、実装直前のImportアーキテクチャ判断、何十年運用しても破産しにくいDB/重複排除/運用ガードレール、DB edge case hardening、preflight checklist、parser fixture仕様、migration安全checklist、token/OAuth暗号化仕様、RLS negative tests、first migration slice、Import Preview-only prototype plan、API scope review、画像/他人格/Export/Re-import安全設計、P0-055までのpolicy testsを持つ状態になった。
+ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネット、本人なりすまし防止、Export安全設計、趣味インポート設計、サービス別Import方式表、媒体カテゴリ別Import設計、Detector confidence、Service Adapter Registry、Import Preview UI、first fixture examples、provider review、implementation day one checklist、Import sanitize/private content保護、ユーザー優先SランクImport方針、Sランク各サービスの具体的な取込手順、実装直前のImportアーキテクチャ判断、何十年運用しても破産しにくいDB/重複排除/運用ガードレール、DB edge case hardening、preflight checklist、parser fixture仕様、migration安全checklist、token/OAuth暗号化仕様、RLS negative tests、first migration slice、Import Preview-only prototype plan、API scope review、画像/他人格/Export/Re-import安全設計、P0-055までのpolicy testsを持つ状態になった。
 
 実装はまだ始めない。
