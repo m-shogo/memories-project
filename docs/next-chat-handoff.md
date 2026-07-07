@@ -47,9 +47,9 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - 他人の秘密の記憶化
 - 監視/証拠探し
 
-## AI Safety Net Docs Added
+## AI Safety Net Docs
 
-今回追加した、人を傷つけないためのAI安全ネットdocs:
+人を傷つけないためのAI安全ネットdocs:
 
 - `docs/ai-harm-prevention-policy.md`
 - `docs/crisis-safety-response.md`
@@ -60,66 +60,51 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - `docs/safety-evaluation-and-red-team.md`
 - `docs/human-support-and-escalation.md`
 - `docs/ai-safety-net-map.md`
+- `docs/safety-feature-candidates.md`
 
-## What The AI Safety Net Adds
+## Safety Feature Candidates
 
-### AI Harm Prevention
+`docs/safety-feature-candidates.md` には、実装前提で見るべき安全機能候補を追加済み。
 
-- 自傷・暴力・違法行為・監視・支配・依存・妄想強化を助けない。
-- 危険な目的ではMemory search / Export / LLM / Tipを止める。
-- safe redirect patternを定義。
+Must before launch:
 
-### Crisis Safety Response
+- Crisis Mode
+- Loop Detector
+- Evidence Package Blocker
+- Sensitive Export Review
+- Human Review Without Raw
+- Model Drift Safety Eval if LLM ships
+- Sensitive Search Snippet Suppression
 
-- 危機では記憶分析より安全。
-- self-harm / imminent violence / targeted threat では crisis mode。
-- reflection/search expansion/proactive tips を止める。
-- 現実の支援へつなぐ。
+Should after core:
 
-### Abuse and Coercive Control Prevention
+- Reflection Pause
+- Sensitive Memory Cooldown
+- Safe Support Note Generator
+- Boundary Note Generator
+- Grounding Mode
+- Session-Length Safety Guard
+- Re-Import Resurrection Guard UX
 
-- partner surveillance / family blame evidence / workplace targeting / stalking / coercive messages を防ぐ。
-- Memory OSを証拠パッケージ生成ツールにしない。
-- 自分の状況整理や相談準備へredirectする。
+Future optional:
 
-### Non-Reinforcement and Dependency Safety
+- Trusted Support Contact
 
-- 相手の本心や故人の意思を断定しない。
-- 事実・感情・AI推測を分ける。
-- AIが「唯一の理解者」にならない。
-- repeated confirmation-seeking searchを止める。
+## Why These Safety Features Matter
 
-### Vulnerable User Safety
+安全機能は、なくても動くことが多い。
 
-- minors / grief / crisis / isolation / long AI session / family conflict を高慎重に扱う。
-- 未成年のpersonality profiling、precise location、proactive tipsを禁止/制限。
-- 喪失記録の自動再提示を避ける。
+しかし、なくても動くことと、安全に動くことは違う。
 
-### Content Safety Taxonomy
+これらを入れないと、Memory OS は以下に変質しうる。
 
-- S0〜S5の分類を定義。
-- action matrix: store raw / search / raw quote / LLM / Tip / Export。
-- highest risk wins。
-- intent escalationを定義。
+- 危機時に重い記録を深掘りするAI
+- パートナー/家族/同僚を責める証拠生成ツール
+- 疑念や依存を強める確認ループ
+- 第三者や未成年情報を誤Exportするツール
+- 安全レビュー名目でrawを管理者が見られる運用
 
-### Safety Evaluation and Red Team
-
-- self-harm, violence, abuse/surveillance, delusion/dependency, minor, deceased, corporate/secrets, privacy/export, long-session, prompt injection の評価suite。
-- dangerous success is failure。
-- long-session degradationをテスト。
-
-### Human Support and Escalation
-
-- AIは最後の安全網ではない。
-- Trusted Contactは将来案。opt-in、confirmed、no transcript sharing default。
-- emergency/support/professional promptsを定義。
-
-### AI Safety Net Map
-
-- safety layersを1枚に統合。
-- Crisis Mode, Reflection Pause, Sensitive Memory Cooldown, Loop Detector, Trusted Support Contact, Grounding Mode などの今後アイディアを追加。
-
-## Human-centered Design Docs Added
+## Human-centered Design Docs
 
 - `docs/value-sensitive-design.md`
 - `docs/privacy-by-design-memory-os.md`
@@ -128,30 +113,39 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - `docs/human-data-interaction-memory-os.md`
 - `docs/digital-wellbeing-memory-os.md`
 
-## Core Docs To Read First
+## Core Architecture / Governance Docs
 
 - `docs/memory-constitution-v1.md`
 - `docs/formal-invariants.md`
-- `docs/ai-safety-net-map.md`
-- `docs/ai-harm-prevention-policy.md`
-- `docs/crisis-safety-response.md`
-- `docs/abuse-and-coercive-control-prevention.md`
-- `docs/non-reinforcement-and-dependency-safety.md`
-- `docs/vulnerable-user-safety.md`
-- `docs/content-safety-taxonomy.md`
-- `docs/safety-evaluation-and-red-team.md`
-- `docs/human-support-and-escalation.md`
-- `docs/ux-guidelines.md`
-- `docs/value-sensitive-design.md`
-- `docs/privacy-by-design-memory-os.md`
-- `docs/safety-by-design-memory-os.md`
-- `docs/responsible-ai-memory-os.md`
-- `docs/human-data-interaction-memory-os.md`
-- `docs/digital-wellbeing-memory-os.md`
-- `docs/policy-test-cases.md`
-- `docs/schema-v1-1-proposal.md`
 - `docs/state-machine.md`
 - `docs/threat-model.md`
+- `docs/data-governance.md`
+- `docs/compatibility-policy.md`
+- `docs/api-design-guide.md`
+- `docs/performance-budget.md`
+- `docs/reliability-sre.md`
+- `docs/failure-injection.md`
+- `docs/adr.md`
+- `docs/domain-driven-design.md`
+- `docs/clean-hexagonal-architecture.md`
+- `docs/event-driven-design.md`
+- `docs/authn-authz-model.md`
+- `docs/observability-model.md`
+- `docs/architecture-learning-map.md`
+
+## Product / Implementation Planning Docs
+
+- `docs/memory-schema-v1.md`
+- `docs/schema-v1-1-proposal.md`
+- `docs/policy-engine.md`
+- `docs/policy-test-cases.md`
+- `docs/engineering-tasks-mvp.md`
+- `docs/mvp-scope.md`
+- `docs/test-strategy.md`
+- `docs/storage-architecture.md`
+- `docs/adapter-implementation-plan.md`
+- `docs/local-first-backup-strategy.md`
+- `docs/incident-response-playbook.md`
 
 ## Language and UX Warnings
 
@@ -241,6 +235,7 @@ Content Safety Taxonomy
 Safety Evaluation / Red Team
 Human Support / Escalation
 AI Safety Net Map
+Safety Feature Candidates
 MVP Engineering Tasks
 Policy P0 Tests
 Schema v1.1 Proposal
@@ -263,18 +258,10 @@ If still not implementing, useful remaining docs:
 
 ## Last Known Commits From This Session
 
-- `947fabe727ab4d6069b094e0a968b80df9d503c8` docs: add ai harm prevention policy
-- `4585d78d08be616b8ee81257fff0e0d2b194da94` docs: add crisis safety response
-- `60538007541c60d403cbbe67c52c3d826044752c` docs: add abuse and coercive control prevention
-- `b29686883abbb37150b0b03f9ec85f79eaef4831` docs: add non reinforcement and dependency safety
-- `b71b01e08236283424af6feb303d561ede1a7c21` docs: add vulnerable user safety
-- `dfa5f0c432df1493313cdb0e934dd11ad5b8b879` docs: add content safety taxonomy
-- `f845dc39ed3d1752b89035b27c42c5facb76314d` docs: add safety evaluation and red team plan
-- `a1f965e5ef2ac244e4fb4d3d7841968e798237ca` docs: add human support and escalation design
-- `57db3c9730dfa1ece77105cbd2239d8e11b0ff26` docs: add ai safety net map
+- `867ac7716c673469385fcd5ccd54811cb2cee1f5` docs: add safety feature candidates
 
 ## Final Note
 
-ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネットを持つ設計になった。
+ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネットと具体的な安全機能候補を持つ設計になった。
 
 実装はまだ始めない。
