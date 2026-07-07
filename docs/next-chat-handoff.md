@@ -14,7 +14,7 @@
 
 現在のフェーズは、Memory OS の設計を100点に近づけるための最終設計・学習・仕様固定フェーズである。
 
-ただし、実装開始直前の順番・gate・fixture・migration・RLS・OAuth security・Go/No-Go は固定済み。
+ただし、実装開始直前の順番・gate・fixture・migration・RLS・OAuth security・media/persona safety・Go/No-Go・媒体別Import roadmap は固定済み。
 
 ## Product Goal
 
@@ -69,6 +69,7 @@ Go:
 - RLS negative test planning
 - Import Preview-only prototype planning
 - Universal Paste / Source Adapter / Parser Registry planning
+- Import medium roadmap / parser contracts / fixture backlog / MVP tickets
 - Token encryption / OAuth security planning
 - Media/persona Import/Export safety planning
 - Policy P0-001〜P0-055
@@ -85,6 +86,79 @@ No-Go:
 - service scraping
 - vector DB / Graph DB as source of truth
 - one-table JSON memories design
+
+## Import Medium Roadmap
+
+追加済み:
+
+- `docs/import-medium-roadmap.md`
+- `docs/import-medium-parser-contracts.md`
+- `docs/import-medium-fixture-backlog.md`
+- `docs/import-medium-mvp-tickets.md`
+
+最重要結論:
+
+```txt
+Medium-first capabilities
++ Service-specific adapters
++ Import Preview
++ Policy Evaluation
++ Safe Commit
+```
+
+サービス別の寄せ集めではなく、媒体カテゴリごとの能力を積み上げる。
+
+Medium categories:
+
+```txt
+manual_note
+title_list
+url_clip
+web_bookmark
+streaming_watch_activity
+music_listening_activity
+audio_episode_activity
+movie_activity
+anime_manga_progress
+book_reading_activity
+library_activity
+restaurant_food_activity
+recipe_cooking_activity
+game_activity
+social_post_activity
+message_conversation_context
+email_receipt_context
+calendar_event_context
+image_media_context
+persona_like_context
+export_archive_context
+```
+
+Implementation priority:
+
+```txt
+F0/M0: SecurityGate / ParserRegistry / Import Preview DTO / SourceSelector
+F1/M1: title_list / url_clip / table-like history / progress list
+F2/M2: Netflix CSV / streaming paste / manga-anime progress / restaurant / audio / Filmarks
+F3/M3: LINE / browser bookmarks / image media / persona-like / export re-import
+F4/M4: Spotify / AniList / Last.fm / Steam / TMDb / Book catalog API
+F5/M5: Safe Commit low-risk manual/paste only
+```
+
+First fixture order:
+
+```txt
+1. security/unsafe-url-schemes.txt
+2. universal/title-list-basic.txt
+3. universal/url-list-basic.txt
+4. streaming/netflix-viewing-activity-standard.csv
+5. anime-manga/manga-progress-list.txt
+6. restaurant/tabelog-url-list.txt
+7. audio/gera-episode-list.txt
+8. message/line-copy-selected.txt
+9. media/photo-with-exif.meta.json
+10. persona/character-card.json
+```
 
 ## Media / Image / Persona Import Export Safety
 
@@ -108,47 +182,6 @@ No-Go:
 - Persona-like Exportは通常Exportより高リスク。real person/deceased/partner/family/AI companion persona bundleはdeny/default excluded。
 - Memory OS exportを再Importしてもpolicy/tombstone/previewをbypassしない。
 
-Image rules:
-
-```txt
-personal photo: owner_sensitive, EXIF stripped, export explicit selection
-family/friend photo: restricted, export excluded default
-minor photo: restricted, export denied/default excluded
-chat screenshot: summary-only, OCR off, raw export denied
-medical/financial/work screenshot: restricted/denied, export excluded
-manga page: metadata-only, raw denied
-cover art/thumbnail: reference/URL preferred
-```
-
-Persona rules:
-
-```txt
-fictional notes: allowed as creative notes, no real-person agent
-roleplay/AI companion logs: owner_sensitive/restricted, export excluded
-character card: can be stored as file/reference, no activation
-real person writing style: restricted, persona export denied
-partner/family/deceased: restricted summary-only, speak-as denied
-public figure style: no mimic bundle
-```
-
-Additional P0 tests:
-
-- P0-041 Image EXIF GPS stripped by default
-- P0-042 Chat screenshot OCR denied by default
-- P0-043 LINE screenshot raw export denied
-- P0-044 Minor photo standard export denied
-- P0-045 Manga page raw import denied
-- P0-046 SVG active content rendering denied
-- P0-047 Real person style export as persona denied
-- P0-048 Deceased persona activation denied
-- P0-049 Character card import does not create agent
-- P0-050 AI companion logs excluded from export by default
-- P0-051 Persona bundle re-import no activation
-- P0-052 Memory OS export re-import must check tombstones
-- P0-053 Export manifest raw private title denied
-- P0-054 Persona data not merged into self identity
-- P0-055 Full media archive export requires reauth and scope review
-
 ## Final Implementation Order
 
 実装に入る場合は、この順番を守る。
@@ -159,16 +192,17 @@ Additional P0 tests:
 3. First migration slice
 4. RLS policies + negative tests
 5. SecurityGate
-6. Universal Paste Parser
-7. Import Preview-only prototype
-8. Dedupe/Tombstone checks in Preview
-9. Safe Commit for low-risk manual/paste only
-10. Browser Bookmark parser
-11. Netflix CSV parser
-12. LINE text parser summary-only
-13. Image/media preview safety only after SecurityGate
-14. Persona-like import classification only, no activation
-15. API connectors only after token/OAuth gates
+6. ParserRegistry v0
+7. Universal Paste Parser
+8. Import Preview-only prototype
+9. Dedupe/Tombstone checks in Preview
+10. Safe Commit for low-risk manual/paste only
+11. Browser Bookmark parser
+12. Netflix CSV parser
+13. LINE text parser summary-only
+14. Image/media preview safety only after SecurityGate
+15. Persona-like import classification only, no activation
+16. API connectors only after token/OAuth gates
 ```
 
 ## First Migration Slice
@@ -395,12 +429,16 @@ SourceRef
 - `docs/media-image-import-export-safety.md`
 - `docs/persona-import-export-safety.md`
 - `docs/import-export-eligibility-matrix.md`
+- `docs/import-medium-roadmap.md`
+- `docs/import-medium-parser-contracts.md`
+- `docs/import-medium-fixture-backlog.md`
+- `docs/import-medium-mvp-tickets.md`
 
 最重要結論:
 
 - Import機能は1つの共通Import Coreで作る。
 - サービスごとのSource Adapterを持つ。
-- ファイル形式ごとのParser Registryを持つ。
+- ファイル形式/媒体ごとのParser Registryを持つ。
 - Content Detectorが中身・manifest・ユーザー選択・confidenceで判定する。
 - 拡張子だけでは分けない。拡張子はhint。
 - Universal Paste Importはfallbackではなくfirst-class Import。
@@ -516,6 +554,10 @@ S Rank Import Adapter Specs
 Import Pre-implementation Readiness
 Import Parser Fixture Specification
 Import Preview Prototype Plan
+Import Medium Roadmap
+Import Medium Parser Contracts
+Import Medium Fixture Backlog
+Import Medium MVP Tickets
 Media Image Import Export Safety
 Persona Import Export Safety
 Import Export Eligibility Matrix
@@ -581,9 +623,9 @@ Schema v1.1 Proposal
 
 If still not implementing:
 
-1. media/persona fixture concrete contents when coding begins.
-2. Import Preview mobile wireframe notes.
-3. API provider-specific detailed reviews one by one when needed.
+1. Import Preview mobile wireframe notes.
+2. API provider-specific detailed reviews one by one when needed.
+3. concrete fixture file contents when coding begins.
 
 If implementing next:
 
@@ -591,18 +633,19 @@ If implementing next:
 2. create first migration slice.
 3. add RLS negative tests.
 4. implement SecurityGate.
-5. implement Universal Paste + Preview-only prototype.
-6. add image/persona policy classification as Preview flags only, not activation/export.
+5. implement ParserRegistry v0.
+6. implement Universal Paste + Preview-only prototype.
+7. add image/persona policy classification as Preview flags only, not activation/export.
 
 ## Last Known Commits From This Session
 
-- `14ad2e6ef6bb0df49b81047b3fe434f3a991db81` docs: add media image import export safety
-- `fc5016edf43653c6f4a2ff8d79d8b8463982a822` docs: add persona import export safety
-- `c1abecd145c27e5851be064ed2e8350744dcf50f` docs: add import export eligibility matrix
-- `b327729ffb2b277263f3ccda4953a1b60cd8ed83` docs: add policy tests for media persona import export
+- `fe3cd1b10194e894437b4cfb442753a86ad71b66` docs: add import medium roadmap
+- `46adba70a2680df6464d68dcc3b276b8564fd1db` docs: add import medium parser contracts
+- `94f695e4fdabfed74e73a3eadb98072cfcff13c7` docs: add import medium fixture backlog
+- `bff6bfd4c2b29b836436ea6b08d099c69ef84c75` docs: add import medium mvp tickets
 
 ## Final Note
 
-ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネット、本人なりすまし防止、Export安全設計、趣味インポート設計、サービス別Import方式表、Import sanitize/private content保護、ユーザー優先SランクImport方針、Sランク各サービスの具体的な取込手順、実装直前のImportアーキテクチャ判断、何十年運用しても破産しにくいDB/重複排除/運用ガードレール、DB edge case hardening、preflight checklist、parser fixture仕様、migration安全checklist、token/OAuth暗号化仕様、RLS negative tests、first migration slice、Import Preview-only prototype plan、API scope review、画像/他人格/Export/Re-import安全設計、P0-055までのpolicy testsを持つ状態になった。
+ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネット、本人なりすまし防止、Export安全設計、趣味インポート設計、サービス別Import方式表、媒体カテゴリ別Import設計、Import sanitize/private content保護、ユーザー優先SランクImport方針、Sランク各サービスの具体的な取込手順、実装直前のImportアーキテクチャ判断、何十年運用しても破産しにくいDB/重複排除/運用ガードレール、DB edge case hardening、preflight checklist、parser fixture仕様、migration安全checklist、token/OAuth暗号化仕様、RLS negative tests、first migration slice、Import Preview-only prototype plan、API scope review、画像/他人格/Export/Re-import安全設計、P0-055までのpolicy testsを持つ状態になった。
 
 実装はまだ始めない。
