@@ -49,12 +49,38 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - 本人なりすまし
 - AI本人代弁
 
+## Final Pre-implementation Hardening Added
+
+今回追加済み:
+
+- `docs/import-parser-fixture-specification.md`
+- `docs/db-migration-safety-checklist.md`
+- `docs/token-encryption-and-oauth-security.md`
+- `docs/policy-test-cases.md` P0-001〜P0-040へ拡張
+
+最重要結論:
+
+- Import parser実装前にsynthetic fixtureを作る。
+- fixtureは実個人データ禁止。
+- expected detection / preview / policy JSONを用意する。
+- malicious HTML / CSV formula / XML entity / archive traversal / tombstone / dedupe fixtures はP0。
+- DB migrationは expand → backfill → switch → contract で行う。
+- migration logにraw/private title/tokenを出さない。
+- dedupe key / tombstone / search / embedding / lifecycle に触るmigrationは高リスク扱い。
+- OAuth/API connectorは、key_reference / oauth_connection / source_account_ref / token encryption / revocation / rotation / audit / Import Preview / Policy Evaluation が揃うまで実装しない。
+- OAuth token plaintext storageは禁止。
+- MVPではwrite scope禁止。read-only minimal scope。
+- Policy testsはP0-040まで増え、Import/DB/dedup/token/restore/export staging事故をカバーする。
+
 ## DB Hardening Verdict
 
-新規追加済み:
+追加済み:
 
 - `docs/db-edge-cases-and-hardening.md`
 - `docs/db-implementation-preflight-checklist.md`
+- `docs/import-parser-fixture-specification.md`
+- `docs/db-migration-safety-checklist.md`
+- `docs/token-encryption-and-oauth-security.md`
 
 現時点の判定:
 
@@ -64,20 +90,20 @@ ready_with_known_risks
 
 「完璧」とは言わない。
 
-大枠は強いが、実装前に以下を必ず確認する:
+ただし、実装前設計としてはかなり強い。
 
-- sensitive dedupe/tombstone keys must use HMAC, not plain SHA.
-- dedupe_key / deletion_tombstone must carry key_algorithm and key_version.
-- source_account_ref is needed for multi-account / shared-profile imports.
-- occurred_at_precision / timezone / timezone_source are needed for ambiguous dates.
-- parser_id / parser_version / adapter_id / adapter_version / source_schema_version are needed for reprocessing and schema drift.
-- key_reference is needed for raw object encryption, OAuth token encryption, dedupe HMAC, tombstone HMAC, export package encryption.
-- RLS is defense-in-depth only; app runtime role must not be table owner.
-- shared profile contamination must be visible in Import Preview.
-- large import blast radius must be limited.
-- restore drill must replay deletion_tombstones and invalidate derived search/embedding.
+実装に入るなら、以下を先に作る:
 
-Blocking before DB implementation:
+```txt
+1. synthetic parser fixtures
+2. expected detection/preview/policy snapshots
+3. first migration slice
+4. RLS negative tests
+5. key_reference + oauth_connection + source_account_ref
+6. Import Preview-only prototype
+```
+
+Blocking before DB/API implementation:
 
 - Import Preview missing.
 - dedupe_key missing.
@@ -87,6 +113,8 @@ Blocking before DB implementation:
 - private/sealed/deleted lifecycle does not affect search/export.
 - embedding all imported rows is planned.
 - RLS/admin role plan missing.
+- OAuth revocation flow missing.
+- fixture/expected output missing for parser being implemented.
 
 Recommended first migration slice:
 
@@ -107,6 +135,7 @@ lifecycle_event
 audit_event
 outbox_event
 key_reference
+oauth_connection
 ```
 
 ## Long-term Database Architecture
@@ -119,6 +148,7 @@ key_reference
 - `docs/db-operational-guardrails.md`
 - `docs/db-edge-cases-and-hardening.md`
 - `docs/db-implementation-preflight-checklist.md`
+- `docs/db-migration-safety-checklist.md`
 
 最重要結論:
 
@@ -130,6 +160,8 @@ key_reference
 - search_document / embedding_record は派生データ。source of truthではない。
 - dedupe_keyで多層重複排除する。
 - deletion_tombstoneで再Import復活を防ぐ。
+- sensitive dedupe/tombstone keysはHMAC + key_version。
+- key_referenceでraw encryption / OAuth token encryption / HMAC / export keyを分ける。
 - Import/merge/delete/export/policy/lifecycleはevent/auditとして残す。ただしrawは残さない。
 - UUIDは基本。PostgreSQL対応環境ではUUIDv7を優先検討。
 - 拡張子やtitle/dateだけで重複判定しない。
@@ -147,42 +179,6 @@ SourceRef
 → Search / Embedding derived projections
 ```
 
-Minimum implementation tables:
-
-```txt
-app_user
-source_ref
-source_account_ref
-import_job
-import_input_file
-import_detection_result
-import_preview
-import_preview_candidate
-raw_object_ref
-source_item
-source_item_key
-dedupe_key
-canonical_item
-canonical_item_external_id
-canonical_item_alias
-user_activity
-user_activity_source_link
-memory_record
-memory_source_link
-evidence_record
-policy_decision
-lifecycle_event
-deletion_tombstone
-search_document
-embedding_record
-audit_event
-outbox_event
-cost_ledger_entry
-key_reference
-entity_match_candidate
-merge_decision
-```
-
 破産防止ガードレール:
 
 - rawは短期/明示保存。
@@ -195,6 +191,7 @@ merge_decision
 - partition tableのunique制約制限を避けるためdedupe_keyを独立させる。
 - backup restore時はdeletion_tombstoneをreplayする。
 - Export stagingはTTL必須。
+- migrationはchunked/resumable/no raw logs。
 
 ## Import Architecture Decision
 
@@ -205,6 +202,7 @@ merge_decision
 - `docs/import-preview-ux-spec.md`
 - `docs/s-rank-import-adapter-specs.md`
 - `docs/import-preimplementation-readiness.md`
+- `docs/import-parser-fixture-specification.md`
 
 最重要結論:
 
@@ -216,6 +214,7 @@ merge_decision
 - Universal Paste Importはfallbackではなくfirst-class Import。
 - Import Previewは必須。Previewなし保存は禁止。
 - Policy Evaluation後にSafe Commitする。
+- Parser実装前にfixtureとexpected snapshotsを作る。
 
 採用構成:
 
@@ -255,6 +254,7 @@ Pipeline:
 
 ### Phase S0: Universal paste/manual import foundation
 
+- synthetic fixtures first
 - ImportJob model
 - ImportIntake type
 - SecurityGate for paste/text/file metadata
@@ -296,6 +296,7 @@ Non-negotiable gates:
 - Do not implement API connectors before Import Preview exists.
 - Do not implement API connectors before Policy Evaluation exists.
 - Do not implement API connectors before token encryption plan exists.
+- Do not implement API connectors before key_reference/oauth_connection/source_account_ref exists.
 - Do not implement LINE bulk import before summary-only default and Evidence Package Blocker.
 - Do not implement Export from imports before Export Safety and Re-authentication.
 
@@ -337,6 +338,33 @@ Sランク対象:
 - login scraping は禁止。
 - LINE raw、X likes/bookmarks、視聴履歴、食べログの同行者/位置情報はprivate/sensitive default。
 
+## Policy Test Cases
+
+`docs/policy-test-cases.md` は P0-001〜P0-040 まで拡張済み。
+
+追加カバー:
+
+- Import Previewなしcommit拒否
+- LINE raw default storage拒否
+- private bookmark title logging拒否
+- active content rendering拒否
+- deletion tombstone re-import default除外
+- sensitive dedupe plain SHA拒否
+- dedupe key version必須
+- low-confidence merge拒否
+- shared profile owner_sensitive default
+- time precision mismatchはcandidate only
+- schema driftはuser review
+- sealed search_document拒否
+- imported source_item embedding default拒否
+- OAuth token plaintext storage拒否
+- broad write scope拒否
+- revoked connection sync拒否
+- cross-user token access拒否
+- migration raw logging拒否
+- restore without tombstone replay拒否
+- export staging without TTL拒否
+
 ## Hobby Import Docs
 
 - `docs/hobby-import-source-research.md`
@@ -349,12 +377,15 @@ Sランク対象:
 - `docs/import-preview-ux-spec.md`
 - `docs/s-rank-import-adapter-specs.md`
 - `docs/import-preimplementation-readiness.md`
+- `docs/import-parser-fixture-specification.md`
 - `docs/db-long-term-architecture.md`
 - `docs/db-table-design-v1.md`
 - `docs/import-deduplication-and-entity-resolution.md`
 - `docs/db-operational-guardrails.md`
 - `docs/db-edge-cases-and-hardening.md`
 - `docs/db-implementation-preflight-checklist.md`
+- `docs/db-migration-safety-checklist.md`
+- `docs/token-encryption-and-oauth-security.md`
 
 ## Import Security
 
@@ -373,7 +404,7 @@ Sランク対象:
 
 ## Current State
 
-Design readiness is extremely high, but not called perfect.
+Design readiness is extremely high, but still not called perfect.
 
 The project now has:
 
@@ -393,12 +424,16 @@ Universal Paste Import Spec
 Import Preview UX Spec
 S Rank Import Adapter Specs
 Import Pre-implementation Readiness
+Import Parser Fixture Specification
 DB Long-term Architecture
 DB Table Design v1
 Import Deduplication and Entity Resolution
 DB Operational Guardrails
 DB Edge Cases and Hardening
 DB Implementation Preflight Checklist
+DB Migration Safety Checklist
+Token Encryption and OAuth Security
+Policy Test Cases P0-001 to P0-040
 Cost Engine
 Search Ranking
 Deletion Backup
@@ -441,7 +476,6 @@ AI Safety Net Map
 Safety Feature Candidates
 Identity and Impersonation Safety
 MVP Engineering Tasks
-Policy P0 Tests
 Schema v1.1 Proposal
 ```
 
@@ -449,19 +483,21 @@ Schema v1.1 Proposal
 
 If still not implementing, useful remaining docs:
 
-1. create parser fixture specification.
-2. expand `docs/policy-test-cases.md` with DB/dedup/import P0 cases.
-3. create DB migration safety checklist.
-4. create token encryption / OAuth connector security spec before API implementation.
-5. create concrete DB schema migration files only when implementation starts.
+1. create concrete migration file plan only when implementation starts.
+2. create fixture files when coding starts.
+3. create RLS policy spec and negative test spec if DB implementation is next.
+4. create Import Preview mobile wireframe notes if UI implementation is next.
+5. create API provider-specific OAuth scope review docs before each API connector.
 
 ## Last Known Commits From This Session
 
-- `f26e996ef6d5b81dd2ff8b2b0fa00aae4afe4e2e` docs: add database edge cases and hardening
-- `9cff6815403d600256770265ed6297b2ebfbd8f8` docs: add database implementation preflight checklist
+- `b46c68a386cc67975184ca11420a3af4a143d6c1` docs: add import parser fixture specification
+- `ad93ea25babd5fcf8dbcc686034d4ba4d4fbebfa` docs: add database migration safety checklist
+- `40da4ef9be5ac3ba9c7123217f532acc964c7eac` docs: add token encryption and oauth security spec
+- `0e9485fab873ef5c432bac4a6c62e27a06357e6e` docs: expand policy tests for import db dedup and tokens
 
 ## Final Note
 
-ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネット、本人なりすまし防止、Export安全設計、趣味インポート設計、サービス別Import方式表、Import sanitize/private content保護、ユーザー優先SランクImport方針、Sランク各サービスの具体的な取込手順、実装直前のImportアーキテクチャ判断、何十年運用しても破産しにくいDB/重複排除/運用ガードレール、さらにDB edge case hardeningとpreflight checklistを持つ状態になった。
+ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネット、本人なりすまし防止、Export安全設計、趣味インポート設計、サービス別Import方式表、Import sanitize/private content保護、ユーザー優先SランクImport方針、Sランク各サービスの具体的な取込手順、実装直前のImportアーキテクチャ判断、何十年運用しても破産しにくいDB/重複排除/運用ガードレール、DB edge case hardening、preflight checklist、parser fixture仕様、migration安全checklist、token/OAuth暗号化仕様、P0-040までのpolicy testsを持つ状態になった。
 
 実装はまだ始めない。
