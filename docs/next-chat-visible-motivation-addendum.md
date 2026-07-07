@@ -13,6 +13,8 @@
 - `docs/founder-visible-motivation-loop.md`
 - `docs/import-to-visible-reward-loop.md`
 - `docs/fun-and-excitement-idea-bank.md`
+- `docs/collection-drive-and-segmented-motivation.md`
+- `docs/import-ritual-reward-calendar.md`
 - `docs/visible-excitement-and-ritual-design.md`
 - `docs/memory-shelf-visualization-spec.md`
 - `docs/weekly-ritual-and-daily-micro-action-spec.md`
@@ -58,6 +60,47 @@ fixtureを作る
 → 作った意味が画面で見える
 ```
 
+## Collection Drive
+
+老若男女で入口は変えてよい。
+
+共通する芯:
+
+```txt
+集めたい
+埋めたい
+整えたい
+見返したい
+増えたことを感じたい
+なくしたくない
+```
+
+Core collection drives:
+
+```txt
+completion
+curation
+progress
+nostalgia
+identity_display
+future_preparation
+family_legacy
+travel_map
+taste_archive
+life_admin
+```
+
+Segment examples:
+
+```txt
+Hobby-heavy → Manga/Anime Progress, Music Shelf, Year Capsule
+Busy Working Adult → Food Map, Podcast/Radio, Weekly One Action, Export readiness
+Couple/Family → Travel Box, Food Map, Photo Box, Life Event Pack
+Parent/Household → Family Event Box, Photo metadata, restricted minor safety
+Older Adult/Senior → Photo/Travel Box, large simple weekly card, backup/export reassurance
+AI-heavy/Engineer → Context Pack, versioned Export, source provenance
+```
+
 ## Implementation Rule
 
 すべてのMVP ticketは、以下に答える。
@@ -68,6 +111,8 @@ fixtureを作る
 3. ユーザーがImportしたくなる理由は何か？
 4. 週1で戻る理由は増えるか？
 5. 毎日でも触れるmicro actionは増えるか？
+6. どのcollection driveを満たすか？
+7. どのsegmentに刺さる入口か？
 ```
 
 答えられないticketは、必要でもinvisible foundationとして短く切り、visible reward ticketとpairにする。
@@ -163,6 +208,46 @@ No guilt.
 
 No AI loneliness.
 
+## Ritual Reward Calendar
+
+戻る理由は通知ではなく、自分の棚・地図・箱・年表が少し見えること。
+
+Weekly rewards:
+
+```txt
+Weekly Box Summary
+Last Year This Week
+One Empty Slot Suggestion
+One Duplicate Cleanup
+One Shelf Unlock
+```
+
+Monthly rewards:
+
+```txt
+Month Capsule Preview
+Shelf Growth Snapshot
+Import Gap Hint
+Export Readiness Check
+```
+
+Seasonal/event rewards:
+
+```txt
+Seasonal Box
+Travel Pack
+Year Capsule
+Life Event Pack
+```
+
+Reward safety:
+
+```txt
+counts / source links / shelf created / timeline unlocked / map added / progress updated / export readiness はOK
+
+guilt / streak pressure / AI loneliness / private relationship analysis / personality diagnosis / life score / sensitive surprise reveal はNG
+```
+
 ## Import to Visible Reward Loop
 
 Every medium should follow:
@@ -236,4 +321,4 @@ This is founder motivation infrastructure.
 
 良い依存性を、作成者本人にも今日見える報酬へ変換する。
 
-それが棚・地図・箱・年表・週の箱・daily micro actionである。
+それが棚・地図・箱・年表・週の箱・daily micro action・collection drive・ritual reward calendarである。
