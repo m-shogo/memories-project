@@ -53,6 +53,7 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 
 - `docs/hobby-import-source-research.md`
 - `docs/hobby-import-service-method-matrix.md`
+- `docs/import-sanitization-and-private-content.md`
 
 ### Hobby Import Source Research
 
@@ -88,6 +89,24 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - Catalog metadata と Personal activity を分ける。
 - 「今見ている / 今読んでいる / 途中 / 積み」を独立状態にする。
 - 趣味から人格・人生価値・本質を断定しない。
+
+### Import Sanitization and Private Content
+
+`docs/import-sanitization-and-private-content.md` は、Import入力のセキュリティとprivate/sensitive bookmark保護を扱う。
+
+最重要ルール:
+
+- すべてのImport入力を敵対的入力として扱う。
+- imported HTML / SVG / CSV / JSON / XML / OPML / Markdown / PDF / EPUB / email body のactive contentを実行しない。
+- raw HTMLをImport PreviewでDOM描画しない。parseしてescape済みテキストだけ表示する。
+- unsafe URL schemeを拒否/無害化する。
+- CSV formula-like contentをre-export時に無害化する。
+- XML external entity resolutionを無効化する。
+- archiveはmanifest inspection、size limit、file count limit、path traversal rejectを行う。
+- highly private bookmarks は owner_sensitive default。
+- private bookmarks は proactive tips / LLM / Export から既定で除外。
+- private titles はbulk import summaryやlogsに出さない。
+- folder-level ruleで import_as_sensitive / redact_titles / metadata_only / skip_folder を選べるようにする。
 
 MVP寄り:
 
@@ -126,6 +145,9 @@ manual / file-first:
 - streaming service scraping
 - raw recipe/content copying
 - 趣味データを使った人格診断
+- imported active content execution
+- raw HTML preview rendering
+- private title logging
 
 ## AI Safety Net Docs
 
@@ -294,6 +316,7 @@ Never use product copy that implies:
 - full Export is a normal one-click convenience feature
 - hobby data reveals personality essence
 - watch/listen/read history should be ranked as life value
+- private bookmarks are shameful
 
 Forbidden examples:
 
@@ -314,6 +337,8 @@ Forbidden examples:
 - ワンクリックで全データをExportできます
 - あなたの本当の趣味を分析します
 - この作品群からあなたの本質が分かります
+- 恥ずかしいお気に入りが見つかりました
+- あなたの私的な趣味を分析します
 
 Preferred examples:
 
@@ -333,6 +358,8 @@ Preferred examples:
 - この時期によく記録されていた作品です。
 - このサービスは公式Exportファイルから取り込めます。
 - このサービスは公開APIが確認できないため、手入力またはファイル取込のみ対応します。
+- 一部の記録はプライベート性が高い可能性があります。
+- これらは既定ではAI分析・Tip・Exportから除外されます。
 
 ## Current State
 
@@ -348,6 +375,7 @@ Export Specification
 Export Safety and Re-authentication
 Hobby Import Source Research
 Hobby Import Service Method Matrix
+Import Sanitization and Private Content
 Cost Engine
 Search Ranking
 Deletion Backup
@@ -407,15 +435,15 @@ If still not implementing, useful remaining docs:
    - keyword search before vector
    - PolicyEvaluator as pure domain service
    - no LLM in capture path
-5. expand `docs/policy-test-cases.md` with AI safety net, impersonation, Export, and hobby import P0 cases.
+5. expand `docs/policy-test-cases.md` with AI safety net, impersonation, Export, hobby import, and import sanitization P0 cases.
 6. create concrete source adapter specs for Tier 1 hobby imports.
 
 ## Last Known Commits From This Session
 
-- `3e42fbfaf2ea2b876d20eadffd322b31d6bccf6b` docs: add hobby import service method matrix
+- `79094ec8d3d348b5f1f730d7197dda77d2d4bc2f` docs: add import sanitization and private content handling
 
 ## Final Note
 
-ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネット、具体的な安全機能候補、本人なりすまし防止、Export安全設計、趣味インポート設計、サービス別Import方式表を持つ状態になった。
+ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネット、具体的な安全機能候補、本人なりすまし防止、Export安全設計、趣味インポート設計、サービス別Import方式表、Import sanitize/private content保護を持つ状態になった。
 
 実装はまだ始めない。
