@@ -14,7 +14,7 @@
 
 現在のフェーズは、Memory OS の設計を100点に近づけるための最終設計・学習・仕様固定フェーズである。
 
-ただし、実装開始直前の順番・gate・fixture・migration・RLS・OAuth security・media/persona safety・Go/No-Go・媒体別Import roadmap は固定済み。
+ただし、実装開始直前の順番・gate・fixture・migration・RLS・OAuth security・media/persona safety・Go/No-Go・媒体別Import roadmap・Detector confidence・Service Adapter Registry・Import Preview mobile wireframe は固定済み。
 
 ## Product Goal
 
@@ -70,6 +70,7 @@ Go:
 - Import Preview-only prototype planning
 - Universal Paste / Source Adapter / Parser Registry planning
 - Import medium roadmap / parser contracts / fixture backlog / MVP tickets
+- Detector confidence / Service Adapter Registry / mobile Preview UI planning
 - Token encryption / OAuth security planning
 - Media/persona Import/Export safety planning
 - Policy P0-001〜P0-055
@@ -87,6 +88,61 @@ No-Go:
 - vector DB / Graph DB as source of truth
 - one-table JSON memories design
 
+## Newly Added Import Medium Execution Specs
+
+追加済み:
+
+- `docs/import-detector-confidence-ranking.md`
+- `docs/import-preview-mobile-wireframes.md`
+- `docs/import-service-adapter-registry.md`
+
+最重要結論:
+
+- Detectorは便利な自動判定ではなく、安全な誤判定防止機構。
+- 拡張子/MIMEだけでは判定しない。
+- high confidenceは厳しく、medium/lowはPreviewとuser correctionに逃がす。
+- Service Adapter Registryで、サービス名からmedium、parser、method、privacy default、No-Goを辿れるようにする。
+- Import Preview mobile UIはtableではなく、summary + card list。
+- sensitive候補はcollapsed default。
+- no shame copy。
+- cancel path always available。
+
+Detector signal trust order:
+
+```txt
+1. user_selected_source + compatible content
+2. export manifest with known schema
+3. archive manifest with known structure
+4. stable CSV headers / JSON shape
+5. URL host
+6. known HTML/XML structure
+7. line/date/progress pattern
+8. extension / MIME only
+```
+
+Service registry rule:
+
+```txt
+New service must map to primaryMedium.
+New service must have at least one non-scraping method.
+No service may bypass Import Preview.
+No service may set AI analysis on by default.
+Sensitive services default Export excluded.
+Every service must list noGo strings.
+```
+
+Preview mobile flow:
+
+```txt
+Paste / Upload / Select Source
+→ Detection Review
+→ Preview Summary
+→ Candidate Cards
+→ Bulk Controls
+→ Confirm Scope
+→ Save or Preview-only End
+```
+
 ## Import Medium Roadmap
 
 追加済み:
@@ -95,6 +151,9 @@ No-Go:
 - `docs/import-medium-parser-contracts.md`
 - `docs/import-medium-fixture-backlog.md`
 - `docs/import-medium-mvp-tickets.md`
+- `docs/import-detector-confidence-ranking.md`
+- `docs/import-preview-mobile-wireframes.md`
+- `docs/import-service-adapter-registry.md`
 
 最重要結論:
 
@@ -160,6 +219,38 @@ First fixture order:
 10. persona/character-card.json
 ```
 
+## Service Adapter Registry Highlights
+
+Primary S-rank mapping:
+
+```txt
+Apple Music → music_listening_activity → AppleMusicHybridAdapter → paste/export first
+Spotify → music_listening_activity → SpotifyAdapter → API after token gates
+Last.fm → music_listening_activity → LastFmAdapter → API key public
+Netflix → streaming_watch_activity → NetflixViewingActivityAdapter → CSV first
+Prime Video → streaming_watch_activity → PrimeVideoManualAdapter → paste/email/manual
+Disney+ → streaming_watch_activity → DisneyPlusManualAdapter → paste/manual
+U-NEXT → streaming_watch_activity/anime_manga_progress → UNextManualAdapter
+LINE → message_conversation_context → LineTextExportAdapter → selected paste/text first
+X/Twitter → social_post_activity → XArchiveAdapter → archive/url/paste first
+食べログ → restaurant_food_activity → TabelogAdapter → URL/list/email first
+GERA → audio_episode_activity → GeraEpisodeAdapter → paste/url first
+Podcast → audio_episode_activity → PodcastAdapter → OPML/RSS/url first
+Filmarks → movie_activity → FilmarksAdapter → paste/url first
+Manga manual → anime_manga_progress → MangaManualAdapter → manual/paste/email
+Anime manual → anime_manga_progress → AnimeManualAdapter → manual/paste
+Movie manual → movie_activity → MovieManualAdapter → manual/url/email
+Radio manual → audio_episode_activity → RadioManualAdapter → manual/url
+```
+
+A-rank mapping:
+
+```txt
+Browser Bookmarks → web_bookmark → BrowserBookmarkAdapter
+YouTube Takeout → streaming_watch_activity/export_archive_context → YouTubeTakeoutAdapter
+Steam → game_activity → SteamAdapter
+```
+
 ## Media / Image / Persona Import Export Safety
 
 追加済み:
@@ -193,16 +284,17 @@ First fixture order:
 4. RLS policies + negative tests
 5. SecurityGate
 6. ParserRegistry v0
-7. Universal Paste Parser
-8. Import Preview-only prototype
-9. Dedupe/Tombstone checks in Preview
-10. Safe Commit for low-risk manual/paste only
-11. Browser Bookmark parser
-12. Netflix CSV parser
-13. LINE text parser summary-only
-14. Image/media preview safety only after SecurityGate
-15. Persona-like import classification only, no activation
-16. API connectors only after token/OAuth gates
+7. Detector confidence implementation
+8. Universal Paste Parser
+9. Import Preview-only prototype
+10. Dedupe/Tombstone checks in Preview
+11. Safe Commit for low-risk manual/paste only
+12. Browser Bookmark parser
+13. Netflix CSV parser
+14. LINE text parser summary-only
+15. Image/media preview safety only after SecurityGate
+16. Persona-like import classification only, no activation
+17. API connectors only after token/OAuth gates
 ```
 
 ## First Migration Slice
@@ -433,6 +525,9 @@ SourceRef
 - `docs/import-medium-parser-contracts.md`
 - `docs/import-medium-fixture-backlog.md`
 - `docs/import-medium-mvp-tickets.md`
+- `docs/import-detector-confidence-ranking.md`
+- `docs/import-preview-mobile-wireframes.md`
+- `docs/import-service-adapter-registry.md`
 
 最重要結論:
 
@@ -474,6 +569,7 @@ Pipeline:
 - `docs/s-rank-import-user-guides.md`
 - `docs/s-rank-import-adapter-specs.md`
 - `docs/api-provider-oauth-scope-review.md`
+- `docs/import-service-adapter-registry.md`
 
 Sランク対象:
 
@@ -558,6 +654,9 @@ Import Medium Roadmap
 Import Medium Parser Contracts
 Import Medium Fixture Backlog
 Import Medium MVP Tickets
+Import Detector Confidence Ranking
+Import Preview Mobile Wireframes
+Import Service Adapter Registry
 Media Image Import Export Safety
 Persona Import Export Safety
 Import Export Eligibility Matrix
@@ -623,9 +722,9 @@ Schema v1.1 Proposal
 
 If still not implementing:
 
-1. Import Preview mobile wireframe notes.
-2. API provider-specific detailed reviews one by one when needed.
-3. concrete fixture file contents when coding begins.
+1. concrete fixture file contents when coding begins.
+2. provider-specific detailed reviews one by one when needed.
+3. Import Preview component spec for desktop/tablet if needed.
 
 If implementing next:
 
@@ -634,18 +733,18 @@ If implementing next:
 3. add RLS negative tests.
 4. implement SecurityGate.
 5. implement ParserRegistry v0.
-6. implement Universal Paste + Preview-only prototype.
-7. add image/persona policy classification as Preview flags only, not activation/export.
+6. implement Detector confidence v0.
+7. implement Universal Paste + Preview-only prototype.
+8. add image/persona policy classification as Preview flags only, not activation/export.
 
 ## Last Known Commits From This Session
 
-- `fe3cd1b10194e894437b4cfb442753a86ad71b66` docs: add import medium roadmap
-- `46adba70a2680df6464d68dcc3b276b8564fd1db` docs: add import medium parser contracts
-- `94f695e4fdabfed74e73a3eadb98072cfcff13c7` docs: add import medium fixture backlog
-- `bff6bfd4c2b29b836436ea6b08d099c69ef84c75` docs: add import medium mvp tickets
+- `dd176b93d09c1a64ed68b1ca6e72c92e1aae5da4` docs: add import detector confidence ranking
+- `098208fa52831038955c38ef6f3c318a4b22eb28` docs: add import preview mobile wireframes
+- `7703321c27ffca360adbde2a852f85533ff8084b` docs: add import service adapter registry
 
 ## Final Note
 
-ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネット、本人なりすまし防止、Export安全設計、趣味インポート設計、サービス別Import方式表、媒体カテゴリ別Import設計、Import sanitize/private content保護、ユーザー優先SランクImport方針、Sランク各サービスの具体的な取込手順、実装直前のImportアーキテクチャ判断、何十年運用しても破産しにくいDB/重複排除/運用ガードレール、DB edge case hardening、preflight checklist、parser fixture仕様、migration安全checklist、token/OAuth暗号化仕様、RLS negative tests、first migration slice、Import Preview-only prototype plan、API scope review、画像/他人格/Export/Re-import安全設計、P0-055までのpolicy testsを持つ状態になった。
+ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネット、本人なりすまし防止、Export安全設計、趣味インポート設計、サービス別Import方式表、媒体カテゴリ別Import設計、Detector confidence、Service Adapter Registry、Import Preview mobile UI、Import sanitize/private content保護、ユーザー優先SランクImport方針、Sランク各サービスの具体的な取込手順、実装直前のImportアーキテクチャ判断、何十年運用しても破産しにくいDB/重複排除/運用ガードレール、DB edge case hardening、preflight checklist、parser fixture仕様、migration安全checklist、token/OAuth暗号化仕様、RLS negative tests、first migration slice、Import Preview-only prototype plan、API scope review、画像/他人格/Export/Re-import安全設計、P0-055までのpolicy testsを持つ状態になった。
 
 実装はまだ始めない。
