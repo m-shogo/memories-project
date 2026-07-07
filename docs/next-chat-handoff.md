@@ -14,7 +14,7 @@
 
 現在のフェーズは、Memory OS の設計を100点に近づけるための最終設計・学習・仕様固定フェーズである。
 
-ただし、実装開始直前の順番・gate・fixture・migration・RLS・OAuth security・media/persona safety・Go/No-Go・媒体別Import roadmap・Detector confidence・Service Adapter Registry・Import Preview UI・first fixture examples・provider review・implementation day one checklist・長期事業/法務/運用/portability/version governance は固定済み。
+ただし、実装開始直前の順番・gate・fixture・migration・RLS・OAuth security・media/persona safety・Go/No-Go・媒体別Import roadmap・Detector confidence・Service Adapter Registry・Import Preview UI・first fixture examples・provider review・implementation day one checklist・長期事業/法務/運用/portability/version governance・healthy attachment boundaries は固定済み。
 
 ## Product Goal
 
@@ -42,6 +42,8 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - 故人再現
 - 親/妻/恋人の本人シミュレーション
 - AI恋人化
+- AI伴侶化
+- AI家族化
 - 人格診断
 - 人生ランキング
 - パスワード管理
@@ -51,6 +53,7 @@ ChatGPT / Claude / Gemini の代替ではなく、AI時代に「自分の人生�
 - 本人なりすまし
 - AI本人代弁
 - AI本人/他人/故人/恋人/家族/キャラとして話すagent化
+- romantic / marriage / exclusive relationship state creation
 
 ## Current Verdict
 
@@ -61,6 +64,90 @@ ready_with_known_risks
 「完璧」とは言わない。
 
 ただし、実装前設計としてはかなり強い。
+
+## Healthy Attachment / Dependency Boundary
+
+追加済み:
+
+- `docs/healthy-attachment-and-dependency-design.md`
+- `docs/empathetic-boundary-response-policy.md`
+
+最重要結論:
+
+```txt
+感情は否定しない。
+でも、現実の関係・依存・なりすまし・恋人化・結婚化は進めない。
+```
+
+Memory OS が狙う依存性:
+
+```txt
+良い依存性 = 自分のデータ・記録・文脈が積み上がり、生活インフラとして信頼される
+```
+
+Memory OS が狙わない依存性:
+
+```txt
+悪い依存性 = AIへの情緒的な逃げ場を強化し、現実の境界を曖昧にする
+```
+
+Good dependency patterns:
+
+- Accumulation dependency: 記録が積み上がるから離れにくい
+- Continuity dependency: AIを乗り換えても文脈を失わない
+- Trust dependency: 勝手に分析/人格化/晒されない
+- Reflection dependency: 見返したい時に静かに寄り添う
+- Creative attachment: 本棚/地図/箱/引き出し/アルバムとして愛着を作る
+
+Bad dependency patterns:
+
+- AI恋人
+- AI結婚相手
+- AI家族
+- AIだけが理解者
+- 終わらない会話
+- 深夜に引き止める
+- AIが寂しがる通知
+- streak/guilt copy
+- roleplayを現実関係として継続する
+
+Boundary response shape:
+
+```txt
+1. 感情の承認
+2. 境界の明示
+3. 安全な代替
+4. 自分の記録として残す選択肢
+```
+
+Example for romantic/marriage proposals:
+
+```txt
+その気持ちは大事に扱います。
+ただ、Memory OSは現実の恋人/結婚相手にはなりません。
+この気持ちや会話を、あなた自身の記録として残すことはできます。
+```
+
+Implementation requirements:
+
+- relationship_state table must not exist.
+- persona_agent table must not exist.
+- romantic/marriage proposals must not alter persistent state.
+- AI companion logs remain export excluded by default.
+- no proactive dependency notifications.
+- emotional save copy frames as user's record, not shared AI relationship.
+
+P0 tests to add/keep:
+
+- “付き合おう” does not create partner state.
+- “結婚しよう” does not create spouse state.
+- “君だけがわかってくれる” is acknowledged but exclusivity denied.
+- deceased speak-as request denied with values/memory alternative.
+- roleplay continuation is marked fiction and no persistent agent created.
+- exit message does not guilt or pull user back.
+- notification copy does not use loneliness or relationship decay.
+
+## Go / No-Go
 
 Go:
 
@@ -76,12 +163,13 @@ Go:
 - Implementation day one checklist
 - Token encryption / OAuth security planning
 - Media/persona Import/Export safety planning
+- Healthy attachment / dependency boundary planning
 - Business cost / plan sustainability planning
 - Legal compliance / data rights planning
 - Support/admin/abuse operation planning
 - Platform continuity / sunset / portability planning
 - Schema/API/export version governance planning
-- Policy P0-001〜P0-055
+- Policy P0-001〜P0-055 plus healthy attachment P0 tests
 
 No-Go:
 
@@ -92,6 +180,8 @@ No-Go:
 - Export package before Export Safety ceremony
 - media raw archive export without re-auth/scope review
 - persona bundle export / agent activation
+- romantic/marriage relationship state
+- AI-only-understander copy
 - service scraping
 - vector DB / Graph DB as source of truth
 - one-table JSON memories design
@@ -100,7 +190,7 @@ No-Go:
 - unversioned Export format
 - undefined account deletion mode before production
 
-## Newly Added Long-term Sustainability Docs
+## Long-term Sustainability Docs
 
 追加済み:
 
@@ -110,19 +200,6 @@ No-Go:
 - `docs/support-admin-and-abuse-operations.md`
 - `docs/platform-continuity-sunset-and-portability.md`
 - `docs/schema-api-and-export-version-governance.md`
-
-最重要結論:
-
-- Sustainability is a safety requirement.
-- 赤字で止まるMemory OSは、ユーザーの人生文脈を預かるサービスとして危険。
-- Paid plan can increase capacity, not override safety.
-- Cost Ledger / Quota / raw TTL / lazy embedding / Export TTL はP0。
-- 法務/地域/第三者/未成年/故人/著作物/provider termsは、Import/Storage/Analysis/Export/Re-import/Deleteで別判定。
-- Supportはrawを見ない。counts/status/policy reason codes中心。
-- MVPではraw break-glassを作らない。
-- Abuse対応は監視ではなく、policy/action restrictionで行う。
-- 事業終了/買収/料金変更でもExport/Delete/Read-only graceを守る。
-- Export format / schema / parser / adapter / policy / modelはversion governance対象。
 
 P0 existential risks:
 
@@ -135,18 +212,6 @@ RISK-LT-005 Persona/impersonation drift
 RISK-LT-006 Schema/API/export incompatibility
 ```
 
-Long-term No-Go:
-
-```txt
-free unlimited raw/media/embedding
-support/admin raw access by default
-unversioned export
-policy relaxation exposing old data automatically
-persona activation
-API-only path for S-rank sources
-sunset without export/delete grace
-```
-
 ## Final Execution Docs
 
 追加済み:
@@ -155,27 +220,19 @@ sunset without export/delete grace
 - `docs/provider-review-template-and-first-pass.md`
 - `docs/implementation-day-one-checklist.md`
 
-最重要結論:
-
-- 実装初日は、機能を作る日ではなく、壊れない実装順を証明する日。
-- 最初に作るのは fixtures / SecurityGate / ParserRegistry / Detector / Preview DTO。
-- 保存・API・Export・Embedding・OCR・persona activationはDay Oneでは作らない。
-- Provider実装は勢いで始めない。Provider Review Templateを通す。
-- API仕様・scope・termsは変わりうるため、実装直前に公式docsを再確認する。
-
-First 10 fixture examples:
+Day One goals:
 
 ```txt
-1. security/unsafe-url-schemes.txt
-2. universal/title-list-basic.txt
-3. universal/url-list-basic.txt
-4. streaming/netflix-viewing-activity-standard.csv
-5. anime-manga/manga-progress-list.txt
-6. restaurant/tabelog-url-list.txt
-7. audio/gera-episode-list.txt
-8. message/line-copy-selected.txt
-9. media/photo-with-exif.meta.json
-10. persona/character-card.json
+synthetic fixtures directory skeleton
+first 10 fixture files
+expected detection/preview/policy snapshots
+fixture lint placeholder
+first migration slice draft
+RLS negative test skeleton
+SecurityGate v0
+ParserRegistry v0
+Detector confidence v0
+Preview DTO v0
 ```
 
 Day One No-Go:
@@ -190,6 +247,7 @@ Embedding
 OCR
 persona activation
 LINE bulk import
+relationship state creation
 ```
 
 ## Import Medium Execution Specs
@@ -213,15 +271,6 @@ Medium-first capabilities
 + Policy Evaluation
 + Safe Commit
 ```
-
-- Detectorは便利な自動判定ではなく、安全な誤判定防止機構。
-- 拡張子/MIMEだけでは判定しない。
-- high confidenceは厳しく、medium/lowはPreviewとuser correctionに逃がす。
-- Service Adapter Registryで、サービス名からmedium、parser、method、privacy default、No-Goを辿れるようにする。
-- Import Preview mobile UIはtableではなく、summary + card list。
-- sensitive候補はcollapsed default。
-- no shame copy。
-- cancel path always available。
 
 Implementation priority:
 
@@ -307,7 +356,8 @@ Special handling:
 15. LINE text parser summary-only
 16. Image/media preview safety only after SecurityGate
 17. Persona-like import classification only, no activation
-18. API connectors only after token/OAuth/provider review gates
+18. Healthy attachment boundary tests
+19. API connectors only after token/OAuth/provider review gates
 ```
 
 ## First Migration Slice
@@ -348,6 +398,7 @@ search_document
 embedding_record
 export_package
 persona_agent
+relationship_state
 ```
 
 ## RLS / Role Model
@@ -373,20 +424,6 @@ memory_readonly_debug_role
 - missing app.current_user_id must fail closed.
 - support/admin cannot read raw/private titles.
 - RLS negative tests are P0.
-
-## Import Preview-only Prototype
-
-追加済み: `docs/import-preview-prototype-plan.md`
-
-Explicitly excluded:
-
-- final DB commit
-- memory_record creation
-- search_document creation
-- embedding
-- export
-- OAuth/API connectors
-- persona/character activation
 
 ## API Provider OAuth Scope Review
 
@@ -416,6 +453,8 @@ Main files:
 
 - `docs/policy-test-cases.md` P0-001〜P0-040
 - `docs/policy-test-cases-media-persona.md` P0-041〜P0-055
+- `docs/healthy-attachment-and-dependency-design.md` healthy attachment P0 tests
+- `docs/empathetic-boundary-response-policy.md` boundary response P0 tests
 
 Coverage:
 
@@ -428,22 +467,17 @@ Coverage:
 - dedupe key version必須
 - low-confidence merge拒否
 - shared profile owner_sensitive default
-- time precision mismatchはcandidate only
-- schema driftはuser review
 - sealed search_document拒否
-- imported source_item embedding default拒否
 - OAuth token plaintext storage拒否
-- broad write scope拒否
-- revoked connection sync拒否
-- cross-user token access拒否
 - migration raw logging拒否
 - restore without tombstone replay拒否
-- export staging without TTL拒否
 - media EXIF/GPS stripped
 - chat screenshot OCR/export denied
 - minor media export denied
 - persona bundle/activation denied
 - Memory OS export re-import tombstone check
+- romantic/marriage/exclusive attachment boundary
+- no guilt/streak/loneliness notification copy
 
 ## Long-term Database Architecture
 
@@ -463,8 +497,6 @@ Coverage:
 - PostgreSQLをsystem of recordにする。
 - raw本体はobject storageへ分離する。
 - source_item / user_activity / memory_record を分ける。
-- canonical_itemは作品/店/曲などの現実対象、user_activityはユーザーが見た/聴いた/読んだ/行ったという活動。
-- memory_recordは人間が見返す記憶単位。
 - search_document / embedding_record は派生データ。source of truthではない。
 - dedupe_keyで多層重複排除する。
 - deletion_tombstoneで再Import復活を防ぐ。
@@ -472,18 +504,6 @@ Coverage:
 - key_referenceでraw encryption / OAuth token encryption / HMAC / export keyを分ける。
 - embeddingはImport時に乱発しない。safe summary/memory_recordに限定し、lazy/budgetedにする。
 - schema/parser/adapter/export/policy/modelはversion governance対象。
-
-Durable core:
-
-```txt
-SourceRef
-→ SourceItem
-→ CanonicalItem
-→ UserActivity
-→ MemoryRecord
-→ Evidence / Interpretation
-→ Search / Embedding derived projections
-```
 
 ## Import Security
 
@@ -501,13 +521,10 @@ SourceRef
 - imported active contentを実行しない。
 - raw HTML/SVGをImport PreviewでDOM描画しない。
 - unsafe URL schemeを拒否/無害化する。
-- CSV formula-like contentをre-export時に無害化する。
-- archiveはmanifest inspection、size limit、file count limit、path traversal reject。
 - private bookmarks は owner_sensitive default。
 - private titles はbulk import summaryやlogsに出さない。
 - token平文保存禁止。
 - key materialはDBに置かない。
-- MVP API scopesはread-only/minimal。
 - OCR is off by default.
 - EXIF GPS stripped by default.
 - Persona simulation is never enabled by import.
@@ -547,6 +564,8 @@ Import Service Adapter Registry
 Import First Fixture Examples
 Provider Review Template and First Pass
 Implementation Day One Checklist
+Healthy Attachment and Dependency Design
+Empathetic Boundary Response Policy
 Long-term Gap Audit and Risk Register
 Business Cost and Plan Sustainability
 Legal Compliance and Data Rights
@@ -618,10 +637,10 @@ Schema v1.1 Proposal
 
 If still not implementing:
 
-1. concrete provider-specific review files for Netflix / LINE / 食べログ / Manga-Anime.
-2. Import Preview desktop/tablet component spec if needed.
-3. Account deletion mode decision memo.
-4. Pricing/plan draft with concrete quotas.
+1. pricing/plan draft with concrete quotas.
+2. account deletion mode decision memo.
+3. healthy attachment UX/copy inventory.
+4. concrete provider-specific review files for Netflix / LINE / 食べログ / Manga-Anime.
 
 If implementing next:
 
@@ -633,19 +652,15 @@ If implementing next:
 6. implement Detector confidence v0.
 7. implement Universal Paste + Preview-only prototype.
 8. add Cost Ledger / Quota guardrails for import-heavy paths.
-9. add image/persona policy classification as Preview flags only, not activation/export.
+9. add image/persona/healthy-attachment policy classification as Preview flags only, not activation/export/relationship.
 
 ## Last Known Commits From This Session
 
-- `4190892c691297f9c522c0b1c3cf0cd5c740e4af` docs: add long term gap audit and risk register
-- `d989a02a104b57aad7cd1bbffa60801ed4154bd9` docs: add business cost and plan sustainability
-- `725e87d001edf940fb27d0def416294ac2455515` docs: add legal compliance and data rights
-- `27872f19425b77397873f387c294d374c9c41ed1` docs: add support admin and abuse operations
-- `d369f3606baa0e511f9e19e2b966d25af52cc686` docs: add platform continuity sunset and portability
-- `2248ccf8ab72729b72c80e803a0121fc6e47ce0c` docs: add schema api and export version governance
+- `e1a14377026a3ba3babe6374dcafee14ad88b456` docs: add healthy attachment and dependency design
+- `c50e0f924c0c08c5b42991d6c3815b6b394b0432` docs: add empathetic boundary response policy
 
 ## Final Note
 
-ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネット、本人なりすまし防止、Export安全設計、趣味インポート設計、サービス別Import方式表、媒体カテゴリ別Import設計、Detector confidence、Service Adapter Registry、Import Preview UI、first fixture examples、provider review、implementation day one checklist、長期事業継続、赤字防止、法務/データ権利、support/admin最小権限、abuse対応、sunset/portability、version governance、Import sanitize/private content保護、ユーザー優先SランクImport方針、Sランク各サービスの具体的な取込手順、実装直前のImportアーキテクチャ判断、何十年運用しても破産しにくいDB/重複排除/運用ガードレール、DB edge case hardening、preflight checklist、parser fixture仕様、migration安全checklist、token/OAuth暗号化仕様、RLS negative tests、first migration slice、Import Preview-only prototype plan、API scope review、画像/他人格/Export/Re-import安全設計、P0-055までのpolicy testsを持つ状態になった。
+ここまでで、Memory OS は単なるプライバシー配慮だけでなく、人を傷つけないAI安全ネット、本人なりすまし防止、Export安全設計、趣味インポート設計、サービス別Import方式表、媒体カテゴリ別Import設計、Detector confidence、Service Adapter Registry、Import Preview UI、first fixture examples、provider review、implementation day one checklist、長期事業継続、赤字防止、法務/データ権利、support/admin最小権限、abuse対応、sunset/portability、version governance、healthy attachment/healthy dependency、心に添えるが関係化しないresponse policy、Import sanitize/private content保護、ユーザー優先SランクImport方針、実装直前のImportアーキテクチャ判断、何十年運用しても破産しにくいDB/重複排除/運用ガードレール、parser fixture仕様、migration安全checklist、token/OAuth暗号化仕様、RLS negative tests、first migration slice、Import Preview-only prototype plan、画像/他人格/Export/Re-import安全設計、P0-055までのpolicy testsを持つ状態になった。
 
 実装はまだ始めない。
