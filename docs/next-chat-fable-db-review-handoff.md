@@ -14,6 +14,7 @@
 
 ```txt
 docs/fable-review-prompt.md
+docs/fable-final-pre-implementation-review-prompt.md
 docs/fable-review-and-db-hardening-addendum.md
 ```
 
@@ -31,6 +32,7 @@ ready_for_fable_review_with_db_contract_corrections
 - 実装に入る前のレビュー対象としては十分。
 - ただし、FableレビューでP0指摘が出る前提で見る。
 - 今すぐDB migration実装に入る状態ではない。
+- レビュー前に使う最終プロンプトは `docs/fable-final-pre-implementation-review-prompt.md`。
 
 ## Main Finding
 
@@ -59,14 +61,15 @@ hidden/sealed/deletedの派生index残留
 ```txt
 1. README.md
 2. docs/next-chat-handoff.md
-3. docs/fable-review-prompt.md
+3. docs/fable-final-pre-implementation-review-prompt.md
 4. docs/fable-review-and-db-hardening-addendum.md
-5. docs/db-long-term-architecture.md
-6. docs/db-table-design-v1.md
-7. docs/db-edge-cases-and-hardening.md
-8. docs/db-implementation-preflight-checklist.md
-9. docs/first-migration-slice-plan.md
-10. docs/rls-policy-and-negative-tests.md
+5. docs/fable-review-prompt.md
+6. docs/db-long-term-architecture.md
+7. docs/db-table-design-v1.md
+8. docs/db-edge-cases-and-hardening.md
+9. docs/db-implementation-preflight-checklist.md
+10. docs/first-migration-slice-plan.md
+11. docs/rls-policy-and-negative-tests.md
 ```
 
 ## Fableへの要求
@@ -84,8 +87,11 @@ Fableには「良いですね」ではなく、以下を出させる。
 8. Dedupe false positive/negative risks
 9. Raw/log/JSONB/queue leakage risks
 10. Export/re-import safety risks
-11. Concrete doc/spec changes
-12. Concrete first implementation order
+11. Search/Embedding stale data risks
+12. Product safety drift risks
+13. Cost/operation failure modes
+14. Concrete doc/spec changes
+15. Concrete first implementation order
 ```
 
 ## Implementation Still Forbidden
