@@ -530,6 +530,27 @@ Coverage:
 - Persona simulation is never enabled by import.
 - Support/admin raw access is denied by default.
 
+## Fable Final Pre-implementation Review Result (2026-07-08)
+
+Verdict: `ready_with_known_risks`
+
+適用済みP0修正:
+
+- addendum P0-DB-001〜014を `docs/db-table-design-v1.md`(v1.1)へ反映(privacy enum統一、source_account_ref/key_reference/oauth_connection DDL追加、dedupe/tombstoneのkey_algorithm+key_version、import idempotency key hash、time precision列、parser/adapter versioning、canonical_item visibility_scope、SafeMetadataGuard参照、lifecycle invalidation、Safe Commit contract)。
+- `docs/migration-001-foundation-contract.md` を新設(17テーブル契約、RLS matrix、禁止テーブル、validation)。
+- `docs/safe-metadata-guard-spec.md` を新設(audit/outbox/log JSONB leakage契約)。
+- `docs/account-deletion-and-tombstone-decision.md` を新設(削除モード、tombstone crypto-erasure、restore drill)。
+- `docs/memory-data-model.md` にconcept doc(実装契約ではない)ステータスを明記。
+- preflight checklistのfirst slice一覧へoauth_connectionを追加(17テーブルへ統一)。
+
+残存known risks(P1、実装中〜production前に解消):
+
+- account deletion modeのproduct/legal最終承認が未了(draft decisionあり)。
+- pricing/quota具体値が未確定(cost guardrails文書はあり)。
+- Apple Music / X API providerの詳細review未了。
+
+Implementation gate: **Implementation can begin after P0 doc corrections are merged**(= このセクションの修正がmerge済みであれば、migration 001のcontract承認から開始できる)。
+
 ## Current State
 
 Design readiness is extremely high, but still not called perfect.
@@ -645,7 +666,7 @@ If still not implementing:
 If implementing next:
 
 1. create synthetic fixtures first.
-2. create first migration slice including cost_ledger_entry.
+2. create first migration slice per docs/migration-001-foundation-contract.md (cost_ledger_entryは含めない。embedding/LLM/import-heavy pathを実装するsliceで先に作る).
 3. add RLS negative tests.
 4. implement SecurityGate.
 5. implement ParserRegistry v0.

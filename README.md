@@ -83,3 +83,16 @@ ChatGPT、Claude、Gemini、X、Googleフォト、GitHub、Notion、カレンダ
 - [Fable Final Pre-implementation Review Prompt](docs/fable-final-pre-implementation-review-prompt.md)
 - [Fable Review and DB Hardening Addendum](docs/fable-review-and-db-hardening-addendum.md)
 - [Privacy and Ethics](docs/privacy-and-ethics.md)
+
+### DB Implementation Contracts
+
+実装エージェントはコードを書く前にここから読むこと。
+
+- [DB Table Design v1 (v1.1 P0修正反映済み)](docs/db-table-design-v1.md)
+- [Migration 001 Foundation Contract](docs/migration-001-foundation-contract.md)
+- [SafeMetadataGuard Spec](docs/safe-metadata-guard-spec.md)
+- [Account Deletion and Tombstone Decision](docs/account-deletion-and-tombstone-decision.md)
+- [First Migration Slice Plan](docs/first-migration-slice-plan.md)
+- [RLS Policy and Negative Tests](docs/rls-policy-and-negative-tests.md)
+- [Token Encryption and OAuth Security](docs/token-encryption-and-oauth-security.md)
+- [DB Implementation Preflight Checklist](docs/db-implementation-preflight-checklist.md)
