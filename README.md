@@ -79,4 +79,6 @@ ChatGPT、Claude、Gemini、X、Googleフォト、GitHub、Notion、カレンダ
 - [MVP Roadmap](docs/mvp-roadmap.md)
 - [Pricing and Cost Guardrails](docs/pricing-cost-guardrails.md)
 - [Memory Data Model](docs/memory-data-model.md)
+- [Fable Review Prompt](docs/fable-review-prompt.md)
+- [Fable Review and DB Hardening Addendum](docs/fable-review-and-db-hardening-addendum.md)
 - [Privacy and Ethics](docs/privacy-and-ethics.md)
