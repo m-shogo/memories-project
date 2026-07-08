@@ -14,6 +14,11 @@
 ready_for_fable_review_with_db_contract_corrections
 ```
 
+> **Update (2026-07-08, Fable final review):** 本addendumのP0-DB-001〜014は `docs/db-table-design-v1.md`(v1.1)へ反映済み。
+> 併せて `docs/migration-001-foundation-contract.md` / `docs/safe-metadata-guard-spec.md` / `docs/account-deletion-and-tombstone-decision.md` を作成した。
+> 以後、DDLの正本はdb-table-design-v1とmigration contractであり、本addendumのSQL断片は履歴として読む。
+> なお `oauth_connection` のcanonical DDLは `docs/token-encryption-and-oauth-security.md` の完全版(granted_scopes/requested_scopes、refresh token列あり)であり、本文中の短縮版(`scope_set`)は採用しない。
+
 `ready` ではない。
 
 理由:

@@ -162,7 +162,10 @@ lifecycle_event
 audit_event
 outbox_event
 key_reference
+oauth_connection
 ```
+
+正確な契約は `docs/migration-001-foundation-contract.md` に従う(この一覧と齟齬があればcontractが勝つ)。
 
 Do not create all domain tables before the first preview prototype unless necessary.
 

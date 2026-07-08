@@ -6,6 +6,27 @@
 
 このDDLは最終migrationではなく、設計の基準である。
 
+## Document Status (v1.1)
+
+この版は `docs/fable-review-and-db-hardening-addendum.md` のP0修正(P0-DB-001〜014)を本文へ反映済み。
+
+Contract precedence:
+
+```txt
+1. docs/migration-001-foundation-contract.md (first migration contract)
+2. docs/db-table-design-v1.md (this doc)
+3. docs/fable-review-and-db-hardening-addendum.md
+4. docs/first-migration-slice-plan.md
+5. docs/db-edge-cases-and-hardening.md
+6. docs/memory-data-model.md (concept doc, not implementation contract)
+```
+
+概念文書とこの文書が矛盾する場合、この文書とmigration contractが勝つ。
+
+First slice tables (migration 001で作成可): app_user, source_account_ref, source_ref, import_job, import_input_file, import_detection_result, import_preview, import_preview_candidate, raw_object_ref, dedupe_key, deletion_tombstone, policy_decision, lifecycle_event, audit_event, outbox_event, key_reference, oauth_connection.
+
+それ以外のテーブル(source_item以降のdomain/derived tables)はこの文書に定義があっても **migration 001では作らない**。
+
 ## 基本方針
 
 - PostgreSQLをsystem of recordにする。
@@ -79,6 +100,35 @@ create type import_confidence as enum (
 );
 ```
 
+### Privacy enum is canonical (P0-DB-001)
+
+物理DBのprivacy語彙はこの1系統だけ。2系統実装は禁止。
+
+```txt
+privacy_level: owner_only | owner_sensitive | restricted
+```
+
+概念文書(memory-data-model.md等)の語彙は次のようにmapする。
+
+```txt
+normal          -> owner_only
+sensitive       -> owner_sensitive
+very_sensitive  -> restricted
+```
+
+- UIは日本語ラベルを使ってよいが、Export / Search / Tip / AI eligibilityはすべて同じ物理privacy fieldを読む。
+- `importance`(low/medium/high/core)はDBの正式カラムにしない。AI由来の優先度は`candidate_review_priority`としてpreview候補の並び替え専用に限定し、life score化を禁止する(P0-DB-002)。
+
+### Time precision vocabulary (P0-DB-007)
+
+```txt
+occurred_at_precision: exact_timestamp | date | month | year | period | unknown
+```
+
+- Netflixのdate-onlyとSpotifyのexact timestampをデフォルトで等値扱いしない。
+- dedupe bucketはprecision-aware matchingを使う。
+- UIは不確実さを表示し、精密さを偽装しない。
+
 ## app_user
 
 ```sql
@@ -89,6 +139,35 @@ create table app_user (
 );
 ```
 
+## source_account_ref
+
+First-class table (P0-DB-003)。同一providerの複数アカウント/プロフィールを1ユーザー識別に潰さないための基盤。first sliceで必須。
+
+```sql
+create table source_account_ref (
+  id uuid primary key,
+  user_id uuid not null references app_user(id),
+  provider text not null,
+  account_label_hash bytea,
+  external_account_hash bytea,
+  profile_label_hash bytea,
+  shared_or_unknown boolean not null default false,
+  key_algorithm text not null default 'hmac_sha256',
+  key_version text,
+  created_at timestamptz not null default now(),
+  deleted_at timestamptz
+);
+
+create index idx_source_account_ref_user_provider
+  on source_account_ref (user_id, provider);
+```
+
+Rules:
+
+- account/profile識別子は平文で保存しない。HMAC hashのみ。
+- Netflix profile / Spotify family / Xサブ垢 / LINE移行アカウント / YouTube brandを1識別に統合しない。
+- `shared_or_unknown = true` のimportはデフォルト `owner_sensitive`、dedupe confidenceを下げ、ユーザー明示確認なしに嗜好・人格推定へ使わない。
+
 ## source_ref
 
 A source/import/reference unit.
@@ -97,11 +176,11 @@ A source/import/reference unit.
 create table source_ref (
   id uuid primary key,
   user_id uuid not null references app_user(id),
+  source_account_ref_id uuid references source_account_ref(id),
   source_provider text not null,
   source_label text,
   source_kind text not null,
   import_job_id uuid,
-  external_account_hash bytea,
   external_url text,
   captured_at timestamptz,
   imported_at timestamptz not null default now(),
@@ -133,6 +212,7 @@ create table import_job (
   status import_job_status not null default 'created',
   input_payload_hash bytea,
   selected_scope_hash bytea,
+  import_idempotency_key_hash bytea,
   detector_confidence import_confidence,
   started_at timestamptz not null default now(),
   completed_at timestamptz,
@@ -142,12 +222,21 @@ create table import_job (
 );
 
 create unique index ux_import_job_idempotency
-  on import_job (user_id, input_kind, input_payload_hash, parser_id, selected_scope_hash)
-  where input_payload_hash is not null and selected_scope_hash is not null;
+  on import_job (user_id, import_idempotency_key_hash)
+  where import_idempotency_key_hash is not null;
 
 create index idx_import_job_user_created
   on import_job (user_id, created_at desc);
 ```
+
+Idempotency rules (P0-DB-009):
+
+- nullable複合uniqueに依存しない。PostgreSQLのuniqueはNULLを複数許すため、`(user_id, input_kind, input_payload_hash, parser_id, selected_scope_hash)` 型のnullable複合キーは穴になる。
+- detector/parser確定後に決定論的な `import_idempotency_key_hash = hmac(input_kind || input_payload_hash || parser_id || selected_scope_hash)` を必ず書き込む。
+- `import_idempotency_key_hash` が書かれる前のjobはcommit(Safe Commit)へ進めない。
+- `import_job.counts` jsonbはSafeMetadataGuard対象。raw title/snippet/URL/tokenを入れない(P0-DB-012)。
+
+Adapter/parser traceability: import_jobは `parser_id` / `parser_version` を持つが、committed rows側(source_item, second slice)にも adapter_id / adapter_version / parser_id / parser_version / source_schema_version / detection_signature を残す(P0-DB-008)。
 
 ## import_input_file
 
@@ -230,6 +319,9 @@ create table import_preview_candidate (
   title text,
   url text,
   occurred_at timestamptz,
+  occurred_at_precision text not null default 'unknown',
+  timezone text,
+  timezone_source text,
   status text,
   progress jsonb not null default '{}'::jsonb,
   extracted jsonb not null default '{}'::jsonb,
@@ -250,6 +342,12 @@ create index idx_preview_candidate_user_sensitive
   where privacy_level <> 'owner_only';
 ```
 
+Preview candidate leakage rules:
+
+- `title` / `url` / `extracted` はpreview表示のためだけに存在する暫定データ。log / audit / outbox / 管理画面へ出さない(SafeMetadataGuard対象)。
+- import jobがcancelled/failed/committedになったら、候補行はcommitに使われたもの以外、TTLで削除する(raw temporary storageと同じ扱い)。
+- `extracted` jsonbにraw全文・EXIF/GPS raw・token・秘密情報を入れない。パーサーが抽出した構造化フィールドのみ。
+
 ## raw_object_ref
 
 ```sql
@@ -263,6 +361,7 @@ create table raw_object_ref (
   size_bytes bigint not null,
   content_type text,
   encrypted boolean not null default true,
+  key_reference_id uuid references key_reference(id),
   retention_policy text not null,
   expires_at timestamptz,
   created_at timestamptz not null default now(),
@@ -277,16 +376,28 @@ create unique index ux_raw_object_user_sha
 
 One source-level imported record.
 
+Second slice (migration 001では作らない)。
+
 ```sql
 create table source_item (
   id uuid primary key,
   user_id uuid not null references app_user(id),
   source_ref_id uuid not null references source_ref(id),
+  source_account_ref_id uuid references source_account_ref(id),
   import_job_id uuid references import_job(id),
   source_provider text not null,
   source_native_id text,
   source_native_time timestamptz,
   occurred_at timestamptz,
+  occurred_at_precision text not null default 'unknown',
+  timezone text,
+  timezone_source text,
+  adapter_id text,
+  adapter_version text,
+  parser_id text,
+  parser_version text,
+  source_schema_version text,
+  detection_signature text,
   captured_at timestamptz,
   imported_at timestamptz not null default now(),
   domain text not null,
@@ -352,6 +463,8 @@ create table dedupe_key (
   user_id uuid not null references app_user(id),
   key_scope text not null,
   key_type text not null,
+  key_algorithm text not null default 'hmac_sha256',
+  key_version text not null,
   key_hash bytea not null,
   target_table text not null,
   target_id uuid not null,
@@ -368,13 +481,24 @@ create index idx_dedupe_key_target
   on dedupe_key (target_table, target_id);
 ```
 
+Key hashing rules (P0-DB-004):
+
+- sensitiveなkey(title/url/snippet/account由来)は plain SHA禁止。HMAC-SHA-256を使い、key materialはKMS側(key_reference参照)に置く。
+- plain `sha256` を許すのはraw file bytes等、辞書攻撃で内容推測できない入力のみ。その場合 `key_algorithm = 'sha256'` を明示する。
+- `key_version not null`。rotation時は旧version keyで照合し、新versionへ再発行できること。
+- low confidence keyでのauto-mergeは禁止。
+
 ## canonical_item
 
 Represents a work/place/show/book/track/restaurant, not a user activity.
 
+Second slice。private leakage対策(P0-DB-010)としてvisibility_scopeを持つ。
+
 ```sql
 create table canonical_item (
   id uuid primary key,
+  visibility_scope text not null default 'public',
+  owner_user_id uuid references app_user(id),
   item_type text not null,
   canonical_title text not null,
   original_title text,
@@ -392,7 +516,20 @@ create index idx_canonical_item_type_title
 
 create index idx_canonical_item_title_trgm
   on canonical_item using gin (canonical_title gin_trgm_ops);
+
+alter table canonical_item
+  add constraint ck_canonical_visibility check (
+    (visibility_scope = 'public' and owner_user_id is null)
+    or (visibility_scope = 'user_private' and owner_user_id is not null)
+  );
 ```
+
+Rules (P0-DB-010):
+
+- `public` 行にprivateなimport由来title/snippetを入れてはならない。publicは公開作品/場所/providerのカタログ情報のみ。
+- privateなmanual title・自宅/職場等の場所・個人メモは `user_private` + `owner_user_id` 必須。
+- cross-user unique制約(例: `ux_canonical_external_id`)はpublicかつ安全な外部IDにのみ適用する。user_private行を含むcross-user uniqueは存在漏えいになるため禁止。
+- user_private行はRLS対象として扱う(global catalog例外を適用しない)。
 
 ## canonical_item_external_id
 
@@ -429,6 +566,9 @@ create table user_activity (
   activity_type text not null,
   status text,
   occurred_at timestamptz,
+  occurred_at_precision text not null default 'unknown',
+  timezone text,
+  timezone_source text,
   period_start timestamptz,
   period_end timestamptz,
   progress jsonb not null default '{}'::jsonb,
@@ -486,6 +626,9 @@ create table memory_record (
   summary text,
   memory_kind text not null,
   occurred_at timestamptz,
+  occurred_at_precision text not null default 'unknown',
+  timezone text,
+  timezone_source text,
   period_start timestamptz,
   period_end timestamptz,
   privacy_level privacy_level not null default 'owner_only',
@@ -599,16 +742,106 @@ create table deletion_tombstone (
   user_id uuid not null references app_user(id),
   tombstone_scope text not null,
   key_type text not null,
+  key_algorithm text not null default 'hmac_sha256',
+  key_version text not null,
   key_hash bytea not null,
   target_table text,
   target_id uuid,
   deleted_at timestamptz not null default now(),
-  reason text
+  reason_code text
 );
 
 create unique index ux_deletion_tombstone_key
   on deletion_tombstone (user_id, tombstone_scope, key_type, key_hash);
 ```
+
+Tombstone privacy rules (P0-DB-004 / P0-DB-013):
+
+- tombstoneは平文key materialを持たない。HMACのみ。
+- `reason_code` は管理された語彙(enum相当)。自由記述のraw textを禁止(deleted contentの漏えい経路になるため)。
+- error message / admin UI / audit metadata経由でtombstoneが削除済みコンテンツを露出してはならない。
+- account deletion時のtombstone扱いは `docs/account-deletion-and-tombstone-decision.md` に従う。
+- backup restore後は必ずtombstone replayを行い、削除済みデータの復活を防ぐ。
+
+## key_reference
+
+First slice。KMS参照のみを保存し、key materialは絶対に保存しない(P0-DB-005)。
+
+```sql
+create table key_reference (
+  id uuid primary key,
+  purpose text not null,
+  key_version text not null,
+  kms_key_id text not null,
+  status text not null,
+  created_at timestamptz not null default now(),
+  retired_at timestamptz
+);
+
+create unique index ux_key_reference_purpose_version
+  on key_reference (purpose, key_version);
+```
+
+Minimum purposes:
+
+```txt
+raw_object_encryption
+dedupe_hmac
+tombstone_hmac
+oauth_token_encryption
+export_package_encryption
+```
+
+Rules:
+
+- purposeごとに鍵を分離する。1つの汎用鍵の使い回しは禁止。
+- `status`: active | decrypt_only | retired | revoked。
+- crypto-erasure(鍵削除)は通常のdeleteではなく、専用の高リスクceremonyとして扱う。
+- このテーブルはuser_idを持たないglobal管理テーブル。user RLSではなく管理role限定アクセスとする。
+
+## oauth_connection
+
+First slice。API connector実装前にこのテーブルと暗号化ヘルパーが存在しなければならない(P0-DB-006)。
+
+canonical DDLはこの形とする(`docs/token-encryption-and-oauth-security.md` と同一契約。addendumの短縮版sketch(`scope_set`)はこの形に置き換え済み)。
+
+```sql
+create table oauth_connection (
+  id uuid primary key,
+  user_id uuid not null references app_user(id),
+  source_account_ref_id uuid references source_account_ref(id),
+  provider text not null,
+  provider_account_hash bytea,
+  display_label text,
+  status text not null default 'active',
+  granted_scopes text[] not null default '{}',
+  requested_scopes text[] not null default '{}',
+  token_encryption_key_ref uuid not null references key_reference(id),
+  token_ciphertext bytea not null,
+  token_nonce bytea not null,
+  token_tag bytea,
+  refresh_token_ciphertext bytea,
+  refresh_token_nonce bytea,
+  refresh_token_tag bytea,
+  expires_at timestamptz,
+  last_used_at timestamptz,
+  last_refresh_at timestamptz,
+  revoked_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz
+);
+
+create index idx_oauth_connection_user_provider
+  on oauth_connection (user_id, provider, status);
+```
+
+Rules:
+
+- token平文保存はhard blocker。AEAD(AES-GCM / XChaCha20-Poly1305)で暗号化。
+- `token_tag` がnullableなのは、AEADライブラリがtagをciphertextへ内包する実装のみ許容するため。tagを別保存する実装ではnot null扱いとする。実装時にどちらかへ固定し、混在させない。
+- revokedなconnectionはsync禁止。scope変更はprovider re-review必須。
+- auditにはprovider/scope/counts/status codeのみ。token・raw response・private titleを出さない。
 
 ## search_document
 
@@ -702,6 +935,8 @@ create index idx_audit_type_time
   on audit_event (event_type, created_at desc);
 ```
 
+`audit_event.metadata` はJSONB leakage risk zone。SafeMetadataGuard(`docs/safe-metadata-guard-spec.md`)を必ず通す(P0-DB-012)。counts / ids / reason codes / policy versionsのみ許可。
+
 ## outbox_event
 
 ```sql
@@ -720,6 +955,8 @@ create index idx_outbox_pending
   on outbox_event (status, next_attempt_at)
   where status = 'pending';
 ```
+
+`outbox_event.payload` もSafeMetadataGuard対象(P0-DB-012)。raw private content・title・snippet・token・EXIF/GPSを入れない。target idsとreason codesで参照し、consumerが必要時にRLS/policy経由で本体を読む。処理済みoutboxは保持期限を設けて削除する(unbounded growth防止)。
 
 ## cost_ledger_entry
 
@@ -798,6 +1035,77 @@ Candidate partition later:
 
 - check dedupe_key before source_item insert
 - check deletion_tombstone before preview selection
+
+## Lifecycle and Derived Data Invalidation (P0-DB-011)
+
+lifecycle_stateの意味はすべてのtarget tableで統一する。
+
+```txt
+active         -> policyが許せばsearchable/exportable/tippable
+hidden         -> 通常UI非表示 / Tipなし / proactive surfacingなし
+sealed         -> search/Tip/exportデフォルト除外 / 明示的なユーザー操作のみ
+deleted        -> 全経路から除外 / tombstoneがresurrectionを防ぐ
+pending_delete -> 即時にhidden相当 / 非同期削除が完了させる
+```
+
+次のイベントが起きたら、派生データを必ずinvalidateする。
+
+Trigger events:
+
+```txt
+privacy_level changed
+lifecycle_state changed
+policy_decision changed
+deleted_at set
+source account revoked
+raw object expired
+memory body/summary changed
+```
+
+Invalidate targets:
+
+```txt
+search_document
+embedding_record
+derived summary
+Tip cache
+export staging
+recommendation cache
+```
+
+vector store等の外部派生storeも同時に無効化対象。DB側の`invalidated_at`だけ立てて外部vectorを放置することは禁止。
+
+## Safe Commit Contract (P0-DB-014)
+
+preview行がcommitted domainへ進めるのは、以下がすべて真の場合のみ。
+
+```txt
+Import Preview exists
+User confirmed selected scope
+Policy decision exists and allows commit
+Dedupe checked
+Tombstone checked
+Raw retention decided
+Privacy level assigned
+AI analysis default assigned
+Export default assigned
+Lifecycle state assigned
+Audit count written
+No hard-block warning remains
+```
+
+Hard block例:
+
+```txt
+secret/API key/private key detected
+path traversal/archive bomb risk
+unsafe active content
+persona activation request
+relationship state creation request
+plain OAuth token storage
+unknown high-risk parser schema drift
+missing current_user_id
+```
 
 ## Conclusion
 

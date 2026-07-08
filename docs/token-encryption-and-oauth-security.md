@@ -79,6 +79,8 @@ Rules:
 
 ### oauth_connection
 
+このDDLがcanonical(`docs/db-table-design-v1.md` v1.1と同一契約)。addendumの短縮版sketch(`scope_set` / `token_tag not null`)は本形へ統合済み。
+
 ```sql
 create table oauth_connection (
   id uuid primary key,

@@ -8,6 +8,8 @@
 
 最初は、Import Preview / Dedupe / Tombstone / Raw TTL / Policy / Audit / Key Reference の土台だけを作る。
 
+実装契約の正本は `docs/migration-001-foundation-contract.md`。この文書と齟齬があればcontractが勝つ。
+
 ## Why First Slice Is Small
 
 Memory OSでは、保存そのものよりも保存前の安全確認が重要。
@@ -281,6 +283,12 @@ oauth_connection
 Use app_current_user_id helper.
 
 Do not rely on RLS alone.
+
+Notes:
+
+- `key_reference` はuser_idを持たないglobal管理テーブル。user RLSではなく管理role限定アクセス(contract参照)。
+- `outbox_event` はworker role専用。userへ公開しない。
+- import_jobのidempotencyはnullable複合uniqueではなく `import_idempotency_key_hash` のuniqueで担保する(P0-DB-009、db-table-design-v1参照)。
 
 ## Indexes in First Slice
 

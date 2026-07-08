@@ -1,5 +1,18 @@
 # Memory Data Model
 
+> **Status: concept doc (superseded for implementation)**
+>
+> この文書は初期概念モデルとして残すが、実装契約ではない。
+> 実装は `docs/db-table-design-v1.md` / `docs/migration-001-foundation-contract.md` / `docs/fable-review-and-db-hardening-addendum.md` に従う。
+>
+> 特に以下はこの文書の記述を使わないこと:
+>
+> - `privacyLevel: normal | sensitive | very_sensitive` → 物理enumは `owner_only | owner_sensitive | restricted`(mapping: normal→owner_only, sensitive→owner_sensitive, very_sensitive→restricted)。
+> - `importance: low | medium | high (| core)` → DBカラムにしない。AI由来の優先度は `candidate_review_priority` としてレビュー列の並び替え専用。life score・人生の重要度判定への使用は禁止。
+> - `MemoryCandidate`(AI自動抽出) → 保存時の自動解析は行わない。保存時はsafety check / source / date / provenance / searchability / user controlのみ。深い解析はユーザーが求めた時だけ。
+> - `RawRecord.text`(DB内raw全文) → raw本文はDB text columnに置かず、object storage + `raw_object_ref` で扱う。
+> - dedupe / tombstone / policy / RLS / export eligibilityはこのモデルに存在しないため、この文書だけを根拠に実装しない。
+
 ## 目的
 
 このサービスはログ全文を集めるのではなく、人生の文脈として使える情報へ変換する。

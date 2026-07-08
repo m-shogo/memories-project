@@ -293,6 +293,19 @@ Action:
 - allow user to merge/keep separate.
 - preserve all source links.
 
+## Key Hashing Contract
+
+上のLayer 1〜4のkey組成(`user_id + ... + normalized_title + ...`)は**入力**の定義であり、DBへはそのままの文字列を保存しない。
+
+Rules (P0-DB-004と同一契約):
+
+- DBに入るのは `key_hash` のみ。組成文字列の平文保存は禁止。
+- title / URL / snippet / account識別子を含むsensitive keyは **HMAC-SHA-256**。key materialはKMS(`key_reference`, purpose=`dedupe_hmac` / `tombstone_hmac`)。
+- plain SHA-256を許すのはraw file bytes(Layer 2)のように辞書攻撃で内容を推測できない入力のみ。
+- すべてのkeyに `key_algorithm` と `key_version` を保存する。rotation時は旧versionで照合し、新versionを再発行。
+- precision-aware bucket: `occurred_at_precision` が異なるレコードを同一時刻として鍵に混ぜない(date-only vs exact timestamp)。
+- low/medium confidenceのkey一致はauto-mergeしない。候補UIへ。
+
 ## Normalization Rules
 
 ### Text normalization
