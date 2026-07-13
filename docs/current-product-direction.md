@@ -4,7 +4,13 @@
 
 この文書は、Memory OS の現時点のプロダクト方向性を一枚で確認するための正本である。
 
-既存の詳細仕様がこの文書と矛盾する場合、明示的な更新が入るまで本書を優先する。
+Memory Townの詳細契約は、以下を最優先する。
+
+- `docs/memory-town-architecture-hardening-contract.md`
+- `docs/memory-town-long-term-spatial-model.md`
+- `docs/memory-town-webgl-architecture.md`
+
+---
 
 ## Product Promise
 
@@ -20,9 +26,9 @@
 Memory OS は単なる保管庫ではない。
 
 保存した情報は実用的な棚になる。
-その蓄積は、固定2.5Dで見える「記憶の町」として視覚的に育つ。
+その蓄積は、固定視点2.5Dの「記憶の町」として視覚的に育つ。
 
-町はMVPでは固定配置だが、内部空間は最初からlogical gridで定義し、将来は道路、木、花、家具、建物などを段階的に編集できる構造にする。
+町はMVPでは固定layoutだが、内部空間は最初からlogical gridで定義し、将来は道路、木、花、家具、建物などを段階的に編集できる構造にする。
 
 ---
 
@@ -59,7 +65,7 @@ Memory OS は単なる保管庫ではない。
 
 ### 4. Emotional Visualization Layer
 
-- 固定2.5Dで見える記憶の町
+- 固定視点2.5Dの記憶の町
 - WebGL / PixiJS
 - ドット調の温かいアート
 - 町は感情的なメニュー
@@ -79,7 +85,7 @@ Minecraftのような1block建築ではない。
 ただし、特定作品のUIやアートを複製しない。
 
 ```txt
-見た目: 温かい2.5Dのジオラマ
+見た目: 温かい固定視点2.5Dのジオラマ
 MVP操作: 建物をタップするmenu
 内部構造: logical grid上の配置system
 将来操作: 木、花、道、家具、建物を段階的に編集
@@ -124,18 +130,22 @@ MVP操作: 建物をタップするmenu
 
 将来town editorを導入しても、棚・検索・Import・Exportの本体UIをWebGLへ移さない。
 
-### Initial Buildings
+### Initial Features and Buildings
 
-| Building | Opens | Initial meaning |
+建物の意味と見た目を分離する。
+
+| TownFeatureId | Initial visual | Opens |
 |---|---|---|
-| 映画館 | 映画・視聴棚 | 見た・見たい・お気に入り |
-| 物語館 | 漫画・アニメ棚 | 進行・続刊待ち |
-| 市場 | 食の地図 | 行った・行きたい店 |
-| 港 | 旅行箱 | 旅行・未来の予定 |
-| 倉庫 | 未整理Inbox | 後から整理する記録 |
-| 中央広場 | Weekly / Month Box | 今週・今月の変化 |
+| `shelf.movie` | 映画館 | 映画・視聴棚 |
+| `shelf.story` | 物語館 | 漫画・アニメ棚 |
+| `shelf.food` | 市場 | 食の地図 |
+| `box.travel` | 港 | 旅行箱 |
+| `system.inbox` | 倉庫 | 未整理Inbox |
+| `reflection.square` | 中央広場 | Weekly / Month Box |
 
 音楽広場、写真館、時計塔は後続候補。
+
+TownFeatureIdはMemory OS上の意味であり、建物skin、asset、instance IDとは別にする。
 
 ---
 
@@ -150,13 +160,28 @@ logical grid position
 + parcel
 + footprint
 + placement layer
-+ elevation
++ elevation level
 + orientation
 + stable definition ID
++ stable feature ID
 + layout revision
 ```
 
 描画時だけscreen x / yへ変換する。
+
+### Coordinate Contract
+
+```txt
+origin = logical north-west
++X = east
++Y = south
+0° = north
+90° = east
+180° = south
+270° = west
+```
+
+`elevation`はpixelではなくlogical levelで保存する。
 
 ### Object Granularity
 
@@ -168,17 +193,21 @@ logical grid position
 
 建物を壁や屋根の1block単位には分解しない。
 
-### Parcel
+### Parcel and Growth Envelope
 
-主要建物は、最大成長時のfootprintを収める区画を最初から予約する。
+主要建物は、承認済み将来stageまでのgrowth envelopeを収める区画を予約する。
 
 これにより、建物が大きくなった際に道路や装飾へ食い込む問題を防ぐ。
+
+新stageがenvelopeを超える場合、asset差し替えだけで自動適用せず、versioned map migrationを必要とする。
 
 ### Layout Template
 
 MVPの固定配置もcodeへpixel座標を直書きしない。
 
 versioned layout templateから町を生成する。
+
+Template更新時は、old baseline / current user layout / new templateのthree-way mergeを行う。
 
 ### Long-term Editing Phases
 
@@ -190,6 +219,72 @@ Phase 3: 道路と植栽を編集
 Phase 4: 主要建物をparcel間で移動
 Phase 5: map / district expansion
 ```
+
+---
+
+## Five-state Separation
+
+```txt
+1. Memory Domain State
+2. Town Feature Progress State
+3. Town Layout State
+4. Town Environment State
+5. Town Render State
+```
+
+### Memory Domain State
+
+棚、Import、進行、箱、確定したconnectionの正本。
+
+### Town Feature Progress State
+
+建物機能の解除済みstageを持つ。
+
+通常のrecord削除やImport取り消しで建物を罰のように縮ませない。
+
+### Town Layout State
+
+建物、道、木、花、家具の配置。
+
+Memory dataから再生成しない。
+
+### Town Environment State
+
+季節、時間帯、theme、motion、sound。
+
+Memory Projectionへ混ぜない。
+
+### Town Render State
+
+camera、selection、texture、animationなど、そのsessionだけの状態。
+
+永続化しない。
+
+### Composition
+
+```txt
+Memory Domain
+→ policy-filtered TownFeatureProjection
+
+TownFeatureProgress
++ TownFeatureProjection
+→ display stage / badge
+
+Town Layout
++ Town Environment
++ feature bindings
+→ TownSceneSnapshot
+→ PixiJS
+```
+
+Required separation:
+
+- memory削除後もuser decorationを保持
+- building移動でmemory recordは不変
+- asset / skin変更でfeature progressを失わない
+- stage変更でinstanceIdを変えない
+- hidden / sealed / restrictedはprojectionから除外可能
+- rendererの再実装でlayout migrationを不要にする
 
 ---
 
@@ -217,36 +312,73 @@ Phase 5: map / district expansion
 
 小さな記録も同じ蓄積として扱う。
 
-### Growth and Layout Separation
+### Non-shrinking Growth
 
 ```txt
-building stage
-= Memory Domainから導出されるTown Projection
+candidate stage
+= current eligible aggregateから計算
 
-building position
-= Town Layout State
+max unlocked stage
+= Town Feature Progressへ保存
+
+display stage
+= max(candidate stage, max unlocked stage)
 ```
 
-建物が成長しても配置instance ID、route、parcelを維持する。
+個別record削除では縮小しない。
 
-ユーザーが配置を変えてもMemory Domainを変更しない。
+ただしuserは、特定featureの成長、配置、装飾、町全体を明示的にresetできる。
+
+Shelf deletion時は、対応する町の成長履歴も初期化する選択肢を出す。
+
+Account deletionでは町の全stateを削除する。
 
 ---
 
-## Visual Direction
+## Road Model
+
+物理的な道路と記憶のつながりを分離する。
 
 ```txt
-固定cameraの2.5D
-ドット調
-柔らかい輪郭
-低彩度を基調
-季節と時間帯で表情が変わる
-眺める8 : 操作2
+Physical Path
+= templateまたはuserが作る生活道路
+
+Semantic Connection Overlay
+= 確定した記憶関係を示す光、線、橋の演出
 ```
 
-カイロソフトの親しみやすさは参考にするが、経営ゲーム風の密度、数値UI、ランキング、効率化ゲームには寄せない。
+Physical Pathの永続データにはpath typeだけを保存する。
 
-どうぶつの森的な愛着と編集余地は参考にするが、アバター操作、経済、素材集め、クラフトを中心にしない。
+connection maskは周囲のcellから描画時に導出する。
+
+物理道路を編集しても記憶関係は消えない。
+記憶関係が変わってもユーザーの道路は勝手に消えない。
+
+---
+
+## Editor Persistence Principle
+
+将来のeditorはdragごとにserver stateを書き換えない。
+
+```txt
+layout revisionをload
+→ local draft
+→ local validation
+→ undo / redo
+→ atomic command batch save
+→ server revalidation
+→ compare-and-swap
+```
+
+Rules:
+
+- silent last-write-wins禁止
+- stale revision上書き禁止
+- command batchはall-or-nothing
+- batch IDでidempotency
+- server authoritative validation
+- multi-device conflictは明示
+- initial implementationでCRDTは採用しない
 
 ---
 
@@ -266,7 +398,7 @@ PixiJS / WebGL
 └─ Memory Town
    ├─ logical isometric grid
    ├─ terrain tiles
-   ├─ path autotile
+   ├─ derived path autotile
    ├─ multi-cell buildings
    ├─ props / trees / flowers
    ├─ seasonal overlays
@@ -275,39 +407,6 @@ PixiJS / WebGL
 ```
 
 WebGL内でフォーム、長文、一覧、検索、重要操作を実装しない。
-
-空間設計の正本:
-
-- `docs/memory-town-long-term-spatial-model.md`
-- `docs/memory-town-webgl-architecture.md`
-
----
-
-## State Separation
-
-```txt
-Memory Domain State
-→ policy-filtered Town Projection
-
-Town Layout State
-→ logical position / user customization
-
-Town Projection + Town Layout
-→ Town Scene Snapshot
-→ WebGL Rendering
-```
-
-町の状態を記憶データの正本にしない。
-
-町のlayoutもrenderer stateにしない。
-
-### Required Separation
-
-- memory削除後もuser decorationを保持
-- shelf count変更はbuilding stageへ反映
-- building移動でmemory recordは不変
-- hidden / sealed / restrictedはprojectionから除外可能
-- rendererの再実装でlayout migrationを不要にする
 
 ---
 
@@ -321,10 +420,12 @@ Memory TownはMVPの価値検証に含めるが、最初から大規模にしな
 - 1つのlayout template
 - logical grid
 - parcels
-- 5建物
+- growth envelopes
+- 5主要建物
 - 各3段階: 未開放 / 小 / 成長
 - multi-cell footprint
 - locked system placement
+- stable TownFeatureId / binding
 - 建物タップ
 - 概要カード
 - 棚へのroute
@@ -351,48 +452,20 @@ Memory TownはMVPの価値検証に含めるが、最初から大規模にしな
 ### ただしMVP内部に含める契約
 
 - grid coordinate
-- footprint
+- footprint pivot
 - parcel
+- growth envelope
 - placement layer
 - orientation enum
 - layout revision
 - object definition catalog
+- feature binding
+- feature progress
 - placement validator foundation
-
----
-
-## Road Model
-
-物理的な道路と記憶のつながりを分離する。
-
-```txt
-Physical Path
-= templateまたはuserが作る生活道路
-
-Semantic Connection Overlay
-= 確定した記憶関係を示す光、線、橋の演出
-```
-
-物理道路を編集しても記憶関係は消えない。
-
-記憶関係が変わってもユーザーの道路は勝手に消えない。
-
----
-
-## Return Value
-
-毎日開くことを要求しない。
-
-戻る理由:
-
-- 棚を更新する
-- 続きを確認する
-- 月の箱を見る
-- 町の小さな変化を見る
-- 新しい建物や道が現れる
-- 町を少し飾る
-- 必要な情報を探す
-- Export / AI Context Packを作る
+- immutable template versions
+- RLS / ownership
+- export / reset contract
+- static fallback
 
 ---
 
@@ -403,10 +476,30 @@ Semantic Connection Overlay
 - 住人や生物は寂しがらない
 - 未整理Inboxが多くても罰表現をしない
 - sensitiveな棚名や記憶本文を町に直接表示しない
-- rendererへ渡すのは集計済みtown projectionのみ
 - hidden / sealed / restrictedは成長集計から除外可能
 - userが配置したobjectをmigrationで黙って削除しない
 - 成長を早める課金をしない
+- client validationだけで配置を保存しない
+- town tableはuser_id + RLS fail closed
+- account deletion後にtown stateを残さない
+
+---
+
+## Export / Reset
+
+Town exportは以下を分離する。
+
+```txt
+feature progress
+layout
+environment preference
+```
+
+Memory dataと同じJSONへ無秩序に混ぜない。
+
+Re-importはPreview、version compatibility、placement validationを通す。
+
+unsupported objectはmagic coordinateではなく`stored` stateへ退避する。
 
 ---
 
@@ -418,15 +511,37 @@ Semantic Connection Overlay
 spatial schema
 map definition
 layout template
-object catalog
-projection schema
+object definition / catalog
+growth envelope
+feature projection schema
 growth ruleset
 asset manifest
+scene schema
 ```
 
 一つの`townVersion`へまとめない。
 
-user layout migrationは、preview、safe relocation、rollback snapshotを持つ。
+公開済みdefinitionをin-placeで意味変更しない。
+
+---
+
+## Design Completion Gate
+
+PixiJS本実装へ進む前に以下を満たす。
+
+```txt
+[ ] 5-state separationが全docsで一致
+[ ] TownFeatureId / bindingが固定
+[ ] non-shrinking progress / resetが固定
+[ ] coordinate / elevation / rotation pivotが固定
+[ ] terrain / path正本が固定
+[ ] growth envelopeが固定
+[ ] object origin / placement state / lock policyが固定
+[ ] template three-way mergeが固定
+[ ] atomic batch / revision conflictが固定
+[ ] RLS / export / account deletionが固定
+[ ] asset compatibilityとmigration fixtureが固定
+```
 
 ---
 
@@ -438,13 +553,14 @@ user layout migrationは、preview、safe relocation、rollback snapshotを持�
 4. 漫画・アニメ進行
 5. 食の地域list
 6. Home / Shelf navigation
-7. spatial model contractsとstable IDs
-8. logical gridによるMemory Town static prototype
-9. PixiJS interactive prototype
-10. Import → town growth feedback
-11. Month Capsule / future anticipation
-12. decoration slot
-13. user customization validation
+7. Memory Town hardening contractsの整合確認
+8. stable IDs / feature IDs / version sets
+9. logical gridによるMemory Town static prototype
+10. PixiJS interactive prototype
+11. Import → town growth feedback
+12. Month Capsule / future anticipation
+13. decoration slot
+14. user customization validation
 
 ---
 
@@ -452,9 +568,11 @@ user layout migrationは、preview、safe relocation、rollback snapshotを持�
 
 ```txt
 保存したものが棚になる。
-棚が建物になる。
+棚の機能が建物へ結びつく。
+解除した町の成長は、罰のように失われない。
+配置と記憶は別々に守られる。
 箱が町の風景になる。
-つながった記憶が道になる。
+つながった記憶は、生活道路とは別の光として見える。
 少しずつ、自分の町として手を入れられる。
 必要な時は、すべて持ち出せる。
 ```
