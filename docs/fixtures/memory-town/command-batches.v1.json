@@ -1,0 +1,155 @@
+{
+  "$schema": "https://memory-os.example/schemas/memory-town/command-batch-case-set.v1.schema.json",
+  "caseSetId": "memory-town.command-batches",
+  "caseSetVersion": 1,
+  "cases": [
+    {
+      "caseId": "valid-atomic-batch",
+      "input": {
+        "currentLayoutRevision": 5,
+        "batch": {
+          "batchId": "townbatch:user:0190f000-0000-7000-8000-000000000001",
+          "expectedLayoutRevision": 5,
+          "clientSessionId": "townsession:user:0190f000-0000-7000-8000-000000000001",
+          "createdAt": "2026-07-13T00:00:00Z",
+          "commands": [
+            {
+              "commandId": "towncmd:user:0190f000-0000-7000-8000-000000000001",
+              "type": "move_object",
+              "instanceId": "townobj:user:0190f000-0000-7000-8000-000000000010",
+              "from": { "cellX": 8, "cellY": 20, "elevationLevel": 0 },
+              "to": { "cellX": 8, "cellY": 21, "elevationLevel": 0 }
+            },
+            {
+              "commandId": "towncmd:user:0190f000-0000-7000-8000-000000000002",
+              "type": "rotate_object",
+              "instanceId": "townobj:user:0190f000-0000-7000-8000-000000000011",
+              "fromOrientation": 0,
+              "toOrientation": 90
+            },
+            {
+              "commandId": "towncmd:user:0190f000-0000-7000-8000-000000000003",
+              "type": "paint_path",
+              "pathType": "footpath",
+              "cells": [
+                { "cellX": 17, "cellY": 11, "elevationLevel": 0 },
+                { "cellX": 18, "cellY": 11, "elevationLevel": 0 }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "status": "applied",
+        "resultingLayoutRevision": 6,
+        "appliedCommandCount": 3,
+        "rejectedCommandCount": 0,
+        "eventCount": 1,
+        "snapshotCreated": true,
+        "issues": []
+      }
+    },
+    {
+      "caseId": "duplicate-batch-replay",
+      "input": {
+        "currentLayoutRevision": 6,
+        "previouslyAppliedBatchIds": ["townbatch:user:0190f000-0000-7000-8000-000000000001"],
+        "batch": {
+          "batchId": "townbatch:user:0190f000-0000-7000-8000-000000000001",
+          "expectedLayoutRevision": 5,
+          "clientSessionId": "townsession:user:0190f000-0000-7000-8000-000000000001",
+          "createdAt": "2026-07-13T00:00:00Z",
+          "commands": [
+            {
+              "commandId": "towncmd:user:0190f000-0000-7000-8000-000000000001",
+              "type": "move_object",
+              "instanceId": "townobj:user:0190f000-0000-7000-8000-000000000010",
+              "from": { "cellX": 8, "cellY": 20, "elevationLevel": 0 },
+              "to": { "cellX": 8, "cellY": 21, "elevationLevel": 0 }
+            }
+          ]
+        }
+      },
+      "expected": {
+        "status": "idempotent_replay",
+        "resultingLayoutRevision": 6,
+        "appliedCommandCount": 0,
+        "rejectedCommandCount": 0,
+        "eventCount": 0,
+        "snapshotCreated": false,
+        "issues": []
+      }
+    },
+    {
+      "caseId": "stale-revision-rejected",
+      "input": {
+        "currentLayoutRevision": 6,
+        "batch": {
+          "batchId": "townbatch:user:0190f000-0000-7000-8000-000000000002",
+          "expectedLayoutRevision": 5,
+          "clientSessionId": "townsession:user:0190f000-0000-7000-8000-000000000002",
+          "createdAt": "2026-07-13T00:01:00Z",
+          "commands": [
+            {
+              "commandId": "towncmd:user:0190f000-0000-7000-8000-000000000004",
+              "type": "move_object",
+              "instanceId": "townobj:user:0190f000-0000-7000-8000-000000000010",
+              "from": { "cellX": 8, "cellY": 20, "elevationLevel": 0 },
+              "to": { "cellX": 9, "cellY": 21, "elevationLevel": 0 }
+            }
+          ]
+        }
+      },
+      "expected": {
+        "status": "rejected",
+        "resultingLayoutRevision": 6,
+        "appliedCommandCount": 0,
+        "rejectedCommandCount": 1,
+        "eventCount": 0,
+        "snapshotCreated": false,
+        "issues": [
+          { "code": "STALE_LAYOUT_REVISION", "severity": "error" }
+        ]
+      }
+    },
+    {
+      "caseId": "one-invalid-command-rolls-back-whole-batch",
+      "input": {
+        "currentLayoutRevision": 6,
+        "batch": {
+          "batchId": "townbatch:user:0190f000-0000-7000-8000-000000000003",
+          "expectedLayoutRevision": 6,
+          "clientSessionId": "townsession:user:0190f000-0000-7000-8000-000000000003",
+          "createdAt": "2026-07-13T00:02:00Z",
+          "commands": [
+            {
+              "commandId": "towncmd:user:0190f000-0000-7000-8000-000000000005",
+              "type": "move_object",
+              "instanceId": "townobj:user:0190f000-0000-7000-8000-000000000010",
+              "from": { "cellX": 8, "cellY": 21, "elevationLevel": 0 },
+              "to": { "cellX": 9, "cellY": 21, "elevationLevel": 0 }
+            },
+            {
+              "commandId": "towncmd:user:0190f000-0000-7000-8000-000000000006",
+              "type": "move_object",
+              "instanceId": "townobj:tpl:protected-system-building",
+              "from": { "cellX": 4, "cellY": 6, "elevationLevel": 0 },
+              "to": { "cellX": 5, "cellY": 6, "elevationLevel": 0 }
+            }
+          ]
+        }
+      },
+      "expected": {
+        "status": "rejected",
+        "resultingLayoutRevision": 6,
+        "appliedCommandCount": 0,
+        "rejectedCommandCount": 2,
+        "eventCount": 0,
+        "snapshotCreated": false,
+        "issues": [
+          { "code": "LOCK_POLICY_DENIED", "severity": "error" }
+        ]
+      }
+    }
+  ]
+}
