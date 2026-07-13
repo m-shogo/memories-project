@@ -1,0 +1,23 @@
+{
+  "$schema": "https://memory-os.example/schemas/memory-town/issue-code-extension.v1.schema.json",
+  "extensionId": "memory-town.issue-code-extension.round2-environment",
+  "extensionVersion": 1,
+  "baseRegistryId": "memory-town.issue-code-registry",
+  "baseRegistryVersion": 1,
+  "codes": [
+    { "code": "ENVIRONMENT_V1_ACTIVE_DEPENDENCY", "layer": "reference", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.environmentV1ActiveDependency", "retryable": false, "blocksApply": true, "mayIncludePrivateValue": false },
+    { "code": "TIME_MODE_SET_MISMATCH", "layer": "semantic", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.timeModeSetMismatch", "retryable": false, "blocksApply": true, "mayIncludePrivateValue": false },
+    { "code": "TIME_MODE_RANGE_OVERLAP", "layer": "semantic", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.timeModeRangeOverlap", "retryable": false, "blocksApply": true, "mayIncludePrivateValue": false },
+    { "code": "TIME_MODE_RANGE_GAP", "layer": "semantic", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.timeModeRangeGap", "retryable": false, "blocksApply": true, "mayIncludePrivateValue": false },
+    { "code": "ENVIRONMENT_PREVIEW_PERSISTED_AS_EFFECTIVE_STATE", "layer": "state", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.environmentPreviewPersistedAsEffectiveState", "retryable": false, "blocksApply": true, "mayIncludePrivateValue": false },
+    { "code": "REAL_ENVIRONMENT_CLAIM_ENABLED", "layer": "privacy", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.realEnvironmentClaimEnabled", "retryable": false, "blocksApply": true, "mayIncludePrivateValue": false },
+    { "code": "MEMORY_TREE_THRESHOLD_NON_MONOTONIC", "layer": "semantic", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.memoryTreeThresholdNonMonotonic", "retryable": false, "blocksApply": true, "mayIncludePrivateValue": false },
+    { "code": "MEMORY_TREE_STAGE_SEQUENCE_INVALID", "layer": "semantic", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.memoryTreeStageSequenceInvalid", "retryable": false, "blocksApply": true, "mayIncludePrivateValue": false },
+    { "code": "MEMORY_TREE_EXACT_COUNT_EXPOSED", "layer": "privacy", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.memoryTreeExactCountExposed", "retryable": false, "blocksApply": true, "mayIncludePrivateValue": false },
+    { "code": "MEMORY_TREE_WINTER_PUNITIVE_VISUAL", "layer": "prototype", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.memoryTreeWinterPunitiveVisual", "retryable": false, "blocksApply": true, "mayIncludePrivateValue": false },
+    { "code": "MOTION_OFF_STATE_MISSING", "layer": "prototype", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.motionOffStateMissing", "retryable": false, "blocksApply": true, "mayIncludePrivateValue": false },
+    { "code": "LAYERED_FALLBACK_ENVIRONMENT_MISMATCH", "layer": "prototype", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.layeredFallbackEnvironmentMismatch", "retryable": false, "blocksApply": true, "mayIncludePrivateValue": false },
+    { "code": "BEACH_BAKED_BACKGROUND_ONLY", "layer": "prototype", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.beachBakedBackgroundOnly", "retryable": false, "blocksApply": true, "mayIncludePrivateValue": false },
+    { "code": "SEASON_REQUIRES_PARTICLE_FOR_RECOGNITION", "layer": "prototype", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.seasonRequiresParticleForRecognition", "retryable": false, "blocksApply": true, "mayIncludePrivateValue": false }
+  ]
+}
