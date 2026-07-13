@@ -1,0 +1,183 @@
+{
+  "$schema": "https://memory-os.example/schemas/memory-town/export-package.v1.schema.json",
+  "packageId": "townexport:fixture:0190f000-0000-7000-8000-000000000001",
+  "exportFormatVersion": "memory-town-export/1.0.0",
+  "exportedAt": "2026-07-13T00:00:00Z",
+  "scope": "self_export",
+  "integrityStatus": "fixture_without_archive_hashes",
+  "sections": [
+    {
+      "sectionId": "town.feature-progress",
+      "path": "town/feature-progress.json",
+      "schemaVersion": "memory-town-feature-progress/1.0.0",
+      "recordCount": 2,
+      "requiredForVisualContinuity": true
+    },
+    {
+      "sectionId": "town.layout",
+      "path": "town/layout.json",
+      "schemaVersion": "memory-town-layout/1.0.0",
+      "recordCount": 1,
+      "requiredForVisualContinuity": true
+    },
+    {
+      "sectionId": "town.feature-bindings",
+      "path": "town/feature-bindings.json",
+      "schemaVersion": "memory-town-feature-binding/1.0.0",
+      "recordCount": 2,
+      "requiredForVisualContinuity": true
+    },
+    {
+      "sectionId": "town.preferences",
+      "path": "town/preferences.json",
+      "schemaVersion": "memory-town-environment-preference/1.0.0",
+      "recordCount": 1,
+      "requiredForVisualContinuity": false
+    },
+    {
+      "sectionId": "town.stored-objects",
+      "path": "town/stored-objects.json",
+      "schemaVersion": "memory-town-stored-object/1.0.0",
+      "recordCount": 1,
+      "requiredForVisualContinuity": false
+    }
+  ],
+  "dependencyReferences": {
+    "featureRegistry": {
+      "registryId": "memory-town.feature-registry",
+      "registryVersion": 1
+    },
+    "mapDefinition": {
+      "mapDefinitionId": "memory-town.main-island",
+      "mapDefinitionVersion": 1
+    },
+    "objectCatalog": {
+      "catalogId": "memory-town.object-catalog",
+      "catalogVersion": 1
+    },
+    "layoutTemplate": {
+      "templateId": "memory-town.main-island.default",
+      "templateVersion": 1
+    },
+    "assetManifest": {
+      "manifestId": "memory-town.asset-manifest",
+      "assetManifestVersion": 1,
+      "assetBinariesIncluded": false
+    }
+  },
+  "examplePayloads": {
+    "featureProgress": [
+      {
+        "featureId": "shelf.movie",
+        "maxUnlockedStage": 2,
+        "unlockedAtByStage": {
+          "1": "2026-01-10T00:00:00Z",
+          "2": "2026-05-01T00:00:00Z"
+        },
+        "growthRulesetVersion": "memory-town-growth-rules/1.0.0",
+        "resetEpoch": 0,
+        "updatedAt": "2026-07-13T00:00:00Z"
+      },
+      {
+        "featureId": "shelf.story",
+        "maxUnlockedStage": 1,
+        "unlockedAtByStage": {
+          "1": "2026-04-01T00:00:00Z"
+        },
+        "growthRulesetVersion": "memory-town-growth-rules/1.0.0",
+        "resetEpoch": 0,
+        "updatedAt": "2026-07-13T00:00:00Z"
+      }
+    ],
+    "layout": {
+      "layoutId": "layout-fixture-user-001",
+      "layoutRevision": 12,
+      "baseline": {
+        "templateId": "memory-town.main-island.default",
+        "templateVersion": 1,
+        "generatedAt": "2026-01-01T00:00:00Z"
+      },
+      "mapDefinitionId": "memory-town.main-island",
+      "mapDefinitionVersion": 1,
+      "objectCatalogVersion": 1,
+      "objects": [
+        {
+          "instanceId": "townobj:tpl:pl2pj2pt6zp2h6porcuabcg7r2",
+          "definitionId": "structure.cinema.classic",
+          "definitionVersion": 1,
+          "parcelId": "cinema-main",
+          "position": { "cellX": 4, "cellY": 6, "elevationLevel": 0 },
+          "orientation": 0,
+          "origin": "template",
+          "placementState": "placed",
+          "lockPolicy": "system_fixed"
+        },
+        {
+          "instanceId": "townobj:user:0190f000-0000-7000-8000-000000000010",
+          "definitionId": "nature.flower.white-cluster",
+          "definitionVersion": 1,
+          "position": { "cellX": 8, "cellY": 21, "elevationLevel": 0 },
+          "orientation": 90,
+          "origin": "user",
+          "placementState": "placed",
+          "lockPolicy": "user_owned"
+        }
+      ],
+      "pathCells": [
+        { "position": { "cellX": 5, "cellY": 9, "elevationLevel": 0 }, "pathType": "footpath" }
+      ]
+    },
+    "featureBindings": [
+      {
+        "bindingId": "townbinding:tpl:hkho5xgjkmhvfuwxzny4akqlm2",
+        "featureId": "shelf.movie",
+        "objectInstanceId": "townobj:tpl:pl2pj2pt6zp2h6porcuabcg7r2",
+        "bindingRole": "primary"
+      },
+      {
+        "bindingId": "townbinding:tpl:lco2gz2dlc3vkvwehfkzgdwtbd",
+        "featureId": "shelf.story",
+        "objectInstanceId": "townobj:tpl:idkpvczviwee7lohck36fiffwf",
+        "bindingRole": "primary"
+      }
+    ],
+    "preferences": {
+      "themeId": "town-theme.default",
+      "seasonMode": "auto",
+      "manualSeason": null,
+      "timeMode": "night",
+      "weatherVisual": "clear",
+      "motionLevel": "reduced",
+      "soundEnabled": false
+    },
+    "storedObjects": [
+      {
+        "instanceId": "townobj:user:0190f000-0000-7000-8000-000000000020",
+        "definitionId": "furniture.bench.wood-small",
+        "definitionVersion": 1,
+        "origin": "user",
+        "placementState": "stored",
+        "lockPolicy": "user_owned"
+      }
+    ]
+  },
+  "exclusions": {
+    "rawMemoryBodies": true,
+    "privateTitles": true,
+    "personNames": true,
+    "privateUrls": true,
+    "preciseLocationHistory": true,
+    "copyrightedAssetBinaries": true,
+    "rendererSessionState": true,
+    "temporaryPlacementPreview": true
+  },
+  "reimportContract": {
+    "directApplyAllowed": false,
+    "previewRequired": true,
+    "versionCompatibilityCheckRequired": true,
+    "definitionAvailabilityCheckRequired": true,
+    "placementValidationRequired": true,
+    "unsupportedObjectsDisposition": "stored",
+    "applyMode": "atomic"
+  }
+}
