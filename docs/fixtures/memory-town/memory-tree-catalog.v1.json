@@ -1,0 +1,110 @@
+{
+  "$schema": "https://memory-os.example/schemas/memory-town/memory-tree-catalog.v1.schema.json",
+  "catalogId": "memory-town.memory-tree-catalog",
+  "catalogVersion": 1,
+  "trees": [
+    {
+      "treeId": "landmark.memory-tree.seasonal",
+      "status": "contract_locked_asset_pending",
+      "displayNameKey": "memoryTown.landmark.memoryTree",
+      "fictionalSpecies": true,
+      "growthPolicy": {
+        "aggregateKey": "town_eligible_deduplicated_record_count",
+        "aggregationPolicy": "eligible-deduplicated-count-excluding-hidden-sealed-restricted-deleted",
+        "thresholdStatus": "prototype_candidate",
+        "stageThresholds": [
+          { "stage": 0, "minimumEligibleCount": 0 },
+          { "stage": 1, "minimumEligibleCount": 25 },
+          { "stage": 2, "minimumEligibleCount": 100 }
+        ],
+        "stagePersistence": "max-unlocked-until-explicit-reset",
+        "resetScope": "tree-or-town-or-privacy-reset"
+      },
+      "stages": [
+        {
+          "stage": 0,
+          "role": "sapling",
+          "silhouetteScaleBand": "small",
+          "seasonTextureKeys": {
+            "spring": "town/tree/memory-tree/stage-0/spring",
+            "summer": "town/tree/memory-tree/stage-0/summer",
+            "autumn": "town/tree/memory-tree/stage-0/autumn",
+            "winter": "town/tree/memory-tree/stage-0/winter"
+          },
+          "fallbackTextureKey": "town/tree/memory-tree/fallback-small"
+        },
+        {
+          "stage": 1,
+          "role": "rooted-tree",
+          "silhouetteScaleBand": "medium",
+          "seasonTextureKeys": {
+            "spring": "town/tree/memory-tree/stage-1/spring",
+            "summer": "town/tree/memory-tree/stage-1/summer",
+            "autumn": "town/tree/memory-tree/stage-1/autumn",
+            "winter": "town/tree/memory-tree/stage-1/winter"
+          },
+          "fallbackTextureKey": "town/tree/memory-tree/fallback-medium"
+        },
+        {
+          "stage": 2,
+          "role": "landmark-tree",
+          "silhouetteScaleBand": "large",
+          "seasonTextureKeys": {
+            "spring": "town/tree/memory-tree/stage-2/spring",
+            "summer": "town/tree/memory-tree/stage-2/summer",
+            "autumn": "town/tree/memory-tree/stage-2/autumn",
+            "winter": "town/tree/memory-tree/stage-2/winter"
+          },
+          "fallbackTextureKey": "town/tree/memory-tree/fallback-large"
+        }
+      ],
+      "seasonVariants": {
+        "spring": {
+          "motif": "sakura-blossom",
+          "groundCueId": "town.ground-cue.spring.flowers",
+          "particleProfileId": "town.particle.spring.petals",
+          "particleRequiredForRecognition": false
+        },
+        "summer": {
+          "motif": "deep-green",
+          "groundCueId": "town.ground-cue.summer.deep-grass",
+          "particleProfileId": "town.particle.summer.none",
+          "particleRequiredForRecognition": false
+        },
+        "autumn": {
+          "motif": "momiji-foliage",
+          "groundCueId": "town.ground-cue.autumn.leaves",
+          "particleProfileId": "town.particle.autumn.falling-leaves",
+          "particleRequiredForRecognition": false
+        },
+        "winter": {
+          "motif": "dormant-warm-winter",
+          "groundCueId": "town.ground-cue.winter.snow-caps",
+          "particleProfileId": "town.particle.winter.light-snow",
+          "particleRequiredForRecognition": false
+        }
+      },
+      "animationProfiles": {
+        "motionOff": "town.tree.motion.off",
+        "motionReduced": "town.tree.motion.reduced",
+        "motionFull": "town.tree.motion.full",
+        "lowPower": "town.tree.motion.low-power"
+      },
+      "privacyControls": {
+        "growthHistoryResetAllowed": true,
+        "growthVisualHideAllowed": true,
+        "privacyResetIncludesTree": true,
+        "exactCountExposedFromStage": false
+      },
+      "rules": {
+        "neverUsesImportanceScore": true,
+        "neverUsesEmotionStrength": true,
+        "neverUsesLoginStreak": true,
+        "neverUsesPaymentAmount": true,
+        "normalDeletionNeverShrinksAutomatically": true,
+        "winterNeverLooksDeadOrPunitive": true,
+        "timeModeUsesLightingOverlayNotSeparateTreeAsset": true
+      }
+    }
+  ]
+}
