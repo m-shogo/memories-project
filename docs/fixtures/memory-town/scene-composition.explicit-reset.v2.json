@@ -1,0 +1,86 @@
+{
+  "$schema": "https://memory-os.example/schemas/memory-town/scene-composition-case.v2.schema.json",
+  "caseId": "scene-composition.explicit-reset-v2",
+  "caseVersion": 2,
+  "references": {
+    "featureRegistry": "feature-registry.v2.json",
+    "mapDefinition": "map-definition.main-island.v1.json",
+    "objectCatalog": "object-catalog.v1.json",
+    "layoutTemplate": "layout-template.main-island.v1.json"
+  },
+  "input": {
+    "layout": {
+      "layoutId": "layout-fixture-user-reset-001",
+      "layoutRevision": 8,
+      "templateId": "memory-town.main-island.default",
+      "templateVersion": 1
+    },
+    "featureProjection": [
+      {
+        "featureId": "shelf.movie",
+        "currentEligibleItemCount": 100,
+        "growthEligibleContributionCount": 0,
+        "projectionCursor": "cursor.movie.500",
+        "recentDelta": 0,
+        "candidateStage": 0,
+        "badges": [],
+        "route": "/shelves/movies"
+      }
+    ],
+    "featureProgress": [
+      {
+        "featureId": "shelf.movie",
+        "maxUnlockedStage": 0,
+        "unlockedAtByStage": {},
+        "growthRulesetVersion": "memory-town-growth-rules/2.0.0",
+        "resetEpoch": 1,
+        "growthOriginCursor": "cursor.movie.500",
+        "updatedAt": "2026-07-13T00:00:00Z"
+      }
+    ],
+    "environment": {
+      "themeId": "town-theme.default",
+      "seasonMode": "auto",
+      "effectiveSeason": "summer",
+      "timeMode": "day",
+      "weatherVisual": "clear",
+      "motionLevel": "off",
+      "soundEnabled": false
+    }
+  },
+  "expected": {
+    "displayStages": [
+      {
+        "featureId": "shelf.movie",
+        "currentEligibleItemCount": 100,
+        "growthEligibleContributionCount": 0,
+        "candidateStage": 0,
+        "previousMaxUnlockedStage": 0,
+        "displayStage": 0,
+        "unlockEvent": false
+      }
+    ],
+    "unlockEvents": [],
+    "renderedStructures": [
+      {
+        "instanceRef": "seed:structure-cinema-main",
+        "featureId": "shelf.movie",
+        "variantKey": "stage-0",
+        "route": "/shelves/movies"
+      }
+    ],
+    "environment": {
+      "themeId": "town-theme.default",
+      "seasonMode": "auto",
+      "effectiveSeason": "summer",
+      "timeMode": "day",
+      "weatherVisual": "clear",
+      "motionLevel": "off",
+      "soundEnabled": false
+    },
+    "privacyAssertions": {
+      "forbiddenKeys": ["title", "personName", "rawNote", "privateUrl", "preciseLocation", "chatBody"],
+      "rawMemoryRecordCount": 0
+    }
+  }
+}
