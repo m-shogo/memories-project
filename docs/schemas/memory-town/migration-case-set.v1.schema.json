@@ -1,0 +1,169 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/memory-town/migration-case-set.v1.schema.json",
+  "title": "Memory Town Migration Case Set v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "caseSetId", "caseSetVersion", "rules", "cases"],
+  "properties": {
+    "$schema": { "const": "https://memory-os.example/schemas/memory-town/migration-case-set.v1.schema.json" },
+    "caseSetId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+    "caseSetVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" },
+    "rules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mergeInputs",
+        "neverSilentlyDeleteUserObjects",
+        "neverOverwriteUserModifiedTemplateObjects",
+        "unplaceableNewSystemObjects",
+        "migrationApplyMode",
+        "rollbackSnapshotRequired"
+      ],
+      "properties": {
+        "mergeInputs": { "const": ["old_template_baseline", "current_user_layout", "new_template"] },
+        "neverSilentlyDeleteUserObjects": { "const": true },
+        "neverOverwriteUserModifiedTemplateObjects": { "const": true },
+        "unplaceableNewSystemObjects": { "const": "stored" },
+        "migrationApplyMode": { "const": "atomic" },
+        "rollbackSnapshotRequired": { "const": true }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["caseId", "oldTemplate", "currentUserLayout", "newTemplate", "expected"],
+        "properties": {
+          "caseId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+          "oldTemplate": { "$ref": "#/$defs/TemplateSnapshot" },
+          "currentUserLayout": { "$ref": "#/$defs/UserLayoutSnapshot" },
+          "newTemplate": { "$ref": "#/$defs/TemplateSnapshot" },
+          "expected": { "$ref": "#/$defs/ExpectedMigrationResult" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "TemplateObject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instanceIdSeed", "definitionId", "position", "orientation"],
+      "properties": {
+        "instanceIdSeed": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "definitionId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "position": { "$ref": "core.v1.schema.json#/$defs/TownGridPosition" },
+        "orientation": { "$ref": "core.v1.schema.json#/$defs/TownOrientation" }
+      }
+    },
+    "TemplateSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["templateId", "templateVersion", "objects"],
+      "properties": {
+        "templateId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "templateVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" },
+        "objects": {
+          "type": "array",
+          "maxItems": 5000,
+          "items": { "$ref": "#/$defs/TemplateObject" }
+        }
+      }
+    },
+    "UserLayoutObject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["definitionId", "position", "orientation", "userModifiedSinceBaseline", "placementState"],
+      "properties": {
+        "instanceId": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "instanceRef": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "definitionId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "position": { "$ref": "core.v1.schema.json#/$defs/TownGridPosition" },
+        "orientation": { "$ref": "core.v1.schema.json#/$defs/TownOrientation" },
+        "origin": { "$ref": "core.v1.schema.json#/$defs/TownObjectOrigin" },
+        "lockPolicy": { "$ref": "core.v1.schema.json#/$defs/TownLockPolicy" },
+        "userModifiedSinceBaseline": { "type": "boolean" },
+        "placementState": { "$ref": "core.v1.schema.json#/$defs/TownPlacementState" }
+      },
+      "oneOf": [
+        { "required": ["instanceId"], "not": { "required": ["instanceRef"] } },
+        { "required": ["instanceRef"], "not": { "required": ["instanceId"] } }
+      ]
+    },
+    "UserLayoutSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["layoutRevision", "objects"],
+      "properties": {
+        "layoutRevision": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" },
+        "objects": {
+          "type": "array",
+          "maxItems": 5000,
+          "items": { "$ref": "#/$defs/UserLayoutObject" }
+        }
+      }
+    },
+    "ExpectedObject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["placementState", "mergeDecision"],
+      "properties": {
+        "instanceId": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "instanceRef": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "position": {
+          "oneOf": [
+            { "$ref": "core.v1.schema.json#/$defs/TownGridPosition" },
+            { "type": "null" }
+          ]
+        },
+        "placementState": { "$ref": "core.v1.schema.json#/$defs/TownPlacementState" },
+        "mergeDecision": {
+          "enum": [
+            "template_update_applied",
+            "new_template_object_added",
+            "user_object_preserved",
+            "new_template_object_stored_due_to_collision",
+            "user_modified_template_object_preserved"
+          ]
+        }
+      },
+      "oneOf": [
+        { "required": ["instanceId"], "not": { "required": ["instanceRef"] } },
+        { "required": ["instanceRef"], "not": { "required": ["instanceId"] } }
+      ]
+    },
+    "MigrationIssue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "severity", "affectedInstanceRef"],
+      "properties": {
+        "code": { "enum": ["MIGRATION_TARGET_OCCUPIED", "TEMPLATE_CHANGE_SKIPPED_USER_MODIFIED"] },
+        "severity": { "enum": ["info", "warning", "error"] },
+        "affectedInstanceRef": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "conflictingInstanceId": { "type": "string", "minLength": 1, "maxLength": 160 }
+      }
+    },
+    "ExpectedMigrationResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resultingTemplateVersion", "resultingLayoutRevision", "objects", "issues"],
+      "properties": {
+        "resultingTemplateVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" },
+        "resultingLayoutRevision": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" },
+        "objects": {
+          "type": "array",
+          "maxItems": 5000,
+          "items": { "$ref": "#/$defs/ExpectedObject" }
+        },
+        "issues": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": { "$ref": "#/$defs/MigrationIssue" }
+        }
+      }
+    }
+  }
+}
