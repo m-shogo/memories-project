@@ -19,6 +19,8 @@
     { "schemaId": "https://memory-os.example/schemas/memory-town/command-batch-case-set.v1.schema.json", "repositoryPath": "docs/schemas/memory-town/command-batch-case-set.v1.schema.json" },
     { "schemaId": "https://memory-os.example/schemas/memory-town/asset-manifest.v1.schema.json", "repositoryPath": "docs/schemas/memory-town/asset-manifest.v1.schema.json" },
     { "schemaId": "https://memory-os.example/schemas/memory-town/environment-theme-catalog.v1.schema.json", "repositoryPath": "docs/schemas/memory-town/environment-theme-catalog.v1.schema.json" },
+    { "schemaId": "https://memory-os.example/schemas/memory-town/environment-theme-catalog.v2.schema.json", "repositoryPath": "docs/schemas/memory-town/environment-theme-catalog.v2.schema.json" },
+    { "schemaId": "https://memory-os.example/schemas/memory-town/memory-tree-catalog.v1.schema.json", "repositoryPath": "docs/schemas/memory-town/memory-tree-catalog.v1.schema.json" },
     { "schemaId": "https://memory-os.example/schemas/memory-town/determinism-vectors.v1.schema.json", "repositoryPath": "docs/schemas/memory-town/determinism-vectors.v1.schema.json" },
     { "schemaId": "https://memory-os.example/schemas/memory-town/reset-case-set.v1.schema.json", "repositoryPath": "docs/schemas/memory-town/reset-case-set.v1.schema.json" },
     { "schemaId": "https://memory-os.example/schemas/memory-town/reset-case-set.v2.schema.json", "repositoryPath": "docs/schemas/memory-town/reset-case-set.v2.schema.json" },
