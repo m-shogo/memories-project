@@ -4,173 +4,324 @@
 
 ## 目的
 
-Memory Town を、MVPでは固定2.5Dの町として軽く実装しながら、将来的にはユーザーが道路、木、花、ベンチ、建物などを配置できる箱庭へ拡張しても破綻しない空間モデルとして定義する。
+Memory Townを、MVPでは固定視点2.5Dの町として軽く実装しながら、将来的にはユーザーが道路、木、花、ベンチ、建物などを配置できる箱庭へ拡張しても破綻しない空間モデルとして定義する。
 
-参考イメージは「どうぶつの森のような、自分の場所へ愛着を持てる箱庭」である。
+最優先契約:
+
+- `docs/memory-town-architecture-hardening-contract.md`
+
+参考イメージ:
+
+```txt
+どうぶつの森のように、自分の場所へ愛着を持てる箱庭
+```
 
 ただし、以下を意味しない。
 
-- どうぶつの森のUIやアートを複製する
+- 特定作品のUIやアートの複製
 - 最初から自由配置ゲームを作る
 - アバター操作を中心にする
-- 経済、素材集め、クラフト、建築待ち時間を導入する
+- 経済、素材集め、クラフト、建築待ち時間
+- Minecraft型の1block建築
 
-Memory Town の役割は、Memory OS に蓄積された棚・箱・つながりが、見て楽しい自分の町として育つことである。
+Memory Townの役割は、Memory OSに蓄積された棚・箱・つながりが、見て楽しい自分の町として育つことである。
 
 ---
 
 ## Product Metaphor
 
-Minecraft型のボクセル世界ではない。
-
 ```txt
-見た目: 温かい2.5Dの編集可能なジオラマ
+見た目: 温かい固定視点2.5Dの編集可能なジオラマ
 内部: 論理グリッド上の配置システム
-MVP: 運営が決めた固定配置
-将来: 一部の装飾・道・建物をユーザーが編集可能
+MVP: system templateによる固定layout
+将来: 装飾・道・植栽・建物を段階的に編集可能
 ```
 
-一言で表す。
-
-```txt
-どうぶつの森的な箱庭感
-+ 固定2.5D
-+ データ駆動の配置システム
-```
+固定視点と固定配置を混同しない。
 
 ---
 
-## 最重要アーキテクチャ判断
-
-町を画面座標 `x / y` の集合として保存しない。
-
-最初から以下で保存する。
+# 1. Five-state Model
 
 ```txt
-logical grid position
-+ footprint
-+ layer
-+ elevation
-+ orientation
-+ stable definition ID
+1. Memory Domain State
+2. Town Feature Progress State
+3. Town Layout State
+4. Town Environment State
+5. Town Render State
 ```
 
-描画時だけ論理座標を画面座標へ変換する。
+## 1.1 Memory Domain State
+
+正本:
+
+- memory / collection item
+- shelf
+- import
+- progress
+- month capsule
+- confirmed relation
+- follow target
+
+町の座標、asset、cameraを持たない。
+
+## 1.2 Town Feature Progress State
+
+町機能の解除済み成長段階。
 
 ```ts
+type TownFeatureId =
+  | 'shelf.movie'
+  | 'shelf.story'
+  | 'shelf.food'
+  | 'box.travel'
+  | 'system.inbox'
+  | 'reflection.square';
+
+interface TownFeatureProgress {
+  featureId: TownFeatureId;
+  maxUnlockedStage: number;
+  unlockedAtByStage: Record<number, string>;
+  growthRulesetVersion: string;
+  resetEpoch: number;
+  updatedAt: string;
+}
+```
+
+通常のrecord削除、Import取り消し、threshold変更で自動縮小しない。
+
+## 1.3 Town Layout State
+
+町のどこに何が置かれているか。
+
+- map
+- parcel
+- terrain
+- object instance
+- path cell
+- feature binding
+- decoration slot
+- stored object
+- layout revision
+
+Memory内容を持たない。
+
+## 1.4 Town Environment State
+
+```ts
+interface TownEnvironmentState {
+  themeId: string;
+  seasonMode: 'auto' | 'manual';
+  effectiveSeason: 'spring' | 'summer' | 'autumn' | 'winter';
+  timeMode: 'day' | 'evening' | 'night';
+  weatherVisual: 'clear' | 'rain' | 'snow';
+  motionLevel: 'off' | 'reduced' | 'full';
+  soundEnabled: boolean;
+}
+```
+
+Memory Projectionへ混ぜない。
+
+## 1.5 Town Render State
+
+PixiJS session内だけの状態。
+
+- camera
+- selection
+- loaded asset
+- animation
+- placement preview
+
+永続化しない。
+
+---
+
+# 2. Feature / Visual Identity Separation
+
+## 2.1 TownFeatureProjection
+
+```ts
+interface TownFeatureProjection {
+  featureId: TownFeatureId;
+  eligibleItemCount: number;
+  recentDelta: number;
+  candidateStage: number;
+  badges: Array<'new' | 'continued' | 'capsule'>;
+  route: string;
+}
+```
+
+## 2.2 Display stage
+
+```ts
+displayStage = Math.max(
+  featureProgress.maxUnlockedStage,
+  featureProjection.candidateStage,
+);
+```
+
+candidate stageがmaxUnlockedStageを超えた時だけ、unlock eventを保存する。
+
+## 2.3 Feature binding
+
+```ts
+interface TownFeatureBinding {
+  bindingId: string;
+  featureId: TownFeatureId;
+  objectInstanceId: string;
+  bindingRole: 'primary' | 'secondary' | 'portal';
+}
+```
+
+Rules:
+
+- featureId = Memory OS上の意味
+- definitionId = visual definition
+- instanceId = map上の個体
+- skin変更でfeatureId不変
+- building移動でfeatureId不変
+- definition差し替えでfeature progress不変
+
+---
+
+# 3. Canonical Logical Grid
+
+町を画面座標`x / y`の集合として保存しない。
+
+保存するもの:
+
+```txt
+logical position
++ footprint
++ layer
++ elevation level
++ orientation
++ stable IDs
+```
+
+## 3.1 Axes
+
+```txt
+origin: logical north-west = (0, 0)
++X: east
++Y: south
+```
+
+isometric projection:
+
+```txt
++X = screen down-right
++Y = screen down-left
+```
+
+## 3.2 Position
+
+```ts
+interface TownGridPosition {
+  cellX: number;
+  cellY: number;
+  elevationLevel: number;
+}
+```
+
+`elevationLevel`は整数のlogical level。
+
+pixel値を保存しない。
+
+## 3.3 Orientation
+
+```ts
+type TownOrientation = 0 | 90 | 180 | 270;
+```
+
+```txt
+0   = North (-Y)
+90  = East  (+X)
+180 = South (+Y)
+270 = West  (-X)
+```
+
+## 3.4 Projection
+
+```ts
+interface TownGridMetric {
+  tileWidthPx: number;
+  tileHeightPx: number;
+  elevationStepPx: number;
+}
+
 function gridToScreen(
-  cellX: number,
-  cellY: number,
-  tileWidth: number,
-  tileHeight: number,
-  elevationPx: number,
+  position: TownGridPosition,
+  metric: TownGridMetric,
 ): { x: number; y: number } {
   return {
-    x: (cellX - cellY) * (tileWidth / 2),
-    y: (cellX + cellY) * (tileHeight / 2) - elevationPx,
+    x: (position.cellX - position.cellY) * (metric.tileWidthPx / 2),
+    y:
+      (position.cellX + position.cellY) * (metric.tileHeightPx / 2) -
+      position.elevationLevel * metric.elevationStepPx,
   };
 }
 ```
 
-画面解像度、ズーム、アートサイズが変わっても、町の保存データは変えない。
+camera scale / viewport offsetは後から適用する。
 
 ---
 
-## 4つの状態を分離する
-
-```txt
-Memory Domain State
-Town Projection State
-Town Layout State
-Town Render State
-```
-
-### 1. Memory Domain State
-
-記憶、棚、Import、進行、箱、確定したつながりの正本。
-
-### 2. Town Projection State
-
-Memory Domain State を安全に集計して得る、建物の成長段階や新着状態。
-
-例:
-
-```txt
-映画棚 42件
-→ cinema stage 2
-```
-
-### 3. Town Layout State
-
-町のどこに何が置かれているか。
-
-例:
-
-```txt
-cinema instance
-→ parcel cinema-main
-→ cell 10, 6
-→ orientation south-east
-```
-
-### 4. Town Render State
-
-PixiJSがそのフレームで使うsprite、animation、camera、selection状態。
-
-Render Stateは永続化しない。
-
-## 分離ルール
-
-- 記憶を削除してもlayoutを壊さない
-- 建物が成長しても配置を失わない
-- アセットを差し替えてもgrid座標を変えない
-- rendererを変更してもtown layoutを移行しない
-- user decorationはmemory dataから再計算しない
-- system growthとuser customizationを混ぜない
-
----
-
-## Logical Map Model
+# 4. Map Definition
 
 ```ts
 interface TownMapDefinition {
   mapDefinitionId: string;
-  schemaVersion: string;
+  mapDefinitionVersion: number;
+  spatialSchemaVersion: string;
   gridWidth: number;
   gridHeight: number;
-  tileMetric: {
-    logicalTileWidth: number;
-    logicalTileHeight: number;
-  };
+  terrain: TownTerrainCellDefinition[];
   parcels: TownParcelDefinition[];
   expansionZones: TownExpansionZoneDefinition[];
+  chunkMetric?: {
+    width: number;
+    height: number;
+  };
 }
 ```
 
-初期mapの実サイズはprototype後に決める。
+公開済みversionをin-place変更しない。
 
-重要なのは、座標系と単位を途中で変えないことである。
+## Expansion rule
 
-### Chunk
+Map拡張で既存座標原点を移動しない。
 
-大きくなった町は内部的にchunkへ分割できる。
-
-```ts
-interface TownChunkCoordinate {
-  chunkX: number;
-  chunkY: number;
-}
-```
-
-MVPでは全体を一度に描画してよい。
-
-将来はchunk単位で、表示、保存、衝突検査、lazy loadを行えるようにする。
+既存cell座標を保持したまま、新chunk / districtを追加する。
 
 ---
 
-## Parcel Model
+# 5. Terrain Model
 
-主要建物は、1マス単位で無制限に置くのではなく、最初は区画を持つ。
+各cellは必ず一つのbase terrainを持つ。
+
+```ts
+type TownTerrainKind =
+  | 'grass'
+  | 'soil'
+  | 'sand'
+  | 'stone'
+  | 'coast'
+  | 'water';
+
+interface TownTerrainCellDefinition {
+  position: TownGridPosition;
+  terrainKind: TownTerrainKind;
+}
+```
+
+waterをterrainと別solid objectで二重管理しない。
+
+Terrain heightの自由編集は当面No-Go。
+
+---
+
+# 6. Parcel Model
 
 ```ts
 interface TownParcelDefinition {
@@ -181,55 +332,48 @@ interface TownParcelDefinition {
   allowedCategories: TownObjectCategory[];
   systemReserved: boolean;
   userEditablePhase: 'never' | 'decor_only' | 'relocatable_later';
+  allowedFeatureIds?: TownFeatureId[];
 }
 ```
 
-初期例:
+初期parcel:
 
-- cinema parcel
-- story house parcel
-- market parcel
-- port parcel
-- central square parcel
-- warehouse parcel
+- cinema-main
+- story-house-main
+- market-main
+- port-main
+- warehouse-main
+- central-square
 
-## なぜ区画を持つか
-
-映画館が成長しても隣の木や道路へ食い込ませないため。
-
-建物は、最大成長時に必要な面積を最初から予約する。
-
-```txt
-parcel size = 最大stageのfootprint + 周辺余白
-```
-
-小さいstageでは空いた部分を植栽や一時装飾に使えるが、主要建物の成長を妨げる恒久物は置かない。
+主要建物はparcel内へ置く。
 
 ---
 
-## Grid Position
+# 7. Growth Envelope
 
 ```ts
-interface TownGridPosition {
-  cellX: number;
-  cellY: number;
-  elevation: number;
+interface TownGrowthEnvelope {
+  featureId: TownFeatureId;
+  envelopeVersion: number;
+  reservedCells: TownRelativeCell[];
+  supportedStages: number[];
 }
-
-type TownOrientation = 0 | 90 | 180 | 270;
 ```
 
-MVPではorientationを固定しても、schemaには最初から持たせる。
+Rules:
+
+- 承認済みstageの最大領域を予約
+- user decorationはenvelope外slotへ
+- overlay slotはstageと共存可能
+- envelopeを超えるstageはmap migration対象
+- stage変更でuser objectを削除しない
 
 ---
 
-## Object Categories
+# 8. Object Categories
 
 ```ts
 type TownObjectCategory =
-  | 'terrain'
-  | 'path'
-  | 'water'
   | 'structure'
   | 'tree'
   | 'flower'
@@ -241,55 +385,7 @@ type TownObjectCategory =
   | 'semantic_overlay';
 ```
 
-### Terrain Tile
-
-- grass
-- soil
-- sand
-- stone
-- coast
-- water
-
-1cell単位を基本にする。
-
-### Path Tile
-
-- road
-- footpath
-- plaza
-- bridge connector
-
-接続方向を見て自動的に見た目を変える。
-
-### Small Prop
-
-- flower
-- lamp
-- bench
-- sign
-- fence
-
-1x1または小さな複数cell。
-
-### Natural Object
-
-- tree
-- shrub
-- rock
-
-見た目より広いclearanceを持てる。
-
-### Structure
-
-- cinema
-- story house
-- market
-- port facility
-- warehouse
-
-複数cellを占有する完成スプライト。
-
-建物を1cellごとの壁や屋根に分解しない。
+Base terrainとphysical pathは専用stateで扱う。
 
 ```txt
 地形・道・花 = tile単位
@@ -297,13 +393,11 @@ type TownObjectCategory =
 建物 = multi-cell完成sprite
 ```
 
-これを基本とする。
+建物を1cellごとの壁や屋根に分解しない。
 
 ---
 
-## Object Definition and Instance
-
-アセット定義と、ユーザーの町に置かれたinstanceを分離する。
+# 9. Object Definition
 
 ```ts
 interface TownObjectDefinition {
@@ -316,76 +410,54 @@ interface TownObjectDefinition {
   interaction?: TownInteractionDefinition;
   tags: string[];
   deprecatedAt?: string;
-}
-
-interface TownObjectInstance {
-  instanceId: string;
-  definitionId: string;
-  definitionVersion: number;
-  mapId: string;
-  parcelId?: string;
-  position: TownGridPosition;
-  orientation: TownOrientation;
-  source: 'system' | 'projection' | 'user';
-  locked: boolean;
-  variantKey?: string;
-  createdAt: string;
-  updatedAt: string;
+  replacementDefinitionId?: string;
 }
 ```
 
-### Stable ID Rule
+Rules:
 
-- `definitionId`を別の意味で再利用しない
-- アセット差し替えでIDを変えない
-- 廃止時はdeleteではなくdeprecatedにする
-- user instanceを無断で削除しない
+- definitionIdを別の意味で再利用しない
+- display nameからID生成しない
+- asset差し替えでIDを変えない
+- 廃止はdeleteではなくdeprecated
+- published versionをin-place変更しない
 
 ---
 
-## Footprint
+# 10. Footprint Contract
 
 ```ts
+interface TownRelativeCell {
+  dx: number;
+  dy: number;
+}
+
 interface TownFootprint {
-  occupiedCells: Array<{ dx: number; dy: number }>;
-  walkableCells?: Array<{ dx: number; dy: number }>;
-  entranceCells?: Array<{ dx: number; dy: number }>;
-  clearanceCells?: Array<{ dx: number; dy: number }>;
+  pivotCell: { dx: 0; dy: 0 };
+  occupiedCells: TownRelativeCell[];
+  walkableCells?: TownRelativeCell[];
+  entranceCells?: TownRelativeCell[];
+  clearanceCells?: TownRelativeCell[];
+  reservedGrowthCells?: TownRelativeCell[];
   depthAnchor: { dx: number; dy: number };
 }
 ```
 
-### occupiedCells
+Rules:
 
-他のsolid objectを置けない。
-
-### walkableCells
-
-建物内に見える通路、桟橋など、見た目は占有していても住人が通れる場所。
-
-### entranceCells
-
-将来、道接続や住人routeに使う。
-
-### clearanceCells
-
-木の枝、建物前の入口、成長予定地など、完全占有ではないが他の大物を置けない場所。
-
-### depthAnchor
-
-2.5Dの前後関係を決める基準点。
-
-spriteの画像サイズや透明余白からsort順を決めない。
+- negative offset許可
+- pivot中心にrotation
+- rotation後にnormalizeしない
+- positionはpivotのmap位置
+- collisionはsprite boundsではなくfootprint
+- transparent余白をsort根拠にしない
 
 ---
 
-## Layer and Collision Model
-
-同じcellでも、layerが違えば共存できる場合がある。
+# 11. Placement Layers
 
 ```ts
 type TownPlacementLayer =
-  | 'base_terrain'
   | 'surface_path'
   | 'ground_object'
   | 'solid_object'
@@ -394,6 +466,8 @@ type TownPlacementLayer =
   | 'ambient_effect';
 ```
 
+Base terrainは別state。
+
 例:
 
 ```txt
@@ -401,26 +475,68 @@ grass + footpath = possible
 footpath + flower = rule-dependent
 footpath + cinema = impossible
 cinema + seasonal flag overlay = possible
-road + semantic connection glow = possible
+road + semantic glow = possible
 ```
-
-衝突はsprite boundsではなく、grid footprintとplacement layerで判定する。
 
 ---
 
-## Road and Path System
-
-道路は画像を自由配置するのではなく、cell接続情報からautotileする。
+# 12. Town Object Instance
 
 ```ts
-interface TownPathCell {
-  position: TownGridPosition;
-  pathType: 'road' | 'footpath' | 'plaza' | 'bridge';
-  connectionMask: number;
+type TownObjectOrigin =
+  | 'template'
+  | 'user'
+  | 'migration'
+  | 'system_unlock';
+
+type TownPlacementState =
+  | 'placed'
+  | 'stored'
+  | 'retired';
+
+type TownLockPolicy =
+  | 'system_fixed'
+  | 'decor_editable'
+  | 'relocatable_later'
+  | 'user_owned';
+
+interface TownObjectInstance {
+  instanceId: string;
+  definitionId: string;
+  definitionVersion: number;
+  mapId: string;
+  parcelId?: string;
+  placementState: TownPlacementState;
+  position?: TownGridPosition;
+  orientation: TownOrientation;
+  origin: TownObjectOrigin;
+  lockPolicy: TownLockPolicy;
+  variantKey?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 ```
 
-接続mask:
+禁止:
+
+- `source: 'projection'`
+- stored objectをmagic coordinateへ置く
+- boolean lockedだけで権限判断
+
+---
+
+# 13. Physical Path Model
+
+永続化するのはpathの種類だけ。
+
+```ts
+interface TownPathCellState {
+  position: TownGridPosition;
+  pathType: 'road' | 'footpath' | 'plaza' | 'bridge';
+}
+```
+
+connection maskは周囲からscene composition時に導出する。
 
 ```txt
 N = 1
@@ -429,124 +545,25 @@ S = 4
 W = 8
 ```
 
-周囲からmaskを再計算し、直線、角、T字、交差点、終端spriteを選ぶ。
+maskをDB正本にしない。
 
-## 重要な分離
-
-ユーザーが配置する生活道路と、記憶同士の関係を示すsemantic connectionは別データにする。
+## Physical vs Semantic
 
 ```txt
 Physical Path
-= ユーザーまたはtemplateが配置した道
+= templateまたはuserが配置した生活道路
 
 Semantic Connection Overlay
-= 確定した記憶関係を示す光、線、橋の演出
+= 確定した記憶関係を示す光、線、航路
 ```
 
-物理道路を編集しても記憶の関係は消えない。
-
-記憶関係が消えてもユーザーが作った道路は消えない。
+同じtable / modelにしない。
 
 ---
 
-## Building Growth Contract
+# 14. Decoration Slot
 
-建物stageは、同じ建物instanceのvariantとして扱う。
-
-```ts
-interface TownStructureProjection {
-  instanceId: string;
-  stage: number;
-  renderVariantKey: string;
-  badges: string[];
-}
-```
-
-### 原則
-
-- stage変更でinstanceIdを変えない
-- routeを変えない
-- parcelを変えない
-- entranceの基本位置を変えない
-- 最大footprintをparcel内に予約する
-- user decorationを勝手に削除しない
-
-### Footprint変更
-
-可能な限りstage間で同じreserved footprintを使う。
-
-どうしても変更が必要な場合は、versioned placement migrationを用意する。
-
-```txt
-validate
-→ preview affected objects
-→ safe relocation
-→ user notification
-→ rollback data保持
-```
-
----
-
-## Default Layout and User Customization
-
-最初の町も、固定座標をcodeへ直書きしない。
-
-```ts
-interface TownLayoutTemplate {
-  templateId: string;
-  templateVersion: number;
-  mapDefinitionId: string;
-  placements: TownObjectTemplatePlacement[];
-}
-```
-
-新規ユーザーはtemplateからlayoutを生成する。
-
-### MVP
-
-- system templateで固定配置
-- user editorなし
-- system placementはlocked
-- 季節overlayのみ変化
-
-### 将来Phase 1
-
-- 建物周辺のdecoration slotを選べる
-- 花、旗、看板、ベンチ
-- predefined slot placement
-
-### 将来Phase 2
-
-- designated editable zone内で木、花、家具を自由配置
-- undo / redo
-- placement validation
-
-### 将来Phase 3
-
-- 道路と植栽の編集
-- autotile
-- entrance接続validation
-
-### 将来Phase 4
-
-- 主要建物を許可されたparcel間で移動
-- map expansion
-- district template変更
-
-### 当面のNo-Go
-
-- terrain heightの自由編集
-- voxel破壊
-- 建物を1blockごとに建築
-- multiplayer同時編集
-- 他人の町から物を盗む
-- 仮想通貨や素材消費
-
----
-
-## Decoration Slot Model
-
-自由配置より前に、slot式で安全に拡張できる。
+自由配置より前にslot式で拡張する。
 
 ```ts
 interface TownDecorationSlot {
@@ -561,225 +578,354 @@ interface TownDecorationSlot {
 
 例:
 
-- 映画館前のposter slot
-- 市場横のflower slot
+- 映画館前poster slot
+- 市場横flower slot
 - 港の船slot
-- 中央広場のmonth capsule slot
+- 中央広場month capsule slot
 
-slot式はMVPの固定配置と将来の自由配置の間をつなぐ。
+Growth envelope内へ危険な恒久objectを置かせない。
 
 ---
 
-## Placement Commands
-
-町の変更は、DB rowを画面から直接書き換えない。
-
-commandとして扱う。
+# 15. Default Layout Template
 
 ```ts
-type TownLayoutCommand =
-  | PlaceTownObjectCommand
-  | MoveTownObjectCommand
-  | RotateTownObjectCommand
-  | RemoveTownObjectCommand
-  | PaintTownPathCommand
-  | ReplaceTownTerrainCommand;
-```
-
-```ts
-interface PlaceTownObjectCommand {
-  commandId: string;
-  expectedLayoutRevision: number;
-  definitionId: string;
-  position: TownGridPosition;
-  orientation: TownOrientation;
+interface TownLayoutTemplate {
+  templateId: string;
+  templateVersion: number;
+  mapDefinitionId: string;
+  mapDefinitionVersion: number;
+  placements: TownObjectTemplatePlacement[];
+  pathCells: TownPathCellState[];
+  featureBindings: TownFeatureBinding[];
 }
 ```
 
-Validation:
+MVPの固定layoutもcodeへ直書きしない。
 
-```txt
-schema
-→ permission
-→ map bounds
-→ parcel rules
-→ footprint collision
-→ entrance clearance
-→ category limits
-→ apply
-→ revision increment
-```
+新規ユーザーはtemplateからlayoutを生成する。
 
-### Idempotency
-
-`commandId`を使い、通信再送で同じ物が二重配置されないようにする。
-
-### Optimistic Concurrency
-
-`expectedLayoutRevision`が一致しない場合、最新layoutを取得して再編集する。
+Instance IDはlayout namespace + stable seedからdeterministic生成する。
 
 ---
 
-## Persistence Contract
+# 16. Template Evolution
 
-初期Import migrationへ無理に入れないが、町実装時は以下の責務を分ける。
+TownLayoutはbaselineを持つ。
+
+```ts
+interface TownLayoutBaseline {
+  templateId: string;
+  templateVersion: number;
+  generatedAt: string;
+}
+```
+
+更新時:
+
+```txt
+old template baseline
++ current user layout
++ new template
+→ three-way merge
+```
+
+Rules:
+
+- user未変更のtemplate objectのみ自動更新
+- user変更を上書きしない
+- new featureはreserved parcelへ
+- placement失敗はstoredへ
+- deprecated objectを消さない
+- preview / audit / rollback
+
+Townをnew templateから丸ごと再生成しない。
+
+---
+
+# 17. Building Growth
+
+Stageは同じfeature / instanceのvisual variantとして扱う。
+
+```ts
+interface TownStructureSceneState {
+  featureId: TownFeatureId;
+  objectInstanceId: string;
+  displayStage: number;
+  renderVariantKey: string;
+  badges: string[];
+}
+```
+
+Rules:
+
+- stage変更でinstanceId不変
+- route不変
+- feature binding不変
+- parcel不変
+- entrance contract維持
+- growth envelope内
+- user decoration削除なし
+
+---
+
+# 18. Placement Validation
+
+```ts
+interface TownPlacementValidationResult {
+  valid: boolean;
+  errors: TownPlacementIssue[];
+  warnings: TownPlacementIssue[];
+  affectedInstanceIds: string[];
+}
+
+interface TownPlacementIssue {
+  code: string;
+  cell?: TownGridPosition;
+  instanceId?: string;
+  messageKey: string;
+}
+```
+
+Validation order:
+
+```txt
+schema
+→ ownership / permission
+→ definition availability
+→ map bounds
+→ parcel rules
+→ footprint collision
+→ placement layer
+→ growth envelope
+→ entrance clearance
+→ category limits
+→ apply
+```
+
+Stable code例:
+
+- OUT_OF_MAP_BOUNDS
+- PARCEL_CATEGORY_DENIED
+- SOLID_COLLISION
+- GROWTH_ENVELOPE_RESERVED
+- ENTRANCE_BLOCKED
+- LOCK_POLICY_DENIED
+- UNKNOWN_DEFINITION
+- STALE_LAYOUT_REVISION
+
+Renderer内でvalidator ruleを決めない。
+
+---
+
+# 19. Editor Command Batch
+
+町の変更はrowを直接書き換えない。
+
+```ts
+interface TownLayoutCommandBatch {
+  batchId: string;
+  expectedLayoutRevision: number;
+  commands: TownLayoutCommand[];
+  clientSessionId: string;
+  createdAt: string;
+}
+```
+
+Flow:
+
+```txt
+load revision R
+→ local draft
+→ local validation
+→ undo / redo
+→ Save
+→ server atomic revalidation
+→ compare-and-swap revision R
+→ revision R+1
+```
+
+Rules:
+
+- batch all-or-nothing
+- batchId idempotency
+- silent last-write-wins禁止
+- stale revision拒否
+- server authoritative validation
+- CRDTは初期採用しない
+
+---
+
+# 20. Persistence Contract
+
+Current stateを正本とする。
 
 ```txt
 town_map
 town_layout
 town_layout_object
+town_path_cell
+town_feature_binding
+town_feature_progress
+town_environment_preference
 town_layout_revision
 town_layout_event
 town_projection_snapshot
 ```
 
-### town_map
+`towm_layout_event`は監査・復旧補助であり、唯一の正本ではない。
 
-map definitionとexpansion状態。
+全user tableに`user_id`を持たせる。
 
-### town_layout
+## Snapshot
 
-ユーザーの現在layoutとrevision。
+作成タイミング:
 
-### town_layout_object
+- migration前
+- saved layout変更前後
+- reset前
+- catalog major upgrade前
 
-配置instance。
+永久無制限保存はしない。
 
-### town_layout_revision
+---
 
-保存時点のlayout version。
+# 21. Migration and Recovery
 
-### town_layout_event
-
-配置、移動、削除などの監査可能な操作。
-
-### town_projection_snapshot
-
-Memory Domainから導出した建物stageなど。
-
-### Separation Rule
+## Invalid placement recovery
 
 ```txt
-town_layout_object
-≠ memory_record
-≠ collection_item
-≠ town_projection_snapshot
+new ruleでvalidate
+→ affected instance列挙
+→ same parcel safe relocation
+→ 失敗時stored state
+→ user explanation
+→ rollback snapshot保持
 ```
+
+Magic coordinateを使わない。
+
+町の破損でMemory OS本体を起動不能にしない。
+
+## Definition migration
+
+- deprecated instanceを保持
+- replacement mapping
+- missing asset placeholder
+- feature binding維持
+- user layout維持
 
 ---
 
-## Versioning
+# 22. RLS / Security
 
-最低限、以下を別々にversion管理する。
+必須:
 
-```ts
-interface TownVersionSet {
-  spatialSchemaVersion: string;
-  mapDefinitionVersion: number;
-  layoutTemplateVersion: number;
-  objectCatalogVersion: number;
-  projectionSchemaVersion: string;
-  growthRulesetVersion: string;
-  assetManifestVersion: string;
-}
-```
+- user_id
+- RLS fail closed
+- cross-user layout ID拒否
+- cross-user instance ID拒否
+- unknown definition拒否
+- locked system object mutation拒否
+- command batch size limit
+- rate limit
+- auditへmemory本文を入れない
 
-一つの`townVersion`へまとめない。
-
-変更理由とmigration対象が異なるためである。
+Client validationだけで保存しない。
 
 ---
 
-## Migration Rules
+# 23. Export / Import / Reset
 
-### 原則
-
-- user配置を黙って削除しない
-- 定義廃止でinstanceを消さない
-- 代替assetまたはplaceholderを用意する
-- migration前snapshotを保持する
-- invalid objectを安全なholding areaへ移す
-- migration結果を監査可能にする
-
-### Invalid Placement Recovery
+Town export section:
 
 ```txt
-1. 新ルールでvalidate
-2. 影響instanceを列挙
-3. 同parcel内でsafe relocationを試す
-4. 失敗時は町の保管箱へ退避
-5. userへ変更理由を表示
-6. rollback snapshotを保持
+feature progress
+layout
+feature bindings
+paths
+environment preferences
+version set
 ```
 
-記憶データを失わせないことは当然として、ユーザーが選んだ町の配置も長期資産として扱う。
+Memory dataと分離する。
+
+Re-import:
+
+```txt
+parse
+→ compatibility
+→ definition availability
+→ placement validation
+→ Preview
+→ unsupported objectをstored
+→ atomic import
+```
+
+Reset options:
+
+- visual growth
+- layout
+- decorations
+- feature progress
+- whole town
+
+Account deletionではTown stateを全削除する。
 
 ---
 
-## Rendering Contract
-
-PixiJSはlogical scene snapshotを受け取る。
+# 24. Rendering Contract
 
 ```ts
 interface TownSceneSnapshot {
+  sceneSchemaVersion: string;
   map: TownMapRenderProjection;
-  objects: TownObjectRenderProjection[];
+  terrain: TownTerrainRenderProjection[];
   paths: TownPathRenderProjection[];
+  objects: TownObjectRenderProjection[];
   semanticConnections: TownSemanticConnectionRenderProjection[];
-  ambient: TownAmbientProjection;
+  environment: TownEnvironmentState;
 }
 ```
 
-renderer内でbusiness ruleを決めない。
-
 ```txt
-DB / Domain
-→ spatial projector
-→ scene snapshot
-→ PixiJS renderer
+Memory Domain
+→ feature projection
+
+Feature Progress
++ Layout
++ Environment
++ feature binding
+→ spatial scene projector
+→ TownSceneSnapshot
+→ PixiJS
 ```
+
+Renderer内でbusiness ruleを決めない。
 
 ---
 
-## Asset Contract
+# 25. Deterministic Z Ordering
 
-すべてのobject assetに必要:
-
-- stable texture key
-- grid footprint
-- depth anchor
-- visual anchor
-- hit polygon
-- shadow definition
-- orientation variants
-- season overlay compatibility
-- low-resolution fallback
-- missing asset placeholder
-
-### Building Asset
-
-建物は完成spriteとして作る。
-
-各stageで以下を揃える。
+sort key:
 
 ```txt
-same parcel contract
-same entrance contract
-compatible depth anchor
-known max bounds
+1. placement layer order
+2. projected depthAnchor Y
+3. elevationLevel
+4. definition sortOffset
+5. instanceId
 ```
 
-### Small Object Asset
-
-木、花、家具は、grid cellに対するanchorを共通化する。
+同じ入力から同じscene順を得る。
 
 ---
 
-## Citizens and Pathfinding
+# 26. Citizens and Navigation
 
 MVPでは固定短経路でよい。
 
-将来path編集へ対応する場合、住人はsprite座標ではなくwalkability gridを使う。
+将来:
 
 ```ts
 interface TownNavigationCell {
@@ -790,123 +936,126 @@ interface TownNavigationCell {
 }
 ```
 
-建物入口、橋、桟橋はnavigation connectorを持つ。
+- building entrance
+- bridge
+- pier
 
-住人の経路と、記憶relationの道は別物である。
+はnavigation connectorを持つ。
+
+住人route、physical path、semantic connectionは別物。
 
 ---
 
-## Performance Strategy
+# 27. Performance Strategy
 
-長期拡張を見据え、以下を可能にする。
+長期対応:
 
 - chunk culling
-- static tile layer cache
+- static terrain / path cache
 - sprite atlas
 - object pooling
 - offscreen animation pause
-- visible chunkだけのhit test
+- visible chunk hit test
 - low power mode
-- maximum active citizen budget
-- seasonal overlay lazy load
+- citizen budget
+- seasonal lazy load
 
-MVPで全機能を実装する必要はない。
+MVPで全最適化を実装しない。
 
-ただし、scene graphとinstance modelが後からchunk化を妨げないようにする。
-
----
-
-## Security and Privacy
-
-町へraw memoryを渡さない既存方針を維持する。
-
-User customizationの配置情報にも、以下を入れない。
-
-- private title
-- person name
-- chat text
-- location raw history
-- private image URL
-
-町のobjectや装飾へ記憶本文を直接埋め込まない。
-
-建物タップ後の情報はDOM側でpolicy check後に表示する。
+Scene modelが後からchunk化を妨げないことを必須にする。
 
 ---
 
-## Accessibility
+# 28. Accessibility
 
-町編集を導入しても、WebGLだけを唯一の操作方法にしない。
+WebGLだけを唯一の操作方法にしない。
 
 必要:
 
 - object list alternative
-- keyboard / switch操作可能なDOM editor
-- object名、位置、状態の読み上げ
+- DOM editor alternative
+- keyboard / switch操作
+- object名、状態の読み上げ
 - reduced motion
 - high contrast selection
-- undo可能な重要操作
+- undo
 - static fallback
 
 ---
 
-## Test Contract
+# 29. Test Contract
 
-### Spatial Unit Tests
+## Spatial unit
 
-- grid to screen変換
-- screen hit to grid変換
+- gridToScreen / screenToGrid
 - footprint rotation
-- collision mask
+- collision
 - parcel bounds
+- growth envelope
 - entrance clearance
-- path autotile mask
-- stage footprint compatibility
+- path derived mask
+- deterministic depth sort
 
-### Migration Tests
+## Property
 
-- catalog definition upgrade
+- 4 rotationで元へ戻る
+- serialize round trip
+- path add/remove後mask整合
+- input order変更でcollision結果不変
+
+## Migration
+
+- catalog upgrade
 - deprecated object preservation
+- three-way template merge
 - invalid placement recovery
-- template version upgrade
-- layout revision conflict
+- stored object
 - rollback snapshot
+- layout revision conflict
 
-### Projection Separation Tests
+## Separation
 
-- memory削除後もuser decorationが残る
-- shelf count変更でbuilding stageだけ更新
-- layout移動でmemory recordが変わらない
-- hidden / sealed記録がprojectionへ漏れない
+- memory削除後もuser decoration保持
+- skin変更でfeature progress保持
+- layout移動でmemory不変
+- environment変更でfeature projection不変
+- hidden / sealed非流入
 
-### Renderer Tests
+## Security
 
-- scene snapshotのdeterministic render
-- same layout at multiple resolutions
-- context loss fallback
-- missing asset placeholder
-- large map chunk culling
+- cross-user references拒否
+- missing user context拒否
+- locked object mutation拒否
+- private fields非流入
 
 ---
 
-## Initial Implementation Definition
+# 30. Initial Implementation Definition
 
-MVPで実装するもの:
+内部契約として最初から必要:
 
 ```txt
-1. logical grid coordinate
-2. map definition
-3. parcel definition
-4. layout template
-5. object definition catalog
-6. object instances
-7. multi-cell building footprint
-8. locked system placements
-9. grid-to-screen projection
-10. static fallback
+TownFeatureId
+feature binding
+feature progress
+logical grid
+coordinate convention
+map definition
+terrain
+parcel
+growth envelope
+layout template
+object catalog
+object instance
+footprint pivot
+path state
+placement validator
+layout revision
+RLS ownership
+static fallback
 ```
 
-MVPでUIとして実装しないもの:
+MVP UIでは実装しない:
 
 ```txt
 free placement editor
@@ -919,42 +1068,25 @@ currency
 crafting
 ```
 
-つまり、内部は最初から将来型、表面は最小構成にする。
+内部は最初から将来型、表面は最小構成にする。
 
 ---
 
-## First Stable Contracts
-
-実装前に固定するID:
-
-```txt
-mapDefinitionId
-layoutTemplateId
-parcelId
-building definitionId
-object category
-tile metric
-orientation enum
-placement layer
-layout revision contract
-```
-
-これらを曖昧にしたままPixiJSへ座標を直書きしない。
-
----
-
-## Decision Summary
+# Decision Summary
 
 ```txt
 Minecraftのような1block建築ではない。
 どうぶつの森のように、自分の町へ愛着を持てる箱庭を目指す。
 
+固定するのはcamera viewpoint。
+配置schemaは最初から編集可能なlogical grid。
+
 地面・道・花はtile単位。
 木・家具はobject単位。
 建物はmulti-cellの完成sprite。
 
-MVPは固定配置。
-内部は最初からlogical gridとparcelで管理。
+Featureの意味、解除済み成長、配置、環境、描画を分離する。
+MVPは固定layout。
 将来、装飾、道、植栽、建物移動を段階的に解放できる。
 ```
 
