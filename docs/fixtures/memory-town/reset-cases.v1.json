@@ -1,0 +1,143 @@
+{
+  "$schema": "https://memory-os.example/schemas/memory-town/reset-case-set.v1.schema.json",
+  "caseSetId": "memory-town.reset-cases",
+  "caseSetVersion": 1,
+  "globalRules": {
+    "memoryDomainMayBeModified": false,
+    "resetRequiresPreview": true,
+    "resetRequiresExplicitConfirmation": true,
+    "snapshotBeforeApply": true,
+    "applyMode": "atomic",
+    "defaultUserObjectDisposition": "stored_not_deleted"
+  },
+  "cases": [
+    {
+      "caseId": "reset-single-feature-progress",
+      "command": {
+        "commandId": "townreset:user:0190f000-0000-7000-8000-000000000001",
+        "type": "reset_feature_progress",
+        "featureId": "shelf.movie",
+        "expectedResetEpoch": 0,
+        "reason": "user_requested_visual_reset"
+      },
+      "expected": {
+        "featureProgressChanges": [
+          { "featureId": "shelf.movie", "maxUnlockedStage": 0, "resetEpoch": 1 }
+        ],
+        "layoutChanged": false,
+        "environmentChanged": false,
+        "memoryDomainChanged": false,
+        "userObjectsDeleted": 0,
+        "userObjectsStored": 0
+      }
+    },
+    {
+      "caseId": "reset-layout-to-template",
+      "command": {
+        "commandId": "townreset:user:0190f000-0000-7000-8000-000000000002",
+        "type": "reset_layout_to_template",
+        "expectedLayoutRevision": 14,
+        "templateId": "memory-town.main-island.default",
+        "templateVersion": 1,
+        "userObjectDisposition": "stored"
+      },
+      "expected": {
+        "featureProgressChanged": false,
+        "layoutRevisionFrom": 14,
+        "layoutRevisionTo": 15,
+        "templateObjectsRestored": true,
+        "userObjectsDeleted": 0,
+        "userObjectsStored": 7,
+        "memoryDomainChanged": false
+      }
+    },
+    {
+      "caseId": "reset-decorations-only",
+      "command": {
+        "commandId": "townreset:user:0190f000-0000-7000-8000-000000000003",
+        "type": "reset_decorations",
+        "expectedLayoutRevision": 20,
+        "categories": ["tree", "flower", "ground_decor", "raised_decor", "furniture", "seasonal"],
+        "originFilter": ["user"],
+        "userObjectDisposition": "stored"
+      },
+      "expected": {
+        "layoutRevisionFrom": 20,
+        "layoutRevisionTo": 21,
+        "systemStructuresChanged": false,
+        "physicalPathsChanged": false,
+        "featureProgressChanged": false,
+        "userObjectsDeleted": 0,
+        "userObjectsStored": 12,
+        "memoryDomainChanged": false
+      }
+    },
+    {
+      "caseId": "reset-environment-preferences",
+      "command": {
+        "commandId": "townreset:user:0190f000-0000-7000-8000-000000000004",
+        "type": "reset_environment_preferences",
+        "themeId": "town-theme.default"
+      },
+      "expected": {
+        "environment": {
+          "themeId": "town-theme.default",
+          "seasonMode": "auto",
+          "timeMode": "day",
+          "weatherVisual": "clear",
+          "motionLevel": "reduced",
+          "soundEnabled": false
+        },
+        "layoutChanged": false,
+        "featureProgressChanged": false,
+        "memoryDomainChanged": false
+      }
+    },
+    {
+      "caseId": "privacy-reset-feature-and-binding-visuals",
+      "command": {
+        "commandId": "townreset:user:0190f000-0000-7000-8000-000000000005",
+        "type": "privacy_reset_feature",
+        "featureId": "shelf.movie",
+        "resetProgress": true,
+        "removeBadges": true,
+        "removeSemanticOverlays": true,
+        "removeFeatureBindings": false
+      },
+      "expected": {
+        "featureProgressChanges": [
+          { "featureId": "shelf.movie", "maxUnlockedStage": 0, "resetEpochIncrement": 1 }
+        ],
+        "badgesRemoved": true,
+        "semanticOverlaysRemoved": true,
+        "primaryBindingPreserved": true,
+        "rawDeletedMemoryRetainedAnywhereInTown": false,
+        "memoryDomainChanged": false
+      }
+    },
+    {
+      "caseId": "reset-entire-town-preserving-memory-and-storing-user-objects",
+      "command": {
+        "commandId": "townreset:user:0190f000-0000-7000-8000-000000000006",
+        "type": "reset_entire_town",
+        "expectedLayoutRevision": 30,
+        "templateId": "memory-town.main-island.default",
+        "templateVersion": 1,
+        "resetAllFeatureProgress": true,
+        "resetEnvironmentPreferences": true,
+        "userObjectDisposition": "stored"
+      },
+      "expected": {
+        "layoutRevisionFrom": 30,
+        "layoutRevisionTo": 31,
+        "allFeatureProgressResetEpochIncrement": 1,
+        "environmentReset": true,
+        "templateRestored": true,
+        "userObjectsDeleted": 0,
+        "userObjectsStored": 22,
+        "memoryDomainChanged": false,
+        "rollbackSnapshotCreated": true
+      }
+    }
+  ]
+}
