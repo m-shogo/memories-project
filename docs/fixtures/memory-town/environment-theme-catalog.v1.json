@@ -64,7 +64,7 @@
       { "season": "spring", "startMonthDay": "03-01", "endMonthDay": "05-31" },
       { "season": "summer", "startMonthDay": "06-01", "endMonthDay": "08-31" },
       { "season": "autumn", "startMonthDay": "09-01", "endMonthDay": "11-30" },
-      { "season": "winter", "startMonthDay": "12-01", "endMonthDay": "02-29" }
+      { "season": "winter", "startMonthDay": "12-01", "endMonthDay": "02-last" }
     ]
   },
   "timeResolver": {
@@ -74,9 +74,9 @@
     "usesDeviceLocalTime": true,
     "manualOverrideAllowed": true,
     "ranges": [
-      { "timeMode": "day", "startHourInclusive": 6, "endHourExclusive": 17 },
-      { "timeMode": "evening", "startHourInclusive": 17, "endHourExclusive": 20 },
-      { "timeMode": "night", "startHourInclusive": 20, "endHourExclusive": 6 }
+      { "timeMode": "day", "startHourInclusive": 6, "endHourExclusive": 17, "crossesMidnight": false },
+      { "timeMode": "evening", "startHourInclusive": 17, "endHourExclusive": 20, "crossesMidnight": false },
+      { "timeMode": "night", "startHourInclusive": 20, "endHourExclusive": 6, "crossesMidnight": true }
     ]
   }
 }
