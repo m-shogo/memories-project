@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/memory-town/reset-case-set.v1.schema.json",
+  "title": "Memory Town Reset Case Set v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "caseSetId", "caseSetVersion", "globalRules", "cases"],
+  "properties": {
+    "$schema": { "const": "https://memory-os.example/schemas/memory-town/reset-case-set.v1.schema.json" },
+    "caseSetId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+    "caseSetVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" },
+    "globalRules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["memoryDomainMayBeModified", "resetRequiresPreview", "resetRequiresExplicitConfirmation", "snapshotBeforeApply", "applyMode", "defaultUserObjectDisposition"],
+      "properties": {
+        "memoryDomainMayBeModified": { "const": false },
+        "resetRequiresPreview": { "const": true },
+        "resetRequiresExplicitConfirmation": { "const": true },
+        "snapshotBeforeApply": { "const": true },
+        "applyMode": { "const": "atomic" },
+        "defaultUserObjectDisposition": { "const": "stored_not_deleted" }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["caseId", "command", "expected"],
+        "properties": {
+          "caseId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+          "command": { "$ref": "#/$defs/ResetCommand" },
+          "expected": { "$ref": "#/$defs/Expected" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "ResetCommand": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["commandId", "type", "featureId", "expectedResetEpoch", "reason"],
+          "properties": {
+            "commandId": { "type": "string", "minLength": 1, "maxLength": 160 },
+            "type": { "const": "reset_feature_progress" },
+            "featureId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+            "expectedResetEpoch": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" },
+            "reason": { "enum": ["user_requested_visual_reset", "privacy_reset"] }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["commandId", "type", "expectedLayoutRevision", "templateId", "templateVersion", "userObjectDisposition"],
+          "properties": {
+            "commandId": { "type": "string", "minLength": 1, "maxLength": 160 },
+            "type": { "const": "reset_layout_to_template" },
+            "expectedLayoutRevision": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" },
+            "templateId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+            "templateVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" },
+            "userObjectDisposition": { "enum": ["stored", "explicit_delete"] }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["commandId", "type", "expectedLayoutRevision", "categories", "originFilter", "userObjectDisposition"],
+          "properties": {
+            "commandId": { "type": "string", "minLength": 1, "maxLength": 160 },
+            "type": { "const": "reset_decorations" },
+            "expectedLayoutRevision": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" },
+            "categories": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "$ref": "core.v1.schema.json#/$defs/TownObjectCategory" }
+            },
+            "originFilter": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "$ref": "core.v1.schema.json#/$defs/TownObjectOrigin" }
+            },
+            "userObjectDisposition": { "enum": ["stored", "explicit_delete"] }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["commandId", "type", "themeId"],
+          "properties": {
+            "commandId": { "type": "string", "minLength": 1, "maxLength": 160 },
+            "type": { "const": "reset_environment_preferences" },
+            "themeId": { "$ref": "core.v1.schema.json#/$defs/StableId" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["commandId", "type", "featureId", "resetProgress", "removeBadges", "removeSemanticOverlays", "removeFeatureBindings"],
+          "properties": {
+            "commandId": { "type": "string", "minLength": 1, "maxLength": 160 },
+            "type": { "const": "privacy_reset_feature" },
+            "featureId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+            "resetProgress": { "type": "boolean" },
+            "removeBadges": { "type": "boolean" },
+            "removeSemanticOverlays": { "type": "boolean" },
+            "removeFeatureBindings": { "type": "boolean" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["commandId", "type", "expectedLayoutRevision", "templateId", "templateVersion", "resetAllFeatureProgress", "resetEnvironmentPreferences", "userObjectDisposition"],
+          "properties": {
+            "commandId": { "type": "string", "minLength": 1, "maxLength": 160 },
+            "type": { "const": "reset_entire_town" },
+            "expectedLayoutRevision": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" },
+            "templateId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+            "templateVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" },
+            "resetAllFeatureProgress": { "type": "boolean" },
+            "resetEnvironmentPreferences": { "type": "boolean" },
+            "userObjectDisposition": { "enum": ["stored", "explicit_delete"] }
+          }
+        }
+      ]
+    },
+    "Expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["memoryDomainChanged"],
+      "properties": {
+        "memoryDomainChanged": { "const": false },
+        "featureProgressChanges": { "type": "array" },
+        "featureProgressChanged": { "type": "boolean" },
+        "layoutChanged": { "type": "boolean" },
+        "environmentChanged": { "type": "boolean" },
+        "layoutRevisionFrom": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" },
+        "layoutRevisionTo": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" },
+        "templateObjectsRestored": { "type": "boolean" },
+        "templateRestored": { "type": "boolean" },
+        "systemStructuresChanged": { "type": "boolean" },
+        "physicalPathsChanged": { "type": "boolean" },
+        "userObjectsDeleted": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" },
+        "userObjectsStored": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" },
+        "environment": { "type": "object" },
+        "environmentReset": { "type": "boolean" },
+        "allFeatureProgressResetEpochIncrement": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" },
+        "badgesRemoved": { "type": "boolean" },
+        "semanticOverlaysRemoved": { "type": "boolean" },
+        "primaryBindingPreserved": { "type": "boolean" },
+        "rawDeletedMemoryRetainedAnywhereInTown": { "const": false },
+        "rollbackSnapshotCreated": { "type": "boolean" }
+      }
+    }
+  }
+}
