@@ -1,0 +1,161 @@
+{
+  "$schema": "https://memory-os.example/schemas/memory-town/growth-envelope-catalog.v1.schema.json",
+  "catalogId": "memory-town.growth-envelope-catalog",
+  "catalogVersion": 1,
+  "status": "prototype_candidate",
+  "envelopes": [
+    {
+      "envelopeId": "growth-envelope.cinema.classic",
+      "envelopeVersion": 1,
+      "definitionId": "structure.cinema.classic",
+      "supportedStages": [0, 1, 2],
+      "maxSolidOccupiedCells": [
+        { "dx": 0, "dy": 0 }, { "dx": 1, "dy": 0 }, { "dx": 2, "dy": 0 }, { "dx": 3, "dy": 0 },
+        { "dx": 0, "dy": 1 }, { "dx": 1, "dy": 1 }, { "dx": 2, "dy": 1 }, { "dx": 3, "dy": 1 },
+        { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }, { "dx": 3, "dy": 2 }
+      ],
+      "persistentEntranceCells": [{ "dx": 1, "dy": 3 }],
+      "protectedClearanceCells": [{ "dx": 0, "dy": 3 }, { "dx": 1, "dy": 3 }, { "dx": 2, "dy": 3 }, { "dx": 3, "dy": 3 }],
+      "requiredAccessPathCells": [{ "dx": 1, "dy": 3 }],
+      "visualOverflowCells": [
+        { "dx": -1, "dy": -1 }, { "dx": 0, "dy": -1 }, { "dx": 1, "dy": -1 }, { "dx": 2, "dy": -1 }, { "dx": 3, "dy": -1 }, { "dx": 4, "dy": -1 },
+        { "dx": -1, "dy": 0 }, { "dx": 4, "dy": 0 },
+        { "dx": -1, "dy": 1 }, { "dx": 4, "dy": 1 },
+        { "dx": -1, "dy": 2 }, { "dx": 4, "dy": 2 },
+        { "dx": -1, "dy": 3 }, { "dx": 4, "dy": 3 }
+      ],
+      "overlaySlots": [
+        { "slotKey": "poster", "allowedCategories": ["raised_decor", "seasonal"], "supportedStages": [1, 2], "persistencePolicy": "store_when_unsupported" },
+        { "slotKey": "festival-flag", "allowedCategories": ["seasonal", "raised_decor"], "supportedStages": [2], "persistencePolicy": "store_when_unsupported" },
+        { "slotKey": "sign", "allowedCategories": ["raised_decor"], "supportedStages": [0, 1, 2], "persistencePolicy": "preserve_when_supported" },
+        { "slotKey": "seasonal-front", "allowedCategories": ["seasonal"], "supportedStages": [0, 1, 2], "persistencePolicy": "replace_by_system_variant" }
+      ]
+    },
+    {
+      "envelopeId": "growth-envelope.story-house.classic",
+      "envelopeVersion": 1,
+      "definitionId": "structure.story-house.classic",
+      "supportedStages": [0, 1, 2],
+      "maxSolidOccupiedCells": [
+        { "dx": 0, "dy": 0 }, { "dx": 1, "dy": 0 }, { "dx": 2, "dy": 0 }, { "dx": 3, "dy": 0 },
+        { "dx": 0, "dy": 1 }, { "dx": 1, "dy": 1 }, { "dx": 2, "dy": 1 }, { "dx": 3, "dy": 1 },
+        { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }, { "dx": 3, "dy": 2 }
+      ],
+      "persistentEntranceCells": [{ "dx": 1, "dy": 3 }],
+      "protectedClearanceCells": [{ "dx": 0, "dy": 3 }, { "dx": 1, "dy": 3 }, { "dx": 2, "dy": 3 }, { "dx": 3, "dy": 3 }],
+      "requiredAccessPathCells": [{ "dx": 1, "dy": 3 }],
+      "visualOverflowCells": [
+        { "dx": -1, "dy": -2 }, { "dx": 0, "dy": -2 }, { "dx": 1, "dy": -2 }, { "dx": 2, "dy": -2 }, { "dx": 3, "dy": -2 }, { "dx": 4, "dy": -2 },
+        { "dx": -1, "dy": -1 }, { "dx": 4, "dy": -1 },
+        { "dx": -1, "dy": 0 }, { "dx": 4, "dy": 0 },
+        { "dx": -1, "dy": 1 }, { "dx": 4, "dy": 1 },
+        { "dx": -1, "dy": 2 }, { "dx": 4, "dy": 2 }
+      ],
+      "overlaySlots": [
+        { "slotKey": "new-volume-flag", "allowedCategories": ["raised_decor", "seasonal"], "supportedStages": [1, 2], "persistencePolicy": "store_when_unsupported" },
+        { "slotKey": "tower-light", "allowedCategories": ["raised_decor", "seasonal"], "supportedStages": [2], "persistencePolicy": "replace_by_system_variant" },
+        { "slotKey": "sign", "allowedCategories": ["raised_decor"], "supportedStages": [0, 1, 2], "persistencePolicy": "preserve_when_supported" },
+        { "slotKey": "seasonal-front", "allowedCategories": ["seasonal"], "supportedStages": [0, 1, 2], "persistencePolicy": "replace_by_system_variant" }
+      ]
+    },
+    {
+      "envelopeId": "growth-envelope.market.classic",
+      "envelopeVersion": 1,
+      "definitionId": "structure.market.classic",
+      "supportedStages": [0, 1, 2],
+      "maxSolidOccupiedCells": [
+        { "dx": 0, "dy": 0 }, { "dx": 1, "dy": 0 }, { "dx": 2, "dy": 0 }, { "dx": 3, "dy": 0 }, { "dx": 4, "dy": 0 },
+        { "dx": 0, "dy": 1 }, { "dx": 1, "dy": 1 }, { "dx": 2, "dy": 1 }, { "dx": 3, "dy": 1 }, { "dx": 4, "dy": 1 },
+        { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }, { "dx": 3, "dy": 2 }, { "dx": 4, "dy": 2 }
+      ],
+      "persistentEntranceCells": [{ "dx": 1, "dy": 3 }, { "dx": 2, "dy": 3 }],
+      "protectedClearanceCells": [{ "dx": 0, "dy": 3 }, { "dx": 1, "dy": 3 }, { "dx": 2, "dy": 3 }, { "dx": 3, "dy": 3 }, { "dx": 4, "dy": 3 }],
+      "requiredAccessPathCells": [{ "dx": 1, "dy": 3 }, { "dx": 2, "dy": 3 }],
+      "visualOverflowCells": [
+        { "dx": -1, "dy": -1 }, { "dx": 0, "dy": -1 }, { "dx": 1, "dy": -1 }, { "dx": 2, "dy": -1 }, { "dx": 3, "dy": -1 }, { "dx": 4, "dy": -1 }, { "dx": 5, "dy": -1 },
+        { "dx": -1, "dy": 0 }, { "dx": 5, "dy": 0 },
+        { "dx": -1, "dy": 1 }, { "dx": 5, "dy": 1 },
+        { "dx": -1, "dy": 2 }, { "dx": 5, "dy": 2 }
+      ],
+      "overlaySlots": [
+        { "slotKey": "stall-sign", "allowedCategories": ["raised_decor"], "supportedStages": [0, 1, 2], "persistencePolicy": "preserve_when_supported" },
+        { "slotKey": "steam", "allowedCategories": ["raised_decor", "seasonal"], "supportedStages": [1, 2], "persistencePolicy": "replace_by_system_variant" },
+        { "slotKey": "regional-stall", "allowedCategories": ["raised_decor", "seasonal"], "supportedStages": [2], "persistencePolicy": "store_when_unsupported" },
+        { "slotKey": "seasonal-front", "allowedCategories": ["seasonal"], "supportedStages": [0, 1, 2], "persistencePolicy": "replace_by_system_variant" }
+      ]
+    },
+    {
+      "envelopeId": "growth-envelope.port.classic",
+      "envelopeVersion": 1,
+      "definitionId": "structure.port.classic",
+      "supportedStages": [0, 1, 2],
+      "maxSolidOccupiedCells": [
+        { "dx": 0, "dy": 0 }, { "dx": 1, "dy": 0 }, { "dx": 2, "dy": 0 }, { "dx": 3, "dy": 0 }, { "dx": 4, "dy": 0 },
+        { "dx": 0, "dy": 1 }, { "dx": 1, "dy": 1 }, { "dx": 2, "dy": 1 }, { "dx": 3, "dy": 1 }, { "dx": 4, "dy": 1 }
+      ],
+      "persistentEntranceCells": [{ "dx": 1, "dy": -1 }, { "dx": 2, "dy": -1 }],
+      "protectedClearanceCells": [{ "dx": 1, "dy": -1 }, { "dx": 2, "dy": -1 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }],
+      "requiredAccessPathCells": [{ "dx": 1, "dy": -1 }, { "dx": 2, "dy": -1 }],
+      "visualOverflowCells": [
+        { "dx": -1, "dy": -1 }, { "dx": 0, "dy": -1 }, { "dx": 3, "dy": -1 }, { "dx": 4, "dy": -1 }, { "dx": 5, "dy": -1 },
+        { "dx": -1, "dy": 0 }, { "dx": 5, "dy": 0 },
+        { "dx": -1, "dy": 1 }, { "dx": 5, "dy": 1 },
+        { "dx": -1, "dy": 2 }, { "dx": 0, "dy": 2 }, { "dx": 3, "dy": 2 }, { "dx": 4, "dy": 2 }, { "dx": 5, "dy": 2 }
+      ],
+      "overlaySlots": [
+        { "slotKey": "boat", "allowedCategories": ["vehicle", "seasonal"], "supportedStages": [0, 1, 2], "persistencePolicy": "preserve_when_supported" },
+        { "slotKey": "travel-flag", "allowedCategories": ["raised_decor", "seasonal"], "supportedStages": [1, 2], "persistencePolicy": "store_when_unsupported" },
+        { "slotKey": "lighthouse-light", "allowedCategories": ["raised_decor", "seasonal"], "supportedStages": [2], "persistencePolicy": "replace_by_system_variant" },
+        { "slotKey": "seasonal-front", "allowedCategories": ["seasonal"], "supportedStages": [0, 1, 2], "persistencePolicy": "replace_by_system_variant" }
+      ]
+    },
+    {
+      "envelopeId": "growth-envelope.warehouse.classic",
+      "envelopeVersion": 1,
+      "definitionId": "structure.warehouse.classic",
+      "supportedStages": [0, 1, 2],
+      "maxSolidOccupiedCells": [
+        { "dx": 0, "dy": 0 }, { "dx": 1, "dy": 0 }, { "dx": 2, "dy": 0 }, { "dx": 3, "dy": 0 },
+        { "dx": 0, "dy": 1 }, { "dx": 1, "dy": 1 }, { "dx": 2, "dy": 1 }, { "dx": 3, "dy": 1 },
+        { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }, { "dx": 3, "dy": 2 }
+      ],
+      "persistentEntranceCells": [{ "dx": 1, "dy": 3 }],
+      "protectedClearanceCells": [{ "dx": 0, "dy": 3 }, { "dx": 1, "dy": 3 }, { "dx": 2, "dy": 3 }, { "dx": 3, "dy": 3 }],
+      "requiredAccessPathCells": [{ "dx": 1, "dy": 3 }],
+      "visualOverflowCells": [
+        { "dx": -1, "dy": -1 }, { "dx": 0, "dy": -1 }, { "dx": 1, "dy": -1 }, { "dx": 2, "dy": -1 }, { "dx": 3, "dy": -1 }, { "dx": 4, "dy": -1 },
+        { "dx": -1, "dy": 0 }, { "dx": 4, "dy": 0 },
+        { "dx": -1, "dy": 1 }, { "dx": 4, "dy": 1 },
+        { "dx": -1, "dy": 2 }, { "dx": 4, "dy": 2 }
+      ],
+      "overlaySlots": [
+        { "slotKey": "sign", "allowedCategories": ["raised_decor"], "supportedStages": [0, 1, 2], "persistencePolicy": "preserve_when_supported" },
+        { "slotKey": "delivery-cart", "allowedCategories": ["vehicle", "raised_decor"], "supportedStages": [1, 2], "persistencePolicy": "store_when_unsupported" },
+        { "slotKey": "sorting-light", "allowedCategories": ["raised_decor", "seasonal"], "supportedStages": [2], "persistencePolicy": "replace_by_system_variant" },
+        { "slotKey": "seasonal-front", "allowedCategories": ["seasonal"], "supportedStages": [0, 1, 2], "persistencePolicy": "replace_by_system_variant" }
+      ]
+    },
+    {
+      "envelopeId": "growth-envelope.central-square.classic",
+      "envelopeVersion": 1,
+      "definitionId": "structure.central-square.classic",
+      "supportedStages": [0, 1, 2],
+      "maxSolidOccupiedCells": [{ "dx": 1, "dy": 1 }],
+      "persistentEntranceCells": [{ "dx": 1, "dy": -1 }, { "dx": 1, "dy": 3 }, { "dx": -1, "dy": 1 }, { "dx": 4, "dy": 1 }],
+      "protectedClearanceCells": [],
+      "requiredAccessPathCells": [{ "dx": 1, "dy": -1 }, { "dx": 1, "dy": 3 }, { "dx": -1, "dy": 1 }, { "dx": 4, "dy": 1 }],
+      "visualOverflowCells": [
+        { "dx": 0, "dy": 0 }, { "dx": 1, "dy": 0 }, { "dx": 2, "dy": 0 }, { "dx": 3, "dy": 0 },
+        { "dx": 0, "dy": 1 }, { "dx": 1, "dy": 1 }, { "dx": 2, "dy": 1 }, { "dx": 3, "dy": 1 },
+        { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }, { "dx": 3, "dy": 2 }
+      ],
+      "overlaySlots": [
+        { "slotKey": "weekly-box", "allowedCategories": ["seasonal", "raised_decor"], "supportedStages": [0, 1, 2], "persistencePolicy": "replace_by_system_variant" },
+        { "slotKey": "month-capsule", "allowedCategories": ["seasonal", "raised_decor"], "supportedStages": [0, 1, 2], "persistencePolicy": "replace_by_system_variant" },
+        { "slotKey": "lantern", "allowedCategories": ["seasonal", "raised_decor"], "supportedStages": [1, 2], "persistencePolicy": "store_when_unsupported" },
+        { "slotKey": "flower-bed", "allowedCategories": ["flower", "seasonal", "ground_decor"], "supportedStages": [2], "persistencePolicy": "store_when_unsupported" },
+        { "slotKey": "seasonal-front", "allowedCategories": ["seasonal"], "supportedStages": [0, 1, 2], "persistencePolicy": "replace_by_system_variant" }
+      ]
+    }
+  ]
+}
