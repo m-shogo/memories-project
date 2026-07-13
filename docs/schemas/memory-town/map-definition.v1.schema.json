@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/memory-town/map-definition.v1.schema.json",
+  "title": "Memory Town Map Definition v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "mapDefinitionId",
+    "mapDefinitionVersion",
+    "spatialSchemaVersion",
+    "prototypeStatus",
+    "coordinateContract",
+    "grid",
+    "baseTerrain",
+    "parcels",
+    "expansionZones",
+    "holdingArea",
+    "prototypeQuestions"
+  ],
+  "properties": {
+    "$schema": { "const": "https://memory-os.example/schemas/memory-town/map-definition.v1.schema.json" },
+    "mapDefinitionId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+    "mapDefinitionVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" },
+    "spatialSchemaVersion": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "prototypeStatus": { "enum": ["candidate_not_visual_lock", "contract_locked", "superseded"] },
+    "coordinateContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["origin", "positiveX", "positiveY", "orientationDegrees", "elevationUnit"],
+      "properties": {
+        "origin": { "const": "logical_north_west" },
+        "positiveX": { "const": "east" },
+        "positiveY": { "const": "south" },
+        "orientationDegrees": {
+          "type": "array",
+          "const": [0, 90, 180, 270]
+        },
+        "elevationUnit": { "const": "logical_level" }
+      }
+    },
+    "grid": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height", "metricProfileId"],
+      "properties": {
+        "width": { "type": "integer", "minimum": 1, "maximum": 256 },
+        "height": { "type": "integer", "minimum": 1, "maximum": 256 },
+        "metricProfileId": { "$ref": "core.v1.schema.json#/$defs/StableId" }
+      }
+    },
+    "baseTerrain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["defaultKind", "overrides"],
+      "properties": {
+        "defaultKind": { "$ref": "core.v1.schema.json#/$defs/TownTerrainKind" },
+        "overrides": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["regionId", "kind", "origin", "width", "height"],
+            "properties": {
+              "regionId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+              "kind": { "$ref": "core.v1.schema.json#/$defs/TownTerrainKind" },
+              "origin": { "$ref": "core.v1.schema.json#/$defs/TownGridPosition" },
+              "width": { "type": "integer", "minimum": 1, "maximum": 256 },
+              "height": { "type": "integer", "minimum": 1, "maximum": 256 }
+            }
+          }
+        }
+      }
+    },
+    "parcels": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "parcelId",
+          "origin",
+          "width",
+          "height",
+          "allowedCategories",
+          "systemReserved",
+          "userEditablePhase"
+        ],
+        "properties": {
+          "parcelId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+          "origin": { "$ref": "core.v1.schema.json#/$defs/TownGridPosition" },
+          "width": { "type": "integer", "minimum": 1, "maximum": 256 },
+          "height": { "type": "integer", "minimum": 1, "maximum": 256 },
+          "allowedCategories": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "$ref": "core.v1.schema.json#/$defs/TownObjectCategory" }
+          },
+          "systemReserved": { "type": "boolean" },
+          "userEditablePhase": { "enum": ["never", "decor_only", "relocatable_later"] }
+        }
+      }
+    },
+    "expansionZones": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["expansionZoneId", "origin", "width", "height", "unlockPolicy", "initiallyActive"],
+        "properties": {
+          "expansionZoneId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+          "origin": { "$ref": "core.v1.schema.json#/$defs/TownGridPosition" },
+          "width": { "type": "integer", "minimum": 1, "maximum": 256 },
+          "height": { "type": "integer", "minimum": 1, "maximum": 256 },
+          "unlockPolicy": { "enum": ["future_product_decision", "system_migration", "explicit_user_unlock"] },
+          "initiallyActive": { "type": "boolean" }
+        }
+      }
+    },
+    "holdingArea": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["holdingAreaId", "representation"],
+      "properties": {
+        "holdingAreaId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "representation": { "const": "stored_state_no_map_coordinate" }
+      }
+    },
+    "prototypeQuestions": {
+      "type": "array",
+      "maxItems": 64,
+      "items": { "type": "string", "minLength": 1, "maxLength": 500 }
+    }
+  }
+}
