@@ -1,0 +1,122 @@
+{
+  "$schema": "https://memory-os.example/schemas/memory-town/feature-registry.v2.schema.json",
+  "registryId": "memory-town.feature-registry",
+  "registryVersion": 2,
+  "growthRulesetVersion": "memory-town-growth-rules/2.0.0",
+  "features": [
+    {
+      "featureId": "shelf.movie",
+      "featureKind": "shelf",
+      "route": "/shelves/movies",
+      "defaultObjectDefinitionId": "structure.cinema.classic",
+      "currentEligibleAggregateKey": "movie_shelf_current_eligible_item_count",
+      "growthContributionAggregateKey": "movie_shelf_growth_contribution_count_since_origin",
+      "privacyAggregationPolicy": "exclude_hidden_sealed_restricted_deleted",
+      "stageThresholdBasis": "growth_eligible_contribution_count_since_origin",
+      "stageThresholds": [
+        { "stage": 0, "minimumGrowthContributionCount": 0 },
+        { "stage": 1, "minimumGrowthContributionCount": 1 },
+        { "stage": 2, "minimumGrowthContributionCount": 25 }
+      ],
+      "stagePersistence": "max_unlocked_until_explicit_reset",
+      "resetPolicy": "capture_projection_cursor_as_growth_origin",
+      "resetScope": "feature_or_town",
+      "allowedBindingRoles": ["primary", "secondary", "portal"]
+    },
+    {
+      "featureId": "shelf.story",
+      "featureKind": "shelf",
+      "route": "/shelves/stories",
+      "defaultObjectDefinitionId": "structure.story-house.classic",
+      "currentEligibleAggregateKey": "story_shelf_current_eligible_item_count",
+      "growthContributionAggregateKey": "story_shelf_growth_contribution_count_since_origin",
+      "privacyAggregationPolicy": "exclude_hidden_sealed_restricted_deleted",
+      "stageThresholdBasis": "growth_eligible_contribution_count_since_origin",
+      "stageThresholds": [
+        { "stage": 0, "minimumGrowthContributionCount": 0 },
+        { "stage": 1, "minimumGrowthContributionCount": 1 },
+        { "stage": 2, "minimumGrowthContributionCount": 15 }
+      ],
+      "stagePersistence": "max_unlocked_until_explicit_reset",
+      "resetPolicy": "capture_projection_cursor_as_growth_origin",
+      "resetScope": "feature_or_town",
+      "allowedBindingRoles": ["primary", "secondary", "portal"]
+    },
+    {
+      "featureId": "shelf.food",
+      "featureKind": "shelf",
+      "route": "/shelves/food",
+      "defaultObjectDefinitionId": "structure.market.classic",
+      "currentEligibleAggregateKey": "food_shelf_current_eligible_item_count",
+      "growthContributionAggregateKey": "food_shelf_growth_contribution_count_since_origin",
+      "privacyAggregationPolicy": "exclude_hidden_sealed_restricted_deleted",
+      "stageThresholdBasis": "growth_eligible_contribution_count_since_origin",
+      "stageThresholds": [
+        { "stage": 0, "minimumGrowthContributionCount": 0 },
+        { "stage": 1, "minimumGrowthContributionCount": 1 },
+        { "stage": 2, "minimumGrowthContributionCount": 10 }
+      ],
+      "stagePersistence": "max_unlocked_until_explicit_reset",
+      "resetPolicy": "capture_projection_cursor_as_growth_origin",
+      "resetScope": "feature_or_town",
+      "allowedBindingRoles": ["primary", "secondary", "portal"]
+    },
+    {
+      "featureId": "box.travel",
+      "featureKind": "box",
+      "route": "/boxes/travel",
+      "defaultObjectDefinitionId": "structure.port.classic",
+      "currentEligibleAggregateKey": "travel_box_current_eligible_count",
+      "growthContributionAggregateKey": "travel_box_growth_contribution_count_since_origin",
+      "privacyAggregationPolicy": "exclude_hidden_sealed_restricted_deleted",
+      "stageThresholdBasis": "growth_eligible_contribution_count_since_origin",
+      "stageThresholds": [
+        { "stage": 0, "minimumGrowthContributionCount": 0 },
+        { "stage": 1, "minimumGrowthContributionCount": 1 },
+        { "stage": 2, "minimumGrowthContributionCount": 2 }
+      ],
+      "stagePersistence": "max_unlocked_until_explicit_reset",
+      "resetPolicy": "capture_projection_cursor_as_growth_origin",
+      "resetScope": "feature_or_town",
+      "allowedBindingRoles": ["primary", "secondary", "portal"]
+    },
+    {
+      "featureId": "system.inbox",
+      "featureKind": "system",
+      "route": "/inbox",
+      "defaultObjectDefinitionId": "structure.warehouse.classic",
+      "currentEligibleAggregateKey": "inbox_current_source_type_count",
+      "growthContributionAggregateKey": "inbox_growth_source_type_count_since_origin",
+      "privacyAggregationPolicy": "counts_only_no_item_titles",
+      "stageThresholdBasis": "growth_eligible_contribution_count_since_origin",
+      "stageThresholds": [
+        { "stage": 0, "minimumGrowthContributionCount": 0 },
+        { "stage": 1, "minimumGrowthContributionCount": 1 },
+        { "stage": 2, "minimumGrowthContributionCount": 3 }
+      ],
+      "stagePersistence": "max_unlocked_until_explicit_reset",
+      "resetPolicy": "capture_projection_cursor_as_growth_origin",
+      "resetScope": "feature_or_town",
+      "allowedBindingRoles": ["primary", "portal"]
+    },
+    {
+      "featureId": "reflection.square",
+      "featureKind": "reflection",
+      "route": "/reflection",
+      "defaultObjectDefinitionId": "structure.central-square.classic",
+      "currentEligibleAggregateKey": "completed_month_capsule_current_count",
+      "growthContributionAggregateKey": "completed_month_capsule_growth_count_since_origin",
+      "privacyAggregationPolicy": "aggregate_counts_only",
+      "stageThresholdBasis": "growth_eligible_contribution_count_since_origin",
+      "stageThresholds": [
+        { "stage": 0, "minimumGrowthContributionCount": 0 },
+        { "stage": 1, "minimumGrowthContributionCount": 1 },
+        { "stage": 2, "minimumGrowthContributionCount": 6 }
+      ],
+      "stagePersistence": "max_unlocked_until_explicit_reset",
+      "resetPolicy": "capture_projection_cursor_as_growth_origin",
+      "resetScope": "feature_or_town",
+      "allowedBindingRoles": ["primary", "secondary", "portal"]
+    }
+  ]
+}
