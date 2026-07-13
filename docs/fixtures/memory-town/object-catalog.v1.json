@@ -12,6 +12,7 @@
       "defaultLockPolicy": "system_fixed",
       "supportedOrientations": [0],
       "footprintContractVersion": 1,
+      "growthEnvelopeId": "growth-envelope.cinema.classic",
       "footprint": {
         "pivotCell": { "dx": 0, "dy": 0 },
         "occupiedCells": [
@@ -20,12 +21,11 @@
           { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }
         ],
         "entranceCells": [{ "dx": 1, "dy": 3 }],
-        "clearanceCells": [{ "dx": 0, "dy": 3 }, { "dx": 1, "dy": 3 }, { "dx": 2, "dy": 3 }],
+        "clearanceCells": [{ "dx": 0, "dy": 3 }, { "dx": 1, "dy": 3 }, { "dx": 2, "dy": 3 }, { "dx": 3, "dy": 3 }],
         "reservedGrowthCells": [
           { "dx": 0, "dy": 0 }, { "dx": 1, "dy": 0 }, { "dx": 2, "dy": 0 }, { "dx": 3, "dy": 0 },
           { "dx": 0, "dy": 1 }, { "dx": 1, "dy": 1 }, { "dx": 2, "dy": 1 }, { "dx": 3, "dy": 1 },
-          { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }, { "dx": 3, "dy": 2 },
-          { "dx": 0, "dy": 3 }, { "dx": 1, "dy": 3 }, { "dx": 2, "dy": 3 }, { "dx": 3, "dy": 3 }
+          { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }, { "dx": 3, "dy": 2 }
         ],
         "depthAnchor": { "dx": 1.5, "dy": 3 }
       },
@@ -49,6 +49,7 @@
       "defaultLockPolicy": "system_fixed",
       "supportedOrientations": [0],
       "footprintContractVersion": 1,
+      "growthEnvelopeId": "growth-envelope.story-house.classic",
       "footprint": {
         "pivotCell": { "dx": 0, "dy": 0 },
         "occupiedCells": [
@@ -57,15 +58,13 @@
           { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }
         ],
         "entranceCells": [{ "dx": 1, "dy": 3 }],
-        "clearanceCells": [{ "dx": 0, "dy": 3 }, { "dx": 1, "dy": 3 }, { "dx": 2, "dy": 3 }],
+        "clearanceCells": [{ "dx": 0, "dy": 3 }, { "dx": 1, "dy": 3 }, { "dx": 2, "dy": 3 }, { "dx": 3, "dy": 3 }],
         "reservedGrowthCells": [
           { "dx": 0, "dy": 0 }, { "dx": 1, "dy": 0 }, { "dx": 2, "dy": 0 }, { "dx": 3, "dy": 0 },
           { "dx": 0, "dy": 1 }, { "dx": 1, "dy": 1 }, { "dx": 2, "dy": 1 }, { "dx": 3, "dy": 1 },
-          { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }, { "dx": 3, "dy": 2 },
-          { "dx": 0, "dy": 3 }, { "dx": 1, "dy": 3 }, { "dx": 2, "dy": 3 }, { "dx": 3, "dy": 3 },
-          { "dx": 0, "dy": 4 }, { "dx": 1, "dy": 4 }, { "dx": 2, "dy": 4 }, { "dx": 3, "dy": 4 }
+          { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }, { "dx": 3, "dy": 2 }
         ],
-        "depthAnchor": { "dx": 1.5, "dy": 4 }
+        "depthAnchor": { "dx": 1.5, "dy": 3 }
       },
       "placementRules": {
         "requiresParcel": true,
@@ -87,6 +86,7 @@
       "defaultLockPolicy": "system_fixed",
       "supportedOrientations": [0],
       "footprintContractVersion": 1,
+      "growthEnvelopeId": "growth-envelope.market.classic",
       "footprint": {
         "pivotCell": { "dx": 0, "dy": 0 },
         "occupiedCells": [
@@ -94,13 +94,12 @@
           { "dx": 0, "dy": 1 }, { "dx": 1, "dy": 1 }, { "dx": 2, "dy": 1 },
           { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }
         ],
-        "entranceCells": [{ "dx": 1, "dy": 3 }],
-        "clearanceCells": [{ "dx": 0, "dy": 3 }, { "dx": 1, "dy": 3 }, { "dx": 2, "dy": 3 }, { "dx": 3, "dy": 3 }],
+        "entranceCells": [{ "dx": 1, "dy": 3 }, { "dx": 2, "dy": 3 }],
+        "clearanceCells": [{ "dx": 0, "dy": 3 }, { "dx": 1, "dy": 3 }, { "dx": 2, "dy": 3 }, { "dx": 3, "dy": 3 }, { "dx": 4, "dy": 3 }],
         "reservedGrowthCells": [
           { "dx": 0, "dy": 0 }, { "dx": 1, "dy": 0 }, { "dx": 2, "dy": 0 }, { "dx": 3, "dy": 0 }, { "dx": 4, "dy": 0 },
           { "dx": 0, "dy": 1 }, { "dx": 1, "dy": 1 }, { "dx": 2, "dy": 1 }, { "dx": 3, "dy": 1 }, { "dx": 4, "dy": 1 },
-          { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }, { "dx": 3, "dy": 2 }, { "dx": 4, "dy": 2 },
-          { "dx": 0, "dy": 3 }, { "dx": 1, "dy": 3 }, { "dx": 2, "dy": 3 }, { "dx": 3, "dy": 3 }, { "dx": 4, "dy": 3 }
+          { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }, { "dx": 3, "dy": 2 }, { "dx": 4, "dy": 2 }
         ],
         "depthAnchor": { "dx": 2, "dy": 3 }
       },
@@ -124,6 +123,7 @@
       "defaultLockPolicy": "system_fixed",
       "supportedOrientations": [0],
       "footprintContractVersion": 1,
+      "growthEnvelopeId": "growth-envelope.port.classic",
       "footprint": {
         "pivotCell": { "dx": 0, "dy": 0 },
         "occupiedCells": [
@@ -135,8 +135,7 @@
         "clearanceCells": [{ "dx": 1, "dy": -1 }, { "dx": 2, "dy": -1 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }],
         "reservedGrowthCells": [
           { "dx": 0, "dy": 0 }, { "dx": 1, "dy": 0 }, { "dx": 2, "dy": 0 }, { "dx": 3, "dy": 0 }, { "dx": 4, "dy": 0 },
-          { "dx": 0, "dy": 1 }, { "dx": 1, "dy": 1 }, { "dx": 2, "dy": 1 }, { "dx": 3, "dy": 1 }, { "dx": 4, "dy": 1 },
-          { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }, { "dx": 3, "dy": 2 }, { "dx": 4, "dy": 2 }
+          { "dx": 0, "dy": 1 }, { "dx": 1, "dy": 1 }, { "dx": 2, "dy": 1 }, { "dx": 3, "dy": 1 }, { "dx": 4, "dy": 1 }
         ],
         "depthAnchor": { "dx": 2, "dy": 2 }
       },
@@ -160,6 +159,7 @@
       "defaultLockPolicy": "system_fixed",
       "supportedOrientations": [0],
       "footprintContractVersion": 1,
+      "growthEnvelopeId": "growth-envelope.warehouse.classic",
       "footprint": {
         "pivotCell": { "dx": 0, "dy": 0 },
         "occupiedCells": [
@@ -168,12 +168,11 @@
           { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }
         ],
         "entranceCells": [{ "dx": 1, "dy": 3 }],
-        "clearanceCells": [{ "dx": 0, "dy": 3 }, { "dx": 1, "dy": 3 }, { "dx": 2, "dy": 3 }],
+        "clearanceCells": [{ "dx": 0, "dy": 3 }, { "dx": 1, "dy": 3 }, { "dx": 2, "dy": 3 }, { "dx": 3, "dy": 3 }],
         "reservedGrowthCells": [
           { "dx": 0, "dy": 0 }, { "dx": 1, "dy": 0 }, { "dx": 2, "dy": 0 }, { "dx": 3, "dy": 0 },
           { "dx": 0, "dy": 1 }, { "dx": 1, "dy": 1 }, { "dx": 2, "dy": 1 }, { "dx": 3, "dy": 1 },
-          { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }, { "dx": 3, "dy": 2 },
-          { "dx": 0, "dy": 3 }, { "dx": 1, "dy": 3 }, { "dx": 2, "dy": 3 }, { "dx": 3, "dy": 3 }
+          { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }, { "dx": 3, "dy": 2 }
         ],
         "depthAnchor": { "dx": 1.5, "dy": 3 }
       },
@@ -197,6 +196,7 @@
       "defaultLockPolicy": "system_fixed",
       "supportedOrientations": [0],
       "footprintContractVersion": 1,
+      "growthEnvelopeId": "growth-envelope.central-square.classic",
       "footprint": {
         "pivotCell": { "dx": 0, "dy": 0 },
         "occupiedCells": [{ "dx": 1, "dy": 1 }],
@@ -206,11 +206,7 @@
           { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }, { "dx": 3, "dy": 2 }
         ],
         "entranceCells": [{ "dx": 1, "dy": -1 }, { "dx": 1, "dy": 3 }, { "dx": -1, "dy": 1 }, { "dx": 4, "dy": 1 }],
-        "reservedGrowthCells": [
-          { "dx": 0, "dy": 0 }, { "dx": 1, "dy": 0 }, { "dx": 2, "dy": 0 }, { "dx": 3, "dy": 0 },
-          { "dx": 0, "dy": 1 }, { "dx": 1, "dy": 1 }, { "dx": 2, "dy": 1 }, { "dx": 3, "dy": 1 },
-          { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }, { "dx": 3, "dy": 2 }
-        ],
+        "reservedGrowthCells": [{ "dx": 1, "dy": 1 }],
         "depthAnchor": { "dx": 1.5, "dy": 2 }
       },
       "placementRules": {
