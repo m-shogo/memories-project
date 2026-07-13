@@ -1,0 +1,144 @@
+{
+  "$schema": "https://memory-os.example/schemas/memory-town/environment-theme-catalog.v2.schema.json",
+  "catalogId": "memory-town.environment-theme-catalog",
+  "catalogVersion": 2,
+  "symbolTreeCatalogId": "memory-town.memory-tree-catalog",
+  "themes": [
+    {
+      "themeId": "town-theme.default",
+      "status": "contract_locked_visual_pending",
+      "displayNameKey": "memoryTown.theme.default",
+      "requiresPreciseLocation": false,
+      "requiresWeatherApi": false,
+      "supportedSeasons": ["spring", "summer", "autumn", "winter"],
+      "supportedTimeModes": ["morning", "day", "night", "midnight"],
+      "supportedWeatherVisuals": ["clear", "rain", "snow"],
+      "defaultPreferences": {
+        "seasonMode": "auto",
+        "timeModePreference": "auto",
+        "weatherVisual": "clear",
+        "motionLevel": "reduced",
+        "soundEnabled": false
+      },
+      "paletteTokens": {
+        "morning": "town.palette.default.morning",
+        "day": "town.palette.default.day",
+        "night": "town.palette.default.night",
+        "midnight": "town.palette.default.midnight"
+      },
+      "skyProfiles": {
+        "morning": {
+          "gradientToken": "town.sky.default.morning",
+          "cloudProfileId": "town.cloud.default.morning",
+          "celestialBody": "sun",
+          "celestialMotionStrategy": "time-band-progress-not-astronomical",
+          "starVisibility": "off",
+          "buildingLightProfileId": "town.light.buildings.morning",
+          "shadowProfileId": "town.shadow.default.morning"
+        },
+        "day": {
+          "gradientToken": "town.sky.default.day",
+          "cloudProfileId": "town.cloud.default.day",
+          "celestialBody": "sun",
+          "celestialMotionStrategy": "time-band-progress-not-astronomical",
+          "starVisibility": "off",
+          "buildingLightProfileId": "town.light.buildings.day",
+          "shadowProfileId": "town.shadow.default.day"
+        },
+        "night": {
+          "gradientToken": "town.sky.default.night",
+          "cloudProfileId": "town.cloud.default.night",
+          "celestialBody": "moon",
+          "celestialMotionStrategy": "time-band-progress-not-astronomical",
+          "starVisibility": "subtle",
+          "buildingLightProfileId": "town.light.buildings.night",
+          "shadowProfileId": "town.shadow.default.night"
+        },
+        "midnight": {
+          "gradientToken": "town.sky.default.midnight",
+          "cloudProfileId": "town.cloud.default.midnight",
+          "celestialBody": "moon",
+          "celestialMotionStrategy": "time-band-progress-not-astronomical",
+          "starVisibility": "visible",
+          "buildingLightProfileId": "town.light.buildings.midnight",
+          "shadowProfileId": "town.shadow.default.midnight"
+        }
+      },
+      "seasonOverlaySets": {
+        "spring": "town.overlay-set.default.spring",
+        "summer": "town.overlay-set.default.summer",
+        "autumn": "town.overlay-set.default.autumn",
+        "winter": "town.overlay-set.default.winter"
+      },
+      "weatherOverlaySets": {
+        "clear": "town.weather-set.default.clear",
+        "rain": "town.weather-set.default.rain",
+        "snow": "town.weather-set.default.snow"
+      },
+      "ambientProfiles": {
+        "motionOff": "town.ambient.default.off",
+        "motionReduced": "town.ambient.default.reduced",
+        "motionFull": "town.ambient.default.full",
+        "lowPower": "town.ambient.default.low-power"
+      },
+      "shoreProfile": {
+        "terrainKinds": ["water", "coast", "sand"],
+        "distantWaterLayerId": "town.shore.default.distant-water",
+        "surfaceReflectionLayerId": "town.shore.default.surface-reflection",
+        "shoreFoamLayerId": "town.shore.default.foam",
+        "claimsRealTide": false,
+        "supportsMotionOff": true
+      },
+      "soundProfiles": {
+        "disabled": "town.sound.default.off",
+        "morning": "town.sound.default.morning",
+        "day": "town.sound.default.day",
+        "night": "town.sound.default.night",
+        "midnight": "town.sound.default.midnight"
+      },
+      "rules": {
+        "unusedTownNeverDecays": true,
+        "noRecordPeriodNeverDarkensTown": true,
+        "weatherVisualDoesNotClaimRealWeather": true,
+        "celestialPositionDoesNotClaimAstronomicalAccuracy": true,
+        "shoreAnimationDoesNotClaimRealTide": true,
+        "automaticSoundPlayback": false,
+        "respectReducedMotion": true,
+        "respectLowPowerMode": true,
+        "manualPreviewAllowed": true,
+        "environmentNeverUsesMemoryImportance": true
+      }
+    }
+  ],
+  "seasonResolver": {
+    "resolverId": "town-season-resolver.northern-calendar-default",
+    "status": "product_candidate",
+    "requiresLocation": false,
+    "defaultHemisphere": "northern",
+    "manualOverrideAllowed": true,
+    "ranges": [
+      { "season": "spring", "startMonthDay": "03-01", "endMonthDay": "05-31" },
+      { "season": "summer", "startMonthDay": "06-01", "endMonthDay": "08-31" },
+      { "season": "autumn", "startMonthDay": "09-01", "endMonthDay": "11-30" },
+      { "season": "winter", "startMonthDay": "12-01", "endMonthDay": "02-last" }
+    ]
+  },
+  "timeResolver": {
+    "resolverId": "town-time-resolver.device-local-four-mode",
+    "status": "product_candidate",
+    "requiresPreciseLocation": false,
+    "usesDeviceLocalTime": true,
+    "manualOverrideAllowed": true,
+    "ranges": [
+      { "timeMode": "morning", "startHourInclusive": 5, "endHourExclusive": 11, "crossesMidnight": false },
+      { "timeMode": "day", "startHourInclusive": 11, "endHourExclusive": 17, "crossesMidnight": false },
+      { "timeMode": "night", "startHourInclusive": 17, "endHourExclusive": 23, "crossesMidnight": false },
+      { "timeMode": "midnight", "startHourInclusive": 23, "endHourExclusive": 5, "crossesMidnight": true }
+    ],
+    "transitionPolicy": {
+      "mode": "crossfade-candidate",
+      "maximumVisualTransitionSeconds": 90,
+      "backgroundTabBehavior": "short-crossfade-on-resume"
+    }
+  }
+}
