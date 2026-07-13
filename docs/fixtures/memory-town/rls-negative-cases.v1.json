@@ -1,0 +1,129 @@
+{
+  "$schema": "https://memory-os.example/schemas/memory-town/rls-negative-case-set.v1.schema.json",
+  "caseSetId": "memory-town.rls-negative-cases",
+  "caseSetVersion": 1,
+  "actors": {
+    "userA": "00000000-0000-7000-8000-00000000000a",
+    "userB": "00000000-0000-7000-8000-00000000000b"
+  },
+  "cases": [
+    {
+      "caseId": "user-a-cannot-read-user-b-layout",
+      "role": "memory_app_role",
+      "authenticatedUser": "userA",
+      "operation": "select",
+      "table": "town_layout",
+      "targetOwner": "userB",
+      "expected": "zero_rows_or_not_found_or_not_owned"
+    },
+    {
+      "caseId": "user-a-cannot-update-user-b-object",
+      "role": "memory_app_role",
+      "authenticatedUser": "userA",
+      "operation": "update",
+      "table": "town_layout_object",
+      "targetOwner": "userB",
+      "expected": "not_found_or_not_owned"
+    },
+    {
+      "caseId": "user-a-cannot-bind-own-feature-to-user-b-object",
+      "role": "memory_app_role",
+      "authenticatedUser": "userA",
+      "operation": "insert",
+      "table": "town_feature_binding",
+      "targetOwner": "userA",
+      "referencedObjectOwner": "userB",
+      "expected": "ownership_foreign_key_or_policy_denied"
+    },
+    {
+      "caseId": "user-a-cannot-insert-path-into-user-b-layout",
+      "role": "memory_app_role",
+      "authenticatedUser": "userA",
+      "operation": "insert",
+      "table": "town_path_cell",
+      "targetOwner": "userB",
+      "expected": "not_found_or_not_owned"
+    },
+    {
+      "caseId": "user-a-cannot-read-user-b-snapshot",
+      "role": "memory_app_role",
+      "authenticatedUser": "userA",
+      "operation": "select",
+      "table": "town_layout_snapshot",
+      "targetOwner": "userB",
+      "expected": "zero_rows_or_not_found_or_not_owned"
+    },
+    {
+      "caseId": "missing-user-context-fails-closed",
+      "role": "memory_app_role",
+      "authenticatedUser": null,
+      "operation": "select",
+      "table": "town_layout",
+      "targetOwner": "userA",
+      "expected": "user_context_required"
+    },
+    {
+      "caseId": "application-role-cannot-update-global-catalog",
+      "role": "memory_app_role",
+      "authenticatedUser": "userA",
+      "operation": "update",
+      "table": "town_object_catalog",
+      "targetOwner": "global",
+      "expected": "permission_denied"
+    },
+    {
+      "caseId": "support-role-cannot-normally-read-layout",
+      "role": "memory_support_role",
+      "authenticatedUser": "supportActor",
+      "supportCeremonyApproved": false,
+      "operation": "select",
+      "table": "town_layout_object",
+      "targetOwner": "userA",
+      "expected": "permission_denied"
+    },
+    {
+      "caseId": "worker-without-user-context-cannot-rebuild-town",
+      "role": "memory_worker_role",
+      "authenticatedUser": null,
+      "operation": "projection_rebuild",
+      "table": "town_feature_progress",
+      "targetOwner": "userA",
+      "expected": "user_context_required"
+    },
+    {
+      "caseId": "cross-user-batch-replay-does-not-reveal-existence",
+      "role": "memory_app_role",
+      "authenticatedUser": "userA",
+      "operation": "insert",
+      "table": "town_command_dedupe",
+      "targetOwner": "userA",
+      "replayedBatchOwner": "userB",
+      "expected": "new_user_scoped_batch_or_generic_conflict_without_owner_leak"
+    },
+    {
+      "caseId": "mismatched-parent-user-composite-fk-fails",
+      "role": "memory_app_role",
+      "authenticatedUser": "userA",
+      "operation": "insert",
+      "table": "town_layout_object",
+      "targetOwner": "userA",
+      "parentLayoutOwner": "userB",
+      "expected": "ownership_foreign_key_or_policy_denied"
+    },
+    {
+      "caseId": "account-deletion-removes-all-user-town-state",
+      "role": "memory_worker_role",
+      "authenticatedUser": "userA",
+      "operation": "account_delete_verify",
+      "table": "all_user_town_tables",
+      "targetOwner": "userA",
+      "expected": "zero_remaining_rows"
+    }
+  ],
+  "privacyAssertions": {
+    "errorMustNotRevealTargetExistence": true,
+    "auditMustNotContainPrivateTitles": true,
+    "auditMustNotContainMemoryBodies": true,
+    "supportAccessMustBeAudited": true
+  }
+}
