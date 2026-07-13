@@ -1,0 +1,202 @@
+{
+  "$schema": "https://memory-os.example/schemas/memory-town/migration-case-set.v1.schema.json",
+  "caseSetId": "memory-town.template-migration.three-way-merge",
+  "caseSetVersion": 1,
+  "rules": {
+    "mergeInputs": ["old_template_baseline", "current_user_layout", "new_template"],
+    "neverSilentlyDeleteUserObjects": true,
+    "neverOverwriteUserModifiedTemplateObjects": true,
+    "unplaceableNewSystemObjects": "stored",
+    "migrationApplyMode": "atomic",
+    "rollbackSnapshotRequired": true
+  },
+  "cases": [
+    {
+      "caseId": "untouched-template-object-updates-and-new-object-added",
+      "oldTemplate": {
+        "templateId": "memory-town.main-island.default",
+        "templateVersion": 1,
+        "objects": [
+          {
+            "instanceIdSeed": "tree-east-01",
+            "definitionId": "nature.tree.deciduous-small",
+            "position": { "cellX": 26, "cellY": 12, "elevationLevel": 0 },
+            "orientation": 0
+          }
+        ]
+      },
+      "currentUserLayout": {
+        "layoutRevision": 7,
+        "objects": [
+          {
+            "instanceRef": "seed:tree-east-01",
+            "definitionId": "nature.tree.deciduous-small",
+            "position": { "cellX": 26, "cellY": 12, "elevationLevel": 0 },
+            "orientation": 0,
+            "userModifiedSinceBaseline": false,
+            "placementState": "placed"
+          }
+        ]
+      },
+      "newTemplate": {
+        "templateId": "memory-town.main-island.default",
+        "templateVersion": 2,
+        "objects": [
+          {
+            "instanceIdSeed": "tree-east-01",
+            "definitionId": "nature.tree.deciduous-small",
+            "position": { "cellX": 25, "cellY": 12, "elevationLevel": 0 },
+            "orientation": 0
+          },
+          {
+            "instanceIdSeed": "lamp-central-east-02",
+            "definitionId": "furniture.lamp.iron-small",
+            "position": { "cellX": 17, "cellY": 11, "elevationLevel": 0 },
+            "orientation": 0
+          }
+        ]
+      },
+      "expected": {
+        "resultingTemplateVersion": 2,
+        "resultingLayoutRevision": 8,
+        "objects": [
+          {
+            "instanceRef": "seed:tree-east-01",
+            "position": { "cellX": 25, "cellY": 12, "elevationLevel": 0 },
+            "placementState": "placed",
+            "mergeDecision": "template_update_applied"
+          },
+          {
+            "instanceRef": "seed:lamp-central-east-02",
+            "position": { "cellX": 17, "cellY": 11, "elevationLevel": 0 },
+            "placementState": "placed",
+            "mergeDecision": "new_template_object_added"
+          }
+        ],
+        "issues": []
+      }
+    },
+    {
+      "caseId": "user-decoration-wins-and-new-system-object-goes-to-storage",
+      "oldTemplate": {
+        "templateId": "memory-town.main-island.default",
+        "templateVersion": 1,
+        "objects": []
+      },
+      "currentUserLayout": {
+        "layoutRevision": 11,
+        "objects": [
+          {
+            "instanceId": "townobj:user:bench-east-001",
+            "definitionId": "furniture.bench.wood-small",
+            "position": { "cellX": 17, "cellY": 11, "elevationLevel": 0 },
+            "orientation": 0,
+            "origin": "user",
+            "lockPolicy": "user_owned",
+            "userModifiedSinceBaseline": true,
+            "placementState": "placed"
+          }
+        ]
+      },
+      "newTemplate": {
+        "templateId": "memory-town.main-island.default",
+        "templateVersion": 2,
+        "objects": [
+          {
+            "instanceIdSeed": "lamp-central-east-02",
+            "definitionId": "furniture.lamp.iron-small",
+            "position": { "cellX": 17, "cellY": 11, "elevationLevel": 0 },
+            "orientation": 0
+          }
+        ]
+      },
+      "expected": {
+        "resultingTemplateVersion": 2,
+        "resultingLayoutRevision": 12,
+        "objects": [
+          {
+            "instanceId": "townobj:user:bench-east-001",
+            "position": { "cellX": 17, "cellY": 11, "elevationLevel": 0 },
+            "placementState": "placed",
+            "mergeDecision": "user_object_preserved"
+          },
+          {
+            "instanceRef": "seed:lamp-central-east-02",
+            "position": null,
+            "placementState": "stored",
+            "mergeDecision": "new_template_object_stored_due_to_collision"
+          }
+        ],
+        "issues": [
+          {
+            "code": "MIGRATION_TARGET_OCCUPIED",
+            "severity": "warning",
+            "affectedInstanceRef": "seed:lamp-central-east-02",
+            "conflictingInstanceId": "townobj:user:bench-east-001"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "user-moved-template-object-is-not-moved-back",
+      "oldTemplate": {
+        "templateId": "memory-town.main-island.default",
+        "templateVersion": 1,
+        "objects": [
+          {
+            "instanceIdSeed": "structure-market-main",
+            "definitionId": "structure.market.classic",
+            "position": { "cellX": 4, "cellY": 16, "elevationLevel": 0 },
+            "orientation": 0
+          }
+        ]
+      },
+      "currentUserLayout": {
+        "layoutRevision": 20,
+        "objects": [
+          {
+            "instanceRef": "seed:structure-market-main",
+            "definitionId": "structure.market.classic",
+            "position": { "cellX": 5, "cellY": 16, "elevationLevel": 0 },
+            "orientation": 0,
+            "origin": "template",
+            "lockPolicy": "relocatable_later",
+            "userModifiedSinceBaseline": true,
+            "placementState": "placed"
+          }
+        ]
+      },
+      "newTemplate": {
+        "templateId": "memory-town.main-island.default",
+        "templateVersion": 2,
+        "objects": [
+          {
+            "instanceIdSeed": "structure-market-main",
+            "definitionId": "structure.market.classic",
+            "position": { "cellX": 3, "cellY": 16, "elevationLevel": 0 },
+            "orientation": 0
+          }
+        ]
+      },
+      "expected": {
+        "resultingTemplateVersion": 2,
+        "resultingLayoutRevision": 21,
+        "objects": [
+          {
+            "instanceRef": "seed:structure-market-main",
+            "position": { "cellX": 5, "cellY": 16, "elevationLevel": 0 },
+            "placementState": "placed",
+            "mergeDecision": "user_modified_template_object_preserved"
+          }
+        ],
+        "issues": [
+          {
+            "code": "TEMPLATE_CHANGE_SKIPPED_USER_MODIFIED",
+            "severity": "info",
+            "affectedInstanceRef": "seed:structure-market-main"
+          }
+        ]
+      }
+    }
+  ]
+}
