@@ -22,24 +22,29 @@
       "prototypeAspects": ["grid_dimensions", "parcel_dimensions", "terrain_regions", "expansion_zone_dimensions"]
     },
     {
+      "fixtureId": "memory-town.growth-envelope-catalog.v1",
+      "path": "docs/fixtures/memory-town/growth-envelope-catalog.v1.json",
+      "schemaId": "https://memory-os.example/schemas/memory-town/growth-envelope-catalog.v1.schema.json",
+      "status": "prototype_candidate_contract_shape_locked",
+      "dependencies": ["memory-town.object-catalog.v1"],
+      "lockedAspects": ["cell_class_separation", "entrance_stability", "path_coexistence", "overlay_slot_persistence", "stage_publish_gate"],
+      "prototypeAspects": ["max_solid_cells", "visual_overflow_cells", "clearance_cells", "access_path_cells"]
+    },
+    {
       "fixtureId": "memory-town.object-catalog.v1",
       "path": "docs/fixtures/memory-town/object-catalog.v1.json",
       "schemaId": "https://memory-os.example/schemas/memory-town/object-catalog.v1.schema.json",
       "status": "contract_locked_asset_pending_spatial_candidate",
-      "dependencies": ["memory-town.asset-manifest.v1"],
-      "lockedAspects": ["definition_ids", "definition_instance_separation", "object_categories", "placement_layers", "building_as_multi_cell_sprite"],
-      "prototypeAspects": ["footprint_cells", "growth_envelope_cells", "depth_anchors", "asset_stage_bounds"]
+      "dependencies": ["memory-town.asset-manifest.v1", "memory-town.growth-envelope-catalog.v1"],
+      "lockedAspects": ["definition_ids", "definition_instance_separation", "object_categories", "placement_layers", "building_as_multi_cell_sprite", "growth_envelope_reference"],
+      "prototypeAspects": ["footprint_cells", "depth_anchors", "asset_stage_bounds"]
     },
     {
       "fixtureId": "memory-town.layout-template.main-island.v1",
       "path": "docs/fixtures/memory-town/layout-template.main-island.v1.json",
       "schemaId": "https://memory-os.example/schemas/memory-town/layout-template.v1.schema.json",
       "status": "prototype_candidate",
-      "dependencies": [
-        "memory-town.map-definition.main-island.v1",
-        "memory-town.object-catalog.v1",
-        "memory-town.feature-registry.v1"
-      ],
+      "dependencies": ["memory-town.map-definition.main-island.v1", "memory-town.object-catalog.v1", "memory-town.feature-registry.v1"],
       "lockedAspects": ["template_versioning", "feature_binding_presence", "path_cells_without_persisted_mask", "overlay_vs_grid_slot_separation"],
       "prototypeAspects": ["initial_object_positions", "initial_path_shape", "initial_decorations"]
     },
@@ -48,11 +53,7 @@
       "path": "docs/fixtures/memory-town/scene-composition.non-shrinking.v1.json",
       "schemaId": "https://memory-os.example/schemas/memory-town/scene-composition-case.v1.schema.json",
       "status": "contract_locked",
-      "dependencies": [
-        "memory-town.feature-registry.v1",
-        "memory-town.layout-template.main-island.v1",
-        "memory-town.object-catalog.v1"
-      ],
+      "dependencies": ["memory-town.feature-registry.v1", "memory-town.layout-template.main-island.v1", "memory-town.object-catalog.v1"],
       "lockedAspects": ["display_stage_max_rule", "unlock_event_only_on_new_max", "environment_separation", "privacy_denylist"],
       "prototypeAspects": []
     },
@@ -70,11 +71,7 @@
       "path": "docs/fixtures/memory-town/negative-validation-cases.v1.json",
       "schemaId": "https://memory-os.example/schemas/memory-town/negative-case-set.v1.schema.json",
       "status": "contract_locked",
-      "dependencies": [
-        "memory-town.layout-template.main-island.v1",
-        "memory-town.scene-composition.non-shrinking.v1",
-        "memory-town.command-batches.v1"
-      ],
+      "dependencies": ["memory-town.layout-template.main-island.v1", "memory-town.scene-composition.non-shrinking.v1", "memory-town.command-batches.v1"],
       "lockedAspects": ["stable_error_codes", "mutation_contract", "invalid_scene_rejection"],
       "prototypeAspects": []
     },
@@ -128,13 +125,7 @@
       "path": "docs/fixtures/memory-town/export-package.v1.json",
       "schemaId": "https://memory-os.example/schemas/memory-town/export-package.v1.schema.json",
       "status": "contract_locked_archive_hash_pending",
-      "dependencies": [
-        "memory-town.feature-registry.v1",
-        "memory-town.map-definition.main-island.v1",
-        "memory-town.object-catalog.v1",
-        "memory-town.layout-template.main-island.v1",
-        "memory-town.asset-manifest.v1"
-      ],
+      "dependencies": ["memory-town.feature-registry.v1", "memory-town.map-definition.main-island.v1", "memory-town.object-catalog.v1", "memory-town.layout-template.main-island.v1", "memory-town.asset-manifest.v1"],
       "lockedAspects": ["separate_sections", "no_asset_binary_default", "reimport_preview", "unsupported_objects_stored", "atomic_import"],
       "prototypeAspects": ["archive_manifest_hashing", "retention_and_expiry_copy"]
     },
@@ -162,7 +153,6 @@
     "implementationAllowed": false,
     "remainingRequiredBeforeImplementation": [
       "fixture_schema_validation_harness_plan",
-      "growth_envelope_access_contract",
       "prototype_metric_matrix",
       "visual_asset_stage_prototypes",
       "schema_and_fixture_consistency_review",
