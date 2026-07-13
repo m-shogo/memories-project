@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/memory-town/asset-manifest.v1.schema.json",
+  "title": "Memory Town Asset Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "manifestId", "assetManifestVersion", "objectCatalogVersion", "integrityPolicy", "entries"],
+  "properties": {
+    "$schema": { "const": "https://memory-os.example/schemas/memory-town/asset-manifest.v1.schema.json" },
+    "manifestId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+    "assetManifestVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" },
+    "objectCatalogVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" },
+    "integrityPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["approvedAssetsRequireSha256", "pendingAssetsMustNotUseFakeHash", "missingAssetBehavior", "arbitraryExecutableContentAllowed"],
+      "properties": {
+        "approvedAssetsRequireSha256": { "const": true },
+        "pendingAssetsMustNotUseFakeHash": { "const": true },
+        "missingAssetBehavior": { "const": "use_fallback_without_deleting_instance" },
+        "arbitraryExecutableContentAllowed": { "const": false }
+      }
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "textureKey",
+          "assetPath",
+          "mimeType",
+          "integrityStatus",
+          "provenanceStatus",
+          "licenseRecordId",
+          "fallbackTextureKey",
+          "supportedOrientations",
+          "seasonCompatibility",
+          "atlasGroup",
+          "approvalGate"
+        ],
+        "properties": {
+          "textureKey": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "assetPath": { "type": "string", "pattern": "^public/assets/memory-town/", "maxLength": 512 },
+          "mimeType": { "enum": ["image/webp", "image/png"] },
+          "integrityStatus": { "enum": ["asset_pending", "approved"] },
+          "contentHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+          "provenanceStatus": { "enum": ["original_asset_required", "verified_original", "licensed_third_party"] },
+          "licenseRecordId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+          "fallbackTextureKey": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "supportedOrientations": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "$ref": "core.v1.schema.json#/$defs/TownOrientation" }
+          },
+          "seasonCompatibility": {
+            "enum": [
+              "base_only",
+              "overlay_compatible",
+              "season_variant_required",
+              "night_overlay_required"
+            ]
+          },
+          "atlasGroup": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+          "approvalGate": { "type": "string", "minLength": 1, "maxLength": 256 }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "integrityStatus": { "const": "approved" } } },
+            "then": { "required": ["contentHash"] }
+          },
+          {
+            "if": { "properties": { "integrityStatus": { "const": "asset_pending" } } },
+            "then": { "not": { "required": ["contentHash"] } }
+          }
+        ]
+      }
+    }
+  }
+}
