@@ -1,0 +1,135 @@
+{
+  "$schema": "https://memory-os.example/schemas/memory-town/map-definition.v1.schema.json",
+  "mapDefinitionId": "memory-town.main-island",
+  "mapDefinitionVersion": 1,
+  "spatialSchemaVersion": "memory-town-spatial/1.0.0",
+  "prototypeStatus": "candidate_not_visual_lock",
+  "coordinateContract": {
+    "origin": "logical_north_west",
+    "positiveX": "east",
+    "positiveY": "south",
+    "orientationDegrees": [0, 90, 180, 270],
+    "elevationUnit": "logical_level"
+  },
+  "grid": {
+    "width": 28,
+    "height": 28,
+    "metricProfileId": "iso-diamond-mobile-candidate-a"
+  },
+  "baseTerrain": {
+    "defaultKind": "grass",
+    "overrides": [
+      {
+        "regionId": "south-coast-band",
+        "kind": "coast",
+        "origin": { "cellX": 0, "cellY": 25, "elevationLevel": 0 },
+        "width": 28,
+        "height": 1
+      },
+      {
+        "regionId": "south-water-band",
+        "kind": "water",
+        "origin": { "cellX": 0, "cellY": 26, "elevationLevel": 0 },
+        "width": 28,
+        "height": 2
+      },
+      {
+        "regionId": "central-square-stone",
+        "kind": "stone",
+        "origin": { "cellX": 10, "cellY": 10, "elevationLevel": 0 },
+        "width": 7,
+        "height": 6
+      },
+      {
+        "regionId": "port-sand-transition",
+        "kind": "sand",
+        "origin": { "cellX": 10, "cellY": 20, "elevationLevel": 0 },
+        "width": 8,
+        "height": 5
+      }
+    ]
+  },
+  "parcels": [
+    {
+      "parcelId": "story-house-main",
+      "origin": { "cellX": 10, "cellY": 2, "elevationLevel": 0 },
+      "width": 7,
+      "height": 6,
+      "allowedCategories": ["structure", "flower", "ground_decor", "raised_decor", "furniture", "seasonal"],
+      "systemReserved": true,
+      "userEditablePhase": "decor_only"
+    },
+    {
+      "parcelId": "cinema-main",
+      "origin": { "cellX": 2, "cellY": 5, "elevationLevel": 0 },
+      "width": 7,
+      "height": 7,
+      "allowedCategories": ["structure", "flower", "ground_decor", "raised_decor", "furniture", "seasonal"],
+      "systemReserved": true,
+      "userEditablePhase": "decor_only"
+    },
+    {
+      "parcelId": "central-square",
+      "origin": { "cellX": 10, "cellY": 10, "elevationLevel": 0 },
+      "width": 7,
+      "height": 6,
+      "allowedCategories": ["structure", "path", "flower", "ground_decor", "raised_decor", "furniture", "seasonal"],
+      "systemReserved": true,
+      "userEditablePhase": "decor_only"
+    },
+    {
+      "parcelId": "market-main",
+      "origin": { "cellX": 2, "cellY": 15, "elevationLevel": 0 },
+      "width": 7,
+      "height": 7,
+      "allowedCategories": ["structure", "path", "flower", "ground_decor", "raised_decor", "furniture", "seasonal"],
+      "systemReserved": true,
+      "userEditablePhase": "decor_only"
+    },
+    {
+      "parcelId": "warehouse-main",
+      "origin": { "cellX": 19, "cellY": 14, "elevationLevel": 0 },
+      "width": 6,
+      "height": 6,
+      "allowedCategories": ["structure", "path", "ground_decor", "raised_decor", "furniture", "seasonal"],
+      "systemReserved": true,
+      "userEditablePhase": "decor_only"
+    },
+    {
+      "parcelId": "port-main",
+      "origin": { "cellX": 10, "cellY": 20, "elevationLevel": 0 },
+      "width": 8,
+      "height": 6,
+      "allowedCategories": ["structure", "path", "vehicle", "ground_decor", "raised_decor", "seasonal"],
+      "systemReserved": true,
+      "userEditablePhase": "decor_only"
+    }
+  ],
+  "expansionZones": [
+    {
+      "expansionZoneId": "north-east-district",
+      "origin": { "cellX": 19, "cellY": 2, "elevationLevel": 0 },
+      "width": 7,
+      "height": 9,
+      "unlockPolicy": "future_product_decision",
+      "initiallyActive": false
+    },
+    {
+      "expansionZoneId": "south-east-waterfront",
+      "origin": { "cellX": 19, "cellY": 21, "elevationLevel": 0 },
+      "width": 7,
+      "height": 5,
+      "unlockPolicy": "future_product_decision",
+      "initiallyActive": false
+    }
+  ],
+  "holdingArea": {
+    "holdingAreaId": "town-storage-box",
+    "representation": "stored_state_no_map_coordinate"
+  },
+  "prototypeQuestions": [
+    "tile metric must be selected after six viewport comparisons",
+    "parcel dimensions must be verified against stage 0-2 art and later growth envelopes",
+    "road width and central square size are not visually approved by this fixture"
+  ]
+}
