@@ -1,0 +1,35 @@
+{
+  "$schema": "https://memory-os.example/schemas/memory-town/issue-code-extension.v1.schema.json",
+  "extensionId": "memory-town.issue-code-extension.round1",
+  "extensionVersion": 1,
+  "baseRegistryId": "memory-town.issue-code-registry",
+  "baseRegistryVersion": 1,
+  "codes": [
+    { "code": "STALE_FEATURE_RESET_EPOCH", "layer": "concurrency", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.staleFeatureResetEpoch", "retryable": true, "blocksApply": true, "mayIncludePrivateValue": false },
+    { "code": "STALE_FEATURE_PROJECTION_CURSOR", "layer": "concurrency", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.staleFeatureProjectionCursor", "retryable": true, "blocksApply": true, "mayIncludePrivateValue": false },
+    { "code": "FEATURE_UNLOCK_ORIGIN_MISMATCH", "layer": "state", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.featureUnlockOriginMismatch", "retryable": false, "blocksApply": true, "mayIncludePrivateValue": false },
+    { "code": "FEATURE_UNLOCK_STAGE_UNSUPPORTED", "layer": "state", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.featureUnlockStageUnsupported", "retryable": false, "blocksApply": true, "mayIncludePrivateValue": false },
+    { "code": "FEATURE_GROWTH_RULESET_MISMATCH", "layer": "state", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.featureGrowthRulesetMismatch", "retryable": false, "blocksApply": true, "mayIncludePrivateValue": false },
+    { "code": "FEATURE_RESET_PREVIEW_REQUIRED", "layer": "state", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.featureResetPreviewRequired", "retryable": false, "blocksApply": true, "mayIncludePrivateValue": false },
+
+    { "code": "RENDERER_SESSION_STALE", "layer": "concurrency", "defaultSeverity": "warning", "safeMessageKey": "memoryTown.issue.rendererSessionStale", "retryable": false, "blocksApply": false, "mayIncludePrivateValue": false },
+    { "code": "RENDERER_INIT_ABORTED", "layer": "state", "defaultSeverity": "warning", "safeMessageKey": "memoryTown.issue.rendererInitAborted", "retryable": true, "blocksApply": false, "mayIncludePrivateValue": false },
+    { "code": "RENDERER_CONTEXT_LOST", "layer": "state", "defaultSeverity": "warning", "safeMessageKey": "memoryTown.issue.rendererContextLost", "retryable": true, "blocksApply": false, "mayIncludePrivateValue": false },
+    { "code": "RENDERER_CONTEXT_RESTORE_FAILED", "layer": "state", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.rendererContextRestoreFailed", "retryable": true, "blocksApply": false, "mayIncludePrivateValue": false },
+    { "code": "ASSET_ALIAS_COLLISION", "layer": "asset", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.assetAliasCollision", "retryable": false, "blocksApply": true, "mayIncludePrivateValue": false },
+    { "code": "ASSET_MANIFEST_ACTIVATION_FAILED", "layer": "asset", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.assetManifestActivationFailed", "retryable": true, "blocksApply": true, "mayIncludePrivateValue": false },
+    { "code": "ACCESSIBILITY_DUPLICATE_TARGET", "layer": "prototype", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.accessibilityDuplicateTarget", "retryable": false, "blocksApply": true, "mayIncludePrivateValue": false },
+    { "code": "FALLBACK_VISUAL_STALE", "layer": "prototype", "defaultSeverity": "warning", "safeMessageKey": "memoryTown.issue.fallbackVisualStale", "retryable": false, "blocksApply": false, "mayIncludePrivateValue": false },
+
+    { "code": "ACCOUNT_DELETION_FENCE_REJECTED", "layer": "security", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.accountDeletionFenceRejected", "retryable": false, "blocksApply": true, "mayIncludePrivateValue": false },
+    { "code": "LAYOUT_MIGRATION_IN_PROGRESS", "layer": "concurrency", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.layoutMigrationInProgress", "retryable": true, "blocksApply": true, "mayIncludePrivateValue": false },
+    { "code": "LAYOUT_RESET_IN_PROGRESS", "layer": "concurrency", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.layoutResetInProgress", "retryable": true, "blocksApply": true, "mayIncludePrivateValue": false },
+    { "code": "LAYOUT_REPAIR_IN_PROGRESS", "layer": "concurrency", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.layoutRepairInProgress", "retryable": true, "blocksApply": true, "mayIncludePrivateValue": false },
+    { "code": "LAYOUT_FENCE_TOKEN_MISMATCH", "layer": "concurrency", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.layoutFenceTokenMismatch", "retryable": false, "blocksApply": true, "mayIncludePrivateValue": false },
+
+    { "code": "ACCESS_ROOT_UNREACHABLE", "layer": "spatial", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.accessRootUnreachable", "retryable": false, "blocksApply": true, "mayIncludePrivateValue": false },
+    { "code": "REQUIRED_ACCESS_CELL_BLOCKED", "layer": "spatial", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.requiredAccessCellBlocked", "retryable": false, "blocksApply": true, "mayIncludePrivateValue": false },
+    { "code": "PRIMARY_BINDING_TARGET_UNAVAILABLE", "layer": "state", "defaultSeverity": "warning", "safeMessageKey": "memoryTown.issue.primaryBindingTargetUnavailable", "retryable": false, "blocksApply": false, "mayIncludePrivateValue": false },
+    { "code": "SCENE_CONTENT_HASH_VOLATILE_FIELD_INCLUDED", "layer": "semantic", "defaultSeverity": "error", "safeMessageKey": "memoryTown.issue.sceneContentHashVolatileFieldIncluded", "retryable": false, "blocksApply": true, "mayIncludePrivateValue": false }
+  ]
+}
