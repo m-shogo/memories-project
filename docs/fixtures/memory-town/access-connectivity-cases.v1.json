@@ -1,0 +1,208 @@
+{
+  "$schema": "https://memory-os.example/schemas/memory-town/access-connectivity-case-set.v1.schema.json",
+  "caseSetId": "memory-town.access-connectivity-cases",
+  "caseSetVersion": 1,
+  "cases": [
+    {
+      "caseId": "cinema-connected-to-central-root",
+      "accessRoots": [
+        {
+          "accessRootId": "access-root.central-plaza",
+          "position": { "cellX": 10, "cellY": 10, "elevationLevel": 0 },
+          "rootType": "central_plaza",
+          "enabled": true
+        }
+      ],
+      "structures": [
+        {
+          "instanceRef": "seed:structure-cinema-main",
+          "featureId": "shelf.movie",
+          "placementState": "placed",
+          "requiredAccessCells": [
+            { "cellX": 5, "cellY": 9, "elevationLevel": 0 }
+          ],
+          "acceptablePathTypes": ["road", "footpath", "plaza"],
+          "minimumConnectedRoots": 1
+        }
+      ],
+      "pathCells": [
+        { "position": { "cellX": 5, "cellY": 9, "elevationLevel": 0 }, "pathType": "footpath" },
+        { "position": { "cellX": 6, "cellY": 9, "elevationLevel": 0 }, "pathType": "footpath" },
+        { "position": { "cellX": 7, "cellY": 9, "elevationLevel": 0 }, "pathType": "road" },
+        { "position": { "cellX": 8, "cellY": 9, "elevationLevel": 0 }, "pathType": "road" },
+        { "position": { "cellX": 9, "cellY": 9, "elevationLevel": 0 }, "pathType": "plaza" },
+        { "position": { "cellX": 10, "cellY": 9, "elevationLevel": 0 }, "pathType": "plaza" },
+        { "position": { "cellX": 10, "cellY": 10, "elevationLevel": 0 }, "pathType": "plaza" }
+      ],
+      "semanticConnections": [],
+      "bindingState": {
+        "featureId": "shelf.movie",
+        "primary": {
+          "instanceRef": "seed:structure-cinema-main",
+          "placementState": "placed",
+          "definitionAvailable": true
+        },
+        "portalFallbackAvailable": false,
+        "secondaryRouteCapableAvailable": false,
+        "domRouteAvailable": true
+      },
+      "expected": {
+        "spatialValid": true,
+        "semanticConnectionsCountAsPaths": false,
+        "featureRouteAvailable": true,
+        "resolvedVisualTarget": "primary",
+        "issueCodes": []
+      }
+    },
+    {
+      "caseId": "cinema-disconnected-after-path-removal",
+      "accessRoots": [
+        {
+          "accessRootId": "access-root.central-plaza",
+          "position": { "cellX": 10, "cellY": 10, "elevationLevel": 0 },
+          "rootType": "central_plaza",
+          "enabled": true
+        }
+      ],
+      "structures": [
+        {
+          "instanceRef": "seed:structure-cinema-main",
+          "featureId": "shelf.movie",
+          "placementState": "placed",
+          "requiredAccessCells": [
+            { "cellX": 5, "cellY": 9, "elevationLevel": 0 }
+          ],
+          "acceptablePathTypes": ["road", "footpath", "plaza"],
+          "minimumConnectedRoots": 1
+        }
+      ],
+      "pathCells": [
+        { "position": { "cellX": 5, "cellY": 9, "elevationLevel": 0 }, "pathType": "footpath" },
+        { "position": { "cellX": 10, "cellY": 10, "elevationLevel": 0 }, "pathType": "plaza" }
+      ],
+      "semanticConnections": [
+        {
+          "connectionId": "semantic.movie-reflection",
+          "fromFeatureId": "shelf.movie",
+          "toFeatureId": "reflection.square"
+        }
+      ],
+      "bindingState": {
+        "featureId": "shelf.movie",
+        "primary": {
+          "instanceRef": "seed:structure-cinema-main",
+          "placementState": "placed",
+          "definitionAvailable": true
+        },
+        "portalFallbackAvailable": false,
+        "secondaryRouteCapableAvailable": false,
+        "domRouteAvailable": true
+      },
+      "expected": {
+        "spatialValid": false,
+        "semanticConnectionsCountAsPaths": false,
+        "featureRouteAvailable": true,
+        "resolvedVisualTarget": "primary",
+        "issueCodes": ["ACCESS_ROOT_UNREACHABLE"]
+      }
+    },
+    {
+      "caseId": "primary-stored-portal-fallback",
+      "accessRoots": [],
+      "structures": [],
+      "pathCells": [],
+      "semanticConnections": [],
+      "bindingState": {
+        "featureId": "shelf.movie",
+        "primary": {
+          "instanceRef": "seed:structure-cinema-main",
+          "placementState": "stored",
+          "definitionAvailable": true
+        },
+        "portalFallbackAvailable": true,
+        "secondaryRouteCapableAvailable": false,
+        "domRouteAvailable": true
+      },
+      "expected": {
+        "spatialValid": true,
+        "semanticConnectionsCountAsPaths": false,
+        "featureRouteAvailable": true,
+        "resolvedVisualTarget": "portal",
+        "issueCodes": ["PRIMARY_BINDING_TARGET_UNAVAILABLE"]
+      }
+    },
+    {
+      "caseId": "primary-missing-dom-only-route",
+      "accessRoots": [],
+      "structures": [],
+      "pathCells": [],
+      "semanticConnections": [],
+      "bindingState": {
+        "featureId": "shelf.movie",
+        "primary": {
+          "instanceRef": "seed:structure-cinema-main",
+          "placementState": "retired",
+          "definitionAvailable": false
+        },
+        "portalFallbackAvailable": false,
+        "secondaryRouteCapableAvailable": false,
+        "domRouteAvailable": true
+      },
+      "expected": {
+        "spatialValid": true,
+        "semanticConnectionsCountAsPaths": false,
+        "featureRouteAvailable": true,
+        "resolvedVisualTarget": "dom_only",
+        "issueCodes": ["PRIMARY_BINDING_TARGET_UNAVAILABLE"]
+      }
+    },
+    {
+      "caseId": "port-connected-to-dock-root",
+      "accessRoots": [
+        {
+          "accessRootId": "access-root.port-dock",
+          "position": { "cellX": 15, "cellY": 20, "elevationLevel": 0 },
+          "rootType": "dock_network",
+          "enabled": true
+        }
+      ],
+      "structures": [
+        {
+          "instanceRef": "seed:structure-port-main",
+          "featureId": "box.travel",
+          "placementState": "placed",
+          "requiredAccessCells": [
+            { "cellX": 15, "cellY": 18, "elevationLevel": 0 },
+            { "cellX": 15, "cellY": 19, "elevationLevel": 0 }
+          ],
+          "acceptablePathTypes": ["footpath", "bridge"],
+          "minimumConnectedRoots": 1
+        }
+      ],
+      "pathCells": [
+        { "position": { "cellX": 15, "cellY": 18, "elevationLevel": 0 }, "pathType": "footpath" },
+        { "position": { "cellX": 15, "cellY": 19, "elevationLevel": 0 }, "pathType": "bridge" },
+        { "position": { "cellX": 15, "cellY": 20, "elevationLevel": 0 }, "pathType": "bridge" }
+      ],
+      "semanticConnections": [],
+      "bindingState": {
+        "featureId": "box.travel",
+        "primary": {
+          "instanceRef": "seed:structure-port-main",
+          "placementState": "placed",
+          "definitionAvailable": true
+        },
+        "portalFallbackAvailable": false,
+        "secondaryRouteCapableAvailable": false,
+        "domRouteAvailable": true
+      },
+      "expected": {
+        "spatialValid": true,
+        "semanticConnectionsCountAsPaths": false,
+        "featureRouteAvailable": true,
+        "resolvedVisualTarget": "primary",
+        "issueCodes": []
+      }
+    }
+  ]
+}
