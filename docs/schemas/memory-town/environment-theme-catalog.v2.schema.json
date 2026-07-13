@@ -1,0 +1,263 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/memory-town/environment-theme-catalog.v2.schema.json",
+  "title": "Memory Town Environment Theme Catalog v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "catalogId", "catalogVersion", "symbolTreeCatalogId", "themes", "seasonResolver", "timeResolver"],
+  "properties": {
+    "$schema": { "const": "https://memory-os.example/schemas/memory-town/environment-theme-catalog.v2.schema.json" },
+    "catalogId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+    "catalogVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" },
+    "symbolTreeCatalogId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+    "themes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "themeId",
+          "status",
+          "displayNameKey",
+          "requiresPreciseLocation",
+          "requiresWeatherApi",
+          "supportedSeasons",
+          "supportedTimeModes",
+          "supportedWeatherVisuals",
+          "defaultPreferences",
+          "paletteTokens",
+          "skyProfiles",
+          "seasonOverlaySets",
+          "weatherOverlaySets",
+          "ambientProfiles",
+          "shoreProfile",
+          "soundProfiles",
+          "rules"
+        ],
+        "properties": {
+          "themeId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+          "status": { "enum": ["contract_locked_visual_pending", "approved", "deprecated"] },
+          "displayNameKey": { "type": "string", "minLength": 1, "maxLength": 160 },
+          "requiresPreciseLocation": { "const": false },
+          "requiresWeatherApi": { "const": false },
+          "supportedSeasons": { "const": ["spring", "summer", "autumn", "winter"] },
+          "supportedTimeModes": { "const": ["morning", "day", "night", "midnight"] },
+          "supportedWeatherVisuals": { "const": ["clear", "rain", "snow"] },
+          "defaultPreferences": { "$ref": "#/$defs/Preferences" },
+          "paletteTokens": { "$ref": "#/$defs/FourModeTokenMap" },
+          "skyProfiles": { "$ref": "#/$defs/SkyProfileMap" },
+          "seasonOverlaySets": { "$ref": "#/$defs/SeasonTokenMap" },
+          "weatherOverlaySets": { "$ref": "#/$defs/WeatherTokenMap" },
+          "ambientProfiles": { "$ref": "#/$defs/AmbientProfileMap" },
+          "shoreProfile": { "$ref": "#/$defs/ShoreProfile" },
+          "soundProfiles": { "$ref": "#/$defs/SoundProfileMap" },
+          "rules": { "$ref": "#/$defs/ThemeRules" }
+        }
+      }
+    },
+    "seasonResolver": { "$ref": "#/$defs/SeasonResolver" },
+    "timeResolver": { "$ref": "#/$defs/TimeResolver" }
+  },
+  "$defs": {
+    "Preferences": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seasonMode", "timeModePreference", "weatherVisual", "motionLevel", "soundEnabled"],
+      "properties": {
+        "seasonMode": { "enum": ["auto", "manual"] },
+        "timeModePreference": { "enum": ["auto", "morning", "day", "night", "midnight"] },
+        "weatherVisual": { "enum": ["clear", "rain", "snow"] },
+        "motionLevel": { "enum": ["off", "reduced", "full"] },
+        "soundEnabled": { "type": "boolean" }
+      }
+    },
+    "FourModeTokenMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["morning", "day", "night", "midnight"],
+      "properties": {
+        "morning": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "day": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "night": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "midnight": { "$ref": "core.v1.schema.json#/$defs/StableId" }
+      }
+    },
+    "SeasonTokenMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["spring", "summer", "autumn", "winter"],
+      "properties": {
+        "spring": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "summer": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "autumn": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "winter": { "$ref": "core.v1.schema.json#/$defs/StableId" }
+      }
+    },
+    "WeatherTokenMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["clear", "rain", "snow"],
+      "properties": {
+        "clear": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "rain": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "snow": { "$ref": "core.v1.schema.json#/$defs/StableId" }
+      }
+    },
+    "SkyProfileMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["morning", "day", "night", "midnight"],
+      "properties": {
+        "morning": { "$ref": "#/$defs/SkyProfile" },
+        "day": { "$ref": "#/$defs/SkyProfile" },
+        "night": { "$ref": "#/$defs/SkyProfile" },
+        "midnight": { "$ref": "#/$defs/SkyProfile" }
+      }
+    },
+    "SkyProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gradientToken", "cloudProfileId", "celestialBody", "celestialMotionStrategy", "starVisibility", "buildingLightProfileId", "shadowProfileId"],
+      "properties": {
+        "gradientToken": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "cloudProfileId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "celestialBody": { "enum": ["sun", "moon"] },
+        "celestialMotionStrategy": { "const": "time-band-progress-not-astronomical" },
+        "starVisibility": { "enum": ["off", "subtle", "visible"] },
+        "buildingLightProfileId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "shadowProfileId": { "$ref": "core.v1.schema.json#/$defs/StableId" }
+      }
+    },
+    "AmbientProfileMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["motionOff", "motionReduced", "motionFull", "lowPower"],
+      "properties": {
+        "motionOff": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "motionReduced": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "motionFull": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "lowPower": { "$ref": "core.v1.schema.json#/$defs/StableId" }
+      }
+    },
+    "ShoreProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["terrainKinds", "distantWaterLayerId", "surfaceReflectionLayerId", "shoreFoamLayerId", "claimsRealTide", "supportsMotionOff"],
+      "properties": {
+        "terrainKinds": { "const": ["water", "coast", "sand"] },
+        "distantWaterLayerId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "surfaceReflectionLayerId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "shoreFoamLayerId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "claimsRealTide": { "const": false },
+        "supportsMotionOff": { "const": true }
+      }
+    },
+    "SoundProfileMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["disabled", "morning", "day", "night", "midnight"],
+      "properties": {
+        "disabled": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "morning": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "day": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "night": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "midnight": { "$ref": "core.v1.schema.json#/$defs/StableId" }
+      }
+    },
+    "ThemeRules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unusedTownNeverDecays",
+        "noRecordPeriodNeverDarkensTown",
+        "weatherVisualDoesNotClaimRealWeather",
+        "celestialPositionDoesNotClaimAstronomicalAccuracy",
+        "shoreAnimationDoesNotClaimRealTide",
+        "automaticSoundPlayback",
+        "respectReducedMotion",
+        "respectLowPowerMode",
+        "manualPreviewAllowed",
+        "environmentNeverUsesMemoryImportance"
+      ],
+      "properties": {
+        "unusedTownNeverDecays": { "const": true },
+        "noRecordPeriodNeverDarkensTown": { "const": true },
+        "weatherVisualDoesNotClaimRealWeather": { "const": true },
+        "celestialPositionDoesNotClaimAstronomicalAccuracy": { "const": true },
+        "shoreAnimationDoesNotClaimRealTide": { "const": true },
+        "automaticSoundPlayback": { "const": false },
+        "respectReducedMotion": { "const": true },
+        "respectLowPowerMode": { "const": true },
+        "manualPreviewAllowed": { "const": true },
+        "environmentNeverUsesMemoryImportance": { "const": true }
+      }
+    },
+    "SeasonResolver": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resolverId", "status", "requiresLocation", "defaultHemisphere", "manualOverrideAllowed", "ranges"],
+      "properties": {
+        "resolverId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "status": { "enum": ["product_candidate", "approved"] },
+        "requiresLocation": { "const": false },
+        "defaultHemisphere": { "enum": ["northern", "southern"] },
+        "manualOverrideAllowed": { "const": true },
+        "ranges": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["season", "startMonthDay", "endMonthDay"],
+            "properties": {
+              "season": { "enum": ["spring", "summer", "autumn", "winter"] },
+              "startMonthDay": { "type": "string", "pattern": "^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]|last)$" },
+              "endMonthDay": { "type": "string", "pattern": "^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]|last)$" }
+            }
+          }
+        }
+      }
+    },
+    "TimeResolver": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resolverId", "status", "requiresPreciseLocation", "usesDeviceLocalTime", "manualOverrideAllowed", "ranges", "transitionPolicy"],
+      "properties": {
+        "resolverId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "status": { "enum": ["product_candidate", "approved"] },
+        "requiresPreciseLocation": { "const": false },
+        "usesDeviceLocalTime": { "const": true },
+        "manualOverrideAllowed": { "const": true },
+        "ranges": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["timeMode", "startHourInclusive", "endHourExclusive", "crossesMidnight"],
+            "properties": {
+              "timeMode": { "enum": ["morning", "day", "night", "midnight"] },
+              "startHourInclusive": { "type": "integer", "minimum": 0, "maximum": 23 },
+              "endHourExclusive": { "type": "integer", "minimum": 0, "maximum": 23 },
+              "crossesMidnight": { "type": "boolean" }
+            }
+          }
+        },
+        "transitionPolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "maximumVisualTransitionSeconds", "backgroundTabBehavior"],
+          "properties": {
+            "mode": { "const": "crossfade-candidate" },
+            "maximumVisualTransitionSeconds": { "type": "integer", "minimum": 0, "maximum": 180 },
+            "backgroundTabBehavior": { "enum": ["snap-on-resume", "short-crossfade-on-resume"] }
+          }
+        }
+      }
+    }
+  }
+}
