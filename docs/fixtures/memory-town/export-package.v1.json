@@ -144,7 +144,6 @@
     "preferences": {
       "themeId": "town-theme.default",
       "seasonMode": "auto",
-      "manualSeason": null,
       "timeMode": "night",
       "weatherVisual": "clear",
       "motionLevel": "reduced",
