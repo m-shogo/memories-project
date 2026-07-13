@@ -1,0 +1,200 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/memory-town/core.v1.schema.json",
+  "title": "Memory Town Core Types v1",
+  "$defs": {
+    "StableId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9]*(?:[._:-][a-z0-9]+)*$"
+    },
+    "SemverLike": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z0-9][a-z0-9._/-]*[0-9](?:\\.[0-9]+){0,2}$"
+    },
+    "NonNegativeInteger": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "PositiveInteger": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "UtcTimestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "TownGridPosition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cellX", "cellY", "elevationLevel"],
+      "properties": {
+        "cellX": { "type": "integer", "minimum": -4096, "maximum": 4096 },
+        "cellY": { "type": "integer", "minimum": -4096, "maximum": 4096 },
+        "elevationLevel": { "type": "integer", "minimum": -64, "maximum": 64 }
+      }
+    },
+    "TownRelativeCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dx", "dy"],
+      "properties": {
+        "dx": { "type": "integer", "minimum": -256, "maximum": 256 },
+        "dy": { "type": "integer", "minimum": -256, "maximum": 256 }
+      }
+    },
+    "TownRelativePoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dx", "dy"],
+      "properties": {
+        "dx": { "type": "number", "minimum": -256, "maximum": 256 },
+        "dy": { "type": "number", "minimum": -256, "maximum": 256 }
+      }
+    },
+    "TownOrientation": {
+      "enum": [0, 90, 180, 270]
+    },
+    "TownObjectCategory": {
+      "enum": [
+        "terrain",
+        "path",
+        "water",
+        "structure",
+        "tree",
+        "flower",
+        "ground_decor",
+        "raised_decor",
+        "furniture",
+        "vehicle",
+        "seasonal",
+        "semantic_overlay"
+      ]
+    },
+    "TownPlacementLayer": {
+      "enum": [
+        "base_terrain",
+        "surface_path",
+        "ground_object",
+        "solid_object",
+        "raised_object",
+        "semantic_overlay",
+        "ambient_effect"
+      ]
+    },
+    "TownPlacementState": {
+      "enum": ["placed", "stored", "retired"]
+    },
+    "TownLockPolicy": {
+      "enum": ["system_fixed", "decor_editable", "relocatable_later", "user_owned"]
+    },
+    "TownObjectOrigin": {
+      "enum": ["template", "user", "migration", "system_unlock"]
+    },
+    "TownTerrainKind": {
+      "enum": ["grass", "soil", "sand", "stone", "coast", "water"]
+    },
+    "TownPathType": {
+      "enum": ["road", "footpath", "plaza", "bridge"]
+    },
+    "TownFootprint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pivotCell", "occupiedCells", "reservedGrowthCells", "depthAnchor"],
+      "properties": {
+        "pivotCell": {
+          "const": { "dx": 0, "dy": 0 }
+        },
+        "occupiedCells": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4096,
+          "items": { "$ref": "#/$defs/TownRelativeCell" }
+        },
+        "walkableCells": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": { "$ref": "#/$defs/TownRelativeCell" }
+        },
+        "entranceCells": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/TownRelativeCell" }
+        },
+        "clearanceCells": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": { "$ref": "#/$defs/TownRelativeCell" }
+        },
+        "reservedGrowthCells": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": { "$ref": "#/$defs/TownRelativeCell" }
+        },
+        "depthAnchor": { "$ref": "#/$defs/TownRelativePoint" }
+      }
+    },
+    "TownPathCellState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["position", "pathType"],
+      "properties": {
+        "position": { "$ref": "#/$defs/TownGridPosition" },
+        "pathType": { "$ref": "#/$defs/TownPathType" }
+      }
+    },
+    "TownFeatureBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bindingIdSeed", "featureId", "objectInstanceIdSeed", "bindingRole"],
+      "properties": {
+        "bindingIdSeed": { "$ref": "#/$defs/StableId" },
+        "featureId": { "$ref": "#/$defs/StableId" },
+        "objectInstanceIdSeed": { "$ref": "#/$defs/StableId" },
+        "bindingRole": { "enum": ["primary", "secondary", "portal"] }
+      }
+    },
+    "TownObjectTemplatePlacement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "instanceIdSeed",
+        "definitionId",
+        "definitionVersion",
+        "position",
+        "orientation",
+        "origin",
+        "placementState",
+        "lockPolicy"
+      ],
+      "properties": {
+        "instanceIdSeed": { "$ref": "#/$defs/StableId" },
+        "definitionId": { "$ref": "#/$defs/StableId" },
+        "definitionVersion": { "$ref": "#/$defs/PositiveInteger" },
+        "parcelId": { "$ref": "#/$defs/StableId" },
+        "position": { "$ref": "#/$defs/TownGridPosition" },
+        "orientation": { "$ref": "#/$defs/TownOrientation" },
+        "origin": { "$ref": "#/$defs/TownObjectOrigin" },
+        "placementState": { "const": "placed" },
+        "lockPolicy": { "$ref": "#/$defs/TownLockPolicy" }
+      }
+    },
+    "TownIssue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "severity"],
+      "properties": {
+        "code": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$", "maxLength": 128 },
+        "severity": { "enum": ["info", "warning", "error"] },
+        "instanceId": { "type": "string", "maxLength": 160 },
+        "instanceRef": { "type": "string", "maxLength": 160 },
+        "cell": { "$ref": "#/$defs/TownGridPosition" },
+        "messageKey": { "type": "string", "maxLength": 160 }
+      }
+    }
+  }
+}
