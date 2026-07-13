@@ -122,7 +122,6 @@
           },
           {
             "instanceRef": "seed:lamp-central-east-02",
-            "position": null,
             "placementState": "stored",
             "mergeDecision": "new_template_object_stored_due_to_collision"
           }
