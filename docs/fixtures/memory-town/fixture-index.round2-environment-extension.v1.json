@@ -1,0 +1,82 @@
+{
+  "extensionIndexId": "memory-town.fixture-index.round2-environment-extension",
+  "extensionIndexVersion": 1,
+  "extends": {
+    "path": "docs/fixtures/memory-town/fixture-index.round1-extension.v1.json",
+    "indexId": "memory-town.fixture-index.round1-extension",
+    "indexVersion": 1
+  },
+  "schemaRegistryPath": "docs/schemas/memory-town/schema-registry.v1.json",
+  "fixtures": [
+    {
+      "fixtureId": "memory-town.environment-theme-catalog.v2",
+      "path": "docs/fixtures/memory-town/environment-theme-catalog.v2.json",
+      "schemaId": "https://memory-os.example/schemas/memory-town/environment-theme-catalog.v2.schema.json",
+      "status": "contract_locked_visual_and_machine_validation_pending",
+      "dependsOn": ["memory-town.memory-tree-catalog.v1"],
+      "locked": [
+        "four_time_modes",
+        "device_local_time_without_precise_location",
+        "manual_preview",
+        "sky_profiles",
+        "shore_layers",
+        "building_light_profiles",
+        "motion_and_low_power_profiles",
+        "no_real_weather_tide_or_astronomical_claim"
+      ],
+      "prototype": [
+        "time_boundaries",
+        "transition_duration",
+        "palette_tokens",
+        "cloud_motion_speed",
+        "shore_loop_timing",
+        "sound_profiles"
+      ]
+    },
+    {
+      "fixtureId": "memory-town.memory-tree-catalog.v1",
+      "path": "docs/fixtures/memory-town/memory-tree-catalog.v1.json",
+      "schemaId": "https://memory-os.example/schemas/memory-town/memory-tree-catalog.v1.schema.json",
+      "status": "contract_locked_asset_and_threshold_validation_pending",
+      "dependsOn": [],
+      "locked": [
+        "fictional_seasonal_species",
+        "three_growth_stages",
+        "spring_sakura_motif",
+        "autumn_momiji_motif",
+        "winter_non_punitive",
+        "no_importance_emotion_streak_or_payment_growth",
+        "privacy_reset_and_hide_controls",
+        "twelve_principal_season_stage_assets"
+      ],
+      "prototype": [
+        "stage_threshold_numbers",
+        "tree_map_position",
+        "maximum_silhouette",
+        "growth_envelope",
+        "season_palette",
+        "animation_amplitude"
+      ]
+    }
+  ],
+  "authority": {
+    "activeEnvironmentSchema": "https://memory-os.example/schemas/memory-town/environment-theme-catalog.v2.schema.json",
+    "activeEnvironmentFixture": "memory-town.environment-theme-catalog.v2",
+    "activeMemoryTreeFixture": "memory-town.memory-tree-catalog.v1",
+    "implementationUseOfEnvironmentV1Allowed": false,
+    "canonicalTimeModes": ["morning", "day", "night", "midnight"]
+  },
+  "readiness": {
+    "round2EnvironmentContractStatus": "defined_at_contract_schema_and_fixture_level_not_machine_or_visual_validated",
+    "implementationAllowed": false,
+    "nextRequired": [
+      "machine_validate_environment_v2_and_memory_tree",
+      "confirm_no_active_environment_v1_dependency",
+      "create_four_time_mode_palette_roughs",
+      "create_memory_tree_stage_zero_to_two_season_roughs",
+      "compare_beach_and_tree_map_positions",
+      "create_layered_fallback_environment_mock",
+      "run_environment_accessibility_and_comprehension_review"
+    ]
+  }
+}
