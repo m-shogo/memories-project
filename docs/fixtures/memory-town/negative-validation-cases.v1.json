@@ -1,0 +1,179 @@
+{
+  "$schema": "https://memory-os.example/schemas/memory-town/negative-case-set.v1.schema.json",
+  "caseSetId": "memory-town.negative-validation-cases",
+  "caseSetVersion": 1,
+  "mutationContract": {
+    "pathSyntax": "json_pointer_rfc6901",
+    "operations": ["add", "replace", "remove", "duplicate"],
+    "applyOrder": "listed_order",
+    "baseFixtureMustRemainImmutable": true
+  },
+  "cases": [
+    {
+      "caseId": "duplicate-instance-seed",
+      "baseFixtureRef": "layout-template.main-island.v1.json",
+      "mutations": [
+        {
+          "op": "duplicate",
+          "path": "/objects/0",
+          "destination": "/objects/-"
+        }
+      ],
+      "expectedErrors": ["DUPLICATE_INSTANCE_ID"],
+      "mustNotProduceScene": true
+    },
+    {
+      "caseId": "unknown-definition",
+      "baseFixtureRef": "layout-template.main-island.v1.json",
+      "mutations": [
+        {
+          "op": "replace",
+          "path": "/objects/0/definitionId",
+          "value": "structure.unknown.missing"
+        }
+      ],
+      "expectedErrors": ["UNKNOWN_DEFINITION"],
+      "mustNotProduceScene": true
+    },
+    {
+      "caseId": "structure-out-of-parcel",
+      "baseFixtureRef": "layout-template.main-island.v1.json",
+      "mutations": [
+        {
+          "op": "replace",
+          "path": "/objects/0/position",
+          "value": { "cellX": 25, "cellY": 24, "elevationLevel": 0 }
+        }
+      ],
+      "expectedErrors": ["PARCEL_BOUNDS_EXCEEDED"],
+      "mustNotProduceScene": true
+    },
+    {
+      "caseId": "solid-object-collision",
+      "baseFixtureRef": "layout-template.main-island.v1.json",
+      "mutations": [
+        {
+          "op": "replace",
+          "path": "/objects/6/position",
+          "value": { "cellX": 4, "cellY": 6, "elevationLevel": 0 }
+        }
+      ],
+      "expectedErrors": ["SOLID_COLLISION"],
+      "mustNotProduceScene": true
+    },
+    {
+      "caseId": "growth-envelope-blocked",
+      "baseFixtureRef": "layout-template.main-island.v1.json",
+      "mutations": [
+        {
+          "op": "replace",
+          "path": "/objects/10/position",
+          "value": { "cellX": 7, "cellY": 7, "elevationLevel": 0 }
+        }
+      ],
+      "expectedErrors": ["GROWTH_ENVELOPE_RESERVED"],
+      "mustNotProduceScene": true
+    },
+    {
+      "caseId": "entrance-blocked",
+      "baseFixtureRef": "layout-template.main-island.v1.json",
+      "mutations": [
+        {
+          "op": "replace",
+          "path": "/objects/6/position",
+          "value": { "cellX": 5, "cellY": 9, "elevationLevel": 0 }
+        }
+      ],
+      "expectedErrors": ["ENTRANCE_BLOCKED"],
+      "mustNotProduceScene": true
+    },
+    {
+      "caseId": "duplicate-path-cell",
+      "baseFixtureRef": "layout-template.main-island.v1.json",
+      "mutations": [
+        {
+          "op": "duplicate",
+          "path": "/pathCells/0",
+          "destination": "/pathCells/-"
+        }
+      ],
+      "expectedErrors": ["DUPLICATE_PATH_CELL"],
+      "mustNotProduceScene": true
+    },
+    {
+      "caseId": "persisted-path-mask",
+      "baseFixtureRef": "layout-template.main-island.v1.json",
+      "mutations": [
+        {
+          "op": "add",
+          "path": "/pathCells/0/connectionMask",
+          "value": 15
+        }
+      ],
+      "expectedErrors": ["UNKNOWN_FIELD"],
+      "mustNotProduceScene": true
+    },
+    {
+      "caseId": "multiple-primary-bindings",
+      "baseFixtureRef": "layout-template.main-island.v1.json",
+      "mutations": [
+        {
+          "op": "add",
+          "path": "/featureBindings/-",
+          "value": {
+            "bindingIdSeed": "binding-movie-primary-duplicate",
+            "featureId": "shelf.movie",
+            "objectInstanceIdSeed": "structure-story-house-main",
+            "bindingRole": "primary"
+          }
+        }
+      ],
+      "expectedErrors": ["MULTIPLE_PRIMARY_BINDINGS"],
+      "mustNotProduceScene": true
+    },
+    {
+      "caseId": "stored-object-has-position",
+      "baseFixtureRef": "layout-template.main-island.v1.json",
+      "mutations": [
+        {
+          "op": "replace",
+          "path": "/objects/6/placementState",
+          "value": "stored"
+        }
+      ],
+      "expectedErrors": ["STORED_OBJECT_HAS_POSITION"],
+      "mustNotProduceScene": true
+    },
+    {
+      "caseId": "private-title-in-scene",
+      "baseFixtureRef": "scene-composition.non-shrinking.v1.json",
+      "mutations": [
+        {
+          "op": "add",
+          "path": "/expected/renderedStructures/0/title",
+          "value": "private movie title"
+        }
+      ],
+      "expectedErrors": ["RAW_MEMORY_FIELD_PRESENT", "PRIVATE_TITLE_PRESENT"],
+      "mustNotProduceScene": true
+    },
+    {
+      "caseId": "stale-layout-revision",
+      "baseFixtureRef": "command-batches.v1.json",
+      "mutations": [
+        {
+          "op": "replace",
+          "path": "/cases/0/input/currentLayoutRevision",
+          "value": 6
+        },
+        {
+          "op": "replace",
+          "path": "/cases/0/input/batch/expectedLayoutRevision",
+          "value": 5
+        }
+      ],
+      "expectedErrors": ["STALE_LAYOUT_REVISION"],
+      "mustNotProduceScene": false
+    }
+  ]
+}
