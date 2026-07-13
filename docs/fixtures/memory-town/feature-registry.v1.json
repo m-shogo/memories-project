@@ -1,0 +1,104 @@
+{
+  "$schema": "https://memory-os.example/schemas/memory-town/feature-registry.v1.schema.json",
+  "registryId": "memory-town.feature-registry",
+  "registryVersion": 1,
+  "growthRulesetVersion": "memory-town-growth-rules/1.0.0",
+  "features": [
+    {
+      "featureId": "shelf.movie",
+      "featureKind": "shelf",
+      "route": "/shelves/movies",
+      "defaultObjectDefinitionId": "structure.cinema.classic",
+      "eligibleAggregateKey": "movie_shelf_eligible_item_count",
+      "privacyAggregationPolicy": "exclude_hidden_sealed_restricted_deleted",
+      "stageThresholds": [
+        { "stage": 0, "minimumEligibleCount": 0 },
+        { "stage": 1, "minimumEligibleCount": 1 },
+        { "stage": 2, "minimumEligibleCount": 25 }
+      ],
+      "stagePersistence": "max_unlocked_until_explicit_reset",
+      "resetScope": "feature_or_town",
+      "allowedBindingRoles": ["primary", "secondary", "portal"]
+    },
+    {
+      "featureId": "shelf.story",
+      "featureKind": "shelf",
+      "route": "/shelves/stories",
+      "defaultObjectDefinitionId": "structure.story-house.classic",
+      "eligibleAggregateKey": "story_shelf_eligible_item_count",
+      "privacyAggregationPolicy": "exclude_hidden_sealed_restricted_deleted",
+      "stageThresholds": [
+        { "stage": 0, "minimumEligibleCount": 0 },
+        { "stage": 1, "minimumEligibleCount": 1 },
+        { "stage": 2, "minimumEligibleCount": 15 }
+      ],
+      "stagePersistence": "max_unlocked_until_explicit_reset",
+      "resetScope": "feature_or_town",
+      "allowedBindingRoles": ["primary", "secondary", "portal"]
+    },
+    {
+      "featureId": "shelf.food",
+      "featureKind": "shelf",
+      "route": "/shelves/food",
+      "defaultObjectDefinitionId": "structure.market.classic",
+      "eligibleAggregateKey": "food_shelf_eligible_item_count",
+      "privacyAggregationPolicy": "exclude_hidden_sealed_restricted_deleted",
+      "stageThresholds": [
+        { "stage": 0, "minimumEligibleCount": 0 },
+        { "stage": 1, "minimumEligibleCount": 1 },
+        { "stage": 2, "minimumEligibleCount": 10 }
+      ],
+      "stagePersistence": "max_unlocked_until_explicit_reset",
+      "resetScope": "feature_or_town",
+      "allowedBindingRoles": ["primary", "secondary", "portal"]
+    },
+    {
+      "featureId": "box.travel",
+      "featureKind": "box",
+      "route": "/boxes/travel",
+      "defaultObjectDefinitionId": "structure.port.classic",
+      "eligibleAggregateKey": "travel_box_eligible_count",
+      "privacyAggregationPolicy": "exclude_hidden_sealed_restricted_deleted",
+      "stageThresholds": [
+        { "stage": 0, "minimumEligibleCount": 0 },
+        { "stage": 1, "minimumEligibleCount": 1 },
+        { "stage": 2, "minimumEligibleCount": 2 }
+      ],
+      "stagePersistence": "max_unlocked_until_explicit_reset",
+      "resetScope": "feature_or_town",
+      "allowedBindingRoles": ["primary", "secondary", "portal"]
+    },
+    {
+      "featureId": "system.inbox",
+      "featureKind": "system",
+      "route": "/inbox",
+      "defaultObjectDefinitionId": "structure.warehouse.classic",
+      "eligibleAggregateKey": "inbox_source_type_count",
+      "privacyAggregationPolicy": "counts_only_no_item_titles",
+      "stageThresholds": [
+        { "stage": 0, "minimumEligibleCount": 0 },
+        { "stage": 1, "minimumEligibleCount": 1 },
+        { "stage": 2, "minimumEligibleCount": 3 }
+      ],
+      "stagePersistence": "max_unlocked_until_explicit_reset",
+      "resetScope": "feature_or_town",
+      "allowedBindingRoles": ["primary", "portal"]
+    },
+    {
+      "featureId": "reflection.square",
+      "featureKind": "reflection",
+      "route": "/reflection",
+      "defaultObjectDefinitionId": "structure.central-square.classic",
+      "eligibleAggregateKey": "completed_month_capsule_count",
+      "privacyAggregationPolicy": "aggregate_counts_only",
+      "stageThresholds": [
+        { "stage": 0, "minimumEligibleCount": 0 },
+        { "stage": 1, "minimumEligibleCount": 1 },
+        { "stage": 2, "minimumEligibleCount": 6 }
+      ],
+      "stagePersistence": "max_unlocked_until_explicit_reset",
+      "resetScope": "feature_or_town",
+      "allowedBindingRoles": ["primary", "secondary", "portal"]
+    }
+  ]
+}
