@@ -12,6 +12,8 @@ AIは変わる。モデルもサービスも変わる。
 
 ユーザー自身の人生の文脈だけは、特定のAIサービスへ閉じ込めない。
 
+---
+
 ## Current Product Direction
 
 ```txt
@@ -19,7 +21,7 @@ AIは変わる。モデルもサービスも変わる。
 → 保存前にPreviewする
 → 媒体に合う棚として見える
 → 検索・更新・振り返りができる
-→ 記録の積み重ねが固定2.5Dの「記憶の町」として育つ
+→ 記録の積み重ねが固定視点2.5Dの「記憶の町」として育つ
 → 必要なら標準形式で持ち出せる
 ```
 
@@ -34,32 +36,79 @@ AIは変わる。モデルもサービスも変わる。
 - Search
 - Export
 - Weekly Box / Month Capsule
-- 続刊・配信など、ユーザーが明示的に追う対象の「続き」
+- ユーザーが明示的に追う「続き」
 
 ### ワクワクの副次成果物
 
-固定2.5Dの **記憶の町** を採用する。
+固定視点2.5Dの **記憶の町** を採用する。
 
 ```txt
-棚 → 建物
+棚の機能 → 建物へbinding
 箱 → 町の風景
-確定したつながり → 道・橋・航路
-Importの積み重ね → 建物の成長
+確定したつながり → semantic overlay
+Importの積み重ね → 解除済み建物stage
 月・季節 → 装飾と空気の変化
 ```
 
 町はゲーム本体ではなく、見て楽しく機能を覚えやすい「感情的なメニュー」。
+
 編集・検索・入力は通常のDOM UIで行う。
+
+### Long-term Town Direction
+
+参考イメージは、**どうぶつの森のように、自分の場所へ愛着を持てる箱庭**。
+
+ただし、特定作品のUIやアートを複製しない。
+
+```txt
+MVP: fixed layout / editorなし
+内部: logical grid / parcel / footprint / growth envelope
+将来: decoration → 道 → 植栽 → 建物移動 → district expansion
+```
+
+Minecraft型の1block建築ではない。
+
+```txt
+地形・道・花 = tile単位
+木・家具 = object単位
+建物 = multi-cell完成sprite
+```
 
 技術方針:
 
 ```txt
 React / DOM UI
 + PixiJS / WebGL
-+ fixed 2.5D sprites
-+ dot-style visual
-+ modular asset structure
++ fixed-view 2.5D sprites
++ logical isometric grid
++ data-driven object catalog
 ```
+
+---
+
+## Memory Town State Model
+
+```txt
+1. Memory Domain State
+2. Town Feature Progress State
+3. Town Layout State
+4. Town Environment State
+5. Town Render State
+```
+
+重要:
+
+- 建物の意味と見た目を分離
+- 一度解除した建物stageは通常削除で罰のように縮ませない
+- current countは正確に表示
+- userはfeature growthを明示的にreset可能
+- season / time / cameraをMemory Projectionへ混ぜない
+- physical pathとsemantic connectionを分離
+- path connection maskは導出値
+- template更新でuser layoutを上書きしない
+- account deletionでTown stateを全削除
+
+---
 
 ## Core Philosophy
 
@@ -74,6 +123,8 @@ React / DOM UI
 - 大きなイベントも押し付けない
 - 本人の記憶を作るサービスであり、本人をシミュレーションしない
 
+---
+
 ## Non-goals
 
 - ChatGPT代替
@@ -82,8 +133,13 @@ React / DOM UI
 - streakや未利用ペナルティ
 - social feed中心のサービス
 - 一般ニュース・無関係な商品推薦
-- 町の自由配置ゲーム
-- 仮想通貨・建築待ち時間・成長課金
+- MVPからの自由配置editor
+- アバター操作中心
+- 仮想通貨・素材集め・クラフト
+- 建築待ち時間・成長課金
+- multiplayer town
+
+---
 
 ## First Experience
 
@@ -101,22 +157,30 @@ PERFECT DAYS 見た
 
 API connectorや大規模Importは、安全なPreview・Policy Evaluation・token管理・Export設計が成立した後に追加する。
 
+---
+
 ## Current Authoritative Docs
 
-最初に読むこと。
+### Product
 
 - [Current Product Direction](docs/current-product-direction.md)
 - [Concrete MVP Product Scope](docs/concrete-mvp-product-scope.md)
 - [Concrete MVP Ticket Backlog](docs/concrete-mvp-ticket-backlog.md)
 - [Adopted Product Patterns Registry](docs/adopted-product-patterns-registry.md)
-- [Adopted Patterns Implementation Plan](docs/adopted-patterns-implementation-plan.md)
 - [Future Anticipation and Following](docs/future-anticipation-and-following-spec.md)
 
 ### Memory Town / WebGL
 
-- [Memory Town Visual Design Direction](docs/memory-town-visual-design-direction.md)
-- [Memory Town WebGL Architecture](docs/memory-town-webgl-architecture.md)
-- [Memory Town Implementation Roadmap](docs/memory-town-implementation-roadmap.md)
+読む順番:
+
+1. [Memory Town Architecture Hardening Contract](docs/memory-town-architecture-hardening-contract.md)
+2. [Memory Town Design Audit and Risk Register](docs/memory-town-design-audit-and-risk-register.md)
+3. [Memory Town Long-term Spatial Model](docs/memory-town-long-term-spatial-model.md)
+4. [Memory Town WebGL Architecture](docs/memory-town-webgl-architecture.md)
+5. [Memory Town Visual Design Direction](docs/memory-town-visual-design-direction.md)
+6. [Memory Town Hardening Tickets](docs/memory-town-hardening-tickets.md)
+7. [Memory Town Spatial Foundation Tickets](docs/memory-town-spatial-foundation-tickets.md)
+8. [Memory Town Implementation Roadmap](docs/memory-town-implementation-roadmap.md)
 
 ### Product Research and Retention
 
@@ -160,6 +224,8 @@ API connectorや大規模Importは、安全なPreview・Policy Evaluation・toke
 - [Token Encryption and OAuth Security](docs/token-encryption-and-oauth-security.md)
 - [DB Implementation Preflight Checklist](docs/db-implementation-preflight-checklist.md)
 
+---
+
 ## Current Implementation Order
 
 ```txt
@@ -171,21 +237,61 @@ API connectorや大規模Importは、安全なPreview・Policy Evaluation・toke
 6. Manga / Anime Vertical Slice
 7. Food regional list
 8. Home / Shelf navigation
-9. Static Memory Town prototype
-10. PixiJS / WebGL interactive town
-11. Import → TownProjection → growth feedback
-12. Weekly / Month Capsule
-13. Future anticipation
-14. Confirmed connections as roads
-15. API connectors after provider/security gates
+9. Memory Town P0 hardening contracts / fixtures
+10. Static Memory Town experience prototype
+11. Spatial domain foundation
+12. Feature Progress / Layout / Environment composition
+13. Town persistence / RLS / recovery skeleton
+14. PixiJS / WebGL renderer adapter
+15. Import → Feature unlock → Town feedback
+16. Weekly / Month Capsule
+17. Environment / ambient life
+18. Decoration slots
+19. Semantic connection overlays
+20. Future anticipation
+21. User editor only after transaction / concurrency gates
+22. API connectors after provider/security gates
 ```
+
+---
+
+## Current Memory Town Verdict
+
+```txt
+strong_design_not_complete
+```
+
+強い:
+
+- product role
+- spatial model
+- state separation
+- long-term migration principle
+- privacy boundary
+
+Prototype / 実機確認が必要:
+
+- tile metric
+- map dimensions
+- growth envelope dimensions
+- art direction
+- touch comprehension
+- mobile performance
+- asset production cost
+- non-shrinking visual copy
+- editor product value
+
+---
 
 ## Product Statement
 
 ```txt
 保存したものが棚になる。
-棚が建物になる。
+棚の機能が建物へ結びつく。
+解除した町の成長は、罰のように失われない。
+配置と記憶は別々に守られる。
 箱が町の風景になる。
-つながった記憶が道になる。
+確定したつながりは、生活道路とは別の光として見える。
+少しずつ、自分の町として手を入れられる。
 必要な時は、すべて持ち出せる。
 ```
