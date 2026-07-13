@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/memory-town/negative-case-set.v1.schema.json",
+  "title": "Memory Town Negative Validation Case Set v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "caseSetId", "caseSetVersion", "mutationContract", "cases"],
+  "properties": {
+    "$schema": { "const": "https://memory-os.example/schemas/memory-town/negative-case-set.v1.schema.json" },
+    "caseSetId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+    "caseSetVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" },
+    "mutationContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pathSyntax", "operations", "applyOrder", "baseFixtureMustRemainImmutable"],
+      "properties": {
+        "pathSyntax": { "const": "json_pointer_rfc6901" },
+        "operations": { "const": ["add", "replace", "remove", "duplicate"] },
+        "applyOrder": { "const": "listed_order" },
+        "baseFixtureMustRemainImmutable": { "const": true }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["caseId", "baseFixtureRef", "mutations", "expectedErrors", "mustNotProduceScene"],
+        "properties": {
+          "caseId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+          "baseFixtureRef": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "mutations": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1000,
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["op", "path", "value"],
+                  "properties": {
+                    "op": { "enum": ["add", "replace"] },
+                    "path": { "type": "string", "pattern": "^/", "maxLength": 1024 },
+                    "value": true
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["op", "path"],
+                  "properties": {
+                    "op": { "const": "remove" },
+                    "path": { "type": "string", "pattern": "^/", "maxLength": 1024 }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["op", "path", "destination"],
+                  "properties": {
+                    "op": { "const": "duplicate" },
+                    "path": { "type": "string", "pattern": "^/", "maxLength": 1024 },
+                    "destination": { "type": "string", "pattern": "^/", "maxLength": 1024 }
+                  }
+                }
+              ]
+            }
+          },
+          "expectedErrors": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$", "maxLength": 128 }
+          },
+          "mustNotProduceScene": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}
