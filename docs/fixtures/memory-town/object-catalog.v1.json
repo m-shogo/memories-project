@@ -1,0 +1,326 @@
+{
+  "$schema": "https://memory-os.example/schemas/memory-town/object-catalog.v1.schema.json",
+  "catalogId": "memory-town.object-catalog",
+  "catalogVersion": 1,
+  "spatialSchemaVersion": "memory-town-spatial/1.0.0",
+  "definitions": [
+    {
+      "definitionId": "structure.cinema.classic",
+      "definitionVersion": 1,
+      "category": "structure",
+      "placementLayer": "solid_object",
+      "defaultLockPolicy": "system_fixed",
+      "supportedOrientations": [0],
+      "footprintContractVersion": 1,
+      "footprint": {
+        "pivotCell": { "dx": 0, "dy": 0 },
+        "occupiedCells": [
+          { "dx": 0, "dy": 0 }, { "dx": 1, "dy": 0 }, { "dx": 2, "dy": 0 },
+          { "dx": 0, "dy": 1 }, { "dx": 1, "dy": 1 }, { "dx": 2, "dy": 1 },
+          { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }
+        ],
+        "entranceCells": [{ "dx": 1, "dy": 3 }],
+        "clearanceCells": [{ "dx": 0, "dy": 3 }, { "dx": 1, "dy": 3 }, { "dx": 2, "dy": 3 }],
+        "reservedGrowthCells": [
+          { "dx": 0, "dy": 0 }, { "dx": 1, "dy": 0 }, { "dx": 2, "dy": 0 }, { "dx": 3, "dy": 0 },
+          { "dx": 0, "dy": 1 }, { "dx": 1, "dy": 1 }, { "dx": 2, "dy": 1 }, { "dx": 3, "dy": 1 },
+          { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }, { "dx": 3, "dy": 2 },
+          { "dx": 0, "dy": 3 }, { "dx": 1, "dy": 3 }, { "dx": 2, "dy": 3 }, { "dx": 3, "dy": 3 }
+        ],
+        "depthAnchor": { "dx": 1.5, "dy": 3 }
+      },
+      "placementRules": {
+        "requiresParcel": true,
+        "allowedTerrainKinds": ["grass", "stone"],
+        "maximumInstancesPerLayout": 1,
+        "entranceMustRemainClear": true
+      },
+      "stageVariants": [
+        { "stage": 0, "variantKey": "stage-0", "textureKey": "town/cinema/classic/stage-0", "fallbackTextureKey": "town/structure/missing", "overlaySlots": ["sign", "seasonal-front"] },
+        { "stage": 1, "variantKey": "stage-1", "textureKey": "town/cinema/classic/stage-1", "fallbackTextureKey": "town/structure/missing", "overlaySlots": ["poster", "sign", "seasonal-front"] },
+        { "stage": 2, "variantKey": "stage-2", "textureKey": "town/cinema/classic/stage-2", "fallbackTextureKey": "town/structure/missing", "overlaySlots": ["poster", "festival-flag", "sign", "seasonal-front"] }
+      ]
+    },
+    {
+      "definitionId": "structure.story-house.classic",
+      "definitionVersion": 1,
+      "category": "structure",
+      "placementLayer": "solid_object",
+      "defaultLockPolicy": "system_fixed",
+      "supportedOrientations": [0],
+      "footprintContractVersion": 1,
+      "footprint": {
+        "pivotCell": { "dx": 0, "dy": 0 },
+        "occupiedCells": [
+          { "dx": 0, "dy": 0 }, { "dx": 1, "dy": 0 }, { "dx": 2, "dy": 0 },
+          { "dx": 0, "dy": 1 }, { "dx": 1, "dy": 1 }, { "dx": 2, "dy": 1 },
+          { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }
+        ],
+        "entranceCells": [{ "dx": 1, "dy": 3 }],
+        "clearanceCells": [{ "dx": 0, "dy": 3 }, { "dx": 1, "dy": 3 }, { "dx": 2, "dy": 3 }],
+        "reservedGrowthCells": [
+          { "dx": 0, "dy": 0 }, { "dx": 1, "dy": 0 }, { "dx": 2, "dy": 0 }, { "dx": 3, "dy": 0 },
+          { "dx": 0, "dy": 1 }, { "dx": 1, "dy": 1 }, { "dx": 2, "dy": 1 }, { "dx": 3, "dy": 1 },
+          { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }, { "dx": 3, "dy": 2 },
+          { "dx": 0, "dy": 3 }, { "dx": 1, "dy": 3 }, { "dx": 2, "dy": 3 }, { "dx": 3, "dy": 3 },
+          { "dx": 0, "dy": 4 }, { "dx": 1, "dy": 4 }, { "dx": 2, "dy": 4 }, { "dx": 3, "dy": 4 }
+        ],
+        "depthAnchor": { "dx": 1.5, "dy": 4 }
+      },
+      "placementRules": {
+        "requiresParcel": true,
+        "allowedTerrainKinds": ["grass", "stone"],
+        "maximumInstancesPerLayout": 1,
+        "entranceMustRemainClear": true
+      },
+      "stageVariants": [
+        { "stage": 0, "variantKey": "stage-0", "textureKey": "town/story-house/classic/stage-0", "fallbackTextureKey": "town/structure/missing", "overlaySlots": ["sign", "seasonal-front"] },
+        { "stage": 1, "variantKey": "stage-1", "textureKey": "town/story-house/classic/stage-1", "fallbackTextureKey": "town/structure/missing", "overlaySlots": ["new-volume-flag", "sign", "seasonal-front"] },
+        { "stage": 2, "variantKey": "stage-2", "textureKey": "town/story-house/classic/stage-2", "fallbackTextureKey": "town/structure/missing", "overlaySlots": ["new-volume-flag", "tower-light", "sign", "seasonal-front"] }
+      ]
+    },
+    {
+      "definitionId": "structure.market.classic",
+      "definitionVersion": 1,
+      "category": "structure",
+      "placementLayer": "solid_object",
+      "defaultLockPolicy": "system_fixed",
+      "supportedOrientations": [0],
+      "footprintContractVersion": 1,
+      "footprint": {
+        "pivotCell": { "dx": 0, "dy": 0 },
+        "occupiedCells": [
+          { "dx": 0, "dy": 0 }, { "dx": 1, "dy": 0 }, { "dx": 2, "dy": 0 },
+          { "dx": 0, "dy": 1 }, { "dx": 1, "dy": 1 }, { "dx": 2, "dy": 1 },
+          { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }
+        ],
+        "entranceCells": [{ "dx": 1, "dy": 3 }],
+        "clearanceCells": [{ "dx": 0, "dy": 3 }, { "dx": 1, "dy": 3 }, { "dx": 2, "dy": 3 }, { "dx": 3, "dy": 3 }],
+        "reservedGrowthCells": [
+          { "dx": 0, "dy": 0 }, { "dx": 1, "dy": 0 }, { "dx": 2, "dy": 0 }, { "dx": 3, "dy": 0 }, { "dx": 4, "dy": 0 },
+          { "dx": 0, "dy": 1 }, { "dx": 1, "dy": 1 }, { "dx": 2, "dy": 1 }, { "dx": 3, "dy": 1 }, { "dx": 4, "dy": 1 },
+          { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }, { "dx": 3, "dy": 2 }, { "dx": 4, "dy": 2 },
+          { "dx": 0, "dy": 3 }, { "dx": 1, "dy": 3 }, { "dx": 2, "dy": 3 }, { "dx": 3, "dy": 3 }, { "dx": 4, "dy": 3 }
+        ],
+        "depthAnchor": { "dx": 2, "dy": 3 }
+      },
+      "placementRules": {
+        "requiresParcel": true,
+        "allowedTerrainKinds": ["grass", "stone"],
+        "maximumInstancesPerLayout": 1,
+        "entranceMustRemainClear": true
+      },
+      "stageVariants": [
+        { "stage": 0, "variantKey": "stage-0", "textureKey": "town/market/classic/stage-0", "fallbackTextureKey": "town/structure/missing", "overlaySlots": ["stall-sign", "seasonal-front"] },
+        { "stage": 1, "variantKey": "stage-1", "textureKey": "town/market/classic/stage-1", "fallbackTextureKey": "town/structure/missing", "overlaySlots": ["stall-sign", "steam", "seasonal-front"] },
+        { "stage": 2, "variantKey": "stage-2", "textureKey": "town/market/classic/stage-2", "fallbackTextureKey": "town/structure/missing", "overlaySlots": ["regional-stall", "stall-sign", "steam", "seasonal-front"] }
+      ]
+    },
+    {
+      "definitionId": "structure.port.classic",
+      "definitionVersion": 1,
+      "category": "structure",
+      "placementLayer": "solid_object",
+      "defaultLockPolicy": "system_fixed",
+      "supportedOrientations": [0],
+      "footprintContractVersion": 1,
+      "footprint": {
+        "pivotCell": { "dx": 0, "dy": 0 },
+        "occupiedCells": [
+          { "dx": 0, "dy": 0 }, { "dx": 1, "dy": 0 }, { "dx": 2, "dy": 0 }, { "dx": 3, "dy": 0 },
+          { "dx": 0, "dy": 1 }, { "dx": 1, "dy": 1 }, { "dx": 2, "dy": 1 }, { "dx": 3, "dy": 1 }
+        ],
+        "walkableCells": [{ "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }],
+        "entranceCells": [{ "dx": 1, "dy": -1 }, { "dx": 2, "dy": -1 }],
+        "clearanceCells": [{ "dx": 1, "dy": -1 }, { "dx": 2, "dy": -1 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }],
+        "reservedGrowthCells": [
+          { "dx": 0, "dy": 0 }, { "dx": 1, "dy": 0 }, { "dx": 2, "dy": 0 }, { "dx": 3, "dy": 0 }, { "dx": 4, "dy": 0 },
+          { "dx": 0, "dy": 1 }, { "dx": 1, "dy": 1 }, { "dx": 2, "dy": 1 }, { "dx": 3, "dy": 1 }, { "dx": 4, "dy": 1 },
+          { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }, { "dx": 3, "dy": 2 }, { "dx": 4, "dy": 2 }
+        ],
+        "depthAnchor": { "dx": 2, "dy": 2 }
+      },
+      "placementRules": {
+        "requiresParcel": true,
+        "allowedTerrainKinds": ["sand", "coast"],
+        "maximumInstancesPerLayout": 1,
+        "entranceMustRemainClear": true
+      },
+      "stageVariants": [
+        { "stage": 0, "variantKey": "stage-0", "textureKey": "town/port/classic/stage-0", "fallbackTextureKey": "town/structure/missing", "overlaySlots": ["boat", "seasonal-front"] },
+        { "stage": 1, "variantKey": "stage-1", "textureKey": "town/port/classic/stage-1", "fallbackTextureKey": "town/structure/missing", "overlaySlots": ["boat", "travel-flag", "seasonal-front"] },
+        { "stage": 2, "variantKey": "stage-2", "textureKey": "town/port/classic/stage-2", "fallbackTextureKey": "town/structure/missing", "overlaySlots": ["boat", "travel-flag", "lighthouse-light", "seasonal-front"] }
+      ]
+    },
+    {
+      "definitionId": "structure.warehouse.classic",
+      "definitionVersion": 1,
+      "category": "structure",
+      "placementLayer": "solid_object",
+      "defaultLockPolicy": "system_fixed",
+      "supportedOrientations": [0],
+      "footprintContractVersion": 1,
+      "footprint": {
+        "pivotCell": { "dx": 0, "dy": 0 },
+        "occupiedCells": [
+          { "dx": 0, "dy": 0 }, { "dx": 1, "dy": 0 }, { "dx": 2, "dy": 0 },
+          { "dx": 0, "dy": 1 }, { "dx": 1, "dy": 1 }, { "dx": 2, "dy": 1 },
+          { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }
+        ],
+        "entranceCells": [{ "dx": 1, "dy": 3 }],
+        "clearanceCells": [{ "dx": 0, "dy": 3 }, { "dx": 1, "dy": 3 }, { "dx": 2, "dy": 3 }],
+        "reservedGrowthCells": [
+          { "dx": 0, "dy": 0 }, { "dx": 1, "dy": 0 }, { "dx": 2, "dy": 0 }, { "dx": 3, "dy": 0 },
+          { "dx": 0, "dy": 1 }, { "dx": 1, "dy": 1 }, { "dx": 2, "dy": 1 }, { "dx": 3, "dy": 1 },
+          { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }, { "dx": 3, "dy": 2 },
+          { "dx": 0, "dy": 3 }, { "dx": 1, "dy": 3 }, { "dx": 2, "dy": 3 }, { "dx": 3, "dy": 3 }
+        ],
+        "depthAnchor": { "dx": 1.5, "dy": 3 }
+      },
+      "placementRules": {
+        "requiresParcel": true,
+        "allowedTerrainKinds": ["grass", "stone"],
+        "maximumInstancesPerLayout": 1,
+        "entranceMustRemainClear": true
+      },
+      "stageVariants": [
+        { "stage": 0, "variantKey": "stage-0", "textureKey": "town/warehouse/classic/stage-0", "fallbackTextureKey": "town/structure/missing", "overlaySlots": ["sign", "seasonal-front"] },
+        { "stage": 1, "variantKey": "stage-1", "textureKey": "town/warehouse/classic/stage-1", "fallbackTextureKey": "town/structure/missing", "overlaySlots": ["sign", "delivery-cart", "seasonal-front"] },
+        { "stage": 2, "variantKey": "stage-2", "textureKey": "town/warehouse/classic/stage-2", "fallbackTextureKey": "town/structure/missing", "overlaySlots": ["sign", "delivery-cart", "sorting-light", "seasonal-front"] }
+      ]
+    },
+    {
+      "definitionId": "structure.central-square.classic",
+      "definitionVersion": 1,
+      "category": "structure",
+      "placementLayer": "ground_object",
+      "defaultLockPolicy": "system_fixed",
+      "supportedOrientations": [0],
+      "footprintContractVersion": 1,
+      "footprint": {
+        "pivotCell": { "dx": 0, "dy": 0 },
+        "occupiedCells": [{ "dx": 1, "dy": 1 }],
+        "walkableCells": [
+          { "dx": 0, "dy": 0 }, { "dx": 1, "dy": 0 }, { "dx": 2, "dy": 0 }, { "dx": 3, "dy": 0 },
+          { "dx": 0, "dy": 1 }, { "dx": 2, "dy": 1 }, { "dx": 3, "dy": 1 },
+          { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }, { "dx": 3, "dy": 2 }
+        ],
+        "entranceCells": [{ "dx": 1, "dy": -1 }, { "dx": 1, "dy": 3 }, { "dx": -1, "dy": 1 }, { "dx": 4, "dy": 1 }],
+        "reservedGrowthCells": [
+          { "dx": 0, "dy": 0 }, { "dx": 1, "dy": 0 }, { "dx": 2, "dy": 0 }, { "dx": 3, "dy": 0 },
+          { "dx": 0, "dy": 1 }, { "dx": 1, "dy": 1 }, { "dx": 2, "dy": 1 }, { "dx": 3, "dy": 1 },
+          { "dx": 0, "dy": 2 }, { "dx": 1, "dy": 2 }, { "dx": 2, "dy": 2 }, { "dx": 3, "dy": 2 }
+        ],
+        "depthAnchor": { "dx": 1.5, "dy": 2 }
+      },
+      "placementRules": {
+        "requiresParcel": true,
+        "allowedTerrainKinds": ["stone"],
+        "maximumInstancesPerLayout": 1,
+        "entranceMustRemainClear": true
+      },
+      "stageVariants": [
+        { "stage": 0, "variantKey": "stage-0", "textureKey": "town/central-square/classic/stage-0", "fallbackTextureKey": "town/structure/missing", "overlaySlots": ["weekly-box", "month-capsule", "seasonal-front"] },
+        { "stage": 1, "variantKey": "stage-1", "textureKey": "town/central-square/classic/stage-1", "fallbackTextureKey": "town/structure/missing", "overlaySlots": ["weekly-box", "month-capsule", "lantern", "seasonal-front"] },
+        { "stage": 2, "variantKey": "stage-2", "textureKey": "town/central-square/classic/stage-2", "fallbackTextureKey": "town/structure/missing", "overlaySlots": ["weekly-box", "month-capsule", "lantern", "flower-bed", "seasonal-front"] }
+      ]
+    },
+    {
+      "definitionId": "nature.tree.deciduous-small",
+      "definitionVersion": 1,
+      "category": "tree",
+      "placementLayer": "solid_object",
+      "defaultLockPolicy": "decor_editable",
+      "supportedOrientations": [0],
+      "footprintContractVersion": 1,
+      "footprint": {
+        "pivotCell": { "dx": 0, "dy": 0 },
+        "occupiedCells": [{ "dx": 0, "dy": 0 }],
+        "clearanceCells": [{ "dx": -1, "dy": 0 }, { "dx": 1, "dy": 0 }, { "dx": 0, "dy": -1 }, { "dx": 0, "dy": 1 }],
+        "reservedGrowthCells": [],
+        "depthAnchor": { "dx": 0, "dy": 0.75 }
+      },
+      "placementRules": {
+        "requiresParcel": false,
+        "allowedTerrainKinds": ["grass", "soil"],
+        "maximumInstancesPerLayout": 40,
+        "entranceMustRemainClear": true
+      },
+      "renderVariants": [
+        { "variantKey": "default", "textureKey": "town/nature/tree/deciduous-small/default", "fallbackTextureKey": "town/nature/missing", "overlaySlots": ["seasonal"] }
+      ]
+    },
+    {
+      "definitionId": "nature.flower.white-cluster",
+      "definitionVersion": 1,
+      "category": "flower",
+      "placementLayer": "ground_object",
+      "defaultLockPolicy": "decor_editable",
+      "supportedOrientations": [0, 90, 180, 270],
+      "footprintContractVersion": 1,
+      "footprint": {
+        "pivotCell": { "dx": 0, "dy": 0 },
+        "occupiedCells": [{ "dx": 0, "dy": 0 }],
+        "reservedGrowthCells": [],
+        "depthAnchor": { "dx": 0, "dy": 0.5 }
+      },
+      "placementRules": {
+        "requiresParcel": false,
+        "allowedTerrainKinds": ["grass", "soil"],
+        "maximumInstancesPerLayout": 120,
+        "entranceMustRemainClear": true
+      },
+      "renderVariants": [
+        { "variantKey": "default", "textureKey": "town/nature/flower/white-cluster/default", "fallbackTextureKey": "town/nature/missing", "overlaySlots": [] }
+      ]
+    },
+    {
+      "definitionId": "furniture.bench.wood-small",
+      "definitionVersion": 1,
+      "category": "furniture",
+      "placementLayer": "solid_object",
+      "defaultLockPolicy": "decor_editable",
+      "supportedOrientations": [0, 90, 180, 270],
+      "footprintContractVersion": 1,
+      "footprint": {
+        "pivotCell": { "dx": 0, "dy": 0 },
+        "occupiedCells": [{ "dx": 0, "dy": 0 }, { "dx": 1, "dy": 0 }],
+        "reservedGrowthCells": [],
+        "depthAnchor": { "dx": 0.5, "dy": 0.75 }
+      },
+      "placementRules": {
+        "requiresParcel": false,
+        "allowedTerrainKinds": ["grass", "stone"],
+        "maximumInstancesPerLayout": 30,
+        "entranceMustRemainClear": true
+      },
+      "renderVariants": [
+        { "variantKey": "default", "textureKey": "town/furniture/bench/wood-small/default", "fallbackTextureKey": "town/furniture/missing", "overlaySlots": [] }
+      ]
+    },
+    {
+      "definitionId": "furniture.lamp.iron-small",
+      "definitionVersion": 1,
+      "category": "furniture",
+      "placementLayer": "solid_object",
+      "defaultLockPolicy": "decor_editable",
+      "supportedOrientations": [0],
+      "footprintContractVersion": 1,
+      "footprint": {
+        "pivotCell": { "dx": 0, "dy": 0 },
+        "occupiedCells": [{ "dx": 0, "dy": 0 }],
+        "reservedGrowthCells": [],
+        "depthAnchor": { "dx": 0, "dy": 0.75 }
+      },
+      "placementRules": {
+        "requiresParcel": false,
+        "allowedTerrainKinds": ["grass", "stone"],
+        "maximumInstancesPerLayout": 40,
+        "entranceMustRemainClear": true
+      },
+      "renderVariants": [
+        { "variantKey": "default", "textureKey": "town/furniture/lamp/iron-small/default", "fallbackTextureKey": "town/furniture/missing", "overlaySlots": ["night-light"] }
+      ]
+    }
+  ]
+}
