@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/memory-town/export-package.v1.schema.json",
+  "title": "Memory Town Export Package v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "packageId",
+    "exportFormatVersion",
+    "exportedAt",
+    "scope",
+    "integrityStatus",
+    "sections",
+    "dependencyReferences",
+    "examplePayloads",
+    "exclusions",
+    "reimportContract"
+  ],
+  "properties": {
+    "$schema": { "const": "https://memory-os.example/schemas/memory-town/export-package.v1.schema.json" },
+    "packageId": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "exportFormatVersion": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "exportedAt": { "$ref": "core.v1.schema.json#/$defs/UtcTimestamp" },
+    "scope": { "const": "self_export" },
+    "integrityStatus": { "enum": ["fixture_without_archive_hashes", "archive_verified"] },
+    "sections": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sectionId", "path", "schemaVersion", "recordCount", "requiredForVisualContinuity"],
+        "properties": {
+          "sectionId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+          "path": { "type": "string", "pattern": "^town/[a-z0-9._/-]+\\.json$", "maxLength": 256 },
+          "schemaVersion": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "recordCount": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" },
+          "requiredForVisualContinuity": { "type": "boolean" },
+          "contentHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "dependencyReferences": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["featureRegistry", "mapDefinition", "objectCatalog", "layoutTemplate", "assetManifest"],
+      "properties": {
+        "featureRegistry": { "$ref": "#/$defs/IdVersionRef" },
+        "mapDefinition": { "$ref": "#/$defs/MapRef" },
+        "objectCatalog": { "$ref": "#/$defs/CatalogRef" },
+        "layoutTemplate": { "$ref": "#/$defs/TemplateRef" },
+        "assetManifest": { "$ref": "#/$defs/AssetManifestRef" }
+      }
+    },
+    "examplePayloads": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["featureProgress", "layout", "featureBindings", "preferences", "storedObjects"],
+      "properties": {
+        "featureProgress": { "type": "array", "maxItems": 1000 },
+        "layout": { "$ref": "#/$defs/LayoutPayload" },
+        "featureBindings": { "type": "array", "maxItems": 1000 },
+        "preferences": { "$ref": "#/$defs/Preferences" },
+        "storedObjects": { "type": "array", "maxItems": 5000 }
+      }
+    },
+    "exclusions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rawMemoryBodies",
+        "privateTitles",
+        "personNames",
+        "privateUrls",
+        "preciseLocationHistory",
+        "copyrightedAssetBinaries",
+        "rendererSessionState",
+        "temporaryPlacementPreview"
+      ],
+      "properties": {
+        "rawMemoryBodies": { "const": true },
+        "privateTitles": { "const": true },
+        "personNames": { "const": true },
+        "privateUrls": { "const": true },
+        "preciseLocationHistory": { "const": true },
+        "copyrightedAssetBinaries": { "const": true },
+        "rendererSessionState": { "const": true },
+        "temporaryPlacementPreview": { "const": true }
+      }
+    },
+    "reimportContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "directApplyAllowed",
+        "previewRequired",
+        "versionCompatibilityCheckRequired",
+        "definitionAvailabilityCheckRequired",
+        "placementValidationRequired",
+        "unsupportedObjectsDisposition",
+        "applyMode"
+      ],
+      "properties": {
+        "directApplyAllowed": { "const": false },
+        "previewRequired": { "const": true },
+        "versionCompatibilityCheckRequired": { "const": true },
+        "definitionAvailabilityCheckRequired": { "const": true },
+        "placementValidationRequired": { "const": true },
+        "unsupportedObjectsDisposition": { "const": "stored" },
+        "applyMode": { "const": "atomic" }
+      }
+    }
+  },
+  "$defs": {
+    "IdVersionRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["registryId", "registryVersion"],
+      "properties": {
+        "registryId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "registryVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" }
+      }
+    },
+    "MapRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mapDefinitionId", "mapDefinitionVersion"],
+      "properties": {
+        "mapDefinitionId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "mapDefinitionVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" }
+      }
+    },
+    "CatalogRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["catalogId", "catalogVersion"],
+      "properties": {
+        "catalogId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "catalogVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" }
+      }
+    },
+    "TemplateRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["templateId", "templateVersion"],
+      "properties": {
+        "templateId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "templateVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" }
+      }
+    },
+    "AssetManifestRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["manifestId", "assetManifestVersion", "assetBinariesIncluded"],
+      "properties": {
+        "manifestId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "assetManifestVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" },
+        "assetBinariesIncluded": { "const": false }
+      }
+    },
+    "LayoutPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["layoutId", "layoutRevision", "baseline", "mapDefinitionId", "mapDefinitionVersion", "objectCatalogVersion", "objects", "pathCells"],
+      "properties": {
+        "layoutId": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "layoutRevision": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" },
+        "baseline": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["templateId", "templateVersion", "generatedAt"],
+          "properties": {
+            "templateId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+            "templateVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" },
+            "generatedAt": { "$ref": "core.v1.schema.json#/$defs/UtcTimestamp" }
+          }
+        },
+        "mapDefinitionId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "mapDefinitionVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" },
+        "objectCatalogVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" },
+        "objects": { "type": "array", "maxItems": 5000 },
+        "pathCells": { "type": "array", "maxItems": 65536, "items": { "$ref": "core.v1.schema.json#/$defs/TownPathCellState" } }
+      }
+    },
+    "Preferences": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["themeId", "seasonMode", "timeMode", "weatherVisual", "motionLevel", "soundEnabled"],
+      "properties": {
+        "themeId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "seasonMode": { "enum": ["auto", "manual"] },
+        "manualSeason": { "enum": ["spring", "summer", "autumn", "winter"] },
+        "timeMode": { "enum": ["day", "evening", "night"] },
+        "weatherVisual": { "enum": ["clear", "rain", "snow"] },
+        "motionLevel": { "enum": ["off", "reduced", "full"] },
+        "soundEnabled": { "type": "boolean" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "seasonMode": { "const": "manual" } } },
+          "then": { "required": ["manualSeason"] }
+        },
+        {
+          "if": { "properties": { "seasonMode": { "const": "auto" } } },
+          "then": { "not": { "required": ["manualSeason"] } }
+        }
+      ]
+    }
+  }
+}
