@@ -1,0 +1,259 @@
+{
+  "$schema": "https://memory-os.example/schemas/memory-town/layout-template.v1.schema.json",
+  "templateId": "memory-town.main-island.default",
+  "templateVersion": 1,
+  "spatialSchemaVersion": "memory-town-spatial/1.0.0",
+  "mapDefinitionId": "memory-town.main-island",
+  "mapDefinitionVersion": 1,
+  "objectCatalogId": "memory-town.object-catalog",
+  "objectCatalogVersion": 1,
+  "objects": [
+    {
+      "instanceIdSeed": "structure-cinema-main",
+      "definitionId": "structure.cinema.classic",
+      "definitionVersion": 1,
+      "parcelId": "cinema-main",
+      "position": { "cellX": 4, "cellY": 6, "elevationLevel": 0 },
+      "orientation": 0,
+      "origin": "template",
+      "placementState": "placed",
+      "lockPolicy": "system_fixed"
+    },
+    {
+      "instanceIdSeed": "structure-story-house-main",
+      "definitionId": "structure.story-house.classic",
+      "definitionVersion": 1,
+      "parcelId": "story-house-main",
+      "position": { "cellX": 12, "cellY": 3, "elevationLevel": 0 },
+      "orientation": 0,
+      "origin": "template",
+      "placementState": "placed",
+      "lockPolicy": "system_fixed"
+    },
+    {
+      "instanceIdSeed": "structure-market-main",
+      "definitionId": "structure.market.classic",
+      "definitionVersion": 1,
+      "parcelId": "market-main",
+      "position": { "cellX": 4, "cellY": 16, "elevationLevel": 0 },
+      "orientation": 0,
+      "origin": "template",
+      "placementState": "placed",
+      "lockPolicy": "system_fixed"
+    },
+    {
+      "instanceIdSeed": "structure-port-main",
+      "definitionId": "structure.port.classic",
+      "definitionVersion": 1,
+      "parcelId": "port-main",
+      "position": { "cellX": 12, "cellY": 21, "elevationLevel": 0 },
+      "orientation": 0,
+      "origin": "template",
+      "placementState": "placed",
+      "lockPolicy": "system_fixed"
+    },
+    {
+      "instanceIdSeed": "structure-warehouse-main",
+      "definitionId": "structure.warehouse.classic",
+      "definitionVersion": 1,
+      "parcelId": "warehouse-main",
+      "position": { "cellX": 20, "cellY": 15, "elevationLevel": 0 },
+      "orientation": 0,
+      "origin": "template",
+      "placementState": "placed",
+      "lockPolicy": "system_fixed"
+    },
+    {
+      "instanceIdSeed": "structure-central-square",
+      "definitionId": "structure.central-square.classic",
+      "definitionVersion": 1,
+      "parcelId": "central-square",
+      "position": { "cellX": 11, "cellY": 11, "elevationLevel": 0 },
+      "orientation": 0,
+      "origin": "template",
+      "placementState": "placed",
+      "lockPolicy": "system_fixed"
+    },
+    {
+      "instanceIdSeed": "tree-north-west-01",
+      "definitionId": "nature.tree.deciduous-small",
+      "definitionVersion": 1,
+      "position": { "cellX": 1, "cellY": 4, "elevationLevel": 0 },
+      "orientation": 0,
+      "origin": "template",
+      "placementState": "placed",
+      "lockPolicy": "decor_editable"
+    },
+    {
+      "instanceIdSeed": "tree-north-east-01",
+      "definitionId": "nature.tree.deciduous-small",
+      "definitionVersion": 1,
+      "position": { "cellX": 18, "cellY": 3, "elevationLevel": 0 },
+      "orientation": 0,
+      "origin": "template",
+      "placementState": "placed",
+      "lockPolicy": "decor_editable"
+    },
+    {
+      "instanceIdSeed": "tree-east-01",
+      "definitionId": "nature.tree.deciduous-small",
+      "definitionVersion": 1,
+      "position": { "cellX": 26, "cellY": 12, "elevationLevel": 0 },
+      "orientation": 0,
+      "origin": "template",
+      "placementState": "placed",
+      "lockPolicy": "decor_editable"
+    },
+    {
+      "instanceIdSeed": "tree-south-west-01",
+      "definitionId": "nature.tree.deciduous-small",
+      "definitionVersion": 1,
+      "position": { "cellX": 1, "cellY": 22, "elevationLevel": 0 },
+      "orientation": 0,
+      "origin": "template",
+      "placementState": "placed",
+      "lockPolicy": "decor_editable"
+    },
+    {
+      "instanceIdSeed": "flower-central-west-01",
+      "definitionId": "nature.flower.white-cluster",
+      "definitionVersion": 1,
+      "position": { "cellX": 8, "cellY": 13, "elevationLevel": 0 },
+      "orientation": 0,
+      "origin": "template",
+      "placementState": "placed",
+      "lockPolicy": "decor_editable"
+    },
+    {
+      "instanceIdSeed": "flower-central-east-01",
+      "definitionId": "nature.flower.white-cluster",
+      "definitionVersion": 1,
+      "position": { "cellX": 18, "cellY": 11, "elevationLevel": 0 },
+      "orientation": 90,
+      "origin": "template",
+      "placementState": "placed",
+      "lockPolicy": "decor_editable"
+    },
+    {
+      "instanceIdSeed": "bench-central-east-01",
+      "definitionId": "furniture.bench.wood-small",
+      "definitionVersion": 1,
+      "position": { "cellX": 17, "cellY": 10, "elevationLevel": 0 },
+      "orientation": 0,
+      "origin": "template",
+      "placementState": "placed",
+      "lockPolicy": "decor_editable"
+    },
+    {
+      "instanceIdSeed": "lamp-central-north-01",
+      "definitionId": "furniture.lamp.iron-small",
+      "definitionVersion": 1,
+      "position": { "cellX": 10, "cellY": 9, "elevationLevel": 0 },
+      "orientation": 0,
+      "origin": "template",
+      "placementState": "placed",
+      "lockPolicy": "decor_editable"
+    },
+    {
+      "instanceIdSeed": "lamp-central-north-02",
+      "definitionId": "furniture.lamp.iron-small",
+      "definitionVersion": 1,
+      "position": { "cellX": 16, "cellY": 9, "elevationLevel": 0 },
+      "orientation": 0,
+      "origin": "template",
+      "placementState": "placed",
+      "lockPolicy": "decor_editable"
+    }
+  ],
+  "featureBindings": [
+    { "bindingIdSeed": "binding-movie-primary", "featureId": "shelf.movie", "objectInstanceIdSeed": "structure-cinema-main", "bindingRole": "primary" },
+    { "bindingIdSeed": "binding-story-primary", "featureId": "shelf.story", "objectInstanceIdSeed": "structure-story-house-main", "bindingRole": "primary" },
+    { "bindingIdSeed": "binding-food-primary", "featureId": "shelf.food", "objectInstanceIdSeed": "structure-market-main", "bindingRole": "primary" },
+    { "bindingIdSeed": "binding-travel-primary", "featureId": "box.travel", "objectInstanceIdSeed": "structure-port-main", "bindingRole": "primary" },
+    { "bindingIdSeed": "binding-inbox-primary", "featureId": "system.inbox", "objectInstanceIdSeed": "structure-warehouse-main", "bindingRole": "primary" },
+    { "bindingIdSeed": "binding-reflection-primary", "featureId": "reflection.square", "objectInstanceIdSeed": "structure-central-square", "bindingRole": "primary" }
+  ],
+  "pathCells": [
+    { "position": { "cellX": 13, "cellY": 6, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 13, "cellY": 7, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 13, "cellY": 8, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 13, "cellY": 9, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 12, "cellY": 9, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 12, "cellY": 10, "elevationLevel": 0 }, "pathType": "footpath" },
+
+    { "position": { "cellX": 5, "cellY": 9, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 6, "cellY": 9, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 7, "cellY": 9, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 8, "cellY": 9, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 9, "cellY": 9, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 9, "cellY": 10, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 9, "cellY": 11, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 9, "cellY": 12, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 10, "cellY": 12, "elevationLevel": 0 }, "pathType": "footpath" },
+
+    { "position": { "cellX": 5, "cellY": 19, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 6, "cellY": 19, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 7, "cellY": 19, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 8, "cellY": 19, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 9, "cellY": 19, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 10, "cellY": 19, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 11, "cellY": 19, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 12, "cellY": 19, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 12, "cellY": 18, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 12, "cellY": 17, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 12, "cellY": 16, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 12, "cellY": 15, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 12, "cellY": 14, "elevationLevel": 0 }, "pathType": "footpath" },
+
+    { "position": { "cellX": 21, "cellY": 18, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 20, "cellY": 18, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 19, "cellY": 18, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 18, "cellY": 18, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 17, "cellY": 18, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 16, "cellY": 18, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 16, "cellY": 17, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 16, "cellY": 16, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 16, "cellY": 15, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 16, "cellY": 14, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 16, "cellY": 13, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 15, "cellY": 13, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 15, "cellY": 12, "elevationLevel": 0 }, "pathType": "footpath" },
+
+    { "position": { "cellX": 13, "cellY": 20, "elevationLevel": 0 }, "pathType": "footpath" },
+    { "position": { "cellX": 13, "cellY": 19, "elevationLevel": 0 }, "pathType": "footpath" }
+  ],
+  "decorationSlots": [
+    {
+      "slotIdSeed": "cinema-poster-slot",
+      "ownerInstanceIdSeed": "structure-cinema-main",
+      "position": { "cellX": 7, "cellY": 9, "elevationLevel": 0 },
+      "allowedCategories": ["ground_decor", "raised_decor", "seasonal"],
+      "allowedTags": ["poster", "festival", "seasonal"],
+      "occupiedByInstanceIdSeed": null
+    },
+    {
+      "slotIdSeed": "market-flower-slot",
+      "ownerInstanceIdSeed": "structure-market-main",
+      "position": { "cellX": 7, "cellY": 18, "elevationLevel": 0 },
+      "allowedCategories": ["flower", "ground_decor", "seasonal"],
+      "allowedTags": ["flower", "regional", "seasonal"],
+      "occupiedByInstanceIdSeed": null
+    },
+    {
+      "slotIdSeed": "port-boat-slot",
+      "ownerInstanceIdSeed": "structure-port-main",
+      "position": { "cellX": 14, "cellY": 23, "elevationLevel": 0 },
+      "allowedCategories": ["vehicle", "seasonal"],
+      "allowedTags": ["boat", "travel", "seasonal"],
+      "occupiedByInstanceIdSeed": null
+    },
+    {
+      "slotIdSeed": "central-month-capsule-slot",
+      "ownerInstanceIdSeed": "structure-central-square",
+      "position": { "cellX": 13, "cellY": 12, "elevationLevel": 0 },
+      "allowedCategories": ["seasonal", "raised_decor"],
+      "allowedTags": ["month-capsule", "weekly-box", "seasonal"],
+      "occupiedByInstanceIdSeed": null
+    }
+  ]
+}
