@@ -1,0 +1,139 @@
+{
+  "$schema": "https://memory-os.example/schemas/memory-town/determinism-vectors.v1.schema.json",
+  "vectorSetId": "memory-town.determinism-vectors",
+  "vectorSetVersion": 1,
+  "idAlgorithm": {
+    "encoding": "utf-8",
+    "preimageFormat": "namespace + NUL + templateId + NUL + decimalTemplateVersion + NUL + seed",
+    "hash": "sha-256",
+    "outputBits": 130,
+    "encodingAfterHash": "rfc4648-base32-lowercase-no-padding",
+    "instancePrefix": "townobj:tpl:",
+    "bindingPrefix": "townbinding:tpl:"
+  },
+  "instanceVectors": [
+    {
+      "namespace": "memory-town-template-instance-v1",
+      "templateId": "memory-town.main-island.default",
+      "templateVersion": 1,
+      "seed": "structure-cinema-main",
+      "sha256Hex": "7af4f4e9f3f65fa3f9ee88a80088df8ea7504d1df770ffb239dceda08d7dba5a",
+      "base32First130Bits": "pl2pj2pt6zp2h6porcuabcg7r2",
+      "expectedId": "townobj:tpl:pl2pj2pt6zp2h6porcuabcg7r2"
+    },
+    {
+      "namespace": "memory-town-template-instance-v1",
+      "templateId": "memory-town.main-island.default",
+      "templateVersion": 1,
+      "seed": "structure-story-house-main",
+      "sha256Hex": "40d4fa8b3545884fadc712b7e2a0a5b1576c20ff77c54a9efdd1ae550b100601",
+      "base32First130Bits": "idkpvczviwee7lohck36fiffwf",
+      "expectedId": "townobj:tpl:idkpvczviwee7lohck36fiffwf"
+    },
+    {
+      "namespace": "memory-town-template-instance-v1",
+      "templateId": "memory-town.main-island.default",
+      "templateVersion": 1,
+      "seed": "structure-market-main",
+      "sha256Hex": "590e06b4214c8b7fd4dc03bb5e90e67f5e307b0a919a887e584ec1789c45c6eb",
+      "base32First130Bits": "lehannbbjsfx7vg4ao5v5ehgp5",
+      "expectedId": "townobj:tpl:lehannbbjsfx7vg4ao5v5ehgp5"
+    },
+    {
+      "namespace": "memory-town-template-instance-v1",
+      "templateId": "memory-town.main-island.default",
+      "templateVersion": 1,
+      "seed": "structure-port-main",
+      "sha256Hex": "642923adfb8ba9cfb35dade226339ddc39c97afe9c24590721756d320f3628a7",
+      "base32First130Bits": "mqushlp3rou47m25vxrcmm453q",
+      "expectedId": "townobj:tpl:mqushlp3rou47m25vxrcmm453q"
+    },
+    {
+      "namespace": "memory-town-template-instance-v1",
+      "templateId": "memory-town.main-island.default",
+      "templateVersion": 1,
+      "seed": "structure-warehouse-main",
+      "sha256Hex": "e2130c389bc3f2589082b07d4893c5664af5b583063c6324a92177189b15f4e2",
+      "base32First130Bits": "4ijqyoe3ypzfreecwb6ure6fmz",
+      "expectedId": "townobj:tpl:4ijqyoe3ypzfreecwb6ure6fmz"
+    },
+    {
+      "namespace": "memory-town-template-instance-v1",
+      "templateId": "memory-town.main-island.default",
+      "templateVersion": 1,
+      "seed": "structure-central-square",
+      "sha256Hex": "1986308a18eb2f7c90be7593000555312621533f1b5710c27e19f2bc42fd3b30",
+      "base32First130Bits": "dgddbcqy5mxxzef6owjqabkvge",
+      "expectedId": "townobj:tpl:dgddbcqy5mxxzef6owjqabkvge"
+    }
+  ],
+  "bindingVectors": [
+    {
+      "namespace": "memory-town-template-binding-v1",
+      "templateId": "memory-town.main-island.default",
+      "templateVersion": 1,
+      "seed": "binding-movie-primary",
+      "sha256Hex": "3a8eeedcc9530f52d2d7cb71c02a0b6697646cf74463609fda21c7d86e3cf1cd",
+      "base32First130Bits": "hkho5xgjkmhvfuwxzny4akqlm2",
+      "expectedId": "townbinding:tpl:hkho5xgjkmhvfuwxzny4akqlm2"
+    },
+    {
+      "namespace": "memory-town-template-binding-v1",
+      "templateId": "memory-town.main-island.default",
+      "templateVersion": 1,
+      "seed": "binding-story-primary",
+      "sha256Hex": "589da3674358b75556c43955930ed308d2988b8eda655efe397e26a73bf375ba",
+      "base32First130Bits": "lco2gz2dlc3vkvwehfkzgdwtbd",
+      "expectedId": "townbinding:tpl:lco2gz2dlc3vkvwehfkzgdwtbd"
+    },
+    {
+      "namespace": "memory-town-template-binding-v1",
+      "templateId": "memory-town.main-island.default",
+      "templateVersion": 1,
+      "seed": "binding-food-primary",
+      "sha256Hex": "8d2e047d7f76fb332ffabad207874f4e3299610bd384f9be656db9bc0645047e",
+      "base32First130Bits": "ruxai7l7o35tgl72xljapb2pjy",
+      "expectedId": "townbinding:tpl:ruxai7l7o35tgl72xljapb2pjy"
+    },
+    {
+      "namespace": "memory-town-template-binding-v1",
+      "templateId": "memory-town.main-island.default",
+      "templateVersion": 1,
+      "seed": "binding-travel-primary",
+      "sha256Hex": "412f50824de3a8a9e3af2f0606592203052a9db16c57553ddae29a6e18f7e6e6",
+      "base32First130Bits": "iexvbasn4oukty5pf4damwjcam",
+      "expectedId": "townbinding:tpl:iexvbasn4oukty5pf4damwjcam"
+    },
+    {
+      "namespace": "memory-town-template-binding-v1",
+      "templateId": "memory-town.main-island.default",
+      "templateVersion": 1,
+      "seed": "binding-inbox-primary",
+      "sha256Hex": "9b83c9fe1376502a77fa037a67e965634f87ce5c0b0f584be335541d212792e8",
+      "base32First130Bits": "tob4t7qtozicu572an5gp2lfmn",
+      "expectedId": "townbinding:tpl:tob4t7qtozicu572an5gp2lfmn"
+    },
+    {
+      "namespace": "memory-town-template-binding-v1",
+      "templateId": "memory-town.main-island.default",
+      "templateVersion": 1,
+      "seed": "binding-reflection-primary",
+      "sha256Hex": "9139f51e2e06e978303dd25cbb7724dc8d84afab85f85e3e47ba15c3688a7444",
+      "base32First130Bits": "se47khroa3uxqmb52jolw5ze3s",
+      "expectedId": "townbinding:tpl:se47khroa3uxqmb52jolw5ze3s"
+    }
+  ],
+  "canonicalJsonVectors": [
+    {
+      "caseId": "path-cells-sort-by-elevation-y-x",
+      "input": [
+        { "pathType": "footpath", "position": { "cellY": 19, "elevationLevel": 0, "cellX": 12 } },
+        { "position": { "cellX": 5, "cellY": 9, "elevationLevel": 0 }, "pathType": "footpath" },
+        { "position": { "cellX": 13, "cellY": 6, "elevationLevel": 0 }, "pathType": "footpath" }
+      ],
+      "arraySemantic": "set_sorted_by_elevation_y_x",
+      "expectedCanonicalJson": "[{\"pathType\":\"footpath\",\"position\":{\"cellX\":13,\"cellY\":6,\"elevationLevel\":0}},{\"pathType\":\"footpath\",\"position\":{\"cellX\":5,\"cellY\":9,\"elevationLevel\":0}},{\"pathType\":\"footpath\",\"position\":{\"cellX\":12,\"cellY\":19,\"elevationLevel\":0}}]",
+      "expectedSha256Hex": "38b7b5108233dfd745899358cee333167b7b3883743f4e9aa19353d02d2c08c4"
+    }
+  ]
+}
