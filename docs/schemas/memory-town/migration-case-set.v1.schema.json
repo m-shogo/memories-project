@@ -86,25 +86,12 @@
         "origin": { "$ref": "core.v1.schema.json#/$defs/TownObjectOrigin" },
         "lockPolicy": { "$ref": "core.v1.schema.json#/$defs/TownLockPolicy" },
         "userModifiedSinceBaseline": { "type": "boolean" },
-        "placementState": { "$ref": "core.v1.schema.json#/$defs/TownPlacementState" }
+        "placementState": { "const": "placed" }
       },
       "oneOf": [
         { "required": ["instanceId"], "not": { "required": ["instanceRef"] } },
         { "required": ["instanceRef"], "not": { "required": ["instanceId"] } }
       ]
-    },
-    "UserLayoutSnapshot": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["layoutRevision", "objects"],
-      "properties": {
-        "layoutRevision": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" },
-        "objects": {
-          "type": "array",
-          "maxItems": 5000,
-          "items": { "$ref": "#/$defs/UserLayoutObject" }
-        }
-      }
     },
     "ExpectedObject": {
       "type": "object",
@@ -113,12 +100,7 @@
       "properties": {
         "instanceId": { "type": "string", "minLength": 1, "maxLength": 160 },
         "instanceRef": { "type": "string", "minLength": 1, "maxLength": 160 },
-        "position": {
-          "oneOf": [
-            { "$ref": "core.v1.schema.json#/$defs/TownGridPosition" },
-            { "type": "null" }
-          ]
-        },
+        "position": { "$ref": "core.v1.schema.json#/$defs/TownGridPosition" },
         "placementState": { "$ref": "core.v1.schema.json#/$defs/TownPlacementState" },
         "mergeDecision": {
           "enum": [
@@ -133,7 +115,30 @@
       "oneOf": [
         { "required": ["instanceId"], "not": { "required": ["instanceRef"] } },
         { "required": ["instanceRef"], "not": { "required": ["instanceId"] } }
+      ],
+      "allOf": [
+        {
+          "if": { "properties": { "placementState": { "const": "placed" } } },
+          "then": { "required": ["position"] }
+        },
+        {
+          "if": { "properties": { "placementState": { "enum": ["stored", "retired"] } } },
+          "then": { "not": { "required": ["position"] } }
+        }
       ]
+    },
+    "UserLayoutSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["layoutRevision", "objects"],
+      "properties": {
+        "layoutRevision": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" },
+        "objects": {
+          "type": "array",
+          "maxItems": 5000,
+          "items": { "$ref": "#/$defs/UserLayoutObject" }
+        }
+      }
     },
     "MigrationIssue": {
       "type": "object",
