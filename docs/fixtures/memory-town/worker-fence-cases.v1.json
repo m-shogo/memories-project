@@ -1,0 +1,167 @@
+{
+  "$schema": "https://memory-os.example/schemas/memory-town/worker-fence-case-set.v1.schema.json",
+  "caseSetId": "memory-town.worker-fence-cases",
+  "caseSetVersion": 1,
+  "cases": [
+    {
+      "caseId": "projection-worker-active-account-pass",
+      "job": {
+        "jobId": "townjob:projection:001",
+        "jobType": "feature_projection",
+        "expectedDeletionEpoch": 4,
+        "expectedAccountState": "active"
+      },
+      "currentFence": {
+        "accountState": "active",
+        "deletionEpoch": 4,
+        "layoutRevision": 12,
+        "mutationMode": "normal"
+      },
+      "expected": {
+        "writeAllowed": true,
+        "retryAllowed": false,
+        "rowsWritten": 1
+      }
+    },
+    {
+      "caseId": "snapshot-worker-rejected-after-deletion-request",
+      "job": {
+        "jobId": "townjob:snapshot:002",
+        "jobType": "scene_snapshot",
+        "expectedDeletionEpoch": 4,
+        "expectedAccountState": "active"
+      },
+      "currentFence": {
+        "accountState": "deletion_requested",
+        "deletionEpoch": 5,
+        "layoutRevision": 12,
+        "mutationMode": "normal"
+      },
+      "expected": {
+        "writeAllowed": false,
+        "retryAllowed": false,
+        "rowsWritten": 0,
+        "issueCode": "ACCOUNT_DELETION_FENCE_REJECTED"
+      }
+    },
+    {
+      "caseId": "thumbnail-worker-rejected-after-account-deleted",
+      "job": {
+        "jobId": "townjob:thumbnail:003",
+        "jobType": "thumbnail_generation",
+        "expectedDeletionEpoch": 5,
+        "expectedAccountState": "active"
+      },
+      "currentFence": {
+        "accountState": "deleted",
+        "deletionEpoch": 6,
+        "layoutRevision": 0,
+        "mutationMode": "normal"
+      },
+      "expected": {
+        "writeAllowed": false,
+        "retryAllowed": false,
+        "rowsWritten": 0,
+        "issueCode": "ACCOUNT_DELETION_FENCE_REJECTED"
+      }
+    },
+    {
+      "caseId": "user-save-rejected-during-migration",
+      "job": {
+        "jobId": "townjob:command:004",
+        "jobType": "layout_command_batch",
+        "expectedDeletionEpoch": 2,
+        "expectedAccountState": "active",
+        "expectedLayoutRevision": 20,
+        "expectedMutationMode": "normal"
+      },
+      "currentFence": {
+        "accountState": "active",
+        "deletionEpoch": 2,
+        "layoutRevision": 20,
+        "mutationMode": "migration_locked",
+        "fenceToken": "fence:migration:abc"
+      },
+      "expected": {
+        "writeAllowed": false,
+        "retryAllowed": true,
+        "rowsWritten": 0,
+        "issueCode": "LAYOUT_MIGRATION_IN_PROGRESS"
+      }
+    },
+    {
+      "caseId": "migration-commit-rejected-by-token-mismatch",
+      "job": {
+        "jobId": "townjob:migration:005",
+        "jobType": "layout_migration",
+        "expectedDeletionEpoch": 2,
+        "expectedAccountState": "active",
+        "expectedLayoutRevision": 20,
+        "expectedMutationMode": "migration_locked",
+        "expectedFenceToken": "fence:migration:old"
+      },
+      "currentFence": {
+        "accountState": "active",
+        "deletionEpoch": 2,
+        "layoutRevision": 20,
+        "mutationMode": "migration_locked",
+        "fenceToken": "fence:migration:new"
+      },
+      "expected": {
+        "writeAllowed": false,
+        "retryAllowed": false,
+        "rowsWritten": 0,
+        "issueCode": "LAYOUT_FENCE_TOKEN_MISMATCH"
+      }
+    },
+    {
+      "caseId": "stale-unlock-rejected-after-feature-reset",
+      "job": {
+        "jobId": "townjob:unlock:006",
+        "jobType": "feature_unlock",
+        "expectedDeletionEpoch": 2,
+        "expectedAccountState": "active",
+        "expectedResetEpoch": 0,
+        "expectedGrowthOriginCursor": "cursor.movie.0"
+      },
+      "currentFence": {
+        "accountState": "active",
+        "deletionEpoch": 2,
+        "layoutRevision": 20,
+        "mutationMode": "normal",
+        "resetEpoch": 1,
+        "growthOriginCursor": "cursor.movie.500"
+      },
+      "expected": {
+        "writeAllowed": false,
+        "retryAllowed": true,
+        "rowsWritten": 0,
+        "issueCode": "STALE_FEATURE_RESET_EPOCH"
+      }
+    },
+    {
+      "caseId": "reset-rejected-during-repair",
+      "job": {
+        "jobId": "townjob:reset:007",
+        "jobType": "reset",
+        "expectedDeletionEpoch": 2,
+        "expectedAccountState": "active",
+        "expectedLayoutRevision": 20,
+        "expectedMutationMode": "normal"
+      },
+      "currentFence": {
+        "accountState": "active",
+        "deletionEpoch": 2,
+        "layoutRevision": 20,
+        "mutationMode": "repair_locked",
+        "fenceToken": "fence:repair:001"
+      },
+      "expected": {
+        "writeAllowed": false,
+        "retryAllowed": true,
+        "rowsWritten": 0,
+        "issueCode": "LAYOUT_REPAIR_IN_PROGRESS"
+      }
+    }
+  ]
+}
