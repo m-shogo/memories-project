@@ -4,13 +4,15 @@
   "caseSetVersion": 1,
   "actors": {
     "userA": "00000000-0000-7000-8000-00000000000a",
-    "userB": "00000000-0000-7000-8000-00000000000b"
+    "userB": "00000000-0000-7000-8000-00000000000b",
+    "supportActor": "00000000-0000-7000-8000-00000000000c"
   },
   "cases": [
     {
       "caseId": "user-a-cannot-read-user-b-layout",
       "role": "memory_app_role",
-      "authenticatedUser": "userA",
+      "userContext": "present",
+      "actorRef": "userA",
       "operation": "select",
       "table": "town_layout",
       "targetOwner": "userB",
@@ -19,7 +21,8 @@
     {
       "caseId": "user-a-cannot-update-user-b-object",
       "role": "memory_app_role",
-      "authenticatedUser": "userA",
+      "userContext": "present",
+      "actorRef": "userA",
       "operation": "update",
       "table": "town_layout_object",
       "targetOwner": "userB",
@@ -28,7 +31,8 @@
     {
       "caseId": "user-a-cannot-bind-own-feature-to-user-b-object",
       "role": "memory_app_role",
-      "authenticatedUser": "userA",
+      "userContext": "present",
+      "actorRef": "userA",
       "operation": "insert",
       "table": "town_feature_binding",
       "targetOwner": "userA",
@@ -38,7 +42,8 @@
     {
       "caseId": "user-a-cannot-insert-path-into-user-b-layout",
       "role": "memory_app_role",
-      "authenticatedUser": "userA",
+      "userContext": "present",
+      "actorRef": "userA",
       "operation": "insert",
       "table": "town_path_cell",
       "targetOwner": "userB",
@@ -47,7 +52,8 @@
     {
       "caseId": "user-a-cannot-read-user-b-snapshot",
       "role": "memory_app_role",
-      "authenticatedUser": "userA",
+      "userContext": "present",
+      "actorRef": "userA",
       "operation": "select",
       "table": "town_layout_snapshot",
       "targetOwner": "userB",
@@ -56,7 +62,7 @@
     {
       "caseId": "missing-user-context-fails-closed",
       "role": "memory_app_role",
-      "authenticatedUser": null,
+      "userContext": "missing",
       "operation": "select",
       "table": "town_layout",
       "targetOwner": "userA",
@@ -65,7 +71,8 @@
     {
       "caseId": "application-role-cannot-update-global-catalog",
       "role": "memory_app_role",
-      "authenticatedUser": "userA",
+      "userContext": "present",
+      "actorRef": "userA",
       "operation": "update",
       "table": "town_object_catalog",
       "targetOwner": "global",
@@ -74,7 +81,8 @@
     {
       "caseId": "support-role-cannot-normally-read-layout",
       "role": "memory_support_role",
-      "authenticatedUser": "supportActor",
+      "userContext": "present",
+      "actorRef": "supportActor",
       "supportCeremonyApproved": false,
       "operation": "select",
       "table": "town_layout_object",
@@ -84,7 +92,7 @@
     {
       "caseId": "worker-without-user-context-cannot-rebuild-town",
       "role": "memory_worker_role",
-      "authenticatedUser": null,
+      "userContext": "missing",
       "operation": "projection_rebuild",
       "table": "town_feature_progress",
       "targetOwner": "userA",
@@ -93,7 +101,8 @@
     {
       "caseId": "cross-user-batch-replay-does-not-reveal-existence",
       "role": "memory_app_role",
-      "authenticatedUser": "userA",
+      "userContext": "present",
+      "actorRef": "userA",
       "operation": "insert",
       "table": "town_command_dedupe",
       "targetOwner": "userA",
@@ -103,7 +112,8 @@
     {
       "caseId": "mismatched-parent-user-composite-fk-fails",
       "role": "memory_app_role",
-      "authenticatedUser": "userA",
+      "userContext": "present",
+      "actorRef": "userA",
       "operation": "insert",
       "table": "town_layout_object",
       "targetOwner": "userA",
@@ -113,7 +123,8 @@
     {
       "caseId": "account-deletion-removes-all-user-town-state",
       "role": "memory_worker_role",
-      "authenticatedUser": "userA",
+      "userContext": "present",
+      "actorRef": "userA",
       "operation": "account_delete_verify",
       "table": "all_user_town_tables",
       "targetOwner": "userA",
