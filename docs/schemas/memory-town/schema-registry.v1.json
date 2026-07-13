@@ -21,7 +21,8 @@
     { "schemaId": "https://memory-os.example/schemas/memory-town/reset-case-set.v1.schema.json", "repositoryPath": "docs/schemas/memory-town/reset-case-set.v1.schema.json" },
     { "schemaId": "https://memory-os.example/schemas/memory-town/export-package.v1.schema.json", "repositoryPath": "docs/schemas/memory-town/export-package.v1.schema.json" },
     { "schemaId": "https://memory-os.example/schemas/memory-town/persistence-table-contract.v1.schema.json", "repositoryPath": "docs/schemas/memory-town/persistence-table-contract.v1.schema.json" },
-    { "schemaId": "https://memory-os.example/schemas/memory-town/rls-negative-case-set.v1.schema.json", "repositoryPath": "docs/schemas/memory-town/rls-negative-case-set.v1.schema.json" }
+    { "schemaId": "https://memory-os.example/schemas/memory-town/rls-negative-case-set.v1.schema.json", "repositoryPath": "docs/schemas/memory-town/rls-negative-case-set.v1.schema.json" },
+    { "schemaId": "https://memory-os.example/schemas/memory-town/issue-code-registry.v1.schema.json", "repositoryPath": "docs/schemas/memory-town/issue-code-registry.v1.schema.json" }
   ],
   "rules": {
     "duplicateSchemaIdAllowed": false,
