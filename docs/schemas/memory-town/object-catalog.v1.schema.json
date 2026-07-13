@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/memory-town/object-catalog.v1.schema.json",
+  "title": "Memory Town Object Catalog v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "catalogId", "catalogVersion", "spatialSchemaVersion", "definitions"],
+  "properties": {
+    "$schema": { "const": "https://memory-os.example/schemas/memory-town/object-catalog.v1.schema.json" },
+    "catalogId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+    "catalogVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" },
+    "spatialSchemaVersion": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "definitions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "definitionId",
+          "definitionVersion",
+          "category",
+          "placementLayer",
+          "defaultLockPolicy",
+          "supportedOrientations",
+          "footprintContractVersion",
+          "footprint",
+          "placementRules"
+        ],
+        "properties": {
+          "definitionId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+          "definitionVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" },
+          "category": { "$ref": "core.v1.schema.json#/$defs/TownObjectCategory" },
+          "placementLayer": { "$ref": "core.v1.schema.json#/$defs/TownPlacementLayer" },
+          "defaultLockPolicy": { "$ref": "core.v1.schema.json#/$defs/TownLockPolicy" },
+          "supportedOrientations": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "$ref": "core.v1.schema.json#/$defs/TownOrientation" }
+          },
+          "footprintContractVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" },
+          "footprint": { "$ref": "core.v1.schema.json#/$defs/TownFootprint" },
+          "placementRules": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["requiresParcel", "allowedTerrainKinds", "maximumInstancesPerLayout", "entranceMustRemainClear"],
+            "properties": {
+              "requiresParcel": { "type": "boolean" },
+              "allowedTerrainKinds": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": { "$ref": "core.v1.schema.json#/$defs/TownTerrainKind" }
+              },
+              "maximumInstancesPerLayout": { "type": "integer", "minimum": 1, "maximum": 5000 },
+              "entranceMustRemainClear": { "type": "boolean" }
+            }
+          },
+          "stageVariants": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 32,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["stage", "variantKey", "textureKey", "fallbackTextureKey", "overlaySlots"],
+              "properties": {
+                "stage": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" },
+                "variantKey": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+                "textureKey": { "type": "string", "minLength": 1, "maxLength": 256 },
+                "fallbackTextureKey": { "type": "string", "minLength": 1, "maxLength": 256 },
+                "overlaySlots": {
+                  "type": "array",
+                  "maxItems": 64,
+                  "uniqueItems": true,
+                  "items": { "$ref": "core.v1.schema.json#/$defs/StableId" }
+                }
+              }
+            }
+          },
+          "renderVariants": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 64,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["variantKey", "textureKey", "fallbackTextureKey", "overlaySlots"],
+              "properties": {
+                "variantKey": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+                "textureKey": { "type": "string", "minLength": 1, "maxLength": 256 },
+                "fallbackTextureKey": { "type": "string", "minLength": 1, "maxLength": 256 },
+                "overlaySlots": {
+                  "type": "array",
+                  "maxItems": 64,
+                  "uniqueItems": true,
+                  "items": { "$ref": "core.v1.schema.json#/$defs/StableId" }
+                }
+              }
+            }
+          },
+          "deprecatedAt": { "$ref": "core.v1.schema.json#/$defs/UtcTimestamp" }
+        },
+        "oneOf": [
+          { "required": ["stageVariants"], "not": { "required": ["renderVariants"] } },
+          { "required": ["renderVariants"], "not": { "required": ["stageVariants"] } }
+        ]
+      }
+    }
+  }
+}
