@@ -1,0 +1,192 @@
+{
+  "$schema": "https://memory-os.example/schemas/memory-town/runtime-lifecycle-case-set.v1.schema.json",
+  "caseSetId": "memory-town.runtime-lifecycle-cases",
+  "caseSetVersion": 1,
+  "cases": [
+    {
+      "caseId": "route-leave-during-init",
+      "initial": {
+        "generation": 10,
+        "lifecycle": "initializing",
+        "routeActive": true,
+        "documentVisible": true,
+        "motionLevel": "full",
+        "tickerRunning": false,
+        "fallbackMode": "functional",
+        "accessibilityMode": "spatial_overlay",
+        "pixiAccessibilityEnabled": false
+      },
+      "events": [
+        { "type": "route_leave" },
+        { "type": "app_init_completed", "capturedGeneration": 10 },
+        { "type": "asset_load_completed", "capturedGeneration": 10 },
+        { "type": "destroy_completed" }
+      ],
+      "expected": {
+        "generation": 11,
+        "lifecycle": "disposed",
+        "tickerRunning": false,
+        "fallbackMode": "functional",
+        "focusableSemanticTargetsPerFeature": 1,
+        "staleCompletionsApplied": 0,
+        "issueCodes": ["RENDERER_SESSION_STALE"]
+      }
+    },
+    {
+      "caseId": "motion-off-render-on-demand",
+      "initial": {
+        "generation": 20,
+        "lifecycle": "ready_paused",
+        "routeActive": true,
+        "documentVisible": true,
+        "motionLevel": "off",
+        "tickerRunning": false,
+        "fallbackMode": "none",
+        "accessibilityMode": "spatial_overlay",
+        "pixiAccessibilityEnabled": false
+      },
+      "events": [
+        { "type": "scene_accepted", "capturedGeneration": 20 }
+      ],
+      "expected": {
+        "generation": 20,
+        "lifecycle": "ready_paused",
+        "tickerRunning": false,
+        "fallbackMode": "none",
+        "focusableSemanticTargetsPerFeature": 1,
+        "staleCompletionsApplied": 0,
+        "issueCodes": []
+      }
+    },
+    {
+      "caseId": "document-hidden-stops-ticker",
+      "initial": {
+        "generation": 30,
+        "lifecycle": "ready_running",
+        "routeActive": true,
+        "documentVisible": true,
+        "motionLevel": "full",
+        "tickerRunning": true,
+        "fallbackMode": "none",
+        "accessibilityMode": "spatial_overlay",
+        "pixiAccessibilityEnabled": false
+      },
+      "events": [
+        { "type": "document_hidden" }
+      ],
+      "expected": {
+        "generation": 30,
+        "lifecycle": "ready_paused",
+        "tickerRunning": false,
+        "fallbackMode": "none",
+        "focusableSemanticTargetsPerFeature": 1,
+        "staleCompletionsApplied": 0,
+        "issueCodes": []
+      }
+    },
+    {
+      "caseId": "context-loss-switches-functional-fallback",
+      "initial": {
+        "generation": 40,
+        "lifecycle": "ready_running",
+        "routeActive": true,
+        "documentVisible": true,
+        "motionLevel": "reduced",
+        "tickerRunning": true,
+        "fallbackMode": "none",
+        "accessibilityMode": "spatial_overlay",
+        "pixiAccessibilityEnabled": false
+      },
+      "events": [
+        { "type": "context_lost" }
+      ],
+      "expected": {
+        "generation": 40,
+        "lifecycle": "context_lost",
+        "tickerRunning": false,
+        "fallbackMode": "functional",
+        "focusableSemanticTargetsPerFeature": 1,
+        "staleCompletionsApplied": 0,
+        "issueCodes": ["RENDERER_CONTEXT_LOST"]
+      }
+    },
+    {
+      "caseId": "context-restore-failure-remains-degraded",
+      "initial": {
+        "generation": 41,
+        "lifecycle": "context_lost",
+        "routeActive": true,
+        "documentVisible": true,
+        "motionLevel": "reduced",
+        "tickerRunning": false,
+        "fallbackMode": "functional",
+        "accessibilityMode": "feature_list",
+        "pixiAccessibilityEnabled": false
+      },
+      "events": [
+        { "type": "context_restore_failed", "capturedGeneration": 41 }
+      ],
+      "expected": {
+        "generation": 41,
+        "lifecycle": "degraded",
+        "tickerRunning": false,
+        "fallbackMode": "functional",
+        "focusableSemanticTargetsPerFeature": 1,
+        "staleCompletionsApplied": 0,
+        "issueCodes": ["RENDERER_CONTEXT_RESTORE_FAILED"]
+      }
+    },
+    {
+      "caseId": "pixi-accessibility-cannot-create-second-tree",
+      "initial": {
+        "generation": 50,
+        "lifecycle": "ready_paused",
+        "routeActive": true,
+        "documentVisible": true,
+        "motionLevel": "off",
+        "tickerRunning": false,
+        "fallbackMode": "layered_visual",
+        "accessibilityMode": "spatial_overlay",
+        "pixiAccessibilityEnabled": false
+      },
+      "events": [
+        { "type": "enable_pixi_accessibility" }
+      ],
+      "expected": {
+        "generation": 50,
+        "lifecycle": "ready_paused",
+        "tickerRunning": false,
+        "fallbackMode": "layered_visual",
+        "focusableSemanticTargetsPerFeature": 1,
+        "staleCompletionsApplied": 0,
+        "issueCodes": ["ACCESSIBILITY_DUPLICATE_TARGET"]
+      }
+    },
+    {
+      "caseId": "switch-overlay-to-list-keeps-one-tree",
+      "initial": {
+        "generation": 60,
+        "lifecycle": "ready_paused",
+        "routeActive": true,
+        "documentVisible": true,
+        "motionLevel": "off",
+        "tickerRunning": false,
+        "fallbackMode": "layered_visual",
+        "accessibilityMode": "spatial_overlay",
+        "pixiAccessibilityEnabled": false
+      },
+      "events": [
+        { "type": "switch_accessibility_mode", "accessibilityMode": "feature_list" }
+      ],
+      "expected": {
+        "generation": 60,
+        "lifecycle": "ready_paused",
+        "tickerRunning": false,
+        "fallbackMode": "layered_visual",
+        "focusableSemanticTargetsPerFeature": 1,
+        "staleCompletionsApplied": 0,
+        "issueCodes": []
+      }
+    }
+  ]
+}
