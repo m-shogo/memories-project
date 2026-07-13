@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/memory-town/memory-tree-catalog.v1.schema.json",
+  "title": "Memory Town Memory Tree Catalog v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "catalogId", "catalogVersion", "trees"],
+  "properties": {
+    "$schema": { "const": "https://memory-os.example/schemas/memory-town/memory-tree-catalog.v1.schema.json" },
+    "catalogId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+    "catalogVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" },
+    "trees": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "treeId",
+          "status",
+          "displayNameKey",
+          "fictionalSpecies",
+          "growthPolicy",
+          "stages",
+          "seasonVariants",
+          "animationProfiles",
+          "privacyControls",
+          "rules"
+        ],
+        "properties": {
+          "treeId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+          "status": { "enum": ["contract_locked_asset_pending", "approved", "deprecated"] },
+          "displayNameKey": { "type": "string", "minLength": 1, "maxLength": 160 },
+          "fictionalSpecies": { "const": true },
+          "growthPolicy": { "$ref": "#/$defs/GrowthPolicy" },
+          "stages": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": { "$ref": "#/$defs/GrowthStage" }
+          },
+          "seasonVariants": { "$ref": "#/$defs/SeasonVariants" },
+          "animationProfiles": { "$ref": "#/$defs/AnimationProfiles" },
+          "privacyControls": { "$ref": "#/$defs/PrivacyControls" },
+          "rules": { "$ref": "#/$defs/TreeRules" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "GrowthPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["aggregateKey", "aggregationPolicy", "thresholdStatus", "stageThresholds", "stagePersistence", "resetScope"],
+      "properties": {
+        "aggregateKey": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "maxLength": 128 },
+        "aggregationPolicy": { "const": "eligible-deduplicated-count-excluding-hidden-sealed-restricted-deleted" },
+        "thresholdStatus": { "enum": ["prototype_candidate", "approved"] },
+        "stageThresholds": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["stage", "minimumEligibleCount"],
+            "properties": {
+              "stage": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" },
+              "minimumEligibleCount": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" }
+            }
+          }
+        },
+        "stagePersistence": { "const": "max-unlocked-until-explicit-reset" },
+        "resetScope": { "const": "tree-or-town-or-privacy-reset" }
+      }
+    },
+    "GrowthStage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stage", "role", "silhouetteScaleBand", "seasonTextureKeys", "fallbackTextureKey"],
+      "properties": {
+        "stage": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" },
+        "role": { "enum": ["sapling", "rooted-tree", "landmark-tree"] },
+        "silhouetteScaleBand": { "enum": ["small", "medium", "large"] },
+        "seasonTextureKeys": { "$ref": "#/$defs/SeasonTextureMap" },
+        "fallbackTextureKey": { "type": "string", "minLength": 1, "maxLength": 256 }
+      }
+    },
+    "SeasonTextureMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["spring", "summer", "autumn", "winter"],
+      "properties": {
+        "spring": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "summer": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "autumn": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "winter": { "type": "string", "minLength": 1, "maxLength": 256 }
+      }
+    },
+    "SeasonVariants": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["spring", "summer", "autumn", "winter"],
+      "properties": {
+        "spring": { "$ref": "#/$defs/SeasonVariant" },
+        "summer": { "$ref": "#/$defs/SeasonVariant" },
+        "autumn": { "$ref": "#/$defs/SeasonVariant" },
+        "winter": { "$ref": "#/$defs/SeasonVariant" }
+      }
+    },
+    "SeasonVariant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["motif", "groundCueId", "particleProfileId", "particleRequiredForRecognition"],
+      "properties": {
+        "motif": { "enum": ["sakura-blossom", "deep-green", "momiji-foliage", "dormant-warm-winter"] },
+        "groundCueId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "particleProfileId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "particleRequiredForRecognition": { "const": false }
+      }
+    },
+    "AnimationProfiles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["motionOff", "motionReduced", "motionFull", "lowPower"],
+      "properties": {
+        "motionOff": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "motionReduced": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "motionFull": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "lowPower": { "$ref": "core.v1.schema.json#/$defs/StableId" }
+      }
+    },
+    "PrivacyControls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["growthHistoryResetAllowed", "growthVisualHideAllowed", "privacyResetIncludesTree", "exactCountExposedFromStage"],
+      "properties": {
+        "growthHistoryResetAllowed": { "const": true },
+        "growthVisualHideAllowed": { "const": true },
+        "privacyResetIncludesTree": { "const": true },
+        "exactCountExposedFromStage": { "const": false }
+      }
+    },
+    "TreeRules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "neverUsesImportanceScore",
+        "neverUsesEmotionStrength",
+        "neverUsesLoginStreak",
+        "neverUsesPaymentAmount",
+        "normalDeletionNeverShrinksAutomatically",
+        "winterNeverLooksDeadOrPunitive",
+        "timeModeUsesLightingOverlayNotSeparateTreeAsset"
+      ],
+      "properties": {
+        "neverUsesImportanceScore": { "const": true },
+        "neverUsesEmotionStrength": { "const": true },
+        "neverUsesLoginStreak": { "const": true },
+        "neverUsesPaymentAmount": { "const": true },
+        "normalDeletionNeverShrinksAutomatically": { "const": true },
+        "winterNeverLooksDeadOrPunitive": { "const": true },
+        "timeModeUsesLightingOverlayNotSeparateTreeAsset": { "const": true }
+      }
+    }
+  }
+}
