@@ -9,11 +9,26 @@
   "schemaRegistryPath": "docs/schemas/memory-town/schema-registry.v1.json",
   "fixtures": [
     {
+      "fixtureId": "memory-town.issue-code-extension.round2-environment.v1",
+      "path": "docs/fixtures/memory-town/issue-code-extension.round2-environment.v1.json",
+      "schemaId": "https://memory-os.example/schemas/memory-town/issue-code-extension.v1.schema.json",
+      "status": "contract_locked_machine_validation_pending",
+      "dependsOn": ["memory-town.issue-code-registry.v1"],
+      "locked": [
+        "environment_v1_dependency_rejection",
+        "time_range_coverage_codes",
+        "memory_tree_semantic_and_privacy_codes",
+        "winter_emotional_safety_code",
+        "motion_off_and_layered_fallback_codes"
+      ],
+      "prototype": []
+    },
+    {
       "fixtureId": "memory-town.environment-theme-catalog.v2",
       "path": "docs/fixtures/memory-town/environment-theme-catalog.v2.json",
       "schemaId": "https://memory-os.example/schemas/memory-town/environment-theme-catalog.v2.schema.json",
       "status": "contract_locked_visual_and_machine_validation_pending",
-      "dependsOn": ["memory-town.memory-tree-catalog.v1"],
+      "dependsOn": ["memory-town.memory-tree-catalog.v1", "memory-town.issue-code-extension.round2-environment.v1"],
       "locked": [
         "four_time_modes",
         "device_local_time_without_precise_location",
@@ -38,7 +53,7 @@
       "path": "docs/fixtures/memory-town/memory-tree-catalog.v1.json",
       "schemaId": "https://memory-os.example/schemas/memory-town/memory-tree-catalog.v1.schema.json",
       "status": "contract_locked_asset_and_threshold_validation_pending",
-      "dependsOn": [],
+      "dependsOn": ["memory-town.issue-code-extension.round2-environment.v1"],
       "locked": [
         "fictional_seasonal_species",
         "three_growth_stages",
@@ -63,6 +78,7 @@
     "activeEnvironmentSchema": "https://memory-os.example/schemas/memory-town/environment-theme-catalog.v2.schema.json",
     "activeEnvironmentFixture": "memory-town.environment-theme-catalog.v2",
     "activeMemoryTreeFixture": "memory-town.memory-tree-catalog.v1",
+    "activeEnvironmentIssueCodeExtension": "memory-town.issue-code-extension.round2-environment.v1",
     "implementationUseOfEnvironmentV1Allowed": false,
     "canonicalTimeModes": ["morning", "day", "night", "midnight"]
   },
@@ -70,8 +86,10 @@
     "round2EnvironmentContractStatus": "defined_at_contract_schema_and_fixture_level_not_machine_or_visual_validated",
     "implementationAllowed": false,
     "nextRequired": [
-      "machine_validate_environment_v2_and_memory_tree",
+      "machine_validate_environment_v2_memory_tree_and_issue_codes",
       "confirm_no_active_environment_v1_dependency",
+      "validate_time_ranges_cover_twenty_four_hours_without_overlap",
+      "validate_tree_stage_and_threshold_monotonicity",
       "create_four_time_mode_palette_roughs",
       "create_memory_tree_stage_zero_to_two_season_roughs",
       "compare_beach_and_tree_map_positions",
