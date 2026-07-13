@@ -41,6 +41,7 @@
             "items": { "$ref": "core.v1.schema.json#/$defs/TownOrientation" }
           },
           "footprintContractVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" },
+          "growthEnvelopeId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
           "footprint": { "$ref": "core.v1.schema.json#/$defs/TownFootprint" },
           "placementRules": {
             "type": "object",
@@ -104,8 +105,16 @@
           "deprecatedAt": { "$ref": "core.v1.schema.json#/$defs/UtcTimestamp" }
         },
         "oneOf": [
-          { "required": ["stageVariants"], "not": { "required": ["renderVariants"] } },
-          { "required": ["renderVariants"], "not": { "required": ["stageVariants"] } }
+          {
+            "properties": { "category": { "const": "structure" } },
+            "required": ["growthEnvelopeId", "stageVariants"],
+            "not": { "required": ["renderVariants"] }
+          },
+          {
+            "not": { "properties": { "category": { "const": "structure" } }, "required": ["category"] },
+            "required": ["renderVariants"],
+            "not": { "required": ["stageVariants"] }
+          }
         ]
       }
     }
