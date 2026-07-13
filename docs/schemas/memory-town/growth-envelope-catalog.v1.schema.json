@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/memory-town/growth-envelope-catalog.v1.schema.json",
+  "title": "Memory Town Growth Envelope Catalog v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "catalogId", "catalogVersion", "status", "envelopes"],
+  "properties": {
+    "$schema": { "const": "https://memory-os.example/schemas/memory-town/growth-envelope-catalog.v1.schema.json" },
+    "catalogId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+    "catalogVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" },
+    "status": { "enum": ["prototype_candidate", "contract_locked", "superseded"] },
+    "envelopes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "envelopeId",
+          "envelopeVersion",
+          "definitionId",
+          "supportedStages",
+          "maxSolidOccupiedCells",
+          "persistentEntranceCells",
+          "protectedClearanceCells",
+          "requiredAccessPathCells",
+          "visualOverflowCells",
+          "overlaySlots"
+        ],
+        "properties": {
+          "envelopeId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+          "envelopeVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" },
+          "definitionId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+          "supportedStages": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" }
+          },
+          "maxSolidOccupiedCells": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 4096,
+            "items": { "$ref": "core.v1.schema.json#/$defs/TownRelativeCell" }
+          },
+          "persistentEntranceCells": {
+            "type": "array",
+            "maxItems": 256,
+            "items": { "$ref": "core.v1.schema.json#/$defs/TownRelativeCell" }
+          },
+          "protectedClearanceCells": {
+            "type": "array",
+            "maxItems": 4096,
+            "items": { "$ref": "core.v1.schema.json#/$defs/TownRelativeCell" }
+          },
+          "requiredAccessPathCells": {
+            "type": "array",
+            "maxItems": 256,
+            "items": { "$ref": "core.v1.schema.json#/$defs/TownRelativeCell" }
+          },
+          "visualOverflowCells": {
+            "type": "array",
+            "maxItems": 4096,
+            "items": { "$ref": "core.v1.schema.json#/$defs/TownRelativeCell" }
+          },
+          "overlaySlots": {
+            "type": "array",
+            "maxItems": 128,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["slotKey", "allowedCategories", "supportedStages", "persistencePolicy"],
+              "properties": {
+                "slotKey": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+                "allowedCategories": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": { "$ref": "core.v1.schema.json#/$defs/TownObjectCategory" }
+                },
+                "supportedStages": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" }
+                },
+                "persistencePolicy": {
+                  "enum": ["preserve_when_supported", "store_when_unsupported", "replace_by_system_variant"]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
