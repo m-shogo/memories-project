@@ -180,7 +180,6 @@
     { "position": { "cellX": 13, "cellY": 9, "elevationLevel": 0 }, "pathType": "footpath" },
     { "position": { "cellX": 12, "cellY": 9, "elevationLevel": 0 }, "pathType": "footpath" },
     { "position": { "cellX": 12, "cellY": 10, "elevationLevel": 0 }, "pathType": "footpath" },
-
     { "position": { "cellX": 5, "cellY": 9, "elevationLevel": 0 }, "pathType": "footpath" },
     { "position": { "cellX": 6, "cellY": 9, "elevationLevel": 0 }, "pathType": "footpath" },
     { "position": { "cellX": 7, "cellY": 9, "elevationLevel": 0 }, "pathType": "footpath" },
@@ -190,7 +189,6 @@
     { "position": { "cellX": 9, "cellY": 11, "elevationLevel": 0 }, "pathType": "footpath" },
     { "position": { "cellX": 9, "cellY": 12, "elevationLevel": 0 }, "pathType": "footpath" },
     { "position": { "cellX": 10, "cellY": 12, "elevationLevel": 0 }, "pathType": "footpath" },
-
     { "position": { "cellX": 5, "cellY": 19, "elevationLevel": 0 }, "pathType": "footpath" },
     { "position": { "cellX": 6, "cellY": 19, "elevationLevel": 0 }, "pathType": "footpath" },
     { "position": { "cellX": 7, "cellY": 19, "elevationLevel": 0 }, "pathType": "footpath" },
@@ -204,7 +202,6 @@
     { "position": { "cellX": 12, "cellY": 16, "elevationLevel": 0 }, "pathType": "footpath" },
     { "position": { "cellX": 12, "cellY": 15, "elevationLevel": 0 }, "pathType": "footpath" },
     { "position": { "cellX": 12, "cellY": 14, "elevationLevel": 0 }, "pathType": "footpath" },
-
     { "position": { "cellX": 21, "cellY": 18, "elevationLevel": 0 }, "pathType": "footpath" },
     { "position": { "cellX": 20, "cellY": 18, "elevationLevel": 0 }, "pathType": "footpath" },
     { "position": { "cellX": 19, "cellY": 18, "elevationLevel": 0 }, "pathType": "footpath" },
@@ -218,7 +215,6 @@
     { "position": { "cellX": 16, "cellY": 13, "elevationLevel": 0 }, "pathType": "footpath" },
     { "position": { "cellX": 15, "cellY": 13, "elevationLevel": 0 }, "pathType": "footpath" },
     { "position": { "cellX": 15, "cellY": 12, "elevationLevel": 0 }, "pathType": "footpath" },
-
     { "position": { "cellX": 13, "cellY": 20, "elevationLevel": 0 }, "pathType": "footpath" },
     { "position": { "cellX": 13, "cellY": 19, "elevationLevel": 0 }, "pathType": "footpath" }
   ],
@@ -226,34 +222,34 @@
     {
       "slotIdSeed": "cinema-poster-slot",
       "ownerInstanceIdSeed": "structure-cinema-main",
-      "position": { "cellX": 7, "cellY": 9, "elevationLevel": 0 },
-      "allowedCategories": ["ground_decor", "raised_decor", "seasonal"],
-      "allowedTags": ["poster", "festival", "seasonal"],
-      "occupiedByInstanceIdSeed": null
+      "slotMode": "overlay",
+      "ownerOverlaySlotKey": "poster",
+      "allowedCategories": ["raised_decor", "seasonal"],
+      "allowedTags": ["poster", "festival", "seasonal"]
     },
     {
       "slotIdSeed": "market-flower-slot",
       "ownerInstanceIdSeed": "structure-market-main",
-      "position": { "cellX": 7, "cellY": 18, "elevationLevel": 0 },
+      "slotMode": "grid",
+      "position": { "cellX": 8, "cellY": 20, "elevationLevel": 0 },
       "allowedCategories": ["flower", "ground_decor", "seasonal"],
-      "allowedTags": ["flower", "regional", "seasonal"],
-      "occupiedByInstanceIdSeed": null
+      "allowedTags": ["flower", "regional", "seasonal"]
     },
     {
       "slotIdSeed": "port-boat-slot",
       "ownerInstanceIdSeed": "structure-port-main",
-      "position": { "cellX": 14, "cellY": 23, "elevationLevel": 0 },
+      "slotMode": "overlay",
+      "ownerOverlaySlotKey": "boat",
       "allowedCategories": ["vehicle", "seasonal"],
-      "allowedTags": ["boat", "travel", "seasonal"],
-      "occupiedByInstanceIdSeed": null
+      "allowedTags": ["boat", "travel", "seasonal"]
     },
     {
       "slotIdSeed": "central-month-capsule-slot",
       "ownerInstanceIdSeed": "structure-central-square",
-      "position": { "cellX": 13, "cellY": 12, "elevationLevel": 0 },
+      "slotMode": "overlay",
+      "ownerOverlaySlotKey": "month-capsule",
       "allowedCategories": ["seasonal", "raised_decor"],
-      "allowedTags": ["month-capsule", "weekly-box", "seasonal"],
-      "occupiedByInstanceIdSeed": null
+      "allowedTags": ["month-capsule", "weekly-box", "seasonal"]
     }
   ]
 }
