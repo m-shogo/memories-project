@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/memory-town/persistence-table-contract.v1.schema.json",
+  "title": "Memory Town Persistence Table Contract v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "contractId", "contractVersion", "globalDefinitionTables", "userStateTables", "globalRules"],
+  "properties": {
+    "$schema": { "const": "https://memory-os.example/schemas/memory-town/persistence-table-contract.v1.schema.json" },
+    "contractId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+    "contractVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" },
+    "globalDefinitionTables": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["table", "versionedImmutable", "applicationAccess", "containsUserData"],
+        "properties": {
+          "table": { "type": "string", "pattern": "^town_[a-z0-9_]+$", "maxLength": 128 },
+          "versionedImmutable": { "const": true },
+          "applicationAccess": { "const": "read_only" },
+          "containsUserData": { "const": false }
+        }
+      }
+    },
+    "userStateTables": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["table", "userIdRequired", "rlsRequired", "sourceOfTruth", "primaryIdentity", "accountDeletionIncluded"],
+        "properties": {
+          "table": { "type": "string", "pattern": "^town_[a-z0-9_]+$", "maxLength": 128 },
+          "userIdRequired": { "const": true },
+          "rlsRequired": { "const": true },
+          "sourceOfTruth": { "type": "boolean" },
+          "primaryIdentity": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "maxLength": 128 }
+          },
+          "accountDeletionIncluded": { "const": true }
+        }
+      }
+    },
+    "globalRules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "applicationRuntimeMayOwnTables",
+        "missingUserContextBehavior",
+        "supportDefaultUserLayoutAccess",
+        "crossUserReferenceBehavior",
+        "complexSpatialRulesInDatabaseTriggers",
+        "commandBatchApplyMode",
+        "silentLastWriteWinsAllowed"
+      ],
+      "properties": {
+        "applicationRuntimeMayOwnTables": { "const": false },
+        "missingUserContextBehavior": { "const": "fail_closed" },
+        "supportDefaultUserLayoutAccess": { "const": "denied" },
+        "crossUserReferenceBehavior": { "const": "not_found_or_not_owned" },
+        "complexSpatialRulesInDatabaseTriggers": { "const": false },
+        "commandBatchApplyMode": { "const": "single_transaction" },
+        "silentLastWriteWinsAllowed": { "const": false }
+      }
+    }
+  }
+}
