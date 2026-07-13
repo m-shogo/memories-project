@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/memory-town/rls-negative-case-set.v1.schema.json",
+  "title": "Memory Town RLS Negative Case Set v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "caseSetId", "caseSetVersion", "actors", "cases", "privacyAssertions"],
+  "properties": {
+    "$schema": { "const": "https://memory-os.example/schemas/memory-town/rls-negative-case-set.v1.schema.json" },
+    "caseSetId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+    "caseSetVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" },
+    "actors": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["userA", "userB", "supportActor"],
+      "properties": {
+        "userA": { "type": "string", "format": "uuid" },
+        "userB": { "type": "string", "format": "uuid" },
+        "supportActor": { "type": "string", "format": "uuid" }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["caseId", "role", "userContext", "operation", "table", "targetOwner", "expected"],
+        "properties": {
+          "caseId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+          "role": {
+            "enum": [
+              "memory_app_role",
+              "memory_worker_role",
+              "memory_support_role",
+              "memory_analytics_role",
+              "memory_readonly_debug_role"
+            ]
+          },
+          "userContext": { "enum": ["present", "missing"] },
+          "actorRef": { "enum": ["userA", "userB", "supportActor"] },
+          "operation": {
+            "enum": [
+              "select",
+              "insert",
+              "update",
+              "delete",
+              "projection_rebuild",
+              "account_delete_verify"
+            ]
+          },
+          "table": { "type": "string", "pattern": "^(town_[a-z0-9_]+|all_user_town_tables)$", "maxLength": 128 },
+          "targetOwner": { "enum": ["userA", "userB", "global"] },
+          "referencedObjectOwner": { "enum": ["userA", "userB"] },
+          "parentLayoutOwner": { "enum": ["userA", "userB"] },
+          "replayedBatchOwner": { "enum": ["userA", "userB"] },
+          "supportCeremonyApproved": { "type": "boolean" },
+          "expected": {
+            "enum": [
+              "zero_rows_or_not_found_or_not_owned",
+              "not_found_or_not_owned",
+              "ownership_foreign_key_or_policy_denied",
+              "user_context_required",
+              "permission_denied",
+              "new_user_scoped_batch_or_generic_conflict_without_owner_leak",
+              "zero_remaining_rows"
+            ]
+          }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "userContext": { "const": "present" } } },
+            "then": { "required": ["actorRef"] }
+          },
+          {
+            "if": { "properties": { "userContext": { "const": "missing" } } },
+            "then": { "not": { "required": ["actorRef"] } }
+          }
+        ]
+      }
+    },
+    "privacyAssertions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["errorMustNotRevealTargetExistence", "auditMustNotContainPrivateTitles", "auditMustNotContainMemoryBodies", "supportAccessMustBeAudited"],
+      "properties": {
+        "errorMustNotRevealTargetExistence": { "const": true },
+        "auditMustNotContainPrivateTitles": { "const": true },
+        "auditMustNotContainMemoryBodies": { "const": true },
+        "supportAccessMustBeAudited": { "const": true }
+      }
+    }
+  }
+}
