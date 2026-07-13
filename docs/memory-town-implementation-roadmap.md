@@ -4,204 +4,317 @@
 
 ## 目的
 
-Memory Townを、既存のImport・棚・振り返り計画を壊さず段階的に実装する。
+Memory Townを、既存のImport・棚・振り返り計画を壊さず、かつ将来の編集可能な箱庭へ拡張しても作り直しにならない順番で進める。
 
-町だけを先に作り込みすぎない。
+実装はまだ開始しない。
 
-```txt
-棚の価値を証明
-→ 静止した町へ投影
-→ WebGLで触れる
-→ Import結果が町へ反映
-→ 季節・生活感・connectionを足す
-```
+優先参照:
+
+- `docs/memory-town-architecture-hardening-contract.md`
+- `docs/memory-town-hardening-tickets.md`
+- `docs/memory-town-spatial-foundation-tickets.md`
+- `docs/memory-town-design-audit-and-risk-register.md`
+
+---
 
 ## Product Gate
 
 Memory TownはMVPに含めるが、Import基盤より先行しない。
 
-町は以下が成立してから本格接続する。
+本格接続の前提:
 
 - safe commit可能
-- shelf countを取得可能
-- projection用aggregateが存在
-- delete / rollback後に再計算可能
-- hidden / sealed / restricted exclusionが成立
+- shelf aggregate取得可能
+- hidden / sealed / restricted exclusion成立
+- delete / rollback契約成立
+- town stateがmemoryの正本ではない
 
-## Phase T0: Design Contract
+---
 
-### Deliverables
+# Phase T0: Contract Hardening
 
-- current product direction
-- visual design direction
-- WebGL architecture
-- building definition schema
-- initial map layout
-- asset naming contract
-- performance budget
-- fallback rules
+## Scope
 
-### Exit Criteria
+- fixed-view terminology
+- five-state separation
+- TownFeatureId registry
+- feature binding
+- non-shrinking feature progress
+- reset / privacy erasure
+- canonical coordinates
+- footprint pivot
+- terrain / path source of truth
+- growth envelope
+- object origin / placement / lock policy
+- immutable versions
+- three-way template merge
+- atomic command batch
+- RLS / export / recovery
 
-- 町と棚の責務が分離されている
-- 5建物とrouteが決定している
-- 3 growth stagesが定義されている
-- raw memoryをrendererへ渡さない方針が固定されている
+## Exit
 
-## Phase T1: Static Town Prototype
+`memory-town-hardening-tickets.md`のP0 Exit Gateを満たす。
 
-WebGL導入前に、1枚背景＋DOM hotspotで体験を確認する。
+PixiJS本実装はまだ開始しない。
 
-### Scope
+---
 
-- fixed 2.5D map image
+# Phase T1: Design Fixtures
+
+## Deliverables
+
+```txt
+initial feature registry fixture
+initial map definition fixture
+initial terrain fixture
+initial parcel fixture
+initial growth envelope fixture
+initial object catalog fixture
+initial layout template fixture
+initial feature binding fixture
+initial feature progress fixture
+initial scene snapshot fixture
+```
+
+## Required variants
+
+- empty data
+- low data
+- Stage 1
+- Stage 2
+- current count 0 / unlocked Stage 2
+- missing asset
+- deprecated object
+- stored object
+- hidden / sealed exclusion
+
+## Exit
+
+- schema validation
+- deterministic serialization
+- stable IDs
+- no private fields
+
+---
+
+# Phase T2: Static Town Experience Prototype
+
+WebGL導入前に、静止表示とDOM hotspotで体験を確認する。
+
+## Scope
+
+- fixed-view 2.5D map image or generated static layers
 - cinema
 - story house
 - market
 - port
-- inbox warehouse
-- building labels
+- warehouse
+- central square
+- feature labels
 - summary bottom sheet
 - route navigation
 - shelf fixture counts
 
-### Purpose
-
-検証すること:
+## Purpose
 
 - 町がmenuとして理解できるか
-- 建物と棚の対応が分かるか
-- スマホでtapしやすいか
-- shelf gridより町を見たいと思うか
+- featureとvisualの対応が分かるか
+- smartphoneでtapしやすいか
+- Shelf Gridと併存できるか
+- bottom sheetで対象が隠れないか
 
-### Acceptance
+## Acceptance
 
-- 390px幅で主要建物をtap可能
-- labelなし / labelありを比較可能
-- townを使わず通常navigationでも到達可能
-- summary cardから棚へ遷移可能
+- 6 viewportで主要featureをtap可能
+- labelあり / なし比較
+- normal navigationでも到達可能
+- summary cardから棚へ遷移
+- fallback IDsがFeature IDsと一致
 
-## Phase T2: PixiJS Scene Foundation
+---
 
-### Scope
+# Phase T3: Spatial Domain Foundation
 
-- PixiJS application bootstrap
+## Scope
+
+- coordinate convention
+- gridToScreen / screenToGrid
+- footprint pivot / rotation
+- terrain
+- parcel
+- growth envelope
+- object definitions
+- object instances
+- feature bindings
+- layout template
+- placement validator
+- derived path mask
+
+## No-Go
+
+- renderer内business rules
+- screen x/y persistence
+- free editor UI
+- stageごとの別instance
+
+## Acceptance
+
+- PixiJSなしで全domain test
+- property tests
+- invalid layout rejected
+- deterministic scene input
+
+---
+
+# Phase T4: Progress / Layout / Environment Composition
+
+## Scope
+
+```txt
+Memory Domain
+→ TownFeatureProjection
+
+FeatureProgress
++ FeatureProjection
++ FeatureBinding
++ Layout
++ Environment
+→ TownSceneSnapshot
+```
+
+## Acceptance
+
+- current eligible count正確
+- max unlocked stage維持
+- record削除でuser decoration維持
+- skin変更でfeature progress維持
+- environment変更でprojection不変
+- path mask導出
+- private content非流入
+
+---
+
+# Phase T5: Persistence / RLS / Recovery Skeleton
+
+## Scope
+
+- current-state tables contract
+- user_id / RLS
+- layout revision
+- snapshot
+- event audit
+- stored state
+- reset command
+- export manifest
+
+## Acceptance
+
+- missing user context fail closed
+- cross-user IDs拒否
+- locked object mutation拒否
+- account deletion全削除契約
+- corrupted layout recovery fixture
+
+まだuser editorは公開しない。
+
+---
+
+# Phase T6: PixiJS Scene Foundation
+
+## Prerequisite
+
+T0〜T5完了。
+
+## Scope
+
+- PixiJS bootstrap
 - renderer lifecycle
 - scene graph
 - asset manifest
 - texture loading
-- building sprites
+- terrain / path layers
+- structure / prop sprites
 - hit areas
 - overview / focus camera
 - React bridge
 - static fallback
 
-### No-Go
+## No-Go
 
 - citizens
-- weather
-- free pan
-- free zoom
+- weather animation
+- free pan / zoom
 - growth animation
-- dynamic roads
+- path editor
+- user placement
 
-### Acceptance
+## Acceptance
 
-- 5建物をWebGL表示
-- tapでDOM card表示
+- 5主要建物表示
+- tapでDOM card
 - route leaveでticker停止
-- context lossでfallback
-- reduced motionでfocus animationを省略
+- context loss fallback
+- reduced motion
+- deterministic z sort
+- missing asset placeholder
 
-## Phase T3: TownProjection
+---
 
-### Scope
+# Phase T7: Import to Feature Growth Feedback
 
-- versioned TownProjection DTO
-- building stage resolver
-- policy-filtered aggregate
-- projection cache
-- rebuild command
-- old/new projection diff
-
-### Initial Growth Bands
-
-仮値。user test後に調整する。
-
-| Building | Stage 0 | Stage 1 | Stage 2 |
-|---|---:|---:|---:|
-| cinema | 0 | 1〜24 | 25以上 |
-| story house | 0 | 1〜14 | 15以上 |
-| market | 0 | 1〜9 | 10以上 |
-| port | 0 | 1 travel box | 2以上 |
-| inbox warehouse | always visible | inbox available | multiple source types |
-
-Inbox件数を成長条件に直接使わない。
-未整理を増やすほど得になる構造を避ける。
-
-### Acceptance
-
-- projectionをmemory tableと独立して生成可能
-- delete後にstageが再計算される
-- restricted recordsを除外可能
-- ruleset versionを保持
-- threshold変更migration testがある
-
-## Phase T4: Import to Town Feedback
-
-### Flow
+## Flow
 
 ```txt
 Quick Add / Import
 → Preview
 → Safe Commit
-→ shelf count update
-→ TownProjection regenerate
-→ scene diff
-→ aggregate growth feedback
+→ shelf aggregate update
+→ Feature Projection
+→ unlock check
+→ Feature Progress update
+→ TownSceneSnapshot diff
+→ visual feedback
 ```
 
-### Visual Feedback
+## Rules
 
-- 対応建物が短く光る
-- stage change時のみ建物差し替え
-- summary copy
-
-例:
-
-```txt
-漫画・アニメ棚に12件追加しました
-物語館ができました
-```
-
-### Acceptance
-
+- Import成功をanimationへ依存させない
 - 100件Importでもanimationは1回
 - animation skip可能
-- town画面を開いていなくてもstate更新
-- 次回open時に新しい姿が反映
-- Import成功を町演出完了へ依存させない
+- townを開いていなくてもstate更新
+- record rollbackで建物を自動縮小しない
+- current countは正確に更新
 
-## Phase T5: Season and Time
+## Visual
 
-### Scope
+- 対応建物が短く光る
+- unlock stage change時のみ建物差し替え
+- summary copy
 
+---
+
+# Phase T8: Season and Time
+
+## Scope
+
+- TownEnvironmentState
 - four-season overlays
 - day / evening / night palette
-- local date-based season resolver
-- manual theme override optional
-- low power toggle
+- manual override
+- low power / reduced motion
 
-### Acceptance
+## Acceptance
 
-- season changeでbuilding assetを再生成しない
-- overlayのみ差し替え可能
-- hit areas不変
-- no-record期間でも町が荒れない
+- Feature Projectionへ混ぜない
+- season changeでfootprint / hit area不変
+- no-record期間でも荒れない
+- precise location不要
 
-## Phase T6: Ambient Life
+---
 
-### First Additions
+# Phase T9: Ambient Life
+
+## First
 
 - water loop
 - one boat
@@ -209,223 +322,275 @@ Quick Add / Import
 - building light
 - smoke
 
-### Later
+## Later
 
 - generic citizens 3〜5人
-- deterministic short routes
-- simple schedule by time mode
+- fixed short routes
+- time-mode schedule
 
-### Acceptance
+## Acceptance
 
-- user identityをcitizenへ割り当てない
-- citizenとのchatなし
+- user identityを割り当てない
+- citizen chatなし
+- low powerで停止
 - route navigationへ干渉しない
-- low powerで全停止可能
-- 30分idleでmemory leakなし
+- long idle leak test
 
-## Phase T7: Capsules and Decorations
+---
 
-### Weekly Box
+# Phase T10: Decoration Slots
 
-中央広場へ小さな一時装飾を出す。
+自由配置より先にslot式で価値検証する。
 
-### Month Capsule
+## Scope
 
-- monthly flag
-- lantern
-- flower bed
-- seasonal object
+- building-owned slots
+- central square slots
+- flower / flag / bench / sign
+- month capsule decoration
 
-### Rules
+## Acceptance
 
-- month qualityを評価しない
-- record amountの競争にしない
-- 月が空でも失敗表示しない
-- user-selected event boxだけ特別装飾可能
+- growth envelope外
+- stage changeで削除なし
+- slot selectionはDOM UI
+- layout revision対応
+- reset / export対応
 
-## Phase T8: Connections as Roads
+---
 
-### Scope
+# Phase T11: Semantic Connections
 
-confirmed relationだけを対象にする。
+## Scope
 
-- fixed decorative road variants
-- bridge / route overlays
+confirmed relationのみ。
+
+- soft glow
+- footprints
+- signs
+- route light
 - relation reason panel
 - accessibility list
 
-### Initial Relation Types
+## Rules
 
-- movie ↔ music
-- travel ↔ food
-- travel ↔ photo
-- manga/anime ↔ audio
-
-### No-Go
-
-- personality inference road
-- emotional relation
-- hidden graph relation
-- unexplained AI-generated connection
-
-### Acceptance
-
-- 道の理由を確認可能
-- graphなしでもrelation一覧が使える
-- weak candidateを実線表示しない
+- physical roadを変更しない
+- weak candidateを確定表示しない
+- personality inference禁止
 - color-only encoding禁止
 
-## Phase T9: Future Anticipation
+---
 
-「未来の楽しみ」を町へ追加する。
+# Phase T12: Editor Transaction Foundation
 
-### Examples
+Free editor公開前に実装する。
 
-- story houseに新刊旗
-- cinemaに配信開始poster frame
-- portに旅行予定の船
-- central squareに今月の楽しみbox
+## Scope
 
-### Rules
+- local draft
+- command batch
+- undo / redo
+- server revalidation
+- compare-and-swap
+- conflict response
+- revision snapshot
 
-- userがfollowした対象だけ
+## Acceptance
+
+- all-or-nothing
+- idempotency
+- stale revision拒否
+- last-write-wins禁止
+- multi-device fixture
+
+---
+
+# Phase T13: Editable Decoration Zone
+
+## Scope
+
+- designated zones
+- tree / flower / furniture
+- placement preview
+- valid / invalid visualization
+- list-based accessibility editor
+
+## Acceptance
+
+- Memory data不変
+- RLS
+- undo / redo
+- export
+- migration preservation
+- low-end device操作可能
+
+---
+
+# Phase T14: Physical Path Editor
+
+## Scope
+
+- road / footpath painting
+- derived autotile
+- batch command
+- entrance connectivity warning
+
+## Acceptance
+
+- connection mask非永続
+- multi-cell paint atomic
+- semantic overlay不変
+- path deletionでmemory relation不変
+
+---
+
+# Phase T15: Structure Relocation
+
+## Scope
+
+- allowed parcel間移動
+- feature binding維持
+- growth envelope validation
+- route不変
+
+## Acceptance
+
+- current feature progress維持
+- user decorationの影響Preview
+- invalid move拒否
+- migration / export対応
+
+---
+
+# Phase T16: Map / District Expansion
+
+## Scope
+
+- new chunk / district
+- existing origin維持
+- district camera preset
+- lazy asset load
+- template three-way merge
+
+## Acceptance
+
+- old coordinates不変
+- user layout上書きなし
+- new feature placement safe
+- missing spaceはstored
+- rollback snapshot
+
+---
+
+# Phase T17: Future Anticipation
+
+Examples:
+
+- story house新刊旗
+- cinema配信poster
+- port旅行予定船
+- square未来の楽しみbox
+
+Rules:
+
+- user follow対象のみ
 - general recommendationを混ぜない
-- ad placement禁止
+- ad禁止
 - notification default OFF
 
-## Initial Ticket Backlog
+---
 
-### MT-001 Town domain contract
+# Cross-cutting Gates
 
-- TownProjection types
-- stable building IDs
-- projection schema version
-
-### MT-002 Static map wireframe
-
-- 390x844
-- 430x932
-- desktop narrow panel
-
-### MT-003 Building route map
-
-- cinema → movie shelf
-- story house → manga/anime shelf
-- market → food list/map
-- port → travel box
-- warehouse → Inbox
-
-### MT-004 Asset manifest
-
-- stage 0〜2
-- anchors
-- hit areas
-- texture keys
-
-### MT-005 Pixi bootstrap
-
-- lazy load town bundle
-- application lifecycle
-- fallback boundary
-
-### MT-006 Building selection bridge
-
-- pointer event
-- React state
-- DOM summary sheet
-- route open
-
-### MT-007 Projection projector
-
-- aggregate counts
-- exclusion policy
-- ruleset version
-
-### MT-008 Projection diff
-
-- stage changed
-- recent delta
-- capsule change
-
-### MT-009 Growth animation
-
-- one aggregate event
-- skip / reduced motion
-
-### MT-010 Performance guard
-
-- ticker pause
-- low power
-- context loss
-- telemetry without private data
-
-### MT-011 Visual regression matrix
-
-- all stages
-- four seasons
-- overview / focused
-- fallback
-
-### MT-012 User test
-
-Tasks:
-
-1. 映画棚を開く
-2. 未整理Inboxを探す
-3. どの建物が何か説明する
-4. 最近成長した建物を見つける
-5. 通常menuから同じ場所へ移動する
-
-## Performance Gates
-
-Before T2 complete:
-
-- route leaveで描画停止
-- static fallback動作
-- initial bundleを通常棚画面から分離
-- town asset failureでapp全体が落ちない
+## Performance
 
 Before T6 complete:
 
-- 低性能端末profileで操作可能
-- reduced motion確認
-- long idle leak test
-- background / foreground復帰test
+- route leave描画停止
+- static fallback
+- bundle分離
+- asset failureでapp全体が落ちない
 
-## Visual Production Gates
+Before T9 complete:
 
-本番asset量産前に、以下3点をprototypeで比較する。
+- low-end device profile
+- reduced motion
+- long idle leak
+- background / foreground復帰
 
-1. 完全pixel art
-2. high-resolution dot-style
-3. soft miniature illustration
+Before T13 complete:
 
-現時点の推奨は2。
+- object count budget
+- hit test budget
+- command batch size limit
+- editor battery / heat test
 
-比較対象:
+## Security
 
-- スマホでの可読性
-- asset差分の作りやすさ
-- animationの自然さ
-- 3年後の古さ
-- AI生成後の人間修正量
+Before persistence:
 
-## MVP Go / No-Go
+- user_id / RLS
+- cross-user negative tests
+- server validator
+- audit content redaction
 
-### Go
+Before editor:
 
-- fixed map
+- lock policy
+- rate limit
+- batch limit
+- stale revision handling
+
+## Portability
+
+Before customization:
+
+- Town export schema
+- Import Preview
+- unsupported object stored
+- reset scopes
+- account deletion
+
+---
+
+# P1 Decisions Requiring Prototype
+
+- tile metric
+- map dimensions
+- parcel dimensions
+- growth envelope dimensions
+- touch target
+- camera fit
+- art style
+- atlas size
+- performance budget
+- non-shrinking copy
+- decoration slot value
+
+文書だけで数値を決めない。
+
+---
+
+# MVP Go / No-Go
+
+## Go
+
+- fixed-view map
+- logical grid
+- Feature IDs / bindings
+- feature progress
+- growth envelope
 - WebGL / PixiJS
 - 5 buildings
 - 3 stages
 - DOM summary sheet
 - static fallback
-- projection aggregate
+- scene composition
 - short growth feedback
 
-### No-Go
+## No-Go
 
-- free placement
+- free placement UI
 - city editor
 - social visit
 - multiplayer
@@ -437,24 +602,34 @@ Before T6 complete:
 - paid growth acceleration
 - mandatory daily interaction
 
-## Definition of Success
+---
 
-Memory Town成功の判断は、町を長く眺めた時間だけではない。
+# Definition of Success
 
 見る指標:
 
 - town open率
-- building tap率
+- feature tap率
 - townからshelfへの遷移率
-- Import後にtown changeを確認した率
-- townなしnavigationの成功率
+- Import後にchange確認率
+- normal navigation成功率
 - fallback率
 - performance complaint率
-- 「もっと記録を入れたい」と感じたuser interview反応
+- feature / visual対応理解率
+- 「もっと記録を入れたい」反応
 
-## Final Rule
+Editor追加後も、編集時間だけを成功指標にしない。
+
+Memory OS本体の検索・保存・振り返り価値を弱めないことを優先する。
+
+---
+
+# Final Rule
 
 ```txt
-町の完成度より先に、棚の実用性を完成させる。
-ただし、棚だけでは生まれない愛着を、町で早い段階から検証する。
+町の完成度より先に、棚とImportの価値を証明する。
+
+ただし町を作り始める時は、
+MVP専用のpixel配置を作らず、
+長期契約を満たした空間基盤から始める。
 ```
