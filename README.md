@@ -115,6 +115,77 @@ NO-GO
 
 ---
 
+## Memory Town Round 2 Environment Status
+
+環境デザインを次へ更新した。
+
+```txt
+朝 / 昼 / 夜 / 夜中
++ device local time連動
++ manual time / season preview
++ 雲・太陽・月
++ ビーチ・海岸・波
++ 情報量で育つ四季樹
++ 春の桜 / 秋のモミジ調紅葉
++ 夜・夜中の建物灯り
++ 季節の地面cue
++ unified wind field
+```
+
+正式な4時間帯:
+
+```txt
+morning
+05:00–10:59 candidate
+
+day
+11:00–16:59 candidate
+
+night
+17:00–22:59 candidate
+
+midnight
+23:00–04:59 candidate
+```
+
+`evening`は独立した第5状態ではなく、nightへのvisual transitionとして扱う。
+
+Memory Tree:
+
+```txt
+Stage 0: sapling
+Stage 1: rooted tree
+Stage 2: landmark tree
+
+spring: sakura motif
+summer: deep green
+autumn: momiji motif
+winter: dormant but warm, never punitive
+```
+
+Environment v2とMemory Tree fixtureは作成済みだが、machine validation・visual asset・viewport evidenceは未完了。
+
+```txt
+Environment contract:
+completed
+
+Environment v2 schema / fixture:
+created, machine validation pending
+
+Memory Tree schema / fixture:
+created, asset and threshold validation pending
+
+visual prototype:
+environment addendum completed, evidence pending
+
+implementation:
+NO-GO
+```
+
+旧Environment v1の`day / evening / night`を実装へ使用しない。
+
+---
+
 ## Memory Town State Model
 
 ```txt
@@ -133,6 +204,7 @@ NO-GO
 - 明示Resetでは現在projection cursorを新しい成長原点にする
 - Reset前の件数を表示しつつ、町はStage 0から育て直せる
 - season / time / cameraをMemory Projectionへ混ぜない
+- environmentはMemoryの重要度・感情・streakを使わない
 - physical pathとsemantic connectionを分離
 - path connection maskは導出値
 - template更新でuser layoutを上書きしない
@@ -166,6 +238,8 @@ NO-GO
 - 仮想通貨・素材集め・クラフト
 - 建築待ち時間・成長課金
 - multiplayer town
+- 実天気・実潮汐・天文位置の厳密再現
+- environmentを使った感情評価
 
 ---
 
@@ -186,7 +260,14 @@ API connectorや大規模Importは、安全なPreview・Policy Evaluation・toke
 
 ## Current Authoritative Docs
 
-### Memory Town Round 1 — 最初に読む
+### Memory Town Round 2 Environment — 最初に読む
+
+1. [Current Authority Order — Round 2 Environment](docs/memory-town-current-authority-order-round-2-environment.md)
+2. [Environment and Seasonal Life Contract](docs/memory-town-environment-and-seasonal-life-contract.md)
+3. [Environment Asset Brief](docs/memory-town-environment-asset-brief.md)
+4. [Static Visual Prototype — Environment Addendum](docs/memory-town-static-visual-prototype-environment-addendum.md)
+
+### Memory Town Round 1
 
 1. [Current Authority Order — Round 1](docs/memory-town-current-authority-order-round-1.md)
 2. [Adversarial Review Round 1](docs/memory-town-adversarial-review-round-1.md)
@@ -217,6 +298,16 @@ Schema / fixture entrypoints:
 docs/schemas/memory-town/schema-registry.v1.json
 docs/fixtures/memory-town/fixture-index.v2.json
 docs/fixtures/memory-town/fixture-index.round1-extension.v1.json
+docs/fixtures/memory-town/fixture-index.round2-environment-extension.v1.json
+```
+
+Active Environment:
+
+```txt
+docs/schemas/memory-town/environment-theme-catalog.v2.schema.json
+docs/fixtures/memory-town/environment-theme-catalog.v2.json
+docs/schemas/memory-town/memory-tree-catalog.v1.schema.json
+docs/fixtures/memory-town/memory-tree-catalog.v1.json
 ```
 
 ### Product
@@ -270,22 +361,26 @@ docs/fixtures/memory-town/fixture-index.round1-extension.v1.json
 6. Manga / Anime Vertical Slice
 7. Food regional list
 8. Home / Shelf navigation
-9. Memory Town Round 1 machine contract validation
-10. Static Memory Town visual prototype
-11. External multidisciplinary review
-12. Critical finding correction
-13. Memory Town implementation authorization judgment
-14. Spatial domain foundation
-15. Feature Progress / Layout / Environment composition
-16. Town persistence / RLS / recovery skeleton
-17. PixiJS / WebGL renderer adapter
-18. Import → Feature unlock → Town feedback
-19. Weekly / Month Capsule
-20. Environment / ambient life
-21. Decoration slots
-22. Semantic connection overlays
-23. User editor only after transaction / concurrency / demand gates
-24. API connectors after provider/security gates
+9. Memory Town Round 1 + Environment Round 2 machine contract validation
+10. Environment-inclusive static Memory Town visual prototype
+11. Four time-mode palette roughs
+12. Memory Tree Stage 0〜2 × four-season roughs
+13. Beach / port / Tree placement comparison
+14. Layered fallback and accessibility evidence
+15. External multidisciplinary review
+16. Critical finding correction
+17. Memory Town implementation authorization judgment
+18. Spatial domain foundation
+19. Feature Progress / Layout / Environment composition
+20. Town persistence / RLS / recovery skeleton
+21. PixiJS / WebGL renderer adapter
+22. Import → Feature unlock → Town feedback
+23. Weekly / Month Capsule
+24. Environment / ambient life
+25. Decoration slots
+26. Semantic connection overlays
+27. User editor only after transaction / concurrency / demand gates
+28. API connectors after provider/security gates
 ```
 
 ---
@@ -298,7 +393,9 @@ docs/fixtures/memory-town/fixture-index.round1-extension.v1.json
 通常削除では、解除した成長を罰のように失わせない。
 明示Resetでは、現在の記録を残したまま町を育て直せる。
 配置と記憶は別々に守られる。
-箱が町の風景になる。
+朝・昼・夜・夜中の光が現在時刻に寄り添う。
+海と波と四季樹が、町へ静かな時間の流れを作る。
+木は記憶の価値ではなく、保存量の粗い積み重ねだけで育つ。
 確定したつながりは、生活道路とは別の光として見える。
 少しずつ、自分の町として手を入れられる。
 必要な時は、すべて持ち出せる。
