@@ -1,0 +1,148 @@
+{
+  "$schema": "https://memory-os.example/schemas/memory-town/persistence-table-contract.v1.schema.json",
+  "contractId": "memory-town.persistence-table-contract",
+  "contractVersion": 1,
+  "globalDefinitionTables": [
+    {
+      "table": "town_feature_registry",
+      "versionedImmutable": true,
+      "applicationAccess": "read_only",
+      "containsUserData": false
+    },
+    {
+      "table": "town_map_definition",
+      "versionedImmutable": true,
+      "applicationAccess": "read_only",
+      "containsUserData": false
+    },
+    {
+      "table": "town_object_catalog",
+      "versionedImmutable": true,
+      "applicationAccess": "read_only",
+      "containsUserData": false
+    },
+    {
+      "table": "town_object_definition",
+      "versionedImmutable": true,
+      "applicationAccess": "read_only",
+      "containsUserData": false
+    },
+    {
+      "table": "town_layout_template",
+      "versionedImmutable": true,
+      "applicationAccess": "read_only",
+      "containsUserData": false
+    },
+    {
+      "table": "town_asset_manifest",
+      "versionedImmutable": true,
+      "applicationAccess": "read_only",
+      "containsUserData": false
+    },
+    {
+      "table": "town_environment_theme_catalog",
+      "versionedImmutable": true,
+      "applicationAccess": "read_only",
+      "containsUserData": false
+    }
+  ],
+  "userStateTables": [
+    {
+      "table": "town_layout",
+      "userIdRequired": true,
+      "rlsRequired": true,
+      "sourceOfTruth": true,
+      "primaryIdentity": ["user_id", "layout_id"],
+      "accountDeletionIncluded": true
+    },
+    {
+      "table": "town_layout_object",
+      "userIdRequired": true,
+      "rlsRequired": true,
+      "sourceOfTruth": true,
+      "primaryIdentity": ["user_id", "layout_id", "instance_id"],
+      "accountDeletionIncluded": true
+    },
+    {
+      "table": "town_path_cell",
+      "userIdRequired": true,
+      "rlsRequired": true,
+      "sourceOfTruth": true,
+      "primaryIdentity": ["user_id", "layout_id", "cell_x", "cell_y", "elevation_level"],
+      "accountDeletionIncluded": true
+    },
+    {
+      "table": "town_feature_binding",
+      "userIdRequired": true,
+      "rlsRequired": true,
+      "sourceOfTruth": true,
+      "primaryIdentity": ["user_id", "layout_id", "binding_id"],
+      "accountDeletionIncluded": true
+    },
+    {
+      "table": "town_feature_progress",
+      "userIdRequired": true,
+      "rlsRequired": true,
+      "sourceOfTruth": true,
+      "primaryIdentity": ["user_id", "feature_id"],
+      "accountDeletionIncluded": true
+    },
+    {
+      "table": "town_environment_preference",
+      "userIdRequired": true,
+      "rlsRequired": true,
+      "sourceOfTruth": true,
+      "primaryIdentity": ["user_id"],
+      "accountDeletionIncluded": true
+    },
+    {
+      "table": "town_layout_revision",
+      "userIdRequired": true,
+      "rlsRequired": true,
+      "sourceOfTruth": false,
+      "primaryIdentity": ["user_id", "layout_id", "revision"],
+      "accountDeletionIncluded": true
+    },
+    {
+      "table": "town_layout_snapshot",
+      "userIdRequired": true,
+      "rlsRequired": true,
+      "sourceOfTruth": false,
+      "primaryIdentity": ["user_id", "snapshot_id"],
+      "accountDeletionIncluded": true
+    },
+    {
+      "table": "town_layout_event",
+      "userIdRequired": true,
+      "rlsRequired": true,
+      "sourceOfTruth": false,
+      "primaryIdentity": ["user_id", "event_id"],
+      "accountDeletionIncluded": true
+    },
+    {
+      "table": "town_command_dedupe",
+      "userIdRequired": true,
+      "rlsRequired": true,
+      "sourceOfTruth": false,
+      "primaryIdentity": ["user_id", "batch_id"],
+      "accountDeletionIncluded": true
+    },
+    {
+      "table": "town_reset_event",
+      "userIdRequired": true,
+      "rlsRequired": true,
+      "sourceOfTruth": false,
+      "primaryIdentity": ["user_id", "reset_event_id"],
+      "accountDeletionIncluded": true
+    }
+  ],
+  "globalRules": {
+    "applicationRuntimeMayOwnTables": false,
+    "missingUserContextBehavior": "fail_closed",
+    "supportDefaultUserLayoutAccess": "denied",
+    "crossUserReferenceBehavior": "not_found_or_not_owned",
+    "complexSpatialRulesInDatabaseTriggers": false,
+    "commandBatchApplyMode": "single_transaction",
+    "silentLastWriteWinsAllowed": false
+  }
+}
