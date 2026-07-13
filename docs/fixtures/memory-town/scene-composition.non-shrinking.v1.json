@@ -1,0 +1,172 @@
+{
+  "$schema": "https://memory-os.example/schemas/memory-town/scene-composition-case.v1.schema.json",
+  "caseId": "scene-composition.non-shrinking-growth",
+  "caseVersion": 1,
+  "references": {
+    "featureRegistry": "feature-registry.v1.json",
+    "mapDefinition": "map-definition.main-island.v1.json",
+    "objectCatalog": "object-catalog.v1.json",
+    "layoutTemplate": "layout-template.main-island.v1.json"
+  },
+  "input": {
+    "layout": {
+      "layoutId": "layout-fixture-user-001",
+      "layoutRevision": 1,
+      "templateId": "memory-town.main-island.default",
+      "templateVersion": 1
+    },
+    "featureProjection": [
+      {
+        "featureId": "shelf.movie",
+        "eligibleItemCount": 0,
+        "recentDelta": -8,
+        "candidateStage": 0,
+        "badges": [],
+        "route": "/shelves/movies"
+      },
+      {
+        "featureId": "shelf.story",
+        "eligibleItemCount": 18,
+        "recentDelta": 4,
+        "candidateStage": 2,
+        "badges": ["continued"],
+        "route": "/shelves/stories"
+      },
+      {
+        "featureId": "shelf.food",
+        "eligibleItemCount": 5,
+        "recentDelta": 1,
+        "candidateStage": 1,
+        "badges": ["new"],
+        "route": "/shelves/food"
+      },
+      {
+        "featureId": "box.travel",
+        "eligibleItemCount": 1,
+        "recentDelta": 1,
+        "candidateStage": 1,
+        "badges": ["new"],
+        "route": "/boxes/travel"
+      },
+      {
+        "featureId": "system.inbox",
+        "eligibleItemCount": 1,
+        "recentDelta": 0,
+        "candidateStage": 1,
+        "badges": [],
+        "route": "/inbox"
+      },
+      {
+        "featureId": "reflection.square",
+        "eligibleItemCount": 1,
+        "recentDelta": 1,
+        "candidateStage": 1,
+        "badges": ["capsule"],
+        "route": "/reflection"
+      }
+    ],
+    "featureProgress": [
+      {
+        "featureId": "shelf.movie",
+        "maxUnlockedStage": 2,
+        "unlockedAtByStage": {
+          "1": "2026-01-10T00:00:00Z",
+          "2": "2026-05-01T00:00:00Z"
+        },
+        "growthRulesetVersion": "memory-town-growth-rules/1.0.0",
+        "resetEpoch": 0,
+        "updatedAt": "2026-07-13T00:00:00Z"
+      },
+      {
+        "featureId": "shelf.story",
+        "maxUnlockedStage": 1,
+        "unlockedAtByStage": {
+          "1": "2026-04-01T00:00:00Z"
+        },
+        "growthRulesetVersion": "memory-town-growth-rules/1.0.0",
+        "resetEpoch": 0,
+        "updatedAt": "2026-07-13T00:00:00Z"
+      },
+      {
+        "featureId": "shelf.food",
+        "maxUnlockedStage": 1,
+        "unlockedAtByStage": {
+          "1": "2026-06-15T00:00:00Z"
+        },
+        "growthRulesetVersion": "memory-town-growth-rules/1.0.0",
+        "resetEpoch": 0,
+        "updatedAt": "2026-07-13T00:00:00Z"
+      },
+      {
+        "featureId": "box.travel",
+        "maxUnlockedStage": 0,
+        "unlockedAtByStage": {},
+        "growthRulesetVersion": "memory-town-growth-rules/1.0.0",
+        "resetEpoch": 0,
+        "updatedAt": "2026-07-13T00:00:00Z"
+      },
+      {
+        "featureId": "system.inbox",
+        "maxUnlockedStage": 1,
+        "unlockedAtByStage": {
+          "1": "2026-07-01T00:00:00Z"
+        },
+        "growthRulesetVersion": "memory-town-growth-rules/1.0.0",
+        "resetEpoch": 0,
+        "updatedAt": "2026-07-13T00:00:00Z"
+      },
+      {
+        "featureId": "reflection.square",
+        "maxUnlockedStage": 0,
+        "unlockedAtByStage": {},
+        "growthRulesetVersion": "memory-town-growth-rules/1.0.0",
+        "resetEpoch": 0,
+        "updatedAt": "2026-07-13T00:00:00Z"
+      }
+    ],
+    "environment": {
+      "themeId": "town-theme.default",
+      "seasonMode": "auto",
+      "effectiveSeason": "autumn",
+      "timeMode": "night",
+      "weatherVisual": "clear",
+      "motionLevel": "reduced",
+      "soundEnabled": false
+    }
+  },
+  "expected": {
+    "displayStages": [
+      { "featureId": "shelf.movie", "candidateStage": 0, "previousMaxUnlockedStage": 2, "displayStage": 2, "unlockEvent": false },
+      { "featureId": "shelf.story", "candidateStage": 2, "previousMaxUnlockedStage": 1, "displayStage": 2, "unlockEvent": true },
+      { "featureId": "shelf.food", "candidateStage": 1, "previousMaxUnlockedStage": 1, "displayStage": 1, "unlockEvent": false },
+      { "featureId": "box.travel", "candidateStage": 1, "previousMaxUnlockedStage": 0, "displayStage": 1, "unlockEvent": true },
+      { "featureId": "system.inbox", "candidateStage": 1, "previousMaxUnlockedStage": 1, "displayStage": 1, "unlockEvent": false },
+      { "featureId": "reflection.square", "candidateStage": 1, "previousMaxUnlockedStage": 0, "displayStage": 1, "unlockEvent": true }
+    ],
+    "unlockEvents": [
+      { "featureId": "shelf.story", "fromStage": 1, "toStage": 2 },
+      { "featureId": "box.travel", "fromStage": 0, "toStage": 1 },
+      { "featureId": "reflection.square", "fromStage": 0, "toStage": 1 }
+    ],
+    "renderedStructures": [
+      { "instanceRef": "seed:structure-cinema-main", "featureId": "shelf.movie", "variantKey": "stage-2", "route": "/shelves/movies" },
+      { "instanceRef": "seed:structure-story-house-main", "featureId": "shelf.story", "variantKey": "stage-2", "route": "/shelves/stories" },
+      { "instanceRef": "seed:structure-market-main", "featureId": "shelf.food", "variantKey": "stage-1", "route": "/shelves/food" },
+      { "instanceRef": "seed:structure-port-main", "featureId": "box.travel", "variantKey": "stage-1", "route": "/boxes/travel" },
+      { "instanceRef": "seed:structure-warehouse-main", "featureId": "system.inbox", "variantKey": "stage-1", "route": "/inbox" },
+      { "instanceRef": "seed:structure-central-square", "featureId": "reflection.square", "variantKey": "stage-1", "route": "/reflection" }
+    ],
+    "environment": {
+      "themeId": "town-theme.default",
+      "effectiveSeason": "autumn",
+      "timeMode": "night",
+      "weatherVisual": "clear",
+      "motionLevel": "reduced",
+      "soundEnabled": false
+    },
+    "privacyAssertions": {
+      "forbiddenKeys": ["title", "personName", "rawNote", "privateUrl", "preciseLocation", "chatBody"],
+      "rawMemoryRecordCount": 0
+    }
+  }
+}
