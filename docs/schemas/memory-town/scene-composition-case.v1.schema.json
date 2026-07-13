@@ -1,0 +1,164 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/memory-town/scene-composition-case.v1.schema.json",
+  "title": "Memory Town Scene Composition Case v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "caseId", "caseVersion", "references", "input", "expected"],
+  "properties": {
+    "$schema": { "const": "https://memory-os.example/schemas/memory-town/scene-composition-case.v1.schema.json" },
+    "caseId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+    "caseVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" },
+    "references": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["featureRegistry", "mapDefinition", "objectCatalog", "layoutTemplate"],
+      "properties": {
+        "featureRegistry": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "mapDefinition": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "objectCatalog": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "layoutTemplate": { "type": "string", "minLength": 1, "maxLength": 256 }
+      }
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["layout", "featureProjection", "featureProgress", "environment"],
+      "properties": {
+        "layout": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["layoutId", "layoutRevision", "templateId", "templateVersion"],
+          "properties": {
+            "layoutId": { "type": "string", "minLength": 1, "maxLength": 160 },
+            "layoutRevision": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" },
+            "templateId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+            "templateVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" }
+          }
+        },
+        "featureProjection": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["featureId", "eligibleItemCount", "recentDelta", "candidateStage", "badges", "route"],
+            "properties": {
+              "featureId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+              "eligibleItemCount": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" },
+              "recentDelta": { "type": "integer", "minimum": -1000000, "maximum": 1000000 },
+              "candidateStage": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" },
+              "badges": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": { "enum": ["new", "continued", "capsule"] }
+              },
+              "route": { "type": "string", "pattern": "^/[a-z0-9/_-]+$", "maxLength": 256 }
+            }
+          }
+        },
+        "featureProgress": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["featureId", "maxUnlockedStage", "unlockedAtByStage", "growthRulesetVersion", "resetEpoch", "updatedAt"],
+            "properties": {
+              "featureId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+              "maxUnlockedStage": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" },
+              "unlockedAtByStage": {
+                "type": "object",
+                "propertyNames": { "pattern": "^[0-9]+$" },
+                "additionalProperties": { "$ref": "core.v1.schema.json#/$defs/UtcTimestamp" }
+              },
+              "growthRulesetVersion": { "type": "string", "minLength": 1, "maxLength": 128 },
+              "resetEpoch": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" },
+              "updatedAt": { "$ref": "core.v1.schema.json#/$defs/UtcTimestamp" }
+            }
+          }
+        },
+        "environment": { "$ref": "#/$defs/Environment" }
+      }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["displayStages", "unlockEvents", "renderedStructures", "environment", "privacyAssertions"],
+      "properties": {
+        "displayStages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["featureId", "candidateStage", "previousMaxUnlockedStage", "displayStage", "unlockEvent"],
+            "properties": {
+              "featureId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+              "candidateStage": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" },
+              "previousMaxUnlockedStage": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" },
+              "displayStage": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" },
+              "unlockEvent": { "type": "boolean" }
+            }
+          }
+        },
+        "unlockEvents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["featureId", "fromStage", "toStage"],
+            "properties": {
+              "featureId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+              "fromStage": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" },
+              "toStage": { "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger" }
+            }
+          }
+        },
+        "renderedStructures": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["instanceRef", "featureId", "variantKey", "route"],
+            "properties": {
+              "instanceRef": { "type": "string", "minLength": 1, "maxLength": 160 },
+              "featureId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+              "variantKey": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+              "route": { "type": "string", "pattern": "^/[a-z0-9/_-]+$", "maxLength": 256 }
+            }
+          }
+        },
+        "environment": { "$ref": "#/$defs/Environment" },
+        "privacyAssertions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["forbiddenKeys", "rawMemoryRecordCount"],
+          "properties": {
+            "forbiddenKeys": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": { "type": "string", "minLength": 1, "maxLength": 128 }
+            },
+            "rawMemoryRecordCount": { "const": 0 }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "Environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["themeId", "effectiveSeason", "timeMode", "weatherVisual", "motionLevel", "soundEnabled"],
+      "properties": {
+        "themeId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "seasonMode": { "enum": ["auto", "manual"] },
+        "effectiveSeason": { "enum": ["spring", "summer", "autumn", "winter"] },
+        "timeMode": { "enum": ["day", "evening", "night"] },
+        "weatherVisual": { "enum": ["clear", "rain", "snow"] },
+        "motionLevel": { "enum": ["off", "reduced", "full"] },
+        "soundEnabled": { "type": "boolean" }
+      }
+    }
+  }
+}
