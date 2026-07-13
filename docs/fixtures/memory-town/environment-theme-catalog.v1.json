@@ -1,0 +1,82 @@
+{
+  "$schema": "https://memory-os.example/schemas/memory-town/environment-theme-catalog.v1.schema.json",
+  "catalogId": "memory-town.environment-theme-catalog",
+  "catalogVersion": 1,
+  "themes": [
+    {
+      "themeId": "town-theme.default",
+      "status": "contract_locked_visual_pending",
+      "displayNameKey": "memoryTown.theme.default",
+      "requiresPreciseLocation": false,
+      "requiresWeatherApi": false,
+      "supportedSeasons": ["spring", "summer", "autumn", "winter"],
+      "supportedTimeModes": ["day", "evening", "night"],
+      "supportedWeatherVisuals": ["clear", "rain", "snow"],
+      "defaultPreferences": {
+        "seasonMode": "auto",
+        "timeMode": "day",
+        "weatherVisual": "clear",
+        "motionLevel": "reduced",
+        "soundEnabled": false
+      },
+      "paletteTokens": {
+        "day": "town.palette.default.day",
+        "evening": "town.palette.default.evening",
+        "night": "town.palette.default.night"
+      },
+      "seasonOverlaySets": {
+        "spring": "town.overlay-set.default.spring",
+        "summer": "town.overlay-set.default.summer",
+        "autumn": "town.overlay-set.default.autumn",
+        "winter": "town.overlay-set.default.winter"
+      },
+      "weatherOverlaySets": {
+        "clear": "town.weather-set.default.clear",
+        "rain": "town.weather-set.default.rain",
+        "snow": "town.weather-set.default.snow"
+      },
+      "ambientProfiles": {
+        "motionOff": "town.ambient.default.off",
+        "motionReduced": "town.ambient.default.reduced",
+        "motionFull": "town.ambient.default.full"
+      },
+      "soundProfiles": {
+        "disabled": "town.sound.default.off",
+        "enabled": "town.sound.default.quiet"
+      },
+      "rules": {
+        "unusedTownNeverDecays": true,
+        "noRecordPeriodNeverDarkensTown": true,
+        "weatherVisualDoesNotClaimRealWeather": true,
+        "automaticSoundPlayback": false,
+        "respectReducedMotion": true,
+        "respectLowPowerMode": true
+      }
+    }
+  ],
+  "seasonResolver": {
+    "resolverId": "town-season-resolver.northern-calendar-default",
+    "status": "product_candidate",
+    "requiresLocation": false,
+    "defaultHemisphere": "northern",
+    "manualOverrideAllowed": true,
+    "ranges": [
+      { "season": "spring", "startMonthDay": "03-01", "endMonthDay": "05-31" },
+      { "season": "summer", "startMonthDay": "06-01", "endMonthDay": "08-31" },
+      { "season": "autumn", "startMonthDay": "09-01", "endMonthDay": "11-30" },
+      { "season": "winter", "startMonthDay": "12-01", "endMonthDay": "02-29" }
+    ]
+  },
+  "timeResolver": {
+    "resolverId": "town-time-resolver.device-local-default",
+    "status": "product_candidate",
+    "requiresPreciseLocation": false,
+    "usesDeviceLocalTime": true,
+    "manualOverrideAllowed": true,
+    "ranges": [
+      { "timeMode": "day", "startHourInclusive": 6, "endHourExclusive": 17 },
+      { "timeMode": "evening", "startHourInclusive": 17, "endHourExclusive": 20 },
+      { "timeMode": "night", "startHourInclusive": 20, "endHourExclusive": 6 }
+    ]
+  }
+}
