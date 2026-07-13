@@ -7,156 +7,178 @@
       "fixtureId": "memory-town.feature-registry.v1",
       "path": "docs/fixtures/memory-town/feature-registry.v1.json",
       "schemaId": "https://memory-os.example/schemas/memory-town/feature-registry.v1.schema.json",
-      "status": "contract_locked",
-      "dependencies": ["memory-town.object-catalog.v1"],
-      "lockedAspects": ["feature_ids", "routes", "privacy_aggregation_policy", "non_shrinking_stage_policy"],
-      "prototypeAspects": ["stage_threshold_numbers"]
+      "status": "contract_locked_thresholds_candidate",
+      "dependsOn": ["memory-town.object-catalog.v1"],
+      "locked": ["feature_ids", "routes", "privacy_aggregation", "non_shrinking_policy"],
+      "prototype": ["threshold_numbers"]
     },
     {
       "fixtureId": "memory-town.map-definition.main-island.v1",
       "path": "docs/fixtures/memory-town/map-definition.main-island.v1.json",
       "schemaId": "https://memory-os.example/schemas/memory-town/map-definition.v1.schema.json",
       "status": "prototype_candidate",
-      "dependencies": [],
-      "lockedAspects": ["coordinate_axes", "logical_grid", "parcel_ids", "holding_area_without_magic_coordinate"],
-      "prototypeAspects": ["grid_dimensions", "parcel_dimensions", "terrain_regions", "expansion_zone_dimensions"]
+      "dependsOn": [],
+      "locked": ["coordinate_axes", "logical_grid", "parcel_ids", "stored_holding_area"],
+      "prototype": ["map_dimensions", "parcel_dimensions", "terrain_regions", "expansion_zones"]
     },
     {
       "fixtureId": "memory-town.growth-envelope-catalog.v1",
       "path": "docs/fixtures/memory-town/growth-envelope-catalog.v1.json",
       "schemaId": "https://memory-os.example/schemas/memory-town/growth-envelope-catalog.v1.schema.json",
-      "status": "prototype_candidate_contract_shape_locked",
-      "dependencies": ["memory-town.object-catalog.v1"],
-      "lockedAspects": ["cell_class_separation", "entrance_stability", "path_coexistence", "overlay_slot_persistence", "stage_publish_gate"],
-      "prototypeAspects": ["max_solid_cells", "visual_overflow_cells", "clearance_cells", "access_path_cells"]
+      "status": "contract_shape_locked_cells_candidate",
+      "dependsOn": ["memory-town.object-catalog.v1"],
+      "locked": ["cell_class_separation", "entrance_stability", "path_coexistence", "overlay_persistence"],
+      "prototype": ["cell_coordinates", "visual_overflow", "clearance", "access_path_cells"]
     },
     {
       "fixtureId": "memory-town.object-catalog.v1",
       "path": "docs/fixtures/memory-town/object-catalog.v1.json",
       "schemaId": "https://memory-os.example/schemas/memory-town/object-catalog.v1.schema.json",
-      "status": "contract_locked_asset_pending_spatial_candidate",
-      "dependencies": ["memory-town.asset-manifest.v1", "memory-town.growth-envelope-catalog.v1"],
-      "lockedAspects": ["definition_ids", "definition_instance_separation", "object_categories", "placement_layers", "building_as_multi_cell_sprite", "growth_envelope_reference"],
-      "prototypeAspects": ["footprint_cells", "depth_anchors", "asset_stage_bounds"]
+      "status": "contract_locked_asset_and_spatial_candidate",
+      "dependsOn": ["memory-town.growth-envelope-catalog.v1", "memory-town.asset-manifest.v1"],
+      "locked": ["definition_ids", "definition_instance_split", "categories", "layers", "multi_cell_structures", "growth_envelope_reference"],
+      "prototype": ["footprints", "depth_anchors", "stage_asset_bounds"]
     },
     {
       "fixtureId": "memory-town.layout-template.main-island.v1",
       "path": "docs/fixtures/memory-town/layout-template.main-island.v1.json",
       "schemaId": "https://memory-os.example/schemas/memory-town/layout-template.v1.schema.json",
       "status": "prototype_candidate",
-      "dependencies": ["memory-town.map-definition.main-island.v1", "memory-town.object-catalog.v1", "memory-town.feature-registry.v1"],
-      "lockedAspects": ["template_versioning", "feature_binding_presence", "path_cells_without_persisted_mask", "overlay_vs_grid_slot_separation"],
-      "prototypeAspects": ["initial_object_positions", "initial_path_shape", "initial_decorations"]
+      "dependsOn": ["memory-town.map-definition.main-island.v1", "memory-town.object-catalog.v1", "memory-town.feature-registry.v1"],
+      "locked": ["versioned_template", "feature_bindings", "path_without_mask", "overlay_grid_slot_split"],
+      "prototype": ["placements", "path_shape", "decorations"]
     },
     {
       "fixtureId": "memory-town.scene-composition.non-shrinking.v1",
       "path": "docs/fixtures/memory-town/scene-composition.non-shrinking.v1.json",
       "schemaId": "https://memory-os.example/schemas/memory-town/scene-composition-case.v1.schema.json",
       "status": "contract_locked",
-      "dependencies": ["memory-town.feature-registry.v1", "memory-town.layout-template.main-island.v1", "memory-town.object-catalog.v1"],
-      "lockedAspects": ["display_stage_max_rule", "unlock_event_only_on_new_max", "environment_separation", "privacy_denylist"],
-      "prototypeAspects": []
+      "dependsOn": ["memory-town.feature-registry.v1", "memory-town.layout-template.main-island.v1", "memory-town.object-catalog.v1"],
+      "locked": ["display_stage_max", "unlock_event", "environment_split", "privacy_denylist"],
+      "prototype": []
     },
     {
       "fixtureId": "memory-town.template-migration.three-way-merge.v1",
       "path": "docs/fixtures/memory-town/migration-three-way-merge.v1.json",
       "schemaId": "https://memory-os.example/schemas/memory-town/migration-case-set.v1.schema.json",
       "status": "contract_locked",
-      "dependencies": ["memory-town.layout-template.main-island.v1"],
-      "lockedAspects": ["three_way_merge", "user_change_preservation", "stored_fallback", "atomic_apply", "rollback_snapshot"],
-      "prototypeAspects": []
+      "dependsOn": ["memory-town.layout-template.main-island.v1"],
+      "locked": ["three_way_merge", "user_change_preservation", "stored_fallback", "atomic_apply", "rollback"],
+      "prototype": []
     },
     {
       "fixtureId": "memory-town.negative-validation-cases.v1",
       "path": "docs/fixtures/memory-town/negative-validation-cases.v1.json",
       "schemaId": "https://memory-os.example/schemas/memory-town/negative-case-set.v1.schema.json",
       "status": "contract_locked",
-      "dependencies": ["memory-town.layout-template.main-island.v1", "memory-town.scene-composition.non-shrinking.v1", "memory-town.command-batches.v1"],
-      "lockedAspects": ["stable_error_codes", "mutation_contract", "invalid_scene_rejection"],
-      "prototypeAspects": []
+      "dependsOn": ["memory-town.layout-template.main-island.v1", "memory-town.scene-composition.non-shrinking.v1", "memory-town.command-batches.v1", "memory-town.issue-code-registry.v1"],
+      "locked": ["mutation_contract", "expected_issue_codes", "invalid_scene_rejection"],
+      "prototype": []
     },
     {
       "fixtureId": "memory-town.command-batches.v1",
       "path": "docs/fixtures/memory-town/command-batches.v1.json",
       "schemaId": "https://memory-os.example/schemas/memory-town/command-batch-case-set.v1.schema.json",
       "status": "contract_locked",
-      "dependencies": [],
-      "lockedAspects": ["atomic_batch", "idempotent_replay", "revision_compare_and_swap", "whole_batch_rollback"],
-      "prototypeAspects": []
+      "dependsOn": ["memory-town.issue-code-registry.v1"],
+      "locked": ["atomic_batch", "idempotent_replay", "revision_cas", "whole_batch_rollback"],
+      "prototype": []
     },
     {
       "fixtureId": "memory-town.asset-manifest.v1",
       "path": "docs/fixtures/memory-town/asset-manifest.v1.json",
       "schemaId": "https://memory-os.example/schemas/memory-town/asset-manifest.v1.schema.json",
       "status": "asset_pending",
-      "dependencies": ["memory-town.object-catalog.v1"],
-      "lockedAspects": ["stable_texture_keys", "fallback_policy", "provenance_required", "no_fake_hash", "no_executable_content"],
-      "prototypeAspects": ["asset_dimensions", "visual_anchors", "hit_polygons", "content_hashes", "atlas_group_limits"]
+      "dependsOn": ["memory-town.object-catalog.v1"],
+      "locked": ["texture_keys", "fallback", "provenance", "no_fake_hash", "no_executable_content"],
+      "prototype": ["dimensions", "anchors", "hit_polygons", "hashes", "atlas_limits"]
     },
     {
       "fixtureId": "memory-town.environment-theme-catalog.v1",
       "path": "docs/fixtures/memory-town/environment-theme-catalog.v1.json",
       "schemaId": "https://memory-os.example/schemas/memory-town/environment-theme-catalog.v1.schema.json",
       "status": "product_candidate",
-      "dependencies": ["memory-town.asset-manifest.v1"],
-      "lockedAspects": ["no_precise_location_requirement", "no_real_weather_claim", "sound_off_default", "no_decay", "reduced_motion_support"],
-      "prototypeAspects": ["calendar_season_ranges", "time_ranges", "palette_tokens", "ambient_profiles"]
+      "dependsOn": ["memory-town.asset-manifest.v1"],
+      "locked": ["no_precise_location", "no_real_weather_claim", "sound_off_default", "no_decay", "reduced_motion"],
+      "prototype": ["season_ranges", "time_ranges", "palettes", "ambient_profiles"]
     },
     {
       "fixtureId": "memory-town.determinism-vectors.v1",
       "path": "docs/fixtures/memory-town/deterministic-id-and-canonical-json.v1.json",
       "schemaId": "https://memory-os.example/schemas/memory-town/determinism-vectors.v1.schema.json",
       "status": "contract_locked",
-      "dependencies": [],
-      "lockedAspects": ["id_preimage", "sha256", "first_130_bits", "base32_encoding", "canonical_json_vector"],
-      "prototypeAspects": []
+      "dependsOn": [],
+      "locked": ["nul_preimage", "sha256", "first_130_bits", "base32", "canonical_vector"],
+      "prototype": []
     },
     {
       "fixtureId": "memory-town.reset-cases.v1",
       "path": "docs/fixtures/memory-town/reset-cases.v1.json",
       "schemaId": "https://memory-os.example/schemas/memory-town/reset-case-set.v1.schema.json",
-      "status": "contract_locked",
-      "dependencies": ["memory-town.layout-template.main-island.v1"],
-      "lockedAspects": ["memory_domain_unchanged", "preview_and_confirmation", "snapshot_before_reset", "stored_default", "privacy_reset"],
-      "prototypeAspects": ["reset_copy", "snapshot_retention_duration"]
+      "status": "contract_locked_copy_and_retention_candidate",
+      "dependsOn": ["memory-town.layout-template.main-island.v1", "memory-town.issue-code-registry.v1"],
+      "locked": ["memory_unchanged", "preview", "confirmation", "snapshot", "stored_default", "privacy_reset"],
+      "prototype": ["reset_copy", "snapshot_retention"]
     },
     {
       "fixtureId": "memory-town.export-package.v1",
       "path": "docs/fixtures/memory-town/export-package.v1.json",
       "schemaId": "https://memory-os.example/schemas/memory-town/export-package.v1.schema.json",
       "status": "contract_locked_archive_hash_pending",
-      "dependencies": ["memory-town.feature-registry.v1", "memory-town.map-definition.main-island.v1", "memory-town.object-catalog.v1", "memory-town.layout-template.main-island.v1", "memory-town.asset-manifest.v1"],
-      "lockedAspects": ["separate_sections", "no_asset_binary_default", "reimport_preview", "unsupported_objects_stored", "atomic_import"],
-      "prototypeAspects": ["archive_manifest_hashing", "retention_and_expiry_copy"]
+      "dependsOn": ["memory-town.feature-registry.v1", "memory-town.map-definition.main-island.v1", "memory-town.object-catalog.v1", "memory-town.layout-template.main-island.v1", "memory-town.asset-manifest.v1"],
+      "locked": ["separate_sections", "asset_binaries_excluded", "reimport_preview", "unsupported_stored", "atomic_import"],
+      "prototype": ["archive_hash", "expiry_copy"]
     },
     {
       "fixtureId": "memory-town.persistence-table-contract.v1",
       "path": "docs/fixtures/memory-town/persistence-table-contract.v1.json",
       "schemaId": "https://memory-os.example/schemas/memory-town/persistence-table-contract.v1.schema.json",
       "status": "contract_locked",
-      "dependencies": [],
-      "lockedAspects": ["global_vs_user_tables", "user_id_on_all_user_tables", "rls_fail_closed", "non_owner_app_role", "account_deletion_inclusion"],
-      "prototypeAspects": ["snapshot_retention_period", "physical_storage_format"]
+      "dependsOn": [],
+      "locked": ["global_user_split", "user_id", "rls", "non_owner_app_role", "account_deletion"],
+      "prototype": ["snapshot_retention", "physical_storage"]
     },
     {
       "fixtureId": "memory-town.rls-negative-cases.v1",
       "path": "docs/fixtures/memory-town/rls-negative-cases.v1.json",
       "schemaId": "https://memory-os.example/schemas/memory-town/rls-negative-case-set.v1.schema.json",
       "status": "contract_locked",
-      "dependencies": ["memory-town.persistence-table-contract.v1"],
-      "lockedAspects": ["cross_user_denial", "missing_context_fail_closed", "support_default_denied", "global_catalog_read_only", "account_delete_zero_rows"],
-      "prototypeAspects": []
+      "dependsOn": ["memory-town.persistence-table-contract.v1", "memory-town.issue-code-registry.v1"],
+      "locked": ["cross_user_denial", "missing_context_fail_closed", "support_denied", "catalog_read_only", "account_delete_zero_rows"],
+      "prototype": []
+    },
+    {
+      "fixtureId": "memory-town.issue-code-registry.v1",
+      "path": "docs/fixtures/memory-town/issue-code-registry.v1.json",
+      "schemaId": "https://memory-os.example/schemas/memory-town/issue-code-registry.v1.schema.json",
+      "status": "contract_locked",
+      "dependsOn": [],
+      "locked": ["stable_codes", "safe_message_keys", "no_private_value", "severity", "blocks_apply"],
+      "prototype": []
     }
   ],
   "readiness": {
-    "contractLayerStatus": "strong_not_complete",
+    "contractLayerStatus": "strong_ready_for_external_review_not_prototype_validated",
     "implementationAllowed": false,
-    "remainingRequiredBeforeImplementation": [
-      "fixture_schema_validation_harness_plan",
+    "completedDesignLayers": [
+      "architecture_hardening",
+      "concrete_fixtures",
+      "closed_schemas",
+      "schema_registry",
+      "fixture_index",
+      "growth_envelope_contract",
+      "issue_code_registry",
+      "validation_harness_plan",
       "prototype_metric_matrix",
-      "visual_asset_stage_prototypes",
-      "schema_and_fixture_consistency_review",
-      "final_fable_review"
+      "persistence_rls_recovery"
+    ],
+    "remainingBeforeImplementation": [
+      "machine_schema_and_fixture_validation",
+      "visual_stage_asset_prototypes",
+      "mobile_viewport_evidence",
+      "device_performance_evidence",
+      "user_comprehension_test",
+      "external_final_review"
     ]
   }
 }
