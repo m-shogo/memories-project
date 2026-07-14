@@ -25,6 +25,7 @@
     { "schemaId": "https://memory-os.example/schemas/memory-town/linear-feature-graph.v1.schema.json", "repositoryPath": "docs/schemas/memory-town/linear-feature-graph.v1.schema.json" },
     { "schemaId": "https://memory-os.example/schemas/memory-town/district-expansion-state.v1.schema.json", "repositoryPath": "docs/schemas/memory-town/district-expansion-state.v1.schema.json" },
     { "schemaId": "https://memory-os.example/schemas/memory-town/landscape-command-batch.v1.schema.json", "repositoryPath": "docs/schemas/memory-town/landscape-command-batch.v1.schema.json" },
+    { "schemaId": "https://memory-os.example/schemas/memory-town/landscape-v1-projection-case.v1.schema.json", "repositoryPath": "docs/schemas/memory-town/landscape-v1-projection-case.v1.schema.json" },
     { "schemaId": "https://memory-os.example/schemas/memory-town/determinism-vectors.v1.schema.json", "repositoryPath": "docs/schemas/memory-town/determinism-vectors.v1.schema.json" },
     { "schemaId": "https://memory-os.example/schemas/memory-town/reset-case-set.v1.schema.json", "repositoryPath": "docs/schemas/memory-town/reset-case-set.v1.schema.json" },
     { "schemaId": "https://memory-os.example/schemas/memory-town/reset-case-set.v2.schema.json", "repositoryPath": "docs/schemas/memory-town/reset-case-set.v2.schema.json" },
