@@ -1,0 +1,72 @@
+{
+  "$schema": "https://memory-os.example/schemas/memory-town/terrain-region-state.v1.schema.json",
+  "documentId": "memory-town.terrain.round7.valid",
+  "documentVersion": 1,
+  "mapId": "memory-town.map.prototype.round7",
+  "layoutRevision": 7,
+  "regions": [
+    {
+      "terrainRegionId": "terrain.central.grass",
+      "districtInstanceId": "district.central.main",
+      "terrainKind": "grass",
+      "styleProfileId": "terrain.style.spring.grass",
+      "createdBy": "template",
+      "transitionPolicyId": "transition.soft-natural",
+      "cells": [
+        { "cellX": 0, "cellY": 0, "elevationLevel": 0 },
+        { "cellX": 1, "cellY": 0, "elevationLevel": 0 },
+        { "cellX": 2, "cellY": 0, "elevationLevel": 0 },
+        { "cellX": 0, "cellY": 1, "elevationLevel": 0 },
+        { "cellX": 1, "cellY": 1, "elevationLevel": 0 },
+        { "cellX": 2, "cellY": 1, "elevationLevel": 0 },
+        { "cellX": 0, "cellY": 2, "elevationLevel": 0 },
+        { "cellX": 1, "cellY": 2, "elevationLevel": 0 },
+        { "cellX": 2, "cellY": 2, "elevationLevel": 0 }
+      ]
+    },
+    {
+      "terrainRegionId": "terrain.central.plaza",
+      "districtInstanceId": "district.central.main",
+      "terrainKind": "plaza",
+      "styleProfileId": "terrain.style.warm-stone",
+      "createdBy": "template",
+      "lockedBoundary": true,
+      "transitionPolicyId": "transition.plaza-edge",
+      "cells": [
+        { "cellX": 3, "cellY": 1, "elevationLevel": 0 },
+        { "cellX": 3, "cellY": 2, "elevationLevel": 0 },
+        { "cellX": 4, "cellY": 1, "elevationLevel": 0 },
+        { "cellX": 4, "cellY": 2, "elevationLevel": 0 }
+      ]
+    },
+    {
+      "terrainRegionId": "terrain.coast.sand",
+      "districtInstanceId": "district.coast.main",
+      "terrainKind": "sand",
+      "styleProfileId": "terrain.style.spring.sand",
+      "createdBy": "template",
+      "transitionPolicyId": "transition.shoreline",
+      "cells": [
+        { "cellX": 2, "cellY": 6, "elevationLevel": 0 },
+        { "cellX": 3, "cellY": 6, "elevationLevel": 0 },
+        { "cellX": 4, "cellY": 6, "elevationLevel": 0 },
+        { "cellX": 2, "cellY": 7, "elevationLevel": 0 },
+        { "cellX": 3, "cellY": 7, "elevationLevel": 0 },
+        { "cellX": 4, "cellY": 7, "elevationLevel": 0 }
+      ]
+    },
+    {
+      "terrainRegionId": "terrain.coast.shallow",
+      "districtInstanceId": "district.coast.main",
+      "terrainKind": "shallow_water",
+      "styleProfileId": "terrain.style.shallow-sea",
+      "createdBy": "template",
+      "transitionPolicyId": "transition.shallow-sea",
+      "cells": [
+        { "cellX": 2, "cellY": 8, "elevationLevel": 0 },
+        { "cellX": 3, "cellY": 8, "elevationLevel": 0 },
+        { "cellX": 4, "cellY": 8, "elevationLevel": 0 }
+      ]
+    }
+  ]
+}
