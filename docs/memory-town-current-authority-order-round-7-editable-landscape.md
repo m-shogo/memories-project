@@ -14,14 +14,20 @@ locked at design level
 editable landscape architecture:
 locked at design level
 
-terrain / graph schemas:
+Round 7 schemas / positive fixtures / negative fixture shapes:
+targeted validation PASS
+
+repository-wide registry validation:
 pending
 
-structural prototypes:
+semantic topology validator execution:
 pending
 
-new landscape images:
-blocked until structural prototypes
+E0–E9 structural diagrams:
+created, review pending
+
+V0–V4 same-town visual comparison:
+not created
 
 implementation:
 NO-GO
@@ -35,15 +41,17 @@ NO-GO
 2. `memory-town-editable-landscape-model-contract-round-7.md`
 3. `memory-town-landscape-editing-tools-and-phases-round-7.md`
 4. `memory-town-design-readiness-gate-round-7-editable-landscape.md`
-5. `memory-town-editable-landscape-research-round-7.md`
-6. `memory-town-current-authority-order-round-6-attachment-scenery.md`
-7. `memory-town-attachment-first-scenic-design-principles-round-6.md`
-8. `memory-town-bounded-pan-camera-and-scenic-navigation-contract-round-6.md`
-9. `memory-town-current-authority-order-round-5-memory-first.md`
-10. `memory-first-capture-motivation-contract-round-5.md`
-11. `memory-town-full-pattern-adoption-and-permanent-non-goals-round-4.md`
-12. `memory-town-long-term-spatial-model.md`
-13. prior Memory Town contracts and fixtures
+5. `memory-town-editable-landscape-structural-diagrams-e0-e9-round7.md`
+6. `memory-town-round7-targeted-schema-validation-report-2026-07-14.md`
+7. `memory-town-editable-landscape-research-round-7.md`
+8. `memory-town-current-authority-order-round-6-attachment-scenery.md`
+9. `memory-town-attachment-first-scenic-design-principles-round-6.md`
+10. `memory-town-bounded-pan-camera-and-scenic-navigation-contract-round-6.md`
+11. `memory-town-current-authority-order-round-5-memory-first.md`
+12. `memory-first-capture-motivation-contract-round-5.md`
+13. `memory-town-full-pattern-adoption-and-permanent-non-goals-round-4.md`
+14. `memory-town-long-term-spatial-model.md`
+15. prior Memory Town contracts and fixtures
 
 ## Binding decision
 
@@ -71,6 +79,33 @@ World Frame
 + Object Instances
 + Derived Transition / Micro-detail Projection
 ```
+
+## Active Round 7 machine contracts
+
+Schemas:
+
+```txt
+terrain-region-state.v1.schema.json
+linear-feature-graph.v1.schema.json
+district-expansion-state.v1.schema.json
+landscape-command-batch.v1.schema.json
+landscape-v1-projection-case.v1.schema.json
+```
+
+Fixtures:
+
+```txt
+terrain-region-state.round7.valid.v1.json
+linear-feature-graph.round7.valid.v1.json
+district-expansion-state.round7.valid.v1.json
+landscape-command-batch.round7.valid.v1.json
+landscape-v1-projection.round7.valid.v1.json
+issue-code-extension.round7-editable-landscape.v1.json
+negative-validation-cases.round7-editable-landscape.v1.json
+fixture-index.round7-editable-landscape-extension.v1.json
+```
+
+Targeted Draft 2020-12 validation passed for the new schema and fixture shapes. This is not repository-wide semantic validation.
 
 ## Editable target
 
@@ -164,9 +199,9 @@ Phase 6 district expansion
 Phase 7 terrace bands research
 ```
 
-## Image-generation hold
+## Structural diagrams
 
-新しい完成景観画像は、次ができるまで正本判断へ使わない。
+E0–E9 were added as GitHub Mermaid diagrams:
 
 ```txt
 E0 exploded layers
@@ -178,10 +213,45 @@ E5 forest + pinned tree
 E6 building parcel move
 E7 district socket expansion
 E8 area reset
-E9 same layout / different asset style
+E9 same semantic layout / different asset style
 ```
 
-その後:
+These are structural evidence, not final art evidence. Mobile readability and design review remain pending.
+
+## V1 compatibility
+
+New semantic state must project deterministically to the current cell-oriented renderer while it remains in use.
+
+Locked mappings include:
+
+```txt
+forest_floor → grass
+plaza → stone
+shallow_water → water
+marsh → water
+promenade / boardwalk → footpath
+validated road-river crossing → bridge
+```
+
+Never persist as canonical user state:
+
+```txt
+connectionMask
+coastlineMask
+riverbankMask
+derivedSpriteId
+```
+
+## Image-generation hold
+
+V0–V4 final comparison images are still held until the following are complete:
+
+- E0–E9 review
+- repository-integrated schema registry validation
+- semantic validator specification for coast / river / access / sockets
+- missing high-risk negative cases
+
+Then generate the same semantic town as:
 
 ```txt
 V0 initial
@@ -191,27 +261,16 @@ V3 building move
 V4 district expansion
 ```
 
-を同一semantic townとして生成・比較する。
+Do not generate five unrelated attractive towns.
 
-## Compatibility
+## Remaining high-risk negative evidence
 
-Round 7は`memory-town-long-term-spatial-model.md`の以下を将来authoring向けに拡張する。
-
-- cell-only terrain source
-- cell-only path source
-
-Retain:
-
-- logical grid
-- feature / visual separation
-- stable IDs
-- parcels
-- growth envelope
-- command batch
-- revision / CAS
-- Draft Town
-- three-way merge
-- recovery / export / RLS
+- sea or coast edit submerges a building
+- isolated water region saved as a river
+- river violates bank clearance or crosses a structure
+- derived projection moves or deletes a user object
+- district removal exceeds stored-object capacity
+- camera bounds fail after district attach
 
 ## Implementation prohibition
 
@@ -219,10 +278,10 @@ Round 7を理由にrendererやeditor実装を開始しない。
 
 開始前に必要:
 
-- machine schemas / fixtures
-- topology negative tests
-- structural diagrams E0〜E9
-- visual comparisons V0〜V4
+- repository-integrated schema / fixture validation
+- semantic topology validators and exact expected issue codes
+- structural diagram review
+- visual comparisons V0–V4
 - mobile interaction evidence
 - accessibility equivalence
 - performance budget
