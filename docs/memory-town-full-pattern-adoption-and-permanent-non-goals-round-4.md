@@ -15,6 +15,28 @@ implementation: NO-GO
 
 「正式採用」は今すぐ全機能を実装する意味ではない。長期製品方針から落とさず、各Gateを満たした段階で導入する意味である。
 
+## Memory-first supremacy
+
+本書の全採用案は、`memory-first-capture-motivation-contract-round-5.md`へ従属する。
+
+```txt
+記憶を残すことが本体。
+町は、保存された記憶が後から見える副次的な結果。
+```
+
+Rules:
+
+- Townを育てるための記録を要求しない
+- Town専用のmandatory inputを作らない
+- Capture / Search / Privacy / ExportをTown milestoneより優先する
+- 保存直後はMemory acknowledgementをTown演出より先に見せる
+- next stage件数、progress bar、daily capture questを出さない
+- 無意味なrecord水増しでTownが成長しない
+- Town OFFでもMemory OSのcore utilityは同一
+- Town滞在時間だけを目的にした機能を作らない
+
+Townは保存動機を補助してよいが、報酬装置にはしない。
+
 ## Fully adopted patterns
 
 ### P0 — 初期prototypeと基盤設計へ必ず含める
@@ -50,10 +72,15 @@ P2は研究候補ではなく、長期方向として採用済み。ただし次
 - no FOMO / no reward
 - accessibility equivalent
 - performance budget
+- Memory-first test通過
 
 ## Product sentence
 
 ```txt
+ユーザーは残したい記憶を選ぶ。
+保存された記憶は、自分の棚として整う。
+町は、その積み重ねを静かに映す。
+
 ユーザーは大きな意図を選ぶ。
 町は小さな細部を静かに整える。
 試す時は本番を壊さない。
@@ -88,6 +115,10 @@ P2は研究候補ではなく、長期方向として採用済み。ただし次
 - 建築待ち時間
 - 成長加速課金
 - 公開を前提とした町評価
+- next stageまでの件数表示
+- 建物成長progress bar
+- Town成長目的のcapture prompt
+- Town専用mandatory record field
 
 ## Why these are rejected
 
@@ -111,6 +142,10 @@ P2は研究候補ではなく、長期方向として採用済み。ただし次
 
 共有はshare-safeな明示操作だけ。公開feed、フォロワー数、反応数を中心にしない。
 
+### 6. 保存行為をTown farmingへ変えない
+
+本来残したくない記録、duplicate、空データ、AI生成fillerをTown成長のために作らせない。
+
 ## Change-control rule
 
 恒久的非採用項目を将来導入する提案は、通常のfeature提案では扱わない。以下をすべて必要とする。
@@ -129,5 +164,7 @@ P2は研究候補ではなく、長期方向として採用済み。ただし次
 - Round 3のMT-ADOPT-001〜013をすべてactive design decisionとする
 - P2もcandidate表記を廃止し、adopted-futureへ変更する
 - 実装順はP0 → P1 → P2を維持する
+- すべてのTown proposalにMemory-first testを適用する
+- capture prototypeはTown reactionなしでも成立させる
 - renderer実装許可は別Gateで判断する
 - 本決定だけを理由に実装開始しない
