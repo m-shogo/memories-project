@@ -23,6 +23,13 @@ AI・モデル・サービスが変わっても、ユーザー自身の人生の
 → 必要なら標準形式で持ち出せる
 ```
 
+```txt
+Memory is the product.
+Town is the visible side effect.
+```
+
+ユーザーは町を育てるために人生を記録しない。忘れたくない作品、場所、日常、進行を残し、その積み重ねが後から町として見える。
+
 ### 実用の本体
 
 - Universal Quick Add
@@ -48,7 +55,7 @@ Reset後の新しい積み重ね → 建物の育ち直し
 月・季節 → 装飾と空気の変化
 ```
 
-町はゲーム本体ではなく、見て楽しく機能を覚えやすい「感情的なメニュー」。
+町はゲーム本体ではなく、保存された記憶が後から見える感情的な可視化・入口。
 編集・検索・入力・重要操作は通常のReact / DOM UIで行う。
 
 参考イメージは、**どうぶつの森のように、自分の場所へ愛着を持てる箱庭**。ただし特定作品のUI・art・game economyは複製しない。
@@ -80,6 +87,38 @@ React / DOM UI
 ---
 
 ## Memory Town Current Status
+
+### Round 5 — Memory-first hierarchy
+
+Townの全採用案は、記憶保存の価値へ従属する。
+
+```txt
+1. Capture / Import
+2. Retrieval / Search / Update
+3. Privacy / Safety / Portability
+4. Reflection / Resurfacing
+5. Town visualization
+6. Town customization / editor
+```
+
+保存体験の順番:
+
+```txt
+1. 保存した記憶の確認
+2. 棚・進行への反映
+3. optionalな小さなTown反応
+4. 次の実用的な操作
+```
+
+禁止:
+
+- あと何件で建物が育つかの表示
+- 建物成長progress bar
+- daily capture quest
+- Townを育てるための保存文言
+- duplicate / filler / AI生成fake recordによる成長
+- Town専用mandatory tag / category
+- bulk Importの報酬爆発
 
 ### Round 1 — Architecture hardening
 
@@ -159,11 +198,12 @@ MT-ADOPT-013 On-demand Memory Window
 今すぐ実装
 ```
 
-P2も長期方針として落とさない。ただし安全・性能・privacy Gateを通過するまで実装しない。
+全13案はMemory-first testへ合格した範囲で導入する。
 
 ### Current verdict
 
 ```txt
+Memory-first authority: locked
 contracts and adoption decisions: completed
 machine validation: pending
 visual assets and viewport evidence: pending
@@ -195,6 +235,7 @@ implementation: NO-GO
 - account deletionでTown state・job・cacheを残さない
 - derived detailsをuser layoutの正本にしない
 - Draft Townはserver validationを迂回しない
+- Town OFFでもCapture / Search / Export能力を変えない
 
 ---
 
@@ -232,6 +273,10 @@ implementation: NO-GO
 - inactivityで住人が去る演出
 - 建築待ち時間
 - 成長加速課金
+- next stageまでの件数表示
+- 建物成長progress bar
+- Town成長目的のcapture prompt
+- Town専用mandatory record field
 - AI恋人・AI家族・故人再現
 - 人格診断・幸福度評価
 - multiplayer town
@@ -251,20 +296,35 @@ PERFECT DAYS 見た
 鎌倉のカレー屋 行きたい
 ```
 
-保存前にImport Previewを表示し、保存後は棚と町の変化を見せる。
+保存前にImport Previewを表示する。
+
+保存後は次の順で見せる。
+
+```txt
+保存した内容
+→ 入った棚・進行
+→ optionalな小さな町の反応
+→ 棚を見る / 続きを更新 / 閉じる
+```
+
 API connectorや大規模Importは、安全なPreview・Policy Evaluation・token管理・Export設計が成立した後に追加する。
 
 ---
 
 ## Current Authoritative Docs
 
-### Memory Town Round 4 — 最初に読む
+### Memory Town Round 5 — 最初に読む
 
-1. [Full Pattern Adoption and Permanent Non-goals](docs/memory-town-full-pattern-adoption-and-permanent-non-goals-round-4.md)
-2. [Current Authority Order — Round 3 / 4](docs/memory-town-current-authority-order-round-3-box-garden-patterns.md)
-3. [Adopted Box-Garden Patterns](docs/memory-town-adopted-box-garden-patterns-round-3.md)
-4. [Design Readiness Gate — Box-Garden Patterns](docs/memory-town-design-readiness-gate-round-3-box-garden-patterns.md)
-5. [Round 4 Handoff](docs/next-chat-memory-town-round-4-full-adoption-addendum.md)
+1. [Current Authority Order — Round 5 Memory-first](docs/memory-town-current-authority-order-round-5-memory-first.md)
+2. [Memory-first Capture Motivation Contract](docs/memory-first-capture-motivation-contract-round-5.md)
+3. [Full Pattern Adoption and Permanent Non-goals](docs/memory-town-full-pattern-adoption-and-permanent-non-goals-round-4.md)
+4. [Round 5 Handoff](docs/next-chat-memory-town-round-5-memory-first-addendum.md)
+
+### Memory Town Round 3 / 4
+
+- [Current Authority Order — Round 3 / 4](docs/memory-town-current-authority-order-round-3-box-garden-patterns.md)
+- [Adopted Box-Garden Patterns](docs/memory-town-adopted-box-garden-patterns-round-3.md)
+- [Design Readiness Gate — Box-Garden Patterns](docs/memory-town-design-readiness-gate-round-3-box-garden-patterns.md)
 
 ### Memory Town Round 2 Environment
 
@@ -321,32 +381,38 @@ docs/fixtures/memory-town/fixture-index.round2-environment-extension.v1.json
 ## Current Implementation Order
 
 ```txt
-1. Round 1 / 2 schema and fixture machine validation
-2. Derived-detail rule catalog
-3. Draft Town revision / expiry / atomic apply contract
-4. Negative-space metric candidates
-5. Postcard privacy projection
-6. Ambient-nature shortlist and emotional-safety contract
-7. District visual token brief
-8. Personal-display catalog
-9. Quiet Surprise deterministic fixture
-10. One-tap Beautify safe-slot / undo fixture
-11. Memory Window privacy / consent / disclosure contract
-12. Environment-inclusive P0〜P21 static visual prototype
-13. Four time-mode palette roughs
-14. Memory Tree Stage 0〜2 × four-season roughs
-15. Beach / port / Tree placement comparison
-16. Six viewport / fallback / accessibility evidence
-17. Permanent non-goal documentation scan
-18. External multidisciplinary review
-19. Critical finding correction
-20. Memory Town implementation authorization judgment
-21. Spatial domain foundation
-22. Feature Progress / Layout / Environment composition
-23. Town persistence / RLS / recovery skeleton
-24. PixiJS / WebGL renderer adapter
-25. Import → Feature unlock → Town feedback
-26. User editor only after transaction / concurrency / demand gates
+1. Memory-first save confirmation prototype
+2. Quiet Town response ON / OFF comparison
+3. Town OFF / static / list mode core-utility equivalence
+4. Duplicate / filler growth exclusion contract
+5. Bulk Import summary reaction contract
+6. Home hierarchy comparison
+7. Round 1 / 2 schema and fixture machine validation
+8. Derived-detail rule catalog
+9. Draft Town revision / expiry / atomic apply contract
+10. Negative-space metric candidates
+11. Postcard privacy projection
+12. Ambient-nature shortlist and emotional-safety contract
+13. District visual token brief
+14. Personal-display catalog
+15. Quiet Surprise deterministic fixture
+16. One-tap Beautify safe-slot / undo fixture
+17. Memory Window privacy / consent / disclosure contract
+18. Environment-inclusive P0〜P21 static visual prototype
+19. Four time-mode palette roughs
+20. Memory Tree Stage 0〜2 × four-season roughs
+21. Beach / port / Tree placement comparison
+22. Six viewport / fallback / accessibility evidence
+23. Permanent non-goal documentation scan
+24. External multidisciplinary review
+25. Critical finding correction
+26. Memory Town implementation authorization judgment
+27. Spatial domain foundation
+28. Feature Progress / Layout / Environment composition
+29. Town persistence / RLS / recovery skeleton
+30. PixiJS / WebGL renderer adapter
+31. Import → Feature unlock → Town feedback
+32. User editor only after transaction / concurrency / demand gates
 ```
 
 ---
@@ -354,8 +420,11 @@ docs/fixtures/memory-town/fixture-index.round2-environment-extension.v1.json
 ## Product Statement
 
 ```txt
+記憶を入れたいと思えることが先。
 保存したものが棚になる。
-棚の機能が建物へ結びつく。
+必要な時に探せて、続きを更新できる。
+町は、その積み重ねが後から見える副次的な結果。
+
 通常削除では、解除した成長を罰のように失わせない。
 明示Resetでは、現在の記録を残したまま町を育て直せる。
 配置と記憶は別々に守られる。
