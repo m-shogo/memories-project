@@ -1,0 +1,223 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/memory-town/landscape-command-batch.v1.schema.json",
+  "title": "Memory Town Landscape Command Batch v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "batchId",
+    "expectedLayoutRevision",
+    "clientSessionId",
+    "createdAt",
+    "commands"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "https://memory-os.example/schemas/memory-town/landscape-command-batch.v1.schema.json"
+    },
+    "batchId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "expectedLayoutRevision": {
+      "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger"
+    },
+    "clientSessionId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "createdAt": {
+      "$ref": "core.v1.schema.json#/$defs/UtcTimestamp"
+    },
+    "commands": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 500,
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/PaintTerrainCommand" },
+          { "$ref": "#/$defs/DrawPathCommand" },
+          { "$ref": "#/$defs/DrawWaterCommand" },
+          { "$ref": "#/$defs/PaintVegetationCommand" },
+          { "$ref": "#/$defs/MoveObjectCommand" },
+          { "$ref": "#/$defs/AttachDistrictCommand" },
+          { "$ref": "#/$defs/RemoveDistrictCommand" },
+          { "$ref": "#/$defs/ChangeStyleProfileCommand" }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "InlineNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodeId", "position", "nodeKind"],
+      "properties": {
+        "nodeId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "position": { "$ref": "core.v1.schema.json#/$defs/TownGridPosition" },
+        "nodeKind": { "enum": ["endpoint", "junction", "crossing", "source", "outlet"] }
+      }
+    },
+    "InlineSegment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["segmentId", "fromNodeId", "toNodeId", "controlPoints", "widthProfileId", "styleProfileId"],
+      "properties": {
+        "segmentId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "fromNodeId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "toNodeId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "controlPoints": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "$ref": "core.v1.schema.json#/$defs/TownGridPosition" }
+        },
+        "widthProfileId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "styleProfileId": { "$ref": "core.v1.schema.json#/$defs/StableId" }
+      }
+    },
+    "PaintTerrainCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commandId", "type", "districtInstanceId", "terrainRegionId", "terrainKind", "styleProfileId", "mode", "cells"],
+      "properties": {
+        "commandId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "type": { "const": "paint_terrain" },
+        "districtInstanceId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "terrainRegionId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "terrainKind": { "enum": ["grass", "soil", "sand", "stone", "forest_floor", "plaza", "shallow_water", "marsh"] },
+        "styleProfileId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "mode": { "enum": ["replace", "add", "subtract"] },
+        "cells": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5000,
+          "uniqueItems": true,
+          "items": { "$ref": "core.v1.schema.json#/$defs/TownGridPosition" }
+        }
+      }
+    },
+    "DrawPathCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commandId", "type", "pathFeatureId", "kind", "operation", "nodes", "segments", "surfaceProfileId", "accessibilityProfileId"],
+      "properties": {
+        "commandId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "type": { "const": "draw_path" },
+        "pathFeatureId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "kind": { "enum": ["road", "footpath", "promenade", "boardwalk", "plaza_link"] },
+        "operation": { "enum": ["create", "replace", "remove"] },
+        "nodes": { "type": "array", "maxItems": 1024, "items": { "$ref": "#/$defs/InlineNode" } },
+        "segments": { "type": "array", "maxItems": 2048, "items": { "$ref": "#/$defs/InlineSegment" } },
+        "surfaceProfileId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "accessibilityProfileId": { "$ref": "core.v1.schema.json#/$defs/StableId" }
+      }
+    },
+    "DrawWaterCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commandId", "type", "waterFeatureId", "kind", "operation", "nodes", "segments", "widthProfileId", "styleProfileId", "editablePhase"],
+      "properties": {
+        "commandId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "type": { "const": "draw_water" },
+        "waterFeatureId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "kind": { "enum": ["river", "canal", "pond", "stream"] },
+        "operation": { "enum": ["create", "replace", "remove"] },
+        "nodes": { "type": "array", "maxItems": 1024, "items": { "$ref": "#/$defs/InlineNode" } },
+        "segments": { "type": "array", "maxItems": 2048, "items": { "$ref": "#/$defs/InlineSegment" } },
+        "sourceNodeId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "outletNodeId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "widthProfileId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "styleProfileId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "editablePhase": { "enum": ["never", "reshape_later", "user_editable"] }
+      }
+    },
+    "PaintVegetationCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commandId", "type", "vegetationRegionId", "districtInstanceId", "vegetationKind", "density", "speciesProfileId", "mode", "cells", "deterministicSeed"],
+      "properties": {
+        "commandId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "type": { "const": "paint_vegetation" },
+        "vegetationRegionId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "districtInstanceId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "vegetationKind": { "enum": ["forest", "grove", "flower_field", "shrub_border"] },
+        "density": { "enum": ["sparse", "medium", "dense"] },
+        "speciesProfileId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "mode": { "enum": ["replace", "add", "subtract"] },
+        "cells": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5000,
+          "uniqueItems": true,
+          "items": { "$ref": "core.v1.schema.json#/$defs/TownGridPosition" }
+        },
+        "deterministicSeed": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "pinnedObjectInstanceIds": {
+          "type": "array",
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": { "$ref": "core.v1.schema.json#/$defs/StableId" }
+        }
+      }
+    },
+    "MoveObjectCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commandId", "type", "instanceId", "from", "to", "fromOrientation", "toOrientation", "targetParcelId"],
+      "properties": {
+        "commandId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "type": { "const": "move_object" },
+        "instanceId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "from": { "$ref": "core.v1.schema.json#/$defs/TownGridPosition" },
+        "to": { "$ref": "core.v1.schema.json#/$defs/TownGridPosition" },
+        "fromOrientation": { "$ref": "core.v1.schema.json#/$defs/TownOrientation" },
+        "toOrientation": { "$ref": "core.v1.schema.json#/$defs/TownOrientation" },
+        "targetParcelId": { "$ref": "core.v1.schema.json#/$defs/StableId" }
+      }
+    },
+    "AttachDistrictCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commandId", "type", "districtInstanceId", "districtDefinitionId", "districtDefinitionVersion", "districtKind", "origin", "orientation", "fromSocketId", "toSocketId"],
+      "properties": {
+        "commandId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "type": { "const": "attach_district" },
+        "districtInstanceId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "districtDefinitionId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "districtDefinitionVersion": { "$ref": "core.v1.schema.json#/$defs/PositiveInteger" },
+        "districtKind": { "enum": ["central", "culture", "market", "river", "harbor", "forest", "coast", "residential", "reflection", "custom"] },
+        "origin": { "$ref": "core.v1.schema.json#/$defs/TownGridPosition" },
+        "orientation": { "$ref": "core.v1.schema.json#/$defs/TownOrientation" },
+        "fromSocketId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "toSocketId": { "$ref": "core.v1.schema.json#/$defs/StableId" }
+      }
+    },
+    "RemoveDistrictCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commandId", "type", "districtInstanceId", "removalMode"],
+      "properties": {
+        "commandId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "type": { "const": "remove_district" },
+        "districtInstanceId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "removalMode": { "enum": ["reject_if_nonempty", "store_user_objects", "rollback_last_attachment"] }
+      }
+    },
+    "ChangeStyleProfileCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commandId", "type", "targetType", "targetId", "fromStyleProfileId", "toStyleProfileId"],
+      "properties": {
+        "commandId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "type": { "const": "change_style_profile" },
+        "targetType": { "enum": ["terrain_region", "water_feature", "path_feature", "district", "object"] },
+        "targetId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "fromStyleProfileId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+        "toStyleProfileId": { "$ref": "core.v1.schema.json#/$defs/StableId" }
+      }
+    }
+  }
+}
