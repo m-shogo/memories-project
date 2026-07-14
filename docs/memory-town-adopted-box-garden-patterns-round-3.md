@@ -6,10 +6,12 @@
 
 ```txt
 research: completed
-pattern selection: completed
+all pattern adoption: approved
 visual evidence: pending
 implementation: NO-GO
 ```
+
+全13パターンを正式採用する。P0 / P1 / P2は採否ではなく、導入時期と必要Gateの違いを表す。
 
 ## P0 — prototypeへ必ず入れる
 
@@ -79,6 +81,8 @@ MVP editorには入れないが、長期空間モデルとcommand contractはDra
 - quiet garden
 - night cinema
 - warm market
+- silver coast
+- mint morning
 
 Rules:
 - preview一括適用
@@ -87,7 +91,7 @@ Rules:
 - craftingなし
 - limited-time販売なし
 
-## P1 — MVP後半またはTown prototype後
+## P1 — Town基盤成立後に導入
 
 ### MT-ADOPT-006 Private Postcard / Town History
 
@@ -172,7 +176,7 @@ Default禁止:
 - 未処理件数の責め
 - streak
 
-## P2 — evidence後
+## P2 — 正式採用済みの将来機能
 
 ### MT-ADOPT-011 Quiet Surprise
 
@@ -183,6 +187,7 @@ Default禁止:
 - no reward
 - no completion rate
 - deterministic condition
+- accessibility equivalent必須
 
 ### MT-ADOPT-012 One-tap Beautify
 
@@ -194,35 +199,45 @@ safe decoration slotsへ、選択したstyle packを自動配置する。
 - user object非破壊
 - Growth Envelope非侵入
 - access path非遮断
+- Draft Town上で比較可能
 
-### MT-ADOPT-013 On-demand Memory Window — Research only
+### MT-ADOPT-013 On-demand Memory Window
 
-ユーザーが明示的に選んだ写真を、振り返り時だけ小さなsceneとして表示する研究候補。
+ユーザーが明示的に選んだ写真を、振り返り時だけ小さなsceneとして表示する将来機能として正式採用する。
 
-初期採用しない。
-
-Gate:
+実装Gate:
 - explicit consent
 - private processing
 - hallucination disclosure
--人物のsimulation禁止
-- deletion
+- 人物simulation禁止
+- deletion / export
 - source photoへ戻れる
+- auto-generation default禁止
+- raw private contentのTown常駐禁止
 
-## Rejected patterns
+## Permanent rejected patterns
 
-- daily quests
+- daily quests / 毎日の依頼
 - login rewards
 - currency
 - materials / crafting
-- placement score
-- town rank
+- furniture gacha
+- placement score / adjacency score
+- town rank / life rank
 - NPC affection
+- hunger / sickness / care obligation
 - town decay
 - forced cleaning
-- time-limited seasonal reward
+- inactivity penalty
+- time-limited seasonal rewards
+- limited-time decoration FOMO
 - public town feed
-- gacha decoration
+- follower competition
+- streak
+- building wait timers
+- paid growth acceleration
+
+これらの変更には`memory-town-full-pattern-adoption-and-permanent-non-goals-round-4.md`を変更する明示ADRが必要。
 
 ## Required prototype additions
 
@@ -236,11 +251,13 @@ P16 Private Postcard mock
 P17 Draft Town compare / discard
 P18 Quiet Surprise with motion off
 P19 maximum-density sightline debug
+P20 One-tap Beautify preview / undo
+P21 On-demand Memory Window consent / source / deletion mock
 ```
 
 ## Implementation authorization impact
 
-Memory Town implementation remains NO-GO.
+Memory Town implementation remains NO-GO。
 
 Before renderer authorization:
 - derived detail rules must have source-of-truth boundary
@@ -248,3 +265,6 @@ Before renderer authorization:
 - Draft Town must not bypass atomic command / validation
 - postcard privacy projection must be defined
 - ambient nature must pass emotional-safety review
+- Quiet Surprise must have accessibility equivalent
+- One-tap Beautify must be non-destructive
+- Memory Window must pass privacy / consent / hallucination review
