@@ -6,11 +6,14 @@
 
 ```txt
 box-garden research: completed
-pattern adoption decision: completed
+all 13 pattern adoption: approved
+permanent non-goals: locked
 contract integration: partial
 visual prototype: pending
 implementation: NO-GO
 ```
+
+P0 / P1 / P2は採否ではなく導入時期を表す。全13項目は採用済み。
 
 ## R3-1 Derived Micro-details
 
@@ -99,9 +102,21 @@ Status: P1 ADOPTED / PRIVACY AND ASSET PENDING
 - [ ] reset / export behavior
 - [ ] fallback rendering
 
-## R3-8 Quiet Surprise
+## R3-8 Gentle Change Summary
 
-Status: P2 CANDIDATE
+Status: P1 ADOPTED / COPY AND CONTROL PENDING
+
+- [✓] maximum three changes
+- [✓] absence duration prohibited
+- [✓] backlog blame prohibited
+- [✓] optional display
+- [ ] copy prototype
+- [ ] dismissal / disable control
+- [ ] sensitive change filtering
+
+## R3-9 Quiet Surprise
+
+Status: P2 ADOPTED / CONDITION AND ACCESSIBILITY PENDING
 
 - [✓] no FOMO
 - [✓] no reward
@@ -110,18 +125,71 @@ Status: P2 CANDIDATE
 - [ ] deterministic condition fixture
 - [ ] accessibility equivalent
 - [ ] performance budget
+- [ ] motion-off representation
+
+## R3-10 One-tap Beautify
+
+Status: P2 ADOPTED / NON-DESTRUCTIVE COMMAND CONTRACT PENDING
+
+- [✓] style-pack based
+- [✓] preview required
+- [✓] Undo required
+- [✓] user object non-destructive
+- [✓] no currency / crafting
+- [ ] safe-slot catalog
+- [ ] atomic command fixture
+- [ ] access-path validation
+- [ ] Growth Envelope validation
+- [ ] Draft Town integration
+
+## R3-11 On-demand Memory Window
+
+Status: P2 ADOPTED / PRIVACY, CONSENT AND TRUTHFULNESS PENDING
+
+- [✓] user-selected source only
+- [✓] on-demand only
+- [✓] person simulation prohibited
+- [✓] source return required
+- [✓] deletion / export required
+- [ ] explicit-consent flow
+- [ ] private-processing architecture
+- [ ] hallucination disclosure
+- [ ] safe fallback without generation
+- [ ] sensitive-photo policy
+
+## R3-12 Permanent non-goals
+
+Status: LOCKED
+
+- [✓] daily quests rejected
+- [✓] login rewards rejected
+- [✓] currency rejected
+- [✓] materials / crafting rejected
+- [✓] furniture gacha rejected
+- [✓] NPC affection / hunger / sickness rejected
+- [✓] town decay / forced cleaning rejected
+- [✓] score / rank rejected
+- [✓] limited-time reward / FOMO rejected
+- [✓] public Town feed rejected
+- [✓] streak / inactivity penalty rejected
+- [✓] wait timer / paid growth acceleration rejected
+- [ ] automated check that product docs do not introduce these patterns
 
 ## Stop conditions
 
 実装へ進まず設計へ戻る:
+
 - derived detailをuser layout objectとして保存したくなる
 - auto beautifyがuser objectを移動・削除する
 - Draft Townがserver validationを迂回する
 - postcardへraw memory titleや人物名を入れる
 - ambient animalへ好感度や空腹を追加する
 - districtを別ゲームmapへ増殖させる
-- quiet surpriseへ限定報酬を付ける
+- Quiet Surpriseへ限定報酬を付ける
 - decoration catalogへ通貨・素材・gachaを入れる
+- Memory Windowが明示選択なしに写真を処理する
+- Memory Windowが人物を再現・simulationする
+- retention目的でdaily taskやdecayを復活させる
 
 ## Next required evidence
 
@@ -129,9 +197,12 @@ Status: P2 CANDIDATE
 1. derived-detail rule catalog
 2. negative-space visual debug
 3. Draft Town atomic apply fixture
-4. P11〜P19 static prototype scenes
+4. P11〜P21 static prototype scenes
 5. postcard privacy projection
 6. ambient nature emotional-safety review
 7. district identity comparison
-8. external design review
+8. One-tap Beautify non-destructive fixture
+9. Memory Window privacy / consent / disclosure contract
+10. permanent non-goal documentation scan
+11. external design review
 ```
