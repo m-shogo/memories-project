@@ -1,0 +1,251 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/memory-town/linear-feature-graph.v1.schema.json",
+  "title": "Memory Town Linear Feature Graph v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "graphDocumentId",
+    "graphDocumentVersion",
+    "mapId",
+    "layoutRevision",
+    "nodes",
+    "segments",
+    "waterFeatures",
+    "pathFeatures"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "https://memory-os.example/schemas/memory-town/linear-feature-graph.v1.schema.json"
+    },
+    "graphDocumentId": {
+      "$ref": "core.v1.schema.json#/$defs/StableId"
+    },
+    "graphDocumentVersion": {
+      "$ref": "core.v1.schema.json#/$defs/PositiveInteger"
+    },
+    "mapId": {
+      "$ref": "core.v1.schema.json#/$defs/StableId"
+    },
+    "layoutRevision": {
+      "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger"
+    },
+    "nodes": {
+      "type": "array",
+      "maxItems": 20000,
+      "items": {
+        "$ref": "#/$defs/Node"
+      }
+    },
+    "segments": {
+      "type": "array",
+      "maxItems": 40000,
+      "items": {
+        "$ref": "#/$defs/Segment"
+      }
+    },
+    "waterFeatures": {
+      "type": "array",
+      "maxItems": 5000,
+      "items": {
+        "$ref": "#/$defs/WaterFeature"
+      }
+    },
+    "pathFeatures": {
+      "type": "array",
+      "maxItems": 5000,
+      "items": {
+        "$ref": "#/$defs/PathFeature"
+      }
+    }
+  },
+  "$defs": {
+    "NodeKind": {
+      "enum": [
+        "endpoint",
+        "junction",
+        "crossing",
+        "source",
+        "outlet"
+      ]
+    },
+    "Node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nodeId",
+        "position",
+        "nodeKind"
+      ],
+      "properties": {
+        "nodeId": {
+          "$ref": "core.v1.schema.json#/$defs/StableId"
+        },
+        "districtInstanceId": {
+          "$ref": "core.v1.schema.json#/$defs/StableId"
+        },
+        "position": {
+          "$ref": "core.v1.schema.json#/$defs/TownGridPosition"
+        },
+        "nodeKind": {
+          "$ref": "#/$defs/NodeKind"
+        }
+      }
+    },
+    "Segment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "segmentId",
+        "fromNodeId",
+        "toNodeId",
+        "controlPoints",
+        "widthProfileId",
+        "styleProfileId"
+      ],
+      "properties": {
+        "segmentId": {
+          "$ref": "core.v1.schema.json#/$defs/StableId"
+        },
+        "fromNodeId": {
+          "$ref": "core.v1.schema.json#/$defs/StableId"
+        },
+        "toNodeId": {
+          "$ref": "core.v1.schema.json#/$defs/StableId"
+        },
+        "controlPoints": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "$ref": "core.v1.schema.json#/$defs/TownGridPosition"
+          }
+        },
+        "widthProfileId": {
+          "$ref": "core.v1.schema.json#/$defs/StableId"
+        },
+        "styleProfileId": {
+          "$ref": "core.v1.schema.json#/$defs/StableId"
+        }
+      }
+    },
+    "WaterKind": {
+      "enum": [
+        "river",
+        "canal",
+        "pond",
+        "stream"
+      ]
+    },
+    "WaterFeature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "waterFeatureId",
+        "kind",
+        "segmentIds",
+        "widthProfileId",
+        "styleProfileId",
+        "editablePhase"
+      ],
+      "properties": {
+        "waterFeatureId": {
+          "$ref": "core.v1.schema.json#/$defs/StableId"
+        },
+        "kind": {
+          "$ref": "#/$defs/WaterKind"
+        },
+        "segmentIds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10000,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "core.v1.schema.json#/$defs/StableId"
+          }
+        },
+        "sourceNodeId": {
+          "$ref": "core.v1.schema.json#/$defs/StableId"
+        },
+        "outletNodeId": {
+          "$ref": "core.v1.schema.json#/$defs/StableId"
+        },
+        "widthProfileId": {
+          "$ref": "core.v1.schema.json#/$defs/StableId"
+        },
+        "styleProfileId": {
+          "$ref": "core.v1.schema.json#/$defs/StableId"
+        },
+        "flowDirection": {
+          "$ref": "core.v1.schema.json#/$defs/TownOrientation"
+        },
+        "editablePhase": {
+          "enum": [
+            "never",
+            "reshape_later",
+            "user_editable"
+          ]
+        },
+        "districtSocketIds": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "core.v1.schema.json#/$defs/StableId"
+          }
+        }
+      }
+    },
+    "PathKind": {
+      "enum": [
+        "road",
+        "footpath",
+        "promenade",
+        "boardwalk",
+        "plaza_link"
+      ]
+    },
+    "PathFeature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pathFeatureId",
+        "kind",
+        "segmentIds",
+        "surfaceProfileId",
+        "accessibilityProfileId"
+      ],
+      "properties": {
+        "pathFeatureId": {
+          "$ref": "core.v1.schema.json#/$defs/StableId"
+        },
+        "kind": {
+          "$ref": "#/$defs/PathKind"
+        },
+        "segmentIds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10000,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "core.v1.schema.json#/$defs/StableId"
+          }
+        },
+        "surfaceProfileId": {
+          "$ref": "core.v1.schema.json#/$defs/StableId"
+        },
+        "accessibilityProfileId": {
+          "$ref": "core.v1.schema.json#/$defs/StableId"
+        },
+        "districtSocketIds": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "core.v1.schema.json#/$defs/StableId"
+          }
+        }
+      }
+    }
+  }
+}
