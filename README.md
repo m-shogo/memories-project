@@ -79,11 +79,9 @@ React / DOM UI
 
 ---
 
-## Memory Town Round 1 Status
+## Memory Town Current Status
 
-Adversarial Review Round 1で、設計書が揃っていても破綻する重大点を発見し、v2契約へ修正した。
-
-修正済み:
+### Round 1 — Architecture hardening
 
 - current countとReset後のgrowth contributionを分離
 - `growthOriginCursor`と`resetEpoch`でunlock raceを防止
@@ -92,32 +90,9 @@ Adversarial Review Round 1で、設計書が揃っていても破綻する重大
 - Functional / Layered Visual / Cached Snapshot fallbackを分離
 - renderer session generationとAbortController
 - account deletion epochによるworker resurrection防止
-- entranceだけでなくphysical path graphからaccess rootまで検証
-- primary visualが消えてもportal / DOM routeを維持
+- physical path graphからaccess rootまで検証
 
-現在:
-
-```txt
-Round 1 P0 contract correction:
-completed
-
-schemas / fixtures:
-created, machine validation pending
-
-static visual prototype:
-specification completed, evidence pending
-
-implementation:
-NO-GO
-```
-
-古いv1 growth / scene / reset fixtureを実装へ使用しない。
-
----
-
-## Memory Town Round 2 Environment Status
-
-環境デザインを次へ更新した。
+### Round 2 — Environment
 
 ```txt
 朝 / 昼 / 夜 / 夜中
@@ -135,17 +110,10 @@ NO-GO
 正式な4時間帯:
 
 ```txt
-morning
-05:00–10:59 candidate
-
-day
-11:00–16:59 candidate
-
-night
-17:00–22:59 candidate
-
-midnight
-23:00–04:59 candidate
+morning   05:00–10:59 candidate
+day       11:00–16:59 candidate
+night     17:00–22:59 candidate
+midnight  23:00–04:59 candidate
 ```
 
 `evening`は独立した第5状態ではなく、nightへのvisual transitionとして扱う。
@@ -163,26 +131,44 @@ autumn: momiji motif
 winter: dormant but warm, never punitive
 ```
 
-Environment v2とMemory Tree fixtureは作成済みだが、machine validation・visual asset・viewport evidenceは未完了。
+### Round 3 / 4 — Box-garden patterns fully adopted
+
+以下13パターンをすべて正式採用する。P0 / P1 / P2は採否ではなく導入順を表す。
 
 ```txt
-Environment contract:
-completed
-
-Environment v2 schema / fixture:
-created, machine validation pending
-
-Memory Tree schema / fixture:
-created, asset and threshold validation pending
-
-visual prototype:
-environment addendum completed, evidence pending
-
-implementation:
-NO-GO
+MT-ADOPT-001 Derived Micro-details
+MT-ADOPT-002 Draft Town
+MT-ADOPT-003 Negative Space and Sightline
+MT-ADOPT-004 Empty Town Baseline Life
+MT-ADOPT-005 Curated Style Packs
+MT-ADOPT-006 Private Postcard / Town History
+MT-ADOPT-007 District Identity
+MT-ADOPT-008 Ambient Nature
+MT-ADOPT-009 Personal Display Slot
+MT-ADOPT-010 Gentle Change Summary
+MT-ADOPT-011 Quiet Surprise
+MT-ADOPT-012 One-tap Beautify
+MT-ADOPT-013 On-demand Memory Window
 ```
 
-旧Environment v1の`day / evening / night`を実装へ使用しない。
+重要:
+
+```txt
+正式採用
+≠
+今すぐ実装
+```
+
+P2も長期方針として落とさない。ただし安全・性能・privacy Gateを通過するまで実装しない。
+
+### Current verdict
+
+```txt
+contracts and adoption decisions: completed
+machine validation: pending
+visual assets and viewport evidence: pending
+implementation: NO-GO
+```
 
 ---
 
@@ -202,13 +188,13 @@ NO-GO
 - 通常削除で解除済みstageを罰のように縮ませない
 - current countは正確に表示
 - 明示Resetでは現在projection cursorを新しい成長原点にする
-- Reset前の件数を表示しつつ、町はStage 0から育て直せる
 - season / time / cameraをMemory Projectionへ混ぜない
 - environmentはMemoryの重要度・感情・streakを使わない
 - physical pathとsemantic connectionを分離
-- path connection maskは導出値
 - template更新でuser layoutを上書きしない
 - account deletionでTown state・job・cacheを残さない
+- derived detailsをuser layoutの正本にしない
+- Draft Townはserver validationを迂回しない
 
 ---
 
@@ -225,21 +211,33 @@ NO-GO
 - 大きなイベントも押し付けない
 - 本人の記憶を作るサービスであり、本人をシミュレーションしない
 
-## Non-goals
+## Permanent Non-goals
 
-- ChatGPT代替
+箱庭ゲームの定番であっても、以下はMemory Townへ採用しない。
+
+- 毎日の依頼 / daily quests
+- ログイン報酬
+- 通貨
+- 素材集め / crafting
+- 家具ガチャ
+- 住人の好感度
+- 空腹・病気・世話義務
+- 町の荒廃 / decay
+- 片付け義務 / forced cleaning
+- 隣接点数 / placement score
+- 町ランキング / 人生ランキング
+- 期間限定イベント報酬・装飾FOMO
+- 公開Town feed・follower競争
+- streak・未利用ペナルティ
+- inactivityで住人が去る演出
+- 建築待ち時間
+- 成長加速課金
 - AI恋人・AI家族・故人再現
-- 人格診断・幸福度・人生ランキング
-- streakや未利用ペナルティ
-- social feed中心
-- 一般ニュース・無関係な商品推薦
-- MVPからの自由配置editor
-- アバター操作中心
-- 仮想通貨・素材集め・クラフト
-- 建築待ち時間・成長課金
+- 人格診断・幸福度評価
 - multiplayer town
 - 実天気・実潮汐・天文位置の厳密再現
-- environmentを使った感情評価
+
+変更には明示ADR、Memory Constitution整合、wellbeing / privacy / adversarial review、owner承認が必要。
 
 ---
 
@@ -260,28 +258,34 @@ API connectorや大規模Importは、安全なPreview・Policy Evaluation・toke
 
 ## Current Authoritative Docs
 
-### Memory Town Round 2 Environment — 最初に読む
+### Memory Town Round 4 — 最初に読む
 
-1. [Current Authority Order — Round 2 Environment](docs/memory-town-current-authority-order-round-2-environment.md)
-2. [Environment and Seasonal Life Contract](docs/memory-town-environment-and-seasonal-life-contract.md)
-3. [Environment Asset Brief](docs/memory-town-environment-asset-brief.md)
-4. [Static Visual Prototype — Environment Addendum](docs/memory-town-static-visual-prototype-environment-addendum.md)
+1. [Full Pattern Adoption and Permanent Non-goals](docs/memory-town-full-pattern-adoption-and-permanent-non-goals-round-4.md)
+2. [Current Authority Order — Round 3 / 4](docs/memory-town-current-authority-order-round-3-box-garden-patterns.md)
+3. [Adopted Box-Garden Patterns](docs/memory-town-adopted-box-garden-patterns-round-3.md)
+4. [Design Readiness Gate — Box-Garden Patterns](docs/memory-town-design-readiness-gate-round-3-box-garden-patterns.md)
+5. [Round 4 Handoff](docs/next-chat-memory-town-round-4-full-adoption-addendum.md)
+
+### Memory Town Round 2 Environment
+
+- [Current Authority Order — Round 2 Environment](docs/memory-town-current-authority-order-round-2-environment.md)
+- [Environment and Seasonal Life Contract](docs/memory-town-environment-and-seasonal-life-contract.md)
+- [Environment Asset Brief](docs/memory-town-environment-asset-brief.md)
+- [Static Visual Prototype — Environment Addendum](docs/memory-town-static-visual-prototype-environment-addendum.md)
 
 ### Memory Town Round 1
 
-1. [Current Authority Order — Round 1](docs/memory-town-current-authority-order-round-1.md)
-2. [Adversarial Review Round 1](docs/memory-town-adversarial-review-round-1.md)
-3. [Feature Reset and Unlock Race Contract](docs/memory-town-feature-reset-and-unlock-race-contract.md)
-4. [P0 Runtime, Accessibility and Fallback Contract](docs/memory-town-p0-runtime-accessibility-fallback-contract.md)
-5. [Worker Fencing and Account Deletion Contract](docs/memory-town-worker-fencing-and-account-deletion-contract.md)
-6. [Access Connectivity and Binding Recovery Contract](docs/memory-town-access-connectivity-and-binding-recovery-contract.md)
-7. [Static Visual Prototype Specification](docs/memory-town-static-visual-prototype-spec.md)
-8. [Design Readiness Gate — Round 1](docs/memory-town-design-readiness-gate-round-1.md)
+- [Current Authority Order — Round 1](docs/memory-town-current-authority-order-round-1.md)
+- [Adversarial Review Round 1](docs/memory-town-adversarial-review-round-1.md)
+- [Feature Reset and Unlock Race Contract](docs/memory-town-feature-reset-and-unlock-race-contract.md)
+- [P0 Runtime, Accessibility and Fallback Contract](docs/memory-town-p0-runtime-accessibility-fallback-contract.md)
+- [Worker Fencing and Account Deletion Contract](docs/memory-town-worker-fencing-and-account-deletion-contract.md)
+- [Access Connectivity and Binding Recovery Contract](docs/memory-town-access-connectivity-and-binding-recovery-contract.md)
+- [Static Visual Prototype Specification](docs/memory-town-static-visual-prototype-spec.md)
 
-### Memory Town foundation
+### Foundation
 
 - [Architecture Hardening Contract](docs/memory-town-architecture-hardening-contract.md)
-- [Design Audit and Risk Register](docs/memory-town-design-audit-and-risk-register.md)
 - [Long-term Spatial Model](docs/memory-town-long-term-spatial-model.md)
 - [WebGL Architecture](docs/memory-town-webgl-architecture.md)
 - [Visual Design Direction](docs/memory-town-visual-design-direction.md)
@@ -289,7 +293,6 @@ API connectorや大規模Importは、安全なPreview・Policy Evaluation・toke
 - [Growth Envelope and Access Contract](docs/memory-town-growth-envelope-and-access-contract.md)
 - [Persistence, RLS and Recovery Contract](docs/memory-town-persistence-rls-and-recovery-contract.md)
 - [Fixture Validation Harness Plan](docs/memory-town-fixture-validation-harness-plan.md)
-- [Prototype Metric Matrix](docs/memory-town-prototype-metric-matrix.md)
 - [Implementation Roadmap](docs/memory-town-implementation-roadmap.md)
 
 Schema / fixture entrypoints:
@@ -301,86 +304,49 @@ docs/fixtures/memory-town/fixture-index.round1-extension.v1.json
 docs/fixtures/memory-town/fixture-index.round2-environment-extension.v1.json
 ```
 
-Active Environment:
-
-```txt
-docs/schemas/memory-town/environment-theme-catalog.v2.schema.json
-docs/fixtures/memory-town/environment-theme-catalog.v2.json
-docs/schemas/memory-town/memory-tree-catalog.v1.schema.json
-docs/fixtures/memory-town/memory-tree-catalog.v1.json
-```
-
-### Product
+### Product and Safety
 
 - [Current Product Direction](docs/current-product-direction.md)
 - [Concrete MVP Product Scope](docs/concrete-mvp-product-scope.md)
-- [Concrete MVP Ticket Backlog](docs/concrete-mvp-ticket-backlog.md)
 - [Adopted Product Patterns Registry](docs/adopted-product-patterns-registry.md)
-- [Future Anticipation and Following](docs/future-anticipation-and-following-spec.md)
-
-### Core Product and Safety
-
 - [Concept](docs/concept.md)
 - [Product Principles](docs/product-principles.md)
 - [Product Boundaries](docs/product-boundaries.md)
 - [Memory Constitution v1](docs/memory-constitution-v1.md)
-- [Personal Context Model](docs/personal-context-model.md)
-- [Sensitive Response Guardrails](docs/sensitive-response-guardrails.md)
 - [Privacy and Ethics](docs/privacy-and-ethics.md)
 - [Healthy Attachment and Dependency Design](docs/healthy-attachment-and-dependency-design.md)
-
-### Import / Export
-
-- [Import / Export Strategy](docs/import-export-strategy.md)
-- [Import Security Checklist](docs/import-security-checklist.md)
-- [Import Medium Roadmap](docs/import-medium-roadmap.md)
-- [Import Service Adapter Registry](docs/import-service-adapter-registry.md)
-- [Import Preview Mobile Wireframes](docs/import-preview-mobile-wireframes.md)
-- [Export Format Research](docs/export-format-research.md)
-
-### DB Implementation Contracts
-
-- [DB Table Design v1](docs/db-table-design-v1.md)
-- [Migration 001 Foundation Contract](docs/migration-001-foundation-contract.md)
-- [SafeMetadataGuard Spec](docs/safe-metadata-guard-spec.md)
-- [Account Deletion and Tombstone Decision](docs/account-deletion-and-tombstone-decision.md)
-- [RLS Policy and Negative Tests](docs/rls-policy-and-negative-tests.md)
-- [Token Encryption and OAuth Security](docs/token-encryption-and-oauth-security.md)
-- [DB Implementation Preflight Checklist](docs/db-implementation-preflight-checklist.md)
 
 ---
 
 ## Current Implementation Order
 
 ```txt
-1. Synthetic fixtures
-2. Import detection / Preview / policy snapshots
-3. First migration slice and RLS
-4. Universal Paste + Import Preview
-5. Safe Commit
-6. Manga / Anime Vertical Slice
-7. Food regional list
-8. Home / Shelf navigation
-9. Memory Town Round 1 + Environment Round 2 machine contract validation
-10. Environment-inclusive static Memory Town visual prototype
-11. Four time-mode palette roughs
-12. Memory Tree Stage 0〜2 × four-season roughs
-13. Beach / port / Tree placement comparison
-14. Layered fallback and accessibility evidence
-15. External multidisciplinary review
-16. Critical finding correction
-17. Memory Town implementation authorization judgment
-18. Spatial domain foundation
-19. Feature Progress / Layout / Environment composition
-20. Town persistence / RLS / recovery skeleton
-21. PixiJS / WebGL renderer adapter
-22. Import → Feature unlock → Town feedback
-23. Weekly / Month Capsule
-24. Environment / ambient life
-25. Decoration slots
-26. Semantic connection overlays
-27. User editor only after transaction / concurrency / demand gates
-28. API connectors after provider/security gates
+1. Round 1 / 2 schema and fixture machine validation
+2. Derived-detail rule catalog
+3. Draft Town revision / expiry / atomic apply contract
+4. Negative-space metric candidates
+5. Postcard privacy projection
+6. Ambient-nature shortlist and emotional-safety contract
+7. District visual token brief
+8. Personal-display catalog
+9. Quiet Surprise deterministic fixture
+10. One-tap Beautify safe-slot / undo fixture
+11. Memory Window privacy / consent / disclosure contract
+12. Environment-inclusive P0〜P21 static visual prototype
+13. Four time-mode palette roughs
+14. Memory Tree Stage 0〜2 × four-season roughs
+15. Beach / port / Tree placement comparison
+16. Six viewport / fallback / accessibility evidence
+17. Permanent non-goal documentation scan
+18. External multidisciplinary review
+19. Critical finding correction
+20. Memory Town implementation authorization judgment
+21. Spatial domain foundation
+22. Feature Progress / Layout / Environment composition
+23. Town persistence / RLS / recovery skeleton
+24. PixiJS / WebGL renderer adapter
+25. Import → Feature unlock → Town feedback
+26. User editor only after transaction / concurrency / demand gates
 ```
 
 ---
@@ -395,8 +361,8 @@ docs/fixtures/memory-town/memory-tree-catalog.v1.json
 配置と記憶は別々に守られる。
 朝・昼・夜・夜中の光が現在時刻に寄り添う。
 海と波と四季樹が、町へ静かな時間の流れを作る。
-木は記憶の価値ではなく、保存量の粗い積み重ねだけで育つ。
-確定したつながりは、生活道路とは別の光として見える。
-少しずつ、自分の町として手を入れられる。
+ユーザーは大きな意図を選び、町は小さな細部を整える。
+本番を壊さず試せて、過去の町を私的に残せる。
+戻らなくても、町は荒れず、責めず、損をさせない。
 必要な時は、すべて持ち出せる。
 ```
