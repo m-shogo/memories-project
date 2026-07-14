@@ -21,7 +21,7 @@ branch: so
 - existing map origin / coordinatesを拡張時に変更しない
 - free elevation sculptを先に実装しない
 - Draft Town / atomic validation / rollbackを必須にする
-- 新しい完成景観画像はE0〜E9後に作る
+- V0〜V4は同じsemantic townの編集前後として作る
 
 ## Read first
 
@@ -29,9 +29,11 @@ branch: so
 2. `docs/memory-town-editable-landscape-model-contract-round-7.md`
 3. `docs/memory-town-landscape-editing-tools-and-phases-round-7.md`
 4. `docs/memory-town-design-readiness-gate-round-7-editable-landscape.md`
-5. `docs/memory-town-editable-landscape-research-round-7.md`
-6. `docs/memory-town-current-authority-order-round-6-attachment-scenery.md`
-7. `docs/memory-town-current-authority-order-round-5-memory-first.md`
+5. `docs/memory-town-editable-landscape-structural-diagrams-e0-e9-round7.md`
+6. `docs/memory-town-round7-targeted-schema-validation-report-2026-07-14.md`
+7. `docs/memory-town-editable-landscape-research-round-7.md`
+8. `docs/memory-town-current-authority-order-round-6-attachment-scenery.md`
+9. `docs/memory-town-current-authority-order-round-5-memory-first.md`
 
 ## Core decision
 
@@ -61,76 +63,114 @@ World Frame
 - bridge at approved crossing
 - district expansion
 
-## Water boundary
+## Machine contracts created
+
+Schemas:
 
 ```txt
-Distant sea / horizon:
-World Frame
-
-Near sea / coast / beach:
-Editable
-
-River / stream / canal:
-Graph / spline-like semantic route
+terrain-region-state.v1.schema.json
+linear-feature-graph.v1.schema.json
+district-expansion-state.v1.schema.json
+landscape-command-batch.v1.schema.json
+landscape-v1-projection-case.v1.schema.json
 ```
 
-## Expansion
+Fixtures:
 
 ```txt
-existing map
-+ expansion socket
-+ new district
+terrain-region-state.round7.valid.v1.json
+linear-feature-graph.round7.valid.v1.json
+district-expansion-state.round7.valid.v1.json
+landscape-command-batch.round7.valid.v1.json
+landscape-v1-projection.round7.valid.v1.json
+issue-code-extension.round7-editable-landscape.v1.json
+negative-validation-cases.round7-editable-landscape.v1.json
+fixture-index.round7-editable-landscape-extension.v1.json
 ```
 
-District socket kinds:
-
-- land
-- road
-- river
-- coast
-- harbor
-- view
-
-## Editing phases
+Targeted JSON Schema Draft 2020-12 validation:
 
 ```txt
-0 authored town
-1 style / safe slots
-2 vegetation / ground
-3 paths / minor water
-4 coast / river reshape
-5 building relocation
-6 district expansion
-7 terrace bands research
+schemas: PASS
+positive fixtures: PASS
+issue-code extension: PASS
+negative-case shape: PASS
 ```
+
+Repository-wide resolver and semantic topology execution remain pending.
+
+## Structural diagrams created
+
+```txt
+E0 exploded layers
+E1 terrain brush
+E2 coast reshape
+E3 river + bridge
+E4 road + junction
+E5 forest + pinned tree
+E6 building parcel move
+E7 district socket expansion
+E8 area reset / stored object
+E9 same semantic town / different asset style
+```
+
+## V1 compatibility locked
+
+```txt
+forest_floor → grass
+plaza → stone
+shallow_water → water
+marsh → water
+promenade / boardwalk → footpath
+validated road-river crossing → bridge
+```
+
+Do not persist:
+
+```txt
+connectionMask
+coastlineMask
+riverbankMask
+derivedSpriteId
+```
+
+## Negative cases already defined
+
+- terrain region overlap
+- protected plaza edit
+- coast topology hole
+- missing river outlet
+- dangling river segment reference
+- road-river crossing without bridge anchor
+- disconnected primary road
+- district socket kind mismatch
+- district profile mismatch
+- occupied socket reuse
+- expansion moves existing origin
+- stale landscape revision
+- pinned tree subtraction
 
 ## Next correct sequence
 
 ```txt
-1. terrain-region schema v1
-2. linear-feature graph schema v1
-3. district / expansion-socket schema v1
-4. landscape command schema v1
-5. synthetic valid fixture
-6. coast topology negative fixtures
-7. river continuity negative fixtures
-8. expansion compatibility fixtures
-9. v1 cell projection compatibility fixture
-10. E0 exploded layer diagram
-11. E1 ground brush diagram
-12. E2 coast edit diagram
-13. E3 river / bridge diagram
-14. E4 road / junction diagram
-15. E5 forest / pinned tree diagram
-16. E6 building parcel move diagram
-17. E7 district expansion diagram
-18. E8 reset / stored object diagram
-19. E9 asset style swap diagram
-20. V0〜V4 landscape image comparison
-21. mobile gesture prototype
-22. performance / accessibility / adversarial review
-23. unresolved P0 correction
-24. implementation authorization judgment
+1. repository-integrated schema registry validation
+2. semantic validator specification and implementation plan
+3. isolated-water negative case
+4. coast edit building-submersion negative case
+5. river bank-clearance / building-crossing negative cases
+6. derived-detail user-object mutation negative case
+7. district socket compatibility matrix
+8. positive district attach / detach fixture
+9. positive bridge approach fixture
+10. area-reset command schema
+11. E0〜E9 mobile review and correction
+12. V0〜V4 same-town image comparison
+13. mobile gesture prototype
+14. six viewport evidence
+15. PixiJS chunk / memory / low-power budget
+16. accessibility / emotional-safety / adversarial review
+17. unresolved P0 correction
+18. implementation authorization judgment
 ```
 
 ## Current status
@@ -142,17 +182,23 @@ completed
 architecture decision:
 completed
 
-Git contracts:
-committed and pushed
+schemas and fixture shapes:
+created and targeted validation PASS
 
-schemas / fixtures:
-not created
+repository-integrated validation:
+pending
 
-structural diagrams:
-not created
+semantic topology validators:
+pending
 
-new visual images:
+E0–E9 structural diagrams:
+created, review pending
+
+V0–V4 visual images:
 not created by design
+
+mobile interaction prototype:
+not created
 
 implementation:
 NO-GO
