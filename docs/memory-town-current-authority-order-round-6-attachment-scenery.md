@@ -14,6 +14,9 @@ locked at design level
 bounded pan camera:
 adopted for prototype
 
+MemoryDiorama implications:
+reviewed and bounded
+
 visual evidence:
 pending
 
@@ -28,13 +31,14 @@ NO-GO
 1. `memory-town-current-authority-order-round-6-attachment-scenery.md`
 2. `memory-town-attachment-first-scenic-design-principles-round-6.md`
 3. `memory-town-bounded-pan-camera-and-scenic-navigation-contract-round-6.md`
-4. `memory-town-current-authority-order-round-5-memory-first.md`
-5. `memory-first-capture-motivation-contract-round-5.md`
-6. `memory-town-full-pattern-adoption-and-permanent-non-goals-round-4.md`
-7. `memory-town-current-authority-order-round-3-box-garden-patterns.md`
-8. `memory-town-current-authority-order-round-2-environment.md`
-9. `memory-town-current-authority-order-round-1.md`
-10. prior Memory Town contracts and fixtures
+4. `memorydiorama-research-implications-for-memory-town-round-6.md`
+5. `memory-town-current-authority-order-round-5-memory-first.md`
+6. `memory-first-capture-motivation-contract-round-5.md`
+7. `memory-town-full-pattern-adoption-and-permanent-non-goals-round-4.md`
+8. `memory-town-current-authority-order-round-3-box-garden-patterns.md`
+9. `memory-town-current-authority-order-round-2-environment.md`
+10. `memory-town-current-authority-order-round-1.md`
+11. prior Memory Town contracts and fixtures
 
 ## Binding decisions
 
@@ -80,6 +84,23 @@ Prototypeには次を含める。
 - Townのための記憶水増しを誘導しない
 - 川・海をgame economyへ接続しない
 
+### MemoryDiorama boundary
+
+採用する:
+
+- source-grounded cue diversity
+- dynamic water / light / atmosphereが想起を支える可能性
+- glanceable diorama構造
+- original sourceへ戻れるderived cue
+
+採用しない:
+
+- 写真外の出来事を事実として生成
+- 人物simulation
+- inferred locationを確定情報として保存
+- generated sceneをMemory Domainの正本にする
+- false-memory riskを隠す
+
 ## Prototype expansion
 
 ```txt
@@ -117,6 +138,7 @@ Round 6の景観方針を理由にrenderer実装を開始しない。
 - six mobile viewport evidence
 - accessibility equivalence
 - emotional attachment review
+- MemoryDiorama-inspired cue safety review
 - unresolved P0ゼロ
 
 ## Current status
@@ -129,6 +151,12 @@ river / sea / sky direction:
 adopted
 
 bounded pan camera contract:
+created
+
+MemoryDiorama research implications:
+created
+
+Round 6 handoff:
 created
 
 README integration:
