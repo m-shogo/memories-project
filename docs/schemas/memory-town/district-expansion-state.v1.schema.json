@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/memory-town/district-expansion-state.v1.schema.json",
+  "title": "Memory Town District Expansion State v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "documentId",
+    "documentVersion",
+    "mapId",
+    "layoutRevision",
+    "districts",
+    "sockets",
+    "connections"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "https://memory-os.example/schemas/memory-town/district-expansion-state.v1.schema.json"
+    },
+    "documentId": {
+      "$ref": "core.v1.schema.json#/$defs/StableId"
+    },
+    "documentVersion": {
+      "$ref": "core.v1.schema.json#/$defs/PositiveInteger"
+    },
+    "mapId": {
+      "$ref": "core.v1.schema.json#/$defs/StableId"
+    },
+    "layoutRevision": {
+      "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger"
+    },
+    "districts": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1000,
+      "items": {
+        "$ref": "#/$defs/District"
+      }
+    },
+    "sockets": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": {
+        "$ref": "#/$defs/Socket"
+      }
+    },
+    "connections": {
+      "type": "array",
+      "maxItems": 5000,
+      "items": {
+        "$ref": "#/$defs/Connection"
+      }
+    }
+  },
+  "$defs": {
+    "DistrictKind": {
+      "enum": [
+        "central",
+        "culture",
+        "market",
+        "river",
+        "harbor",
+        "forest",
+        "coast",
+        "residential",
+        "reflection",
+        "custom"
+      ]
+    },
+    "SocketKind": {
+      "enum": [
+        "land",
+        "road",
+        "river",
+        "coast",
+        "harbor",
+        "view"
+      ]
+    },
+    "District": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "districtInstanceId",
+        "districtDefinitionId",
+        "districtDefinitionVersion",
+        "districtKind",
+        "origin",
+        "orientation",
+        "attachedSocketIds",
+        "layoutRevisionCreated"
+      ],
+      "properties": {
+        "districtInstanceId": {
+          "$ref": "core.v1.schema.json#/$defs/StableId"
+        },
+        "districtDefinitionId": {
+          "$ref": "core.v1.schema.json#/$defs/StableId"
+        },
+        "districtDefinitionVersion": {
+          "$ref": "core.v1.schema.json#/$defs/PositiveInteger"
+        },
+        "districtKind": {
+          "$ref": "#/$defs/DistrictKind"
+        },
+        "origin": {
+          "$ref": "core.v1.schema.json#/$defs/TownGridPosition"
+        },
+        "orientation": {
+          "$ref": "core.v1.schema.json#/$defs/TownOrientation"
+        },
+        "attachedSocketIds": {
+          "type": "array",
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "core.v1.schema.json#/$defs/StableId"
+          }
+        },
+        "layoutRevisionCreated": {
+          "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger"
+        }
+      }
+    },
+    "Socket": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "socketId",
+        "districtInstanceId",
+        "kind",
+        "position",
+        "outwardDirection",
+        "connectionProfileId"
+      ],
+      "properties": {
+        "socketId": {
+          "$ref": "core.v1.schema.json#/$defs/StableId"
+        },
+        "districtInstanceId": {
+          "$ref": "core.v1.schema.json#/$defs/StableId"
+        },
+        "kind": {
+          "$ref": "#/$defs/SocketKind"
+        },
+        "position": {
+          "$ref": "core.v1.schema.json#/$defs/TownGridPosition"
+        },
+        "outwardDirection": {
+          "$ref": "core.v1.schema.json#/$defs/TownOrientation"
+        },
+        "connectionProfileId": {
+          "$ref": "core.v1.schema.json#/$defs/StableId"
+        },
+        "occupiedByDistrictInstanceId": {
+          "$ref": "core.v1.schema.json#/$defs/StableId"
+        }
+      }
+    },
+    "Connection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "connectionId",
+        "fromSocketId",
+        "toSocketId",
+        "connectedAtLayoutRevision"
+      ],
+      "properties": {
+        "connectionId": {
+          "$ref": "core.v1.schema.json#/$defs/StableId"
+        },
+        "fromSocketId": {
+          "$ref": "core.v1.schema.json#/$defs/StableId"
+        },
+        "toSocketId": {
+          "$ref": "core.v1.schema.json#/$defs/StableId"
+        },
+        "connectedAtLayoutRevision": {
+          "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger"
+        }
+      }
+    }
+  }
+}
