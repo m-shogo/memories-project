@@ -12,42 +12,73 @@ branch: so
 ## Read first
 
 1. `docs/memory-town-current-authority-order-round-8-ios-native.md`
-2. `docs/ios-native-technology-stack-decision-round-8.md`
-3. `docs/memory-town-ios-native-rendering-architecture-round-8.md`
-4. `docs/memory-town-current-authority-order-round-7-editable-landscape.md`
-5. `docs/memory-town-editable-landscape-model-contract-round-7.md`
-6. `docs/memory-town-editable-landscape-structural-diagrams-e0-e9-round7.md`
+2. `docs/memory-os-capture-and-import-surface-authority-round-8.md`
+3. `docs/ios-native-technology-stack-decision-round-8.md`
+4. `docs/memory-town-ios-native-rendering-architecture-round-8.md`
+5. `docs/memory-town-current-authority-order-round-7-editable-landscape.md`
+6. `docs/memory-town-editable-landscape-model-contract-round-7.md`
+7. `docs/memory-town-editable-landscape-structural-diagrams-e0-e9-round7.md`
 
-## Core decision
+## Product hierarchy — do not drift
 
 ```txt
-iOS only
-Swift 6
-SwiftUI
+1. Capture / Import
+2. Retrieval / Search / Update
+3. Privacy / Safety / Portability
+4. Reflection / Resurfacing
+5. Town visualization
+6. Town customization / editor
+```
+
+Memory Town work must never displace Capture / Import readiness.
+
+## Core platform decision
+
+```txt
+Canonical product client:
+iOS native
+
+Daily capture:
+iOS Share Extension
+
+Local export-file import:
+iOS Files / SwiftUI fileImporter
+
+Large JSON / CSV / ZIP migration:
+limited Desktop Web Import Portal
+
+Town renderer:
 SpriteKit
+
+Local database:
 GRDB / SQLite
-Share Extension + App Group
+
+Service source:
 Go API + PostgreSQL + S3-compatible object storage
 ```
 
-Metal is not the first renderer.
+`iOS only` does not mean every bulk migration must happen on an iPhone.
 
-```txt
-SpriteKit first
-→ profile on real devices
-→ direct Metal only for a measured blocker
-```
+The Desktop Web Import Portal is not a general Web version of Memory OS.
 
-## Superseded production assumptions
+Allowed Portal scope:
 
-- React / DOM production app
-- PixiJS production Town renderer
-- browser-first runtime
-- PWA Share Target as core capture
-- CloudKit as canonical service database
-- SwiftData as canonical local database
+- one-time iOS pairing
+- bulk upload
+- archive inspection
+- source adapter selection
+- generic field mapping
+- preview generation
+- rejected-row report
+- migration recovery
 
-Older documents remain useful for semantic state, privacy, layout and rendering boundaries unless they conflict with Round 8.
+Not allowed without a new ADR:
+
+- Web shelf
+- Web Memory Town
+- unrestricted browser search
+- browser-local canonical Memory data
+- shared-PC silent final confirmation
 
 ## Native target topology
 
@@ -68,17 +99,55 @@ Shared through Keychain access group:
 - encryption key material
 - device secret
 
-## Share rule
+## Capture flows
+
+### A. iOS Quick Capture
 
 ```txt
 Share action
-→ intake
-→ preview required
+→ extension validation
+→ App Group intake
+→ main-app preview
 → explicit confirmation
 → Memory record
 ```
 
-Never treat OS Share as final Memory confirmation.
+### B. iOS File Intake
+
+```txt
+Files / fileImporter
+→ JSON / CSV / ZIP validation
+→ local quarantine
+→ source detection
+→ preview
+→ explicit confirmation
+→ Memory record
+```
+
+### C. Desktop Bulk Import
+
+```txt
+iOS app creates one-time pairing
+→ PC browser uploads JSON / CSV / ZIP
+→ quarantine / scan / parse
+→ preview ready
+→ iOS final confirmation
+→ duplicate-safe apply
+```
+
+Capture, upload and parser completion are not final Memory confirmation.
+
+## Superseded production assumptions
+
+- React / DOM production app
+- PixiJS production Town renderer
+- browser-first runtime
+- PWA Share Target as core capture
+- Share Extension as the only import route
+- CloudKit as canonical service database
+- SwiftData as canonical local database
+
+Older documents remain useful for semantic state, privacy, layout and rendering boundaries unless they conflict with Round 8 authority.
 
 ## Town rule
 
@@ -90,52 +159,73 @@ Town semantic state
 
 SpriteKit state is disposable and non-canonical.
 
-## Local data rule
+Metal is not the first renderer.
 
-Use GRDB / SQLite for:
+```txt
+SpriteKit first
+→ profile on real devices
+→ direct Metal only for a measured blocker
+```
 
-- explicit migrations
-- FTS5
-- transactions
-- deterministic export
-- shared App Group coordination
-- recovery inspection
+## Bulk import safety minimum
 
-## Cloud rule
+Before a bulk importer is implementation-ready, require:
 
-Use Go API + PostgreSQL as service source of truth.
-
-CloudKit may only be revisited as an optional non-canonical convenience after an explicit ADR.
+- compressed / expanded size caps
+- archive entry cap
+- nested archive cap
+- compression-ratio cap
+- path traversal rejection
+- symbolic-link rejection
+- MIME / extension / magic-byte checks
+- JSON depth / field-size limits
+- CSV formula-injection handling
+- parser CPU / wall-time budget
+- parser network deny-by-default
+- raw archive expiry / cleanup
+- idempotent apply
+- account deletion fence
 
 ## Next correct sequence
 
 ```txt
-1. iOS project topology contract
-2. ShareIntake schema
-3. App Group writer ownership / locking contract
-4. staged attachment expiry and cleanup
-5. GRDB schema v1
-6. local FTS5 index contract
-7. sync outbox / inbox revision contract
-8. OpenAPI v1 skeleton
-9. account binding and deletion fence
-10. TownSceneSnapshot Swift models
-11. SpriteKit scene adapter fixture
-12. native static Town prototype
-13. bounded pan / tap evidence
-14. water / sky motion full-reduced-off
-15. terrain dirty-chunk edit prototype
+1. Capture surface topology contract
+2. ShareIntake schema and lifecycle fixture
+3. FileIntake JSON / CSV / ZIP schema
+4. one-time PC pairing session contract
+5. upload quarantine and archive-safety fixtures
+6. import source-adapter manifest schema
+7. generic JSON / CSV mapper contract
+8. Import Preview and confirmation schema
+9. App Group writer ownership / locking contract
+10. staged attachment and raw archive expiry / cleanup
+11. GRDB schema v1
+12. local FTS5 index contract
+13. sync outbox / inbox revision contract
+14. OpenAPI import boundary v1
+15. account binding and deletion fence
 16. Share Extension URL / text / image prototype
-17. background upload recovery
-18. accessibility equivalent navigation
-19. performance / privacy / adversarial review
-20. implementation authorization judgment
+17. iOS Files JSON / CSV / ZIP prototype
+18. Desktop Web Import Portal pairing prototype
+19. duplicate-safe bulk apply evidence
+20. TownSceneSnapshot Swift models
+21. SpriteKit scene adapter fixture
+22. native static Town prototype
+23. bounded pan / tap evidence
+24. water / sky motion full-reduced-off
+25. terrain dirty-chunk edit prototype
+26. accessibility equivalent navigation
+27. performance / privacy / adversarial review
+28. implementation authorization judgment
 ```
 
 ## Current status
 
 ```txt
 technology selection:
+complete at design level
+
+Capture / Import surface correction:
 complete at design level
 
 native Town architecture:
@@ -153,10 +243,13 @@ pending
 old WebGL doc deprecation banner:
 pending
 
-native schemas / fixtures:
+Capture / Import schemas and fixtures:
 not created
 
 Xcode project:
+not created
+
+Desktop Import Portal:
 not created
 
 implementation:
