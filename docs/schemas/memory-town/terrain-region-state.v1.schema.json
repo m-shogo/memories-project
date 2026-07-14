@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/memory-town/terrain-region-state.v1.schema.json",
+  "title": "Memory Town Terrain Region State v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "documentId",
+    "documentVersion",
+    "mapId",
+    "layoutRevision",
+    "regions"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "https://memory-os.example/schemas/memory-town/terrain-region-state.v1.schema.json"
+    },
+    "documentId": {
+      "$ref": "core.v1.schema.json#/$defs/StableId"
+    },
+    "documentVersion": {
+      "$ref": "core.v1.schema.json#/$defs/PositiveInteger"
+    },
+    "mapId": {
+      "$ref": "core.v1.schema.json#/$defs/StableId"
+    },
+    "layoutRevision": {
+      "$ref": "core.v1.schema.json#/$defs/NonNegativeInteger"
+    },
+    "regions": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": {
+        "$ref": "#/$defs/TerrainRegion"
+      }
+    }
+  },
+  "$defs": {
+    "TerrainKind": {
+      "enum": [
+        "grass",
+        "soil",
+        "sand",
+        "stone",
+        "forest_floor",
+        "plaza",
+        "shallow_water",
+        "marsh"
+      ]
+    },
+    "CreatedBy": {
+      "enum": [
+        "template",
+        "user",
+        "migration"
+      ]
+    },
+    "TerrainRegion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "terrainRegionId",
+        "districtInstanceId",
+        "terrainKind",
+        "styleProfileId",
+        "createdBy",
+        "cells"
+      ],
+      "properties": {
+        "terrainRegionId": {
+          "$ref": "core.v1.schema.json#/$defs/StableId"
+        },
+        "districtInstanceId": {
+          "$ref": "core.v1.schema.json#/$defs/StableId"
+        },
+        "terrainKind": {
+          "$ref": "#/$defs/TerrainKind"
+        },
+        "styleProfileId": {
+          "$ref": "core.v1.schema.json#/$defs/StableId"
+        },
+        "createdBy": {
+          "$ref": "#/$defs/CreatedBy"
+        },
+        "cells": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20000,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "core.v1.schema.json#/$defs/TownGridPosition"
+          }
+        },
+        "lockedBoundary": {
+          "type": "boolean",
+          "default": false
+        },
+        "transitionPolicyId": {
+          "$ref": "core.v1.schema.json#/$defs/StableId"
+        }
+      }
+    }
+  }
+}
