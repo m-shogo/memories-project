@@ -1,0 +1,35 @@
+{
+  "$schema": "https://memory-os.example/schemas/security/adapter-manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "adapterId": "generic.csv",
+  "adapterVersion": "1.0.0",
+  "artifactDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "status": "approved",
+  "supportedMediaTypes": ["text/csv", "text/tab-separated-values"],
+  "determinism": {
+    "required": true,
+    "inputComponents": ["adapter_id", "adapter_version", "artifact_digest", "canonical_input_hash", "parsing_options_hash"]
+  },
+  "runtime": {
+    "networkAllowed": false,
+    "scriptExecutionAllowed": false,
+    "dynamicCodeLoadingAllowed": false,
+    "runAsRoot": false,
+    "readOnlyRootFilesystem": true,
+    "jobIsolatedTemp": true
+  },
+  "limits": {
+    "maxInputBytes": 104857600,
+    "maxExpandedBytes": 524288000,
+    "maxEntries": 10,
+    "maxNestingDepth": 0,
+    "maxWallSeconds": 120,
+    "maxMemoryBytes": 536870912
+  },
+  "review": {
+    "securityReviewed": true,
+    "reviewedArtifactDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "approvedByRole": "security_reviewer",
+    "approvedAt": "2026-07-16T01:30:00Z"
+  }
+}
