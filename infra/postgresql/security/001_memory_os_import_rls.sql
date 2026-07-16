@@ -137,8 +137,8 @@ BEGIN
   EXECUTE format('ALTER TABLE %s FORCE ROW LEVEL SECURITY', p_table);
 
   EXECUTE format('DROP POLICY IF EXISTS %I ON %s', rel_name || '_tenant_select', p_table);
-  SELECT string_agg(format('%I', role_name), ', ')
-    INTO roles_sql FROM unnest(p_select_roles) AS role_name;
+  SELECT string_agg(format('%I', r.role_name), ', ')
+    INTO roles_sql FROM unnest(p_select_roles) AS r(role_name);
   IF roles_sql IS NOT NULL THEN
     EXECUTE format('GRANT SELECT ON TABLE %s TO %s', p_table, roles_sql);
     EXECUTE format(
@@ -148,8 +148,8 @@ BEGIN
   END IF;
 
   EXECUTE format('DROP POLICY IF EXISTS %I ON %s', rel_name || '_tenant_insert', p_table);
-  SELECT string_agg(format('%I', role_name), ', ')
-    INTO roles_sql FROM unnest(p_insert_roles) AS role_name;
+  SELECT string_agg(format('%I', r.role_name), ', ')
+    INTO roles_sql FROM unnest(p_insert_roles) AS r(role_name);
   IF roles_sql IS NOT NULL THEN
     EXECUTE format('GRANT INSERT ON TABLE %s TO %s', p_table, roles_sql);
     EXECUTE format(
@@ -159,8 +159,8 @@ BEGIN
   END IF;
 
   EXECUTE format('DROP POLICY IF EXISTS %I ON %s', rel_name || '_tenant_update', p_table);
-  SELECT string_agg(format('%I', role_name), ', ')
-    INTO roles_sql FROM unnest(p_update_roles) AS role_name;
+  SELECT string_agg(format('%I', r.role_name), ', ')
+    INTO roles_sql FROM unnest(p_update_roles) AS r(role_name);
   IF roles_sql IS NOT NULL THEN
     EXECUTE format('GRANT UPDATE ON TABLE %s TO %s', p_table, roles_sql);
     EXECUTE format(
@@ -171,8 +171,8 @@ BEGIN
   END IF;
 
   EXECUTE format('DROP POLICY IF EXISTS %I ON %s', rel_name || '_tenant_delete', p_table);
-  SELECT string_agg(format('%I', role_name), ', ')
-    INTO roles_sql FROM unnest(p_delete_roles) AS role_name;
+  SELECT string_agg(format('%I', r.role_name), ', ')
+    INTO roles_sql FROM unnest(p_delete_roles) AS r(role_name);
   IF roles_sql IS NOT NULL THEN
     EXECUTE format('GRANT DELETE ON TABLE %s TO %s', p_table, roles_sql);
     EXECUTE format(
