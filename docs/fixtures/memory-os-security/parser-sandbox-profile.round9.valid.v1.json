@@ -1,0 +1,70 @@
+{
+  "$schema": "https://memory-os.example/schemas/security/parser-sandbox-profile.v1.schema.json",
+  "schemaVersion": 1,
+  "profileId": "memory-os.security.parser-sandbox.round9",
+  "profileVersion": 1,
+  "identity": {
+    "runAsNonRoot": true,
+    "runAsUserMinimum": 10000,
+    "privileged": false,
+    "allowPrivilegeEscalation": false,
+    "capabilitiesDrop": ["ALL"],
+    "hostUserNamespace": false
+  },
+  "filesystem": {
+    "readOnlyRootFilesystem": true,
+    "hostPathMountsAllowed": false,
+    "dockerSocketMounted": false,
+    "deviceMountsAllowed": false,
+    "jobTempIsolation": "one_empty_tmpfs_per_attempt",
+    "tempMountFlags": ["noexec", "nosuid", "nodev"],
+    "inputMountReadOnly": true,
+    "crossJobPathVisible": false
+  },
+  "network": {
+    "mode": "none",
+    "dnsAvailable": false,
+    "hostNetwork": false,
+    "outboundProxy": false,
+    "metadataServiceReachable": false
+  },
+  "process": {
+    "seccompProfile": "runtime_default_or_stricter",
+    "mandatoryAccessControl": "enabled_when_platform_supports",
+    "hostPid": false,
+    "hostIpc": false,
+    "newPrivileges": false,
+    "dynamicCodeExecution": false,
+    "shellExecution": false
+  },
+  "resources": {
+    "cpuMillis": 1000,
+    "memoryBytes": 536870912,
+    "pids": 32,
+    "wallClockSeconds": 120,
+    "openFiles": 256,
+    "tempBytes": 1073741824,
+    "outputBytes": 268435456
+  },
+  "inputOutput": {
+    "inputDelivery": "supervisor_staged_read_only_file",
+    "inputAuthority": "verified_quarantine_object",
+    "outputDelivery": "supervisor_collected_job_scoped_file",
+    "outputAuthority": "schema_validated_candidate_stream",
+    "stdoutPrivateContentAllowed": false,
+    "stderrPrivateContentAllowed": false
+  },
+  "artifact": {
+    "imageByDigest": true,
+    "signatureVerified": true,
+    "provenanceVerified": true,
+    "mutableTagAuthority": false,
+    "adapterDigestMatched": true
+  },
+  "secrets": {
+    "cloudCredentialsMounted": false,
+    "databaseCredentialsMounted": false,
+    "signingKeysMounted": false,
+    "environmentSecretsAllowed": false
+  }
+}
