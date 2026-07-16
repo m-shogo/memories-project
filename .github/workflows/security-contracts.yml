@@ -115,5 +115,11 @@ jobs:
       - name: Apply tenant RLS migration
         run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/001_memory_os_import_rls.sql
 
+      - name: Apply upload authorization migration
+        run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/002_memory_os_upload_authorization.sql
+
       - name: Execute tenant RLS integration tests
         run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/test_memory_os_import_rls.sql
+
+      - name: Execute upload authorization integration tests
+        run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/test_memory_os_upload_authorization.sql
