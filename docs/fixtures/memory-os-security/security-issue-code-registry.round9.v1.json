@@ -1,8 +1,14 @@
 {
   "$schema": "https://memory-os.example/schemas/security/security-issue-code-registry.v1.schema.json",
   "registryId": "memory-os.security.issue-codes.round9",
-  "registryVersion": 2,
+  "registryVersion": 3,
   "codes": [
+    { "code": "SEC_AUTHORIZED", "category": "authorization", "severity": "info", "blocksApply": false, "retryable": false, "safeMessageKey": "memoryOS.security.authorized", "mayIncludePrivateValue": false },
+    { "code": "SEC_CROSS_USER_ACCESS_DENIED", "category": "authorization", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.crossUserAccessDenied", "mayIncludePrivateValue": false },
+    { "code": "SEC_STALE_ACCOUNT_EPOCH", "category": "authorization", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.staleAccountEpoch", "mayIncludePrivateValue": false },
+    { "code": "SEC_AUTHORITY_NOT_ALLOWED", "category": "authorization", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.authorityNotAllowed", "mayIncludePrivateValue": false },
+    { "code": "SEC_OBJECT_LOOKUP_REQUIRED", "category": "authorization", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.objectLookupRequired", "mayIncludePrivateValue": false },
+    { "code": "SEC_QUERY_OWNER_SCOPE_REQUIRED", "category": "authorization", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.queryOwnerScopeRequired", "mayIncludePrivateValue": false },
     { "code": "SEC_OBJECT_OWNERSHIP_REQUIRED", "category": "authorization", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.objectOwnershipRequired", "mayIncludePrivateValue": false },
     { "code": "SEC_ACCOUNT_EPOCH_REQUIRED", "category": "deletion", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.accountEpochRequired", "mayIncludePrivateValue": false },
     { "code": "SEC_BROWSER_FINAL_APPLY_FORBIDDEN", "category": "pairing", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.browserFinalApplyForbidden", "mayIncludePrivateValue": false },
