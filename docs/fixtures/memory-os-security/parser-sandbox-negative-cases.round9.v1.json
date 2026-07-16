@@ -1,0 +1,25 @@
+{
+  "$schema": "https://memory-os.example/schemas/security/profile-mutation-case-set.v1.schema.json",
+  "caseSetId": "memory-os.security.parser-sandbox-negative.round9",
+  "caseSetVersion": 1,
+  "baseFixtureRef": "docs/fixtures/memory-os-security/parser-sandbox-profile.round9.valid.v1.json",
+  "targetSchemaId": "https://memory-os.example/schemas/security/parser-sandbox-profile.v1.schema.json",
+  "cases": [
+    { "caseId": "parser-runs-as-root", "mutation": { "path": "/identity/runAsNonRoot", "value": false }, "expectedDecision": "deny", "expectedIssueCode": "SEC_SANDBOX_NON_ROOT_REQUIRED" },
+    { "caseId": "parser-root-filesystem-writable", "mutation": { "path": "/filesystem/readOnlyRootFilesystem", "value": false }, "expectedDecision": "deny", "expectedIssueCode": "SEC_SANDBOX_READONLY_ROOT_REQUIRED" },
+    { "caseId": "parser-privileged", "mutation": { "path": "/identity/privileged", "value": true }, "expectedDecision": "deny", "expectedIssueCode": "SEC_SANDBOX_PRIVILEGE_FORBIDDEN" },
+    { "caseId": "parser-allows-privilege-escalation", "mutation": { "path": "/identity/allowPrivilegeEscalation", "value": true }, "expectedDecision": "deny", "expectedIssueCode": "SEC_SANDBOX_PRIVILEGE_FORBIDDEN" },
+    { "caseId": "parser-retains-capability", "mutation": { "path": "/identity/capabilitiesDrop", "value": [] }, "expectedDecision": "deny", "expectedIssueCode": "SEC_SANDBOX_CAPABILITIES_FORBIDDEN" },
+    { "caseId": "parser-network-enabled", "mutation": { "path": "/network/mode", "value": "default" }, "expectedDecision": "deny", "expectedIssueCode": "SEC_PARSER_NETWORK_FORBIDDEN" },
+    { "caseId": "parser-metadata-service-visible", "mutation": { "path": "/network/metadataServiceReachable", "value": true }, "expectedDecision": "deny", "expectedIssueCode": "SEC_PARSER_NETWORK_FORBIDDEN" },
+    { "caseId": "parser-host-path-mounted", "mutation": { "path": "/filesystem/hostPathMountsAllowed", "value": true }, "expectedDecision": "deny", "expectedIssueCode": "SEC_SANDBOX_HOST_MOUNT_FORBIDDEN" },
+    { "caseId": "parser-docker-socket-mounted", "mutation": { "path": "/filesystem/dockerSocketMounted", "value": true }, "expectedDecision": "deny", "expectedIssueCode": "SEC_SANDBOX_HOST_MOUNT_FORBIDDEN" },
+    { "caseId": "parser-cross-job-path-visible", "mutation": { "path": "/filesystem/crossJobPathVisible", "value": true }, "expectedDecision": "deny", "expectedIssueCode": "SEC_SANDBOX_CROSS_JOB_ACCESS_FORBIDDEN" },
+    { "caseId": "parser-database-credential-mounted", "mutation": { "path": "/secrets/databaseCredentialsMounted", "value": true }, "expectedDecision": "deny", "expectedIssueCode": "SEC_SANDBOX_SECRET_MOUNT_FORBIDDEN" },
+    { "caseId": "parser-cloud-credential-mounted", "mutation": { "path": "/secrets/cloudCredentialsMounted", "value": true }, "expectedDecision": "deny", "expectedIssueCode": "SEC_SANDBOX_SECRET_MOUNT_FORBIDDEN" },
+    { "caseId": "parser-unbounded-memory", "mutation": { "path": "/resources/memoryBytes", "value": 4294967296 }, "expectedDecision": "deny", "expectedIssueCode": "SEC_SANDBOX_RESOURCE_LIMIT_REQUIRED" },
+    { "caseId": "parser-unbounded-wall-clock", "mutation": { "path": "/resources/wallClockSeconds", "value": 3600 }, "expectedDecision": "deny", "expectedIssueCode": "SEC_SANDBOX_RESOURCE_LIMIT_REQUIRED" },
+    { "caseId": "parser-private-content-on-stdout", "mutation": { "path": "/inputOutput/stdoutPrivateContentAllowed", "value": true }, "expectedDecision": "deny", "expectedIssueCode": "SEC_AUDIT_PRIVATE_FIELD_FORBIDDEN" },
+    { "caseId": "parser-mutable-image-tag-authority", "mutation": { "path": "/artifact/mutableTagAuthority", "value": true }, "expectedDecision": "deny", "expectedIssueCode": "SEC_ADAPTER_RUNTIME_UNSAFE" }
+  ]
+}
