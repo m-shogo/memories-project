@@ -1,0 +1,17 @@
+{
+  "$schema": "https://memory-os.example/schemas/security/security-issue-code-registry.v1.schema.json",
+  "registryId": "memory-os.security.issue-codes.round9",
+  "registryVersion": 1,
+  "codes": [
+    { "code": "SEC_OBJECT_OWNERSHIP_REQUIRED", "category": "authorization", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.objectOwnershipRequired", "mayIncludePrivateValue": false },
+    { "code": "SEC_ACCOUNT_EPOCH_REQUIRED", "category": "deletion", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.accountEpochRequired", "mayIncludePrivateValue": false },
+    { "code": "SEC_BROWSER_FINAL_APPLY_FORBIDDEN", "category": "pairing", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.browserFinalApplyForbidden", "mayIncludePrivateValue": false },
+    { "code": "SEC_UPLOAD_OBJECT_BINDING_INVALID", "category": "upload", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.uploadObjectBindingInvalid", "mayIncludePrivateValue": false },
+    { "code": "SEC_UPLOAD_PUBLIC_ACCESS_FORBIDDEN", "category": "upload", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.uploadPublicAccessForbidden", "mayIncludePrivateValue": false },
+    { "code": "SEC_UPLOAD_CHECKSUM_REQUIRED", "category": "upload", "severity": "high", "blocksApply": true, "retryable": true, "safeMessageKey": "memoryOS.security.uploadChecksumRequired", "mayIncludePrivateValue": false },
+    { "code": "SEC_QUARANTINE_TTL_REQUIRED", "category": "quarantine", "severity": "high", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.quarantineTtlRequired", "mayIncludePrivateValue": false },
+    { "code": "SEC_PARSER_NETWORK_FORBIDDEN", "category": "parser", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.parserNetworkForbidden", "mayIncludePrivateValue": false },
+    { "code": "SEC_RAW_FILENAME_KEY_FORBIDDEN", "category": "quarantine", "severity": "high", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.rawFilenameKeyForbidden", "mayIncludePrivateValue": false },
+    { "code": "SEC_JOB_TERMINAL_APPLY_FORBIDDEN", "category": "preview_apply", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.jobTerminalApplyForbidden", "mayIncludePrivateValue": false }
+  ]
+}
