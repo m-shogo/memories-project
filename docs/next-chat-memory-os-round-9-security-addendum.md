@@ -1,4 +1,4 @@
-# Next Chat Addendum — Memory OS Round 9 Security
+# Next Chat Addendum — Memory OS Round 9 Security / S2 Backend Slice
 
 最終更新: 2026-07-16
 
@@ -17,16 +17,17 @@ branch: so
 
 1. `SECURITY.md`
 2. `docs/memory-os-current-authority-order-round-9-security.md`
-3. `docs/memory-os-round9-security-foundation-progress-2026-07-16.md`
-4. `docs/memory-os-capture-import-security-architecture-round-9.md`
-5. `docs/memory-os-capture-import-threat-model-round-9.md`
-6. `docs/memory-os-security-verification-gate-round-9.md`
-7. `docs/schemas/memory-os-security/schema-registry.v1.json`
-8. `docs/fixtures/memory-os-security/fixture-index.round9.s1.v1.json`
+3. `docs/memory-os-round9-s2-backend-security-slice-progress-2026-07-16.md`
+4. `services/import-api/README.md`
+5. `docs/memory-os-round9-security-foundation-progress-2026-07-16.md`
+6. `docs/memory-os-capture-import-security-architecture-round-9.md`
+7. `docs/memory-os-capture-import-threat-model-round-9.md`
+8. `docs/memory-os-security-verification-gate-round-9.md`
 9. `contracts/openapi/memory-os-import-security.v1.openapi.json`
 10. `infra/postgresql/security/001_memory_os_import_rls.sql`
 11. `infra/postgresql/security/test_memory_os_import_rls.sql`
 12. `.github/workflows/security-contracts.yml`
+13. `.github/workflows/import-api-security-slice.yml`
 
 ---
 
@@ -36,33 +37,38 @@ branch: so
 security perfection:
 never claim
 
-security architecture / threat model / verification gate:
-defined
+Capture / Import priority:
+unchanged
 
-registered schemas:
-22
+security contracts / validators:
+created through parser and archive boundary
 
-tracked contract fixtures:
-21
-
-validators:
-created for schema, authorization, RLS, Apple auth,
-signed upload and parser/archive safety
-
-PostgreSQL RLS migration / integration test:
+first executable Go backend security slice:
 created
 
-GitHub Actions:
-workflow created; remote result not confirmed by available connector
+local Go validation:
+go test / vet / race PASS
 
-Go / iOS / Portal / object-storage implementation:
+remote GitHub Actions:
+workflow exists; result not confirmed by available connector
+
+concrete PostgreSQL repositories:
+not created
+
+concrete object-storage adapter:
+not created
+
+parser supervisor runtime:
+not created
+
+iOS / Portal:
 not created
 
 production:
 NO-GO
 ```
 
-設計、schema、validator、SQL testの存在は本番安全性の証明ではない。
+設計・schema・unit testの存在は本番安全性の証明ではない。
 
 ---
 
@@ -81,7 +87,7 @@ Vite + React + TypeScript thin Portal
 Backend:
 Go API
 PostgreSQL with FORCE RLS
-private S3-compatible quarantine
+private versioned S3-compatible quarantine
 isolated parser supervisor / worker
 
 Town later:
@@ -93,194 +99,228 @@ Parser、adapter、dedupe、Preview、ApplyをSwift / browser / Goへ三重実�
 
 ---
 
-# Current evidence
+# Executable Go inventory
+
+Location:
 
 ```txt
-registered schemas:                 22
-tracked fixtures:                   21
-generic negative cases:             24
-object authorization cases:          8  (2 allow / 6 deny)
-PostgreSQL RLS cases:                14  (4 allow / 10 deny)
-Sign in with Apple cases:            16  (1 allow / 15 deny)
-parser sandbox unsafe mutations:     16  (all deny)
-archive / JSON / CSV cases:          25  (1 allow / 24 deny)
-signed upload OpenAPI operations:     3
-PostgreSQL tables / profiles:         9 / 9
+services/import-api/
 ```
 
-Re-run:
+Current local inventory:
+
+```txt
+Go files:   25
+unit tests: 52
+```
+
+Implemented packages:
+
+```txt
+internal/security
+  verified Principal
+  request-context boundary
+
+internal/dbscope
+  fixed PostgreSQL role allowlist
+  transaction-local account / epoch
+
+internal/appleauth
+  RS256 JWT validation
+  duplicate-key and size rejection
+  fixed-origin JWKS client
+  code exchange / replay / account-binding interfaces
+
+internal/cryptoids
+  160-bit opaque IDs
+
+internal/upload
+  signed upload issue / completion core
+  exact object metadata and version binding
+
+internal/httpapi
+  strict upload HTTP handlers
+  no-store and generic error behavior
+
+internal/adapters/genericcsv
+  bounded streaming CSV parser
+
+internal/preview
+  immutable source / adapter / options / candidate hash binding
+
+internal/apply
+  iOS-only exact-hash idempotent Apply
+
+internal/pipeline
+  cancellation-safe CSV → Preview stream
+```
+
+Executed locally:
 
 ```bash
-python -m pip install -r requirements-security-validation.txt
-python scripts/validate-memory-os-security.py
-python scripts/validate-memory-os-authorization.py
-python scripts/validate-memory-os-postgresql-rls.py
-python scripts/validate-memory-os-apple-auth.py
-python scripts/validate-memory-os-signed-upload-openapi.py
-python scripts/validate-memory-os-parser-security.py
+cd services/import-api
+go test ./...
+go vet ./...
+go test -race ./...
 ```
 
-The current execution environment could not resolve GitHub for a local clone. Do not convert that limitation into a false CI PASS claim.
+All passed in the current local Go 1.23 environment.
 
 ---
 
-# Binding security decisions
+# Most important implementation boundaries
 
 ## Identity
 
-- Sign in with Apple is verified server-side.
-- Exact issuer, audience, RS256 signature, time, nonce and subject are required.
-- Unknown `kid` triggers one JWKS refresh, then fails closed.
-- Authorization code is exchanged server-side and replay is rejected.
-- Redirect URI must match when one existed in the original request.
-- Canonical account binding is `issuer + subject`.
-- Email and private-relay email are not identity and cannot auto-link accounts.
+- Principal fields are private.
 - Client account ID / email / subject are not authority.
+- Apple identity token requires RS256, exact issuer/audience, time window, nonce and subject.
+- Unknown `kid` refreshes JWKS once, then fails closed.
+- JWKS fetch is fixed to Apple HTTPS origin with response and cache bounds.
+- Code exchange must bind subject, client and original redirect when present.
+- Canonical account binding is issuer + subject.
 
-## Authorization and RLS
+Still missing:
 
-- Every child resource requires object lookup, same owner, same epoch and operation authority.
-- Missing and cross-owner resources use generic not-found behavior.
-- Browser pairing token cannot final Apply.
-- User-owned security tables use `ENABLE RLS` + `FORCE RLS`.
-- Runtime privilege roles are `NOLOGIN NOINHERIT NOBYPASSRLS` and do not own tables.
-- Account ID / epoch are transaction-local server context only.
-- Only deletion runtime may DELETE.
-- Preview, Apply confirmation and Import Report are immutable.
+- concrete Apple code exchanger;
+- client-secret signing / rotation;
+- replay store;
+- account binding repository;
+- application session issuer.
+
+## PostgreSQL scope
+
+- Role comes from fixed Go constants only.
+- Account ID and epoch enter `set_config(..., true)` from verified Principal only.
+- Transaction rollback is mandatory on callback error or panic.
+- Existing SQL contract still requires FORCE RLS and non-owner runtime roles.
+
+Still missing:
+
+- concrete driver composition;
+- repositories;
+- Go ↔ PostgreSQL live integration tests.
 
 ## Signed upload
 
 - Client cannot choose owner, epoch, key or bucket.
-- Authorization binds one owner / epoch / job / generated key / size / SHA-256 / content type / expiry.
-- Signed URL is no-store and not logged or sent to analytics.
-- Completion trusts object-storage HEAD metadata, not client metadata.
-- Completion atomically consumes authorization before scan queueing.
-- Cancelled / deleted account work is rejected.
+- Length, SHA-256, type, expiry and generated key are exact-bound.
+- Completion reads Storage metadata itself.
+- Storage version ID is mandatory.
+- Scan ticket references exact object version.
+- Metadata mismatch revokes authorization.
+- Consumption and scan enqueue share one transaction interface.
+- HTTP input rejects unknown fields, owner injection and oversized bodies.
 
-## Parser sandbox
+Still missing:
 
-- non-root, non-privileged, no capability, no escalation;
-- read-only root filesystem;
-- no host path, devices or Docker socket;
-- no network, DNS, proxy or metadata service;
-- one job tmpfs with `noexec,nosuid,nodev`;
-- no cross-job visibility;
-- no cloud, DB or signing secrets;
-- bounded CPU / memory / PID / time / descriptors / temp / output;
-- supervisor-staged read-only input;
-- supervisor-collected schema-validated output;
-- digest-pinned, signed, provenance-verified image and adapter.
+- concrete signer;
+- concrete HEAD adapter;
+- versioned private bucket tests;
+- PostgreSQL repository.
 
-## Archive / structured files
+## Generic CSV
 
-P0:
+- Streaming only; not full-file memory loading.
+- Maximum 256 MiB, 100,000 rows, 256 columns, 1 MiB per cell.
+- Limits cannot be expanded by client options.
+- Explicit field mapping.
+- Invalid UTF-8, duplicate header, inconsistent row and oversized cell rejected.
+- URL is validated but never fetched.
+- Formula-like cells stay literal and are flagged.
+- Missing title rejects only the row.
+- Deterministic fingerprint ignores source row.
 
-```txt
-compressed:        256 MiB
-expanded:            1 GiB
-single entry:       128 MiB
-entries:             10,000
-ratio:               100x
-nested depth:          1
-```
+## Preview
 
-Reject traversal, absolute/drive paths, NUL, links, special files, duplicate normalized paths, case collisions, encrypted/multi-volume archive, unknown methods, malformed central directory, excessive JSON depth, duplicate JSON keys and oversized CSV cells.
+- Worker lease only.
+- Exact source object key, version and checksum.
+- Adapter ID, version and artifact digest.
+- Mapping options hash.
+- Normalized candidate and per-candidate hash.
+- Aggregate candidate hash and Preview hash.
+- Bounded candidate count and TTL.
+
+## Apply
+
+- iOS user authority only; browser pairing denied.
+- Exact Preview ID + hash.
+- Same owner and epoch.
+- Idempotency key bound to request hash.
+- Same completed request returns previous result.
+- Same key with different request rejects.
+- No parser dependency exists in Apply service.
+- Counts must equal candidate total or transaction fails.
 
 ---
 
-# Hard stops
+# Production blockers
 
-Do not authorize production if any is true:
+Do not proceed to production while any remains:
 
-- client identity fields are trusted;
-- Apple token/code/nonce validation is incomplete;
-- email-only account linking exists;
-- child resource lacks ownership and epoch checks;
-- runtime DB role owns table or bypasses RLS;
-- DB auth context can be set from unverified request input;
-- browser token can Apply;
-- signed upload accepts arbitrary key / owner / bucket / size / checksum;
-- upload completion trusts client metadata;
-- quarantine is public or client-listable;
-- parser has network, host mounts, secrets or unbounded resources;
-- archive traversal / link / expansion protections are absent;
-- Preview and Apply are not hash-bound and idempotent;
-- private content enters logs / analytics / push / crash reports;
-- raw archive has no TTL / cancellation cleanup;
-- deletion cannot fence active work and backup restore;
-- remote CI is failing or unconfirmed at release judgment time;
-- unresolved P0 > 0;
-- independent review has unresolved Critical / High.
+- remote CI unconfirmed or failing;
+- concrete Apple auth exchange/session absent;
+- concrete PostgreSQL repositories absent;
+- live FORCE RLS integration absent;
+- concrete private object storage absent;
+- parser supervisor runtime absent;
+- adapter artifact verification absent;
+- concrete Preview / Apply / Memory persistence absent;
+- deletion epoch cancellation absent;
+- malicious corpus / fuzzing absent;
+- sensitive log scan absent;
+- iOS storage / App Group evidence absent;
+- Portal CSP / token evidence absent;
+- independent review unresolved Critical / High;
+- unresolved P0 > 0.
 
 ---
 
 # Next correct sequence
 
-## S2 backend security vertical slice
-
 ```txt
-1. create Go module and verified Apple-auth context
-2. implement transaction-scoped SET LOCAL account ID / epoch + SET ROLE
-3. run PostgreSQL migration and tests in a local integration environment
-4. implement signed-upload storage adapter using a local S3-compatible emulator
-5. prove exact key / header / size / checksum / expiry enforcement
-6. implement parser supervisor and actual sandbox runtime manifest
-7. create malicious ZIP / JSON / CSV corpus and fuzz harness
-8. implement one Generic CSV adapter
-9. materialize immutable Preview
-10. implement idempotent Apply
-11. implement deletion epoch fence and cancellation cleanup
+1. extend PostgreSQL schema for Import Job / upload / Preview candidate / Apply / Memory
+2. implement concrete PostgreSQL repositories
+3. run Go integration tests against PostgreSQL 16 with FORCE RLS
+4. implement local versioned S3-compatible signer and object adapter
+5. test exact headers / checksum / overwrite / expiry / cancellation
+6. implement parser supervisor and safe Generic CSV worker command
+7. verify executing adapter artifact digest
+8. implement deletion epoch fencing and cleanup
+9. add strict Preview / Apply HTTP handlers
+10. compose executable API process without production secrets
+11. build malicious ZIP / JSON / CSV corpus and fuzz harness
+12. add log canary and dependency / secret / container scans
 ```
 
-## S3 iOS
+After backend P0 vertical slice:
 
 ```txt
-12. Share Extension URL / text
-13. App Group minimal intake
-14. GRDB writer / migration ownership and crash recovery
-15. Keychain / Data Protection / backup inspection
-16. safe Preview and iOS final confirmation
+13. iOS Share Extension URL / text
+14. App Group minimal intake
+15. safe Preview and final iOS confirmation
+16. limited Desktop Portal pairing and upload
 ```
 
-## S4 Portal
+Only after Capture / Import P0 unresolved zero:
 
 ```txt
-17. one-time pairing
-18. in-memory browser token lifecycle
-19. CSP / XSS / no-store evidence
-20. signed upload through the same OpenAPI boundary
-```
-
-## S5 evidence
-
-```txt
-21. parser runtime inspection
-22. archive / JSON / CSV fuzzing
-23. deletion race and backup restore tests
-24. sensitive-data log canary scan
-25. dependency / secret / container scans
-26. SBOM / provenance
-27. incident / key rotation / restore runbooks
-28. independent security review
-29. unresolved Critical / High zero
-30. unresolved P0 zero
-```
-
-Only after this:
-
-```txt
-31. TownSceneSnapshot Swift models
-32. SpriteKit static Town prototype
+17. TownSceneSnapshot Swift models
+18. SpriteKit static Town prototype
 ```
 
 ---
 
-# Recent key commits
+# Latest milestone commits
 
 ```txt
-6634551  security foundation progress report
-643c14d  Round 9 authority through parser boundary
-4180c88  SECURITY.md status synchronization
+4eabe37  bounded Generic CSV adapter
+fb0e3c6  immutable Preview materializer
+dc48b64  idempotent Apply service
+7ee21f3  CSV-to-Preview pipeline
+eafeee5  S2 progress report
+88bdf0f  Round 9 authority synchronization
+f9f6548  SECURITY.md synchronization
 ```
 
-Many intermediate commits created each schema, fixture, validator, SQL migration, integration test and CI step. Do not squash away security history without an explicit release decision.
+Every implementation step was committed directly to `so`. Do not squash away security history without an explicit release decision.
