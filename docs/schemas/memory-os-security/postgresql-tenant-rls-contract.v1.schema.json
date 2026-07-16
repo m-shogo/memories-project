@@ -4,22 +4,57 @@
   "title": "Memory OS PostgreSQL Tenant RLS Contract v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "schemaVersion", "contractId", "contractVersion", "sessionContext", "roles", "policyProfiles", "tables", "globalRules"],
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "contractId",
+    "contractVersion",
+    "sessionContext",
+    "roles",
+    "policyProfiles",
+    "tables",
+    "globalRules"
+  ],
   "properties": {
-    "$schema": { "const": "https://memory-os.example/schemas/security/postgresql-tenant-rls-contract.v1.schema.json" },
-    "schemaVersion": { "const": 1 },
-    "contractId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
-    "contractVersion": { "type": "integer", "minimum": 1 },
+    "$schema": {
+      "const": "https://memory-os.example/schemas/security/postgresql-tenant-rls-contract.v1.schema.json"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "contractId": {
+      "$ref": "core.v1.schema.json#/$defs/StableId"
+    },
+    "contractVersion": {
+      "type": "integer",
+      "minimum": 1
+    },
     "sessionContext": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["accountIdSetting", "accountEpochSetting", "setMode", "source", "missingContextDecision"],
+      "required": [
+        "accountIdSetting",
+        "accountEpochSetting",
+        "setMode",
+        "source",
+        "missingContextDecision"
+      ],
       "properties": {
-        "accountIdSetting": { "const": "app.current_account_id" },
-        "accountEpochSetting": { "const": "app.current_account_epoch" },
-        "setMode": { "const": "transaction_local" },
-        "source": { "const": "verified_server_auth_context" },
-        "missingContextDecision": { "const": "deny" }
+        "accountIdSetting": {
+          "const": "app.current_account_id"
+        },
+        "accountEpochSetting": {
+          "const": "app.current_account_epoch"
+        },
+        "setMode": {
+          "const": "transaction_local"
+        },
+        "source": {
+          "const": "verified_server_auth_context"
+        },
+        "missingContextDecision": {
+          "const": "deny"
+        }
       }
     },
     "roles": {
@@ -30,35 +65,95 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["role", "login", "bypassRls", "ownsUserTables", "purpose"],
+        "required": [
+          "role",
+          "login",
+          "inherit",
+          "bypassRls",
+          "ownsUserTables",
+          "purpose"
+        ],
         "properties": {
-          "role": { "enum": ["memory_api_runtime", "memory_worker_runtime", "memory_migration_owner", "memory_deletion_runtime", "memory_readonly_observer"] },
-          "login": { "type": "boolean" },
-          "bypassRls": { "const": false },
-          "ownsUserTables": { "type": "boolean" },
-          "purpose": { "enum": ["api_requests", "scoped_worker_jobs", "schema_migrations", "account_deletion", "safe_operational_metrics"] }
+          "role": {
+            "enum": [
+              "memory_api_runtime",
+              "memory_worker_runtime",
+              "memory_migration_owner",
+              "memory_deletion_runtime",
+              "memory_readonly_observer"
+            ]
+          },
+          "login": {
+            "const": false
+          },
+          "inherit": {
+            "const": false
+          },
+          "bypassRls": {
+            "const": false
+          },
+          "ownsUserTables": {
+            "type": "boolean"
+          },
+          "purpose": {
+            "enum": [
+              "api_requests",
+              "scoped_worker_jobs",
+              "schema_migrations",
+              "account_deletion",
+              "safe_operational_metrics"
+            ]
+          }
         }
       }
     },
     "policyProfiles": {
       "type": "array",
       "minItems": 1,
-      "maxItems": 8,
+      "maxItems": 16,
       "uniqueItems": true,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["profileId", "selectRoles", "insertRoles", "updateRoles", "deleteRoles", "selectUsingOwnerEpoch", "insertWithCheckOwnerEpoch", "updateUsingAndWithCheckOwnerEpoch", "deleteUsingOwnerEpoch"],
+        "required": [
+          "profileId",
+          "selectRoles",
+          "insertRoles",
+          "updateRoles",
+          "deleteRoles",
+          "selectUsingOwnerEpoch",
+          "insertWithCheckOwnerEpoch",
+          "updateUsingAndWithCheckOwnerEpoch",
+          "deleteUsingOwnerEpoch"
+        ],
         "properties": {
-          "profileId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
-          "selectRoles": { "$ref": "#/$defs/RuntimeRoles" },
-          "insertRoles": { "$ref": "#/$defs/RuntimeRoles" },
-          "updateRoles": { "$ref": "#/$defs/RuntimeRoles" },
-          "deleteRoles": { "$ref": "#/$defs/RuntimeRoles" },
-          "selectUsingOwnerEpoch": { "const": true },
-          "insertWithCheckOwnerEpoch": { "const": true },
-          "updateUsingAndWithCheckOwnerEpoch": { "const": true },
-          "deleteUsingOwnerEpoch": { "const": true }
+          "profileId": {
+            "$ref": "core.v1.schema.json#/$defs/StableId"
+          },
+          "selectRoles": {
+            "$ref": "#/$defs/RuntimeRoles"
+          },
+          "insertRoles": {
+            "$ref": "#/$defs/RuntimeRoles"
+          },
+          "updateRoles": {
+            "$ref": "#/$defs/RuntimeRoles"
+          },
+          "deleteRoles": {
+            "$ref": "#/$defs/RuntimeRoles"
+          },
+          "selectUsingOwnerEpoch": {
+            "const": true
+          },
+          "insertWithCheckOwnerEpoch": {
+            "const": true
+          },
+          "updateUsingAndWithCheckOwnerEpoch": {
+            "const": true
+          },
+          "deleteUsingOwnerEpoch": {
+            "const": true
+          }
         }
       }
     },
@@ -70,40 +165,107 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["table", "ownerColumn", "epochColumn", "rlsEnabled", "forceRls", "runtimeRoleOwnsTable", "policyProfileId"],
+        "required": [
+          "table",
+          "ownerColumn",
+          "epochColumn",
+          "rlsEnabled",
+          "forceRls",
+          "runtimeRoleOwnsTable",
+          "policyProfileId"
+        ],
         "properties": {
-          "table": { "enum": ["import_job", "pairing_session", "upload_authorization", "quarantine_object", "import_preview", "apply_confirmation", "import_report", "export_job", "deletion_fence"] },
-          "ownerColumn": { "const": "owner_account_id" },
-          "epochColumn": { "enum": ["account_epoch", "deletion_epoch"] },
-          "rlsEnabled": { "const": true },
-          "forceRls": { "const": true },
-          "runtimeRoleOwnsTable": { "const": false },
-          "policyProfileId": { "$ref": "core.v1.schema.json#/$defs/StableId" }
+          "table": {
+            "enum": [
+              "import_job",
+              "pairing_session",
+              "upload_authorization",
+              "quarantine_object",
+              "import_preview",
+              "apply_confirmation",
+              "import_report",
+              "export_job",
+              "deletion_fence"
+            ]
+          },
+          "ownerColumn": {
+            "const": "owner_account_id"
+          },
+          "epochColumn": {
+            "enum": [
+              "account_epoch",
+              "deletion_epoch"
+            ]
+          },
+          "rlsEnabled": {
+            "const": true
+          },
+          "forceRls": {
+            "const": true
+          },
+          "runtimeRoleOwnsTable": {
+            "const": false
+          },
+          "policyProfileId": {
+            "$ref": "core.v1.schema.json#/$defs/StableId"
+          }
         }
       }
     },
     "globalRules": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["denyByDefault", "runtimeBypassRlsForbidden", "runtimeTableOwnershipForbidden", "clientSetsSessionContext", "ownerMutationAllowed", "epochDowngradeAllowed", "rawSqlWithoutScopedTransactionAllowed"],
+      "required": [
+        "denyByDefault",
+        "runtimeBypassRlsForbidden",
+        "runtimeTableOwnershipForbidden",
+        "clientSetsSessionContext",
+        "ownerMutationAllowed",
+        "epochDowngradeAllowed",
+        "rawSqlWithoutScopedTransactionAllowed",
+        "loginCredentialsSeparatedFromPrivilegeRoles"
+      ],
       "properties": {
-        "denyByDefault": { "const": true },
-        "runtimeBypassRlsForbidden": { "const": true },
-        "runtimeTableOwnershipForbidden": { "const": true },
-        "clientSetsSessionContext": { "const": false },
-        "ownerMutationAllowed": { "const": false },
-        "epochDowngradeAllowed": { "const": false },
-        "rawSqlWithoutScopedTransactionAllowed": { "const": false }
+        "denyByDefault": {
+          "const": true
+        },
+        "runtimeBypassRlsForbidden": {
+          "const": true
+        },
+        "runtimeTableOwnershipForbidden": {
+          "const": true
+        },
+        "clientSetsSessionContext": {
+          "const": false
+        },
+        "ownerMutationAllowed": {
+          "const": false
+        },
+        "epochDowngradeAllowed": {
+          "const": false
+        },
+        "rawSqlWithoutScopedTransactionAllowed": {
+          "const": false
+        },
+        "loginCredentialsSeparatedFromPrivilegeRoles": {
+          "const": true
+        }
       }
     }
   },
   "$defs": {
     "RuntimeRoles": {
       "type": "array",
-      "minItems": 1,
+      "minItems": 0,
       "maxItems": 4,
       "uniqueItems": true,
-      "items": { "enum": ["memory_api_runtime", "memory_worker_runtime", "memory_deletion_runtime"] }
+      "items": {
+        "enum": [
+          "memory_api_runtime",
+          "memory_worker_runtime",
+          "memory_deletion_runtime"
+        ]
+      }
     }
   }
 }
