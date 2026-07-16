@@ -15,23 +15,27 @@ type fixedClock struct{ value time.Time }
 func (c fixedClock) Now() time.Time { return c.value }
 
 type fakeJobs struct {
-	job Job
-	err error
+	job       Job
+	err       error
+	principal security.Principal
 }
 
-func (f fakeJobs) FindOwnedJob(_ context.Context, _, _ string, _ int64) (Job, error) {
+func (f *fakeJobs) FindOwnedJob(_ context.Context, principal security.Principal, _ string) (Job, error) {
+	f.principal = principal
 	return f.job, f.err
 }
 
 type fakeStore struct {
-	created []Authorization
-	issued  []string
-	failed  map[string]string
-	createErr error
-	issuedErr error
+	created       []Authorization
+	issued        []string
+	failed        map[string]string
+	createErr     error
+	issuedErr     error
+	lastPrincipal security.Principal
 }
 
-func (f *fakeStore) CreatePending(_ context.Context, authorization Authorization) error {
+func (f *fakeStore) CreatePending(_ context.Context, principal security.Principal, authorization Authorization) error {
+	f.lastPrincipal = principal
 	if f.createErr != nil {
 		return f.createErr
 	}
@@ -39,7 +43,8 @@ func (f *fakeStore) CreatePending(_ context.Context, authorization Authorization
 	return nil
 }
 
-func (f *fakeStore) MarkIssued(_ context.Context, authorizationID string) error {
+func (f *fakeStore) MarkIssued(_ context.Context, principal security.Principal, authorizationID string) error {
+	f.lastPrincipal = principal
 	if f.issuedErr != nil {
 		return f.issuedErr
 	}
@@ -47,7 +52,8 @@ func (f *fakeStore) MarkIssued(_ context.Context, authorizationID string) error 
 	return nil
 }
 
-func (f *fakeStore) MarkFailed(_ context.Context, authorizationID, safeReason string) error {
+func (f *fakeStore) MarkFailed(_ context.Context, principal security.Principal, authorizationID, safeReason string) error {
+	f.lastPrincipal = principal
 	if f.failed == nil {
 		f.failed = map[string]string{}
 	}
@@ -95,19 +101,20 @@ func TestIssueCreatesServerBoundAuthorization(t *testing.T) {
 	t.Parallel()
 
 	store := &fakeStore{}
-	signer := &fakeSigner{result: SignedPUT{
-		URL: "https://storage.invalid/private-signed-put",
-		RequiredHeaders: map[string]string{
-			"content-type":        "application/zip",
-			"x-checksum-sha256": strings.Repeat("a", 64),
-		},
-	}}
-	service, err := NewService(fakeJobs{job: Job{
+	jobs := &fakeJobs{job: Job{
 		ID:             "job_01J00000000000000000000000",
 		OwnerAccountID: "acct_01J00000000000000000000000",
 		AccountEpoch:   7,
 		State:          "awaiting_upload",
-	}}, store, signer)
+	}}
+	signer := &fakeSigner{result: SignedPUT{
+		URL: "https://storage.invalid/private-signed-put",
+		RequiredHeaders: map[string]string{
+			"content-type":      "application/zip",
+			"x-checksum-sha256": strings.Repeat("a", 64),
+		},
+	}}
+	service, err := NewService(jobs, store, signer)
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
@@ -127,6 +134,9 @@ func TestIssueCreatesServerBoundAuthorization(t *testing.T) {
 	if created.OwnerAccountID != "acct_01J00000000000000000000000" || created.AccountEpoch != 7 {
 		t.Fatalf("authorization was not bound to verified principal")
 	}
+	if jobs.principal.AccountID() != created.OwnerAccountID || store.lastPrincipal.AccountID() != created.OwnerAccountID {
+		t.Fatalf("verified principal was not propagated to repositories")
+	}
 	if !strings.HasPrefix(created.ObjectKey, "quarantine/job_01J00000000000000000000000/obj_") {
 		t.Fatalf("unexpected object key: %q", created.ObjectKey)
 	}
@@ -144,12 +154,13 @@ func TestIssueCreatesServerBoundAuthorization(t *testing.T) {
 func TestIssueRejectsCrossOwnerJob(t *testing.T) {
 	t.Parallel()
 
-	service, err := NewService(fakeJobs{job: Job{
+	jobs := &fakeJobs{job: Job{
 		ID:             "job_01J00000000000000000000000",
 		OwnerAccountID: "acct_01J99999999999999999999999",
 		AccountEpoch:   7,
 		State:          "awaiting_upload",
-	}}, &fakeStore{}, &fakeSigner{})
+	}}
+	service, err := NewService(jobs, &fakeStore{}, &fakeSigner{})
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
@@ -165,7 +176,7 @@ func TestIssueMarksPendingAuthorizationFailedWhenSigningFails(t *testing.T) {
 
 	store := &fakeStore{}
 	signer := &fakeSigner{err: errors.New("signer unavailable")}
-	service, err := NewService(fakeJobs{job: Job{
+	service, err := NewService(&fakeJobs{job: Job{
 		ID:             "job_01J00000000000000000000000",
 		OwnerAccountID: "acct_01J00000000000000000000000",
 		AccountEpoch:   7,
@@ -190,7 +201,7 @@ func TestIssueMarksPendingAuthorizationFailedWhenSigningFails(t *testing.T) {
 func TestIssueRejectsOversizedUpload(t *testing.T) {
 	t.Parallel()
 
-	service, err := NewService(fakeJobs{}, &fakeStore{}, &fakeSigner{})
+	service, err := NewService(&fakeJobs{}, &fakeStore{}, &fakeSigner{})
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
