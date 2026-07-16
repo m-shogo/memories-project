@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/security/authorization-matrix.v1.schema.json",
+  "title": "Memory OS Object Authorization Matrix v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "matrixId", "matrixVersion", "globalRules", "resources"],
+  "properties": {
+    "$schema": { "const": "https://memory-os.example/schemas/security/authorization-matrix.v1.schema.json" },
+    "schemaVersion": { "const": 1 },
+    "matrixId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+    "matrixVersion": { "type": "integer", "minimum": 1 },
+    "globalRules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["denyByDefault", "clientUserIdTrusted", "authenticatedAccountIsAuthority", "listQueriesOwnerScoped", "childOwnershipRevalidated", "accountEpochChecked"],
+      "properties": {
+        "denyByDefault": { "const": true },
+        "clientUserIdTrusted": { "const": false },
+        "authenticatedAccountIsAuthority": { "const": true },
+        "listQueriesOwnerScoped": { "const": true },
+        "childOwnershipRevalidated": { "const": true },
+        "accountEpochChecked": { "const": true }
+      }
+    },
+    "resources": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["resourceType", "ownerField", "epochField", "operations"],
+        "properties": {
+          "resourceType": { "enum": ["import_job", "pairing_session", "upload_authorization", "quarantine_object", "import_preview", "apply_confirmation", "import_report", "export", "deletion_fence"] },
+          "ownerField": { "const": "ownerAccountId" },
+          "epochField": { "enum": ["accountEpoch", "deletionEpoch"] },
+          "operations": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 16,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["operation", "allowedAuthorities", "sameOwnerRequired", "sameEpochRequired", "objectLookupRequired"],
+              "properties": {
+                "operation": { "enum": ["create", "read", "list", "update", "delete", "cancel", "confirm", "download"] },
+                "allowedAuthorities": { "type": "array", "minItems": 1, "maxItems": 8, "uniqueItems": true, "items": { "enum": ["ios_user_access_token", "ios_device_session", "browser_pairing_token", "worker_lease", "deletion_worker", "support_break_glass"] } },
+                "sameOwnerRequired": { "const": true },
+                "sameEpochRequired": { "const": true },
+                "objectLookupRequired": { "type": "boolean" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
