@@ -7,54 +7,57 @@ Memory OSは、ユーザーの人生の文脈、画像、URL、視聴・読書�
 ## Current status
 
 ```txt
-security architecture:
-defined at contract level
-
-threat model:
-70 scenarios defined
-
-verification gate:
+security architecture / threat model / verification gate:
 defined
 
-S1 machine-readable security contracts:
-created
+registered machine-readable schemas:
+22
 
-S1 targeted payload validation:
-PASS
+tracked contract fixtures:
+21
 
-repository validation harness:
+validators:
+created for schema, object authorization, PostgreSQL RLS,
+Sign in with Apple, signed upload OpenAPI, parser sandbox and archive safety
+
+PostgreSQL migration and integration-test SQL:
 created
 
 GitHub Actions workflow:
-created; remote run result not yet confirmed
+created; remote run result not confirmed by the available connector
 
-backend / iOS / Portal security implementation:
+Go / iOS / Portal / object-storage implementation:
 not created
 
 production readiness:
 NO-GO
 ```
 
-このrepositoryは現在、設計・machine-contract段階である。「完璧に安全」「hack不可能」「完全なprivacy」をclaimしない。
+このrepositoryは設計・machine-contract・security-foundation段階である。「完璧に安全」「hack不可能」「完全なprivacy」をclaimしない。
 
 ## Read first
 
 1. [Round 9 Security Authority](docs/memory-os-current-authority-order-round-9-security.md)
-2. [Capture / Import Security Architecture](docs/memory-os-capture-import-security-architecture-round-9.md)
-3. [Capture / Import Threat Model](docs/memory-os-capture-import-threat-model-round-9.md)
-4. [Security Verification Gate](docs/memory-os-security-verification-gate-round-9.md)
-5. [S1 Validation Report](docs/memory-os-round9-security-s1-validation-report-2026-07-16.md)
+2. [Round 9 Security Foundation Progress](docs/memory-os-round9-security-foundation-progress-2026-07-16.md)
+3. [Capture / Import Security Architecture](docs/memory-os-capture-import-security-architecture-round-9.md)
+4. [Capture / Import Threat Model](docs/memory-os-capture-import-threat-model-round-9.md)
+5. [Security Verification Gate](docs/memory-os-security-verification-gate-round-9.md)
 6. [Security Schema Registry](docs/schemas/memory-os-security/schema-registry.v1.json)
 7. [Security Fixture Index](docs/fixtures/memory-os-security/fixture-index.round9.s1.v1.json)
-8. [Capture / Import Implementation Architecture](docs/memory-os-capture-import-implementation-architecture-round-8.md)
-9. [Privacy and Ethics](docs/privacy-and-ethics.md)
-10. [Persistence, RLS and Recovery](docs/memory-town-persistence-rls-and-recovery-contract.md)
+8. [Signed Upload OpenAPI](contracts/openapi/memory-os-import-security.v1.openapi.json)
+9. [Capture / Import Implementation Architecture](docs/memory-os-capture-import-implementation-architecture-round-8.md)
+10. [Privacy and Ethics](docs/privacy-and-ethics.md)
 
-Re-run the current machine-contract checks:
+Re-run current checks:
 
 ```bash
 python -m pip install -r requirements-security-validation.txt
 python scripts/validate-memory-os-security.py
+python scripts/validate-memory-os-authorization.py
+python scripts/validate-memory-os-postgresql-rls.py
+python scripts/validate-memory-os-apple-auth.py
+python scripts/validate-memory-os-signed-upload-openapi.py
+python scripts/validate-memory-os-parser-security.py
 ```
 
 ## Security priorities
@@ -72,50 +75,55 @@ python scripts/validate-memory-os-security.py
 
 ## Binding implementation boundaries
 
-- iOS Share Extension receives only minimal quick-capture input.
-- iOS Files and the limited Desktop Import Portal upload to the same canonical Go import pipeline.
-- Raw archives are stored only in private quarantine storage.
-- Upload authorization is bound to exact owner, account epoch, job, object key, size, checksum and expiry.
-- Parser workers run outside the public API process with restricted filesystem, network and resources.
-- Import adapters are reviewed, versioned artifacts with execution-digest verification.
+- Sign in with Apple identity is verified server-side; account binding uses issuer + subject, not email.
+- Client-provided account ID, epoch, owner, bucket and object key are never authority.
+- Every Import Job, pairing session, upload authorization, quarantine object, Preview, Apply confirmation, report and export is object-authorized.
+- PostgreSQL user-owned security tables use `FORCE RLS`, owner + epoch policies and non-owner runtime roles.
+- Runtime privilege roles are `NOLOGIN NOINHERIT NOBYPASSRLS`.
+- Signed upload is bound to one owner, epoch, job, server-generated object key, size, SHA-256, content type and expiry.
+- Upload completion rechecks the real object in private storage; it does not trust client metadata.
+- Parser workers run outside the public API process, non-root, networkless, read-only and resource-limited.
+- Parser input and output are mediated by a supervisor; parser receives no cloud, DB or signing secrets.
+- Archive extraction rejects traversal, absolute paths, links, special files, expansion bombs, collisions and unsafe nesting.
 - Browser pairing tokens cannot final-apply confirmed Memory records in P0.
-- Every import job, Preview, upload object, report and confirmation requires object-level authorization.
-- Preview and Apply are bound by source, adapter, options, candidates and exact Preview hash.
-- Apply is idempotent and cannot silently reparse.
+- Preview and Apply are exact-hash bound; Apply is idempotent and cannot silently reparse.
 - App Group data is minimized; secrets remain in Keychain.
 - Audit events cannot contain private content, raw filenames, raw URLs, tokens, email addresses or user notes.
-- Account deletion fences jobs, workers, objects, caches, exports, App Group files and restored backups.
+- Account deletion fences jobs, workers, signed URLs, objects, caches, exports, App Group files and restored backups.
 
-## Current machine-contract evidence
+## Current contract evidence
 
 ```txt
-schemas: 12
-positive fixtures: 10
-negative cases: 24
-schema negative rejections: 22
-semantic negative rejections: 2
-network schema resolution: disabled
+registered schemas:                    22
+tracked fixtures:                      21
+generic negative cases:                24
+object authorization:                   8  (2 allow / 6 deny)
+PostgreSQL RLS:                         14  (4 allow / 10 deny)
+Sign in with Apple:                     16  (1 allow / 15 deny)
+parser sandbox unsafe mutations:        16  (all deny)
+archive / JSON / CSV cases:             25  (1 allow / 24 deny)
+signed upload OpenAPI operations:        3
 ```
 
-This evidence validates contract payloads only. It does not prove the future API, database, object storage, parser runtime, iOS application or Portal implementation is secure.
+This evidence validates contracts and prepared SQL tests. It does not yet prove the future API, object storage, parser runtime, iOS application or Portal implementation is secure.
 
 ## Production blockers
 
-Production is blocked until all required evidence in the Security Verification Gate passes, including:
+Production remains blocked until the Security Verification Gate has evidence for:
 
-- cross-user authorization matrix and executable negative tests
-- PostgreSQL tenant / RLS evidence
-- Sign in with Apple server-validation tests
-- signed upload binding tests against real private object storage
-- archive / JSON / CSV negative and fuzz tests
-- parser sandbox runtime evidence
-- Preview / Apply integrity and idempotency
-- App Group crash recovery and local storage inspection
-- pairing Portal XSS / CSRF / privacy tests
-- deletion race and backup restore tests
-- supply-chain CI gates
-- independent review with zero unresolved Critical / High findings
-- zero unresolved P0 security findings
+- remote CI success;
+- real cross-user API and PostgreSQL isolation;
+- real Sign in with Apple token/code verification;
+- signed upload enforcement against private object storage;
+- parser sandbox runtime inspection;
+- malicious archive / JSON / CSV corpus and fuzzing;
+- Preview / Apply integrity and idempotency;
+- App Group crash recovery and local storage inspection;
+- Portal CSP / XSS / browser-token tests;
+- deletion race and backup-restore tests;
+- dependency, secret, container, SBOM and provenance gates;
+- independent review with zero unresolved Critical / High findings;
+- zero unresolved P0 security findings.
 
 ## Vulnerability reporting
 
@@ -123,10 +131,10 @@ A private vulnerability-reporting channel has not yet been published because the
 
 Before public beta, this repository must define and publish:
 
-- private security contact
-- supported versions
-- acknowledgement target
-- severity / remediation targets
-- disclosure coordination policy
+- private security contact;
+- supported versions;
+- acknowledgement target;
+- severity and remediation targets;
+- disclosure coordination policy.
 
 Do not place private user data, credentials, tokens or live exploit payloads in a public GitHub issue.
