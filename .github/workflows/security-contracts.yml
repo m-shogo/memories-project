@@ -9,6 +9,7 @@ on:
       - "scripts/validate-memory-os-security.py"
       - "scripts/validate-memory-os-authorization.py"
       - "scripts/validate-memory-os-postgresql-rls.py"
+      - "scripts/validate-memory-os-apple-auth.py"
       - "requirements-security-validation.txt"
       - ".github/workflows/security-contracts.yml"
   push:
@@ -21,6 +22,7 @@ on:
       - "scripts/validate-memory-os-security.py"
       - "scripts/validate-memory-os-authorization.py"
       - "scripts/validate-memory-os-postgresql-rls.py"
+      - "scripts/validate-memory-os-apple-auth.py"
       - "requirements-security-validation.txt"
       - ".github/workflows/security-contracts.yml"
   workflow_dispatch:
@@ -51,6 +53,7 @@ jobs:
           python -m py_compile scripts/validate-memory-os-security.py
           python -m py_compile scripts/validate-memory-os-authorization.py
           python -m py_compile scripts/validate-memory-os-postgresql-rls.py
+          python -m py_compile scripts/validate-memory-os-apple-auth.py
 
       - name: Validate security schemas and fixtures
         run: python scripts/validate-memory-os-security.py
@@ -60,6 +63,9 @@ jobs:
 
       - name: Validate PostgreSQL RLS contract
         run: python scripts/validate-memory-os-postgresql-rls.py
+
+      - name: Validate Sign in with Apple contract
+        run: python scripts/validate-memory-os-apple-auth.py
 
   validate-live-postgresql-rls:
     runs-on: ubuntu-latest
