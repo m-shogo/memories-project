@@ -1,0 +1,43 @@
+{
+  "$schema": "https://memory-os.example/schemas/security/apple-auth-validation-profile.v1.schema.json",
+  "schemaVersion": 1,
+  "profileId": "memory-os.security.apple-auth.round9",
+  "profileVersion": 1,
+  "issuer": "https://appleid.apple.com",
+  "jwksUrl": "https://appleid.apple.com/auth/keys",
+  "tokenEndpoint": "https://appleid.apple.com/auth/token",
+  "allowedAudiences": ["com.memoryos.app"],
+  "allowedAlgorithms": ["RS256"],
+  "clockSkewSeconds": 120,
+  "maxTokenAgeSeconds": 600,
+  "nonce": {
+    "required": true,
+    "clientRequestUsesSha256": true,
+    "serverComparesExactClaim": true,
+    "singleUse": true
+  },
+  "keyRotation": {
+    "cacheAllowed": true,
+    "unknownKidRefreshOnce": true,
+    "failClosedAfterRefresh": true,
+    "tlsRequired": true
+  },
+  "authorizationCode": {
+    "serverExchangeRequired": true,
+    "singleUse": true,
+    "exactClientIdBinding": true,
+    "exactRedirectUriBinding": true,
+    "replayRejected": true
+  },
+  "accountBinding": {
+    "canonicalKey": ["issuer", "subject"],
+    "emailAutoLinkAllowed": false,
+    "privateRelayEmailIsIdentity": false,
+    "bindingConflictDecision": "deny_and_require_account_recovery"
+  },
+  "clientAuthority": {
+    "clientAccountIdTrusted": false,
+    "clientEmailTrusted": false,
+    "clientSubjectTrustedBeforeTokenValidation": false
+  }
+}
