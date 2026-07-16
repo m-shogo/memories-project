@@ -2,7 +2,7 @@
   "$schema": "https://memory-os.example/schemas/security/apple-auth-validation-profile.v1.schema.json",
   "schemaVersion": 1,
   "profileId": "memory-os.security.apple-auth.round9",
-  "profileVersion": 1,
+  "profileVersion": 2,
   "issuer": "https://appleid.apple.com",
   "jwksUrl": "https://appleid.apple.com/auth/keys",
   "tokenEndpoint": "https://appleid.apple.com/auth/token",
@@ -26,7 +26,7 @@
     "serverExchangeRequired": true,
     "singleUse": true,
     "exactClientIdBinding": true,
-    "exactRedirectUriBinding": true,
+    "redirectUriPolicy": "must_match_original_when_present",
     "replayRejected": true
   },
   "accountBinding": {
