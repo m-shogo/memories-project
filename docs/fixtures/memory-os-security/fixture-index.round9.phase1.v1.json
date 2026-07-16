@@ -1,0 +1,28 @@
+{
+  "indexId": "memory-os.security.fixture-index.round9.phase1",
+  "indexVersion": 1,
+  "schemaRegistryPath": "docs/schemas/memory-os-security/schema-registry.v1.json",
+  "fixtures": [
+    { "fixtureId": "memory-os.security.issue-codes.round9", "path": "docs/fixtures/memory-os-security/security-issue-code-registry.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-issue-code-registry.v1.schema.json", "status": "targeted_validation_pending" },
+    { "fixtureId": "memory-os.security.import-job.round9.valid", "path": "docs/fixtures/memory-os-security/import-job.round9.valid.v1.json", "schemaId": "https://memory-os.example/schemas/security/import-job.v1.schema.json", "status": "targeted_validation_pending" },
+    { "fixtureId": "memory-os.security.pairing-session.round9.valid", "path": "docs/fixtures/memory-os-security/pairing-session.round9.valid.v1.json", "schemaId": "https://memory-os.example/schemas/security/pairing-session.v1.schema.json", "status": "targeted_validation_pending" },
+    { "fixtureId": "memory-os.security.upload-authorization.round9.valid", "path": "docs/fixtures/memory-os-security/upload-authorization.round9.valid.v1.json", "schemaId": "https://memory-os.example/schemas/security/upload-authorization.v1.schema.json", "status": "targeted_validation_pending" },
+    { "fixtureId": "memory-os.security.quarantine-object.round9.valid", "path": "docs/fixtures/memory-os-security/quarantine-object.round9.valid.v1.json", "schemaId": "https://memory-os.example/schemas/security/quarantine-object.v1.schema.json", "status": "targeted_validation_pending" },
+    { "fixtureId": "memory-os.security.negative.round9.phase1", "path": "docs/fixtures/memory-os-security/security-negative-cases.round9.phase1.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-negative-case-set.v1.schema.json", "status": "targeted_validation_pending" }
+  ],
+  "authority": {
+    "phase": "round9_s1_phase1",
+    "implementationAllowed": false,
+    "productionAllowed": false,
+    "networkSchemaResolutionAllowed": false
+  },
+  "nextRequired": [
+    "targeted_schema_validation",
+    "execute_negative_mutations",
+    "add_import_preview_schema",
+    "add_apply_confirmation_schema",
+    "add_adapter_manifest_schema",
+    "add_deletion_fence_schema",
+    "add_safe_audit_event_schema"
+  ]
+}
