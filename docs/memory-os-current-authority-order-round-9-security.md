@@ -1,6 +1,6 @@
 # Memory OS Current Authority Order — Round 9 Security
 
-最終更新: 2026-07-16
+最終更新: 2026-07-17
 
 ## Current verdict
 
@@ -20,14 +20,14 @@ machine-readable security foundation:
 first executable Go backend security slice:
 created
 
-local Go test / vet / race:
-PASS
+previous Go security-slice baseline:
+go test / vet / race PASS before the latest Preview spool changes
 
-concrete PostgreSQL / object storage / parser runtime / iOS / Portal:
+latest CSV iterator / RowEvent / Preview v2 additions:
+committed; remote CI result not confirmed by the available connector
+
+concrete PostgreSQL / object storage / parser runtime / spool / iOS / Portal:
 incomplete
-
-GitHub Actions remote result:
-not confirmed by the available connector
 
 production:
 NO-GO
@@ -42,20 +42,21 @@ Securityについて「完璧」「安全が保証された」とは表現しな
 矛盾時は上を優先する。
 
 1. `memory-os-current-authority-order-round-9-security.md`
-2. `memory-os-round9-s2-backend-security-slice-progress-2026-07-16.md`
-3. `memory-os-round9-security-foundation-progress-2026-07-16.md`
-4. `memory-os-capture-import-security-architecture-round-9.md`
-5. `memory-os-capture-import-threat-model-round-9.md`
-6. `memory-os-security-verification-gate-round-9.md`
-7. `docs/schemas/memory-os-security/schema-registry.v1.json`
-8. `docs/fixtures/memory-os-security/fixture-index.round9.s1.v1.json`
-9. `contracts/openapi/memory-os-import-security.v1.openapi.json`
-10. `infra/postgresql/security/001_memory_os_import_rls.sql`
-11. `infra/postgresql/security/test_memory_os_import_rls.sql`
-12. `services/import-api/README.md`
-13. Round 9 validators and security workflows
-14. Round 8 Capture / Import implementation architecture
-15. prior privacy / persistence / deletion / worker-fencing contracts
+2. `memory-os-preview-spool-commit-contract-round-9.md`
+3. `memory-os-round9-s2-backend-security-slice-progress-2026-07-16.md`
+4. `memory-os-round9-security-foundation-progress-2026-07-16.md`
+5. `memory-os-capture-import-security-architecture-round-9.md`
+6. `memory-os-capture-import-threat-model-round-9.md`
+7. `memory-os-security-verification-gate-round-9.md`
+8. `docs/schemas/memory-os-security/schema-registry.v1.json`
+9. `docs/fixtures/memory-os-security/fixture-index.round9.s1.v1.json`
+10. `contracts/openapi/memory-os-import-security.v1.openapi.json`
+11. `infra/postgresql/security/001_memory_os_import_rls.sql`
+12. `infra/postgresql/security/test_memory_os_import_rls.sql`
+13. `services/import-api/README.md`
+14. Round 9 validators and security workflows
+15. Round 8 Capture / Import implementation architecture
+16. prior privacy / persistence / deletion / worker-fencing contracts
 
 Round 9は既存のprivacy・RLS・deletion契約を破棄せず、Capture / Import全体へ適用する。
 
@@ -129,7 +130,7 @@ Browser pairing tokenはP0のfinal Apply不可。
 - owner / epochは`USING`と`WITH CHECK`で強制する。
 - contextなしはdeny。
 - security-domain DELETEはdeletion runtimeだけ。
-- Preview、Apply confirmation、Import Reportはinsert後immutable。
+- ready Preview、Apply confirmation、Import Reportはinsert後immutable。
 
 ## 3.4 Signed quarantine upload
 
@@ -174,23 +175,59 @@ nested depth:           1
 
 Traversal、absolute/drive path、NUL、links、special files、duplicate normalized path、case collision、encrypted/multi-volume archive、unknown method、malformed directory、deep JSON、duplicate JSON key、oversized CSV cellをrejectする。
 
-## 3.6 Preview and Apply
+## 3.6 CSV parsing and options binding
 
-- Previewはexact source object version、source checksum、adapter identity/digest、options hash、candidate hashesへ固定する。
-- Preview候補は正規化してから保存する。
-- Preview materialization authorityはworker leaseだけ。
+- Generic CSVは1行ずつ同期pullする。
+- hidden goroutine、channel、background persistenceを使用しない。
+- cancellationまたはfatal parse error後は同じiteratorを再開しない。
+- mapping、delimiter、date layout、timezone、limitsを正規化してSHA-256へ固定する。
+- P0 timezoneはembedded tzdataによる`UTC`と`Asia/Tokyo`だけ。
+- caller申告のoptions hashと実options hashが違う場合、DB処理開始前にrejectする。
+- accepted / rejectedを問わずSourceRowは単調増加し、重複・巻戻しを禁止する。
+- rejected rowはSourceRowと`IMPORT_[A-Z0-9_]+`だけを保持し、raw cell値を保持しない。
+
+## 3.7 Preview atomic visibility
+
+Atomic visibilityは必要だが、source parse中に長時間PostgreSQL transactionを開く方式は禁止する。
+
+Production required flow:
+
+```txt
+version-bound source
+→ parser sandboxでtransaction外parse
+→ bounded private spool
+→ accepted / rejected streamとmanifestを再hash
+→ canonical account epochを再確認
+→ client-side pgx.CopyFromによる短いtransaction
+→ candidates + safe rejections + immutable ready Previewを同時commit
+```
+
+Binding rules:
+
+- source object version / checksum;
+- adapter ID / version / reviewed artifact digest;
+- normalized options digest;
+- accepted stream hash / count;
+- rejected stream hash / count;
+- final Preview v2 hash。
+
+`preview.AtomicMaterializer`はhash・row decision invariantを検証するvertical-slice reference only。production PostgreSQL repositoryへ直接接続しない。
+
+## 3.8 Apply
+
 - final Apply authorityはiOS userだけ。
 - Applyはexact Preview ID + hashを要求する。
 - Apply時に再parseしない。
 - idempotency keyをrequest hashへ固定する。
 - same completed requestは以前の結果を返し、再保存しない。
 - same key + different requestはrejectする。
-- created / updated / skippedの合計がcandidate countと一致しなければtransaction rollback。
+- created / updated / skippedの合計がaccepted candidate countと一致しなければtransaction rollback。
+- rejected rowはApply対象ではない。
 - partial Applyをsuccess表示しない。
 
-## 3.7 Deletion
+## 3.9 Deletion
 
-account epochはjob、lease、upload、object、Preview、Apply、export、search、App Group、backup restorationへ伝播する。old epoch writeと削除後の復活を禁止する。
+account epochはjob、lease、upload、object、spool、Preview、Apply、export、search、App Group、backup restorationへ伝播する。old epoch writeと削除後の復活を禁止する。
 
 ---
 
@@ -206,20 +243,26 @@ Apple JWT / JWKS verification core
 cryptographic opaque IDs
 signed upload service and strict HTTP handlers
 bounded Generic CSV parser
-CSV-to-Preview streaming pipeline
-immutable Preview materializer
+synchronous Generic CSV iterator
+canonical CSV options digest
+CSV → Preview RowEvent bridge
+Preview v2 candidate / safe-rejection hash model
+reference AtomicMaterializer
 idempotent iOS-only Apply service
+account epoch checkpoint guard
+fuzz targets for CSV and Apple compact JWT
 ```
 
-Local evidence:
+Current validation language:
 
 ```txt
-Go files:   25
-unit tests: 52
+previous backend baseline:
+go test / go vet / go test -race PASS
 
-go test ./...       PASS
-go vet ./...        PASS
-go test -race ./... PASS
+latest iterator / atomic Preview / pipeline additions:
+committed with unit tests
+remote CI status unavailable from the current connector
+therefore not yet recorded as PASS
 ```
 
 This is a security vertical slice, not a production backend.
@@ -228,12 +271,15 @@ Not yet implemented:
 
 - executable server composition and session issuer;
 - concrete Apple code exchanger / client-secret rotation;
-- concrete PostgreSQL repositories and Go driver composition;
+- concrete account-control and tenant PostgreSQL repositories;
 - concrete S3-compatible signer / HEAD adapter / bucket policy;
 - parser supervisor runtime;
 - adapter artifact verification at execution;
-- concrete Preview / Apply / Memory persistence;
-- deletion-epoch cancellation and cleanup;
+- bounded encrypted/ephemeral Preview spool writer and reader;
+- spool manifest schema and verifier;
+- client-side `pgx.CopyFrom` atomic Preview commit repository;
+- concrete Apply / Memory persistence;
+- deletion-epoch spool cancellation and cleanup;
 - iOS and Portal clients。
 
 ---
@@ -252,8 +298,11 @@ Production authorization is forbidden while any condition remains:
 - completion trusts client object metadata;
 - quarantine is public or client-listable;
 - parser has network、host mount、secret、unbounded resources;
+- untrusted source parse occurs while a production DB transaction is open;
+- spool lacks private bounded storage, manifest binding, re-hash and cleanup;
+- candidate / rejection bulk commit is not all-or-nothing;
 - Preview / Apply exact hash binding or idempotency is absent;
-- raw file TTL / cancellation cleanup is absent;
+- raw file / spool TTL or cancellation cleanup is absent;
 - deletion cannot fence active work and backup restore;
 - private content enters logs、analytics、push、crash report;
 - remote security CI is failing or unknown at release judgment time;
@@ -264,76 +313,20 @@ Production authorization is forbidden while any condition remains:
 
 # 6. Correct next sequence
 
-## S2 backend continuation
-
 ```txt
-1. extend PostgreSQL schema for Import Job, upload, Preview candidate, Apply and Memory rows
-2. implement concrete PostgreSQL repositories
-3. execute Go integration tests against PostgreSQL 16 with FORCE RLS
-4. implement local versioned S3-compatible signer and object adapter
-5. prove overwrite, checksum, expiry, cancellation and private-policy behavior
-6. implement parser supervisor and safe worker entrypoint
-7. verify adapter artifact digest at execution
-8. implement deletion epoch fencing across queue, parser, Preview and Apply
-9. add strict Preview / Apply HTTP handlers and executable service composition
-10. add malicious corpus, fuzzing and log-canary tests
+1. confirm current Go CI / format / vet / race result
+2. define machine-readable PreviewSpoolManifest schema
+3. implement private bounded spool writer and reader
+4. add spool tamper / truncation / cross-job / expiry tests
+5. implement concrete pgx CopyFrom commit repository
+6. prove parsing completes before transaction start
+7. prove candidate / rejection / Preview rollback together
+8. recheck canonical account epoch immediately before commit
+9. delete spool after success / failure / cancellation / expiry
+10. implement concrete S3-compatible storage adapter
+11. implement parser supervisor runtime
+12. implement concrete idempotent Apply repository
+13. begin iOS Share Extension only after backend P0 blockers close
 ```
 
-## S3 iOS
-
-```txt
-11. Share Extension URL / text
-12. App Group minimal intake
-13. GRDB writer / migration ownership and crash recovery
-14. Keychain / Data Protection / backup inspection
-15. safe Preview display and iOS final confirmation
-```
-
-## S4 Portal
-
-```txt
-16. one-time pairing
-17. in-memory browser token lifecycle
-18. CSP / XSS / no-store evidence
-19. signed upload through the same OpenAPI boundary
-```
-
-## S5 release evidence
-
-```txt
-20. parser runtime inspection and fuzzing
-21. deletion race and backup restore tests
-22. dependency / secret / container scans
-23. SBOM / provenance
-24. incident / key rotation / restore runbooks
-25. independent security review
-26. unresolved Critical / High zero
-27. unresolved P0 zero
-```
-
-Only after Capture / Import P0 unresolved zero:
-
-```txt
-28. TownSceneSnapshot Swift models
-29. SpriteKit static Town prototype
-```
-
----
-
-# 7. Authorization language
-
-Allowed only after evidence:
-
-```txt
-Capture / Import P0 security verification passed for version X and documented scope Y.
-```
-
-Forbidden:
-
-```txt
-Memory OS is perfectly secure.
-Memory OS cannot be hacked.
-All data is completely private.
-```
-
-Security readiness is versioned and must be reassessed after architecture、dependency、provider、adapter、data-flow change。
+Memory Town remains after Capture / Import P0 security blockers close.
