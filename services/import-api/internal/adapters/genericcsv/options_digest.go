@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"hash"
 	"time"
+	_ "time/tzdata"
 )
 
 var ErrUnsupportedDateLocation = errors.New("unsupported CSV date location")
