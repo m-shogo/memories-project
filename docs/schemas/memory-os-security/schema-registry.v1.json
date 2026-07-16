@@ -1,6 +1,6 @@
 {
   "registryId": "memory-os.security.schema-registry",
-  "registryVersion": 1,
+  "registryVersion": 2,
   "networkResolutionAllowed": false,
   "logicalBaseUri": "https://memory-os.example/schemas/security/",
   "resolutionPolicy": "resolve_exact_id_to_repository_path",
@@ -11,6 +11,11 @@
     { "schemaId": "https://memory-os.example/schemas/security/pairing-session.v1.schema.json", "repositoryPath": "docs/schemas/memory-os-security/pairing-session.v1.schema.json" },
     { "schemaId": "https://memory-os.example/schemas/security/upload-authorization.v1.schema.json", "repositoryPath": "docs/schemas/memory-os-security/upload-authorization.v1.schema.json" },
     { "schemaId": "https://memory-os.example/schemas/security/quarantine-object.v1.schema.json", "repositoryPath": "docs/schemas/memory-os-security/quarantine-object.v1.schema.json" },
+    { "schemaId": "https://memory-os.example/schemas/security/import-preview.v1.schema.json", "repositoryPath": "docs/schemas/memory-os-security/import-preview.v1.schema.json" },
+    { "schemaId": "https://memory-os.example/schemas/security/apply-confirmation.v1.schema.json", "repositoryPath": "docs/schemas/memory-os-security/apply-confirmation.v1.schema.json" },
+    { "schemaId": "https://memory-os.example/schemas/security/adapter-manifest.v1.schema.json", "repositoryPath": "docs/schemas/memory-os-security/adapter-manifest.v1.schema.json" },
+    { "schemaId": "https://memory-os.example/schemas/security/deletion-fence.v1.schema.json", "repositoryPath": "docs/schemas/memory-os-security/deletion-fence.v1.schema.json" },
+    { "schemaId": "https://memory-os.example/schemas/security/safe-audit-event.v1.schema.json", "repositoryPath": "docs/schemas/memory-os-security/safe-audit-event.v1.schema.json" },
     { "schemaId": "https://memory-os.example/schemas/security/security-negative-case-set.v1.schema.json", "repositoryPath": "docs/schemas/memory-os-security/security-negative-case-set.v1.schema.json" }
   ],
   "rules": {
