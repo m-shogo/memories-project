@@ -1,9 +1,10 @@
 {
   "indexId": "memory-os.security.fixture-index.round9.s1",
-  "indexVersion": 5,
+  "indexVersion": 6,
   "schemaRegistryPath": "docs/schemas/memory-os-security/schema-registry.v1.json",
   "fixtures": [
     { "fixtureId": "memory-os.security.issue-codes.round9", "path": "docs/fixtures/memory-os-security/security-issue-code-registry.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-issue-code-registry.v1.schema.json", "status": "targeted_validation_pass" },
+    { "fixtureId": "memory-os.security.parser-issue-codes.round9", "path": "docs/fixtures/memory-os-security/parser-security-issue-code-registry.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-issue-code-registry.v1.schema.json", "status": "parser_security_registry_created" },
     { "fixtureId": "memory-os.security.import-job.round9.valid", "path": "docs/fixtures/memory-os-security/import-job.round9.valid.v1.json", "schemaId": "https://memory-os.example/schemas/security/import-job.v1.schema.json", "status": "targeted_validation_pass" },
     { "fixtureId": "memory-os.security.pairing-session.round9.valid", "path": "docs/fixtures/memory-os-security/pairing-session.round9.valid.v1.json", "schemaId": "https://memory-os.example/schemas/security/pairing-session.v1.schema.json", "status": "targeted_validation_pass" },
     { "fixtureId": "memory-os.security.upload-authorization.round9.valid", "path": "docs/fixtures/memory-os-security/upload-authorization.round9.valid.v1.json", "schemaId": "https://memory-os.example/schemas/security/upload-authorization.v1.schema.json", "status": "targeted_validation_pass" },
@@ -19,11 +20,15 @@
     { "fixtureId": "memory-os.security.postgresql-rls-cases.round9", "path": "docs/fixtures/memory-os-security/postgresql-rls-cases.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/postgresql-rls-case-set.v1.schema.json", "status": "rls_logic_validation_pass_4_allow_10_deny" },
     { "fixtureId": "memory-os.security.apple-auth-profile.round9.valid", "path": "docs/fixtures/memory-os-security/apple-auth-validation-profile.round9.valid.v1.json", "schemaId": "https://memory-os.example/schemas/security/apple-auth-validation-profile.v1.schema.json", "status": "apple_auth_profile_validation_pass" },
     { "fixtureId": "memory-os.security.apple-auth-cases.round9", "path": "docs/fixtures/memory-os-security/apple-auth-validation-cases.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/apple-auth-validation-case-set.v1.schema.json", "status": "apple_auth_validation_pass_1_allow_15_deny" },
+    { "fixtureId": "memory-os.security.parser-sandbox-profile.round9.valid", "path": "docs/fixtures/memory-os-security/parser-sandbox-profile.round9.valid.v1.json", "schemaId": "https://memory-os.example/schemas/security/parser-sandbox-profile.v1.schema.json", "status": "parser_sandbox_profile_created" },
+    { "fixtureId": "memory-os.security.archive-safety-profile.round9.valid", "path": "docs/fixtures/memory-os-security/archive-safety-profile.round9.valid.v1.json", "schemaId": "https://memory-os.example/schemas/security/archive-safety-profile.v1.schema.json", "status": "archive_safety_profile_created" },
+    { "fixtureId": "memory-os.security.parser-sandbox-negative.round9", "path": "docs/fixtures/memory-os-security/parser-sandbox-negative-cases.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/profile-mutation-case-set.v1.schema.json", "status": "parser_sandbox_validation_created_16_deny" },
+    { "fixtureId": "memory-os.security.archive-safety-cases.round9", "path": "docs/fixtures/memory-os-security/archive-safety-cases.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/archive-safety-case-set.v1.schema.json", "status": "archive_safety_validation_created_1_allow_24_deny" },
     { "fixtureId": "memory-os.security.negative.round9.phase1", "path": "docs/fixtures/memory-os-security/security-negative-cases.round9.phase1.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-negative-case-set.v1.schema.json", "status": "11_schema_rejections_pass" },
     { "fixtureId": "memory-os.security.negative.round9.phase2", "path": "docs/fixtures/memory-os-security/security-negative-cases.round9.phase2.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-negative-case-set.v1.schema.json", "status": "11_schema_rejections_pass_2_semantic_rejections_pass" }
   ],
   "authority": {
-    "phase": "round9_s1_s1_5_postgresql_rls_and_apple_auth_foundation",
+    "phase": "round9_security_foundation_through_parser_boundary",
     "schemaContractsCreated": true,
     "targetedPayloadValidationPassed": true,
     "semanticValidationPassed": true,
@@ -33,6 +38,11 @@
     "postgresqlRlsIntegrationTestsCreated": true,
     "appleAuthContractCreated": true,
     "appleAuthValidatorCreated": true,
+    "signedUploadOpenApiCreated": true,
+    "signedUploadValidatorCreated": true,
+    "parserSandboxContractCreated": true,
+    "archiveSafetyContractCreated": true,
+    "parserSecurityValidatorCreated": true,
     "repositoryValidatorCreated": true,
     "githubActionsWorkflowCreated": true,
     "githubActionsRemoteResultConfirmed": false,
@@ -41,8 +51,8 @@
     "networkSchemaResolutionAllowed": false
   },
   "evidence": {
-    "registeredSchemas": 18,
-    "positiveContractFixtures": 16,
+    "registeredSchemas": 22,
+    "positiveContractFixtures": 21,
     "mutationNegativeCases": 24,
     "schemaNegativeRejections": 22,
     "semanticNegativeRejections": 2,
@@ -56,14 +66,20 @@
     "postgresqlRlsPolicyProfiles": 9,
     "appleAuthCases": 16,
     "appleAuthAllows": 1,
-    "appleAuthDenies": 15
+    "appleAuthDenies": 15,
+    "signedUploadOpenApiOperations": 3,
+    "parserSandboxUnsafeMutations": 16,
+    "archiveSafetyCases": 25,
+    "archiveSafetyAllows": 1,
+    "archiveSafetyDenies": 24
   },
   "nextRequired": [
     "confirm_github_actions_remote_run",
     "execute_live_postgresql_rls_ci",
-    "signed_upload_openapi_boundary",
-    "worker_sandbox_runtime_contract",
-    "archive_limit_profile_and_fixtures",
+    "implement_go_auth_and_rls_scoped_transaction",
+    "implement_signed_upload_storage_adapter",
+    "implement_isolated_parser_supervisor",
+    "archive_parser_fuzz_corpus",
     "backend_security_vertical_slice"
   ]
 }
