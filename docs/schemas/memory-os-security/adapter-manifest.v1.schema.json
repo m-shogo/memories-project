@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/security/adapter-manifest.v1.schema.json",
+  "title": "Memory OS Import Adapter Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "adapterId", "adapterVersion", "artifactDigest", "status", "supportedMediaTypes", "determinism", "runtime", "limits", "review"],
+  "properties": {
+    "$schema": { "const": "https://memory-os.example/schemas/security/adapter-manifest.v1.schema.json" },
+    "schemaVersion": { "const": 1 },
+    "adapterId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+    "adapterVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$", "maxLength": 32 },
+    "artifactDigest": { "$ref": "core.v1.schema.json#/$defs/Sha256Hex" },
+    "status": { "enum": ["candidate", "approved", "deprecated", "revoked"] },
+    "supportedMediaTypes": { "type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z0-9.+-]+/[a-z0-9.+-]+$", "maxLength": 128 } },
+    "determinism": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "inputComponents"],
+      "properties": {
+        "required": { "const": true },
+        "inputComponents": { "const": ["adapter_id", "adapter_version", "artifact_digest", "canonical_input_hash", "parsing_options_hash"] }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["networkAllowed", "scriptExecutionAllowed", "dynamicCodeLoadingAllowed", "runAsRoot", "readOnlyRootFilesystem", "jobIsolatedTemp"],
+      "properties": {
+        "networkAllowed": { "const": false },
+        "scriptExecutionAllowed": { "const": false },
+        "dynamicCodeLoadingAllowed": { "const": false },
+        "runAsRoot": { "const": false },
+        "readOnlyRootFilesystem": { "const": true },
+        "jobIsolatedTemp": { "const": true }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxInputBytes", "maxExpandedBytes", "maxEntries", "maxNestingDepth", "maxWallSeconds", "maxMemoryBytes"],
+      "properties": {
+        "maxInputBytes": { "type": "integer", "minimum": 1, "maximum": 10737418240 },
+        "maxExpandedBytes": { "type": "integer", "minimum": 1, "maximum": 53687091200 },
+        "maxEntries": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+        "maxNestingDepth": { "type": "integer", "minimum": 0, "maximum": 16 },
+        "maxWallSeconds": { "type": "integer", "minimum": 1, "maximum": 3600 },
+        "maxMemoryBytes": { "type": "integer", "minimum": 1048576, "maximum": 17179869184 }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["securityReviewed", "reviewedArtifactDigest", "approvedByRole", "approvedAt"],
+      "properties": {
+        "securityReviewed": { "const": true },
+        "reviewedArtifactDigest": { "$ref": "core.v1.schema.json#/$defs/Sha256Hex" },
+        "approvedByRole": { "enum": ["security_reviewer", "maintainer_security_delegate"] },
+        "approvedAt": { "$ref": "core.v1.schema.json#/$defs/UtcTimestamp" }
+      }
+    }
+  }
+}
