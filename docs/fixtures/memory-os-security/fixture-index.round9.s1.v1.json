@@ -1,6 +1,6 @@
 {
   "indexId": "memory-os.security.fixture-index.round9.s1",
-  "indexVersion": 1,
+  "indexVersion": 2,
   "schemaRegistryPath": "docs/schemas/memory-os-security/schema-registry.v1.json",
   "fixtures": [
     { "fixtureId": "memory-os.security.issue-codes.round9", "path": "docs/fixtures/memory-os-security/security-issue-code-registry.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-issue-code-registry.v1.schema.json", "status": "targeted_validation_pass" },
@@ -13,25 +13,42 @@
     { "fixtureId": "memory-os.security.adapter-manifest.generic-csv.round9.valid", "path": "docs/fixtures/memory-os-security/adapter-manifest.generic-csv.round9.valid.v1.json", "schemaId": "https://memory-os.example/schemas/security/adapter-manifest.v1.schema.json", "status": "targeted_validation_pass" },
     { "fixtureId": "memory-os.security.deletion-fence.round9.valid", "path": "docs/fixtures/memory-os-security/deletion-fence.round9.valid.v1.json", "schemaId": "https://memory-os.example/schemas/security/deletion-fence.v1.schema.json", "status": "targeted_validation_pass" },
     { "fixtureId": "memory-os.security.safe-audit-event.round9.valid", "path": "docs/fixtures/memory-os-security/safe-audit-event.round9.valid.v1.json", "schemaId": "https://memory-os.example/schemas/security/safe-audit-event.v1.schema.json", "status": "targeted_validation_pass" },
+    { "fixtureId": "memory-os.security.authorization-matrix.round9.valid", "path": "docs/fixtures/memory-os-security/authorization-matrix.round9.valid.v1.json", "schemaId": "https://memory-os.example/schemas/security/authorization-matrix.v1.schema.json", "status": "targeted_validation_pass" },
+    { "fixtureId": "memory-os.security.authorization-cases.round9", "path": "docs/fixtures/memory-os-security/authorization-cases.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/authorization-case-set.v1.schema.json", "status": "authorization_validation_pass_2_allow_6_deny" },
     { "fixtureId": "memory-os.security.negative.round9.phase1", "path": "docs/fixtures/memory-os-security/security-negative-cases.round9.phase1.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-negative-case-set.v1.schema.json", "status": "11_schema_rejections_pass" },
-    { "fixtureId": "memory-os.security.negative.round9.phase2", "path": "docs/fixtures/memory-os-security/security-negative-cases.round9.phase2.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-negative-case-set.v1.schema.json", "status": "11_schema_rejections_pass_2_semantic_cases_pending" }
+    { "fixtureId": "memory-os.security.negative.round9.phase2", "path": "docs/fixtures/memory-os-security/security-negative-cases.round9.phase2.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-negative-case-set.v1.schema.json", "status": "11_schema_rejections_pass_2_semantic_rejections_pass" }
   ],
   "authority": {
-    "phase": "round9_s1_machine_contracts",
+    "phase": "round9_s1_and_s1_5_authorization_contracts",
     "schemaContractsCreated": true,
     "targetedPayloadValidationPassed": true,
-    "repositoryIntegratedValidationPassed": false,
-    "semanticValidationPassed": false,
+    "semanticValidationPassed": true,
+    "authorizationValidationPassed": true,
+    "repositoryValidatorCreated": true,
+    "githubActionsWorkflowCreated": true,
+    "githubActionsRemoteResultConfirmed": false,
     "implementationAllowed": false,
     "productionAllowed": false,
     "networkSchemaResolutionAllowed": false
   },
+  "evidence": {
+    "registeredSchemas": 14,
+    "positiveContractFixtures": 12,
+    "mutationNegativeCases": 24,
+    "schemaNegativeRejections": 22,
+    "semanticNegativeRejections": 2,
+    "authorizationCases": 8,
+    "authorizationAllows": 2,
+    "authorizationDenies": 6
+  },
   "nextRequired": [
-    "repository_integrated_schema_validation",
-    "semantic_validator_adapter_digest_match",
-    "semantic_validator_deletion_scope_completeness",
-    "object_authorization_negative_fixtures",
-    "ci_validation_harness",
+    "confirm_github_actions_remote_run",
+    "postgresql_tenant_rls_contract",
+    "rls_positive_and_negative_fixtures",
+    "sign_in_with_apple_server_validation_contract",
+    "signed_upload_openapi_boundary",
+    "worker_sandbox_runtime_contract",
+    "archive_limit_profile_and_fixtures",
     "backend_security_vertical_slice"
   ]
 }
