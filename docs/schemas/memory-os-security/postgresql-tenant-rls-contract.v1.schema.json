@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/security/postgresql-tenant-rls-contract.v1.schema.json",
+  "title": "Memory OS PostgreSQL Tenant RLS Contract v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "contractId", "contractVersion", "sessionContext", "roles", "tables", "globalRules"],
+  "properties": {
+    "$schema": { "const": "https://memory-os.example/schemas/security/postgresql-tenant-rls-contract.v1.schema.json" },
+    "schemaVersion": { "const": 1 },
+    "contractId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+    "contractVersion": { "type": "integer", "minimum": 1 },
+    "sessionContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["accountIdSetting", "accountEpochSetting", "setMode", "source", "missingContextDecision"],
+      "properties": {
+        "accountIdSetting": { "const": "app.current_account_id" },
+        "accountEpochSetting": { "const": "app.current_account_epoch" },
+        "setMode": { "const": "transaction_local" },
+        "source": { "const": "verified_server_auth_context" },
+        "missingContextDecision": { "const": "deny" }
+      }
+    },
+    "roles": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["role", "login", "bypassRls", "ownsUserTables", "purpose"],
+        "properties": {
+          "role": { "enum": ["memory_api_runtime", "memory_worker_runtime", "memory_migration_owner", "memory_deletion_runtime", "memory_readonly_observer"] },
+          "login": { "type": "boolean" },
+          "bypassRls": { "const": false },
+          "ownsUserTables": { "type": "boolean" },
+          "purpose": { "enum": ["api_requests", "scoped_worker_jobs", "schema_migrations", "account_deletion", "safe_operational_metrics"] }
+        }
+      }
+    },
+    "tables": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["table", "ownerColumn", "epochColumn", "rlsEnabled", "forceRls", "runtimeRoleOwnsTable", "policies"],
+        "properties": {
+          "table": { "enum": ["import_job", "pairing_session", "upload_authorization", "quarantine_object", "import_preview", "apply_confirmation", "import_report", "export_job", "deletion_fence"] },
+          "ownerColumn": { "const": "owner_account_id" },
+          "epochColumn": { "enum": ["account_epoch", "deletion_epoch"] },
+          "rlsEnabled": { "const": true },
+          "forceRls": { "const": true },
+          "runtimeRoleOwnsTable": { "const": false },
+          "policies": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 8,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["command", "roles", "usingOwnerCheck", "usingEpochCheck", "withCheckOwner", "withCheckEpoch"],
+              "properties": {
+                "command": { "enum": ["select", "insert", "update", "delete"] },
+                "roles": { "type": "array", "minItems": 1, "maxItems": 4, "uniqueItems": true, "items": { "enum": ["memory_api_runtime", "memory_worker_runtime", "memory_deletion_runtime"] } },
+                "usingOwnerCheck": { "type": "boolean" },
+                "usingEpochCheck": { "type": "boolean" },
+                "withCheckOwner": { "type": "boolean" },
+                "withCheckEpoch": { "type": "boolean" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "globalRules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["denyByDefault", "runtimeBypassRlsForbidden", "runtimeTableOwnershipForbidden", "clientSetsSessionContext", "ownerMutationAllowed", "epochDowngradeAllowed", "rawSqlWithoutScopedTransactionAllowed"],
+      "properties": {
+        "denyByDefault": { "const": true },
+        "runtimeBypassRlsForbidden": { "const": true },
+        "runtimeTableOwnershipForbidden": { "const": true },
+        "clientSetsSessionContext": { "const": false },
+        "ownerMutationAllowed": { "const": false },
+        "epochDowngradeAllowed": { "const": false },
+        "rawSqlWithoutScopedTransactionAllowed": { "const": false }
+      }
+    }
+  }
+}
