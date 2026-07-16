@@ -184,15 +184,30 @@ func (s *Service) Issue(ctx context.Context, principal security.Principal, reque
 		}
 
 		authorization := Authorization{
-			ID: authorizationID, JobID: job.ID, OwnerAccountID: principal.AccountID(), AccountEpoch: principal.AccountEpoch(),
-			ObjectKey: objectKey, ContentLength: request.ContentLength, ChecksumSHA256: request.ChecksumSHA256,
-			ContentType: request.ContentType, SourceSurface: request.SourceSurface, DisplayFilename: request.DisplayFilename,
-			CreatedAt: now, ExpiresAt: expiresAt, Status: "issued",
+			ID:              authorizationID,
+			JobID:           job.ID,
+			OwnerAccountID:  principal.AccountID(),
+			AccountEpoch:    principal.AccountEpoch(),
+			ObjectKey:       objectKey,
+			ContentLength:   request.ContentLength,
+			ChecksumSHA256:  request.ChecksumSHA256,
+			ContentType:     request.ContentType,
+			SourceSurface:   request.SourceSurface,
+			DisplayFilename: request.DisplayFilename,
+			CreatedAt:       now,
+			ExpiresAt:       expiresAt,
+			Status:          "issued",
 		}
 		if err := s.Repository.InsertAuthorization(ctx, tx, authorization); err != nil {
 			return fmt.Errorf("insert upload authorization: %w", err)
 		}
-		presigned, err := s.Signer.PresignPut(ctx, PresignRequest{ObjectKey: objectKey, ContentLength: request.ContentLength, ChecksumSHA256: request.ChecksumSHA256, ContentType: request.ContentType, ExpiresAt: expiresAt})
+		presigned, err := s.Signer.PresignPut(ctx, PresignRequest{
+			ObjectKey:      objectKey,
+			ContentLength:  request.ContentLength,
+			ChecksumSHA256: request.ChecksumSHA256,
+			ContentType:    request.ContentType,
+			ExpiresAt:      expiresAt,
+		})
 		if err != nil {
 			return fmt.Errorf("presign quarantine upload: %w", err)
 		}
@@ -202,7 +217,14 @@ func (s *Service) Issue(ctx context.Context, principal security.Principal, reque
 		if !requiredHeadersMatch(presigned.RequiredHeaders, request) {
 			return errors.New("presigner did not bind required upload headers")
 		}
-		response = IssueResponse{AuthorizationID: authorizationID, ObjectKey: objectKey, UploadURL: presigned.URL, RequiredHeaders: cloneHeaders(presigned.RequiredHeaders), ExpiresAt: expiresAt, CacheControl: "no-store"}
+		response = IssueResponse{
+			AuthorizationID: authorizationID,
+			ObjectKey:       objectKey,
+			UploadURL:       presigned.URL,
+			RequiredHeaders: cloneHeaders(presigned.RequiredHeaders),
+			ExpiresAt:       expiresAt,
+			CacheControl:    "no-store",
+		}
 		return nil
 	})
 	if err != nil {
@@ -285,7 +307,19 @@ func (s *Service) Complete(ctx context.Context, principal security.Principal, au
 		if !consumed {
 			return ErrUploadAuthorizationConsumed
 		}
-		return s.Repository.EnqueueScan(ctx, tx, ScanTicket{AuthorizationID: current.ID, JobID: current.JobID, OwnerAccountID: current.OwnerAccountID, AccountEpoch: current.AccountEpoch, ObjectKey: current.ObjectKey, ObjectVersionID: metadata.VersionID, ETag: metadata.ETag, ContentLength: metadata.ContentLength, ChecksumSHA256: metadata.ChecksumSHA256, ContentType: metadata.ContentType, CreatedAt: now})
+		return s.Repository.EnqueueScan(ctx, tx, ScanTicket{
+			AuthorizationID: current.ID,
+			JobID:           current.JobID,
+			OwnerAccountID:  current.OwnerAccountID,
+			AccountEpoch:    current.AccountEpoch,
+			ObjectKey:       current.ObjectKey,
+			ObjectVersionID: metadata.VersionID,
+			ETag:            metadata.ETag,
+			ContentLength:   metadata.ContentLength,
+			ChecksumSHA256:  metadata.ChecksumSHA256,
+			ContentType:     metadata.ContentType,
+			CreatedAt:       now,
+		})
 	})
 }
 
@@ -324,8 +358,19 @@ func validateIssueRequest(request IssueRequest) error {
 	return nil
 }
 
-var allowedContentTypes = map[string]struct{}{"application/zip": {}, "application/json": {}, "application/octet-stream": {}, "text/csv": {}, "text/tab-separated-values": {}, "text/plain": {}}
-var allowedSourceSurfaces = map[string]struct{}{"ios_files": {}, "desktop_portal": {}}
+var allowedContentTypes = map[string]struct{}{
+	"application/zip":           {},
+	"application/json":          {},
+	"application/octet-stream":  {},
+	"text/csv":                  {},
+	"text/tab-separated-values": {},
+	"text/plain":                {},
+}
+
+var allowedSourceSurfaces = map[string]struct{}{
+	"ios_files":      {},
+	"desktop_portal": {},
+}
 
 func canUseUpload(authority security.Authority) bool {
 	switch authority {
@@ -341,7 +386,9 @@ func requiredHeadersMatch(headers map[string]string, request IssueRequest) bool 
 	if err != nil {
 		return false
 	}
-	return headers["Content-Type"] == request.ContentType && headers["x-amz-checksum-sha256"] == checksumHeader && headers["Content-Length"] == fmt.Sprintf("%d", request.ContentLength)
+	return headers["Content-Type"] == request.ContentType &&
+		headers["x-amz-checksum-sha256"] == checksumHeader &&
+		headers["Content-Length"] == fmt.Sprintf("%d", request.ContentLength)
 }
 
 func checksumHeaderValue(checksumHex string) (string, error) {
@@ -353,7 +400,10 @@ func checksumHeaderValue(checksumHex string) (string, error) {
 }
 
 func metadataMatches(authorization Authorization, metadata ObjectMetadata) bool {
-	return metadata.ObjectKey == authorization.ObjectKey && metadata.ContentLength == authorization.ContentLength && strings.EqualFold(metadata.ChecksumSHA256, authorization.ChecksumSHA256) && metadata.ContentType == authorization.ContentType
+	return metadata.ObjectKey == authorization.ObjectKey &&
+		metadata.ContentLength == authorization.ContentLength &&
+		strings.EqualFold(metadata.ChecksumSHA256, authorization.ChecksumSHA256) &&
+		metadata.ContentType == authorization.ContentType
 }
 
 func genericNotFound(error) error { return ErrUploadAuthorizationNotFound }
