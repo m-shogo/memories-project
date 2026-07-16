@@ -1,0 +1,22 @@
+{
+  "$schema": "https://memory-os.example/schemas/security/import-job.v1.schema.json",
+  "schemaVersion": 1,
+  "jobId": "job_01J000000000000000000000000",
+  "ownerAccountId": "acct_01J00000000000000000000000",
+  "accountEpoch": 7,
+  "sourceSurface": "desktop_portal",
+  "state": "awaiting_confirmation",
+  "pairingSessionId": "pair_01J00000000000000000000000",
+  "uploadAuthorizationId": "upl_01J000000000000000000000000",
+  "quarantineObjectId": "qobj_01J00000000000000000000000",
+  "previewId": "prev_01J0000000000000000000000",
+  "createdAt": "2026-07-16T01:00:00Z",
+  "updatedAt": "2026-07-16T01:05:00Z",
+  "expiresAt": "2026-07-17T01:00:00Z",
+  "security": {
+    "objectAuthorizationRequired": true,
+    "clientUserIdTrusted": false,
+    "deletionFenceRequired": true,
+    "rawContentAllowedInAudit": false
+  }
+}
