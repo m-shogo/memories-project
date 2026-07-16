@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/security/apply-confirmation.v1.schema.json",
+  "title": "Memory OS Import Apply Confirmation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "confirmationId", "jobId", "previewId", "ownerAccountId", "accountEpoch", "confirmationSurface", "previewHash", "idempotencyKey", "requestHash", "duplicateStrategy", "explicitChoicesHash", "requestedAt", "security"],
+  "properties": {
+    "$schema": { "const": "https://memory-os.example/schemas/security/apply-confirmation.v1.schema.json" },
+    "schemaVersion": { "const": 1 },
+    "confirmationId": { "$ref": "core.v1.schema.json#/$defs/OpaqueId" },
+    "jobId": { "$ref": "core.v1.schema.json#/$defs/OpaqueId" },
+    "previewId": { "$ref": "core.v1.schema.json#/$defs/OpaqueId" },
+    "ownerAccountId": { "$ref": "core.v1.schema.json#/$defs/OpaqueId" },
+    "accountEpoch": { "$ref": "core.v1.schema.json#/$defs/AccountEpoch" },
+    "confirmationSurface": { "const": "ios_app" },
+    "previewHash": { "$ref": "core.v1.schema.json#/$defs/Sha256Hex" },
+    "idempotencyKey": { "$ref": "core.v1.schema.json#/$defs/OpaqueId" },
+    "requestHash": { "$ref": "core.v1.schema.json#/$defs/Sha256Hex" },
+    "duplicateStrategy": { "enum": ["skip_existing", "safe_update", "keep_both", "selected_decisions"] },
+    "explicitChoicesHash": { "$ref": "core.v1.schema.json#/$defs/Sha256Hex" },
+    "requestedAt": { "$ref": "core.v1.schema.json#/$defs/UtcTimestamp" },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["browserTokenUsed", "exactPreviewRequired", "silentReparseAllowed", "sameKeyDifferentRequestAllowed"],
+      "properties": {
+        "browserTokenUsed": { "const": false },
+        "exactPreviewRequired": { "const": true },
+        "silentReparseAllowed": { "const": false },
+        "sameKeyDifferentRequestAllowed": { "const": false }
+      }
+    }
+  }
+}
