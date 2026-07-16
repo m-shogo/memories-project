@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/security/quarantine-object.v1.schema.json",
+  "title": "Memory OS Quarantine Object v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "quarantineObjectId", "jobId", "ownerAccountId", "accountEpoch", "objectKey", "bucketClass", "byteSize", "sha256", "detectedMediaType", "state", "scanStatus", "createdAt", "expiresAt", "security"],
+  "properties": {
+    "$schema": { "const": "https://memory-os.example/schemas/security/quarantine-object.v1.schema.json" },
+    "schemaVersion": { "const": 1 },
+    "quarantineObjectId": { "$ref": "core.v1.schema.json#/$defs/OpaqueId" },
+    "jobId": { "$ref": "core.v1.schema.json#/$defs/OpaqueId" },
+    "ownerAccountId": { "$ref": "core.v1.schema.json#/$defs/OpaqueId" },
+    "accountEpoch": { "$ref": "core.v1.schema.json#/$defs/AccountEpoch" },
+    "objectKey": { "type": "string", "pattern": "^quarantine/[A-Za-z0-9._:-]+/[A-Za-z0-9._:-]+$", "maxLength": 256 },
+    "originalFilename": { "type": "string", "minLength": 1, "maxLength": 255 },
+    "bucketClass": { "const": "private_quarantine" },
+    "byteSize": { "$ref": "core.v1.schema.json#/$defs/PositiveBytes" },
+    "sha256": { "$ref": "core.v1.schema.json#/$defs/Sha256Hex" },
+    "detectedMediaType": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-z0-9.+-]+/[a-z0-9.+-]+$" },
+    "state": { "enum": ["uploaded", "quarantined", "scanning", "ready_for_parse", "rejected", "deleting", "deleted", "expired"] },
+    "scanStatus": { "enum": ["pending", "clean", "suspicious", "malicious", "unsupported", "failed"] },
+    "createdAt": { "$ref": "core.v1.schema.json#/$defs/UtcTimestamp" },
+    "expiresAt": { "$ref": "core.v1.schema.json#/$defs/UtcTimestamp" },
+    "deletedAt": { "$ref": "core.v1.schema.json#/$defs/UtcTimestamp" },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["publicReadable", "parserNetworkAllowed", "hostFilesystemAllowed", "rawFilenameUsedAsKey", "ttlRequired"],
+      "properties": {
+        "publicReadable": { "const": false },
+        "parserNetworkAllowed": { "const": false },
+        "hostFilesystemAllowed": { "const": false },
+        "rawFilenameUsedAsKey": { "const": false },
+        "ttlRequired": { "const": true }
+      }
+    }
+  },
+  "allOf": [
+    { "if": { "properties": { "state": { "const": "deleted" } }, "required": ["state"] }, "then": { "required": ["deletedAt"] } }
+  ]
+}
