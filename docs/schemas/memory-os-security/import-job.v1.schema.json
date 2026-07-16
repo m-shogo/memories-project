@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/security/import-job.v1.schema.json",
+  "title": "Memory OS Import Job v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "jobId", "ownerAccountId", "accountEpoch", "sourceSurface", "state", "createdAt", "updatedAt", "expiresAt", "security"],
+  "properties": {
+    "$schema": { "const": "https://memory-os.example/schemas/security/import-job.v1.schema.json" },
+    "schemaVersion": { "const": 1 },
+    "jobId": { "$ref": "core.v1.schema.json#/$defs/OpaqueId" },
+    "ownerAccountId": { "$ref": "core.v1.schema.json#/$defs/OpaqueId" },
+    "accountEpoch": { "$ref": "core.v1.schema.json#/$defs/AccountEpoch" },
+    "sourceSurface": { "enum": ["ios_share", "ios_file", "desktop_portal", "connected_import"] },
+    "state": { "enum": ["created", "awaiting_upload", "uploaded", "quarantined", "scanning", "detecting_source", "parsing", "preview_ready", "awaiting_confirmation", "applying", "applied", "rejected", "failed_retryable", "failed_terminal", "cancelled", "expired", "superseded"] },
+    "pairingSessionId": { "$ref": "core.v1.schema.json#/$defs/OpaqueId" },
+    "uploadAuthorizationId": { "$ref": "core.v1.schema.json#/$defs/OpaqueId" },
+    "quarantineObjectId": { "$ref": "core.v1.schema.json#/$defs/OpaqueId" },
+    "previewId": { "$ref": "core.v1.schema.json#/$defs/OpaqueId" },
+    "createdAt": { "$ref": "core.v1.schema.json#/$defs/UtcTimestamp" },
+    "updatedAt": { "$ref": "core.v1.schema.json#/$defs/UtcTimestamp" },
+    "expiresAt": { "$ref": "core.v1.schema.json#/$defs/UtcTimestamp" },
+    "cancelledAt": { "$ref": "core.v1.schema.json#/$defs/UtcTimestamp" },
+    "appliedAt": { "$ref": "core.v1.schema.json#/$defs/UtcTimestamp" },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objectAuthorizationRequired", "clientUserIdTrusted", "deletionFenceRequired", "rawContentAllowedInAudit"],
+      "properties": {
+        "objectAuthorizationRequired": { "const": true },
+        "clientUserIdTrusted": { "const": false },
+        "deletionFenceRequired": { "const": true },
+        "rawContentAllowedInAudit": { "const": false }
+      }
+    }
+  },
+  "allOf": [
+    { "if": { "properties": { "sourceSurface": { "const": "desktop_portal" } }, "required": ["sourceSurface"] }, "then": { "required": ["pairingSessionId"] } },
+    { "if": { "properties": { "state": { "enum": ["uploaded", "quarantined", "scanning", "detecting_source", "parsing", "preview_ready", "awaiting_confirmation", "applying", "applied"] } }, "required": ["state"] }, "then": { "required": ["quarantineObjectId"] } },
+    { "if": { "properties": { "state": { "enum": ["preview_ready", "awaiting_confirmation", "applying", "applied"] } }, "required": ["state"] }, "then": { "required": ["previewId"] } },
+    { "if": { "properties": { "state": { "const": "cancelled" } }, "required": ["state"] }, "then": { "required": ["cancelledAt"] } },
+    { "if": { "properties": { "state": { "const": "applied" } }, "required": ["state"] }, "then": { "required": ["appliedAt"] } }
+  ]
+}
