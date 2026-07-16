@@ -23,14 +23,32 @@ It is intentionally small and does not yet expose a production server.
 - object-version binding before scan queueing;
 - atomic authorization consumption interface;
 - cryptographically random opaque ID generation;
-- bounded streaming Generic CSV adapter with explicit mapping, deterministic fingerprints and row-level warning/rejection results;
-- bounded CSV-to-Preview pipeline with cancellation-safe backpressure;
-- immutable Preview materialization bound to exact object version, adapter digest, mapping options and candidate hashes;
+- bounded Generic CSV parsing with explicit mapping, deterministic fingerprints and row-level warning/rejection decisions;
+- synchronous one-row-at-a-time CSV iterator with sticky cancellation and terminal failures;
+- canonical CSV options normalization and SHA-256 binding, limited to embedded UTC / Asia-Tokyo rules in P0;
+- synchronous CSV-to-Preview RowEvent bridge with no goroutines, channels or separate persistence;
+- safe rejected-row records containing only source row and stable `IMPORT_*` issue codes;
+- Preview v2 hash model binding accepted candidates, safe rejection report, counts, source object version, adapter digest and options digest;
+- reference AtomicMaterializer tests proving row ordering, exclusive decisions and all-or-error finalization behavior;
 - strict Apply HTTP boundary that rejects owner / epoch injection;
 - iOS-user-only Apply service with exact Preview hash, request-bound idempotency and full candidate accounting;
 - Generic CSV and Apple compact-JWT fuzz targets;
 - canonical account-state / epoch checkpoint guard;
 - required fenced wrappers that checkpoint upload, Preview and Apply before irreversible writes.
+
+## Important implementation boundary
+
+The current in-process `preview.AtomicMaterializer` consumes its row source inside the transaction callback. It is a vertical-slice reference for hashing and invariants only.
+
+It must not be connected to a production PostgreSQL repository for large imports.
+
+The required production path is defined in:
+
+```txt
+docs/memory-os-preview-spool-commit-contract-round-9.md
+```
+
+Production must parse outside the database transaction, create a bounded verified spool, and use one short client-side bulk-copy transaction to insert candidates, safe rejections and the immutable ready Preview together.
 
 ## Deliberately not implemented yet
 
@@ -40,7 +58,9 @@ It is intentionally small and does not yet expose a production server.
 - concrete PostgreSQL repositories / driver composition;
 - concrete S3-compatible signer and object-store adapter;
 - parser supervisor runtime;
-- concrete Generic CSV quarantine reader, Preview repository and adapter artifact verification;
+- bounded Preview spool writer, reader and manifest verifier;
+- client-side `pgx.CopyFrom` Preview commit repository;
+- concrete Generic CSV quarantine reader and adapter artifact verification;
 - concrete idempotent Apply repository and Memory persistence;
 - atomic deletion-epoch increment, worker lease cancellation and storage cleanup.
 
