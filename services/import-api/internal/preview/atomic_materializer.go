@@ -121,6 +121,7 @@ func (m *AtomicMaterializer) Materialize(ctx context.Context, principal security
 		acceptedCount := 0
 		rejectedCount := 0
 		rowCount := 0
+		lastSourceRow := 0
 
 		for {
 			event, err := source.NextEvent(ctx)
@@ -138,9 +139,26 @@ func (m *AtomicMaterializer) Materialize(ctx context.Context, principal security
 				return ErrInvalidRowEvent
 			}
 
+			sourceRow := 0
+			if event.Candidate != nil {
+				sourceRow = event.Candidate.SourceRow
+			} else {
+				sourceRow = event.Rejection.SourceRow
+			}
+			if sourceRow <= lastSourceRow {
+				return ErrInvalidRowEvent
+			}
+			lastSourceRow = sourceRow
+
 			if event.Candidate != nil {
 				acceptedCount++
-				normalized, canonical, candidateHash, err := canonicalCandidate(*event.Candidate)
+				candidate := *event.Candidate
+				issues, err := normalizeImportIssues(candidate.Issues, ErrInvalidCandidate)
+				if err != nil {
+					return err
+				}
+				candidate.Issues = issues
+				normalized, canonical, candidateHash, err := canonicalCandidate(candidate)
 				if err != nil {
 					return err
 				}
@@ -191,23 +209,47 @@ func (m *AtomicMaterializer) Materialize(ctx context.Context, principal security
 }
 
 func canonicalRejection(rejection Rejection) (Rejection, []byte, string, error) {
-	if rejection.SourceRow < 1 || len(rejection.Issues) == 0 || len(rejection.Issues) > 32 {
+	if rejection.SourceRow < 1 {
 		return Rejection{}, nil, "", ErrInvalidRejection
 	}
-	issues := append([]string(nil), rejection.Issues...)
-	sort.Strings(issues)
-	for index, issue := range issues {
-		if issue == "" || len(issue) > 128 || !strings.HasPrefix(issue, "IMPORT_") {
-			return Rejection{}, nil, "", ErrInvalidRejection
-		}
-		if index > 0 && issues[index-1] == issue {
-			return Rejection{}, nil, "", ErrInvalidRejection
-		}
+	issues, err := normalizeImportIssues(rejection.Issues, ErrInvalidRejection)
+	if err != nil {
+		return Rejection{}, nil, "", err
 	}
 	normalized := Rejection{SourceRow: rejection.SourceRow, Issues: issues}
-	canonical := []byte(fmt.Sprintf("%d:%d:%s", normalized.SourceRow, len(strings.Join(issues, "\x1e")), strings.Join(issues, "\x1e")))
+	var builder strings.Builder
+	builder.WriteString(fmt.Sprintf("%d|%d|", normalized.SourceRow, len(issues)))
+	for _, issue := range issues {
+		builder.WriteString(fmt.Sprintf("%d:", len(issue)))
+		builder.WriteString(issue)
+	}
+	canonical := []byte(builder.String())
 	digest := sha256.Sum256(canonical)
 	return normalized, canonical, hex.EncodeToString(digest[:]), nil
+}
+
+func normalizeImportIssues(values []string, invalid error) ([]string, error) {
+	if len(values) == 0 || len(values) > 32 {
+		return nil, invalid
+	}
+	issues := append([]string(nil), values...)
+	sort.Strings(issues)
+	for index, issue := range issues {
+		if len(issue) > 128 || !strings.HasPrefix(issue, "IMPORT_") {
+			return nil, invalid
+		}
+		for _, character := range issue {
+			if (character >= 'A' && character <= 'Z') ||
+				(character >= '0' && character <= '9') || character == '_' {
+				continue
+			}
+			return nil, invalid
+		}
+		if index > 0 && issues[index-1] == issue {
+			return nil, invalid
+		}
+	}
+	return issues, nil
 }
 
 func computeAtomicPreviewHash(record Record, candidatesHash, rejectionsHash string, acceptedCount, rejectedCount int) string {
