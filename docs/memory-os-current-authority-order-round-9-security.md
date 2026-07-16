@@ -17,16 +17,19 @@ defined at contract level
 threat model:
 70 attack / abuse scenarios defined
 
-security verification gate:
-defined
+S1 machine-readable security contracts:
+created
 
-machine-readable security contracts:
-not created
+S1 targeted payload validation:
+PASS
 
-backend / iOS / Portal implementation:
-not created
+repository validator:
+created and locally exercised against generated repository payloads
 
-security execution evidence:
+GitHub Actions workflow:
+created; remote run result not yet confirmed
+
+backend / iOS / Portal security implementation:
 not created
 
 production:
@@ -45,13 +48,14 @@ Securityについて「完璧」「安全が保証された」とは表現しな
 2. `memory-os-capture-import-security-architecture-round-9.md`
 3. `memory-os-capture-import-threat-model-round-9.md`
 4. `memory-os-security-verification-gate-round-9.md`
-5. `memory-os-capture-import-implementation-architecture-round-8.md`
-6. `memory-os-capture-and-import-surface-authority-round-8.md`
-7. `memory-town-current-authority-order-round-8-ios-native.md`
-8. `ios-native-technology-stack-decision-round-8.md`
-9. `memory-town-ios-native-rendering-architecture-round-8.md`
-10. `memory-town-current-authority-order-round-7-editable-landscape.md`
-11. prior product / privacy / persistence / deletion contracts
+5. `memory-os-round9-security-s1-validation-report-2026-07-16.md`
+6. `docs/schemas/memory-os-security/schema-registry.v1.json`
+7. `docs/fixtures/memory-os-security/fixture-index.round9.s1.v1.json`
+8. `scripts/validate-memory-os-security.py`
+9. `memory-os-capture-import-implementation-architecture-round-8.md`
+10. `memory-os-capture-and-import-surface-authority-round-8.md`
+11. `memory-town-current-authority-order-round-8-ios-native.md`
+12. prior product / privacy / persistence / deletion contracts
 
 Round 9は既存のprivacy、RLS、deletion、worker fencingを破棄せず、Capture / Import全体へ拡張する。
 
@@ -89,53 +93,101 @@ Parser logicをSwift、browser、Goへ重複実装しない。
 
 ---
 
-# 3. Binding security decisions
+# 3. Active S1 machine contracts
+
+Schemas:
+
+```txt
+core.v1.schema.json
+security-issue-code-registry.v1.schema.json
+import-job.v1.schema.json
+pairing-session.v1.schema.json
+upload-authorization.v1.schema.json
+quarantine-object.v1.schema.json
+import-preview.v1.schema.json
+apply-confirmation.v1.schema.json
+adapter-manifest.v1.schema.json
+deletion-fence.v1.schema.json
+safe-audit-event.v1.schema.json
+security-negative-case-set.v1.schema.json
+```
+
+Validation inventory:
+
+```txt
+schemas: 12
+positive fixtures: 10
+negative cases: 24
+schema-level negative rejections: 22
+semantic negative rejections: 2
+network schema resolution: disabled
+```
+
+The two semantic checks are:
+
+- adapter artifact digest equals reviewed artifact digest;
+- deletion fence contains every mandatory cleanup scope.
+
+Re-run command:
+
+```bash
+python -m pip install -r requirements-security-validation.txt
+python scripts/validate-memory-os-security.py
+```
+
+The GitHub Actions workflow is `.github/workflows/security-contracts.yml`.
+
+---
+
+# 4. Binding security decisions
 
 ## Identity and ownership
 
 - client-provided user IDをtrustしない
 - every object endpointでobject-level authorization
 - import job / pairing / upload / Preview / report / Apply / Exportをtenant fence
-- account deletion epochをpending workへ伝播
+- account epochを全pending workへ伝播
 - browser pairing tokenはfinal Apply不可
 
 ## Upload and storage
 
 - exact server-generated quarantine key
-- size / checksum / expiry / job / owner binding
+- size / checksum / expiry / job / owner / epoch binding
 - public object access禁止
 - raw filenameをobject keyにしない
 - raw archiveはshort TTL
 - quarantine objectとconfirmed objectを別identityにする
 
-## Parser
+## Parser and adapter
 
 - public API process外
 - non-root
-- read-only root FS
+- read-only root filesystem
 - job-specific temp
-- network deny by default
-- resource limits
-- no dynamic code / script execution
+- outbound network deny by default
+- CPU / memory / wall-clock limits
+- dynamic code / script execution禁止
 - adapterはversioned reviewed artifact
+- reviewed digestと実行digestを一致させる
 
 ## Preview and Apply
 
 - materialized immutable Preview
 - source / adapter / options / candidate hash
 - exact Preview hash confirmation
+- iOS appがP0の最終confirmation authority
 - idempotency key + request hash
 - no silent reparse at Apply
 - partial applyをsuccess表示しない
 
 ## iOS / App Group
 
-- extension writes minimal intake only
+- Extension writes minimal intake only
 - secretはKeychain
 - raw tokenをUserDefaultsへ置かない
 - main-app-only migration
 - synchronized SQLite access
-- raw intake / Preview cache backup除外
+- raw intake / Preview cacheをbackup対象にしない
 - private contentをlog / push / app switcherへ出さない
 
 ## Portal
@@ -146,17 +198,18 @@ Parser logicをSwift、browser、Goへ重複実装しない。
 - strict CSP / no-store / no private browser DB
 - token short-lived / revocable / memory-only after bootstrap
 
-## Deletion
+## Deletion and audit
 
-- DBだけでなくjob、lease、upload token、object、Preview、cache、export、search、push、App Groupを削除 / fence
+- job、lease、pairing、upload、object、Preview、Apply、export、search、push、App Group、backup tombstoneをfence
 - backup restore後にdeletion tombstoneを再適用
 - old epoch worker writeを拒否
+- Audit Eventへ本文、raw filename、raw URL、token、email、user noteを入れない
 
 ---
 
-# 4. Hard stop conditions
+# 5. Hard stop conditions
 
-以下が一つでもある場合、Production implementation authorizationを出さない。
+以下が一つでもある場合、Production authorizationを出さない。
 
 - cross-user resource negative testなし
 - browser pairing tokenがfinal Apply可能
@@ -166,6 +219,7 @@ Parser logicをSwift、browser、Goへ重複実装しない。
 - archive traversal / link / expanded-size protectionなし
 - Preview / Apply hash bindingなし
 - idempotent Applyなし
+- reviewed adapter digestと実行digestが不一致
 - private contentがlog / analytics / notificationへ入る
 - App Group DB writer / migration ownership不明
 - raw archive TTL / cleanup evidenceなし
@@ -177,57 +231,71 @@ Parser logicをSwift、browser、Goへ重複実装しない。
 
 ---
 
-# 5. Correct next sequence
+# 6. Correct next sequence
 
-```txt
-S1 machine contracts
-1. SecurityIssueCode registry
-2. ImportJob schema
-3. PairingSession schema
-4. UploadAuthorization schema
-5. QuarantineObject schema
-6. ImportPreview / ApplyConfirmation schema
-7. AdapterManifest schema
-8. DeletionFence schema
-9. AuditEvent safe-field schema
-10. positive / negative fixtures
+## S1.5 repository and authorization integration
 
-S2 backend vertical slice
-11. auth / account binding
-12. object-level authorization matrix
-13. signed quarantine upload
-14. isolated worker
-15. Generic CSV adapter
-16. Preview hash + idempotent Apply
-17. deletion epoch fence
+1. confirm the GitHub Actions security-contract workflow result;
+2. add cross-user authorization case schema and fixtures;
+3. add object-level authorization matrix;
+4. add PostgreSQL tenant / RLS contract and negative fixtures;
+5. add Sign in with Apple server-validation contract;
+6. add signed-upload request / response OpenAPI boundary;
+7. add worker sandbox runtime contract;
+8. add archive limit profile and fixtures.
 
-S3 iOS vertical slice
-18. Share Extension URL / text
-19. App Group crash recovery
-20. Keychain / Data Protection / backup tests
-21. main-app Preview / confirmation
+## S2 backend security vertical slice
 
-S4 migration surfaces
-22. iOS fileImporter upload
-23. Generic JSON / Memory OS export adapter
-24. Portal one-time pairing
-25. XSS / CSRF / browser privacy tests
+9. authentication and account binding;
+10. PostgreSQL Import Job tables with tenant ownership;
+11. signed private quarantine upload;
+12. isolated worker process;
+13. Generic CSV adapter;
+14. immutable Preview;
+15. idempotent Apply;
+16. deletion epoch fence.
 
-S5 adversarial evidence
-26. archive / JSON / CSV fuzzing
-27. SSRF corpus
-28. deletion race / backup restore
-29. supply-chain CI gates
-30. independent security review
+## S3 iOS security vertical slice
+
+17. Share Extension URL / text;
+18. activation-rule tests;
+19. App Group minimal intake;
+20. GRDB concurrency / crash recovery;
+21. Keychain / Data Protection / backup verification;
+22. safe Preview / confirmation.
+
+## S4 Portal and file migration
+
+23. iOS fileImporter signed upload;
+24. Generic JSON / Memory OS export adapter;
+25. one-time Portal pairing;
+26. CSP / CSRF / XSS / no-store evidence;
+27. browser token lifecycle;
+28. iOS final confirmation.
+
+## S5 adversarial and operational evidence
+
+29. archive / JSON / CSV fuzzing;
+30. parser sandbox runtime tests;
+31. SSRF corpus;
+32. deletion race tests;
+33. backup restore deletion test;
+34. sensitive-data log canary scan;
+35. dependency / secret / container scans;
+36. SBOM / release provenance;
+37. incident / key rotation / restore runbooks;
+38. independent security review;
+39. unresolved Critical / High zero;
+40. unresolved P0 zero.
 
 Only after Capture / Import P0 unresolved zero:
-31. TownSceneSnapshot Swift models
-32. SpriteKit static Town prototype
-```
+
+41. TownSceneSnapshot Swift models;
+42. SpriteKit static Town prototype.
 
 ---
 
-# 6. Implementation authorization language
+# 7. Implementation authorization language
 
 Allowed later, only with evidence:
 
@@ -243,4 +311,4 @@ Memory OS cannot be hacked.
 All data is completely private.
 ```
 
-Security readiness is versioned and must be reassessed after architecture, dependency, provider, adapter or data-flow change.
+Security readiness is versioned and must be reassessed after architecture, dependency, provider, adapter or data-flow changes.
