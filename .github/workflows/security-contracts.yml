@@ -3,6 +3,7 @@ name: Security Contracts
 on:
   pull_request:
     paths:
+      - "contracts/openapi/**"
       - "docs/schemas/memory-os-security/**"
       - "docs/fixtures/memory-os-security/**"
       - "infra/postgresql/security/**"
@@ -10,12 +11,14 @@ on:
       - "scripts/validate-memory-os-authorization.py"
       - "scripts/validate-memory-os-postgresql-rls.py"
       - "scripts/validate-memory-os-apple-auth.py"
+      - "scripts/validate-memory-os-signed-upload-openapi.py"
       - "requirements-security-validation.txt"
       - ".github/workflows/security-contracts.yml"
   push:
     branches:
       - so
     paths:
+      - "contracts/openapi/**"
       - "docs/schemas/memory-os-security/**"
       - "docs/fixtures/memory-os-security/**"
       - "infra/postgresql/security/**"
@@ -23,6 +26,7 @@ on:
       - "scripts/validate-memory-os-authorization.py"
       - "scripts/validate-memory-os-postgresql-rls.py"
       - "scripts/validate-memory-os-apple-auth.py"
+      - "scripts/validate-memory-os-signed-upload-openapi.py"
       - "requirements-security-validation.txt"
       - ".github/workflows/security-contracts.yml"
   workflow_dispatch:
@@ -54,6 +58,7 @@ jobs:
           python -m py_compile scripts/validate-memory-os-authorization.py
           python -m py_compile scripts/validate-memory-os-postgresql-rls.py
           python -m py_compile scripts/validate-memory-os-apple-auth.py
+          python -m py_compile scripts/validate-memory-os-signed-upload-openapi.py
 
       - name: Validate security schemas and fixtures
         run: python scripts/validate-memory-os-security.py
@@ -66,6 +71,9 @@ jobs:
 
       - name: Validate Sign in with Apple contract
         run: python scripts/validate-memory-os-apple-auth.py
+
+      - name: Validate signed quarantine upload OpenAPI
+        run: python scripts/validate-memory-os-signed-upload-openapi.py
 
   validate-live-postgresql-rls:
     runs-on: ubuntu-latest
