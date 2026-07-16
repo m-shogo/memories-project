@@ -1,0 +1,25 @@
+{
+  "$schema": "https://memory-os.example/schemas/security/quarantine-object.v1.schema.json",
+  "schemaVersion": 1,
+  "quarantineObjectId": "qobj_01J00000000000000000000000",
+  "jobId": "job_01J000000000000000000000000",
+  "ownerAccountId": "acct_01J00000000000000000000000",
+  "accountEpoch": 7,
+  "objectKey": "quarantine/acct_01J00000000000000000000000/job_01J000000000000000000000000",
+  "originalFilename": "export.zip",
+  "bucketClass": "private_quarantine",
+  "byteSize": 1048576,
+  "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "detectedMediaType": "application/zip",
+  "state": "ready_for_parse",
+  "scanStatus": "clean",
+  "createdAt": "2026-07-16T01:05:00Z",
+  "expiresAt": "2026-07-17T01:05:00Z",
+  "security": {
+    "publicReadable": false,
+    "parserNetworkAllowed": false,
+    "hostFilesystemAllowed": false,
+    "rawFilenameUsedAsKey": false,
+    "ttlRequired": true
+  }
+}
