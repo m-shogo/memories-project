@@ -1,0 +1,22 @@
+{
+  "$schema": "https://memory-os.example/schemas/security/safe-audit-event.v1.schema.json",
+  "schemaVersion": 1,
+  "eventId": "event_01J000000000000000000000",
+  "occurredAt": "2026-07-16T02:10:01Z",
+  "category": "apply",
+  "action": "import.apply.requested",
+  "result": "allowed",
+  "requestId": "req_01J00000000000000000000000",
+  "resourceType": "apply_confirmation",
+  "resourceRefHash": "3333333333333333333333333333333333333333333333333333333333333333",
+  "attempt": 1,
+  "latencyBucket": "lt_100ms",
+  "security": {
+    "containsPrivateContent": false,
+    "containsRawFilename": false,
+    "containsRawUrl": false,
+    "containsToken": false,
+    "containsEmail": false,
+    "containsUserNote": false
+  }
+}
