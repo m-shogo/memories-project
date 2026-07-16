@@ -9,7 +9,7 @@ import (
 )
 
 func TestIteratorStreamsOneRowPerCallAndTracksSummary(t *testing.T) {
-	iterator, err := NewIterator(strings.NewReader("title,note\nA,=SUM(1,2)\n\"\",missing\n"), Options{
+	iterator, err := NewIterator(strings.NewReader("title,note\nA,\"=SUM(1,2)\"\n\"\",missing\n"), Options{
 		TitleColumn: "title",
 		TextColumn:  "note",
 	})
