@@ -93,6 +93,19 @@ func TestCompleteUploadQueuesAcceptedResponse(t *testing.T) {
 	}
 }
 
+func TestCompleteUploadRejectsUnexpectedBody(t *testing.T) {
+	service := &fakeUploadService{}
+	mux := http.NewServeMux()
+	UploadHandler{Service: service}.Register(mux)
+	request := httptest.NewRequest(http.MethodPost, "/v1/upload-authorizations/upl_01J00000000000000000000000/complete", strings.NewReader(`{"clientMetadata":"untrusted"}`))
+	request = request.WithContext(contextWithPrincipal(t, request.Context()))
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest || service.completeCalls != 0 {
+		t.Fatalf("unexpected completion body was not rejected: status=%d calls=%d", response.Code, service.completeCalls)
+	}
+}
+
 func contextWithPrincipal(t *testing.T, ctx context.Context) context.Context {
 	t.Helper()
 	principal, err := security.NewVerifiedPrincipal("acct_01J00000000000000000000000", 7, security.AuthorityIOSUser)
