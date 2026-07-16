@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/security/upload-authorization.v1.schema.json",
+  "title": "Memory OS Quarantine Upload Authorization v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "uploadAuthorizationId", "jobId", "ownerAccountId", "accountEpoch", "objectKey", "bucketClass", "method", "contentLength", "checksum", "declaredContentType", "createdAt", "expiresAt", "status", "security"],
+  "properties": {
+    "$schema": { "const": "https://memory-os.example/schemas/security/upload-authorization.v1.schema.json" },
+    "schemaVersion": { "const": 1 },
+    "uploadAuthorizationId": { "$ref": "core.v1.schema.json#/$defs/OpaqueId" },
+    "jobId": { "$ref": "core.v1.schema.json#/$defs/OpaqueId" },
+    "ownerAccountId": { "$ref": "core.v1.schema.json#/$defs/OpaqueId" },
+    "accountEpoch": { "$ref": "core.v1.schema.json#/$defs/AccountEpoch" },
+    "objectKey": { "type": "string", "pattern": "^quarantine/[A-Za-z0-9._:-]+/[A-Za-z0-9._:-]+$", "maxLength": 256 },
+    "bucketClass": { "const": "private_quarantine" },
+    "method": { "const": "PUT" },
+    "contentLength": { "$ref": "core.v1.schema.json#/$defs/PositiveBytes" },
+    "checksum": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "value"],
+      "properties": {
+        "algorithm": { "const": "sha256" },
+        "value": { "$ref": "core.v1.schema.json#/$defs/Sha256Hex" }
+      }
+    },
+    "declaredContentType": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-z0-9.+-]+/[a-z0-9.+-]+$" },
+    "createdAt": { "$ref": "core.v1.schema.json#/$defs/UtcTimestamp" },
+    "expiresAt": { "$ref": "core.v1.schema.json#/$defs/UtcTimestamp" },
+    "status": { "enum": ["issued", "consumed", "revoked", "expired"] },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["serverGeneratedObjectKey", "arbitraryKeyAllowed", "publicReadAllowed", "checksumRequired", "sizeBound", "reusableAfterCancellation"],
+      "properties": {
+        "serverGeneratedObjectKey": { "const": true },
+        "arbitraryKeyAllowed": { "const": false },
+        "publicReadAllowed": { "const": false },
+        "checksumRequired": { "const": true },
+        "sizeBound": { "const": true },
+        "reusableAfterCancellation": { "const": false }
+      }
+    }
+  }
+}
