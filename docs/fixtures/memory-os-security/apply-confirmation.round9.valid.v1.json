@@ -1,0 +1,22 @@
+{
+  "$schema": "https://memory-os.example/schemas/security/apply-confirmation.v1.schema.json",
+  "schemaVersion": 1,
+  "confirmationId": "confirm_01J00000000000000000000",
+  "jobId": "job_01J000000000000000000000000",
+  "previewId": "prev_01J0000000000000000000000",
+  "ownerAccountId": "acct_01J00000000000000000000000",
+  "accountEpoch": 7,
+  "confirmationSurface": "ios_app",
+  "previewHash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "idempotencyKey": "idem_01J0000000000000000000000",
+  "requestHash": "1111111111111111111111111111111111111111111111111111111111111111",
+  "duplicateStrategy": "selected_decisions",
+  "explicitChoicesHash": "2222222222222222222222222222222222222222222222222222222222222222",
+  "requestedAt": "2026-07-16T02:10:00Z",
+  "security": {
+    "browserTokenUsed": false,
+    "exactPreviewRequired": true,
+    "silentReparseAllowed": false,
+    "sameKeyDifferentRequestAllowed": false
+  }
+}
