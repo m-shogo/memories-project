@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/security/parser-sandbox-profile.v1.schema.json",
+  "title": "Memory OS Parser Sandbox Profile v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema", "schemaVersion", "profileId", "profileVersion",
+    "identity", "filesystem", "network", "process", "resources",
+    "inputOutput", "artifact", "secrets"
+  ],
+  "properties": {
+    "$schema": { "const": "https://memory-os.example/schemas/security/parser-sandbox-profile.v1.schema.json" },
+    "schemaVersion": { "const": 1 },
+    "profileId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+    "profileVersion": { "type": "integer", "minimum": 1 },
+    "identity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["runAsNonRoot", "runAsUserMinimum", "privileged", "allowPrivilegeEscalation", "capabilitiesDrop", "hostUserNamespace"],
+      "properties": {
+        "runAsNonRoot": { "const": true },
+        "runAsUserMinimum": { "type": "integer", "minimum": 10000 },
+        "privileged": { "const": false },
+        "allowPrivilegeEscalation": { "const": false },
+        "capabilitiesDrop": { "const": ["ALL"] },
+        "hostUserNamespace": { "const": false }
+      }
+    },
+    "filesystem": {
+      "type": "object", "additionalProperties": false,
+      "required": ["readOnlyRootFilesystem", "hostPathMountsAllowed", "dockerSocketMounted", "deviceMountsAllowed", "jobTempIsolation", "tempMountFlags", "inputMountReadOnly", "crossJobPathVisible"],
+      "properties": {
+        "readOnlyRootFilesystem": { "const": true },
+        "hostPathMountsAllowed": { "const": false },
+        "dockerSocketMounted": { "const": false },
+        "deviceMountsAllowed": { "const": false },
+        "jobTempIsolation": { "const": "one_empty_tmpfs_per_attempt" },
+        "tempMountFlags": { "const": ["noexec", "nosuid", "nodev"] },
+        "inputMountReadOnly": { "const": true },
+        "crossJobPathVisible": { "const": false }
+      }
+    },
+    "network": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mode", "dnsAvailable", "hostNetwork", "outboundProxy", "metadataServiceReachable"],
+      "properties": {
+        "mode": { "const": "none" },
+        "dnsAvailable": { "const": false },
+        "hostNetwork": { "const": false },
+        "outboundProxy": { "const": false },
+        "metadataServiceReachable": { "const": false }
+      }
+    },
+    "process": {
+      "type": "object", "additionalProperties": false,
+      "required": ["seccompProfile", "mandatoryAccessControl", "hostPid", "hostIpc", "newPrivileges", "dynamicCodeExecution", "shellExecution"],
+      "properties": {
+        "seccompProfile": { "const": "runtime_default_or_stricter" },
+        "mandatoryAccessControl": { "const": "enabled_when_platform_supports" },
+        "hostPid": { "const": false },
+        "hostIpc": { "const": false },
+        "newPrivileges": { "const": false },
+        "dynamicCodeExecution": { "const": false },
+        "shellExecution": { "const": false }
+      }
+    },
+    "resources": {
+      "type": "object", "additionalProperties": false,
+      "required": ["cpuMillis", "memoryBytes", "pids", "wallClockSeconds", "openFiles", "tempBytes", "outputBytes"],
+      "properties": {
+        "cpuMillis": { "type": "integer", "minimum": 100, "maximum": 2000 },
+        "memoryBytes": { "type": "integer", "minimum": 67108864, "maximum": 1073741824 },
+        "pids": { "type": "integer", "minimum": 1, "maximum": 64 },
+        "wallClockSeconds": { "type": "integer", "minimum": 1, "maximum": 300 },
+        "openFiles": { "type": "integer", "minimum": 16, "maximum": 512 },
+        "tempBytes": { "type": "integer", "minimum": 1048576, "maximum": 2147483648 },
+        "outputBytes": { "type": "integer", "minimum": 1048576, "maximum": 536870912 }
+      }
+    },
+    "inputOutput": {
+      "type": "object", "additionalProperties": false,
+      "required": ["inputDelivery", "inputAuthority", "outputDelivery", "outputAuthority", "stdoutPrivateContentAllowed", "stderrPrivateContentAllowed"],
+      "properties": {
+        "inputDelivery": { "const": "supervisor_staged_read_only_file" },
+        "inputAuthority": { "const": "verified_quarantine_object" },
+        "outputDelivery": { "const": "supervisor_collected_job_scoped_file" },
+        "outputAuthority": { "const": "schema_validated_candidate_stream" },
+        "stdoutPrivateContentAllowed": { "const": false },
+        "stderrPrivateContentAllowed": { "const": false }
+      }
+    },
+    "artifact": {
+      "type": "object", "additionalProperties": false,
+      "required": ["imageByDigest", "signatureVerified", "provenanceVerified", "mutableTagAuthority", "adapterDigestMatched"],
+      "properties": {
+        "imageByDigest": { "const": true },
+        "signatureVerified": { "const": true },
+        "provenanceVerified": { "const": true },
+        "mutableTagAuthority": { "const": false },
+        "adapterDigestMatched": { "const": true }
+      }
+    },
+    "secrets": {
+      "type": "object", "additionalProperties": false,
+      "required": ["cloudCredentialsMounted", "databaseCredentialsMounted", "signingKeysMounted", "environmentSecretsAllowed"],
+      "properties": {
+        "cloudCredentialsMounted": { "const": false },
+        "databaseCredentialsMounted": { "const": false },
+        "signingKeysMounted": { "const": false },
+        "environmentSecretsAllowed": { "const": false }
+      }
+    }
+  }
+}
