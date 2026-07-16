@@ -1,6 +1,6 @@
 {
   "indexId": "memory-os.security.fixture-index.round9.s1",
-  "indexVersion": 2,
+  "indexVersion": 3,
   "schemaRegistryPath": "docs/schemas/memory-os-security/schema-registry.v1.json",
   "fixtures": [
     { "fixtureId": "memory-os.security.issue-codes.round9", "path": "docs/fixtures/memory-os-security/security-issue-code-registry.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-issue-code-registry.v1.schema.json", "status": "targeted_validation_pass" },
@@ -15,15 +15,20 @@
     { "fixtureId": "memory-os.security.safe-audit-event.round9.valid", "path": "docs/fixtures/memory-os-security/safe-audit-event.round9.valid.v1.json", "schemaId": "https://memory-os.example/schemas/security/safe-audit-event.v1.schema.json", "status": "targeted_validation_pass" },
     { "fixtureId": "memory-os.security.authorization-matrix.round9.valid", "path": "docs/fixtures/memory-os-security/authorization-matrix.round9.valid.v1.json", "schemaId": "https://memory-os.example/schemas/security/authorization-matrix.v1.schema.json", "status": "targeted_validation_pass" },
     { "fixtureId": "memory-os.security.authorization-cases.round9", "path": "docs/fixtures/memory-os-security/authorization-cases.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/authorization-case-set.v1.schema.json", "status": "authorization_validation_pass_2_allow_6_deny" },
+    { "fixtureId": "memory-os.security.postgresql-rls-contract.round9.valid", "path": "docs/fixtures/memory-os-security/postgresql-tenant-rls-contract.round9.valid.v1.json", "schemaId": "https://memory-os.example/schemas/security/postgresql-tenant-rls-contract.v1.schema.json", "status": "rls_contract_validation_pass" },
+    { "fixtureId": "memory-os.security.postgresql-rls-cases.round9", "path": "docs/fixtures/memory-os-security/postgresql-rls-cases.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/postgresql-rls-case-set.v1.schema.json", "status": "rls_logic_validation_pass_3_allow_11_deny" },
     { "fixtureId": "memory-os.security.negative.round9.phase1", "path": "docs/fixtures/memory-os-security/security-negative-cases.round9.phase1.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-negative-case-set.v1.schema.json", "status": "11_schema_rejections_pass" },
     { "fixtureId": "memory-os.security.negative.round9.phase2", "path": "docs/fixtures/memory-os-security/security-negative-cases.round9.phase2.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-negative-case-set.v1.schema.json", "status": "11_schema_rejections_pass_2_semantic_rejections_pass" }
   ],
   "authority": {
-    "phase": "round9_s1_and_s1_5_authorization_contracts",
+    "phase": "round9_s1_s1_5_and_postgresql_rls_foundation",
     "schemaContractsCreated": true,
     "targetedPayloadValidationPassed": true,
     "semanticValidationPassed": true,
     "authorizationValidationPassed": true,
+    "postgresqlRlsLogicalValidationCreated": true,
+    "postgresqlRlsMigrationCreated": true,
+    "postgresqlRlsIntegrationTestsCreated": true,
     "repositoryValidatorCreated": true,
     "githubActionsWorkflowCreated": true,
     "githubActionsRemoteResultConfirmed": false,
@@ -32,19 +37,23 @@
     "networkSchemaResolutionAllowed": false
   },
   "evidence": {
-    "registeredSchemas": 14,
-    "positiveContractFixtures": 12,
+    "registeredSchemas": 16,
+    "positiveContractFixtures": 14,
     "mutationNegativeCases": 24,
     "schemaNegativeRejections": 22,
     "semanticNegativeRejections": 2,
     "authorizationCases": 8,
     "authorizationAllows": 2,
-    "authorizationDenies": 6
+    "authorizationDenies": 6,
+    "postgresqlRlsCases": 14,
+    "postgresqlRlsAllows": 3,
+    "postgresqlRlsDenies": 11,
+    "postgresqlRlsTables": 9,
+    "postgresqlRlsPolicyProfiles": 9
   },
   "nextRequired": [
     "confirm_github_actions_remote_run",
-    "postgresql_tenant_rls_contract",
-    "rls_positive_and_negative_fixtures",
+    "execute_live_postgresql_rls_ci",
     "sign_in_with_apple_server_validation_contract",
     "signed_upload_openapi_boundary",
     "worker_sandbox_runtime_contract",
