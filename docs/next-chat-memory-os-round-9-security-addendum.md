@@ -20,9 +20,11 @@ branch: so
 3. `docs/memory-os-capture-import-security-architecture-round-9.md`
 4. `docs/memory-os-capture-import-threat-model-round-9.md`
 5. `docs/memory-os-security-verification-gate-round-9.md`
-6. `docs/memory-os-capture-import-implementation-architecture-round-8.md`
-7. `docs/memory-os-capture-and-import-surface-authority-round-8.md`
-8. `docs/memory-town-current-authority-order-round-8-ios-native.md`
+6. `docs/memory-os-round9-security-s1-validation-report-2026-07-16.md`
+7. `docs/schemas/memory-os-security/schema-registry.v1.json`
+8. `docs/fixtures/memory-os-security/fixture-index.round9.s1.v1.json`
+9. `scripts/validate-memory-os-security.py`
+10. `docs/memory-os-capture-import-implementation-architecture-round-8.md`
 
 ---
 
@@ -38,38 +40,26 @@ defined at contract level
 threat model:
 70 scenarios defined
 
-verification gate:
-defined
+S1 machine contracts:
+created
 
-security schemas / fixtures:
-not created
+S1 targeted payload validation:
+PASS
 
-security code / infrastructure:
-not created
+re-runnable repository validator:
+created and locally exercised against generated repository payloads
 
-security execution evidence:
+GitHub Actions workflow:
+created; remote run result not yet confirmed
+
+backend / iOS / Portal security implementation:
 not created
 
 production:
 NO-GO
 ```
 
-設計書を作成したことは、安全性の証明ではない。
-
----
-
-# Product priority
-
-```txt
-1. Capture / Import
-2. Retrieval / Search / Update
-3. Privacy / Safety / Portability
-4. Reflection / Resurfacing
-5. Town visualization
-6. Town customization / editor
-```
-
-Capture / ImportのP0 security evidenceがない状態でTown implementationを優先しない。
+設計書・schema・fixtureを作成したことは、本番安全性の証明ではない。
 
 ---
 
@@ -99,148 +89,79 @@ Parser、adapter、dedupe、Preview、ApplyをSwift / browser / Goへ三重実�
 
 ---
 
+# S1 inventory
+
+```txt
+schemas: 12
+positive fixtures: 10
+negative cases: 24
+schema negative rejections: 22
+semantic negative rejections: 2
+network schema resolution: disabled
+```
+
+Active schemas:
+
+```txt
+core
+security issue-code registry
+ImportJob
+PairingSession
+UploadAuthorization
+QuarantineObject
+ImportPreview
+ApplyConfirmation
+AdapterManifest
+DeletionFence
+SafeAuditEvent
+SecurityNegativeCaseSet
+```
+
+Validator:
+
+```bash
+python -m pip install -r requirements-security-validation.txt
+python scripts/validate-memory-os-security.py
+```
+
+Expected output:
+
+```txt
+Memory OS security contract validation PASS
+schemas: 12
+positive fixtures: 10
+schema negative rejections: 22
+semantic negative rejections: 2
+network schema resolution: disabled
+```
+
+The two semantic rules are:
+
+1. adapter execution digest must equal reviewed digest;
+2. deletion fence must include every mandatory scope.
+
+---
+
 # Most important security decisions
 
 - every object endpoint performs object-level authorization
+- client user ID is never authority
+- account epoch follows all pending work
 - pairing token cannot final Apply in P0
-- upload authorization binds exact key / job / owner / size / checksum / expiry
+- upload authorization binds exact key / job / owner / epoch / size / checksum / expiry
 - raw files stay in private quarantine
 - parser runs outside public API, non-root, network denied, resource limited
-- archive paths, links, sizes, ratios, nesting and entries are bounded
+- adapter code is a reviewed, digested artifact
 - Preview is immutable and hash-bound to Apply
-- Apply is idempotent and rejects same key with different request hash
+- Apply is iOS-authorized, idempotent and cannot silently reparse
 - App Group stores minimal intake only; secrets stay in Keychain
-- private content never enters logs, analytics, push or crash breadcrumb
-- account deletion epoch fences upload, parser, Preview, Apply, export and restored work
-- backup restore cannot silently resurrect deleted account data
+- private content never enters logs, analytics, push or crash breadcrumbs
+- account deletion fences upload, worker, Preview, Apply, export, search and restored backups
 - E2EE is not claimed
 
 ---
 
-# P0 threats requiring executable evidence
-
-```txt
-T-001 cross-user Import Job read
-T-002 cross-user Preview / report read
-T-003 pairing token brute force
-T-004 pairing token log / URL leakage
-T-005 browser unauthorized Apply
-T-006 arbitrary signed-upload key
-T-007 signed URL replay after cancellation / deletion
-T-008 archive path traversal
-T-009 archive links / special file escape
-T-010 decompression bomb
-T-011 parser RCE
-T-012 parser network exfiltration
-T-013 cross-job temp access
-T-014 Preview / Apply TOCTOU
-T-015 duplicate Apply
-T-016 partial Apply shown as success
-T-017 deletion while parser runs
-T-018 backup resurrection
-T-019 SSRF
-T-020 Preview XSS
-T-021 CSV formula injection
-T-022 App Group secret leak
-T-023 shared SQLite corruption
-T-024 sensitive logs / crash report
-T-025 notification / app-switcher leak
-T-026 malicious image decode
-T-027 public / enumerable object storage
-T-028 third-party Portal script leak
-T-029 malicious adapter update
-T-030 supply-chain compromise
-```
-
-Additional T-031〜T-070 are documented in the threat model.
-
----
-
-# Next correct sequence
-
-## S1 machine-readable contracts
-
-```txt
-1. security issue code registry
-2. ImportJob schema
-3. PairingSession schema
-4. UploadAuthorization schema
-5. QuarantineObject schema
-6. ImportPreview schema
-7. ApplyConfirmation schema
-8. AdapterManifest schema
-9. DeletionFence schema
-10. safe AuditEvent schema
-11. positive fixtures
-12. P0 negative fixtures
-13. schema registry integration
-14. machine validation
-```
-
-## S2 backend security vertical slice
-
-```txt
-15. Sign in with Apple server validation contract
-16. object-level authorization matrix
-17. PostgreSQL tenant / RLS fixtures
-18. signed quarantine upload
-19. private object storage policy
-20. isolated worker runtime
-21. Generic CSV adapter
-22. immutable Preview
-23. idempotent Apply
-24. deletion epoch fence
-```
-
-## S3 iOS vertical slice
-
-```txt
-25. Share Extension URL / text
-26. activation-rule tests
-27. App Group minimal intake
-28. GRDB concurrency / crash recovery
-29. Keychain / Data Protection / backup verification
-30. safe Preview / confirmation
-```
-
-## S4 Portal and file migration
-
-```txt
-31. iOS fileImporter signed upload
-32. Generic JSON / Memory OS export adapter
-33. one-time Portal pairing
-34. CSP / CSRF / XSS / no-store evidence
-35. browser token lifecycle
-36. iOS final confirmation
-```
-
-## S5 adversarial and operational evidence
-
-```txt
-37. archive / JSON / CSV fuzzing
-38. parser sandbox runtime tests
-39. SSRF corpus
-40. deletion race tests
-41. backup restore deletion test
-42. sensitive-data log canary scan
-43. dependency / secret / container scans
-44. SBOM / release provenance
-45. incident / key rotation / restore runbooks
-46. independent security review
-47. unresolved Critical / High zero
-48. unresolved P0 zero
-```
-
-Only after this:
-
-```txt
-49. TownSceneSnapshot Swift models
-50. SpriteKit static Town prototype
-```
-
----
-
-# Hard stops
+# Current hard stops
 
 Do not proceed to production if any of the following is true:
 
@@ -252,6 +173,7 @@ Do not proceed to production if any of the following is true:
 - ZIP extraction lacks traversal / link / expansion limits
 - Preview and Apply are not hash-bound
 - duplicate confirmation can create duplicate Memory
+- adapter review digest and executing digest differ
 - App Group contains refresh token in UserDefaults
 - logs contain Memory body / filename / URL query / token
 - raw archive has no TTL
@@ -262,14 +184,98 @@ Do not proceed to production if any of the following is true:
 
 ---
 
-# Existing commits in Round 9
+# Next correct sequence
+
+## S1.5 repository and authorization integration
+
+```txt
+1. confirm GitHub Actions workflow result
+2. cross-user authorization case schema
+3. object-level authorization matrix
+4. PostgreSQL tenant / RLS contract
+5. RLS positive / negative fixtures
+6. Sign in with Apple server-validation contract
+7. signed upload OpenAPI boundary
+8. worker sandbox runtime contract
+9. archive limit profile and fixtures
+```
+
+## S2 backend security vertical slice
+
+```txt
+10. authentication and account binding
+11. Import Job database tables
+12. signed private quarantine upload
+13. isolated worker process
+14. Generic CSV adapter
+15. immutable Preview
+16. idempotent Apply
+17. deletion epoch fence
+```
+
+## S3 iOS security vertical slice
+
+```txt
+18. Share Extension URL / text
+19. activation-rule tests
+20. App Group minimal intake
+21. GRDB concurrency / crash recovery
+22. Keychain / Data Protection / backup verification
+23. safe Preview / confirmation
+```
+
+## S4 Portal and file migration
+
+```txt
+24. iOS fileImporter signed upload
+25. Generic JSON / Memory OS export adapter
+26. one-time Portal pairing
+27. CSP / CSRF / XSS / no-store evidence
+28. browser token lifecycle
+29. iOS final confirmation
+```
+
+## S5 adversarial and operational evidence
+
+```txt
+30. archive / JSON / CSV fuzzing
+31. parser sandbox runtime tests
+32. SSRF corpus
+33. deletion race tests
+34. backup restore deletion test
+35. sensitive-data log canary scan
+36. dependency / secret / container scans
+37. SBOM / release provenance
+38. incident / key rotation / restore runbooks
+39. independent security review
+40. unresolved Critical / High zero
+41. unresolved P0 zero
+```
+
+Only after this:
+
+```txt
+42. TownSceneSnapshot Swift models
+43. SpriteKit static Town prototype
+```
+
+---
+
+# Round 9 implementation commits
 
 ```txt
 7a8e17d  security architecture
 6869740  threat model
 c045783  verification gate
 5e88c50  security authority
-b02d77f  repository SECURITY.md
+b02d77f  SECURITY.md
+96d6d5e  initial Round 9 handoff
+
+S1 commits continue from:
+afb37aa  security core schema
+...
+82e8f70  security-contract GitHub Actions workflow
+98d44e5  updated Round 9 authority
 ```
 
-This handoff commit follows those commits.
+Do not infer that omitted intermediate SHAs were not committed; every schema, fixture and harness change was committed directly to `so`.
