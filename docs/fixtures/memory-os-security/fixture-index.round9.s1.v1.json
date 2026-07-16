@@ -1,6 +1,6 @@
 {
   "indexId": "memory-os.security.fixture-index.round9.s1",
-  "indexVersion": 3,
+  "indexVersion": 4,
   "schemaRegistryPath": "docs/schemas/memory-os-security/schema-registry.v1.json",
   "fixtures": [
     { "fixtureId": "memory-os.security.issue-codes.round9", "path": "docs/fixtures/memory-os-security/security-issue-code-registry.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-issue-code-registry.v1.schema.json", "status": "targeted_validation_pass" },
@@ -16,7 +16,7 @@
     { "fixtureId": "memory-os.security.authorization-matrix.round9.valid", "path": "docs/fixtures/memory-os-security/authorization-matrix.round9.valid.v1.json", "schemaId": "https://memory-os.example/schemas/security/authorization-matrix.v1.schema.json", "status": "targeted_validation_pass" },
     { "fixtureId": "memory-os.security.authorization-cases.round9", "path": "docs/fixtures/memory-os-security/authorization-cases.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/authorization-case-set.v1.schema.json", "status": "authorization_validation_pass_2_allow_6_deny" },
     { "fixtureId": "memory-os.security.postgresql-rls-contract.round9.valid", "path": "docs/fixtures/memory-os-security/postgresql-tenant-rls-contract.round9.valid.v1.json", "schemaId": "https://memory-os.example/schemas/security/postgresql-tenant-rls-contract.v1.schema.json", "status": "rls_contract_validation_pass" },
-    { "fixtureId": "memory-os.security.postgresql-rls-cases.round9", "path": "docs/fixtures/memory-os-security/postgresql-rls-cases.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/postgresql-rls-case-set.v1.schema.json", "status": "rls_logic_validation_pass_3_allow_11_deny" },
+    { "fixtureId": "memory-os.security.postgresql-rls-cases.round9", "path": "docs/fixtures/memory-os-security/postgresql-rls-cases.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/postgresql-rls-case-set.v1.schema.json", "status": "rls_logic_validation_pass_4_allow_10_deny" },
     { "fixtureId": "memory-os.security.negative.round9.phase1", "path": "docs/fixtures/memory-os-security/security-negative-cases.round9.phase1.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-negative-case-set.v1.schema.json", "status": "11_schema_rejections_pass" },
     { "fixtureId": "memory-os.security.negative.round9.phase2", "path": "docs/fixtures/memory-os-security/security-negative-cases.round9.phase2.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-negative-case-set.v1.schema.json", "status": "11_schema_rejections_pass_2_semantic_rejections_pass" }
   ],
@@ -46,8 +46,8 @@
     "authorizationAllows": 2,
     "authorizationDenies": 6,
     "postgresqlRlsCases": 14,
-    "postgresqlRlsAllows": 3,
-    "postgresqlRlsDenies": 11,
+    "postgresqlRlsAllows": 4,
+    "postgresqlRlsDenies": 10,
     "postgresqlRlsTables": 9,
     "postgresqlRlsPolicyProfiles": 9
   },
