@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/security/deletion-fence.v1.schema.json",
+  "title": "Memory OS Account Deletion Fence v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "fenceId", "ownerAccountId", "deletionEpoch", "state", "initiatedAt", "scopes", "security"],
+  "properties": {
+    "$schema": { "const": "https://memory-os.example/schemas/security/deletion-fence.v1.schema.json" },
+    "schemaVersion": { "const": 1 },
+    "fenceId": { "$ref": "core.v1.schema.json#/$defs/OpaqueId" },
+    "ownerAccountId": { "$ref": "core.v1.schema.json#/$defs/OpaqueId" },
+    "deletionEpoch": { "$ref": "core.v1.schema.json#/$defs/AccountEpoch" },
+    "state": { "enum": ["active", "sweeping", "verified", "failed"] },
+    "initiatedAt": { "$ref": "core.v1.schema.json#/$defs/UtcTimestamp" },
+    "verifiedAt": { "$ref": "core.v1.schema.json#/$defs/UtcTimestamp" },
+    "scopes": {
+      "type": "array",
+      "minItems": 12,
+      "uniqueItems": true,
+      "items": { "enum": ["database_records", "import_jobs", "worker_leases", "pairing_sessions", "upload_authorizations", "quarantine_objects", "previews", "apply_requests", "exports", "search_indexes", "push_payloads", "app_group_files", "backup_restore_tombstones"] }
+    },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["oldEpochWritesAllowed", "newWorkAllowed", "restoreRequiresTombstoneReplay", "workerLeaseRevocationRequired"],
+      "properties": {
+        "oldEpochWritesAllowed": { "const": false },
+        "newWorkAllowed": { "const": false },
+        "restoreRequiresTombstoneReplay": { "const": true },
+        "workerLeaseRevocationRequired": { "const": true }
+      }
+    }
+  },
+  "allOf": [
+    { "if": { "properties": { "state": { "const": "verified" } }, "required": ["state"] }, "then": { "required": ["verifiedAt"] } }
+  ]
+}
