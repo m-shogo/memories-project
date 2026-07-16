@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/security/safe-audit-event.v1.schema.json",
+  "title": "Memory OS Safe Audit Event v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "eventId", "occurredAt", "category", "action", "result", "requestId", "resourceType", "resourceRefHash", "security"],
+  "properties": {
+    "$schema": { "const": "https://memory-os.example/schemas/security/safe-audit-event.v1.schema.json" },
+    "schemaVersion": { "const": 1 },
+    "eventId": { "$ref": "core.v1.schema.json#/$defs/OpaqueId" },
+    "occurredAt": { "$ref": "core.v1.schema.json#/$defs/UtcTimestamp" },
+    "category": { "enum": ["authentication", "authorization", "pairing", "upload", "quarantine", "parser", "preview", "apply", "deletion", "export", "security_control"] },
+    "action": { "type": "string", "pattern": "^[a-z][a-z0-9_.-]+$", "maxLength": 128 },
+    "result": { "enum": ["allowed", "denied", "succeeded", "failed", "cancelled", "expired"] },
+    "requestId": { "$ref": "core.v1.schema.json#/$defs/OpaqueId" },
+    "resourceType": { "enum": ["account", "import_job", "pairing_session", "upload_authorization", "quarantine_object", "import_preview", "apply_confirmation", "adapter", "deletion_fence", "export"] },
+    "resourceRefHash": { "$ref": "core.v1.schema.json#/$defs/Sha256Hex" },
+    "issueCode": { "type": "string", "pattern": "^SEC_[A-Z0-9_]+$", "maxLength": 128 },
+    "attempt": { "type": "integer", "minimum": 0, "maximum": 1000 },
+    "latencyBucket": { "enum": ["lt_10ms", "lt_100ms", "lt_1s", "lt_10s", "gte_10s"] },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["containsPrivateContent", "containsRawFilename", "containsRawUrl", "containsToken", "containsEmail", "containsUserNote"],
+      "properties": {
+        "containsPrivateContent": { "const": false },
+        "containsRawFilename": { "const": false },
+        "containsRawUrl": { "const": false },
+        "containsToken": { "const": false },
+        "containsEmail": { "const": false },
+        "containsUserNote": { "const": false }
+      }
+    }
+  }
+}
