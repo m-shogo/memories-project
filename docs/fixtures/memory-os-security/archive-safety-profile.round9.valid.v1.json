@@ -1,0 +1,67 @@
+{
+  "$schema": "https://memory-os.example/schemas/security/archive-safety-profile.v1.schema.json",
+  "schemaVersion": 1,
+  "profileId": "memory-os.security.archive-safety.round9",
+  "profileVersion": 1,
+  "archiveTypes": {
+    "allowed": ["zip"],
+    "encryptedAllowed": false,
+    "multiVolumeAllowed": false,
+    "unknownCompressionMethodAllowed": false
+  },
+  "sizeLimits": {
+    "compressedBytes": 268435456,
+    "expandedBytes": 1073741824,
+    "singleEntryExpandedBytes": 134217728,
+    "entryCount": 10000,
+    "compressionRatio": 100,
+    "nestedArchiveDepth": 1
+  },
+  "pathRules": {
+    "absolutePathsAllowed": false,
+    "parentTraversalAllowed": false,
+    "windowsDrivePathsAllowed": false,
+    "backslashNormalizedBeforeValidation": true,
+    "unicodeNormalization": "NFC",
+    "duplicateNormalizedPathsAllowed": false,
+    "caseFoldCollisionsAllowed": false,
+    "nulAllowed": false,
+    "maxPathBytes": 512,
+    "maxEntryNameBytes": 255
+  },
+  "entryRules": {
+    "regularFilesAllowed": true,
+    "directoriesAllowed": true,
+    "symlinksAllowed": false,
+    "hardlinksAllowed": false,
+    "deviceFilesAllowed": false,
+    "fifosAllowed": false,
+    "socketsAllowed": false,
+    "sparseFilesAllowed": false
+  },
+  "jsonLimits": {
+    "maxDepth": 64,
+    "maxStringBytes": 1048576,
+    "maxArrayItems": 1000000,
+    "maxObjectProperties": 10000,
+    "duplicateObjectKeysAllowed": false,
+    "nonFiniteNumbersAllowed": false
+  },
+  "csvLimits": {
+    "maxRows": 1000000,
+    "maxColumns": 256,
+    "maxCellBytes": 1048576,
+    "maxHeaderBytes": 65536,
+    "formulaNeutralizationOnReports": true,
+    "encodingDetectionBounded": true
+  },
+  "extraction": {
+    "destination": "empty_job_scoped_tmpfs",
+    "preflightCentralDirectory": true,
+    "streamingCounters": true,
+    "failBeforeWritingUnsafeEntry": true,
+    "partialOutputDeletedOnFailure": true,
+    "nestedArchivesRevalidated": true,
+    "originalPermissionsApplied": false
+  }
+}
