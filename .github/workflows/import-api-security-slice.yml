@@ -1,0 +1,43 @@
+name: Import API Security Slice
+
+on:
+  pull_request:
+    paths:
+      - "services/import-api/**"
+      - ".github/workflows/import-api-security-slice.yml"
+  push:
+    branches:
+      - so
+    paths:
+      - "services/import-api/**"
+      - ".github/workflows/import-api-security-slice.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: services/import-api
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: services/import-api/go.mod
+
+      - name: Format check
+        run: test -z "$(gofmt -l .)"
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Unit tests with race detector
+        run: go test -race ./...
