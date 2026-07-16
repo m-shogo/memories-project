@@ -48,12 +48,12 @@
     },
     "authorizationCode": {
       "type": "object", "additionalProperties": false,
-      "required": ["serverExchangeRequired", "singleUse", "exactClientIdBinding", "exactRedirectUriBinding", "replayRejected"],
+      "required": ["serverExchangeRequired", "singleUse", "exactClientIdBinding", "redirectUriPolicy", "replayRejected"],
       "properties": {
         "serverExchangeRequired": { "const": true },
         "singleUse": { "const": true },
         "exactClientIdBinding": { "const": true },
-        "exactRedirectUriBinding": { "const": true },
+        "redirectUriPolicy": { "const": "must_match_original_when_present" },
         "replayRejected": { "const": true }
       }
     },
