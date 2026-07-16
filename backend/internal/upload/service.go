@@ -44,15 +44,15 @@ type Job struct {
 }
 
 type JobRepository interface {
-	FindOwnedJob(ctx context.Context, jobID, ownerAccountID string, accountEpoch int64) (Job, error)
+	FindOwnedJob(ctx context.Context, principal security.Principal, jobID string) (Job, error)
 }
 
 type SignRequest struct {
-	ObjectKey       string
-	ContentLength   int64
-	ChecksumSHA256  string
-	ContentType     string
-	ExpiresAt       time.Time
+	ObjectKey      string
+	ContentLength  int64
+	ChecksumSHA256 string
+	ContentType    string
+	ExpiresAt      time.Time
 }
 
 type SignedPUT struct {
@@ -65,9 +65,9 @@ type Signer interface {
 }
 
 type AuthorizationStore interface {
-	CreatePending(ctx context.Context, authorization Authorization) error
-	MarkIssued(ctx context.Context, authorizationID string) error
-	MarkFailed(ctx context.Context, authorizationID, safeReason string) error
+	CreatePending(ctx context.Context, principal security.Principal, authorization Authorization) error
+	MarkIssued(ctx context.Context, principal security.Principal, authorizationID string) error
+	MarkFailed(ctx context.Context, principal security.Principal, authorizationID, safeReason string) error
 }
 
 type Request struct {
@@ -130,7 +130,7 @@ func (s *Service) Issue(ctx context.Context, principal security.Principal, reque
 		return Response{}, err
 	}
 
-	job, err := s.jobs.FindOwnedJob(ctx, request.JobID, principal.AccountID(), principal.Epoch())
+	job, err := s.jobs.FindOwnedJob(ctx, principal, request.JobID)
 	if err != nil {
 		return Response{}, fmt.Errorf("find owned import job: %w", err)
 	}
@@ -168,7 +168,7 @@ func (s *Service) Issue(ctx context.Context, principal security.Principal, reque
 		Status:         "issuing",
 	}
 
-	if err := s.authorizations.CreatePending(ctx, authorization); err != nil {
+	if err := s.authorizations.CreatePending(ctx, principal, authorization); err != nil {
 		return Response{}, fmt.Errorf("persist pending upload authorization: %w", err)
 	}
 
@@ -180,15 +180,15 @@ func (s *Service) Issue(ctx context.Context, principal security.Principal, reque
 		ExpiresAt:      expiresAt,
 	})
 	if err != nil {
-		_ = s.authorizations.MarkFailed(ctx, authorizationID, "signing_failed")
+		_ = s.authorizations.MarkFailed(ctx, principal, authorizationID, "signing_failed")
 		return Response{}, fmt.Errorf("sign private upload: %w", err)
 	}
 	if strings.TrimSpace(signed.URL) == "" {
-		_ = s.authorizations.MarkFailed(ctx, authorizationID, "empty_signed_url")
+		_ = s.authorizations.MarkFailed(ctx, principal, authorizationID, "empty_signed_url")
 		return Response{}, errors.New("signer returned empty URL")
 	}
-	if err := s.authorizations.MarkIssued(ctx, authorizationID); err != nil {
-		_ = s.authorizations.MarkFailed(ctx, authorizationID, "activation_failed")
+	if err := s.authorizations.MarkIssued(ctx, principal, authorizationID); err != nil {
+		_ = s.authorizations.MarkFailed(ctx, principal, authorizationID, "activation_failed")
 		return Response{}, fmt.Errorf("activate upload authorization: %w", err)
 	}
 
