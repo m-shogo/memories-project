@@ -1,6 +1,6 @@
 {
   "indexId": "memory-os.security.fixture-index.round9.s1",
-  "indexVersion": 4,
+  "indexVersion": 5,
   "schemaRegistryPath": "docs/schemas/memory-os-security/schema-registry.v1.json",
   "fixtures": [
     { "fixtureId": "memory-os.security.issue-codes.round9", "path": "docs/fixtures/memory-os-security/security-issue-code-registry.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-issue-code-registry.v1.schema.json", "status": "targeted_validation_pass" },
@@ -17,11 +17,13 @@
     { "fixtureId": "memory-os.security.authorization-cases.round9", "path": "docs/fixtures/memory-os-security/authorization-cases.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/authorization-case-set.v1.schema.json", "status": "authorization_validation_pass_2_allow_6_deny" },
     { "fixtureId": "memory-os.security.postgresql-rls-contract.round9.valid", "path": "docs/fixtures/memory-os-security/postgresql-tenant-rls-contract.round9.valid.v1.json", "schemaId": "https://memory-os.example/schemas/security/postgresql-tenant-rls-contract.v1.schema.json", "status": "rls_contract_validation_pass" },
     { "fixtureId": "memory-os.security.postgresql-rls-cases.round9", "path": "docs/fixtures/memory-os-security/postgresql-rls-cases.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/postgresql-rls-case-set.v1.schema.json", "status": "rls_logic_validation_pass_4_allow_10_deny" },
+    { "fixtureId": "memory-os.security.apple-auth-profile.round9.valid", "path": "docs/fixtures/memory-os-security/apple-auth-validation-profile.round9.valid.v1.json", "schemaId": "https://memory-os.example/schemas/security/apple-auth-validation-profile.v1.schema.json", "status": "apple_auth_profile_validation_pass" },
+    { "fixtureId": "memory-os.security.apple-auth-cases.round9", "path": "docs/fixtures/memory-os-security/apple-auth-validation-cases.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/apple-auth-validation-case-set.v1.schema.json", "status": "apple_auth_validation_pass_1_allow_15_deny" },
     { "fixtureId": "memory-os.security.negative.round9.phase1", "path": "docs/fixtures/memory-os-security/security-negative-cases.round9.phase1.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-negative-case-set.v1.schema.json", "status": "11_schema_rejections_pass" },
     { "fixtureId": "memory-os.security.negative.round9.phase2", "path": "docs/fixtures/memory-os-security/security-negative-cases.round9.phase2.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-negative-case-set.v1.schema.json", "status": "11_schema_rejections_pass_2_semantic_rejections_pass" }
   ],
   "authority": {
-    "phase": "round9_s1_s1_5_and_postgresql_rls_foundation",
+    "phase": "round9_s1_s1_5_postgresql_rls_and_apple_auth_foundation",
     "schemaContractsCreated": true,
     "targetedPayloadValidationPassed": true,
     "semanticValidationPassed": true,
@@ -29,6 +31,8 @@
     "postgresqlRlsLogicalValidationCreated": true,
     "postgresqlRlsMigrationCreated": true,
     "postgresqlRlsIntegrationTestsCreated": true,
+    "appleAuthContractCreated": true,
+    "appleAuthValidatorCreated": true,
     "repositoryValidatorCreated": true,
     "githubActionsWorkflowCreated": true,
     "githubActionsRemoteResultConfirmed": false,
@@ -37,8 +41,8 @@
     "networkSchemaResolutionAllowed": false
   },
   "evidence": {
-    "registeredSchemas": 16,
-    "positiveContractFixtures": 14,
+    "registeredSchemas": 18,
+    "positiveContractFixtures": 16,
     "mutationNegativeCases": 24,
     "schemaNegativeRejections": 22,
     "semanticNegativeRejections": 2,
@@ -49,12 +53,14 @@
     "postgresqlRlsAllows": 4,
     "postgresqlRlsDenies": 10,
     "postgresqlRlsTables": 9,
-    "postgresqlRlsPolicyProfiles": 9
+    "postgresqlRlsPolicyProfiles": 9,
+    "appleAuthCases": 16,
+    "appleAuthAllows": 1,
+    "appleAuthDenies": 15
   },
   "nextRequired": [
     "confirm_github_actions_remote_run",
     "execute_live_postgresql_rls_ci",
-    "sign_in_with_apple_server_validation_contract",
     "signed_upload_openapi_boundary",
     "worker_sandbox_runtime_contract",
     "archive_limit_profile_and_fixtures",
