@@ -6,6 +6,7 @@ It is intentionally small and does not yet expose a production server.
 ## Implemented
 
 - private verified-principal model;
+- verified-principal request-context boundary;
 - fixed PostgreSQL privilege-role allowlist;
 - transaction-local account ID / account epoch setup;
 - RS256 Apple identity-token verification;
@@ -15,6 +16,7 @@ It is intentionally small and does not yet expose a production server.
 - authorization-code subject / client / redirect binding interfaces;
 - replay-guard and canonical `issuer + subject` account-binding interfaces;
 - signed quarantine-upload authorization core;
+- strict upload HTTP handlers with unknown-field and body-size rejection;
 - exact owner / epoch / job / key / size / checksum / type / expiry binding;
 - server-side object metadata verification;
 - object-version binding before scan queueing;
