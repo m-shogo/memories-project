@@ -1,0 +1,53 @@
+{
+  "$schema": "https://memory-os.example/schemas/security/postgresql-tenant-rls-contract.v1.schema.json",
+  "schemaVersion": 1,
+  "contractId": "memory-os.security.postgresql-rls.round9",
+  "contractVersion": 1,
+  "sessionContext": {
+    "accountIdSetting": "app.current_account_id",
+    "accountEpochSetting": "app.current_account_epoch",
+    "setMode": "transaction_local",
+    "source": "verified_server_auth_context",
+    "missingContextDecision": "deny"
+  },
+  "roles": [
+    { "role": "memory_api_runtime", "login": true, "bypassRls": false, "ownsUserTables": false, "purpose": "api_requests" },
+    { "role": "memory_worker_runtime", "login": true, "bypassRls": false, "ownsUserTables": false, "purpose": "scoped_worker_jobs" },
+    { "role": "memory_migration_owner", "login": false, "bypassRls": false, "ownsUserTables": true, "purpose": "schema_migrations" },
+    { "role": "memory_deletion_runtime", "login": true, "bypassRls": false, "ownsUserTables": false, "purpose": "account_deletion" },
+    { "role": "memory_readonly_observer", "login": true, "bypassRls": false, "ownsUserTables": false, "purpose": "safe_operational_metrics" }
+  ],
+  "policyProfiles": [
+    {
+      "profileId": "tenant-owner-epoch-standard",
+      "selectRoles": ["memory_api_runtime", "memory_worker_runtime"],
+      "insertRoles": ["memory_api_runtime", "memory_worker_runtime"],
+      "updateRoles": ["memory_api_runtime", "memory_worker_runtime"],
+      "deleteRoles": ["memory_api_runtime", "memory_deletion_runtime"],
+      "selectUsingOwnerEpoch": true,
+      "insertWithCheckOwnerEpoch": true,
+      "updateUsingAndWithCheckOwnerEpoch": true,
+      "deleteUsingOwnerEpoch": true
+    }
+  ],
+  "tables": [
+    { "table": "import_job", "ownerColumn": "owner_account_id", "epochColumn": "account_epoch", "rlsEnabled": true, "forceRls": true, "runtimeRoleOwnsTable": false, "policyProfileId": "tenant-owner-epoch-standard" },
+    { "table": "pairing_session", "ownerColumn": "owner_account_id", "epochColumn": "account_epoch", "rlsEnabled": true, "forceRls": true, "runtimeRoleOwnsTable": false, "policyProfileId": "tenant-owner-epoch-standard" },
+    { "table": "upload_authorization", "ownerColumn": "owner_account_id", "epochColumn": "account_epoch", "rlsEnabled": true, "forceRls": true, "runtimeRoleOwnsTable": false, "policyProfileId": "tenant-owner-epoch-standard" },
+    { "table": "quarantine_object", "ownerColumn": "owner_account_id", "epochColumn": "account_epoch", "rlsEnabled": true, "forceRls": true, "runtimeRoleOwnsTable": false, "policyProfileId": "tenant-owner-epoch-standard" },
+    { "table": "import_preview", "ownerColumn": "owner_account_id", "epochColumn": "account_epoch", "rlsEnabled": true, "forceRls": true, "runtimeRoleOwnsTable": false, "policyProfileId": "tenant-owner-epoch-standard" },
+    { "table": "apply_confirmation", "ownerColumn": "owner_account_id", "epochColumn": "account_epoch", "rlsEnabled": true, "forceRls": true, "runtimeRoleOwnsTable": false, "policyProfileId": "tenant-owner-epoch-standard" },
+    { "table": "import_report", "ownerColumn": "owner_account_id", "epochColumn": "account_epoch", "rlsEnabled": true, "forceRls": true, "runtimeRoleOwnsTable": false, "policyProfileId": "tenant-owner-epoch-standard" },
+    { "table": "export_job", "ownerColumn": "owner_account_id", "epochColumn": "account_epoch", "rlsEnabled": true, "forceRls": true, "runtimeRoleOwnsTable": false, "policyProfileId": "tenant-owner-epoch-standard" },
+    { "table": "deletion_fence", "ownerColumn": "owner_account_id", "epochColumn": "deletion_epoch", "rlsEnabled": true, "forceRls": true, "runtimeRoleOwnsTable": false, "policyProfileId": "tenant-owner-epoch-standard" }
+  ],
+  "globalRules": {
+    "denyByDefault": true,
+    "runtimeBypassRlsForbidden": true,
+    "runtimeTableOwnershipForbidden": true,
+    "clientSetsSessionContext": false,
+    "ownerMutationAllowed": false,
+    "epochDowngradeAllowed": false,
+    "rawSqlWithoutScopedTransactionAllowed": false
+  }
+}
