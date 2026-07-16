@@ -12,6 +12,7 @@ on:
       - "scripts/validate-memory-os-postgresql-rls.py"
       - "scripts/validate-memory-os-apple-auth.py"
       - "scripts/validate-memory-os-signed-upload-openapi.py"
+      - "scripts/validate-memory-os-parser-security.py"
       - "requirements-security-validation.txt"
       - ".github/workflows/security-contracts.yml"
   push:
@@ -27,6 +28,7 @@ on:
       - "scripts/validate-memory-os-postgresql-rls.py"
       - "scripts/validate-memory-os-apple-auth.py"
       - "scripts/validate-memory-os-signed-upload-openapi.py"
+      - "scripts/validate-memory-os-parser-security.py"
       - "requirements-security-validation.txt"
       - ".github/workflows/security-contracts.yml"
   workflow_dispatch:
@@ -59,6 +61,7 @@ jobs:
           python -m py_compile scripts/validate-memory-os-postgresql-rls.py
           python -m py_compile scripts/validate-memory-os-apple-auth.py
           python -m py_compile scripts/validate-memory-os-signed-upload-openapi.py
+          python -m py_compile scripts/validate-memory-os-parser-security.py
 
       - name: Validate security schemas and fixtures
         run: python scripts/validate-memory-os-security.py
@@ -74,6 +77,9 @@ jobs:
 
       - name: Validate signed quarantine upload OpenAPI
         run: python scripts/validate-memory-os-signed-upload-openapi.py
+
+      - name: Validate parser sandbox and archive safety
+        run: python scripts/validate-memory-os-parser-security.py
 
   validate-live-postgresql-rls:
     runs-on: ubuntu-latest
