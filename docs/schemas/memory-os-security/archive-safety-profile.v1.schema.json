@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/security/archive-safety-profile.v1.schema.json",
+  "title": "Memory OS Archive and Structured File Safety Profile v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema", "schemaVersion", "profileId", "profileVersion",
+    "archiveTypes", "sizeLimits", "pathRules", "entryRules",
+    "jsonLimits", "csvLimits", "extraction"
+  ],
+  "properties": {
+    "$schema": { "const": "https://memory-os.example/schemas/security/archive-safety-profile.v1.schema.json" },
+    "schemaVersion": { "const": 1 },
+    "profileId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+    "profileVersion": { "type": "integer", "minimum": 1 },
+    "archiveTypes": {
+      "type": "object", "additionalProperties": false,
+      "required": ["allowed", "encryptedAllowed", "multiVolumeAllowed", "unknownCompressionMethodAllowed"],
+      "properties": {
+        "allowed": { "const": ["zip"] },
+        "encryptedAllowed": { "const": false },
+        "multiVolumeAllowed": { "const": false },
+        "unknownCompressionMethodAllowed": { "const": false }
+      }
+    },
+    "sizeLimits": {
+      "type": "object", "additionalProperties": false,
+      "required": ["compressedBytes", "expandedBytes", "singleEntryExpandedBytes", "entryCount", "compressionRatio", "nestedArchiveDepth"],
+      "properties": {
+        "compressedBytes": { "const": 268435456 },
+        "expandedBytes": { "const": 1073741824 },
+        "singleEntryExpandedBytes": { "const": 134217728 },
+        "entryCount": { "const": 10000 },
+        "compressionRatio": { "const": 100 },
+        "nestedArchiveDepth": { "const": 1 }
+      }
+    },
+    "pathRules": {
+      "type": "object", "additionalProperties": false,
+      "required": ["absolutePathsAllowed", "parentTraversalAllowed", "windowsDrivePathsAllowed", "backslashNormalizedBeforeValidation", "unicodeNormalization", "duplicateNormalizedPathsAllowed", "caseFoldCollisionsAllowed", "nulAllowed", "maxPathBytes", "maxEntryNameBytes"],
+      "properties": {
+        "absolutePathsAllowed": { "const": false },
+        "parentTraversalAllowed": { "const": false },
+        "windowsDrivePathsAllowed": { "const": false },
+        "backslashNormalizedBeforeValidation": { "const": true },
+        "unicodeNormalization": { "const": "NFC" },
+        "duplicateNormalizedPathsAllowed": { "const": false },
+        "caseFoldCollisionsAllowed": { "const": false },
+        "nulAllowed": { "const": false },
+        "maxPathBytes": { "const": 512 },
+        "maxEntryNameBytes": { "const": 255 }
+      }
+    },
+    "entryRules": {
+      "type": "object", "additionalProperties": false,
+      "required": ["regularFilesAllowed", "directoriesAllowed", "symlinksAllowed", "hardlinksAllowed", "deviceFilesAllowed", "fifosAllowed", "socketsAllowed", "sparseFilesAllowed"],
+      "properties": {
+        "regularFilesAllowed": { "const": true },
+        "directoriesAllowed": { "const": true },
+        "symlinksAllowed": { "const": false },
+        "hardlinksAllowed": { "const": false },
+        "deviceFilesAllowed": { "const": false },
+        "fifosAllowed": { "const": false },
+        "socketsAllowed": { "const": false },
+        "sparseFilesAllowed": { "const": false }
+      }
+    },
+    "jsonLimits": {
+      "type": "object", "additionalProperties": false,
+      "required": ["maxDepth", "maxStringBytes", "maxArrayItems", "maxObjectProperties", "duplicateObjectKeysAllowed", "nonFiniteNumbersAllowed"],
+      "properties": {
+        "maxDepth": { "const": 64 },
+        "maxStringBytes": { "const": 1048576 },
+        "maxArrayItems": { "const": 1000000 },
+        "maxObjectProperties": { "const": 10000 },
+        "duplicateObjectKeysAllowed": { "const": false },
+        "nonFiniteNumbersAllowed": { "const": false }
+      }
+    },
+    "csvLimits": {
+      "type": "object", "additionalProperties": false,
+      "required": ["maxRows", "maxColumns", "maxCellBytes", "maxHeaderBytes", "formulaNeutralizationOnReports", "encodingDetectionBounded"],
+      "properties": {
+        "maxRows": { "const": 1000000 },
+        "maxColumns": { "const": 256 },
+        "maxCellBytes": { "const": 1048576 },
+        "maxHeaderBytes": { "const": 65536 },
+        "formulaNeutralizationOnReports": { "const": true },
+        "encodingDetectionBounded": { "const": true }
+      }
+    },
+    "extraction": {
+      "type": "object", "additionalProperties": false,
+      "required": ["destination", "preflightCentralDirectory", "streamingCounters", "failBeforeWritingUnsafeEntry", "partialOutputDeletedOnFailure", "nestedArchivesRevalidated", "originalPermissionsApplied"],
+      "properties": {
+        "destination": { "const": "empty_job_scoped_tmpfs" },
+        "preflightCentralDirectory": { "const": true },
+        "streamingCounters": { "const": true },
+        "failBeforeWritingUnsafeEntry": { "const": true },
+        "partialOutputDeletedOnFailure": { "const": true },
+        "nestedArchivesRevalidated": { "const": true },
+        "originalPermissionsApplied": { "const": false }
+      }
+    }
+  }
+}
