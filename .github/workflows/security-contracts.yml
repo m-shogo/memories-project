@@ -1,0 +1,47 @@
+name: Security Contracts
+
+on:
+  pull_request:
+    paths:
+      - "docs/schemas/memory-os-security/**"
+      - "docs/fixtures/memory-os-security/**"
+      - "scripts/validate-memory-os-security.py"
+      - "requirements-security-validation.txt"
+      - ".github/workflows/security-contracts.yml"
+  push:
+    branches:
+      - so
+    paths:
+      - "docs/schemas/memory-os-security/**"
+      - "docs/fixtures/memory-os-security/**"
+      - "scripts/validate-memory-os-security.py"
+      - "requirements-security-validation.txt"
+      - ".github/workflows/security-contracts.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-security-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-security-validation.txt
+
+      - name: Install validation dependencies
+        run: python -m pip install --disable-pip-version-check --requirement requirements-security-validation.txt
+
+      - name: Compile validator
+        run: python -m py_compile scripts/validate-memory-os-security.py
+
+      - name: Validate security schemas and fixtures
+        run: python scripts/validate-memory-os-security.py
