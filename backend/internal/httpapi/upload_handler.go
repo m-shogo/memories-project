@@ -1,8 +1,10 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"time"
 
@@ -14,26 +16,14 @@ import (
 const maxUploadAuthorizationRequestBytes int64 = 16 << 10
 
 type UploadIssuer interface {
-	Issue(ctx interface{ Done() <-chan struct{} }, principal security.Principal, request upload.Request) (upload.Response, error)
-}
-
-// ContextUploadIssuer uses the concrete context-compatible service signature.
-type ContextUploadIssuer interface {
-	Issue(ctxContext, security.Principal, upload.Request) (upload.Response, error)
-}
-
-type ctxContext interface {
-	Deadline() (deadline time.Time, ok bool)
-	Done() <-chan struct{}
-	Err() error
-	Value(key any) any
+	Issue(context.Context, security.Principal, upload.Request) (upload.Response, error)
 }
 
 type UploadHandler struct {
-	issuer ContextUploadIssuer
+	issuer UploadIssuer
 }
 
-func NewUploadHandler(issuer ContextUploadIssuer) (*UploadHandler, error) {
+func NewUploadHandler(issuer UploadIssuer) (*UploadHandler, error) {
 	if issuer == nil {
 		return nil, errors.New("upload issuer is nil")
 	}
@@ -83,7 +73,7 @@ func (h *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request")
 		return
 	}
-	if decoder.Decode(&struct{}{}) == nil {
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		writeError(w, http.StatusBadRequest, "invalid_request")
 		return
 	}
