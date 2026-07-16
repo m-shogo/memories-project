@@ -94,7 +94,13 @@ func (h UploadHandler) complete(writer http.ResponseWriter, request *http.Reques
 		return
 	}
 	if request.Body != nil {
-		_, _ = io.Copy(io.Discard, io.LimitReader(request.Body, 1024))
+		request.Body = http.MaxBytesReader(writer, request.Body, 1)
+		buffer := make([]byte, 1)
+		count, readErr := request.Body.Read(buffer)
+		if count != 0 || (readErr != nil && !errors.Is(readErr, io.EOF)) {
+			writeProblem(writer, http.StatusBadRequest, "SEC_UPLOAD_REQUEST_INVALID")
+			return
+		}
 	}
 	if err := h.Service.Complete(request.Context(), principal, request.PathValue("authorizationID")); err != nil {
 		writeUploadError(writer, err)
