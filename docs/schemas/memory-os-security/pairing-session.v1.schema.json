@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/security/pairing-session.v1.schema.json",
+  "title": "Memory OS Desktop Pairing Session v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "pairingSessionId", "ownerAccountId", "accountEpoch", "deviceId", "state", "tokenHash", "allowedOperations", "maxUses", "usedCount", "createdAt", "expiresAt", "security"],
+  "properties": {
+    "$schema": { "const": "https://memory-os.example/schemas/security/pairing-session.v1.schema.json" },
+    "schemaVersion": { "const": 1 },
+    "pairingSessionId": { "$ref": "core.v1.schema.json#/$defs/OpaqueId" },
+    "ownerAccountId": { "$ref": "core.v1.schema.json#/$defs/OpaqueId" },
+    "accountEpoch": { "$ref": "core.v1.schema.json#/$defs/AccountEpoch" },
+    "deviceId": { "$ref": "core.v1.schema.json#/$defs/OpaqueId" },
+    "state": { "enum": ["issued", "active", "consumed", "revoked", "expired"] },
+    "tokenHash": { "$ref": "core.v1.schema.json#/$defs/Sha256Hex" },
+    "allowedOperations": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": { "enum": ["create_upload", "upload_part", "complete_upload", "read_job_status", "submit_mapping", "read_preview_summary", "cancel_job"] }
+    },
+    "maxUses": { "type": "integer", "minimum": 1, "maximum": 100 },
+    "usedCount": { "type": "integer", "minimum": 0, "maximum": 100 },
+    "createdAt": { "$ref": "core.v1.schema.json#/$defs/UtcTimestamp" },
+    "expiresAt": { "$ref": "core.v1.schema.json#/$defs/UtcTimestamp" },
+    "revokedAt": { "$ref": "core.v1.schema.json#/$defs/UtcTimestamp" },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["finalApplyAllowed", "memoryReadAllowed", "tokenStoredRaw", "revocable"],
+      "properties": {
+        "finalApplyAllowed": { "const": false },
+        "memoryReadAllowed": { "const": false },
+        "tokenStoredRaw": { "const": false },
+        "revocable": { "const": true }
+      }
+    }
+  },
+  "allOf": [
+    { "if": { "properties": { "state": { "const": "revoked" } }, "required": ["state"] }, "then": { "required": ["revokedAt"] } }
+  ]
+}
