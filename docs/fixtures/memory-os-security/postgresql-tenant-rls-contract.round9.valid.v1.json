@@ -2,7 +2,7 @@
   "$schema": "https://memory-os.example/schemas/security/postgresql-tenant-rls-contract.v1.schema.json",
   "schemaVersion": 1,
   "contractId": "memory-os.security.postgresql-rls.round9",
-  "contractVersion": 1,
+  "contractVersion": 2,
   "sessionContext": {
     "accountIdSetting": "app.current_account_id",
     "accountEpochSetting": "app.current_account_epoch",
@@ -11,19 +11,142 @@
     "missingContextDecision": "deny"
   },
   "roles": [
-    { "role": "memory_api_runtime", "login": true, "bypassRls": false, "ownsUserTables": false, "purpose": "api_requests" },
-    { "role": "memory_worker_runtime", "login": true, "bypassRls": false, "ownsUserTables": false, "purpose": "scoped_worker_jobs" },
-    { "role": "memory_migration_owner", "login": false, "bypassRls": false, "ownsUserTables": true, "purpose": "schema_migrations" },
-    { "role": "memory_deletion_runtime", "login": true, "bypassRls": false, "ownsUserTables": false, "purpose": "account_deletion" },
-    { "role": "memory_readonly_observer", "login": true, "bypassRls": false, "ownsUserTables": false, "purpose": "safe_operational_metrics" }
+    {
+      "role": "memory_api_runtime",
+      "login": false,
+      "inherit": false,
+      "bypassRls": false,
+      "ownsUserTables": false,
+      "purpose": "api_requests"
+    },
+    {
+      "role": "memory_worker_runtime",
+      "login": false,
+      "inherit": false,
+      "bypassRls": false,
+      "ownsUserTables": false,
+      "purpose": "scoped_worker_jobs"
+    },
+    {
+      "role": "memory_migration_owner",
+      "login": false,
+      "inherit": false,
+      "bypassRls": false,
+      "ownsUserTables": true,
+      "purpose": "schema_migrations"
+    },
+    {
+      "role": "memory_deletion_runtime",
+      "login": false,
+      "inherit": false,
+      "bypassRls": false,
+      "ownsUserTables": false,
+      "purpose": "account_deletion"
+    },
+    {
+      "role": "memory_readonly_observer",
+      "login": false,
+      "inherit": false,
+      "bypassRls": false,
+      "ownsUserTables": false,
+      "purpose": "safe_operational_metrics"
+    }
   ],
   "policyProfiles": [
     {
-      "profileId": "tenant-owner-epoch-standard",
-      "selectRoles": ["memory_api_runtime", "memory_worker_runtime"],
+      "profileId": "import-job-tenant-policy",
+      "selectRoles": ["memory_api_runtime", "memory_worker_runtime", "memory_deletion_runtime"],
+      "insertRoles": ["memory_api_runtime"],
+      "updateRoles": ["memory_api_runtime", "memory_worker_runtime"],
+      "deleteRoles": ["memory_deletion_runtime"],
+      "selectUsingOwnerEpoch": true,
+      "insertWithCheckOwnerEpoch": true,
+      "updateUsingAndWithCheckOwnerEpoch": true,
+      "deleteUsingOwnerEpoch": true
+    },
+    {
+      "profileId": "pairing-session-tenant-policy",
+      "selectRoles": ["memory_api_runtime", "memory_deletion_runtime"],
+      "insertRoles": ["memory_api_runtime"],
+      "updateRoles": ["memory_api_runtime"],
+      "deleteRoles": ["memory_deletion_runtime"],
+      "selectUsingOwnerEpoch": true,
+      "insertWithCheckOwnerEpoch": true,
+      "updateUsingAndWithCheckOwnerEpoch": true,
+      "deleteUsingOwnerEpoch": true
+    },
+    {
+      "profileId": "upload-authorization-tenant-policy",
+      "selectRoles": ["memory_api_runtime", "memory_worker_runtime", "memory_deletion_runtime"],
+      "insertRoles": ["memory_api_runtime"],
+      "updateRoles": ["memory_api_runtime"],
+      "deleteRoles": ["memory_deletion_runtime"],
+      "selectUsingOwnerEpoch": true,
+      "insertWithCheckOwnerEpoch": true,
+      "updateUsingAndWithCheckOwnerEpoch": true,
+      "deleteUsingOwnerEpoch": true
+    },
+    {
+      "profileId": "quarantine-object-tenant-policy",
+      "selectRoles": ["memory_api_runtime", "memory_worker_runtime", "memory_deletion_runtime"],
       "insertRoles": ["memory_api_runtime", "memory_worker_runtime"],
       "updateRoles": ["memory_api_runtime", "memory_worker_runtime"],
-      "deleteRoles": ["memory_api_runtime", "memory_deletion_runtime"],
+      "deleteRoles": ["memory_deletion_runtime"],
+      "selectUsingOwnerEpoch": true,
+      "insertWithCheckOwnerEpoch": true,
+      "updateUsingAndWithCheckOwnerEpoch": true,
+      "deleteUsingOwnerEpoch": true
+    },
+    {
+      "profileId": "import-preview-tenant-policy",
+      "selectRoles": ["memory_api_runtime", "memory_worker_runtime", "memory_deletion_runtime"],
+      "insertRoles": ["memory_worker_runtime"],
+      "updateRoles": [],
+      "deleteRoles": ["memory_deletion_runtime"],
+      "selectUsingOwnerEpoch": true,
+      "insertWithCheckOwnerEpoch": true,
+      "updateUsingAndWithCheckOwnerEpoch": true,
+      "deleteUsingOwnerEpoch": true
+    },
+    {
+      "profileId": "apply-confirmation-tenant-policy",
+      "selectRoles": ["memory_api_runtime", "memory_deletion_runtime"],
+      "insertRoles": ["memory_api_runtime"],
+      "updateRoles": [],
+      "deleteRoles": ["memory_deletion_runtime"],
+      "selectUsingOwnerEpoch": true,
+      "insertWithCheckOwnerEpoch": true,
+      "updateUsingAndWithCheckOwnerEpoch": true,
+      "deleteUsingOwnerEpoch": true
+    },
+    {
+      "profileId": "import-report-tenant-policy",
+      "selectRoles": ["memory_api_runtime", "memory_worker_runtime", "memory_deletion_runtime"],
+      "insertRoles": ["memory_worker_runtime"],
+      "updateRoles": [],
+      "deleteRoles": ["memory_deletion_runtime"],
+      "selectUsingOwnerEpoch": true,
+      "insertWithCheckOwnerEpoch": true,
+      "updateUsingAndWithCheckOwnerEpoch": true,
+      "deleteUsingOwnerEpoch": true
+    },
+    {
+      "profileId": "export-job-tenant-policy",
+      "selectRoles": ["memory_api_runtime", "memory_worker_runtime", "memory_deletion_runtime"],
+      "insertRoles": ["memory_api_runtime"],
+      "updateRoles": ["memory_worker_runtime"],
+      "deleteRoles": ["memory_deletion_runtime"],
+      "selectUsingOwnerEpoch": true,
+      "insertWithCheckOwnerEpoch": true,
+      "updateUsingAndWithCheckOwnerEpoch": true,
+      "deleteUsingOwnerEpoch": true
+    },
+    {
+      "profileId": "deletion-fence-tenant-policy",
+      "selectRoles": ["memory_api_runtime", "memory_deletion_runtime"],
+      "insertRoles": ["memory_api_runtime"],
+      "updateRoles": ["memory_deletion_runtime"],
+      "deleteRoles": ["memory_deletion_runtime"],
       "selectUsingOwnerEpoch": true,
       "insertWithCheckOwnerEpoch": true,
       "updateUsingAndWithCheckOwnerEpoch": true,
@@ -31,15 +154,15 @@
     }
   ],
   "tables": [
-    { "table": "import_job", "ownerColumn": "owner_account_id", "epochColumn": "account_epoch", "rlsEnabled": true, "forceRls": true, "runtimeRoleOwnsTable": false, "policyProfileId": "tenant-owner-epoch-standard" },
-    { "table": "pairing_session", "ownerColumn": "owner_account_id", "epochColumn": "account_epoch", "rlsEnabled": true, "forceRls": true, "runtimeRoleOwnsTable": false, "policyProfileId": "tenant-owner-epoch-standard" },
-    { "table": "upload_authorization", "ownerColumn": "owner_account_id", "epochColumn": "account_epoch", "rlsEnabled": true, "forceRls": true, "runtimeRoleOwnsTable": false, "policyProfileId": "tenant-owner-epoch-standard" },
-    { "table": "quarantine_object", "ownerColumn": "owner_account_id", "epochColumn": "account_epoch", "rlsEnabled": true, "forceRls": true, "runtimeRoleOwnsTable": false, "policyProfileId": "tenant-owner-epoch-standard" },
-    { "table": "import_preview", "ownerColumn": "owner_account_id", "epochColumn": "account_epoch", "rlsEnabled": true, "forceRls": true, "runtimeRoleOwnsTable": false, "policyProfileId": "tenant-owner-epoch-standard" },
-    { "table": "apply_confirmation", "ownerColumn": "owner_account_id", "epochColumn": "account_epoch", "rlsEnabled": true, "forceRls": true, "runtimeRoleOwnsTable": false, "policyProfileId": "tenant-owner-epoch-standard" },
-    { "table": "import_report", "ownerColumn": "owner_account_id", "epochColumn": "account_epoch", "rlsEnabled": true, "forceRls": true, "runtimeRoleOwnsTable": false, "policyProfileId": "tenant-owner-epoch-standard" },
-    { "table": "export_job", "ownerColumn": "owner_account_id", "epochColumn": "account_epoch", "rlsEnabled": true, "forceRls": true, "runtimeRoleOwnsTable": false, "policyProfileId": "tenant-owner-epoch-standard" },
-    { "table": "deletion_fence", "ownerColumn": "owner_account_id", "epochColumn": "deletion_epoch", "rlsEnabled": true, "forceRls": true, "runtimeRoleOwnsTable": false, "policyProfileId": "tenant-owner-epoch-standard" }
+    {"table":"import_job","ownerColumn":"owner_account_id","epochColumn":"account_epoch","rlsEnabled":true,"forceRls":true,"runtimeRoleOwnsTable":false,"policyProfileId":"import-job-tenant-policy"},
+    {"table":"pairing_session","ownerColumn":"owner_account_id","epochColumn":"account_epoch","rlsEnabled":true,"forceRls":true,"runtimeRoleOwnsTable":false,"policyProfileId":"pairing-session-tenant-policy"},
+    {"table":"upload_authorization","ownerColumn":"owner_account_id","epochColumn":"account_epoch","rlsEnabled":true,"forceRls":true,"runtimeRoleOwnsTable":false,"policyProfileId":"upload-authorization-tenant-policy"},
+    {"table":"quarantine_object","ownerColumn":"owner_account_id","epochColumn":"account_epoch","rlsEnabled":true,"forceRls":true,"runtimeRoleOwnsTable":false,"policyProfileId":"quarantine-object-tenant-policy"},
+    {"table":"import_preview","ownerColumn":"owner_account_id","epochColumn":"account_epoch","rlsEnabled":true,"forceRls":true,"runtimeRoleOwnsTable":false,"policyProfileId":"import-preview-tenant-policy"},
+    {"table":"apply_confirmation","ownerColumn":"owner_account_id","epochColumn":"account_epoch","rlsEnabled":true,"forceRls":true,"runtimeRoleOwnsTable":false,"policyProfileId":"apply-confirmation-tenant-policy"},
+    {"table":"import_report","ownerColumn":"owner_account_id","epochColumn":"account_epoch","rlsEnabled":true,"forceRls":true,"runtimeRoleOwnsTable":false,"policyProfileId":"import-report-tenant-policy"},
+    {"table":"export_job","ownerColumn":"owner_account_id","epochColumn":"account_epoch","rlsEnabled":true,"forceRls":true,"runtimeRoleOwnsTable":false,"policyProfileId":"export-job-tenant-policy"},
+    {"table":"deletion_fence","ownerColumn":"owner_account_id","epochColumn":"deletion_epoch","rlsEnabled":true,"forceRls":true,"runtimeRoleOwnsTable":false,"policyProfileId":"deletion-fence-tenant-policy"}
   ],
   "globalRules": {
     "denyByDefault": true,
@@ -48,6 +171,7 @@
     "clientSetsSessionContext": false,
     "ownerMutationAllowed": false,
     "epochDowngradeAllowed": false,
-    "rawSqlWithoutScopedTransactionAllowed": false
+    "rawSqlWithoutScopedTransactionAllowed": false,
+    "loginCredentialsSeparatedFromPrivilegeRoles": true
   }
 }
