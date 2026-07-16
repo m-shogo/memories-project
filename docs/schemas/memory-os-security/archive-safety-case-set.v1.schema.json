@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/security/archive-safety-case-set.v1.schema.json",
+  "title": "Memory OS Archive Safety Case Set v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "caseSetId", "caseSetVersion", "profileRef", "cases"],
+  "properties": {
+    "$schema": { "const": "https://memory-os.example/schemas/security/archive-safety-case-set.v1.schema.json" },
+    "caseSetId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+    "caseSetVersion": { "type": "integer", "minimum": 1 },
+    "profileRef": { "type": "string", "minLength": 1, "maxLength": 300 },
+    "cases": {
+      "type": "array", "minItems": 1, "maxItems": 2000,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": [
+          "caseId", "archiveType", "compressedBytes", "expandedBytes",
+          "singleEntryExpandedBytes", "entryCount", "compressionRatio",
+          "nestedArchiveDepth", "pathKind", "duplicateNormalizedPath",
+          "caseFoldCollision", "entryType", "encrypted", "multiVolume",
+          "compressionMethodKnown", "centralDirectoryValid", "jsonDepth",
+          "jsonDuplicateKeys", "csvMaxCellBytes", "expectedDecision",
+          "expectedIssueCode"
+        ],
+        "properties": {
+          "caseId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+          "archiveType": { "enum": ["zip", "unknown"] },
+          "compressedBytes": { "type": "integer", "minimum": 0, "maximum": 1099511627776 },
+          "expandedBytes": { "type": "integer", "minimum": 0, "maximum": 1099511627776 },
+          "singleEntryExpandedBytes": { "type": "integer", "minimum": 0, "maximum": 1099511627776 },
+          "entryCount": { "type": "integer", "minimum": 0, "maximum": 100000000 },
+          "compressionRatio": { "type": "number", "minimum": 0, "maximum": 100000000 },
+          "nestedArchiveDepth": { "type": "integer", "minimum": 0, "maximum": 100 },
+          "pathKind": { "enum": ["safe", "parent_traversal", "backslash_traversal", "absolute_unix", "windows_drive", "nul", "too_long"] },
+          "duplicateNormalizedPath": { "type": "boolean" },
+          "caseFoldCollision": { "type": "boolean" },
+          "entryType": { "enum": ["regular", "directory", "symlink", "hardlink", "device", "fifo", "socket", "sparse"] },
+          "encrypted": { "type": "boolean" },
+          "multiVolume": { "type": "boolean" },
+          "compressionMethodKnown": { "type": "boolean" },
+          "centralDirectoryValid": { "type": "boolean" },
+          "jsonDepth": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+          "jsonDuplicateKeys": { "type": "boolean" },
+          "csvMaxCellBytes": { "type": "integer", "minimum": 0, "maximum": 1099511627776 },
+          "expectedDecision": { "enum": ["allow", "deny"] },
+          "expectedIssueCode": { "type": "string", "pattern": "^SEC_[A-Z0-9_]+$", "maxLength": 128 }
+        }
+      }
+    }
+  }
+}
