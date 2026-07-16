@@ -4,7 +4,7 @@
   "title": "Memory OS PostgreSQL Tenant RLS Contract v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["$schema", "schemaVersion", "contractId", "contractVersion", "sessionContext", "roles", "tables", "globalRules"],
+  "required": ["$schema", "schemaVersion", "contractId", "contractVersion", "sessionContext", "roles", "policyProfiles", "tables", "globalRules"],
   "properties": {
     "$schema": { "const": "https://memory-os.example/schemas/security/postgresql-tenant-rls-contract.v1.schema.json" },
     "schemaVersion": { "const": 1 },
@@ -40,6 +40,28 @@
         }
       }
     },
+    "policyProfiles": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["profileId", "selectRoles", "insertRoles", "updateRoles", "deleteRoles", "selectUsingOwnerEpoch", "insertWithCheckOwnerEpoch", "updateUsingAndWithCheckOwnerEpoch", "deleteUsingOwnerEpoch"],
+        "properties": {
+          "profileId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+          "selectRoles": { "$ref": "#/$defs/RuntimeRoles" },
+          "insertRoles": { "$ref": "#/$defs/RuntimeRoles" },
+          "updateRoles": { "$ref": "#/$defs/RuntimeRoles" },
+          "deleteRoles": { "$ref": "#/$defs/RuntimeRoles" },
+          "selectUsingOwnerEpoch": { "const": true },
+          "insertWithCheckOwnerEpoch": { "const": true },
+          "updateUsingAndWithCheckOwnerEpoch": { "const": true },
+          "deleteUsingOwnerEpoch": { "const": true }
+        }
+      }
+    },
     "tables": {
       "type": "array",
       "minItems": 1,
@@ -48,7 +70,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["table", "ownerColumn", "epochColumn", "rlsEnabled", "forceRls", "runtimeRoleOwnsTable", "policies"],
+        "required": ["table", "ownerColumn", "epochColumn", "rlsEnabled", "forceRls", "runtimeRoleOwnsTable", "policyProfileId"],
         "properties": {
           "table": { "enum": ["import_job", "pairing_session", "upload_authorization", "quarantine_object", "import_preview", "apply_confirmation", "import_report", "export_job", "deletion_fence"] },
           "ownerColumn": { "const": "owner_account_id" },
@@ -56,24 +78,7 @@
           "rlsEnabled": { "const": true },
           "forceRls": { "const": true },
           "runtimeRoleOwnsTable": { "const": false },
-          "policies": {
-            "type": "array",
-            "minItems": 4,
-            "maxItems": 8,
-            "items": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["command", "roles", "usingOwnerCheck", "usingEpochCheck", "withCheckOwner", "withCheckEpoch"],
-              "properties": {
-                "command": { "enum": ["select", "insert", "update", "delete"] },
-                "roles": { "type": "array", "minItems": 1, "maxItems": 4, "uniqueItems": true, "items": { "enum": ["memory_api_runtime", "memory_worker_runtime", "memory_deletion_runtime"] } },
-                "usingOwnerCheck": { "type": "boolean" },
-                "usingEpochCheck": { "type": "boolean" },
-                "withCheckOwner": { "type": "boolean" },
-                "withCheckEpoch": { "type": "boolean" }
-              }
-            }
-          }
+          "policyProfileId": { "$ref": "core.v1.schema.json#/$defs/StableId" }
         }
       }
     },
@@ -90,6 +95,15 @@
         "epochDowngradeAllowed": { "const": false },
         "rawSqlWithoutScopedTransactionAllowed": { "const": false }
       }
+    }
+  },
+  "$defs": {
+    "RuntimeRoles": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4,
+      "uniqueItems": true,
+      "items": { "enum": ["memory_api_runtime", "memory_worker_runtime", "memory_deletion_runtime"] }
     }
   }
 }
