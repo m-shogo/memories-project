@@ -209,7 +209,7 @@ func (m *AtomicMaterializer) Materialize(ctx context.Context, principal security
 }
 
 func canonicalRejection(rejection Rejection) (Rejection, []byte, string, error) {
-	if rejection.SourceRow < 1 {
+	if rejection.SourceRow < 1 || len(rejection.Issues) == 0 {
 		return Rejection{}, nil, "", ErrInvalidRejection
 	}
 	issues, err := normalizeImportIssues(rejection.Issues, ErrInvalidRejection)
@@ -229,7 +229,7 @@ func canonicalRejection(rejection Rejection) (Rejection, []byte, string, error) 
 }
 
 func normalizeImportIssues(values []string, invalid error) ([]string, error) {
-	if len(values) == 0 || len(values) > 32 {
+	if len(values) > 32 {
 		return nil, invalid
 	}
 	issues := append([]string(nil), values...)
