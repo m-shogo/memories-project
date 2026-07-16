@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/security/apple-auth-validation-profile.v1.schema.json",
+  "title": "Memory OS Sign in with Apple Validation Profile v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema", "schemaVersion", "profileId", "profileVersion",
+    "issuer", "jwksUrl", "tokenEndpoint", "allowedAudiences",
+    "allowedAlgorithms", "clockSkewSeconds", "maxTokenAgeSeconds",
+    "nonce", "keyRotation", "authorizationCode", "accountBinding",
+    "clientAuthority"
+  ],
+  "properties": {
+    "$schema": { "const": "https://memory-os.example/schemas/security/apple-auth-validation-profile.v1.schema.json" },
+    "schemaVersion": { "const": 1 },
+    "profileId": { "$ref": "core.v1.schema.json#/$defs/StableId" },
+    "profileVersion": { "type": "integer", "minimum": 1 },
+    "issuer": { "const": "https://appleid.apple.com" },
+    "jwksUrl": { "const": "https://appleid.apple.com/auth/keys" },
+    "tokenEndpoint": { "const": "https://appleid.apple.com/auth/token" },
+    "allowedAudiences": {
+      "type": "array", "minItems": 1, "maxItems": 8, "uniqueItems": true,
+      "items": { "type": "string", "minLength": 3, "maxLength": 255 }
+    },
+    "allowedAlgorithms": { "const": ["RS256"] },
+    "clockSkewSeconds": { "type": "integer", "minimum": 0, "maximum": 300 },
+    "maxTokenAgeSeconds": { "type": "integer", "minimum": 60, "maximum": 3600 },
+    "nonce": {
+      "type": "object", "additionalProperties": false,
+      "required": ["required", "clientRequestUsesSha256", "serverComparesExactClaim", "singleUse"],
+      "properties": {
+        "required": { "const": true },
+        "clientRequestUsesSha256": { "const": true },
+        "serverComparesExactClaim": { "const": true },
+        "singleUse": { "const": true }
+      }
+    },
+    "keyRotation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["cacheAllowed", "unknownKidRefreshOnce", "failClosedAfterRefresh", "tlsRequired"],
+      "properties": {
+        "cacheAllowed": { "const": true },
+        "unknownKidRefreshOnce": { "const": true },
+        "failClosedAfterRefresh": { "const": true },
+        "tlsRequired": { "const": true }
+      }
+    },
+    "authorizationCode": {
+      "type": "object", "additionalProperties": false,
+      "required": ["serverExchangeRequired", "singleUse", "exactClientIdBinding", "exactRedirectUriBinding", "replayRejected"],
+      "properties": {
+        "serverExchangeRequired": { "const": true },
+        "singleUse": { "const": true },
+        "exactClientIdBinding": { "const": true },
+        "exactRedirectUriBinding": { "const": true },
+        "replayRejected": { "const": true }
+      }
+    },
+    "accountBinding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["canonicalKey", "emailAutoLinkAllowed", "privateRelayEmailIsIdentity", "bindingConflictDecision"],
+      "properties": {
+        "canonicalKey": { "const": ["issuer", "subject"] },
+        "emailAutoLinkAllowed": { "const": false },
+        "privateRelayEmailIsIdentity": { "const": false },
+        "bindingConflictDecision": { "const": "deny_and_require_account_recovery" }
+      }
+    },
+    "clientAuthority": {
+      "type": "object", "additionalProperties": false,
+      "required": ["clientAccountIdTrusted", "clientEmailTrusted", "clientSubjectTrustedBeforeTokenValidation"],
+      "properties": {
+        "clientAccountIdTrusted": { "const": false },
+        "clientEmailTrusted": { "const": false },
+        "clientSubjectTrustedBeforeTokenValidation": { "const": false }
+      }
+    }
+  }
+}
