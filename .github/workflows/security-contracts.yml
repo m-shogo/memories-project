@@ -6,6 +6,7 @@ on:
       - "docs/schemas/memory-os-security/**"
       - "docs/fixtures/memory-os-security/**"
       - "scripts/validate-memory-os-security.py"
+      - "scripts/validate-memory-os-authorization.py"
       - "requirements-security-validation.txt"
       - ".github/workflows/security-contracts.yml"
   push:
@@ -15,6 +16,7 @@ on:
       - "docs/schemas/memory-os-security/**"
       - "docs/fixtures/memory-os-security/**"
       - "scripts/validate-memory-os-security.py"
+      - "scripts/validate-memory-os-authorization.py"
       - "requirements-security-validation.txt"
       - ".github/workflows/security-contracts.yml"
   workflow_dispatch:
@@ -40,8 +42,13 @@ jobs:
       - name: Install validation dependencies
         run: python -m pip install --disable-pip-version-check --requirement requirements-security-validation.txt
 
-      - name: Compile validator
-        run: python -m py_compile scripts/validate-memory-os-security.py
+      - name: Compile validators
+        run: |
+          python -m py_compile scripts/validate-memory-os-security.py
+          python -m py_compile scripts/validate-memory-os-authorization.py
 
       - name: Validate security schemas and fixtures
         run: python scripts/validate-memory-os-security.py
+
+      - name: Validate object authorization cases
+        run: python scripts/validate-memory-os-authorization.py
