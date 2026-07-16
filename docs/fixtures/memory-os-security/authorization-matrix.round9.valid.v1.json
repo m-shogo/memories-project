@@ -1,0 +1,54 @@
+{
+  "$schema": "https://memory-os.example/schemas/security/authorization-matrix.v1.schema.json",
+  "schemaVersion": 1,
+  "matrixId": "memory-os.security.authorization.round9",
+  "matrixVersion": 1,
+  "globalRules": {
+    "denyByDefault": true,
+    "clientUserIdTrusted": false,
+    "authenticatedAccountIsAuthority": true,
+    "listQueriesOwnerScoped": true,
+    "childOwnershipRevalidated": true,
+    "accountEpochChecked": true
+  },
+  "resources": [
+    { "resourceType": "import_job", "ownerField": "ownerAccountId", "epochField": "accountEpoch", "operations": [
+      { "operation": "create", "allowedAuthorities": ["ios_user_access_token", "ios_device_session"], "sameOwnerRequired": true, "sameEpochRequired": true, "objectLookupRequired": false },
+      { "operation": "read", "allowedAuthorities": ["ios_user_access_token", "worker_lease"], "sameOwnerRequired": true, "sameEpochRequired": true, "objectLookupRequired": true },
+      { "operation": "list", "allowedAuthorities": ["ios_user_access_token"], "sameOwnerRequired": true, "sameEpochRequired": true, "objectLookupRequired": false },
+      { "operation": "cancel", "allowedAuthorities": ["ios_user_access_token", "browser_pairing_token"], "sameOwnerRequired": true, "sameEpochRequired": true, "objectLookupRequired": true }
+    ] },
+    { "resourceType": "pairing_session", "ownerField": "ownerAccountId", "epochField": "accountEpoch", "operations": [
+      { "operation": "create", "allowedAuthorities": ["ios_user_access_token"], "sameOwnerRequired": true, "sameEpochRequired": true, "objectLookupRequired": false },
+      { "operation": "read", "allowedAuthorities": ["ios_user_access_token", "browser_pairing_token"], "sameOwnerRequired": true, "sameEpochRequired": true, "objectLookupRequired": true },
+      { "operation": "delete", "allowedAuthorities": ["ios_user_access_token"], "sameOwnerRequired": true, "sameEpochRequired": true, "objectLookupRequired": true }
+    ] },
+    { "resourceType": "upload_authorization", "ownerField": "ownerAccountId", "epochField": "accountEpoch", "operations": [
+      { "operation": "create", "allowedAuthorities": ["ios_user_access_token", "browser_pairing_token"], "sameOwnerRequired": true, "sameEpochRequired": true, "objectLookupRequired": true },
+      { "operation": "read", "allowedAuthorities": ["ios_user_access_token", "browser_pairing_token", "worker_lease"], "sameOwnerRequired": true, "sameEpochRequired": true, "objectLookupRequired": true }
+    ] },
+    { "resourceType": "quarantine_object", "ownerField": "ownerAccountId", "epochField": "accountEpoch", "operations": [
+      { "operation": "read", "allowedAuthorities": ["ios_user_access_token", "worker_lease", "deletion_worker"], "sameOwnerRequired": true, "sameEpochRequired": true, "objectLookupRequired": true },
+      { "operation": "delete", "allowedAuthorities": ["deletion_worker"], "sameOwnerRequired": true, "sameEpochRequired": true, "objectLookupRequired": true }
+    ] },
+    { "resourceType": "import_preview", "ownerField": "ownerAccountId", "epochField": "accountEpoch", "operations": [
+      { "operation": "read", "allowedAuthorities": ["ios_user_access_token", "browser_pairing_token"], "sameOwnerRequired": true, "sameEpochRequired": true, "objectLookupRequired": true }
+    ] },
+    { "resourceType": "apply_confirmation", "ownerField": "ownerAccountId", "epochField": "accountEpoch", "operations": [
+      { "operation": "confirm", "allowedAuthorities": ["ios_user_access_token"], "sameOwnerRequired": true, "sameEpochRequired": true, "objectLookupRequired": true }
+    ] },
+    { "resourceType": "import_report", "ownerField": "ownerAccountId", "epochField": "accountEpoch", "operations": [
+      { "operation": "read", "allowedAuthorities": ["ios_user_access_token", "browser_pairing_token"], "sameOwnerRequired": true, "sameEpochRequired": true, "objectLookupRequired": true },
+      { "operation": "download", "allowedAuthorities": ["ios_user_access_token"], "sameOwnerRequired": true, "sameEpochRequired": true, "objectLookupRequired": true }
+    ] },
+    { "resourceType": "export", "ownerField": "ownerAccountId", "epochField": "accountEpoch", "operations": [
+      { "operation": "create", "allowedAuthorities": ["ios_user_access_token"], "sameOwnerRequired": true, "sameEpochRequired": true, "objectLookupRequired": false },
+      { "operation": "download", "allowedAuthorities": ["ios_user_access_token"], "sameOwnerRequired": true, "sameEpochRequired": true, "objectLookupRequired": true }
+    ] },
+    { "resourceType": "deletion_fence", "ownerField": "ownerAccountId", "epochField": "deletionEpoch", "operations": [
+      { "operation": "create", "allowedAuthorities": ["ios_user_access_token"], "sameOwnerRequired": true, "sameEpochRequired": true, "objectLookupRequired": false },
+      { "operation": "read", "allowedAuthorities": ["ios_user_access_token", "deletion_worker"], "sameOwnerRequired": true, "sameEpochRequired": true, "objectLookupRequired": true },
+      { "operation": "update", "allowedAuthorities": ["deletion_worker"], "sameOwnerRequired": true, "sameEpochRequired": true, "objectLookupRequired": true }
+    ] }
+  ]
+}
