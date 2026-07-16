@@ -1,0 +1,16 @@
+{
+  "$schema": "https://memory-os.example/schemas/security/deletion-fence.v1.schema.json",
+  "schemaVersion": 1,
+  "fenceId": "fence_01J000000000000000000000",
+  "ownerAccountId": "acct_01J00000000000000000000000",
+  "deletionEpoch": 8,
+  "state": "active",
+  "initiatedAt": "2026-07-16T03:00:00Z",
+  "scopes": ["database_records", "import_jobs", "worker_leases", "pairing_sessions", "upload_authorizations", "quarantine_objects", "previews", "apply_requests", "exports", "search_indexes", "push_payloads", "app_group_files", "backup_restore_tombstones"],
+  "security": {
+    "oldEpochWritesAllowed": false,
+    "newWorkAllowed": false,
+    "restoreRequiresTombstoneReplay": true,
+    "workerLeaseRevocationRequired": true
+  }
+}
