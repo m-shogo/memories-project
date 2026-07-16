@@ -1,6 +1,6 @@
 {
   "registryId": "memory-os.security.schema-registry",
-  "registryVersion": 2,
+  "registryVersion": 3,
   "networkResolutionAllowed": false,
   "logicalBaseUri": "https://memory-os.example/schemas/security/",
   "resolutionPolicy": "resolve_exact_id_to_repository_path",
@@ -16,7 +16,9 @@
     { "schemaId": "https://memory-os.example/schemas/security/adapter-manifest.v1.schema.json", "repositoryPath": "docs/schemas/memory-os-security/adapter-manifest.v1.schema.json" },
     { "schemaId": "https://memory-os.example/schemas/security/deletion-fence.v1.schema.json", "repositoryPath": "docs/schemas/memory-os-security/deletion-fence.v1.schema.json" },
     { "schemaId": "https://memory-os.example/schemas/security/safe-audit-event.v1.schema.json", "repositoryPath": "docs/schemas/memory-os-security/safe-audit-event.v1.schema.json" },
-    { "schemaId": "https://memory-os.example/schemas/security/security-negative-case-set.v1.schema.json", "repositoryPath": "docs/schemas/memory-os-security/security-negative-case-set.v1.schema.json" }
+    { "schemaId": "https://memory-os.example/schemas/security/security-negative-case-set.v1.schema.json", "repositoryPath": "docs/schemas/memory-os-security/security-negative-case-set.v1.schema.json" },
+    { "schemaId": "https://memory-os.example/schemas/security/authorization-matrix.v1.schema.json", "repositoryPath": "docs/schemas/memory-os-security/authorization-matrix.v1.schema.json" },
+    { "schemaId": "https://memory-os.example/schemas/security/authorization-case-set.v1.schema.json", "repositoryPath": "docs/schemas/memory-os-security/authorization-case-set.v1.schema.json" }
   ],
   "rules": {
     "duplicateSchemaIdAllowed": false,
