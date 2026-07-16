@@ -21,7 +21,8 @@ It is intentionally small and does not yet expose a production server.
 - server-side object metadata verification;
 - object-version binding before scan queueing;
 - atomic authorization consumption interface;
-- cryptographically random opaque ID generation.
+- cryptographically random opaque ID generation;
+- bounded streaming Generic CSV adapter with explicit mapping, deterministic fingerprints and row-level warning/rejection results.
 
 ## Deliberately not implemented yet
 
@@ -30,8 +31,8 @@ It is intentionally small and does not yet expose a production server.
 - concrete PostgreSQL repositories / driver composition;
 - concrete S3-compatible signer and object-store adapter;
 - parser supervisor runtime;
-- Generic CSV adapter;
-- immutable Preview and idempotent Apply implementation;
+- Generic CSV integration with quarantine objects, immutable Preview persistence and adapter artifact verification;
+- idempotent Apply implementation;
 - deletion-epoch cancellation implementation.
 
 These missing parts remain production blockers. Do not describe this module as a secure production backend.
