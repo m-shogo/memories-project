@@ -24,7 +24,7 @@ var (
 )
 
 var (
-	sha256Pattern     = regexp.MustCompile(`^[a-f0-9]{64}$`)
+	sha256Pattern      = regexp.MustCompile(`^[a-f0-9]{64}$`)
 	contentTypePattern = regexp.MustCompile(`^[a-z0-9.+-]+/[a-z0-9.+-]+$`)
 )
 
@@ -48,11 +48,11 @@ type JobRepository interface {
 }
 
 type SignRequest struct {
-	ObjectKey    string
-	ContentLength int64
-	ChecksumSHA256 string
-	ContentType  string
-	ExpiresAt    time.Time
+	ObjectKey       string
+	ContentLength   int64
+	ChecksumSHA256  string
+	ContentType     string
+	ExpiresAt       time.Time
 }
 
 type SignedPUT struct {
@@ -65,31 +65,33 @@ type Signer interface {
 }
 
 type AuthorizationStore interface {
-	Create(ctx context.Context, authorization Authorization) error
+	CreatePending(ctx context.Context, authorization Authorization) error
+	MarkIssued(ctx context.Context, authorizationID string) error
+	MarkFailed(ctx context.Context, authorizationID, safeReason string) error
 }
 
 type Request struct {
-	JobID          string
-	ContentLength  int64
-	ChecksumSHA256 string
-	ContentType    string
-	SourceSurface  string
+	JobID            string
+	ContentLength    int64
+	ChecksumSHA256   string
+	ContentType      string
+	SourceSurface    string
 	DisplayFilename string
 }
 
 type Authorization struct {
-	ID              string
-	JobID           string
-	OwnerAccountID  string
-	AccountEpoch    int64
-	ObjectKey       string
-	ContentLength   int64
-	ChecksumSHA256  string
-	ContentType     string
-	SourceSurface   string
-	CreatedAt       time.Time
-	ExpiresAt       time.Time
-	Status          string
+	ID             string
+	JobID          string
+	OwnerAccountID string
+	AccountEpoch   int64
+	ObjectKey      string
+	ContentLength  int64
+	ChecksumSHA256 string
+	ContentType    string
+	SourceSurface  string
+	CreatedAt      time.Time
+	ExpiresAt      time.Time
+	Status         string
 }
 
 type Response struct {
@@ -163,26 +165,34 @@ func (s *Service) Issue(ctx context.Context, principal security.Principal, reque
 		SourceSurface:  request.SourceSurface,
 		CreatedAt:      now,
 		ExpiresAt:      expiresAt,
-		Status:         "issued",
+		Status:         "issuing",
+	}
+
+	if err := s.authorizations.CreatePending(ctx, authorization); err != nil {
+		return Response{}, fmt.Errorf("persist pending upload authorization: %w", err)
 	}
 
 	signed, err := s.signer.SignPrivatePUT(ctx, SignRequest{
-		ObjectKey:       objectKey,
-		ContentLength:   request.ContentLength,
-		ChecksumSHA256:  request.ChecksumSHA256,
-		ContentType:     request.ContentType,
-		ExpiresAt:       expiresAt,
+		ObjectKey:      objectKey,
+		ContentLength:  request.ContentLength,
+		ChecksumSHA256: request.ChecksumSHA256,
+		ContentType:    request.ContentType,
+		ExpiresAt:      expiresAt,
 	})
 	if err != nil {
+		_ = s.authorizations.MarkFailed(ctx, authorizationID, "signing_failed")
 		return Response{}, fmt.Errorf("sign private upload: %w", err)
 	}
 	if strings.TrimSpace(signed.URL) == "" {
+		_ = s.authorizations.MarkFailed(ctx, authorizationID, "empty_signed_url")
 		return Response{}, errors.New("signer returned empty URL")
 	}
-	if err := s.authorizations.Create(ctx, authorization); err != nil {
-		return Response{}, fmt.Errorf("persist upload authorization: %w", err)
+	if err := s.authorizations.MarkIssued(ctx, authorizationID); err != nil {
+		_ = s.authorizations.MarkFailed(ctx, authorizationID, "activation_failed")
+		return Response{}, fmt.Errorf("activate upload authorization: %w", err)
 	}
 
+	authorization.Status = "issued"
 	return Response{Authorization: authorization, SignedPUT: signed}, nil
 }
 
@@ -202,8 +212,8 @@ func (s *Service) validateRequest(request Request) error {
 	return nil
 }
 
-func randomID(prefix string, bytes int) (string, error) {
-	buffer := make([]byte, bytes)
+func randomID(prefix string, byteCount int) (string, error) {
+	buffer := make([]byte, byteCount)
 	if _, err := rand.Read(buffer); err != nil {
 		return "", err
 	}
