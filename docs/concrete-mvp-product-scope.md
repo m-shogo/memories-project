@@ -1,154 +1,78 @@
 # Concrete MVP Product Scope
 
-## 目的
+最終更新: 2026-07-17
 
-この文書は、Memory OS の最初のMVPに実際に何を入れるかを、画面・機能・保存データ・Import形式・戻る理由まで具体化する。
+This document defines the user-facing MVP scope. It does not authorize implementation ahead of the security and backend gates in:
 
-参考機能一覧ではない。
+1. `docs/memory-os-current-authority-order-round-9-security.md`
+2. `docs/memory-os-current-implementation-status-and-roadmap-2026-07-17.md`
+3. `docs/current-product-direction.md`
 
-実装対象を固定する。
+---
 
-## MVP Product Promise
+# MVP product promise
 
 ```txt
-タイトル、URL、進行、簡単な履歴を入れる
+タイトル、URL、進行、短いメモを軽く入れる
 → 保存前にPreviewできる
-→ 自分の棚・地図・進行表として見える
-→ 後から検索、更新、Exportできる
+→ 自分の棚・地図・進行として見える
+→ 後から検索、修正、更新、Exportできる
+→ optionalに記憶の町へ反映される
 ```
 
-## MVP Navigation
+The MVP is successful only when Capture / Preview / Apply / retrieval / correction / export are trustworthy. Town polish cannot substitute for those capabilities.
 
-下部ナビゲーションは4つ。
+---
+
+# MVP platform scope
 
 ```txt
-ホーム
-発見
+canonical client:
+iOS native app
+
+primary intake:
+Share Extension URL / text
+Files / fileImporter
+manual Quick Add
+
+bulk migration support:
+limited Desktop Import Portal
+
+canonical processing:
+Go backend
+
+Town:
+static/limited SpriteKit view only after backend P0 gates
+```
+
+The initial MVP does not require a public web application, Android client, social account graph or cross-device Town editor.
+
+---
+
+# Navigation
+
+The navigation labels are candidates until the native prototype is tested.
+
+Preferred information architecture:
+
+```txt
+ホーム / 棚
 振り返り
-日常
+追加
+町
 ```
 
-ただしMVP初期は、発見の高度な枝分かれ図は実装しない。
+Search must be available from Home/Shelf without entering Town.
 
-発見画面は、確定した関連と最近の追加を一覧表示する簡易版から始める。
+“Discovery” is not a mandatory standalone tab. Confirmed relations and recent additions may appear within shelves, reflection and search. A separate Discovery tab is added only if testing shows a clear user need.
 
 ---
 
-# 1. ホーム
+# 1. Add and intake
 
-## 役割
+## 1.1 Quick Add
 
-自分の棚が見える場所。
-
-巨大dashboardにはしない。
-
-## 表示するもの
-
-### 1.1 今週の箱
-
-Home最上部に1枚だけ表示。
-
-候補:
-
-```txt
-漫画棚で1作品だけ進行を更新できます
-未整理のURLが1件あります
-食の地図に新しい店が2件追加されました
-同じ映画が2つのsourceで見つかりました
-```
-
-Rules:
-
-- 1枚だけ。
-- sensitive source除外。
-- 同じ種類を連続表示しない。
-- 該当がなければカード自体を出さない。
-- streak、未利用日数、罪悪感copy禁止。
-
-### 1.2 Shelf Grid
-
-MVPで表示する棚:
-
-1. 漫画・アニメ棚
-2. 映画・視聴棚
-3. 食の地図
-4. あとで見る棚
-5. 未整理Inbox
-
-P1 placeholder:
-
-- 音楽棚
-- ラジオ棚
-- 旅行箱
-- 写真箱
-
-MVPではplaceholderを大量に並べない。
-
-### 1.3 Shelf Card
-
-各カードに表示:
-
-```ts
-interface ShelfCardView {
-  shelfType: string;
-  title: string;
-  itemCount: number;
-  recentChange?: string;
-  pendingCount?: number;
-  emptyStateCopy?: string;
-  primaryAction?: string;
-}
-```
-
-Examples:
-
-```txt
-漫画・アニメ棚
-12作品
-進行更新できる作品 3件
-```
-
-```txt
-食の地図
-横浜 8件 / 川崎 5件
-店を1つ追加
-```
-
-```txt
-未整理Inbox
-2件
-あとで棚を決められます
-```
-
-## Homeでやらないこと
-
-- 人生スコア
-- 今日の達成率
-- 連続記録日数
-- mood判定
-- AI personality summary
-- 大量の統計
-- 枝分かれ関係図
-
----
-
-# 2. 日常
-
-## 役割
-
-毎日でも使える軽い入力と更新。
-
-毎日使うことは要求しない。
-
-## 2.1 Quick Add
-
-1つの入力欄。
-
-```txt
-タイトル、URL、進行、短いメモを貼る
-```
-
-Accepted examples:
+One lightweight input surface accepts:
 
 ```txt
 SPY×FAMILY 12巻まで
@@ -158,7 +82,7 @@ PERFECT DAYS 見た
 鎌倉のカレー屋 行きたい
 ```
 
-Buttons:
+Primary actions:
 
 ```txt
 貼り付け
@@ -166,123 +90,55 @@ Buttons:
 Previewを見る
 ```
 
-保存前に必ずImport Previewへ進む。
+No silent final save. All import paths enter Preview before Apply.
 
-## 2.2 Progress Quick Update
+## 1.2 Share Extension
 
-表示対象:
+P0 accepted share inputs:
 
-- 漫画
-- アニメ
+- one URL;
+- selected text;
+- optional user-entered short title/note;
+- minimal source application metadata that is safe and available.
 
-操作:
+The extension stores only the minimal App Group intake envelope required to resume in the main app. Secrets remain in Keychain. Large parsing, network retries and final Apply do not run inside the extension.
 
-```txt
-+1巻
-+1話
-数値を直接変更
-完了
-保留
-```
+## 1.3 Files intake
 
-MVPで保存する値:
+P0 file intake supports bounded staged input such as Generic CSV. The app sends declared metadata and obtains server authorization; the server remains authority for owner, epoch, object key and storage version.
 
-```ts
-interface ProgressState {
-  itemId: string;
-  progressUnit: 'volume' | 'episode' | 'chapter';
-  currentValue: number;
-  totalValue?: number;
-  status: 'planned' | 'in_progress' | 'completed' | 'paused';
-  updatedAt: string;
-}
-```
-
-表示しない:
-
-- 全カテゴリ合算進捗率
-- 1日目標
-- 目標未達
-
-## 2.3 Food Quick Add
-
-入力:
-
-- 店名
-- URL
-- 地域
-- 行きたい / 行った
-
-Optional:
-
-- user note
-- favorite
-
-MVPでは同伴者、正確な訪問日時、詳細GPSを必須にしない。
-
-## 2.4 Inbox
-
-Detectorが分類できないもの、ユーザーが後で決めたいものを置く。
-
-Inbox item actions:
-
-```txt
-棚へ移す
-タイトル修正
-source確認
-削除
-保留
-```
-
-一括整理を要求しない。
+ZIP/archive import is not required for the first public vertical slice even if safety contracts already exist.
 
 ---
 
-# 3. Import Preview
+# 2. Import Preview
 
-## 役割
+Preview shows exactly what will be applied and what was rejected.
 
-保存前の安全確認と、Import後の見え方を示す。
-
-## 3.1 Preview Header
-
-表示:
+Header:
 
 ```txt
-検出した形式
-候補件数
-保存される棚
+検出形式
 source
-confidence
-warning
+accepted count
+rejected count
+warnings
+保存先候補
+expiry
 ```
 
-Example:
+Candidate rows may show:
 
 ```txt
-漫画進行として3件見つかりました
-保存先: 漫画・アニメ棚
+title
+medium/type
+source label/date
+status/progress
+warnings
+duplicate candidate indication
 ```
 
-## 3.2 Candidate Row
-
-```ts
-interface ImportCandidateView {
-  id: string;
-  selected: boolean;
-  title: string;
-  medium: string;
-  sourceLabel: string;
-  sourceDate?: string;
-  status?: string;
-  progress?: string;
-  confidence: 'high' | 'medium' | 'low';
-  warnings: string[];
-  duplicateCandidate?: boolean;
-}
-```
-
-Actions:
+User actions:
 
 ```txt
 保存対象から外す
@@ -292,460 +148,266 @@ Actions:
 重複候補を見る
 ```
 
-## 3.3 Save Result
+Safe rejected-row report shows only row number and stable issue codes/messages. It never displays raw rejected cells recovered from a server report.
 
-保存成功後:
+Final Apply requires exact Preview ID and hash and occurs only with iOS user authority.
+
+## Save result
+
+Show factual accounting:
 
 ```txt
-漫画・アニメ棚に3件追加しました
+追加 N件
+更新 N件
+スキップ N件
+拒否 N件
 ```
 
-さらに表示:
+Created + updated + skipped must account for every accepted Preview candidate. A partial result is not displayed as success.
+
+Actions:
 
 ```txt
 棚を見る
 続けて追加
-戻る
+閉じる
 ```
 
-派手なachievementではなく、棚が増えたことを明確に見せる。
+Optional Town reaction comes after the save result and never replaces it.
 
 ---
 
-# 4. 棚詳細
+# 3. Home and shelves
 
-## 4.1 漫画・アニメ棚
+Home is a practical shelf entry, not a life dashboard.
 
-Tabs:
+P0 shelves:
+
+1. 漫画・アニメ
+2. 映画・視聴
+3. 食 / 行きたい場所
+4. あとで見る
+5. 未整理Inbox
+
+Do not fill Home with unreleased placeholders.
+
+A shelf card may show:
 
 ```txt
-進行中
-見たい
-完了
-保留
+title
+item count
+recent change
+pending count
+one practical action
 ```
 
-Row:
+Home does not show:
+
+- life score;
+- happiness or personality assessment;
+- daily completion rate;
+- streak;
+- missed-day guilt copy;
+- large statistical dashboards.
+
+## 3.1 Manga / anime progress
+
+Supported units:
 
 ```txt
-作品名
-媒体
-現在値 / 合計値
-status
-source stamp
-updated date
+volume
+episode
+chapter
+```
+
+Status:
+
+```txt
+planned
+in_progress
+completed
+paused
 ```
 
 Actions:
 
 ```txt
 +1
-数値変更
-status変更
-note
+直接変更
+完了
+保留
 sourceを見る
-Export対象確認
 ```
 
-## 4.2 映画・視聴棚
+No cross-category “completion percentage” or daily target.
 
-Tabs:
+## 3.2 Movie / viewing shelf
+
+Status:
 
 ```txt
-見た
-見たい
-お気に入り
+watched
+want_to_watch
+favorite
 ```
 
-Row:
+Optional user rating/note may be stored, but public reviews, social feed and personality analysis are not MVP features.
+
+## 3.3 Food / place list
+
+A map SDK is not required for the first slice. Start with region-grouped lists.
+
+Store:
 
 ```txt
-title
-watched date if known
-source
-status
-optional rating
-```
-
-MVPではレビュー投稿、social feed、personality analysisを入れない。
-
-## 4.3 食の地図
-
-MVPは地図SDK必須ではない。
-
-最初は地域別list。
-
-```txt
-横浜 8件
-川崎 5件
-東京 12件
-```
-
-各店:
-
-```txt
-店名
-地域
-行きたい / 行った
+name
+region
+want_to_go / visited
 favorite
 source URL
-user note
+optional user note
 ```
 
-P1でmap pin表示。
+Companion, exact visit timestamp and precise GPS are not mandatory.
 
-## 4.4 あとで見る棚
+## 3.4 Inbox
 
-共通status:
+Inbox holds items the user or deterministic parser has not assigned.
+
+Actions:
 
 ```txt
-見たい
-読みたい
-聴きたい
-行きたい
-あとで整理
+棚へ移す
+タイトル修正
+source確認
+削除
+保留
 ```
 
-媒体を跨いだ一時collectionとして使う。
+The product does not demand bulk cleanup.
 
 ---
 
-# 5. 発見
+# 4. Search and correction
 
-## MVPの役割
+P0 search covers title, safe normalized text, shelf/type and user-confirmed metadata.
 
-枝分かれ図ではなく、説明可能な関連を一覧表示。
+Users can:
 
-## 表示するもの
+- find saved items;
+- open source evidence;
+- edit title/status/progress/note;
+- move an item between compatible shelves;
+- delete records;
+- inspect revision history where required by contract;
+- export selected or complete data.
 
-### 5.1 Recent Additions
-
-```txt
-最近追加したもの
-```
-
-### 5.2 Confirmed Connections
-
-初期relation:
-
-```txt
-同じexternal id
-同じnormalized title + year/creator
-同じrestaurant name + area
-同じsource-native item
-```
-
-Card example:
-
-```txt
-NetflixとFilmarksが同じ映画棚につながりました
-理由: title/year一致
-```
-
-### 5.3 Discovery Empty State
-
-```txt
-棚が増えると、同じ作品や場所のつながりがここに見えます。
-```
-
-## P2
-
-- Memory Constellation
-- line thickness
-- relation graph
-- candidate links
+Search results do not expose hidden/sealed/restricted records outside their authorization context.
 
 ---
 
-# 6. 振り返り
+# 5. Reflection
 
-## MVPの役割
+P0 reflection is factual and optional.
 
-月の箱のplaceholderと、月別件数の事実表示。
-
-## 6.1 Month Selector
-
-```txt
-2026年7月
-2026年6月
-```
-
-## 6.2 Month Capsule
-
-表示:
+Month view may show:
 
 ```txt
 漫画・アニメ 3件更新
 映画 2件追加
-食の地図 4件追加
+食 4件追加
 未整理Inbox 1件
 ```
 
-禁止:
+It does not infer “best month”, happiness, relationship quality or life importance.
 
-- 最高の月
-- 最悪の月
-- 幸福度
-- 性格変化
-- AIによる人生評価
-
-## 6.3 Last Year
-
-P1 feature。
-
-MVPではUI placeholderのみ。
-
-対象:
-
-- manga/anime
-- movie
-- food
-- low-risk manual note
-
-通知は初期OFF。
+Weekly Box/Month Capsule can be empty without guilt copy or a forced action.
 
 ---
 
-# 7. Search
+# 6. Confirmed connections
 
-## MVP検索
+Only explainable, evidence-backed relationships are shown, such as:
 
-文字列一致 + filter。
+- same stable external ID;
+- same normalized title plus year/creator;
+- same restaurant name plus region;
+- same source-native item;
+- explicit user confirmation.
 
-Filters:
+Candidate links are not silently promoted to facts. Users can reject or unlink them.
 
-```txt
-棚
-source
-status
-期間
-地域
-```
-
-検索対象:
-
-- title
-- restaurant name
-- user note
-- user tag
-- source label
-
-MVPではEmbedding不要。
+A graph/constellation visualization is post-MVP unless simple list/card relations prove insufficient.
 
 ---
 
-# 8. Export
+# 7. Export and deletion
 
-## MVP Export
+MVP includes:
 
-形式:
+- standard structured export;
+- source/provenance fields where safe;
+- user-readable archive/index;
+- account deletion request and status;
+- deletion fencing of new writes;
+- no hidden dependency on Town state.
 
-```txt
-JSON
-CSV where applicable
-manifest.json
-```
-
-Manifest:
-
-```ts
-interface ExportManifest {
-  schemaVersion: string;
-  exportedAt: string;
-  recordCount: number;
-  includedShelves: string[];
-  excludedCounts: Record<string, number>;
-}
-```
-
-User can choose:
-
-- shelf
-- period
-- status
-
-Default exclude:
-
-- hidden
-- sealed
-- deleted
-- restricted raw
+Export and deletion do not require visiting Town.
 
 ---
 
-# 9. Import Forms Included in MVP
+# 8. Memory Town MVP
 
-## M0 Manual / Paste
+Town is optional and follows the practical save experience.
 
-1. title-list
-2. url-list
-3. manga/anime progress text
-4. restaurant URL/name list
+Minimum Town slice after backend P0:
 
-## M1 File Import
+- fixed-view static scene;
+- small set of feature-bound buildings;
+- morning/day/night/midnight presentation;
+- optional ambient motion;
+- building tap opens corresponding practical shelf;
+- Town OFF/static/list accessibility equivalents;
+- no editor, economy, rewards or progression pressure.
 
-1. Netflix viewing activity CSV
-2. generic table-like CSV
-
-M1はM0後に実装。
-
-## M2 Later
-
-- Filmarks paste adapter
-- LINE selected snippet
-- Spotify / Apple Music
-- image metadata
-- browser bookmarks
+Town growth uses neutral confirmed aggregates and excludes duplicates, filler and generated fake records.
 
 ---
 
-# 10. Data Models Required
+# 9. Explicit MVP exclusions
 
-Minimum:
-
-```txt
-user
-import_job
-import_source
-import_preview
-import_preview_candidate
-shelf
-collection_item
-progress_state
-restaurant_record
-source_item
-record_relation
-user_note
-user_tag
-export_job
-```
-
-Important rule:
-
-```txt
-source dataとuser meaningを分離する。
-```
-
-Example:
-
-```txt
-source_item = Netflix CSV row
-collection_item = user's movie shelf record
-```
+- Chat assistant/LLM replacement
+- AI partner/family/deceased simulation
+- automatic personality/happiness/importance scoring
+- public profiles, followers, comments or public Town feed
+- recommendations optimized around advertising
+- login rewards, streaks, daily quests
+- currency, crafting, loot/gacha
+- Town decay or care obligations
+- ranking or competitive placement scores
+- mandatory precise GPS/companions/relationship fields
+- full archive migration as first-run requirement
+- browser final Apply authority
+- Android and multi-user Town
+- Town editor and real-time collaborative layout
 
 ---
 
-# 11. Notification MVP
+# 10. MVP implementation gate
 
-Default ON:
+The feature scope above is not the current coding order.
 
-- Import Preview ready
-- Export ready / expiry
-- security/account
-
-Default OFF:
-
-- Month Capsule ready
-- safe confirmed connection
-
-Not implemented:
-
-- 最近開いていません
-- 今週まだ記録していません
-- streak reminder
-- 1週間前なにしてた通知
-
----
-
-# 12. Concrete MVP Acceptance Story
-
-## Story A: Manga
+Before iOS product implementation expands, backend P0 must prove:
 
 ```txt
-日常で「SPY×FAMILY 12巻まで」を貼る
-→ Previewでtitle/volumeを確認
-→ 漫画・アニメ棚へ保存
-→ Home card countが増える
-→ 日常で+1巻更新できる
-→ Searchで見つかる
-→ Exportに含められる
+private version-bound upload
+isolated bounded parse
+verified Preview spool
+short atomic Preview commit
+exact-hash idempotent Apply
+cross-user and stale-epoch denial
+deletion fencing and cleanup
+current local/remote validation evidence
 ```
 
-## Story B: Food
-
-```txt
-食べログURLを貼る
-→ restaurant候補Preview
-→ 行きたいとして保存
-→ 食の地図の地域listへ追加
-→ Homeの件数が増える
-→ URL/sourceを確認できる
-```
-
-## Story C: Movie
-
-```txt
-Netflix CSV fixtureをImport
-→ shared profile warning
-→ Preview
-→ selected rowsを保存
-→ 映画・視聴棚ができる
-→ 月別件数が振り返りに出る
-```
-
-## Story D: Unknown URL
-
-```txt
-URLを貼る
-→ 分類confidenceが低い
-→ Inboxへ保存
-→ 後から棚へ移せる
-```
-
----
-
-# 13. MVP Go / No-Go
-
-## Go
-
-- manual/paste
-- Preview
-- shelf creation
-- progress update
-- regional food list
-- basic search
-- JSON/CSV export
-- simple weekly card
-- month counts
-
-## No-Go
-
-- AI chat home
-- auto diary writing
-- emotional/personality analysis
-- daily streak
-- social feed
-- DM
-- recommendation engine
-- full graph
-- automatic LINE bulk import
-- face recognition
-- location history import
-- API connector first
-
----
-
-# 結論
-
-最初に作るのは、巨大なMemory OSではない。
-
-```txt
-軽く入れる
-→ Previewする
-→ 棚として見える
-→ 少し更新できる
-→ 探せる
-→ 持ち出せる
-```
-
-この一連が、漫画・食・映画・URLで動くMVPを作る。
+Current production verdict remains `NO-GO`.
