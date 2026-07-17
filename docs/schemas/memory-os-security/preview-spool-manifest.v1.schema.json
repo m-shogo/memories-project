@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/security/preview-spool-manifest.v1.schema.json",
+  "title": "Memory OS Preview Spool Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "jobId",
+    "ownerAccountId",
+    "accountEpoch",
+    "source",
+    "adapter",
+    "optionsSha256",
+    "streams",
+    "createdAt",
+    "expiresAt",
+    "security"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "https://memory-os.example/schemas/security/preview-spool-manifest.v1.schema.json"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "jobId": {
+      "$ref": "core.v1.schema.json#/$defs/OpaqueId"
+    },
+    "ownerAccountId": {
+      "$ref": "core.v1.schema.json#/$defs/OpaqueId"
+    },
+    "accountEpoch": {
+      "$ref": "core.v1.schema.json#/$defs/AccountEpoch"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "objectKey",
+        "objectVersionId",
+        "checksumSha256"
+      ],
+      "properties": {
+        "objectKey": {
+          "type": "string",
+          "minLength": 12,
+          "maxLength": 256,
+          "pattern": "^quarantine/[A-Za-z0-9][A-Za-z0-9._:/-]*$",
+          "not": {
+            "pattern": "(?:^|/)\\.\\.(?:/|$)"
+          }
+        },
+        "objectVersionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9._~:+/=-]+$"
+        },
+        "checksumSha256": {
+          "$ref": "core.v1.schema.json#/$defs/Sha256Hex"
+        }
+      }
+    },
+    "adapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "adapterId",
+        "adapterVersion",
+        "artifactSha256"
+      ],
+      "properties": {
+        "adapterId": {
+          "$ref": "core.v1.schema.json#/$defs/StableId"
+        },
+        "adapterVersion": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "maxLength": 32
+        },
+        "artifactSha256": {
+          "$ref": "core.v1.schema.json#/$defs/Sha256Hex"
+        }
+      }
+    },
+    "optionsSha256": {
+      "$ref": "core.v1.schema.json#/$defs/Sha256Hex"
+    },
+    "streams": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accepted",
+        "rejected"
+      ],
+      "properties": {
+        "accepted": {
+          "$ref": "#/$defs/streamBinding"
+        },
+        "rejected": {
+          "$ref": "#/$defs/streamBinding"
+        }
+      }
+    },
+    "createdAt": {
+      "$ref": "core.v1.schema.json#/$defs/UtcTimestamp"
+    },
+    "expiresAt": {
+      "$ref": "core.v1.schema.json#/$defs/UtcTimestamp"
+    },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "supervisorOwned",
+        "sealedBeforeVerification",
+        "rehashRequiredBeforeCommit",
+        "databaseTransactionDuringParseAllowed",
+        "rawRejectedValuesAllowed"
+      ],
+      "properties": {
+        "supervisorOwned": {
+          "const": true
+        },
+        "sealedBeforeVerification": {
+          "const": true
+        },
+        "rehashRequiredBeforeCommit": {
+          "const": true
+        },
+        "databaseTransactionDuringParseAllowed": {
+          "const": false
+        },
+        "rawRejectedValuesAllowed": {
+          "const": false
+        }
+      }
+    }
+  },
+  "$defs": {
+    "streamBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recordCount",
+        "sha256"
+      ],
+      "properties": {
+        "recordCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "sha256": {
+          "$ref": "core.v1.schema.json#/$defs/Sha256Hex"
+        }
+      }
+    }
+  }
+}
