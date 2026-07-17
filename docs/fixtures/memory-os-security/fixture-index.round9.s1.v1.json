@@ -1,6 +1,6 @@
 {
   "indexId": "memory-os.security.fixture-index.round9.s1",
-  "indexVersion": 9,
+  "indexVersion": 10,
   "schemaRegistryPath": "docs/schemas/memory-os-security/schema-registry.v1.json",
   "fixtures": [
     { "fixtureId": "memory-os.security.issue-codes.round9", "path": "docs/fixtures/memory-os-security/security-issue-code-registry.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-issue-code-registry.v1.schema.json", "status": "targeted_validation_pass" },
@@ -31,7 +31,7 @@
     { "fixtureId": "memory-os.security.negative.round9.phase2", "path": "docs/fixtures/memory-os-security/security-negative-cases.round9.phase2.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-negative-case-set.v1.schema.json", "status": "11_schema_rejections_pass_2_semantic_rejections_pass" }
   ],
   "authority": {
-    "phase": "round9_security_foundation_through_hardened_preview_spool_contract",
+    "phase": "round9_security_foundation_through_preview_spool_filesystem_lifecycle",
     "schemaContractsCreated": true,
     "targetedPayloadValidationPassed": true,
     "semanticValidationPassed": true,
@@ -50,6 +50,11 @@
     "previewSpoolManifestTargetedValidationPassed": true,
     "previewSpoolSemanticValidatorCreated": true,
     "previewSpoolSemanticTargetedValidationPassed": true,
+    "previewSpoolFilesystemLifecycleCreated": true,
+    "previewSpoolFilesystemTargetedRaceTestPassed": true,
+    "previewSpoolRepositoryIntegratedResultConfirmed": false,
+    "previewSpoolStreamWriterCreated": false,
+    "previewSpoolVerifierCreated": false,
     "previewSpoolImplementationCreated": false,
     "repositoryValidatorCreated": true,
     "githubActionsWorkflowCreated": true,
@@ -64,6 +69,8 @@
     "mutationNegativeCases": 24,
     "previewSpoolManifestNegativeCases": 9,
     "previewSpoolManifestSemanticCases": 6,
+    "previewSpoolFilesystemTopLevelTests": 9,
+    "previewSpoolFilesystemCancellationStages": 5,
     "schemaNegativeRejections": 31,
     "semanticNegativeRejections": 8,
     "authorizationCases": 8,
@@ -86,10 +93,9 @@
   "nextRequired": [
     "confirm_current_go_format_test_vet_race_and_fuzz",
     "confirm_github_actions_remote_run",
-    "implement_supervisor_owned_preview_spool_directory",
     "implement_bounded_preview_spool_stream_writers",
     "implement_preview_spool_manifest_writer_and_rehash_reader",
-    "add_spool_tamper_crash_cancellation_and_cleanup_tests",
+    "add_spool_disk_full_tamper_crash_expiry_and_reconciliation_tests",
     "implement_preview_postgresql_domain_schema_and_pgx_copy_repository",
     "implement_signed_upload_storage_adapter",
     "implement_isolated_parser_supervisor",
