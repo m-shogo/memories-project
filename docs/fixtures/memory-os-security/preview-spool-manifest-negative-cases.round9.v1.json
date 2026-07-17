@@ -1,17 +1,13 @@
 {
   "$schema": "https://memory-os.example/schemas/security/security-negative-case-set.v1.schema.json",
   "caseSetId": "memory-os.security.preview-spool-manifest-negative.round9",
-  "caseSetVersion": 1,
+  "caseSetVersion": 2,
   "cases": [
     {
       "caseId": "preview-spool.raw-rejected-value-forbidden",
       "targetSchemaId": "https://memory-os.example/schemas/security/preview-spool-manifest.v1.schema.json",
       "baseFixtureRef": "docs/fixtures/memory-os-security/preview-spool-manifest.round9.valid.v1.json",
-      "mutation": {
-        "op": "add",
-        "path": "/streams/rejected/rawValue",
-        "value": "private rejected title"
-      },
+      "mutation": {"op": "add", "path": "/streams/rejected/rawValue", "value": "private rejected title"},
       "expectedIssueCode": "SEC_PREVIEW_SPOOL_PRIVATE_VALUE_FORBIDDEN",
       "expectedResult": "schema_reject"
     },
@@ -19,11 +15,7 @@
       "caseId": "preview-spool.source-path-traversal-forbidden",
       "targetSchemaId": "https://memory-os.example/schemas/security/preview-spool-manifest.v1.schema.json",
       "baseFixtureRef": "docs/fixtures/memory-os-security/preview-spool-manifest.round9.valid.v1.json",
-      "mutation": {
-        "op": "replace",
-        "path": "/source/objectKey",
-        "value": "quarantine/job/../other/source.csv"
-      },
+      "mutation": {"op": "replace", "path": "/source/objectKey", "value": "quarantine/job/../other/source.csv"},
       "expectedIssueCode": "SEC_PREVIEW_SPOOL_BINDING_INVALID",
       "expectedResult": "schema_reject"
     },
@@ -31,11 +23,7 @@
       "caseId": "preview-spool.record-limit-enforced",
       "targetSchemaId": "https://memory-os.example/schemas/security/preview-spool-manifest.v1.schema.json",
       "baseFixtureRef": "docs/fixtures/memory-os-security/preview-spool-manifest.round9.valid.v1.json",
-      "mutation": {
-        "op": "replace",
-        "path": "/streams/accepted/recordCount",
-        "value": 100001
-      },
+      "mutation": {"op": "replace", "path": "/streams/accepted/recordCount", "value": 100001},
       "expectedIssueCode": "SEC_PREVIEW_SPOOL_LIMIT_EXCEEDED",
       "expectedResult": "schema_reject"
     },
@@ -43,11 +31,7 @@
       "caseId": "preview-spool.database-transaction-during-parse-forbidden",
       "targetSchemaId": "https://memory-os.example/schemas/security/preview-spool-manifest.v1.schema.json",
       "baseFixtureRef": "docs/fixtures/memory-os-security/preview-spool-manifest.round9.valid.v1.json",
-      "mutation": {
-        "op": "replace",
-        "path": "/security/databaseTransactionDuringParseAllowed",
-        "value": true
-      },
+      "mutation": {"op": "replace", "path": "/security/databaseTransactionDuringParseAllowed", "value": true},
       "expectedIssueCode": "SEC_PREVIEW_SPOOL_TRANSACTION_BOUNDARY_INVALID",
       "expectedResult": "schema_reject"
     },
@@ -55,12 +39,40 @@
       "caseId": "preview-spool.rehash-before-commit-required",
       "targetSchemaId": "https://memory-os.example/schemas/security/preview-spool-manifest.v1.schema.json",
       "baseFixtureRef": "docs/fixtures/memory-os-security/preview-spool-manifest.round9.valid.v1.json",
-      "mutation": {
-        "op": "replace",
-        "path": "/security/rehashRequiredBeforeCommit",
-        "value": false
-      },
+      "mutation": {"op": "replace", "path": "/security/rehashRequiredBeforeCommit", "value": false},
       "expectedIssueCode": "SEC_PREVIEW_SPOOL_REHASH_REQUIRED",
+      "expectedResult": "schema_reject"
+    },
+    {
+      "caseId": "preview-spool.accepted-record-format-fixed",
+      "targetSchemaId": "https://memory-os.example/schemas/security/preview-spool-manifest.v1.schema.json",
+      "baseFixtureRef": "docs/fixtures/memory-os-security/preview-spool-manifest.round9.valid.v1.json",
+      "mutation": {"op": "replace", "path": "/streams/accepted/recordFormat", "value": "ndjson"},
+      "expectedIssueCode": "SEC_PREVIEW_SPOOL_BINDING_INVALID",
+      "expectedResult": "schema_reject"
+    },
+    {
+      "caseId": "preview-spool.stream-byte-limit-enforced",
+      "targetSchemaId": "https://memory-os.example/schemas/security/preview-spool-manifest.v1.schema.json",
+      "baseFixtureRef": "docs/fixtures/memory-os-security/preview-spool-manifest.round9.valid.v1.json",
+      "mutation": {"op": "replace", "path": "/streams/accepted/byteLength", "value": 536870913},
+      "expectedIssueCode": "SEC_PREVIEW_SPOOL_LIMIT_EXCEEDED",
+      "expectedResult": "schema_reject"
+    },
+    {
+      "caseId": "preview-spool.path-fields-forbidden",
+      "targetSchemaId": "https://memory-os.example/schemas/security/preview-spool-manifest.v1.schema.json",
+      "baseFixtureRef": "docs/fixtures/memory-os-security/preview-spool-manifest.round9.valid.v1.json",
+      "mutation": {"op": "add", "path": "/streams/accepted/path", "value": "../accepted.spool"},
+      "expectedIssueCode": "SEC_PREVIEW_SPOOL_BINDING_INVALID",
+      "expectedResult": "schema_reject"
+    },
+    {
+      "caseId": "preview-spool.spool-id-required",
+      "targetSchemaId": "https://memory-os.example/schemas/security/preview-spool-manifest.v1.schema.json",
+      "baseFixtureRef": "docs/fixtures/memory-os-security/preview-spool-manifest.round9.valid.v1.json",
+      "mutation": {"op": "remove", "path": "/spoolId"},
+      "expectedIssueCode": "SEC_PREVIEW_SPOOL_BINDING_INVALID",
       "expectedResult": "schema_reject"
     }
   ]
