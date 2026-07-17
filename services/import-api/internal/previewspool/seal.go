@@ -48,7 +48,6 @@ type SealInput struct {
 	CreatedAt      time.Time
 	ExpiresAt      time.Time
 }
-
 type SealEvidence struct {
 	WriteEvidence      WriteEvidence
 	ManifestByteLength int64
@@ -72,32 +71,27 @@ type manifestDocument struct {
 	ExpiresAt       string           `json:"expiresAt"`
 	Security        manifestSecurity `json:"security"`
 }
-
 type manifestSource struct {
 	ObjectKey       string `json:"objectKey"`
 	ObjectVersionID string `json:"objectVersionId"`
 	ContentLength   int64  `json:"contentLength"`
 	ChecksumSHA256  string `json:"checksumSha256"`
 }
-
 type manifestAdapter struct {
 	AdapterID      string `json:"adapterId"`
 	AdapterVersion string `json:"adapterVersion"`
 	ArtifactSHA256 string `json:"artifactSha256"`
 }
-
 type manifestStreams struct {
 	Accepted manifestStream `json:"accepted"`
 	Rejected manifestStream `json:"rejected"`
 }
-
 type manifestStream struct {
 	RecordFormat string `json:"recordFormat"`
 	RecordCount  int    `json:"recordCount"`
 	ByteLength   int64  `json:"byteLength"`
 	SHA256       string `json:"sha256"`
 }
-
 type manifestSecurity struct {
 	SupervisorOwned                       bool `json:"supervisorOwned"`
 	SealedBeforeVerification              bool `json:"sealedBeforeVerification"`
@@ -137,17 +131,53 @@ func buildManifest(spoolID string, input SealInput, evidence WriteEvidence) ([]b
 		return nil, "", err
 	}
 	doc := manifestDocument{
-		Schema: ManifestSchemaURI, SchemaVersion: ManifestSchemaVersion, SpoolID: spoolID,
-		JobID: input.JobID, OwnerAccountID: input.OwnerAccountID, AccountEpoch: input.AccountEpoch,
-		Source: manifestSource{ObjectKey: input.Source.ObjectKey, ObjectVersionID: input.Source.ObjectVersionID, ContentLength: input.Source.ContentLength, ChecksumSHA256: input.Source.ChecksumSHA256},
-		Adapter: manifestAdapter{AdapterID: input.Adapter.AdapterID, AdapterVersion: input.Adapter.AdapterVersion, ArtifactSHA256: input.Adapter.ArtifactSHA256},
-		OptionsSHA256: input.OptionsSHA256, SourceRowCount: evidence.SourceRowCount, SpoolByteLength: evidence.SpoolByteLength,
-		Streams: manifestStreams{
-			Accepted: manifestStream{RecordFormat: evidence.Accepted.RecordFormat, RecordCount: evidence.Accepted.RecordCount, ByteLength: evidence.Accepted.ByteLength, SHA256: evidence.Accepted.SHA256},
-			Rejected: manifestStream{RecordFormat: evidence.Rejected.RecordFormat, RecordCount: evidence.Rejected.RecordCount, ByteLength: evidence.Rejected.ByteLength, SHA256: evidence.Rejected.SHA256},
+		Schema:         ManifestSchemaURI,
+		SchemaVersion:  ManifestSchemaVersion,
+		SpoolID:        spoolID,
+		JobID:          input.JobID,
+		OwnerAccountID: input.OwnerAccountID,
+		AccountEpoch:   input.AccountEpoch,
+		Source: manifestSource{
+			ObjectKey:       input.Source.ObjectKey,
+			ObjectVersionID: input.Source.ObjectVersionID,
+			ContentLength:   input.Source.ContentLength,
+			ChecksumSHA256:  input.Source.ChecksumSHA256,
 		},
-		CreatedAt: created.Format(time.RFC3339Nano), ExpiresAt: expires.Format(time.RFC3339Nano),
-		Security: manifestSecurity{SupervisorOwned: true, SealedBeforeVerification: true, RehashRequiredBeforeCommit: true},
+		Adapter: manifestAdapter{
+			AdapterID:      input.Adapter.AdapterID,
+			AdapterVersion: input.Adapter.AdapterVersion,
+			ArtifactSHA256: input.Adapter.ArtifactSHA256,
+		},
+		OptionsSHA256:   input.OptionsSHA256,
+		SourceRowCount:  evidence.SourceRowCount,
+		SpoolByteLength: evidence.SpoolByteLength,
+		Streams: manifestStreams{
+			Accepted: manifestStream{
+				RecordFormat: evidence.Accepted.RecordFormat,
+				RecordCount:  evidence.Accepted.RecordCount,
+				ByteLength:   evidence.Accepted.ByteLength,
+				SHA256:       evidence.Accepted.SHA256,
+			},
+			Rejected: manifestStream{
+				RecordFormat: evidence.Rejected.RecordFormat,
+				RecordCount:  evidence.Rejected.RecordCount,
+				ByteLength:   evidence.Rejected.ByteLength,
+				SHA256:       evidence.Rejected.SHA256,
+			},
+		},
+		CreatedAt: created.Format(time.RFC3339Nano),
+		ExpiresAt: expires.Format(time.RFC3339Nano),
+		Security: manifestSecurity{
+			SupervisorOwned:                       true,
+			SealedBeforeVerification:              true,
+			RehashRequiredBeforeCommit:            true,
+			DatabaseTransactionDuringParseAllowed: false,
+			RawRejectedValuesAllowed:              false,
+			ManifestPathFieldsAllowed:             false,
+			SymlinkFollowingAllowed:               false,
+			CrossAttemptReuseAllowed:              false,
+			BackupEligible:                        false,
+		},
 	}
 	payload, err := json.Marshal(doc)
 	if err != nil {
@@ -156,7 +186,6 @@ func buildManifest(spoolID string, input SealInput, evidence WriteEvidence) ([]b
 	sum := sha256.Sum256(payload)
 	return payload, hex.EncodeToString(sum[:]), nil
 }
-
 func validateWriteEvidence(e WriteEvidence) error {
 	if e.Accepted.RecordFormat != AcceptedRecordFormat || e.Rejected.RecordFormat != RejectedRecordFormat || e.Accepted.RecordCount < 1 || e.Accepted.RecordCount > MaxSpoolRecords || e.Rejected.RecordCount < 0 || e.Rejected.RecordCount >= MaxSpoolRecords {
 		return ErrInvalidSealInput
@@ -171,7 +200,8 @@ func validateWriteEvidence(e WriteEvidence) error {
 		return ErrInvalidSealInput
 	}
 	empty := sha256.Sum256(nil)
-	if e.Rejected.RecordCount == 0 && (e.Rejected.ByteLength != 0 || e.Rejected.SHA256 != hex.EncodeToString(empty[:])) {
+	emptyHex := hex.EncodeToString(empty[:])
+	if e.Rejected.RecordCount == 0 && (e.Rejected.ByteLength != 0 || e.Rejected.SHA256 != emptyHex) {
 		return ErrInvalidSealInput
 	}
 	if e.Rejected.RecordCount > 0 && e.Rejected.ByteLength == 0 {
