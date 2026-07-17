@@ -20,7 +20,8 @@ It is intentionally incomplete. It does not expose a production server and must 
 - account epoch guards and CSV/JWT fuzz targets;
 - Linux Preview spool filesystem lifecycle;
 - bounded accepted/rejected stream writer;
-- stream fsync and durable no-replace manifest publication.
+- stream fsync and durable no-replace manifest publication;
+- independent sealed-spool decode/count/re-hash verifier.
 
 ## Preview spool contract
 
@@ -68,16 +69,38 @@ An ordinary rename is not used because it can overwrite an existing final name. 
 
 Handled failures publish no final manifest. Directory-fsync failure rolls back the final name; inability to prove rollback durability produces `ErrSealDurabilityUncertain` and requires reconciliation.
 
+## Independent sealed-spool verifier
+
+Implemented:
+
+```txt
+verified root descriptor
+→ descriptor-relative O_NOFOLLOW attempt open (0700 / owner checked)
+→ fixed-name allowlist; manifest.tmp residue and unknown entries reject
+→ manifest.json regular / 0600 / single link / bounded size
+→ strict single-value JSON decode, unknown fields forbidden
+→ canonical re-serialization equality against the seal builder
+→ expiry check against the caller clock
+→ exact job/owner/epoch/source/adapter/options expectation match
+→ streams re-opened O_NOFOLLOW, regular / 0600 / single link
+→ bounded length-prefix re-decode with record/byte limits enforced while reading
+→ independent re-count and exact-byte SHA-256
+→ recomputed evidence must equal every manifest stream binding
+```
+
+Verification is read-only, stateless and retryable; it deletes nothing and performs no database work. Truncation, appended records, torn appends, zero/oversized length prefixes and same-length content substitution are all rejected before any commit path can start.
+
 Detailed evidence:
 
 ```txt
 docs/memory-os-preview-spool-stream-writer-checkpoint-2026-07-17.md
 docs/memory-os-preview-spool-seal-checkpoint-2026-07-17.md
+docs/memory-os-preview-spool-verifier-checkpoint-2026-07-17.md
 ```
 
 ## Critical production boundary
 
-A published manifest is still untrusted. No database transaction may consume it until an independent reader strictly decodes the manifest and both streams, independently counts and hashes exact bytes, and verifies every binding.
+A published manifest is untrusted until `previewspool.Verifier.Verify` passes for it in the same flow. The future commit path must hold the recomputed evidence and re-check epoch/job state inside its own transaction.
 
 `preview.AtomicMaterializer` parses inside its transaction callback. It remains reference-only and must not be connected to production PostgreSQL for untrusted imports.
 
@@ -102,8 +125,6 @@ version-bound quarantine object
 - production Preview candidate/rejection/ready tables;
 - concrete PostgreSQL repositories and `pgx.CopyFrom` path;
 - S3-compatible signer/HEAD/lifecycle;
-- independent spool manifest/stream verifier;
-- malformed-length/truncation/append/substitution proof;
 - startup reconciliation and TTL cleanup;
 - real parser supervisor and artifact verification;
 - concrete Apply/Memory persistence and complete deletion fencing;
@@ -112,15 +133,18 @@ version-bound quarantine object
 ## Validation
 
 ```txt
-independently reconstructed Linux spool package:
-gofmt + go test -race + go vet PASS
+exact repository-integrated Go suite
+(code HEAD e75b7324e0388b264d90f67ee3094d788fadf5f4, local golang:1.23 Linux container):
+gofmt clean + go vet + go test -race + both 5s fuzz smokes PASS
 
-exact repository-integrated Go suite:
-UNCONFIRMED
+Preview spool contract validator:
+PASS
 
-remote workflow result:
-UNCONFIRMED
+remote workflow result for the pushed HEAD:
+UNCONFIRMED at commit time
 ```
+
+Earlier remote Import API runs failed at the Format check; five unformatted sources and one pointer-receiver compile error in `internal/upload/service_test.go` were repaired at this checkpoint.
 
 Re-run against the exact current HEAD:
 
