@@ -3,23 +3,22 @@ package previewspool
 import "errors"
 
 const (
-	AcceptedRecordFormat = "memory-os-preview-candidate-v1-length-prefixed"
-	RejectedRecordFormat = "memory-os-preview-rejection-v1-length-prefixed"
-
-	MaxSpoolRecords             = 100_000
-	MaxSpoolBytes         int64 = 512 * 1024 * 1024
-	MaxCanonicalRecordBytes     = 2 * 1024 * 1024
+	AcceptedRecordFormat          = "memory-os-preview-candidate-v1-length-prefixed"
+	RejectedRecordFormat          = "memory-os-preview-rejection-v1-length-prefixed"
+	MaxSpoolRecords               = 100_000
+	MaxSpoolBytes           int64 = 512 * 1024 * 1024
+	MaxCanonicalRecordBytes       = 2 * 1024 * 1024
 )
 
 var (
-	ErrStreamWriterClaimed      = errors.New("Preview spool stream writer already claimed")
-	ErrStreamWriterClosed       = errors.New("Preview spool stream writer is closed")
-	ErrStreamModified           = errors.New("Preview spool stream was modified before writer claim")
-	ErrInvalidCanonicalRecord   = errors.New("invalid canonical Preview spool record")
-	ErrCanonicalRecordTooLarge  = errors.New("canonical Preview spool record exceeds limit")
-	ErrSpoolRecordLimit         = errors.New("Preview spool record limit exceeded")
-	ErrSpoolByteLimit           = errors.New("Preview spool byte limit exceeded")
-	ErrAcceptedRecordRequired   = errors.New("Preview spool requires at least one accepted record")
+	ErrStreamWriterClaimed     = errors.New("Preview spool stream writer already claimed")
+	ErrStreamWriterClosed      = errors.New("Preview spool stream writer is closed")
+	ErrStreamModified          = errors.New("Preview spool stream was modified before writer claim")
+	ErrInvalidCanonicalRecord  = errors.New("invalid canonical Preview spool record")
+	ErrCanonicalRecordTooLarge = errors.New("canonical Preview spool record exceeds limit")
+	ErrSpoolRecordLimit        = errors.New("Preview spool record limit exceeded")
+	ErrSpoolByteLimit          = errors.New("Preview spool byte limit exceeded")
+	ErrAcceptedRecordRequired  = errors.New("Preview spool requires at least one accepted record")
 )
 
 // StreamEvidence is calculated from the exact length-prefixed bytes written to
