@@ -38,7 +38,7 @@ NOT IMPLEMENTED
 GitHub Actions:
 workflows created
 earlier Import API runs failed on formatting/vet; repaired at the verifier checkpoint
-remote result for the pushed HEAD unconfirmed at commit time
+pushed verifier HEAD confirmed green (Import API run 29593229514, Security Contracts run 29593228786)
 
 production:
 NO-GO
@@ -142,15 +142,15 @@ code HEAD e75b7324e0388b264d90f67ee3094d788fadf5f4
 (local golang:1.23 Linux container):
 gofmt clean + go vet + go test -race + both 5s fuzz smokes PASS
 
-remote Actions for the pushed HEAD:
-UNCONFIRMED at commit time
+remote Actions at pushed HEAD f6d9c03 (code identical to e75b732):
+Import API Security Slice run 29593229514 SUCCESS
+Security Contracts run 29593228786 SUCCESS
 ```
 
 ## Production blockers
 
 Production remains blocked until current evidence exists for:
 
-- exact-pushed-HEAD remote CI;
 - real cross-user HTTP/PostgreSQL isolation;
 - concrete Apple code exchange, replay and session issuance;
 - private versioned object storage enforcement;
