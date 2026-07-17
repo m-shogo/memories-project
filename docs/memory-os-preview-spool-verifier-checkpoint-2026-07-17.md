@@ -106,9 +106,12 @@ gofmt clean + go vet + go test -race + both 5s fuzz smokes PASS
 Preview spool contract validator (scripts/validate-memory-os-preview-spool.py):
 PASS
 
-remote GitHub Actions on this HEAD:
-UNCONFIRMED at commit time
+remote GitHub Actions (pushed HEAD f6d9c03, code identical to e75b732):
+Import API Security Slice run 29593229514 SUCCESS
+Security Contracts run 29593228786 SUCCESS
 ```
+
+This was the first green Import API remote run on this branch; every earlier run had failed at the Format check.
 
 This checkpoint also repaired the previously failing repository-integrated suite: five sources were unformatted and `internal/upload/service_test.go` called a pointer method on an unaddressable value, which failed the remote Format/Vet steps on every earlier push.
 

@@ -42,8 +42,8 @@ NOT IMPLEMENTED
 exact current HEAD full repository Go suite:
 CONFIRMED in a local golang:1.23 Linux container
 
-exact current HEAD remote Actions:
-UNCONFIRMED at commit time
+remote Actions for the pushed verifier HEAD:
+CONFIRMED (Import API run 29593229514, Security Contracts run 29593228786)
 
 production:
 NO-GO
@@ -252,11 +252,12 @@ exact repository-integrated Go suite at code HEAD e75b7324e0388b264d90f67ee3094d
 gofmt clean + go vet + go test -race + both fuzz smokes PASS
 (local golang:1.23 Linux container)
 
-remote Actions result for the pushed HEAD:
-UNCONFIRMED at commit time
+remote Actions at pushed HEAD f6d9c03 (code identical to e75b732):
+Import API Security Slice run 29593229514 SUCCESS
+Security Contracts run 29593228786 SUCCESS
 ```
 
-Earlier Import API remote runs failed at the Format check; the formatting and one test-only compile error were repaired at this checkpoint. A local container run is repository evidence, not production evidence.
+Earlier Import API remote runs failed at the Format check; the formatting and one test-only compile error were repaired at this checkpoint, producing the first green remote run on this branch. CI evidence is repository evidence, not production evidence.
 
 ---
 
@@ -284,7 +285,7 @@ Production remains forbidden while any remains:
 # 8. Correct next sequence
 
 ```txt
-0. confirm remote workflows for the pushed HEAD (local suite already confirmed)
+0. remote workflows confirmed for the pushed verifier HEAD — done
 1. implement startup reconciliation and TTL cleanup
 2. create production Preview candidate/rejection/ready PostgreSQL schema
 3. implement short atomic pgx.CopyFrom repository

@@ -48,8 +48,8 @@ not implemented
 exact current HEAD Go suite:
 confirmed in a local golang:1.23 Linux container
 
-exact current HEAD remote GitHub Actions:
-unconfirmed at commit time
+remote GitHub Actions for the pushed verifier HEAD:
+confirmed success (Import API run 29593229514, Security Contracts run 29593228786)
 
 production:
 NO-GO
@@ -224,9 +224,10 @@ PASS
 
 This run also repaired the previously failing suite: five unformatted sources and one pointer-receiver compile error in `internal/upload/service_test.go` had failed the remote Format/Vet steps on every earlier push.
 
+Also confirmed after push: Import API Security Slice run 29593229514 and Security Contracts run 29593228786 succeeded on pushed HEAD `f6d9c03` (code identical to `e75b732`) — the first green Import API remote run on this branch.
+
 Not confirmed:
 
-- remote Actions success for the exact pushed HEAD (record only after the run completes);
 - live Go↔PostgreSQL integration;
 - production object-storage behavior;
 - production parser isolation;
@@ -242,7 +243,7 @@ A local container run is repository evidence, not production or deployment evide
 
 1. run repository validators — done at this checkpoint (Preview spool and security validators);
 2. run exact-current-HEAD Go format/test/vet/race/fuzz — done at this checkpoint in a local `golang:1.23` Linux container;
-3. confirm remote Security Contracts, PostgreSQL and Import API workflows — Import API runs had failed on formatting/vet since before the seal checkpoint; repaired here, remote re-run pending;
+3. confirm remote Security Contracts, PostgreSQL and Import API workflows — Import API runs had failed on formatting/vet since before the seal checkpoint; repaired here, and the pushed verifier HEAD ran green;
 4. record exact HEAD and commands — recorded in the verifier checkpoint document.
 
 ## Gate 1 — private spool filesystem

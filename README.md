@@ -62,8 +62,8 @@ not implemented
 current full-repository Go suite:
 PASS in a local golang:1.23 Linux container at the recorded HEAD
 
-remote Actions for the pushed HEAD:
-unconfirmed at commit time
+remote Actions for the pushed verifier HEAD:
+confirmed success (first green Import API run on this branch)
 
 production:
 NO-GO
@@ -138,7 +138,7 @@ Parser, adapter, dedupe, Preview and Apply are canonical backend concerns and ar
 # Current implementation order
 
 ```txt
-0. confirm remote workflows for the pushed HEAD (local suite confirmed)
+0. remote workflows confirmed for the pushed verifier HEAD — done
 1. startup reconciliation and TTL cleanup
 2. production Preview candidate/rejection/ready PostgreSQL schema
 3. short atomic pgx.CopyFrom repository
