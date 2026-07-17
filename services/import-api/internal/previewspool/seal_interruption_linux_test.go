@@ -45,8 +45,8 @@ func TestSealerManifestWriteFailureRemovesTemp(t *testing.T) {
 		}
 		return io.ErrShortWrite
 	}
-	if _, err := sealer.Seal(context.Background(), validSealInput()); !errors.Is(err, io.ErrShortWrite) {
-		t.Fatalf("expected short manifest write, got %v", err)
+	if _, err := sealer.Seal(context.Background(), validSealInput()); !errors.Is(err, ErrSealPublish) {
+		t.Fatalf("expected manifest publication failure, got %v", err)
 	}
 	assertNoSealNames(t, directory)
 }
@@ -62,8 +62,8 @@ func TestSealerManifestSyncFailureRemovesTemp(t *testing.T) {
 		}
 		return nil
 	}
-	if _, err := sealer.Seal(context.Background(), validSealInput()); !errors.Is(err, syscall.ENOSPC) {
-		t.Fatalf("expected manifest fsync failure, got %v", err)
+	if _, err := sealer.Seal(context.Background(), validSealInput()); !errors.Is(err, ErrSealPublish) {
+		t.Fatalf("expected manifest publication failure, got %v", err)
 	}
 	assertNoSealNames(t, directory)
 }
