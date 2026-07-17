@@ -6,106 +6,104 @@ It is intentionally incomplete. It does not expose a production server and must 
 
 ## Implemented reference and boundary code
 
-- private verified-principal/request-context boundary;
+- verified-principal/request-context boundary;
 - fixed PostgreSQL role allowlist and transaction-local account ID/epoch setup;
-- RS256 Apple identity-token verification and bounded JWKS cache;
+- Apple RS256 identity-token verification and bounded JWKS cache;
 - authorization-code/replay/account-binding interfaces;
-- signed quarantine-upload authorization core and strict handlers;
-- exact owner/epoch/job/key/size/checksum/type/expiry/object-version binding interfaces;
-- cryptographically random opaque IDs;
+- signed quarantine-upload core and strict handlers;
+- exact owner/epoch/job/key/size/checksum/type/expiry/version bindings;
 - bounded Generic CSV parser and synchronous sticky iterator;
 - canonical parser-options SHA-256 binding;
-- synchronous CSV-to-Preview RowEvent bridge without goroutines/channels;
-- safe rejected-row records;
-- Preview v2 accepted/rejected hash model;
-- reference AtomicMaterializer invariant tests;
-- iOS-only exact-hash idempotent Apply interfaces;
-- account-state/epoch checkpoint guards;
-- CSV and Apple compact-JWT fuzz targets;
-- Linux Preview spool attempt filesystem lifecycle;
-- bounded Preview spool accepted/rejected stream writer.
+- synchronous CSV-to-Preview bridge without goroutines/channels;
+- safe rejected-row records and Preview v2 hashes;
+- reference AtomicMaterializer and Apply interfaces;
+- account epoch guards and CSV/JWT fuzz targets;
+- Linux Preview spool filesystem lifecycle;
+- bounded accepted/rejected stream writer;
+- stream fsync and durable no-replace manifest publication.
 
 ## Preview spool contract
 
 ```txt
 docs/schemas/memory-os-security/preview-spool-manifest.v1.schema.json
-docs/schemas/memory-os-security/preview-spool-semantic-case-set.v1.schema.json
 docs/fixtures/memory-os-security/preview-spool-manifest.round9.valid.v1.json
-docs/fixtures/memory-os-security/preview-spool-manifest-negative-cases.round9.v1.json
-docs/fixtures/memory-os-security/preview-spool-manifest-semantic-cases.round9.v1.json
 scripts/validate-memory-os-preview-spool.py
 ```
 
-The contract binds one server-generated attempt, exact source/adapter/options evidence, fixed stream formats, counts, byte lengths, hashes and a maximum 24-hour TTL. It forbids manifest path fields, symlink following, cross-attempt reuse, backup eligibility and database transactions during parsing.
+The contract binds one server-generated attempt, exact source/adapter/options evidence, fixed stream formats, counts, bytes, hashes and a maximum 24-hour TTL. It forbids path fields, symlink following, cross-attempt reuse, backup eligibility and database transactions during parsing.
 
-## Filesystem checkpoint
+## Filesystem and bounded writer
 
 Implemented under `internal/previewspool`:
 
 - Linux strong implementation; non-Linux fails closed;
-- supervisor-provisioned canonical exact-`0700` root;
-- validated single-segment `spoolId`;
+- canonical supervisor-owned exact-`0700` root;
 - descriptor-relative `mkdirat/openat`;
-- `O_CREAT | O_EXCL | O_NOFOLLOW` exact-`0600` fixed entries;
-- type/owner/mode/link checks;
-- attempt device/inode substitution rejection;
-- cancellation cleanup at partial creation stages;
-- unknown-entry fail-closed and idempotent successful cleanup.
+- fixed `0600` entries with `O_EXCL/O_NOFOLLOW`;
+- type/owner/mode/link and attempt-inode checks;
+- cancellation cleanup and unknown-entry fail-closed behavior;
+- accepted/rejected records as `8-byte big-endian length + canonical bytes`;
+- 100,000 aggregate records, 512 MiB aggregate bytes and 2 MiB per record;
+- exact-file-byte SHA-256;
+- sticky cancellation, limit, short-write, `ENOSPC` and lifecycle failures;
+- no partial writer resume.
 
-## Bounded writer checkpoint
+## Seal and manifest publication
 
 Implemented:
 
-- accepted format `memory-os-preview-candidate-v1-length-prefixed`;
-- rejected format `memory-os-preview-rejection-v1-length-prefixed`;
-- records are `8-byte unsigned big-endian length + canonical bytes`;
-- `100,000` aggregate-record limit;
-- `512 MiB` aggregate-byte limit;
-- `2 MiB` canonical-record limit;
-- exact-file-byte SHA-256 including length prefixes;
-- SHA-256 of empty bytes for zero rejected rows;
-- at least one accepted record before successful close;
-- no goroutine/channel;
-- sticky cancellation, invalid input, limit, short-write, `ENOSPC`, filesystem and lifecycle errors;
-- terminal failures close writable handles and cannot resume;
-- exact-once writer claim;
-- empty manifest placeholder is removed before stream writing;
-- successful close returns evidence but does not fsync, seal or publish a manifest.
+```txt
+accepted.spool fsync
+→ rejected.spool fsync
+→ close both streams
+→ create exclusive manifest.tmp (0600 / no-follow)
+→ write deterministic compact JSON
+→ fsync manifest.tmp
+→ linkat no-replace publication as manifest.json
+→ unlink manifest.tmp
+→ fsync attempt directory
+```
+
+An ordinary rename is not used because it can overwrite an existing final name. Existing `manifest.json` or `manifest.tmp` entries are rejected.
+
+Handled failures publish no final manifest. Directory-fsync failure rolls back the final name; inability to prove rollback durability produces `ErrSealDurabilityUncertain` and requires reconciliation.
 
 Detailed evidence:
 
 ```txt
 docs/memory-os-preview-spool-stream-writer-checkpoint-2026-07-17.md
+docs/memory-os-preview-spool-seal-checkpoint-2026-07-17.md
 ```
 
 ## Critical production boundary
 
-`preview.AtomicMaterializer` consumes source rows inside its transaction callback. It is reference-only and must not be connected to production PostgreSQL for untrusted imports.
+A published manifest is still untrusted. No database transaction may consume it until an independent reader strictly decodes the manifest and both streams, independently counts and hashes exact bytes, and verifies every binding.
+
+`preview.AtomicMaterializer` parses inside its transaction callback. It remains reference-only and must not be connected to production PostgreSQL for untrusted imports.
 
 Required flow:
 
 ```txt
 version-bound quarantine object
 → isolated transaction-free parser
-→ private bounded accepted/rejected spool
-→ stream fsync and atomic manifest seal
+→ private bounded spool
+→ durable no-replace manifest publication
 → independent decode/count/re-hash
 → epoch and binding recheck
-→ one short client-side pgx.CopyFrom transaction
-→ candidates + safe rejections + immutable ready Preview
+→ one short pgx.CopyFrom transaction
+→ immutable ready Preview
 → COMMIT or full ROLLBACK
 ```
 
 ## Not implemented
 
 - executable HTTP server/session issuer;
-- Apple code-exchange secret signing/rotation;
-- concrete replay/account/session repositories;
+- Apple code exchange/secret rotation and concrete replay/session stores;
 - production Preview candidate/rejection/ready tables;
 - concrete PostgreSQL repositories and `pgx.CopyFrom` path;
 - S3-compatible signer/HEAD/lifecycle;
-- stream fsync/seal and atomic manifest publication;
-- independent spool decoder/count/re-hash verifier;
+- independent spool manifest/stream verifier;
+- malformed-length/truncation/append/substitution proof;
 - startup reconciliation and TTL cleanup;
 - real parser supervisor and artifact verification;
 - concrete Apply/Memory persistence and complete deletion fencing;
@@ -114,8 +112,8 @@ version-bound quarantine object
 ## Validation
 
 ```txt
-independently reconstructed Linux filesystem/writer package:
-gofmt + go test -race PASS
+independently reconstructed Linux spool package:
+gofmt + go test -race + go vet PASS
 
 exact repository-integrated Go suite:
 UNCONFIRMED
