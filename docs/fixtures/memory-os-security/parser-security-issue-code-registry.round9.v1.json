@@ -1,7 +1,7 @@
 {
   "$schema": "https://memory-os.example/schemas/security/security-issue-code-registry.v1.schema.json",
   "registryId": "memory-os.security.parser-issue-codes.round9",
-  "registryVersion": 2,
+  "registryVersion": 1,
   "codes": [
     { "code": "SEC_SANDBOX_NON_ROOT_REQUIRED", "category": "parser", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.sandboxNonRootRequired", "mayIncludePrivateValue": false },
     { "code": "SEC_SANDBOX_READONLY_ROOT_REQUIRED", "category": "parser", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.sandboxReadonlyRootRequired", "mayIncludePrivateValue": false },
@@ -29,11 +29,6 @@
     { "code": "SEC_ARCHIVE_FILENAME_INVALID", "category": "parser", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.archiveFilenameInvalid", "mayIncludePrivateValue": false },
     { "code": "SEC_JSON_DEPTH_LIMIT", "category": "parser", "severity": "high", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.jsonDepthLimit", "mayIncludePrivateValue": false },
     { "code": "SEC_JSON_DUPLICATE_KEY_FORBIDDEN", "category": "parser", "severity": "high", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.jsonDuplicateKeyForbidden", "mayIncludePrivateValue": false },
-    { "code": "SEC_CSV_CELL_SIZE_LIMIT", "category": "parser", "severity": "high", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.csvCellSizeLimit", "mayIncludePrivateValue": false },
-    { "code": "SEC_PREVIEW_SPOOL_PRIVATE_VALUE_FORBIDDEN", "category": "preview_apply", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.previewSpoolPrivateValueForbidden", "mayIncludePrivateValue": false },
-    { "code": "SEC_PREVIEW_SPOOL_BINDING_INVALID", "category": "preview_apply", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.previewSpoolBindingInvalid", "mayIncludePrivateValue": false },
-    { "code": "SEC_PREVIEW_SPOOL_LIMIT_EXCEEDED", "category": "preview_apply", "severity": "high", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.previewSpoolLimitExceeded", "mayIncludePrivateValue": false },
-    { "code": "SEC_PREVIEW_SPOOL_TRANSACTION_BOUNDARY_INVALID", "category": "preview_apply", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.previewSpoolTransactionBoundaryInvalid", "mayIncludePrivateValue": false },
-    { "code": "SEC_PREVIEW_SPOOL_REHASH_REQUIRED", "category": "preview_apply", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.previewSpoolRehashRequired", "mayIncludePrivateValue": false }
+    { "code": "SEC_CSV_CELL_SIZE_LIMIT", "category": "parser", "severity": "high", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.csvCellSizeLimit", "mayIncludePrivateValue": false }
   ]
 }
