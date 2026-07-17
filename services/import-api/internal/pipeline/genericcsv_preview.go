@@ -10,6 +10,7 @@ import (
 	"hash"
 	"io"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/m-shogo/memories-project/services/import-api/internal/adapters/genericcsv"
@@ -50,12 +51,16 @@ type GenericCSVResult struct {
 	Summary genericcsv.Summary
 }
 
-func (s GenericCSVPreview) Materialize(ctx context.Context, principal security.Principal, reader io.Reader, request GenericCSVRequest) (GenericCSVResult, error) {
+// Materialize owns reader until the call returns. A closable input is required
+// so cancellation or a database failure can interrupt a parser blocked in Read.
+// Object-storage adapters connected here must honor Close promptly.
+func (s GenericCSVPreview) Materialize(ctx context.Context, principal security.Principal, reader io.ReadCloser, request GenericCSVRequest) (GenericCSVResult, error) {
 	if s.Materializer == nil || reader == nil {
 		return GenericCSVResult{}, errors.New("Generic CSV preview dependencies are incomplete")
 	}
 	optionsHash, err := hashCSVOptions(request.Options)
 	if err != nil {
+		_ = reader.Close()
 		return GenericCSVResult{}, err
 	}
 	stream := newCSVSource(ctx, s.Parser, reader, request.Options, s.Reports)
@@ -86,25 +91,35 @@ type sourceItem struct {
 }
 
 type csvSource struct {
-	ctx     context.Context
-	cancel  context.CancelFunc
-	items   chan sourceItem
-	done    chan struct{}
-	summary genericcsv.Summary
-	err     error
+	ctx       context.Context
+	cancel    context.CancelFunc
+	reader    io.ReadCloser
+	closeOnce sync.Once
+	items     chan sourceItem
+	done      chan struct{}
+	summary   genericcsv.Summary
+	err       error
 }
 
-func newCSVSource(parent context.Context, parser genericcsv.Parser, reader io.Reader, options genericcsv.Options, reports RowReportSink) *csvSource {
+func newCSVSource(parent context.Context, parser genericcsv.Parser, reader io.ReadCloser, options genericcsv.Options, reports RowReportSink) *csvSource {
 	ctx, cancel := context.WithCancel(parent)
-	source := &csvSource{ctx: ctx, cancel: cancel, items: make(chan sourceItem, csvCandidateBuffer), done: make(chan struct{})}
-	go source.run(parser, reader, options, reports)
+	source := &csvSource{
+		ctx:    ctx,
+		cancel: cancel,
+		reader: reader,
+		items:  make(chan sourceItem, csvCandidateBuffer),
+		done:   make(chan struct{}),
+	}
+	go source.run(parser, options, reports)
 	return source
 }
 
-func (s *csvSource) run(parser genericcsv.Parser, reader io.Reader, options genericcsv.Options, reports RowReportSink) {
+func (s *csvSource) run(parser genericcsv.Parser, options genericcsv.Options, reports RowReportSink) {
 	defer close(s.done)
 	defer close(s.items)
-	summary, err := parser.Parse(reader, options, func(result genericcsv.Result) error {
+	defer s.closeReader()
+
+	summary, err := parser.Parse(s.reader, options, func(result genericcsv.Result) error {
 		issues := make([]string, len(result.Issues))
 		for index, issue := range result.Issues {
 			issues[index] = string(issue)
@@ -130,7 +145,7 @@ func (s *csvSource) run(parser genericcsv.Parser, reader io.Reader, options gene
 		case s.items <- sourceItem{candidate: candidate}:
 			return nil
 		case <-s.ctx.Done():
-			return s.ctx.Err()
+			return context.Cause(s.ctx)
 		}
 	})
 	s.summary = summary
@@ -154,7 +169,7 @@ func (s *csvSource) Next(ctx context.Context) (preview.Candidate, error) {
 		}
 		return item.candidate, nil
 	case <-ctx.Done():
-		return preview.Candidate{}, ctx.Err()
+		return preview.Candidate{}, context.Cause(ctx)
 	case <-s.ctx.Done():
 		return preview.Candidate{}, ErrPipelineClosed
 	}
@@ -162,7 +177,14 @@ func (s *csvSource) Next(ctx context.Context) (preview.Candidate, error) {
 
 func (s *csvSource) Close() {
 	s.cancel()
+	s.closeReader()
 	<-s.done
+}
+
+func (s *csvSource) closeReader() {
+	s.closeOnce.Do(func() {
+		_ = s.reader.Close()
+	})
 }
 
 func (s *csvSource) Wait() (genericcsv.Summary, error) {
