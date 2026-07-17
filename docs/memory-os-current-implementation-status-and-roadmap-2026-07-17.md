@@ -1,6 +1,6 @@
 # Memory OS Current Implementation Status and Roadmap
 
-最終更新: 2026-07-17
+最終更新: 2026-07-18
 
 この文書は、設計済み・契約済み・部分実装・実環境未検証を混同しないための現在地正本である。
 
@@ -33,7 +33,8 @@ manifest contract hardened
 Linux attempt filesystem lifecycle created
 bounded accepted/rejected writer created
 stream fsync + no-replace manifest publication created
-independent decode / count / re-hash verifier not implemented
+independent decode / count / re-hash verifier created
+startup reconciliation / TTL cleanup not implemented
 
 object storage runtime:
 not implemented
@@ -44,14 +45,17 @@ not implemented
 iOS / Desktop Portal:
 not implemented
 
+exact current HEAD Go suite:
+confirmed in a local golang:1.23 Linux container
+
 exact current HEAD remote GitHub Actions:
-unconfirmed
+unconfirmed at commit time
 
 production:
 NO-GO
 ```
 
-`Go backend未実装`は古い。一方、executable server、production repositories、real object storage、real sandbox、session issuer、sealed-spool verifier、iOS clientがないため、`backend完成`も誤り。正確な表現は **partial security vertical slice**。
+`Go backend未実装`は古い。一方、executable server、production repositories、real object storage、real sandbox、session issuer、spool reconciliation、iOS clientがないため、`backend完成`も誤り。正確な表現は **partial security vertical slice**。
 
 ---
 
@@ -73,10 +77,11 @@ NO-GO
 | Generic CSV parser/iterator | Partial | Bounded synchronous pull; sticky failure | Quarantine reader and isolated worker |
 | CSV → Preview bridge | Reference | No hidden goroutine/channel | Production verified spool and commit path |
 | Preview v2 hashing | Reference | Candidate + safe rejection hashes/counts | Production persistence/retry recovery |
-| Preview spool manifest | Contract hardened | Attempt/source/format/count/byte/hash/TTL binding | Independent runtime verification |
+| Preview spool manifest | Contract hardened | Attempt/source/format/count/byte/hash/TTL binding | Production commit integration |
 | Preview filesystem | Partial | Linux descriptor-relative no-follow lifecycle | Startup reconciliation, expiry, deployment proof |
-| Preview writer | Partial | Exact length-prefixed bytes, bounds, sticky terminal failure | Independent reader and crash reconciliation |
-| Preview seal/publication | Partial | stream fsync, exclusive temp, linkat no-replace, directory fsync | Independent decode/count/re-hash verifier |
+| Preview writer | Partial | Exact length-prefixed bytes, bounds, sticky terminal failure | Crash reconciliation |
+| Preview seal/publication | Partial | stream fsync, exclusive temp, linkat no-replace, directory fsync | Crash-residue reconciliation |
+| Preview verifier | Partial | Strict canonical decode, bounded re-scan, exact re-count/re-hash, binding/expiry rejection | Startup reconciliation, TTL cleanup, commit integration |
 | AtomicMaterializer | Reference only | Hash/decision invariants | Forbidden for production PostgreSQL; parse occurs inside transaction callback |
 | Apply service | Partial | iOS authority and exact-hash idempotency interfaces | Concrete Preview/Memory repository and deletion fencing |
 | Executable Go API | Not implemented | No production `main` lifecycle | Auth/session/repositories/storage/worker composition |
@@ -160,55 +165,74 @@ Created:
 - same-Sealer/same-input idempotency and conflicting-input rejection;
 - non-Linux fail-closed behavior.
 
+## 4.4 Independent sealed-spool verifier
+
+Created:
+
+- descriptor-relative `O_NOFOLLOW` re-open of attempt, manifest and both streams;
+- fixed-name allowlist with `manifest.tmp`-residue and unknown-entry rejection;
+- regular/`0600`/single-link/owner checks on every entry;
+- strict single-value JSON decode with unknown fields forbidden;
+- canonical re-serialization equality against the seal builder;
+- expiry enforcement against the caller clock;
+- exact job/owner/epoch/source/adapter/options expectation matching;
+- bounded length-prefix re-decode with record/byte limits enforced while reading;
+- independent re-count and exact-byte SHA-256 of both streams;
+- stream mismatch, malformed framing and binding mismatch as distinct rejections;
+- stateless retryable read-only verification;
+- non-Linux fail-closed behavior.
+
 Detailed evidence:
 
 ```txt
 docs/memory-os-preview-spool-stream-writer-checkpoint-2026-07-17.md
 docs/memory-os-preview-spool-seal-checkpoint-2026-07-17.md
+docs/memory-os-preview-spool-verifier-checkpoint-2026-07-17.md
 ```
 
-## 4.4 Explicitly incomplete
+## 4.5 Explicitly incomplete
 
-- no independent strict manifest decoder;
-- no independent length-prefixed stream decoder;
-- no count/byte/hash re-verification;
-- no truncation/append/malformed-length verifier;
 - no startup reconciliation for crash residue such as `manifest.tmp` or both linked names;
 - no TTL cleanup worker;
 - no production mount/runtime evidence;
 - no production PostgreSQL commit integration.
 
-A published manifest is **not yet trusted**. Database work remains forbidden until the independent verifier passes.
+A published manifest is untrusted until its verification passes; verification is now implemented, and the commit path must run it (and re-check epoch/job state) inside its own transaction boundary.
 
 ---
 
 # 5. Validation status
 
-Confirmed for the targeted reconstructed package:
+Confirmed for the exact repository-integrated module at code HEAD `e75b7324e0388b264d90f67ee3094d788fadf5f4` in a local `golang:1.23` Linux container:
 
 ```txt
-gofmt:
+gofmt -l . (empty):
 PASS
 
-go test -race:
+go vet ./...:
 PASS
 
-go vet:
+go test -race ./...:
+PASS
+
+both 5s fuzz smokes:
+PASS
+
+scripts/validate-memory-os-preview-spool.py:
 PASS
 ```
 
-Covered: successful publication, exact final mode/link count, same-input idempotency, binding conflict, stream-fsync failure, cancellation between stream syncs, short manifest write, manifest-fsync failure, existing final preservation, temp symlink attack, directory-sync rollback and durability-uncertain failure.
+This run also repaired the previously failing suite: five unformatted sources and one pointer-receiver compile error in `internal/upload/service_test.go` had failed the remote Format/Vet steps on every earlier push.
 
-Not confirmed for the exact current repository HEAD:
+Not confirmed:
 
-- repository-integrated format/test/vet/race/fuzz suite;
-- remote Actions success;
+- remote Actions success for the exact pushed HEAD (record only after the run completes);
 - live Go↔PostgreSQL integration;
 - production object-storage behavior;
 - production parser isolation;
 - iOS/App Group behavior.
 
-Targeted reconstruction is not full-repository or production evidence.
+A local container run is repository evidence, not production or deployment evidence.
 
 ---
 
@@ -216,10 +240,10 @@ Targeted reconstruction is not full-repository or production evidence.
 
 ## Gate 0 — trustworthy baseline
 
-1. run repository validators;
-2. run exact-current-HEAD Go format/test/vet/race/fuzz;
-3. confirm remote Security Contracts, PostgreSQL and Import API workflows;
-4. record exact HEAD and commands.
+1. run repository validators — done at this checkpoint (Preview spool and security validators);
+2. run exact-current-HEAD Go format/test/vet/race/fuzz — done at this checkpoint in a local `golang:1.23` Linux container;
+3. confirm remote Security Contracts, PostgreSQL and Import API workflows — Import API runs had failed on formatting/vet since before the seal checkpoint; repaired here, remote re-run pending;
+4. record exact HEAD and commands — recorded in the verifier checkpoint document.
 
 ## Gate 1 — private spool filesystem
 
@@ -235,23 +259,22 @@ seal/publication:
 PARTIAL IMPLEMENTATION CREATED
 
 independent verifier:
-NOT IMPLEMENTED
+PARTIAL IMPLEMENTATION CREATED
 ```
-
-Immediate sequence:
-
-1. open attempt and fixed entries descriptor-relative with `O_NOFOLLOW`;
-2. require final manifest regular `0600`, one link, and temp absent;
-3. strictly decode manifest and validate all bindings/TTL/security constants;
-4. independently decode both length-prefixed streams;
-5. enforce record/byte bounds while reading;
-6. independently count and SHA-256 exact bytes;
-7. compare every count/byte/hash/format binding;
-8. reject all mismatch before any database transaction.
 
 ## Gate 3 — interruption/tamper/retry evidence
 
-Prove truncation, append, malformed lengths, hardlinks, cross-attempt substitution, crash residue, expiry and startup reconciliation.
+Proved at the verifier boundary: truncation, appended records, torn appends, malformed length prefixes, same-length content substitution, hard links, symlinks, wrong modes, temp residue, spoofed spool IDs and expiry.
+
+Remaining: crash-residue classification, startup reconciliation and TTL cleanup with their own interruption proofs.
+
+Immediate sequence:
+
+1. enumerate the supervisor root descriptor-relative;
+2. classify sealed / unsealed / temp-residue / both-name-residue / unknown attempts;
+3. terminally quarantine or remove crash residue without recursive deletes of unknown entries;
+4. remove expired sealed attempts after the 24-hour TTL and never delete sealed unexpired attempts;
+5. prove interruption safety with targeted tests.
 
 ## Gate 4 — production Preview PostgreSQL domain
 
@@ -280,8 +303,9 @@ Allowed:
 ```txt
 security architecture defined
 partial Go security vertical slice exists
-Preview spool filesystem, writer and seal-publication checkpoints created
-independent verifier and production runtime blockers remain
+Preview spool filesystem, writer, seal-publication and independent-verifier checkpoints created
+repository-integrated Go suite passes in a Linux container at the recorded HEAD
+spool reconciliation and production runtime blockers remain
 production NO-GO
 ```
 
