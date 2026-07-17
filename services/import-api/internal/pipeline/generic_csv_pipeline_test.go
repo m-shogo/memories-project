@@ -35,14 +35,14 @@ func (pipelineIDs) NewID(string) (string, error) {
 }
 
 type pipelineRepository struct {
-	draft          preview.Record
-	candidates     []preview.Candidate
-	rejections     []preview.Rejection
-	finalized      bool
-	acceptedCount  int
-	rejectedCount  int
-	previewSHA256  string
-	optionsSHA256  string
+	draft         preview.Record
+	candidates    []preview.Candidate
+	rejections    []preview.Rejection
+	finalized     bool
+	acceptedCount int
+	rejectedCount int
+	previewSHA256 string
+	optionsSHA256 string
 }
 
 func (r *pipelineRepository) InsertDraft(_ context.Context, _ dbscope.Transaction, record preview.Record) error {

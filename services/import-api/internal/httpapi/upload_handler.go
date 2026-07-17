@@ -39,9 +39,9 @@ type issueUploadRequest struct {
 
 type issueUploadResponse struct {
 	AuthorizationID string            `json:"authorizationId"`
-	UploadURL        string            `json:"uploadUrl"`
-	RequiredHeaders  map[string]string `json:"requiredHeaders"`
-	ExpiresAt        time.Time         `json:"expiresAt"`
+	UploadURL       string            `json:"uploadUrl"`
+	RequiredHeaders map[string]string `json:"requiredHeaders"`
+	ExpiresAt       time.Time         `json:"expiresAt"`
 }
 
 type problem struct {
@@ -77,9 +77,9 @@ func (h UploadHandler) issue(writer http.ResponseWriter, request *http.Request) 
 	}
 	writeJSON(writer, http.StatusCreated, issueUploadResponse{
 		AuthorizationID: response.AuthorizationID,
-		UploadURL:        response.UploadURL,
-		RequiredHeaders:  response.RequiredHeaders,
-		ExpiresAt:        response.ExpiresAt,
+		UploadURL:       response.UploadURL,
+		RequiredHeaders: response.RequiredHeaders,
+		ExpiresAt:       response.ExpiresAt,
 	})
 }
 

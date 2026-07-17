@@ -71,24 +71,24 @@ func TestVerifierAcceptsValidAppleCredentialAndRefreshesUnknownKey(t *testing.T)
 	}
 	now := time.Unix(1_800_000_000, 0).UTC()
 	token := signedToken(t, privateKey, map[string]any{
-		"iss": DefaultIssuer,
-		"sub": "apple-subject-123",
-		"aud": "com.memoryos.app",
-		"exp": now.Add(5 * time.Minute).Unix(),
-		"iat": now.Add(-time.Minute).Unix(),
+		"iss":   DefaultIssuer,
+		"sub":   "apple-subject-123",
+		"aud":   "com.memoryos.app",
+		"exp":   now.Add(5 * time.Minute).Unix(),
+		"iat":   now.Add(-time.Minute).Unix(),
 		"nonce": "nonce-sha256-value",
 	})
 	keys := &fakeKeys{key: &privateKey.PublicKey, missingOnFirst: true}
 	replay := &fakeReplay{}
 	verifier := Verifier{
-		Audiences: map[string]struct{}{"com.memoryos.app": {}},
-		ClockSkew: 2 * time.Minute,
+		Audiences:   map[string]struct{}{"com.memoryos.app": {}},
+		ClockSkew:   2 * time.Minute,
 		MaxTokenAge: 10 * time.Minute,
-		Now: func() time.Time { return now },
-		Keys: keys,
-		Codes: fakeCodes{result: CodeExchangeResult{Subject: "apple-subject-123", ClientID: "com.memoryos.app"}},
-		Replay: replay,
-		Accounts: fakeAccounts{accountID: "acct_01J00000000000000000000000", epoch: 7},
+		Now:         func() time.Time { return now },
+		Keys:        keys,
+		Codes:       fakeCodes{result: CodeExchangeResult{Subject: "apple-subject-123", ClientID: "com.memoryos.app"}},
+		Replay:      replay,
+		Accounts:    fakeAccounts{accountID: "acct_01J00000000000000000000000", epoch: 7},
 	}
 	identity, err := verifier.Verify(context.Background(), Input{IdentityToken: token, AuthorizationCode: "single-use-code", ClientID: "com.memoryos.app", ExpectedNonceClaim: "nonce-sha256-value"})
 	if err != nil {

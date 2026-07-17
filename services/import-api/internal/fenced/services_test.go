@@ -120,7 +120,9 @@ func (s *candidateSource) Next(context.Context) (preview.Candidate, error) {
 
 type previewRepo struct{ finalized bool }
 
-func (*previewRepo) InsertDraft(context.Context, dbscope.Transaction, preview.Record) error { return nil }
+func (*previewRepo) InsertDraft(context.Context, dbscope.Transaction, preview.Record) error {
+	return nil
+}
 func (*previewRepo) InsertCandidate(context.Context, dbscope.Transaction, string, int, preview.Candidate, string) error {
 	return nil
 }
@@ -136,9 +138,9 @@ func TestPreviewDoesNotFinalizeAfterEpochChange(t *testing.T) {
 	guard := &sequenceGuard{failAt: 2}
 	inner := &preview.Materializer{Transactions: fakeExecutor{}, Repository: repository, IDs: fakeIDs{value: "prv_01J00000000000000000000000"}, Now: func() time.Time { return now }}
 	_, err := (Preview{Guard: guard, Inner: inner}).Materialize(context.Background(), principal, preview.Draft{
-		JobID: "job_01J00000000000000000000000",
-		Source: preview.SourceBinding{ObjectKey: "quarantine/job/object", ObjectVersionID: "version-1", ChecksumSHA256: repeatHex('b')},
-		Adapter: preview.AdapterBinding{AdapterID: "generic-csv", AdapterVersion: "1.0.0", ArtifactSHA256: repeatHex('c')},
+		JobID:         "job_01J00000000000000000000000",
+		Source:        preview.SourceBinding{ObjectKey: "quarantine/job/object", ObjectVersionID: "version-1", ChecksumSHA256: repeatHex('b')},
+		Adapter:       preview.AdapterBinding{AdapterID: "generic-csv", AdapterVersion: "1.0.0", ArtifactSHA256: repeatHex('c')},
 		OptionsSHA256: repeatHex('d'),
 	}, &candidateSource{})
 	if !errors.Is(err, epochguard.ErrStaleAccountEpoch) {

@@ -15,9 +15,9 @@ func TestNormalizeAndDigestOptionsCanonicalizesEquivalentMappings(t *testing.T) 
 		t.Fatal(err)
 	}
 	second, secondHash, err := NormalizeAndDigestOptions(Options{
-		TitleColumn: "title",
-		URLColumn:   "url",
-		Delimiter:   ',',
+		TitleColumn:  "title",
+		URLColumn:    "url",
+		Delimiter:    ',',
 		DateLocation: time.UTC,
 	})
 	if err != nil {
