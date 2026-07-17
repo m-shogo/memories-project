@@ -1,6 +1,6 @@
 # Memory OS Current Authority Order — Round 9 Security
 
-最終更新: 2026-07-17
+最終更新: 2026-07-18
 
 ## Current verdict
 
@@ -29,7 +29,8 @@ manifest contract hardened
 Linux attempt filesystem lifecycle created
 bounded accepted/rejected writer created
 stream fsync + no-replace manifest publication created
-independent decode / count / re-hash verifier not implemented
+independent decode / count / re-hash verifier created
+startup reconciliation / TTL cleanup not implemented
 
 PostgreSQL:
 RLS / upload persistence foundation migrations and SQL tests created
@@ -38,8 +39,11 @@ production domain schema / Go repositories not created
 object storage / parser supervisor / iOS / Portal:
 NOT IMPLEMENTED
 
-exact current HEAD full repository and remote Actions:
-UNCONFIRMED
+exact current HEAD full repository Go suite:
+CONFIRMED in a local golang:1.23 Linux container
+
+exact current HEAD remote Actions:
+UNCONFIRMED at commit time
 
 production:
 NO-GO
@@ -55,18 +59,19 @@ Conflicts are resolved from top to bottom:
 
 1. `docs/memory-os-current-authority-order-round-9-security.md`
 2. `docs/memory-os-current-implementation-status-and-roadmap-2026-07-17.md`
-3. `docs/memory-os-preview-spool-seal-checkpoint-2026-07-17.md`
-4. `docs/memory-os-preview-spool-stream-writer-checkpoint-2026-07-17.md`
-5. `docs/memory-os-preview-spool-commit-contract-round-9.md`
-6. security schema registry and fixture index
-7. current code under `services/import-api/`
-8. `services/import-api/README.md`
-9. `SECURITY.md`
-10. Round 9 architecture, threat model and verification gate
-11. OpenAPI, PostgreSQL migrations/tests and validators/workflows
-12. Round 8 Capture / Import architecture
-13. prior privacy / persistence / deletion contracts
-14. historical progress and handoff documents
+3. `docs/memory-os-preview-spool-verifier-checkpoint-2026-07-17.md`
+4. `docs/memory-os-preview-spool-seal-checkpoint-2026-07-17.md`
+5. `docs/memory-os-preview-spool-stream-writer-checkpoint-2026-07-17.md`
+6. `docs/memory-os-preview-spool-commit-contract-round-9.md`
+7. security schema registry and fixture index
+8. current code under `services/import-api/`
+9. `services/import-api/README.md`
+10. `SECURITY.md`
+11. Round 9 architecture, threat model and verification gate
+12. OpenAPI, PostgreSQL migrations/tests and validators/workflows
+13. Round 8 Capture / Import architecture
+14. prior privacy / persistence / deletion contracts
+15. historical progress and handoff documents
 
 Historical documents record old snapshots and never override current code or this order.
 
@@ -186,16 +191,27 @@ Manifest authority binds server-generated `spoolId`, job/owner/epoch, source key
 
 An ordinary rename is not the authority because it may replace an existing final name.
 
+## Implemented independent verifier checkpoint
+
+- descriptor-relative `O_NOFOLLOW` re-open of attempt, manifest and both streams;
+- fixed-name allowlist; `manifest.tmp` residue and unknown entries reject;
+- regular/`0600`/single-link/owner checks on every entry;
+- strict single-value JSON decode with unknown fields forbidden;
+- canonical re-serialization equality against the seal builder (duplicate keys, whitespace, reordering, non-UTC timestamps and altered security constants all reject);
+- expiry enforced against the caller clock;
+- exact job/owner/epoch/source/adapter/options expectation match required;
+- bounded length-prefix re-decode with record/byte limits enforced while reading;
+- independent re-count and exact-byte SHA-256 compared to every manifest stream binding;
+- truncation, append, torn append, malformed lengths and same-length substitution proved;
+- read-only, stateless, retryable; performs no deletion and no database work.
+
 ## Still incomplete and forbidden
 
-- no independent strict manifest decoder;
-- no independent length-prefixed stream decoder/count/re-hash;
-- no truncation/append/malformed-length verifier;
 - no startup reconciliation for `manifest.tmp`, both-name links or other crash residue;
 - no TTL cleanup;
 - no production PostgreSQL wiring.
 
-A published manifest remains **untrusted** until the independent verifier passes. `preview.AtomicMaterializer` remains reference-only and is forbidden as the production PostgreSQL path.
+A published manifest remains untrusted until its verification passes; the commit path must run the verifier and re-check epoch/job state inside its own transaction boundary. `preview.AtomicMaterializer` remains reference-only and is forbidden as the production PostgreSQL path.
 
 ---
 
@@ -212,7 +228,7 @@ A published manifest remains **untrusted** until the independent verifier passes
 
 # 6. Executable status
 
-Partial Go security/reference code exists for verified principal/context, scoped PostgreSQL transactions, Apple JWT/JWKS, signed upload, bounded CSV, Preview hashing, reference Apply, account epoch guards, fuzz targets, Preview spool filesystem, bounded writer and durable no-replace manifest publication.
+Partial Go security/reference code exists for verified principal/context, scoped PostgreSQL transactions, Apple JWT/JWKS, signed upload, bounded CSV, Preview hashing, reference Apply, account epoch guards, fuzz targets, Preview spool filesystem, bounded writer, durable no-replace manifest publication and the independent sealed-spool verifier.
 
 Not implemented:
 
@@ -220,7 +236,6 @@ Not implemented:
 production executable server/session issuer
 Apple code exchange/secret rotation/replay/session persistence
 production account/session/repository composition
-independent spool reader/decode/count/re-hash
 startup reconciliation/expiry cleanup/crash recovery
 production Preview candidate/rejection/ready schema
 pgx.CopyFrom Preview repository
@@ -233,17 +248,15 @@ iOS and Desktop Portal
 Validation wording:
 
 ```txt
-independently reconstructed Linux spool package:
-gofmt + go test -race + go vet PASS
+exact repository-integrated Go suite at code HEAD e75b7324e0388b264d90f67ee3094d788fadf5f4:
+gofmt clean + go vet + go test -race + both fuzz smokes PASS
+(local golang:1.23 Linux container)
 
-exact current repository full Go suite:
-UNCONFIRMED
-
-remote Actions current result:
-UNCONFIRMED
+remote Actions result for the pushed HEAD:
+UNCONFIRMED at commit time
 ```
 
-Targeted reconstruction is not full-repository or production evidence.
+Earlier Import API remote runs failed at the Format check; the formatting and one test-only compile error were repaired at this checkpoint. A local container run is repository evidence, not production evidence.
 
 ---
 
@@ -257,7 +270,7 @@ Production remains forbidden while any remains:
 - upload key/metadata not exact-bound;
 - parser network/host/secrets/unbounded resources;
 - untrusted parse inside production DB transaction;
-- spool without independent strict decode/count/re-hash and crash reconciliation;
+- spool commit without a passed independent verification in the same flow, or without crash reconciliation;
 - partial candidate/rejection/Preview visibility;
 - missing epoch recheck immediately before commit;
 - deletion resurrection possible;
@@ -271,17 +284,15 @@ Production remains forbidden while any remains:
 # 8. Correct next sequence
 
 ```txt
-0. confirm exact current HEAD validators / Go format-test-vet-race-fuzz / remote workflows
-1. implement independent manifest and stream verifier
-2. prove truncation, append, malformed length, hardlink and cross-attempt cases
-3. implement startup reconciliation and TTL cleanup
-4. create production Preview candidate/rejection/ready PostgreSQL schema
-5. implement short atomic pgx.CopyFrom repository
-6. prove epoch recheck, rollback and post-COMMIT retry recovery
-7. implement private versioned object storage and parser supervisor
-8. compose executable API/auth/repositories
-9. implement Apply/Memory/deletion
-10. begin iOS only after backend P0 closes
+0. confirm remote workflows for the pushed HEAD (local suite already confirmed)
+1. implement startup reconciliation and TTL cleanup
+2. create production Preview candidate/rejection/ready PostgreSQL schema
+3. implement short atomic pgx.CopyFrom repository
+4. prove epoch recheck, rollback and post-COMMIT retry recovery
+5. implement private versioned object storage and parser supervisor
+6. compose executable API/auth/repositories
+7. implement Apply/Memory/deletion
+8. begin iOS only after backend P0 closes
 ```
 
 Memory Town remains after Capture / Import P0 blockers close.
