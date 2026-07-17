@@ -1,6 +1,6 @@
 # Security
 
-最終更新: 2026-07-17
+最終更新: 2026-07-18
 
 Memory OS handles highly sensitive personal context. The repository is in security-foundation and partial backend vertical-slice development.
 
@@ -23,7 +23,10 @@ not a production backend
 Preview spool:
 manifest contract hardened
 Linux filesystem attempt lifecycle checkpoint created
-stream writer / seal / verifier not implemented
+bounded stream writer created
+stream fsync + no-replace manifest publication created
+independent decode / count / re-hash verifier created
+startup reconciliation / TTL cleanup not implemented
 
 PostgreSQL:
 RLS / upload security foundation migrations and SQL tests created
@@ -34,7 +37,8 @@ NOT IMPLEMENTED
 
 GitHub Actions:
 workflows created
-current remote result unconfirmed
+earlier Import API runs failed on formatting/vet; repaired at the verifier checkpoint
+remote result for the pushed HEAD unconfirmed at commit time
 
 production:
 NO-GO
@@ -102,7 +106,10 @@ Historical PASS applies only to its recorded commit. The current repository full
 - Spool manifests contain no filesystem paths.
 - Linux spool attempts use a supervisor-provisioned `0700` root, descriptor-relative create/open, `O_EXCL/O_NOFOLLOW`, fixed `0600` files and inode substitution checks.
 - Unknown filesystem entries fail closed; successful cleanup is idempotent; non-Linux fails closed.
-- This filesystem checkpoint does not yet implement canonical stream records, limits, seal, re-hash, expiry reconciliation or DB commit.
+- Stream records are exact length-prefixed canonical bytes with aggregate record/byte and per-record limits; writer failures are sticky and terminal.
+- Seal publication fsyncs both streams, writes an exclusive `manifest.tmp`, publishes with `linkat` no-replace semantics and fsyncs the attempt directory; existing final names are never overwritten.
+- Independent verification re-opens everything descriptor-relative with `O_NOFOLLOW`, strictly decodes exactly one canonical manifest, re-counts and re-hashes exact stream bytes, enforces expiry and rejects every binding mismatch before any database transaction.
+- Startup reconciliation, TTL cleanup and the production DB commit path are not yet implemented.
 - Final Apply is iOS-user-only, exact-hash-bound and idempotent.
 - Account deletion fences jobs, workers, URLs, objects, spools, Preview, Apply, caches, exports and backup restoration.
 - Private content is forbidden in logs, analytics, notifications and crash reports.
@@ -123,27 +130,30 @@ Preview spool structural cases:              9
 Preview spool semantic cases:                6
 Preview spool filesystem top-level tests:    9
 Preview spool cancellation stages:           5
+Preview spool writer top-level tests:        9
+Preview spool seal top-level tests:         10
+Preview spool verifier top-level tests:     15
 ```
 
-Targeted filesystem evidence:
+Repository-integrated Go evidence:
 
 ```txt
-independent reconstructed Linux mini-module:
-gofmt + go test -race PASS
+code HEAD e75b7324e0388b264d90f67ee3094d788fadf5f4
+(local golang:1.23 Linux container):
+gofmt clean + go vet + go test -race + both 5s fuzz smokes PASS
 
-full repository current HEAD:
-UNCONFIRMED
+remote Actions for the pushed HEAD:
+UNCONFIRMED at commit time
 ```
 
 ## Production blockers
 
 Production remains blocked until current evidence exists for:
 
-- exact-current-HEAD local and remote CI;
+- exact-pushed-HEAD remote CI;
 - real cross-user HTTP/PostgreSQL isolation;
 - concrete Apple code exchange, replay and session issuance;
 - private versioned object storage enforcement;
-- canonical bounded spool writer, fsync/seal, manifest and independent re-hash;
 - abandoned-attempt reconciliation and expiry cleanup;
 - production Preview schema and atomic `pgx.CopyFrom` repository;
 - concrete Apply/Memory persistence;
