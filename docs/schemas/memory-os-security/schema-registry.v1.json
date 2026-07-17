@@ -1,6 +1,6 @@
 {
   "registryId": "memory-os.security.schema-registry",
-  "registryVersion": 7,
+  "registryVersion": 8,
   "networkResolutionAllowed": false,
   "logicalBaseUri": "https://memory-os.example/schemas/security/",
   "resolutionPolicy": "resolve_exact_id_to_repository_path",
@@ -27,7 +27,8 @@
     { "schemaId": "https://memory-os.example/schemas/security/archive-safety-profile.v1.schema.json", "repositoryPath": "docs/schemas/memory-os-security/archive-safety-profile.v1.schema.json" },
     { "schemaId": "https://memory-os.example/schemas/security/profile-mutation-case-set.v1.schema.json", "repositoryPath": "docs/schemas/memory-os-security/profile-mutation-case-set.v1.schema.json" },
     { "schemaId": "https://memory-os.example/schemas/security/archive-safety-case-set.v1.schema.json", "repositoryPath": "docs/schemas/memory-os-security/archive-safety-case-set.v1.schema.json" },
-    { "schemaId": "https://memory-os.example/schemas/security/preview-spool-manifest.v1.schema.json", "repositoryPath": "docs/schemas/memory-os-security/preview-spool-manifest.v1.schema.json" }
+    { "schemaId": "https://memory-os.example/schemas/security/preview-spool-manifest.v1.schema.json", "repositoryPath": "docs/schemas/memory-os-security/preview-spool-manifest.v1.schema.json" },
+    { "schemaId": "https://memory-os.example/schemas/security/preview-spool-semantic-case-set.v1.schema.json", "repositoryPath": "docs/schemas/memory-os-security/preview-spool-semantic-case-set.v1.schema.json" }
   ],
   "rules": {
     "duplicateSchemaIdAllowed": false,
