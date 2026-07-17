@@ -1,0 +1,37 @@
+{
+  "$schema": "https://memory-os.example/schemas/security/preview-spool-manifest.v1.schema.json",
+  "schemaVersion": 1,
+  "jobId": "job_01J000000000000000000000000",
+  "ownerAccountId": "acct_01J00000000000000000000000",
+  "accountEpoch": 7,
+  "source": {
+    "objectKey": "quarantine/job_01J000000000000000000000000/source.csv",
+    "objectVersionId": "version-01J00000000000000000000000",
+    "checksumSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "adapter": {
+    "adapterId": "generic-csv",
+    "adapterVersion": "1.0.0",
+    "artifactSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "optionsSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "streams": {
+    "accepted": {
+      "recordCount": 2,
+      "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    },
+    "rejected": {
+      "recordCount": 1,
+      "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    }
+  },
+  "createdAt": "2026-07-17T02:00:00Z",
+  "expiresAt": "2026-07-18T02:00:00Z",
+  "security": {
+    "supervisorOwned": true,
+    "sealedBeforeVerification": true,
+    "rehashRequiredBeforeCommit": true,
+    "databaseTransactionDuringParseAllowed": false,
+    "rawRejectedValuesAllowed": false
+  }
+}
