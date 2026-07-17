@@ -1,0 +1,63 @@
+{
+  "$schema": "https://memory-os.example/schemas/security/preview-spool-semantic-case-set.v1.schema.json",
+  "caseSetId": "memory-os.security.preview-spool-semantic.round9",
+  "caseSetVersion": 1,
+  "targetSchemaId": "https://memory-os.example/schemas/security/preview-spool-manifest.v1.schema.json",
+  "baseFixtureRef": "docs/fixtures/memory-os-security/preview-spool-manifest.round9.valid.v1.json",
+  "cases": [
+    {
+      "caseId": "preview-spool.cross-job-object-key-forbidden",
+      "mutation": {
+        "op": "replace",
+        "path": "/source/objectKey",
+        "value": "quarantine/job_01J999999999999999999999999/upl_01J00000000000000000000000"
+      },
+      "expectedIssueCode": "SEC_PREVIEW_SPOOL_BINDING_INVALID"
+    },
+    {
+      "caseId": "preview-spool.source-row-count-must-match-streams",
+      "mutation": {
+        "op": "replace",
+        "path": "/sourceRowCount",
+        "value": 4
+      },
+      "expectedIssueCode": "SEC_PREVIEW_SPOOL_BINDING_INVALID"
+    },
+    {
+      "caseId": "preview-spool.byte-length-must-match-streams",
+      "mutation": {
+        "op": "replace",
+        "path": "/spoolByteLength",
+        "value": 351
+      },
+      "expectedIssueCode": "SEC_PREVIEW_SPOOL_BINDING_INVALID"
+    },
+    {
+      "caseId": "preview-spool.expiry-must-follow-creation",
+      "mutation": {
+        "op": "replace",
+        "path": "/expiresAt",
+        "value": "2026-07-17T01:59:59Z"
+      },
+      "expectedIssueCode": "SEC_PREVIEW_SPOOL_TTL_INVALID"
+    },
+    {
+      "caseId": "preview-spool.expiry-window-bounded",
+      "mutation": {
+        "op": "replace",
+        "path": "/expiresAt",
+        "value": "2026-07-18T02:00:01Z"
+      },
+      "expectedIssueCode": "SEC_PREVIEW_SPOOL_TTL_INVALID"
+    },
+    {
+      "caseId": "preview-spool.empty-rejection-stream-must-use-empty-hash",
+      "mutation": {
+        "op": "replace",
+        "path": "/streams/rejected/recordCount",
+        "value": 0
+      },
+      "expectedIssueCode": "SEC_PREVIEW_SPOOL_BINDING_INVALID"
+    }
+  ]
+}
