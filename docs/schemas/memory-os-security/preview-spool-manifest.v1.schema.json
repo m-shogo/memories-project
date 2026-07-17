@@ -7,12 +7,15 @@
   "required": [
     "$schema",
     "schemaVersion",
+    "spoolId",
     "jobId",
     "ownerAccountId",
     "accountEpoch",
     "source",
     "adapter",
     "optionsSha256",
+    "sourceRowCount",
+    "spoolByteLength",
     "streams",
     "createdAt",
     "expiresAt",
@@ -24,6 +27,9 @@
     },
     "schemaVersion": {
       "const": 1
+    },
+    "spoolId": {
+      "$ref": "core.v1.schema.json#/$defs/OpaqueId"
     },
     "jobId": {
       "$ref": "core.v1.schema.json#/$defs/OpaqueId"
@@ -40,6 +46,7 @@
       "required": [
         "objectKey",
         "objectVersionId",
+        "contentLength",
         "checksumSha256"
       ],
       "properties": {
@@ -57,6 +64,11 @@
           "minLength": 1,
           "maxLength": 256,
           "pattern": "^[A-Za-z0-9._~:+/=-]+$"
+        },
+        "contentLength": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 268435456
         },
         "checksumSha256": {
           "$ref": "core.v1.schema.json#/$defs/Sha256Hex"
@@ -88,6 +100,16 @@
     "optionsSha256": {
       "$ref": "core.v1.schema.json#/$defs/Sha256Hex"
     },
+    "sourceRowCount": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100000
+    },
+    "spoolByteLength": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 536870912
+    },
     "streams": {
       "type": "object",
       "additionalProperties": false,
@@ -97,10 +119,10 @@
       ],
       "properties": {
         "accepted": {
-          "$ref": "#/$defs/streamBinding"
+          "$ref": "#/$defs/acceptedStreamBinding"
         },
         "rejected": {
-          "$ref": "#/$defs/streamBinding"
+          "$ref": "#/$defs/rejectedStreamBinding"
         }
       }
     },
@@ -118,7 +140,11 @@
         "sealedBeforeVerification",
         "rehashRequiredBeforeCommit",
         "databaseTransactionDuringParseAllowed",
-        "rawRejectedValuesAllowed"
+        "rawRejectedValuesAllowed",
+        "manifestPathFieldsAllowed",
+        "symlinkFollowingAllowed",
+        "crossAttemptReuseAllowed",
+        "backupEligible"
       ],
       "properties": {
         "supervisorOwned": {
@@ -135,23 +161,73 @@
         },
         "rawRejectedValuesAllowed": {
           "const": false
+        },
+        "manifestPathFieldsAllowed": {
+          "const": false
+        },
+        "symlinkFollowingAllowed": {
+          "const": false
+        },
+        "crossAttemptReuseAllowed": {
+          "const": false
+        },
+        "backupEligible": {
+          "const": false
         }
       }
     }
   },
   "$defs": {
-    "streamBinding": {
+    "acceptedStreamBinding": {
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "recordFormat",
         "recordCount",
+        "byteLength",
         "sha256"
       ],
       "properties": {
+        "recordFormat": {
+          "const": "memory-os-preview-candidate-v1-length-prefixed"
+        },
+        "recordCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "byteLength": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 536870912
+        },
+        "sha256": {
+          "$ref": "core.v1.schema.json#/$defs/Sha256Hex"
+        }
+      }
+    },
+    "rejectedStreamBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recordFormat",
+        "recordCount",
+        "byteLength",
+        "sha256"
+      ],
+      "properties": {
+        "recordFormat": {
+          "const": "memory-os-preview-rejection-v1-length-prefixed"
+        },
         "recordCount": {
           "type": "integer",
           "minimum": 0,
-          "maximum": 100000
+          "maximum": 99999
+        },
+        "byteLength": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 536870912
         },
         "sha256": {
           "$ref": "core.v1.schema.json#/$defs/Sha256Hex"
