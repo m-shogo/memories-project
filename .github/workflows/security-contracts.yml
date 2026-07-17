@@ -13,6 +13,7 @@ on:
       - "scripts/validate-memory-os-apple-auth.py"
       - "scripts/validate-memory-os-signed-upload-openapi.py"
       - "scripts/validate-memory-os-parser-security.py"
+      - "scripts/validate-memory-os-preview-spool.py"
       - "requirements-security-validation.txt"
       - ".github/workflows/security-contracts.yml"
   push:
@@ -29,6 +30,7 @@ on:
       - "scripts/validate-memory-os-apple-auth.py"
       - "scripts/validate-memory-os-signed-upload-openapi.py"
       - "scripts/validate-memory-os-parser-security.py"
+      - "scripts/validate-memory-os-preview-spool.py"
       - "requirements-security-validation.txt"
       - ".github/workflows/security-contracts.yml"
   workflow_dispatch:
@@ -62,6 +64,7 @@ jobs:
           python -m py_compile scripts/validate-memory-os-apple-auth.py
           python -m py_compile scripts/validate-memory-os-signed-upload-openapi.py
           python -m py_compile scripts/validate-memory-os-parser-security.py
+          python -m py_compile scripts/validate-memory-os-preview-spool.py
 
       - name: Validate security schemas and fixtures
         run: python scripts/validate-memory-os-security.py
@@ -80,6 +83,9 @@ jobs:
 
       - name: Validate parser sandbox and archive safety
         run: python scripts/validate-memory-os-parser-security.py
+
+      - name: Validate Preview spool semantic invariants
+        run: python scripts/validate-memory-os-preview-spool.py
 
   validate-live-postgresql-rls:
     runs-on: ubuntu-latest
