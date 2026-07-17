@@ -87,6 +87,34 @@ func TestCreateAttemptDoesNotReuseExistingDirectory(t *testing.T) {
 	}
 }
 
+func TestCreateAttemptRejectsInjectedSymlinkWithoutFollowingIt(t *testing.T) {
+	manager, root := newTestManager(t)
+	target := filepath.Join(root, "outside")
+	if err := os.WriteFile(target, []byte("outside"), SpoolFileMode); err != nil {
+		t.Fatal(err)
+	}
+	manager.afterStep = func(stage string) {
+		if stage != stageDirectoryOpened {
+			return
+		}
+		if err := os.Symlink(target, filepath.Join(root, testSpoolID, AcceptedFileName)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	_, err := manager.CreateAttempt(context.Background(), testSpoolID)
+	if !errors.Is(err, ErrAttemptExists) {
+		t.Fatalf("expected injected entry rejection, got %v", err)
+	}
+	value, readErr := os.ReadFile(target)
+	if readErr != nil || string(value) != "outside" {
+		t.Fatalf("create followed injected symlink: %q %v", value, readErr)
+	}
+	if _, statErr := os.Lstat(filepath.Join(root, testSpoolID)); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("failed attempt survived cleanup: %v", statErr)
+	}
+}
+
 func TestCreateAttemptCleansEveryCancelledPartialStage(t *testing.T) {
 	stages := []string{
 		stageDirectoryCreated,
