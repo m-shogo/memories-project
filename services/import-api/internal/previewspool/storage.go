@@ -9,9 +9,10 @@ const (
 	AttemptDirMode = 0o700
 	SpoolFileMode  = 0o600
 
-	AcceptedFileName = "accepted.spool"
-	RejectedFileName = "rejected.spool"
-	ManifestFileName = "manifest.json"
+	AcceptedFileName     = "accepted.spool"
+	RejectedFileName     = "rejected.spool"
+	ManifestFileName     = "manifest.json"
+	ManifestTempFileName = "manifest.tmp"
 )
 
 var (
