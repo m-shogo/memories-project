@@ -26,24 +26,25 @@ not a production backend
 
 Preview spool:
 manifest contract hardened
-Linux filesystem attempt lifecycle checkpoint created
-stream writer / seal / verifier not implemented
+Linux attempt filesystem lifecycle created
+bounded accepted/rejected writer created
+fsync / seal / manifest publication / independent verifier not implemented
 
 PostgreSQL:
 RLS / upload persistence foundation migrations and SQL tests created
 production domain schema / Go repositories not created
 
-concrete object storage / parser supervisor / iOS / Portal:
+object storage / parser supervisor / iOS / Portal:
 NOT IMPLEMENTED
 
-current HEAD full repository and remote Actions result:
+exact current HEAD full repository and remote Actions:
 UNCONFIRMED
 
 production:
 NO-GO
 ```
 
-Do not claim perfect security, complete privacy, backend completion or production readiness.
+Do not claim perfect security, complete privacy, backend completion, Preview spool completion or production readiness.
 
 ---
 
@@ -53,13 +54,13 @@ Conflicts are resolved from top to bottom:
 
 1. `docs/memory-os-current-authority-order-round-9-security.md`
 2. `docs/memory-os-current-implementation-status-and-roadmap-2026-07-17.md`
-3. `docs/memory-os-preview-spool-commit-contract-round-9.md`
-4. `docs/schemas/memory-os-security/schema-registry.v1.json`
-5. `docs/fixtures/memory-os-security/fixture-index.round9.s1.v1.json`
+3. `docs/memory-os-preview-spool-stream-writer-checkpoint-2026-07-17.md`
+4. `docs/memory-os-preview-spool-commit-contract-round-9.md`
+5. security schema registry and fixture index
 6. current code under `services/import-api/`
 7. `services/import-api/README.md`
 8. `SECURITY.md`
-9. Round 9 architecture / threat model / verification gate
+9. Round 9 architecture, threat model and verification gate
 10. OpenAPI, PostgreSQL migrations/tests and validators/workflows
 11. Round 8 Capture / Import architecture
 12. prior privacy / persistence / deletion contracts
@@ -93,7 +94,7 @@ SpriteKit
 Metal only after measured need
 ```
 
-Earlier PixiJS/WebGL Town documents are design exploration, not the current binding runtime choice for the iOS-only product.
+Earlier PixiJS/WebGL Town documents are design exploration, not the current binding runtime for the iOS-only product.
 
 Parser, adapter, dedupe, Preview and Apply logic are canonical in the backend and are not independently reimplemented across Swift/browser/Go.
 
@@ -119,91 +120,98 @@ Parser, adapter, dedupe, Preview and Apply logic are canonical in the backend an
 - Runtime roles are fixed, `NOLOGIN NOINHERIT NOBYPASSRLS`, and do not own user tables.
 - Verified server principals set transaction-local owner and epoch.
 - Missing context denies.
-- Existing SQL migrations are security foundations, not the complete production domain schema.
+- Existing SQL migrations are security foundations, not the complete production schema.
 
-## Upload
+## Upload and parser
 
 - Server generates owner, epoch, job-bound object key and authoritative storage fields.
-- Authorization binds size, checksum, content type and expiry.
-- Completion verifies actual server-side metadata and exact object version.
-- Authorization consumption and scan enqueue are atomic.
-- Quarantine is private, non-listable and versioned.
-
-## Parser
-
-- non-root, no privilege escalation, capabilities dropped;
-- read-only root and job-private `noexec,nosuid,nodev` temp;
-- no network, metadata endpoint, host mounts, secrets or cross-job access;
-- bounded CPU, memory, PID, wall time, FD, temp and output;
-- reviewed digest-pinned adapter artifact;
-- path traversal, links, special files, collisions, encrypted/multivolume archives, deep/duplicate-key JSON and oversized CSV are rejected.
+- Upload authorization binds size, checksum, content type and expiry.
+- Completion verifies server-side metadata and exact object version.
+- Parser is non-root, networkless, read-only, secretless, job-isolated and resource-bounded.
+- Reviewed digest-pinned adapter artifacts are required.
+- Traversal, links, special files, collisions, encrypted/multivolume archives, deep/duplicate-key JSON and oversized CSV are rejected.
 
 ## CSV and Preview source
 
 - Generic CSV is synchronous one-row pull.
-- No hidden goroutine/channel/background persistence in iterator or bridge.
-- Cancellation/fatal parse failures are sticky.
+- No hidden goroutine/channel/background persistence in iterator, bridge or spool writer.
+- Cancellation and fatal failures are sticky.
 - Normalized parser options are SHA-256-bound; caller mismatch rejects before DB work.
 - P0 timezone authority is embedded UTC and Asia/Tokyo.
 - Source rows strictly increase.
 - Rejections contain only source row and stable `IMPORT_*` codes.
 
-## Preview spool and atomic commit
+---
+
+# 4. Preview spool and atomic commit authority
 
 Production parsing inside a PostgreSQL transaction is forbidden.
 
 ```txt
 version-bound source
 → transaction-free isolated parse
-→ one supervisor-owned bounded spool attempt
-→ seal and independent re-hash
+→ supervisor-owned bounded spool attempt
+→ fsync / seal / atomic manifest publication
+→ independent decode / count / re-hash
 → epoch/source/adapter/options recheck
 → one short client-side pgx.CopyFrom transaction
 → candidates + safe rejections + immutable ready Preview
 → COMMIT or full ROLLBACK
 ```
 
-Manifest authority binds:
+Manifest binds server-generated `spoolId`, job/owner/epoch, source key/version/size/checksum, adapter identity/reviewed digest, options digest, exact accepted/rejected formats/counts/bytes/hashes, aggregate rows/bytes and maximum 24-hour TTL. Path fields, symlink following, cross-attempt reuse and backup eligibility are forbidden.
 
-- server-generated `spoolId`;
-- job/owner/epoch;
-- source key/version/size/checksum;
-- adapter ID/version/reviewed artifact digest;
-- normalized options digest;
-- exact accepted/rejected formats, counts, bytes and hashes;
-- aggregate rows/bytes and maximum 24-hour TTL;
-- no path fields, symlink following, cross-attempt reuse or backup eligibility.
+## Implemented filesystem checkpoint
 
-Current filesystem checkpoint under `internal/previewspool`:
-
-- Linux-only strong implementation;
-- supervisor-provisioned exact `0700` root;
+- Linux-only strong implementation; non-Linux fails closed;
+- exact supervisor-owned `0700` root;
 - descriptor-relative `mkdirat/openat`;
-- `O_EXCL/O_NOFOLLOW` fixed-name `0600` files;
+- `O_EXCL/O_NOFOLLOW` fixed-name `0600` entries;
 - owner/type/mode/link checks;
 - attempt device/inode substitution rejection;
-- cancellation cleanup at each construction stage;
-- unknown-entry fail-closed cleanup;
-- non-Linux fail-closed behavior.
+- cancellation cleanup and unknown-entry fail-closed cleanup.
 
-This checkpoint does not serialize records, enforce stream byte/row limits, write/seal manifests, re-hash streams or commit PostgreSQL rows.
+## Implemented bounded writer checkpoint
+
+- separate accepted/rejected streams;
+- `8-byte big-endian length + canonical bytes`;
+- `100,000` aggregate record limit;
+- `512 MiB` aggregate byte limit;
+- `2 MiB` per-record limit;
+- exact-file-byte SHA-256 including length prefix;
+- at least one accepted record;
+- sticky cancel/limit/short-write/`ENOSPC`/lifecycle errors;
+- terminal failure closes writable handles and cannot resume;
+- empty manifest placeholder removed before writing;
+- successful close returns evidence but does not seal.
+
+## Still forbidden / incomplete
+
+- no stream fsync;
+- no exclusive `manifest.tmp` writer;
+- no atomic rename/directory fsync/sealed state;
+- no independent reader/decode/count/re-hash;
+- no startup reconciliation or TTL cleanup;
+- no production PostgreSQL wiring.
 
 `preview.AtomicMaterializer` remains reference-only and is forbidden as the production PostgreSQL path.
 
-## Apply and deletion
+---
+
+# 5. Apply and deletion authority
 
 - Final Apply is iOS-user-only and exact Preview hash-bound.
 - Apply never reparses.
 - Idempotency key binds request hash.
-- Created + updated + skipped accounts for all accepted candidates or rollback.
+- Created + updated + skipped accounts for every accepted candidate or rollback.
 - Rejected rows never enter Apply.
 - Account epoch fences jobs, leases, uploads, objects, spools, Preview, Apply, exports, caches and backup restoration.
 
 ---
 
-# 4. Executable status
+# 6. Executable status
 
-Implemented as partial Go security/reference code:
+Partial Go security/reference code exists for:
 
 ```txt
 verified Principal/context
@@ -218,7 +226,8 @@ reference AtomicMaterializer
 idempotent iOS-only Apply interfaces
 account epoch checkpoints
 CSV/JWT fuzz targets
-Linux Preview spool attempt filesystem lifecycle
+Linux Preview spool filesystem lifecycle
+bounded Preview spool accepted/rejected writer
 ```
 
 Not implemented:
@@ -227,21 +236,21 @@ Not implemented:
 production executable server/session issuer
 Apple code exchange/secret rotation/replay/session persistence
 production account/session/repository composition
-canonical spool record writer/seal/reader/rehash
-startup reconciliation/expiry cleanup/disk-failure recovery
+spool fsync/seal/manifest publication
+independent spool reader/decode/count/re-hash
+startup reconciliation/expiry cleanup/crash recovery
 production Preview candidate/rejection/ready schema
 pgx.CopyFrom Preview repository
 private versioned S3 signer/HEAD/lifecycle
 isolated parser supervisor runtime
-concrete Apply/Memory persistence
-complete deletion fencing
-native iOS and Desktop Portal
+concrete Apply/Memory persistence and complete deletion fencing
+iOS and Desktop Portal
 ```
 
 Validation wording:
 
 ```txt
-Preview spool filesystem reconstructed mini-module:
+independently reconstructed Linux filesystem/writer package:
 gofmt + go test -race PASS
 
 exact current repository full Go suite:
@@ -251,11 +260,11 @@ remote Actions current result:
 UNCONFIRMED
 ```
 
-Targeted package evidence is not full-repository or production evidence.
+Targeted reconstruction is not full-repository or production evidence.
 
 ---
 
-# 5. Hard stops
+# 7. Hard stops
 
 Production remains forbidden while any remains:
 
@@ -266,7 +275,7 @@ Production remains forbidden while any remains:
 - upload key/metadata not exact-bound;
 - parser network/host/secrets/unbounded resources;
 - untrusted parse inside production DB transaction;
-- spool without fixed formats, limits, seal, independent re-hash and terminal cleanup;
+- spool without fixed formats, limits, fsync, atomic seal, independent re-hash and terminal cleanup;
 - partial candidate/rejection/Preview visibility;
 - missing epoch recheck immediately before commit;
 - deletion resurrection possible;
@@ -277,23 +286,24 @@ Production remains forbidden while any remains:
 
 ---
 
-# 6. Correct next sequence
+# 8. Correct next sequence
 
 ```txt
 0. confirm exact current HEAD validators / Go format-test-vet-race-fuzz / remote workflows
-1. implement canonical bounded accepted/rejected stream writers
-2. add sticky cancellation, short-write and disk-limit failure tests
-3. implement stream close/fsync, manifest publication and seal protocol
-4. implement independent reader/decode/count/re-hash verifier
-5. implement startup reconciliation and TTL cleanup of abandoned attempts
-6. prove truncation, append, malformed length, hardlink and crash cases
-7. create production Preview candidate/rejection/ready PostgreSQL schema
-8. implement short atomic pgx.CopyFrom commit repository
-9. prove epoch recheck, rollback and post-COMMIT retry recovery
-10. implement private versioned object storage and parser supervisor
-11. compose executable API/auth/repositories
-12. implement Apply/Memory/deletion
-13. begin iOS only after backend P0 closes
+1. implement stream fsync and close confirmation
+2. write exclusive manifest.tmp from exact writer evidence
+3. fsync manifest, atomic rename to manifest.json, fsync attempt directory
+4. mark sealed and prohibit further writes
+5. implement independent reader/decode/count/re-hash verifier
+6. implement startup reconciliation and TTL cleanup
+7. prove truncation, append, malformed length, hardlink and crash cases
+8. create production Preview candidate/rejection/ready PostgreSQL schema
+9. implement short atomic pgx.CopyFrom repository
+10. prove epoch recheck, rollback and post-COMMIT retry recovery
+11. implement private versioned object storage and parser supervisor
+12. compose executable API/auth/repositories
+13. implement Apply/Memory/deletion
+14. begin iOS only after backend P0 closes
 ```
 
 Memory Town remains after Capture / Import P0 blockers close.
