@@ -1,4 +1,4 @@
-# Next Chat Addendum — Memory OS Round 9 Preview Spool
+# Next Chat Addendum — Memory OS Round 9 Preview Spool Runtime
 
 最終更新: 2026-07-17
 
@@ -9,17 +9,21 @@ https://github.com/m-shogo/memories-project.git
 branch: so
 ```
 
-毎回、小さくcommit / pushする。
+Commit and push small, independently verifiable checkpoints.
 
 ---
 
 # Read first
 
 1. `docs/memory-os-current-authority-order-round-9-security.md`
-2. `docs/memory-os-preview-spool-commit-contract-round-9.md`
-3. `services/import-api/README.md`
-4. `SECURITY.md`
-5. `docs/next-chat-memory-os-round-9-security-addendum.md`
+2. `docs/memory-os-current-implementation-status-and-roadmap-2026-07-17.md`
+3. `docs/memory-os-preview-spool-commit-contract-round-9.md`
+4. `services/import-api/README.md`
+5. `SECURITY.md`
+6. `docs/schemas/memory-os-security/preview-spool-manifest.v1.schema.json`
+7. `scripts/validate-memory-os-preview-spool.py`
+
+Historical Round 9 progress and older next-chat documents do not override these files.
 
 ---
 
@@ -47,136 +51,130 @@ created
 reference AtomicMaterializer:
 created for invariant tests only
 
-production Preview spool:
+Preview spool manifest contract:
+hardened
+
+Preview spool structural negatives:
+9 targeted rejections
+
+Preview spool semantic validator:
+created with 6 targeted rejections
+
+production Preview spool filesystem/writer/reader:
 not created
 
-production PostgreSQL Preview repository:
+production PostgreSQL Preview schema / pgx repository:
 not created
 
-latest Go CI result:
-not confirmed by available connector after the new changes
+current HEAD full local Go and remote Actions result:
+unconfirmed
 
 production:
 NO-GO
 ```
 
-The previous Go baseline passed test / vet / race before the latest iterator and Preview spool changes. Do not copy that PASS claim forward until current CI or an equivalent local run succeeds.
-
 ---
 
-# Critical correction
+# Locked contract
 
-Do not parse a 256 MiB / 100,000-row source while a PostgreSQL transaction is open.
-
-The earlier reference materializer consumes the source inside its transaction callback. It proves hashing and decision invariants only and must not be wired to production PostgreSQL.
-
-Required production flow:
+The production path is:
 
 ```txt
 version-bound quarantine object
-→ isolated parser outside DB transaction
-→ bounded private accepted/rejected spool
-→ manifest and stream re-hash
+→ isolated synchronous parse outside DB transaction
+→ one supervisor-owned spool attempt
+→ fixed-format accepted/rejected streams
+→ sealed manifest
+→ independent stream re-hash and semantic verification
 → canonical account epoch recheck
-→ short client-side pgx.CopyFrom transaction
+→ one short client-side pgx.CopyFrom transaction
 → candidates + safe rejections + immutable ready Preview
 → COMMIT or full ROLLBACK
 ```
 
-Atomic visibility is required. A long parse transaction is forbidden.
+The manifest binds:
+
+- server-generated `spoolId`;
+- job / owner / account epoch;
+- source key / version / content length / checksum;
+- adapter ID / version / reviewed artifact digest;
+- normalized options digest;
+- aggregate source-row and spool-byte totals;
+- exact accepted/rejected record formats, counts, byte lengths and SHA-256;
+- creation and expiry with a maximum 24-hour TTL;
+- no path fields, symlink following, cross-attempt reuse or backup eligibility.
+
+P0 stream formats:
+
+```txt
+memory-os-preview-candidate-v1-length-prefixed
+memory-os-preview-rejection-v1-length-prefixed
+```
+
+Each record is an 8-byte unsigned big-endian length followed by exact canonical bytes. Hash exact file bytes, including prefixes.
 
 ---
 
-# Implemented code added in this correction
+# Immediate implementation checkpoint
+
+Implement only the filesystem attempt lifecycle.
+
+Required behavior:
 
 ```txt
-services/import-api/internal/adapters/genericcsv/iterator.go
-services/import-api/internal/adapters/genericcsv/iterator_test.go
-services/import-api/internal/adapters/genericcsv/options_digest.go
-services/import-api/internal/adapters/genericcsv/options_digest_test.go
-services/import-api/internal/preview/atomic_materializer.go
-services/import-api/internal/preview/atomic_materializer_test.go
-services/import-api/internal/pipeline/generic_csv_preview.go
-services/import-api/internal/pipeline/generic_csv_preview_test.go
-services/import-api/internal/pipeline/generic_csv_pipeline.go
-services/import-api/internal/pipeline/generic_csv_pipeline_test.go
+supervisor private root
+→ create server-generated attempt directory exclusively
+→ mode 0700 or stricter
+→ create fixed accepted/rejected/manifest filenames exclusively
+→ mode 0600 or stricter
+→ descriptor-relative no-follow access
+→ verify type / owner / mode / link count
+→ idempotent terminal cleanup
 ```
 
-Binding behavior:
+Tests in the same checkpoint:
 
-- no hidden goroutines or channels;
-- one source row per synchronous call;
-- cancellation and fatal parse errors are sticky;
-- accepted / rejected source rows must be strictly increasing;
-- accepted candidate may have zero warnings;
-- rejected row requires stable `IMPORT_[A-Z0-9_]+` issue codes;
-- rejection type has no field for raw user values;
-- options digest is computed from the actual normalized parser options;
-- caller-supplied options hash mismatch is rejected before DB work;
-- P0 date locations are embedded `UTC` and `Asia/Tokyo` only;
-- candidate stream and rejection stream have separate hashes;
-- final Preview v2 hash includes both stream hashes and both counts.
+- existing attempt directory fails closed;
+- existing stream/manifest file fails closed;
+- symlink and hardlink substitution fail;
+- cross-job and cross-attempt path reuse fail;
+- cancellation between every creation step cleans partial state;
+- repeated cleanup is safe;
+- cleanup does not escape the supervisor root;
+- unsafe permissions or non-regular files fail closed.
+
+Do not implement stream serialization, PostgreSQL persistence, S3 networking or parser containers inside this first checkpoint.
 
 ---
 
-# Required Preview spool manifest
-
-The next machine-readable contract must bind:
+# Following checkpoints
 
 ```txt
-manifest format version
-job ID
-owner account ID
-account epoch
-source object key
-source object version ID
-source checksum
-adapter ID / version / artifact digest
-normalized options digest
-accepted count / accepted stream hash
-rejected count / rejected stream hash
-created-at / expires-at
+1. filesystem attempt lifecycle
+2. canonical bounded stream writers
+3. manifest writer, seal and independent reader/rehash
+4. truncation / append / malformed record / disk-full / crash tests
+5. production Preview candidate/rejection/ready PostgreSQL schema
+6. pgx.CopyFrom atomic repository and account-epoch recheck
+7. rollback and post-COMMIT acknowledgement-loss retry proof
+8. concrete private versioned object storage
+9. isolated parser supervisor and adapter artifact verification
 ```
-
-Spool files must be private, bounded, job-specific, ephemeral, excluded from backup and deleted after success, failure, cancellation or expiry.
-
-Rejected spool records may contain only source row and stable issue codes.
-
----
-
-# Next correct implementation sequence
-
-```txt
-1. confirm current Go format / test / vet / race result
-2. add PreviewSpoolManifest JSON Schema and positive / negative fixtures
-3. implement supervisor-owned 0700 spool directory and 0600 files
-4. implement accepted and rejected stream writers with byte / row limits
-5. implement manifest writer and independent stream re-hash reader
-6. add truncation / append / cross-job / symlink / expiry negative tests
-7. create PostgreSQL Preview candidate / rejection / ready Preview tables
-8. implement client-side pgx.CopyFrom repository
-9. verify canonical account epoch immediately before commit
-10. prove candidate / rejection / Preview rollback together
-11. prove retry after post-COMMIT acknowledgement loss returns one Preview
-12. delete spool on every terminal path
-13. only then connect concrete quarantine reader and parser supervisor
-```
-
-Do not implement concrete production Preview persistence before steps 1-10 pass.
 
 ---
 
 # Hard stops
 
-- untrusted parse while DB transaction is open;
-- partial candidate or rejection visibility;
-- rejected report containing raw cell values;
-- caller-controlled options hash;
-- source object version not bound;
-- adapter digest not bound;
-- spool without permissions, size limits, TTL and cleanup;
-- server-side `COPY FROM '/path'`;
+- parse while a production DB transaction is open;
+- caller/adapter-controlled filesystem paths;
+- opening existing attempts as new work;
+- symlink or hardlink following;
+- raw rejected values in spool/report;
+- unbounded rows or bytes;
+- manifest-only trust without independent re-hash;
+- partial candidate/rejection visibility;
 - missing epoch recheck immediately before commit;
+- spool surviving success, failure, cancellation or expiry;
 - remote CI unknown at release judgment time;
 - unresolved P0 greater than zero.
 
