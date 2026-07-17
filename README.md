@@ -23,9 +23,10 @@ Read first:
 
 1. [Round 9 Security Authority](docs/memory-os-current-authority-order-round-9-security.md)
 2. [Current Implementation Status and Roadmap](docs/memory-os-current-implementation-status-and-roadmap-2026-07-17.md)
-3. [Preview Spool and Atomic Commit Contract](docs/memory-os-preview-spool-commit-contract-round-9.md)
-4. [Import API Security Slice](services/import-api/README.md)
-5. [Security Status](SECURITY.md)
+3. [Preview Spool Seal Checkpoint](docs/memory-os-preview-spool-seal-checkpoint-2026-07-17.md)
+4. [Preview Spool and Atomic Commit Contract](docs/memory-os-preview-spool-commit-contract-round-9.md)
+5. [Import API Security Slice](services/import-api/README.md)
+6. [Security Status](SECURITY.md)
 
 ```txt
 product priority:
@@ -44,8 +45,10 @@ not a production backend
 
 Preview spool:
 manifest contract hardened
-Linux attempt filesystem lifecycle checkpoint created
-stream writer / seal / verifier missing
+Linux attempt filesystem lifecycle created
+bounded accepted/rejected writer created
+stream fsync + no-replace manifest publication created
+independent verifier missing
 
 PostgreSQL:
 RLS / upload security foundations created
@@ -54,7 +57,7 @@ production domain schema and repositories incomplete
 object storage / parser supervisor / iOS / Portal:
 not implemented
 
-current repository full/remote validation:
+current full-repository / remote validation:
 unconfirmed
 
 production:
@@ -64,6 +67,8 @@ NO-GO
 “Go backend未実装” is stale, but “backend complete” is also wrong. The exact status is **partial security vertical slice**.
 
 “PostgreSQL migration/test created” means the RLS and upload-security foundation exists; it does not mean Preview/Apply/Memory production persistence is complete.
+
+A published spool manifest is still untrusted. PostgreSQL work remains forbidden until an independent reader strictly decodes and re-hashes both streams and verifies every binding.
 
 ---
 
@@ -129,48 +134,46 @@ Parser, adapter, dedupe, Preview and Apply are canonical backend concerns and ar
 
 ```txt
 0. confirm exact current HEAD validators / Go format-test-vet-race-fuzz / remote workflows
-1. bounded canonical accepted/rejected Preview spool stream writers
-2. short-write, disk-limit and sticky cancellation tests
-3. stream close/fsync + atomic manifest publication/seal
-4. independent reader/decode/count/re-hash verifier
-5. startup reconciliation and TTL cleanup
-6. truncation/append/malformed-length/crash/tamper tests
-7. production Preview candidate/rejection/ready PostgreSQL schema
-8. short atomic pgx.CopyFrom repository
-9. epoch recheck / rollback / retry-after-COMMIT proof
-10. private versioned object storage
-11. isolated parser supervisor
-12. executable API + concrete Apple session/replay/repositories
-13. Apply/Memory/deletion fencing
-14. iOS vertical slice
-15. limited Desktop Portal
-16. Memory Town runtime after Capture / Import P0 reaches zero
+1. independent sealed-spool manifest and stream verifier
+2. truncation / append / malformed-length / hardlink / cross-attempt tests
+3. startup reconciliation and TTL cleanup
+4. production Preview candidate/rejection/ready PostgreSQL schema
+5. short atomic pgx.CopyFrom repository
+6. epoch recheck / rollback / retry-after-COMMIT proof
+7. private versioned object storage
+8. isolated parser supervisor
+9. executable API + concrete Apple session/replay/repositories
+10. Apply / Memory / deletion fencing
+11. iOS vertical slice
+12. limited Desktop Portal
+13. Memory Town runtime after Capture / Import P0 reaches zero
 ```
 
-Completed checkpoint:
+Completed Preview spool checkpoints:
 
 ```txt
-Linux Preview spool attempt filesystem lifecycle
-0700 supervisor root
-mkdirat/openat
-O_EXCL/O_NOFOLLOW fixed 0600 files
-owner/type/mode/link checks
-inode substitution rejection
-partial cancellation cleanup
-idempotent successful cleanup
-non-Linux fail closed
+private Linux attempt filesystem lifecycle
++ exact bounded accepted/rejected writer
++ stream fsync
++ exclusive manifest.tmp
++ deterministic manifest JSON
++ linkat no-replace publication
++ temp unlink and attempt-directory fsync
++ rollback / durability-uncertain error boundary
 ```
 
 Immediate next checkpoint:
 
 ```txt
-8-byte big-endian length-prefixed canonical stream writers
-+ accepted/rejected type separation
-+ 100,000 aggregate row limit
-+ 512 MiB aggregate byte limit
-+ exact file-byte SHA-256
-+ sticky cancellation/write failure
-+ no goroutines/channels
+open final manifest and streams descriptor-relative with O_NOFOLLOW
+→ require final manifest regular 0600 single-link
+→ require manifest.tmp absent
+→ strictly decode manifest
+→ decode bounded length-prefixed streams
+→ independently count bytes and records
+→ independently SHA-256 exact bytes
+→ compare every manifest binding
+→ reject mismatch before any database transaction
 ```
 
 Do not mix PostgreSQL, S3, parser-container or client work into that checkpoint.
