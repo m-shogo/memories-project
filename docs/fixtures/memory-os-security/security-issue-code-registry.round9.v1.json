@@ -1,7 +1,7 @@
 {
   "$schema": "https://memory-os.example/schemas/security/security-issue-code-registry.v1.schema.json",
   "registryId": "memory-os.security.issue-codes.round9",
-  "registryVersion": 5,
+  "registryVersion": 6,
   "codes": [
     { "code": "SEC_AUTHORIZED", "category": "authorization", "severity": "info", "blocksApply": false, "retryable": false, "safeMessageKey": "memoryOS.security.authorized", "mayIncludePrivateValue": false },
     { "code": "SEC_CROSS_USER_ACCESS_DENIED", "category": "authorization", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.crossUserAccessDenied", "mayIncludePrivateValue": false },
@@ -52,6 +52,11 @@
     { "code": "SEC_ADAPTER_ARTIFACT_REVIEW_MISMATCH", "category": "supply_chain", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.adapterArtifactReviewMismatch", "mayIncludePrivateValue": false },
     { "code": "SEC_DELETION_FENCE_SCOPE_INCOMPLETE", "category": "deletion", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.deletionFenceScopeIncomplete", "mayIncludePrivateValue": false },
     { "code": "SEC_OLD_EPOCH_WRITE_FORBIDDEN", "category": "deletion", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.oldEpochWriteForbidden", "mayIncludePrivateValue": false },
-    { "code": "SEC_AUDIT_PRIVATE_FIELD_FORBIDDEN", "category": "logging", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.auditPrivateFieldForbidden", "mayIncludePrivateValue": false }
+    { "code": "SEC_AUDIT_PRIVATE_FIELD_FORBIDDEN", "category": "logging", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.auditPrivateFieldForbidden", "mayIncludePrivateValue": false },
+    { "code": "SEC_PREVIEW_SPOOL_PRIVATE_VALUE_FORBIDDEN", "category": "preview_apply", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.previewSpoolPrivateValueForbidden", "mayIncludePrivateValue": false },
+    { "code": "SEC_PREVIEW_SPOOL_BINDING_INVALID", "category": "preview_apply", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.previewSpoolBindingInvalid", "mayIncludePrivateValue": false },
+    { "code": "SEC_PREVIEW_SPOOL_LIMIT_EXCEEDED", "category": "preview_apply", "severity": "high", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.previewSpoolLimitExceeded", "mayIncludePrivateValue": false },
+    { "code": "SEC_PREVIEW_SPOOL_TRANSACTION_BOUNDARY_INVALID", "category": "preview_apply", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.previewSpoolTransactionBoundaryInvalid", "mayIncludePrivateValue": false },
+    { "code": "SEC_PREVIEW_SPOOL_REHASH_REQUIRED", "category": "preview_apply", "severity": "critical", "blocksApply": true, "retryable": false, "safeMessageKey": "memoryOS.security.previewSpoolRehashRequired", "mayIncludePrivateValue": false }
   ]
 }
