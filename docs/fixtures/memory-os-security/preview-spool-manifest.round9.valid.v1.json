@@ -1,12 +1,14 @@
 {
   "$schema": "https://memory-os.example/schemas/security/preview-spool-manifest.v1.schema.json",
   "schemaVersion": 1,
+  "spoolId": "spl_01J00000000000000000000000",
   "jobId": "job_01J000000000000000000000000",
   "ownerAccountId": "acct_01J00000000000000000000000",
   "accountEpoch": 7,
   "source": {
-    "objectKey": "quarantine/job_01J000000000000000000000000/source.csv",
+    "objectKey": "quarantine/job_01J000000000000000000000000/upl_01J00000000000000000000000",
     "objectVersionId": "version-01J00000000000000000000000",
+    "contentLength": 4096,
     "checksumSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   },
   "adapter": {
@@ -15,13 +17,19 @@
     "artifactSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
   },
   "optionsSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "sourceRowCount": 3,
+  "spoolByteLength": 352,
   "streams": {
     "accepted": {
+      "recordFormat": "memory-os-preview-candidate-v1-length-prefixed",
       "recordCount": 2,
+      "byteLength": 256,
       "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
     },
     "rejected": {
+      "recordFormat": "memory-os-preview-rejection-v1-length-prefixed",
       "recordCount": 1,
+      "byteLength": 96,
       "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
     }
   },
@@ -32,6 +40,10 @@
     "sealedBeforeVerification": true,
     "rehashRequiredBeforeCommit": true,
     "databaseTransactionDuringParseAllowed": false,
-    "rawRejectedValuesAllowed": false
+    "rawRejectedValuesAllowed": false,
+    "manifestPathFieldsAllowed": false,
+    "symlinkFollowingAllowed": false,
+    "crossAttemptReuseAllowed": false,
+    "backupEligible": false
   }
 }
