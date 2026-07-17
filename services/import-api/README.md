@@ -2,44 +2,30 @@
 
 This Go module is the first executable backend security slice for Capture / Import.
 
-It is intentionally incomplete. It does not yet expose a production server and must not be described as a production backend.
+It is intentionally incomplete. It does not expose a production server and must not be described as a production backend.
 
 ## Implemented reference and boundary code
 
-- private verified-principal model;
-- verified-principal request-context boundary;
-- fixed PostgreSQL privilege-role allowlist;
-- transaction-local account ID / account epoch setup;
-- RS256 Apple identity-token verification;
-- exact issuer, audience, time-window, nonce and subject checks;
-- duplicate-key and credential-size rejection for identity-token JSON;
-- Apple JWKS retrieval with fixed HTTPS origin, response limits and bounded cache;
-- authorization-code subject / client / redirect binding interfaces;
-- replay-guard and canonical `issuer + subject` account-binding interfaces;
-- signed quarantine-upload authorization core;
-- strict upload HTTP handlers with unknown-field and body-size rejection;
-- upload completion endpoint that rejects client-supplied authoritative metadata;
-- exact owner / epoch / job / key / size / checksum / type / expiry binding;
-- server-side object metadata verification interface;
-- object-version binding before scan queueing;
-- atomic authorization consumption interface;
-- cryptographically random opaque ID generation;
-- bounded Generic CSV parsing with explicit mapping, deterministic fingerprints and row decisions;
-- synchronous one-row-at-a-time CSV iterator with sticky cancellation and terminal failures;
-- canonical CSV options normalization and SHA-256 binding, limited to embedded UTC / Asia-Tokyo rules in P0;
-- synchronous CSV-to-Preview RowEvent bridge with no goroutines, channels or separate persistence;
-- safe rejected-row records containing only source row and stable `IMPORT_*` issue codes;
-- Preview v2 hash model binding accepted candidates, safe rejection report, counts, source version, adapter digest and options digest;
-- reference AtomicMaterializer tests proving ordering, exclusive decisions and all-or-error finalization behavior;
-- strict Apply HTTP boundary that rejects owner / epoch injection;
-- iOS-user-only Apply service with exact Preview hash, request-bound idempotency and full candidate accounting;
+- private verified-principal model and request-context boundary;
+- fixed PostgreSQL privilege-role allowlist and transaction-local account ID/epoch setup;
+- RS256 Apple identity-token verification, duplicate-key rejection and bounded JWKS cache;
+- authorization-code/replay/account-binding interfaces;
+- signed quarantine-upload authorization core and strict HTTP handlers;
+- exact owner/epoch/job/key/size/checksum/type/expiry and object-version binding interfaces;
+- cryptographically random opaque IDs;
+- bounded Generic CSV parser;
+- synchronous one-row CSV iterator with sticky cancellation/failure;
+- canonical parser-options normalization and SHA-256 binding;
+- synchronous CSV-to-Preview RowEvent bridge with no goroutines/channels;
+- safe rejected-row records with source row and stable `IMPORT_*` codes only;
+- Preview v2 accepted/rejected hash model;
+- reference AtomicMaterializer invariant tests;
+- iOS-only exact-hash idempotent Apply service interfaces;
+- account-state/epoch checkpoint guards;
 - Generic CSV and Apple compact-JWT fuzz targets;
-- canonical account-state / epoch checkpoint guard;
-- required fenced wrappers that checkpoint upload, Preview and Apply before irreversible writes.
+- Linux Preview spool attempt filesystem lifecycle.
 
-## Machine contracts now available
-
-The repository also contains a hardened Preview spool manifest contract and dedicated semantic validator:
+## Preview spool contracts
 
 ```txt
 docs/schemas/memory-os-security/preview-spool-manifest.v1.schema.json
@@ -50,15 +36,43 @@ docs/fixtures/memory-os-security/preview-spool-manifest-semantic-cases.round9.v1
 scripts/validate-memory-os-preview-spool.py
 ```
 
-The contract binds one server-generated parse attempt, exact source/adapter/options evidence, fixed accepted/rejected record formats, counts, byte lengths, hashes and a maximum 24-hour TTL. It forbids manifest path fields, symlink following, cross-attempt reuse, backup eligibility and database transactions during parsing.
+The contract binds one server-generated parse attempt, source/adapter/options evidence, fixed accepted/rejected formats, counts, byte lengths, hashes and a maximum 24-hour TTL. It forbids manifest path fields, symlink following, cross-attempt reuse, backup eligibility and database transactions during parsing.
 
-A contract is not a runtime implementation.
+## Preview spool filesystem checkpoint
+
+Implemented under `internal/previewspool`:
+
+- Linux-only strong implementation; non-Linux fails closed;
+- supervisor-provisioned absolute canonical root with exact `0700` mode and owner check;
+- validated single-segment `spoolId`;
+- descriptor-relative `mkdirat/openat`;
+- fixed accepted/rejected/manifest filenames;
+- `O_CREAT | O_EXCL | O_NOFOLLOW`, exact `0600` mode;
+- directory/file type, owner, mode and regular-file link-count checks;
+- captured attempt device/inode and substitution rejection;
+- cancellation cleanup after each partial creation stage;
+- unknown-entry fail-closed cleanup;
+- idempotent successful cleanup;
+- symlink cleanup that unlinks the link without following the target.
+
+Targeted evidence:
+
+```txt
+independently reconstructed Linux mini-module:
+gofmt + go test -race PASS
+
+actual repository full Go suite:
+UNCONFIRMED
+
+remote workflow result:
+UNCONFIRMED
+```
+
+This is not the complete spool runtime. Canonical record encoding, bounded stream writing, fsync/seal, manifest publication, independent reader/re-hash, expiry reconciliation and PostgreSQL commit are still missing.
 
 ## Critical production boundary
 
-The in-process `preview.AtomicMaterializer` consumes its row source inside the transaction callback. It is a vertical-slice reference for hashing and invariants only.
-
-It must not be connected to a production PostgreSQL repository for large or untrusted imports.
+`preview.AtomicMaterializer` consumes its source inside the transaction callback. It is a reference for hashing/invariants only and must not be connected to production PostgreSQL for untrusted imports.
 
 Required production flow:
 
@@ -67,7 +81,7 @@ version-bound quarantine object
 → isolated transaction-free parser
 → supervisor-owned bounded accepted/rejected spool
 → sealed manifest and independent stream re-hash
-→ canonical account epoch and binding recheck
+→ account epoch and binding recheck
 → one short client-side pgx.CopyFrom transaction
 → candidates + safe rejections + immutable ready Preview
 → COMMIT or full ROLLBACK
@@ -82,33 +96,29 @@ docs/memory-os-current-implementation-status-and-roadmap-2026-07-17.md
 
 ## Deliberately not implemented yet
 
-- executable HTTP server composition and session-token issuer;
-- Apple authorization-code exchange client-secret signing and rotation;
+- executable HTTP server and session issuer;
+- Apple authorization-code exchange secret signing/rotation;
 - concrete replay/account/session repositories;
-- canonical account-control PostgreSQL repository;
-- production Preview candidate / rejection / ready tables;
-- concrete PostgreSQL repositories and driver composition;
-- client-side `pgx.CopyFrom` Preview commit repository;
-- concrete S3-compatible signer and object-store HEAD adapter;
-- private versioned bucket policy/lifecycle integration;
-- parser supervisor runtime;
-- supervisor-owned `0700` spool attempt directory;
-- fixed exclusive `0600` stream/manifest files;
-- canonical spool writer, seal, reader, re-hash and terminal cleanup;
-- concrete Generic CSV quarantine reader and adapter artifact verification;
-- concrete idempotent Apply repository and Memory persistence;
-- atomic deletion-epoch increment, worker lease cancellation and storage cleanup;
+- production Preview candidate/rejection/ready tables;
+- concrete PostgreSQL repositories and `pgx.CopyFrom` commit path;
+- concrete S3-compatible signer/HEAD adapter and lifecycle;
+- canonical accepted/rejected stream writer and limits;
+- stream fsync/seal and manifest writer;
+- independent spool reader/decode/count/re-hash verifier;
+- startup reconciliation and TTL cleanup;
+- disk-full/short-write/crash recovery evidence;
+- parser supervisor runtime and adapter artifact verification;
+- concrete Apply/Memory persistence;
+- complete deletion fencing and cleanup;
 - iOS and Desktop Portal clients.
-
-These remain production blockers.
 
 ## Validation commands
 
 ```bash
-# From repository root
+# repository root
 python scripts/validate-memory-os-preview-spool.py
 
-# From services/import-api
+# services/import-api
 test -z "$(gofmt -l .)"
 go test ./...
 go vet ./...
@@ -123,6 +133,6 @@ GOMAXPROCS=4 go test -run='^$' \
   -fuzztime=5s -timeout=30s ./internal/appleauth
 ```
 
-The previous Go baseline passed at its recorded snapshot. The exact current HEAD full Go suite and remote workflow result are not claimed by this README until rerun and recorded.
+Do not write `PASS` for the current repository HEAD until these commands and the remote workflows run against that exact HEAD.
 
-No live secrets, user content or production endpoints are used by the existing tests.
+No live secrets, user content or production endpoints are used by the current tests.
