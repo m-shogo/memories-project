@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/security/preview-spool-semantic-case-set.v1.schema.json",
+  "title": "Memory OS Preview Spool Semantic Case Set v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "caseSetId", "caseSetVersion", "targetSchemaId", "baseFixtureRef", "cases"],
+  "properties": {
+    "$schema": {"const": "https://memory-os.example/schemas/security/preview-spool-semantic-case-set.v1.schema.json"},
+    "caseSetId": {"$ref": "core.v1.schema.json#/$defs/StableId"},
+    "caseSetVersion": {"type": "integer", "minimum": 1},
+    "targetSchemaId": {"const": "https://memory-os.example/schemas/security/preview-spool-manifest.v1.schema.json"},
+    "baseFixtureRef": {"type": "string", "minLength": 1, "maxLength": 300},
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["caseId", "mutation", "expectedIssueCode"],
+        "properties": {
+          "caseId": {"$ref": "core.v1.schema.json#/$defs/StableId"},
+          "mutation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["op", "path"],
+            "properties": {
+              "op": {"enum": ["add", "replace", "remove"]},
+              "path": {"type": "string", "pattern": "^/", "maxLength": 512},
+              "value": {}
+            }
+          },
+          "expectedIssueCode": {"type": "string", "pattern": "^SEC_[A-Z0-9_]+$", "maxLength": 128}
+        }
+      }
+    }
+  }
+}
