@@ -36,44 +36,26 @@ func NewSealer(writer *StreamWriter) (*Sealer, error) {
 	}
 	return &Sealer{writer: writer, ops: defaultSealOperations()}, nil
 }
-
 func defaultSealOperations() sealOperations {
-	return sealOperations{
-		writeAll: writeAllContext,
-		syncFile: func(file *os.File) error { return file.Sync() },
-		syncDir:  syscall.Fsync,
-		linkNoReplace: linkatNoReplace,
-	}
+	return sealOperations{writeAll: writeAllContext, syncFile: func(f *os.File) error { return f.Sync() }, syncDir: syscall.Fsync, linkNoReplace: linkatNoReplace}
 }
 
-// Seal is the only successful stream-to-manifest transition. It fsyncs both
-// stream files before closing them, writes and fsyncs an exclusive temp
-// manifest, publishes without replacing an existing final name, removes the
-// temp name, and fsyncs the attempt directory. The published manifest is still
-// untrusted until an independent reader decodes and re-hashes both streams.
 func (s *Sealer) Seal(ctx context.Context, input SealInput) (SealEvidence, error) {
 	if s == nil || s.writer == nil {
 		return SealEvidence{}, ErrAttemptMissing
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	writer := s.writer
-	writer.mu.Lock()
-	defer writer.mu.Unlock()
-
-	evidence := WriteEvidence{
-		SourceRowCount:  writer.totalRecords,
-		SpoolByteLength: writer.totalBytes,
-		Accepted:        evidenceOf(writer.accepted),
-		Rejected:        evidenceOf(writer.rejected),
-	}
-	payload, digest, err := buildManifest(writer.attempt.id, input, evidence)
+	w := s.writer
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	evidence := WriteEvidence{SourceRowCount: w.totalRecords, SpoolByteLength: w.totalBytes, Accepted: evidenceOf(w.accepted), Rejected: evidenceOf(w.rejected)}
+	payload, digest, err := buildManifest(w.attempt.id, input, evidence)
 	if err != nil {
 		if s.sealed {
 			return SealEvidence{}, ErrSealConflict
 		}
-		return SealEvidence{}, writer.fail(err)
+		return SealEvidence{}, w.fail(err)
 	}
 	if s.sealed {
 		if digest != s.sealDigest {
@@ -81,100 +63,90 @@ func (s *Sealer) Seal(ctx context.Context, input SealInput) (SealEvidence, error
 		}
 		return s.evidence, nil
 	}
-	if writer.terminalErr != nil {
-		return SealEvidence{}, writer.terminalErr
+	if w.terminalErr != nil {
+		return SealEvidence{}, w.terminalErr
 	}
-	if writer.closed {
+	if w.closed {
 		return SealEvidence{}, ErrStreamWriterClosed
 	}
 	if ctx == nil {
-		return SealEvidence{}, writer.fail(errors.New("Preview spool seal requires context"))
+		return SealEvidence{}, w.fail(errors.New("Preview spool seal requires context"))
 	}
 	if err := ctx.Err(); err != nil {
-		return SealEvidence{}, writer.fail(err)
+		return SealEvidence{}, w.fail(err)
 	}
-	if writer.accepted.recordCount == 0 {
-		return SealEvidence{}, writer.fail(ErrAcceptedRecordRequired)
+	if w.accepted.recordCount == 0 {
+		return SealEvidence{}, w.fail(ErrAcceptedRecordRequired)
 	}
-
-	attempt := writer.attempt
-	attempt.mu.Lock()
-	defer attempt.mu.Unlock()
-	if attempt.cleaned {
-		return SealEvidence{}, writer.failLocked(ErrAttemptMissing)
+	a := w.attempt
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.cleaned {
+		return SealEvidence{}, w.failLocked(ErrAttemptMissing)
 	}
-	if attempt.accepted == nil || attempt.rejected == nil {
-		return SealEvidence{}, writer.failLocked(ErrAttemptMissing)
+	if a.accepted == nil || a.rejected == nil {
+		return SealEvidence{}, w.failLocked(ErrAttemptMissing)
 	}
-	if err := s.ops.syncFile(attempt.accepted); err != nil {
-		return SealEvidence{}, writer.failLocked(fmt.Errorf("fsync accepted Preview spool stream: %w", err))
-	}
-	if err := ctx.Err(); err != nil {
-		return SealEvidence{}, writer.failLocked(err)
-	}
-	if err := s.ops.syncFile(attempt.rejected); err != nil {
-		return SealEvidence{}, writer.failLocked(fmt.Errorf("fsync rejected Preview spool stream: %w", err))
+	if err := s.ops.syncFile(a.accepted); err != nil {
+		return SealEvidence{}, w.failLocked(fmt.Errorf("fsync accepted Preview spool stream: %w", err))
 	}
 	if err := ctx.Err(); err != nil {
-		return SealEvidence{}, writer.failLocked(err)
+		return SealEvidence{}, w.failLocked(err)
 	}
-	if err := closeStreamFilesLocked(attempt); err != nil {
-		return SealEvidence{}, writer.failLocked(fmt.Errorf("close Preview spool streams before seal: %w", err))
+	if err := s.ops.syncFile(a.rejected); err != nil {
+		return SealEvidence{}, w.failLocked(fmt.Errorf("fsync rejected Preview spool stream: %w", err))
 	}
-
-	writer.evidence = evidence
-	writer.closed = true
-	if err := publishManifestAtomic(ctx, attempt, payload, s.ops); err != nil {
-		if writer.terminalErr == nil {
-			writer.terminalErr = err
+	if err := ctx.Err(); err != nil {
+		return SealEvidence{}, w.failLocked(err)
+	}
+	if err := closeStreamFilesLocked(a); err != nil {
+		return SealEvidence{}, w.failLocked(fmt.Errorf("close Preview spool streams before seal: %w", err))
+	}
+	w.evidence = evidence
+	w.closed = true
+	if err := publishManifestAtomic(ctx, a, payload, s.ops); err != nil {
+		if w.terminalErr == nil {
+			w.terminalErr = err
 		}
-		return SealEvidence{}, writer.terminalErr
+		return SealEvidence{}, w.terminalErr
 	}
-
 	sum := sha256.Sum256(payload)
-	result := SealEvidence{
-		WriteEvidence:      evidence,
-		ManifestByteLength: int64(len(payload)),
-		ManifestSHA256:     hex.EncodeToString(sum[:]),
-	}
+	result := SealEvidence{WriteEvidence: evidence, ManifestByteLength: int64(len(payload)), ManifestSHA256: hex.EncodeToString(sum[:])}
 	s.sealed = true
 	s.sealDigest = digest
 	s.evidence = result
 	return result, nil
 }
 
-func publishManifestAtomic(ctx context.Context, attempt *Attempt, payload []byte, ops sealOperations) error {
-	manager := attempt.manager
-	manager.mu.Lock()
-	defer manager.mu.Unlock()
-	if manager.closed {
+func publishManifestAtomic(ctx context.Context, a *Attempt, payload []byte, ops sealOperations) (resultErr error) {
+	m := a.manager
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed {
 		return ErrManagerClosed
 	}
-	if err := manager.verifyRootDescriptor(); err != nil {
+	if err := m.verifyRootDescriptor(); err != nil {
 		return err
 	}
-
-	dirFD, err := syscall.Openat(manager.rootFD, attempt.id, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+	d, err := syscall.Openat(m.rootFD, a.id, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		return fmt.Errorf("open Preview spool attempt for seal: %w", err)
 	}
-	defer syscall.Close(dirFD)
-
-	var stat syscall.Stat_t
-	if err := syscall.Fstat(dirFD, &stat); err != nil {
+	defer syscall.Close(d)
+	var st syscall.Stat_t
+	if err := syscall.Fstat(d, &st); err != nil {
 		return fmt.Errorf("fstat Preview spool attempt for seal: %w", err)
 	}
-	if uint64(stat.Dev) != attempt.dirDev || stat.Ino != attempt.dirIno {
+	if uint64(st.Dev) != a.dirDev || st.Ino != a.dirIno {
 		return ErrAttemptSubstituted
 	}
-	if err := verifyDirectoryStat(&stat); err != nil {
+	if err := verifyDirectoryStat(&st); err != nil {
 		return fmt.Errorf("%w: %v", ErrUnsafeEntry, err)
 	}
-	if entryExistsAt(dirFD, ManifestFileName) || entryExistsAt(dirFD, ManifestTempFileName) {
+	if entryExistsAt(d, ManifestFileName) || entryExistsAt(d, ManifestTempFileName) {
 		return ErrSealPublicationExists
 	}
-
-	temp, err := createExclusiveFile(dirFD, ManifestTempFileName)
+	temp, err := createExclusiveFile(d, ManifestTempFileName)
 	if err != nil {
 		return fmt.Errorf("%w: create manifest temp: %v", ErrSealPublish, err)
 	}
@@ -183,9 +155,8 @@ func publishManifestAtomic(ctx context.Context, attempt *Attempt, payload []byte
 		if !tempClosed {
 			_ = temp.Close()
 		}
-		_ = syscall.Unlinkat(dirFD, ManifestTempFileName)
+		_ = syscall.Unlinkat(d, ManifestTempFileName)
 	}()
-
 	if err := ops.writeAll(ctx, temp, payload); err != nil {
 		return fmt.Errorf("%w: write manifest temp: %v", ErrSealPublish, err)
 	}
@@ -199,20 +170,19 @@ func publishManifestAtomic(ctx context.Context, attempt *Attempt, payload []byte
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-
-	if err := ops.linkNoReplace(dirFD, ManifestTempFileName, dirFD, ManifestFileName); err != nil {
+	if err := ops.linkNoReplace(d, ManifestTempFileName, d, ManifestFileName); err != nil {
 		if errors.Is(err, syscall.EEXIST) {
 			return ErrSealPublicationExists
 		}
 		return fmt.Errorf("%w: publish manifest: %v", ErrSealPublish, err)
 	}
-	if err := syscall.Unlinkat(dirFD, ManifestTempFileName); err != nil {
-		rollbackErr := syscall.Unlinkat(dirFD, ManifestFileName)
+	if err := syscall.Unlinkat(d, ManifestTempFileName); err != nil {
+		rollbackErr := syscall.Unlinkat(d, ManifestFileName)
 		return errors.Join(fmt.Errorf("%w: remove manifest temp: %v", ErrSealPublish, err), rollbackErr)
 	}
-	if err := ops.syncDir(dirFD); err != nil {
-		unlinkErr := syscall.Unlinkat(dirFD, ManifestFileName)
-		rollbackSyncErr := ops.syncDir(dirFD)
+	if err := ops.syncDir(d); err != nil {
+		unlinkErr := syscall.Unlinkat(d, ManifestFileName)
+		rollbackSyncErr := ops.syncDir(d)
 		if unlinkErr != nil || rollbackSyncErr != nil {
 			return errors.Join(ErrSealDurabilityUncertain, fmt.Errorf("directory fsync after publish: %w", err), unlinkErr, rollbackSyncErr)
 		}
@@ -220,34 +190,24 @@ func publishManifestAtomic(ctx context.Context, attempt *Attempt, payload []byte
 	}
 	return nil
 }
-
-func entryExistsAt(dirFD int, name string) bool {
-	fd, err := syscall.Openat(dirFD, name, syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+func entryExistsAt(d int, name string) bool {
+	fd, err := syscall.Openat(d, name, syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		return !errors.Is(err, syscall.ENOENT)
 	}
 	_ = syscall.Close(fd)
 	return true
 }
-
-func linkatNoReplace(oldDirFD int, oldName string, newDirFD int, newName string) error {
-	oldPointer, err := syscall.BytePtrFromString(oldName)
+func linkatNoReplace(od int, on string, nd int, nn string) error {
+	op, err := syscall.BytePtrFromString(on)
 	if err != nil {
 		return err
 	}
-	newPointer, err := syscall.BytePtrFromString(newName)
+	np, err := syscall.BytePtrFromString(nn)
 	if err != nil {
 		return err
 	}
-	_, _, errno := syscall.Syscall6(
-		syscall.SYS_LINKAT,
-		uintptr(oldDirFD),
-		uintptr(unsafe.Pointer(oldPointer)),
-		uintptr(newDirFD),
-		uintptr(unsafe.Pointer(newPointer)),
-		0,
-		0,
-	)
+	_, _, errno := syscall.Syscall6(syscall.SYS_LINKAT, uintptr(od), uintptr(unsafe.Pointer(op)), uintptr(nd), uintptr(unsafe.Pointer(np)), 0, 0)
 	if errno != 0 {
 		return errno
 	}
