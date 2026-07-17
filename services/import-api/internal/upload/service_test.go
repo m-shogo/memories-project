@@ -119,7 +119,7 @@ func TestIssueDerivesOwnerAndObjectKeyFromVerifiedContext(t *testing.T) {
 
 func TestIssueRejectsWorkerAuthority(t *testing.T) {
 	principal := mustPrincipal(t, security.AuthorityWorkerLease)
-	_, err := (Service{}).Issue(context.Background(), principal, validIssueRequest())
+	_, err := (&Service{}).Issue(context.Background(), principal, validIssueRequest())
 	if !errors.Is(err, ErrAuthorityNotAllowed) {
 		t.Fatalf("expected authority rejection, got %v", err)
 	}
