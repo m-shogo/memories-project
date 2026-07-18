@@ -1,6 +1,6 @@
 {
   "indexId": "memory-os.security.fixture-index.round9.s1",
-  "indexVersion": 17,
+  "indexVersion": 18,
   "schemaRegistryPath": "docs/schemas/memory-os-security/schema-registry.v1.json",
   "fixtures": [
     { "fixtureId": "memory-os.security.issue-codes.round9", "path": "docs/fixtures/memory-os-security/security-issue-code-registry.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-issue-code-registry.v1.schema.json", "status": "targeted_validation_pass" },
@@ -64,6 +64,7 @@
     "previewSpoolReconciliationTargetedRaceAndVetPassed": true,
     "previewPostgresDomainSchemaCreated": true,
     "previewPostgresDomainLocalSqlTestsPassed": true,
+    "previewPostgresDomainRemoteLiveJobPassed": true,
     "previewPostgresCopyRepositoryCreated": false,
     "previewSpoolImplementationCreated": false,
     "repositoryValidatorCreated": true,
@@ -109,7 +110,6 @@
     "archiveSafetyDenies": 24
   },
   "nextRequired": [
-    "confirm_security_contracts_live_job_for_preview_domain_head",
     "implement_preview_pgx_copy_commit_repository",
     "implement_signed_upload_storage_adapter",
     "implement_isolated_parser_supervisor",
