@@ -30,7 +30,8 @@ startup reconciliation + TTL cleanup created
 
 PostgreSQL:
 RLS / upload security foundation migrations and SQL tests created
-production domain schema / repositories incomplete
+production Preview domain schema created with live SQL tests
+Go pgx.CopyFrom repositories incomplete
 
 object storage / parser supervisor / iOS / Portal:
 NOT IMPLEMENTED
@@ -98,7 +99,7 @@ Historical PASS applies only to its recorded commit. The current repository full
 - Sign in with Apple is verified server-side; identity is issuer + subject, not email.
 - Client account, owner, epoch, bucket, object key and version are never authority.
 - PostgreSQL uses fixed roles and transaction-local owner/epoch; user security tables use `FORCE RLS`.
-- Existing SQL is a security foundation, not the complete production domain schema.
+- Existing SQL provides the security foundation plus the production Preview domain (`preview_ready`/`preview_candidate`/`preview_rejection`): worker-only insert, no updates, deterministic commit keys, one ready Preview per job, structurally safe rejections and a completeness gate before COMMIT.
 - Signed upload binds one owner/epoch/job/key/size/checksum/type/expiry and verifies real object metadata/version.
 - CSV parsing is bounded synchronous pull; no hidden goroutine/channel in iterator or Preview bridge.
 - Preview binds source, adapter, options and accepted/rejected evidence.
@@ -135,6 +136,7 @@ Preview spool writer top-level tests:        9
 Preview spool seal top-level tests:         10
 Preview spool verifier top-level tests:     15
 Preview spool reconciliation top-level tests: 8
+Preview domain live SQL test blocks:        19
 ```
 
 Repository-integrated Go evidence:
@@ -158,7 +160,7 @@ Production remains blocked until current evidence exists for:
 - concrete Apple code exchange, replay and session issuance;
 - private versioned object storage enforcement;
 - deployment-exclusive reconciliation execution and quarantine alerting;
-- production Preview schema and atomic `pgx.CopyFrom` repository;
+- atomic `pgx.CopyFrom` commit repository over the created Preview schema;
 - concrete Apply/Memory persistence;
 - real parser supervisor and artifact verification;
 - malicious corpus/fuzz evidence;
