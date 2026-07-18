@@ -67,7 +67,7 @@ current full-repository Go suite:
 PASS in a local golang:1.23 Linux container at the recorded HEAD
 
 remote Actions:
-reconciliation HEAD green; Preview domain HEAD a04b5e1 green (Security Contracts run 29647813064, live migration + tests)
+commit-repository HEAD a942532 green (Import API run 29649255941 with live DB tests, Security Contracts run 29649255942)
 
 production:
 NO-GO
@@ -142,7 +142,7 @@ Parser, adapter, dedupe, Preview and Apply are canonical backend concerns and ar
 # Current implementation order
 
 ```txt
-0. confirm remote workflows for the commit-repository HEAD
+0. remote workflows confirmed for the commit-repository HEAD — done
 1. private versioned object storage
 2. isolated parser supervisor
 3. executable API + concrete Apple session/replay/repositories

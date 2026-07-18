@@ -44,7 +44,7 @@ exact current HEAD full repository Go suite:
 CONFIRMED in a local golang:1.23 Linux container
 
 remote Actions:
-reconciliation HEAD 7ca86a5 CONFIRMED green; Preview domain HEAD a04b5e1 CONFIRMED green (Security Contracts run 29647813064 with live 003 migration + preview tests)
+commit-repository HEAD a942532 CONFIRMED green (Import API run 29649255941 with live DB tests, Security Contracts run 29649255942)
 
 production:
 NO-GO
@@ -318,7 +318,7 @@ Production remains forbidden while any remains:
 # 8. Correct next sequence
 
 ```txt
-0. confirm remote workflows for the commit-repository HEAD
+0. remote workflows confirmed for the commit-repository HEAD — done
 1. implement private versioned object storage adapter
 2. implement isolated parser supervisor
 3. compose executable API/auth/repositories

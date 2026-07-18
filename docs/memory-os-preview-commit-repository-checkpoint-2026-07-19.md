@@ -88,8 +88,10 @@ local golang:1.23 + postgres:16-alpine (fresh database), exact HEAD 0f2a86abf933
 gofmt clean + go vet + go test -race ./... (14 packages, live DB tests included) + both 5s fuzz smokes PASS
 package skips cleanly when MEMORY_OS_TEST_DATABASE_URL is unset
 
-remote Import API workflow with the new postgres service:
-recorded after the push completes
+remote Import API workflow with the new postgres service
+(pushed HEAD a942532, run 29649255941):
+SUCCESS — live DB tests executed (not skipped) against the service container
+Security Contracts run 29649255942: SUCCESS
 ```
 
 ## Residual risks
