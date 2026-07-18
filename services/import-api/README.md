@@ -22,7 +22,8 @@ It is intentionally incomplete. It does not expose a production server and must 
 - bounded accepted/rejected stream writer;
 - stream fsync and durable no-replace manifest publication;
 - independent sealed-spool decode/count/re-hash verifier;
-- startup crash-residue reconciliation and TTL cleanup.
+- startup crash-residue reconciliation and TTL cleanup;
+- atomic Preview commit repository against live PostgreSQL.
 
 ## Preview spool contract
 
@@ -104,6 +105,23 @@ docs/memory-os-preview-spool-verifier-checkpoint-2026-07-17.md
 docs/memory-os-preview-spool-reconciliation-checkpoint-2026-07-18.md
 ```
 
+## Atomic Preview commit repository
+
+Implemented in `internal/previewcommit` (pgx v5, live-tested):
+
+```txt
+BEGIN
+→ SET LOCAL ROLE memory_worker_runtime + owner/epoch context
+→ idempotent-retry check on the deterministic commit key
+→ verify job binding and preview_building state under FORCE RLS
+→ insert preview_ready (claims the commit key)
+→ parameterized bulk-insert candidates and rejections
+→ assert_preview_complete
+→ mark the job preview_ready → COMMIT, full ROLLBACK on any error
+```
+
+PostgreSQL forbids `COPY FROM` under row-level security, so bulk loading uses the contract-allowed equivalent: one parameterized `INSERT ... SELECT FROM unnest(...)` per stream with FORCE RLS in force. The deterministic commit key excludes the spool attempt ID, so an identical re-parse returns the committed Preview; a conflicting retry is rejected. Live tests (gated on `MEMORY_OS_TEST_DATABASE_URL`, self-applying migrations 001–003) prove atomicity, retry, rollback and the full spool → seal → verify → commit flow.
+
 ## Critical production boundary
 
 A published manifest is untrusted until `previewspool.Verifier.Verify` passes for it in the same flow. The future commit path must hold the recomputed evidence and re-check epoch/job state inside its own transaction.
@@ -119,7 +137,7 @@ version-bound quarantine object
 → durable no-replace manifest publication
 → independent decode/count/re-hash
 → epoch and binding recheck
-→ one short pgx.CopyFrom transaction
+→ one short parameterized bulk-insert transaction (COPY is forbidden under RLS)
 → immutable ready Preview
 → COMMIT or full ROLLBACK
 ```
@@ -128,8 +146,8 @@ version-bound quarantine object
 
 - executable HTTP server/session issuer;
 - Apple code exchange/secret rotation and concrete replay/session stores;
-- production Preview candidate/rejection/ready tables;
-- concrete PostgreSQL repositories and `pgx.CopyFrom` path;
+- supervisor composition wiring verifier and commit repository as one flow;
+- reviewed canonical-record contract for candidate JSON;
 - S3-compatible signer/HEAD/lifecycle;
 - real parser supervisor and artifact verification;
 - concrete Apply/Memory persistence and complete deletion fencing;
@@ -139,8 +157,8 @@ version-bound quarantine object
 
 ```txt
 exact repository-integrated Go suite
-(code HEAD 3628123fc978f4fcc0a12daed13235599b8218af, local golang:1.23 Linux container):
-gofmt clean + go vet + go test -race + both 5s fuzz smokes PASS
+(code HEAD 0f2a86abf93313affcb81b5b12fcf79daddfc09b, local golang:1.23 Linux container + fresh postgres:16):
+gofmt clean + go vet + go test -race (live DB tests included) + both 5s fuzz smokes PASS
 
 Preview spool contract validator:
 PASS
