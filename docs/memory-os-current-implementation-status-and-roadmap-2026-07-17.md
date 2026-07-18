@@ -34,7 +34,7 @@ Linux attempt filesystem lifecycle created
 bounded accepted/rejected writer created
 stream fsync + no-replace manifest publication created
 independent decode / count / re-hash verifier created
-startup reconciliation / TTL cleanup not implemented
+startup reconciliation + TTL cleanup created
 
 object storage runtime:
 not implemented
@@ -48,14 +48,14 @@ not implemented
 exact current HEAD Go suite:
 confirmed in a local golang:1.23 Linux container
 
-remote GitHub Actions for the pushed verifier HEAD:
-confirmed success (Import API run 29593229514, Security Contracts run 29593228786)
+remote GitHub Actions:
+verifier HEAD confirmed green; reconciliation HEAD recorded after push
 
 production:
 NO-GO
 ```
 
-`Go backend未実装`は古い。一方、executable server、production repositories、real object storage、real sandbox、session issuer、spool reconciliation、iOS clientがないため、`backend完成`も誤り。正確な表現は **partial security vertical slice**。
+`Go backend未実装`は古い。一方、executable server、production repositories、real object storage、real sandbox、session issuer、iOS clientがないため、`backend完成`も誤り。正確な表現は **partial security vertical slice**。
 
 ---
 
@@ -78,10 +78,11 @@ NO-GO
 | CSV → Preview bridge | Reference | No hidden goroutine/channel | Production verified spool and commit path |
 | Preview v2 hashing | Reference | Candidate + safe rejection hashes/counts | Production persistence/retry recovery |
 | Preview spool manifest | Contract hardened | Attempt/source/format/count/byte/hash/TTL binding | Production commit integration |
-| Preview filesystem | Partial | Linux descriptor-relative no-follow lifecycle | Startup reconciliation, expiry, deployment proof |
-| Preview writer | Partial | Exact length-prefixed bytes, bounds, sticky terminal failure | Crash reconciliation |
-| Preview seal/publication | Partial | stream fsync, exclusive temp, linkat no-replace, directory fsync | Crash-residue reconciliation |
-| Preview verifier | Partial | Strict canonical decode, bounded re-scan, exact re-count/re-hash, binding/expiry rejection | Startup reconciliation, TTL cleanup, commit integration |
+| Preview filesystem | Partial | Linux descriptor-relative no-follow lifecycle | Deployment mount proof |
+| Preview writer | Partial | Exact length-prefixed bytes, bounds, sticky terminal failure | Production commit integration |
+| Preview seal/publication | Partial | stream fsync, exclusive temp, linkat no-replace, directory fsync | Production commit integration |
+| Preview verifier | Partial | Strict canonical decode, bounded re-scan, exact re-count/re-hash, binding/expiry rejection | Commit-path integration |
+| Preview reconciliation | Partial | Startup classification, residue removal, publication completion, TTL cleanup, fail-closed quarantine | Deployment supervisor exclusivity proof, quarantine alerting |
 | AtomicMaterializer | Reference only | Hash/decision invariants | Forbidden for production PostgreSQL; parse occurs inside transaction callback |
 | Apply service | Partial | iOS authority and exact-hash idempotency interfaces | Concrete Preview/Memory repository and deletion fencing |
 | Executable Go API | Not implemented | No production `main` lifecycle | Auth/session/repositories/storage/worker composition |
@@ -190,11 +191,29 @@ docs/memory-os-preview-spool-seal-checkpoint-2026-07-17.md
 docs/memory-os-preview-spool-verifier-checkpoint-2026-07-17.md
 ```
 
-## 4.5 Explicitly incomplete
+## 4.5 Startup reconciliation and TTL cleanup
 
-- no startup reconciliation for crash residue such as `manifest.tmp` or both linked names;
-- no TTL cleanup worker;
+Created:
+
+- one exclusive startup pass under the manager lock, deterministic name order;
+- sealed / unsealed / temp-residue / completed-publication / unknown classification;
+- fixed-name-only removal of crash residue and expired sealed attempts;
+- completion of the linkat crash window when both manifest names share one inode;
+- fail-closed in-place quarantine of everything unclassifiable, with a reportable list;
+- sealed unexpired attempts never deleted and still verifiable afterwards;
+- resumable cancellation and non-Linux fail-closed behavior.
+
+Detailed evidence:
+
+```txt
+docs/memory-os-preview-spool-reconciliation-checkpoint-2026-07-18.md
+```
+
+## 4.6 Explicitly incomplete
+
 - no production mount/runtime evidence;
+- no deployment proof of exclusive startup reconciliation;
+- no operator alerting for quarantined residue;
 - no production PostgreSQL commit integration.
 
 A published manifest is untrusted until its verification passes; verification is now implemented, and the commit path must run it (and re-check epoch/job state) inside its own transaction boundary.
@@ -203,7 +222,7 @@ A published manifest is untrusted until its verification passes; verification is
 
 # 5. Validation status
 
-Confirmed for the exact repository-integrated module at code HEAD `e75b7324e0388b264d90f67ee3094d788fadf5f4` in a local `golang:1.23` Linux container:
+Confirmed for the exact repository-integrated module at code HEAD `3628123fc978f4fcc0a12daed13235599b8218af` in a local `golang:1.23` Linux container:
 
 ```txt
 gofmt -l . (empty):
@@ -248,7 +267,7 @@ A local container run is repository evidence, not production or deployment evide
 
 ## Gate 1 — private spool filesystem
 
-Status: **partial implementation**. Remaining: supervisor mount proof, startup reconciliation, expiry cleanup, crash residue handling and exact-current CI evidence.
+Status: **partial implementation**. Startup reconciliation, expiry cleanup and crash-residue handling are now created; remaining: supervisor mount proof and deployment exclusivity evidence.
 
 ## Gate 2 — bounded writer / seal / verifier
 
@@ -267,15 +286,15 @@ PARTIAL IMPLEMENTATION CREATED
 
 Proved at the verifier boundary: truncation, appended records, torn appends, malformed length prefixes, same-length content substitution, hard links, symlinks, wrong modes, temp residue, spoofed spool IDs and expiry.
 
-Remaining: crash-residue classification, startup reconciliation and TTL cleanup with their own interruption proofs.
+Proved at the reconciliation boundary: crash-residue classification, publication completion, TTL removal, fail-closed quarantine and mid-pass cancellation resumability.
 
-Immediate sequence:
+Gate 3 is closed at the package boundary; production still requires deployment-level exclusivity and mount evidence.
 
-1. enumerate the supervisor root descriptor-relative;
-2. classify sealed / unsealed / temp-residue / both-name-residue / unknown attempts;
-3. terminally quarantine or remove crash residue without recursive deletes of unknown entries;
-4. remove expired sealed attempts after the 24-hour TTL and never delete sealed unexpired attempts;
-5. prove interruption safety with targeted tests.
+Immediate sequence (Gate 4):
+
+1. define candidate/rejection/ready Preview tables with deterministic commit keys;
+2. enforce immutability, contiguous ordinals and FORCE RLS profiles;
+3. prove no partial reader visibility with SQL tests before any Go repository code.
 
 ## Gate 4 — production Preview PostgreSQL domain
 
@@ -304,9 +323,9 @@ Allowed:
 ```txt
 security architecture defined
 partial Go security vertical slice exists
-Preview spool filesystem, writer, seal-publication and independent-verifier checkpoints created
+Preview spool filesystem, writer, seal-publication, independent-verifier and reconciliation checkpoints created
 repository-integrated Go suite passes in a Linux container at the recorded HEAD
-spool reconciliation and production runtime blockers remain
+production PostgreSQL, storage, parser and client blockers remain
 production NO-GO
 ```
 
