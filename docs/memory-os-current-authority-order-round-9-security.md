@@ -44,7 +44,7 @@ exact current HEAD full repository Go suite:
 CONFIRMED in a local golang:1.23 Linux container
 
 remote Actions:
-reconciliation HEAD 7ca86a5 CONFIRMED green (Import API run 29635896458, Security Contracts run 29635896453)
+reconciliation HEAD 7ca86a5 CONFIRMED green; Preview domain HEAD a04b5e1 CONFIRMED green (Security Contracts run 29647813064 with live 003 migration + preview tests)
 
 production:
 NO-GO
@@ -119,7 +119,7 @@ Parser, adapter, dedupe, Preview and Apply logic are canonical in the backend an
 - Browser pairing authority cannot final Apply.
 - `ENABLE RLS` and `FORCE RLS` are mandatory.
 - Runtime roles are `NOLOGIN NOINHERIT NOBYPASSRLS` and do not own user tables.
-- Existing SQL is a security foundation, not the complete production domain schema.
+- Existing SQL provides the security foundation and the production Preview domain; Apply/Memory production persistence does not exist yet.
 
 ## Upload and parser
 
@@ -309,7 +309,7 @@ Production remains forbidden while any remains:
 # 8. Correct next sequence
 
 ```txt
-0. confirm remote Security Contracts live job for the Preview domain HEAD
+0. remote Security Contracts live job confirmed for the Preview domain HEAD — done
 1. implement short atomic pgx.CopyFrom repository
 2. prove epoch recheck, rollback and post-COMMIT retry recovery
 3. implement private versioned object storage and parser supervisor

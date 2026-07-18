@@ -66,7 +66,7 @@ current full-repository Go suite:
 PASS in a local golang:1.23 Linux container at the recorded HEAD
 
 remote Actions:
-reconciliation HEAD confirmed green (Import API run 29635896458, Security Contracts run 29635896453)
+reconciliation HEAD green; Preview domain HEAD a04b5e1 green (Security Contracts run 29647813064, live migration + tests)
 
 production:
 NO-GO
@@ -141,7 +141,7 @@ Parser, adapter, dedupe, Preview and Apply are canonical backend concerns and ar
 # Current implementation order
 
 ```txt
-0. confirm remote Security Contracts live job for the Preview domain HEAD
+0. remote Security Contracts live job confirmed for the Preview domain HEAD — done
 1. short atomic pgx.CopyFrom repository
 2. epoch recheck / rollback / retry-after-COMMIT proof
 3. private versioned object storage

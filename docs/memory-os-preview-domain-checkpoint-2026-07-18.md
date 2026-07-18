@@ -93,8 +93,10 @@ local PostgreSQL 16 (postgres:16-alpine container):
 001 + 002 + 003 migrations and all three SQL test suites PASS
 re-applied migrations and re-run tests PASS (idempotent)
 
-remote Security Contracts live job with 003 + preview tests:
-recorded after the push completes
+remote Security Contracts live job with 003 + preview tests
+(pushed HEAD a04b5e1, run 29647813064):
+Apply Preview domain migration SUCCESS
+Execute Preview domain integration tests SUCCESS
 ```
 
 ## Residual risks
