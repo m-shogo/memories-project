@@ -38,7 +38,7 @@ NOT IMPLEMENTED
 GitHub Actions:
 workflows created
 earlier Import API runs failed on formatting/vet; repaired at the verifier checkpoint
-pushed verifier HEAD confirmed green (Import API run 29593229514, Security Contracts run 29593228786)
+verifier and reconciliation HEADs confirmed green (latest: Import API run 29635896458, Security Contracts run 29635896453)
 
 production:
 NO-GO
@@ -147,7 +147,7 @@ gofmt clean + go vet + go test -race + both 5s fuzz smokes PASS
 remote Actions at verifier HEAD f6d9c03:
 Import API Security Slice run 29593229514 SUCCESS
 Security Contracts run 29593228786 SUCCESS
-(reconciliation HEAD result recorded after its push)
+reconciliation HEAD 7ca86a5: Import API run 29635896458 and Security Contracts run 29635896453 SUCCESS
 ```
 
 ## Production blockers
