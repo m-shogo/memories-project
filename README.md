@@ -64,7 +64,7 @@ current full-repository Go suite:
 PASS in a local golang:1.23 Linux container at the recorded HEAD
 
 remote Actions:
-verifier HEAD confirmed green; reconciliation HEAD recorded after push
+reconciliation HEAD confirmed green (Import API run 29635896458, Security Contracts run 29635896453)
 
 production:
 NO-GO
@@ -139,7 +139,7 @@ Parser, adapter, dedupe, Preview and Apply are canonical backend concerns and ar
 # Current implementation order
 
 ```txt
-0. confirm remote workflows for the pushed reconciliation HEAD
+0. remote workflows confirmed for the reconciliation HEAD — done
 1. production Preview candidate/rejection/ready PostgreSQL schema (SQL + tests first)
 2. short atomic pgx.CopyFrom repository
 3. epoch recheck / rollback / retry-after-COMMIT proof

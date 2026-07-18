@@ -43,7 +43,7 @@ exact current HEAD full repository Go suite:
 CONFIRMED in a local golang:1.23 Linux container
 
 remote Actions:
-verifier HEAD f6d9c03 CONFIRMED green; reconciliation HEAD recorded after push
+reconciliation HEAD 7ca86a5 CONFIRMED green (Import API run 29635896458, Security Contracts run 29635896453)
 
 production:
 NO-GO
@@ -265,7 +265,7 @@ gofmt clean + go vet + go test -race + both fuzz smokes PASS
 remote Actions at verifier HEAD f6d9c03:
 Import API Security Slice run 29593229514 SUCCESS
 Security Contracts run 29593228786 SUCCESS
-(reconciliation HEAD result recorded after its push)
+reconciliation HEAD 7ca86a5: Import API run 29635896458 and Security Contracts run 29635896453 SUCCESS
 ```
 
 Earlier Import API remote runs failed at the Format check; the formatting and one test-only compile error were repaired at this checkpoint, producing the first green remote run on this branch. CI evidence is repository evidence, not production evidence.
@@ -296,7 +296,7 @@ Production remains forbidden while any remains:
 # 8. Correct next sequence
 
 ```txt
-0. confirm remote workflows for the pushed reconciliation HEAD
+0. remote workflows confirmed for the reconciliation HEAD — done
 1. create production Preview candidate/rejection/ready PostgreSQL schema (SQL + tests first)
 2. implement short atomic pgx.CopyFrom repository
 3. prove epoch recheck, rollback and post-COMMIT retry recovery

@@ -99,8 +99,9 @@ repository-integrated Go suite (exact HEAD 3628123fc978f4fcc0a12daed13235599b821
 gofmt clean + go vet + go test -race + both 5s fuzz smokes PASS
 (golang:1.23 Linux container, local Docker)
 
-remote GitHub Actions on the pushed HEAD:
-recorded after the push completes
+remote GitHub Actions (pushed HEAD 7ca86a5, code identical to 3628123):
+Import API Security Slice run 29635896458 SUCCESS
+Security Contracts run 29635896453 SUCCESS
 ```
 
 ## Residual risks

@@ -49,7 +49,7 @@ exact current HEAD Go suite:
 confirmed in a local golang:1.23 Linux container
 
 remote GitHub Actions:
-verifier HEAD confirmed green; reconciliation HEAD recorded after push
+reconciliation HEAD confirmed green (Import API run 29635896458, Security Contracts run 29635896453)
 
 production:
 NO-GO
