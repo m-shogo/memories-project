@@ -34,7 +34,8 @@ startup reconciliation + TTL cleanup created
 
 PostgreSQL:
 RLS / upload persistence foundation migrations and SQL tests created
-production domain schema / Go repositories not created
+production Preview domain schema created with live SQL tests
+Go pgx.CopyFrom repositories not created
 
 object storage / parser supervisor / iOS / Portal:
 NOT IMPLEMENTED
@@ -59,20 +60,21 @@ Conflicts are resolved from top to bottom:
 
 1. `docs/memory-os-current-authority-order-round-9-security.md`
 2. `docs/memory-os-current-implementation-status-and-roadmap-2026-07-17.md`
-3. `docs/memory-os-preview-spool-reconciliation-checkpoint-2026-07-18.md`
-4. `docs/memory-os-preview-spool-verifier-checkpoint-2026-07-17.md`
-5. `docs/memory-os-preview-spool-seal-checkpoint-2026-07-17.md`
-6. `docs/memory-os-preview-spool-stream-writer-checkpoint-2026-07-17.md`
-7. `docs/memory-os-preview-spool-commit-contract-round-9.md`
-8. security schema registry and fixture index
-9. current code under `services/import-api/`
-10. `services/import-api/README.md`
-11. `SECURITY.md`
-12. Round 9 architecture, threat model and verification gate
-13. OpenAPI, PostgreSQL migrations/tests and validators/workflows
-14. Round 8 Capture / Import architecture
-15. prior privacy / persistence / deletion contracts
-16. historical progress and handoff documents
+3. `docs/memory-os-preview-domain-checkpoint-2026-07-18.md`
+4. `docs/memory-os-preview-spool-reconciliation-checkpoint-2026-07-18.md`
+5. `docs/memory-os-preview-spool-verifier-checkpoint-2026-07-17.md`
+6. `docs/memory-os-preview-spool-seal-checkpoint-2026-07-17.md`
+7. `docs/memory-os-preview-spool-stream-writer-checkpoint-2026-07-17.md`
+8. `docs/memory-os-preview-spool-commit-contract-round-9.md`
+9. security schema registry and fixture index
+10. current code under `services/import-api/`
+11. `services/import-api/README.md`
+12. `SECURITY.md`
+13. Round 9 architecture, threat model and verification gate
+14. OpenAPI, PostgreSQL migrations/tests and validators/workflows
+15. Round 8 Capture / Import architecture
+16. prior privacy / persistence / deletion contracts
+17. historical progress and handoff documents
 
 Historical documents record old snapshots and never override current code or this order.
 
@@ -216,11 +218,23 @@ An ordinary rename is not the authority because it may replace an existing final
 - never deletes a sealed unexpired attempt; kept attempts still pass independent verification;
 - cancellation returns a partial report and re-running is safe; non-Linux fails closed.
 
+## Implemented Preview PostgreSQL domain checkpoint
+
+- `memory_os.preview_ready` / `preview_candidate` / `preview_rejection` with FORCE RLS and the standard owner/epoch policy;
+- worker-only INSERT, no UPDATE for any runtime role, deletion-runtime-only DELETE;
+- globally unique deterministic `commit_key`; one ready Preview per job and per spool attempt;
+- `state = 'ready'` only — no `building` Preview can exist;
+- exact seal-evidence bindings (source key/version/length/hash, adapter, options, counts, bytes, stream hashes, TTL) as database CHECKs;
+- rejection rows structurally cannot hold raw user values (source row + `IMPORT_*` codes only);
+- `assert_preview_complete` proves exact counts and contiguous `1..n` ordinals under invoker RLS before COMMIT;
+- live PostgreSQL 16 SQL tests in the Security Contracts workflow.
+
 ## Still incomplete and forbidden
 
-- no production PostgreSQL wiring;
+- no Go `pgx.CopyFrom` commit repository;
 - no production mount/runtime evidence;
-- no operator alerting for quarantined residue.
+- no operator alerting for quarantined residue;
+- RLS contract fixture not yet extended to the three preview domain tables.
 
 A published manifest remains untrusted until its verification passes; the commit path must run the verifier and re-check epoch/job state inside its own transaction boundary. `preview.AtomicMaterializer` remains reference-only and is forbidden as the production PostgreSQL path.
 
@@ -247,7 +261,6 @@ Not implemented:
 production executable server/session issuer
 Apple code exchange/secret rotation/replay/session persistence
 production account/session/repository composition
-production Preview candidate/rejection/ready schema
 pgx.CopyFrom Preview repository
 private versioned S3 signer/HEAD/lifecycle
 isolated parser supervisor runtime
@@ -296,14 +309,13 @@ Production remains forbidden while any remains:
 # 8. Correct next sequence
 
 ```txt
-0. remote workflows confirmed for the reconciliation HEAD — done
-1. create production Preview candidate/rejection/ready PostgreSQL schema (SQL + tests first)
-2. implement short atomic pgx.CopyFrom repository
-3. prove epoch recheck, rollback and post-COMMIT retry recovery
-4. implement private versioned object storage and parser supervisor
-5. compose executable API/auth/repositories
-6. implement Apply/Memory/deletion
-7. begin iOS only after backend P0 closes
+0. confirm remote Security Contracts live job for the Preview domain HEAD
+1. implement short atomic pgx.CopyFrom repository
+2. prove epoch recheck, rollback and post-COMMIT retry recovery
+3. implement private versioned object storage and parser supervisor
+4. compose executable API/auth/repositories
+5. implement Apply/Memory/deletion
+6. begin iOS only after backend P0 closes
 ```
 
 Memory Town remains after Capture / Import P0 blockers close.
