@@ -163,9 +163,9 @@ gofmt clean + go vet + go test -race (live DB tests included) + both 5s fuzz smo
 Preview spool contract validator:
 PASS
 
-remote workflows at reconciliation HEAD 7ca86a5:
-Import API Security Slice run 29635896458 SUCCESS
-Security Contracts run 29635896453 SUCCESS
+remote workflows at commit-repository HEAD a942532:
+Import API Security Slice run 29649255941 SUCCESS (live DB tests executed)
+Security Contracts run 29649255942 SUCCESS
 ```
 
 Earlier remote Import API runs had failed at the Format check; five unformatted sources and one pointer-receiver compile error in `internal/upload/service_test.go` were repaired at the verifier checkpoint, and the branch has run green since.

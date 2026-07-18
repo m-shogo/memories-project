@@ -50,7 +50,7 @@ exact current HEAD Go suite:
 confirmed in a local golang:1.23 Linux container
 
 remote GitHub Actions:
-reconciliation HEAD confirmed green (Import API run 29635896458, Security Contracts run 29635896453)
+commit-repository HEAD a942532 confirmed green (Import API run 29649255941 with live DB tests, Security Contracts run 29649255942)
 
 production:
 NO-GO
@@ -232,7 +232,7 @@ A published manifest is untrusted until its verification passes; verification is
 
 # 5. Validation status
 
-Confirmed for the exact repository-integrated module at code HEAD `3628123fc978f4fcc0a12daed13235599b8218af` in a local `golang:1.23` Linux container:
+Confirmed for the exact repository-integrated module at code HEAD `0f2a86abf93313affcb81b5b12fcf79daddfc09b` in a local `golang:1.23` Linux container with a fresh `postgres:16`:
 
 ```txt
 gofmt -l . (empty):
@@ -241,19 +241,19 @@ PASS
 go vet ./...:
 PASS
 
-go test -race ./...:
+go test -race ./... (14 packages, live DB tests included):
 PASS
 
 both 5s fuzz smokes:
 PASS
 
-scripts/validate-memory-os-preview-spool.py:
+scripts/validate-memory-os-preview-spool.py and validate-memory-os-security.py:
 PASS
 ```
 
 This run also repaired the previously failing suite: five unformatted sources and one pointer-receiver compile error in `internal/upload/service_test.go` had failed the remote Format/Vet steps on every earlier push.
 
-Also confirmed after push: Import API Security Slice run 29593229514 and Security Contracts run 29593228786 succeeded on pushed HEAD `f6d9c03` (code identical to `e75b732`) — the first green Import API remote run on this branch.
+Also confirmed after push: Import API Security Slice run 29649255941 (live DB tests executed against the CI postgres service) and Security Contracts run 29649255942 succeeded on pushed HEAD `a942532` (code identical to `0f2a86a`). Every push since the verifier checkpoint has run green.
 
 Not confirmed:
 

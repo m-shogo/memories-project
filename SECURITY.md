@@ -39,7 +39,7 @@ NOT IMPLEMENTED
 GitHub Actions:
 workflows created
 earlier Import API runs failed on formatting/vet; repaired at the verifier checkpoint
-verifier and reconciliation HEADs confirmed green (latest: Import API run 29635896458, Security Contracts run 29635896453)
+every push since the verifier checkpoint green (latest: Import API run 29649255941 with live DB tests, Security Contracts run 29649255942)
 
 production:
 NO-GO
@@ -143,14 +143,13 @@ Preview commit repository top-level tests:   9
 Repository-integrated Go evidence:
 
 ```txt
-code HEAD 3628123fc978f4fcc0a12daed13235599b8218af
-(local golang:1.23 Linux container):
-gofmt clean + go vet + go test -race + both 5s fuzz smokes PASS
+code HEAD 0f2a86abf93313affcb81b5b12fcf79daddfc09b
+(local golang:1.23 Linux container + fresh postgres:16):
+gofmt clean + go vet + go test -race (live DB tests included) + both 5s fuzz smokes PASS
 
-remote Actions at verifier HEAD f6d9c03:
-Import API Security Slice run 29593229514 SUCCESS
-Security Contracts run 29593228786 SUCCESS
-reconciliation HEAD 7ca86a5: Import API run 29635896458 and Security Contracts run 29635896453 SUCCESS
+remote workflows at commit-repository HEAD a942532:
+Import API Security Slice run 29649255941 SUCCESS (live DB tests executed)
+Security Contracts run 29649255942 SUCCESS
 ```
 
 ## Production blockers
