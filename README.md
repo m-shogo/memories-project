@@ -23,12 +23,13 @@ Read first:
 
 1. [Round 9 Security Authority](docs/memory-os-current-authority-order-round-9-security.md)
 2. [Current Implementation Status and Roadmap](docs/memory-os-current-implementation-status-and-roadmap-2026-07-17.md)
-3. [Preview Spool Reconciliation Checkpoint](docs/memory-os-preview-spool-reconciliation-checkpoint-2026-07-18.md)
-4. [Preview Spool Verifier Checkpoint](docs/memory-os-preview-spool-verifier-checkpoint-2026-07-17.md)
-5. [Preview Spool Seal Checkpoint](docs/memory-os-preview-spool-seal-checkpoint-2026-07-17.md)
-6. [Preview Spool and Atomic Commit Contract](docs/memory-os-preview-spool-commit-contract-round-9.md)
-7. [Import API Security Slice](services/import-api/README.md)
-8. [Security Status](SECURITY.md)
+3. [Preview PostgreSQL Domain Checkpoint](docs/memory-os-preview-domain-checkpoint-2026-07-18.md)
+4. [Preview Spool Reconciliation Checkpoint](docs/memory-os-preview-spool-reconciliation-checkpoint-2026-07-18.md)
+5. [Preview Spool Verifier Checkpoint](docs/memory-os-preview-spool-verifier-checkpoint-2026-07-17.md)
+6. [Preview Spool Seal Checkpoint](docs/memory-os-preview-spool-seal-checkpoint-2026-07-17.md)
+7. [Preview Spool and Atomic Commit Contract](docs/memory-os-preview-spool-commit-contract-round-9.md)
+8. [Import API Security Slice](services/import-api/README.md)
+9. [Security Status](SECURITY.md)
 
 ```txt
 product priority:
@@ -55,7 +56,8 @@ startup reconciliation + TTL cleanup created
 
 PostgreSQL:
 RLS / upload security foundations created
-production domain schema and repositories incomplete
+production Preview domain schema created with live SQL tests
+Go pgx.CopyFrom repositories incomplete
 
 object storage / parser supervisor / iOS / Portal:
 not implemented
@@ -139,17 +141,16 @@ Parser, adapter, dedupe, Preview and Apply are canonical backend concerns and ar
 # Current implementation order
 
 ```txt
-0. remote workflows confirmed for the reconciliation HEAD — done
-1. production Preview candidate/rejection/ready PostgreSQL schema (SQL + tests first)
-2. short atomic pgx.CopyFrom repository
-3. epoch recheck / rollback / retry-after-COMMIT proof
-4. private versioned object storage
-5. isolated parser supervisor
-6. executable API + concrete Apple session/replay/repositories
-7. Apply / Memory / deletion fencing
-8. iOS vertical slice
-9. limited Desktop Portal
-10. Memory Town runtime after Capture / Import P0 reaches zero
+0. confirm remote Security Contracts live job for the Preview domain HEAD
+1. short atomic pgx.CopyFrom repository
+2. epoch recheck / rollback / retry-after-COMMIT proof
+3. private versioned object storage
+4. isolated parser supervisor
+5. executable API + concrete Apple session/replay/repositories
+6. Apply / Memory / deletion fencing
+7. iOS vertical slice
+8. limited Desktop Portal
+9. Memory Town runtime after Capture / Import P0 reaches zero
 ```
 
 Completed Preview spool checkpoints:
@@ -168,15 +169,26 @@ private Linux attempt filesystem lifecycle
 + startup crash-residue reconciliation and TTL cleanup
 ```
 
+Completed database checkpoint:
+
+```txt
+preview_ready / preview_candidate / preview_rejection
++ deterministic commit key and per-job/per-spool uniqueness
++ immutable ready-only state under FORCE RLS
++ structurally safe rejections
++ assert_preview_complete contiguity gate
++ live PostgreSQL 16 SQL tests
+```
+
 Immediate next checkpoint:
 
 ```txt
-candidate / rejection / ready Preview tables
-→ deterministic commit keys and uniqueness
-→ immutability and contiguous ordinal constraints
-→ FORCE RLS profiles matching the Round 9 contract
-→ no partial reader visibility
-→ SQL tests before any Go repository code
+short atomic pgx.CopyFrom commit repository
+→ epoch/job/binding recheck + previewspool.Verifier in the same flow
+→ insert preview_ready (claims commit key)
+→ CopyFrom candidates and rejections
+→ assert_preview_complete → COMMIT or full ROLLBACK
+→ duplicate/conflicting retry and rollback integration tests
 ```
 
 Do not mix object storage, parser-container or client work into that checkpoint.
