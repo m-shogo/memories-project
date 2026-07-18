@@ -1,6 +1,6 @@
 # Security
 
-最終更新: 2026-07-18
+最終更新: 2026-07-19
 
 Memory OS handles highly sensitive personal context. The repository is in security-foundation and partial backend vertical-slice development.
 
@@ -31,7 +31,7 @@ startup reconciliation + TTL cleanup created
 PostgreSQL:
 RLS / upload security foundation migrations and SQL tests created
 production Preview domain schema created with live SQL tests
-Go pgx.CopyFrom repositories incomplete
+atomic Go Preview commit repository created (live-tested)
 
 object storage / parser supervisor / iOS / Portal:
 NOT IMPLEMENTED
@@ -137,6 +137,7 @@ Preview spool seal top-level tests:         10
 Preview spool verifier top-level tests:     15
 Preview spool reconciliation top-level tests: 8
 Preview domain live SQL test blocks:        19
+Preview commit repository top-level tests:   9
 ```
 
 Repository-integrated Go evidence:
@@ -160,7 +161,7 @@ Production remains blocked until current evidence exists for:
 - concrete Apple code exchange, replay and session issuance;
 - private versioned object storage enforcement;
 - deployment-exclusive reconciliation execution and quarantine alerting;
-- atomic `pgx.CopyFrom` commit repository over the created Preview schema;
+- supervisor composition wiring verifier and commit repository as one production flow;
 - concrete Apply/Memory persistence;
 - real parser supervisor and artifact verification;
 - malicious corpus/fuzz evidence;
