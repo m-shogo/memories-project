@@ -1,6 +1,6 @@
 # Memory OS Current Authority Order — Round 9 Security
 
-最終更新: 2026-07-18
+最終更新: 2026-07-19
 
 ## Current verdict
 
@@ -35,7 +35,7 @@ startup reconciliation + TTL cleanup created
 PostgreSQL:
 RLS / upload persistence foundation migrations and SQL tests created
 production Preview domain schema created with live SQL tests
-Go pgx.CopyFrom repositories not created
+atomic Go Preview commit repository created (live-tested)
 
 object storage / parser supervisor / iOS / Portal:
 NOT IMPLEMENTED
@@ -60,7 +60,8 @@ Conflicts are resolved from top to bottom:
 
 1. `docs/memory-os-current-authority-order-round-9-security.md`
 2. `docs/memory-os-current-implementation-status-and-roadmap-2026-07-17.md`
-3. `docs/memory-os-preview-domain-checkpoint-2026-07-18.md`
+3. `docs/memory-os-preview-commit-repository-checkpoint-2026-07-19.md`
+4. `docs/memory-os-preview-domain-checkpoint-2026-07-18.md`
 4. `docs/memory-os-preview-spool-reconciliation-checkpoint-2026-07-18.md`
 5. `docs/memory-os-preview-spool-verifier-checkpoint-2026-07-17.md`
 6. `docs/memory-os-preview-spool-seal-checkpoint-2026-07-17.md`
@@ -229,9 +230,18 @@ An ordinary rename is not the authority because it may replace an existing final
 - `assert_preview_complete` proves exact counts and contiguous `1..n` ordinals under invoker RLS before COMMIT;
 - live PostgreSQL 16 SQL tests in the Security Contracts workflow.
 
+## Implemented commit repository checkpoint
+
+- one short atomic worker-role transaction from `previewspool.VerifiedSpool` evidence to committed Preview;
+- PostgreSQL forbids `COPY FROM` under RLS, so bulk loading is the contract-allowed parameterized `INSERT ... unnest` equivalent with FORCE RLS in force;
+- deterministic commit key excludes the spool attempt ID; identical retries return the committed Preview (also after acknowledgement loss), conflicting retries reject;
+- completeness gate, rollback, stale-binding rejection and the end-to-end spool→verify→commit flow proven on live PostgreSQL 16, locally and in CI.
+
 ## Still incomplete and forbidden
 
-- no Go `pgx.CopyFrom` commit repository;
+- no supervisor composition wiring verifier and committer as one production flow;
+- no reviewed canonical-record contract for candidate JSON;
+- no deletion-fence recheck integration;
 - no production mount/runtime evidence;
 - no operator alerting for quarantined residue;
 - RLS contract fixture not yet extended to the three preview domain tables.
@@ -261,7 +271,6 @@ Not implemented:
 production executable server/session issuer
 Apple code exchange/secret rotation/replay/session persistence
 production account/session/repository composition
-pgx.CopyFrom Preview repository
 private versioned S3 signer/HEAD/lifecycle
 isolated parser supervisor runtime
 concrete Apply/Memory persistence and complete deletion fencing
@@ -309,13 +318,12 @@ Production remains forbidden while any remains:
 # 8. Correct next sequence
 
 ```txt
-0. remote Security Contracts live job confirmed for the Preview domain HEAD — done
-1. implement short atomic pgx.CopyFrom repository
-2. prove epoch recheck, rollback and post-COMMIT retry recovery
-3. implement private versioned object storage and parser supervisor
-4. compose executable API/auth/repositories
-5. implement Apply/Memory/deletion
-6. begin iOS only after backend P0 closes
+0. confirm remote workflows for the commit-repository HEAD
+1. implement private versioned object storage adapter
+2. implement isolated parser supervisor
+3. compose executable API/auth/repositories
+4. implement Apply/Memory/deletion
+5. begin iOS only after backend P0 closes
 ```
 
 Memory Town remains after Capture / Import P0 blockers close.
