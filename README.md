@@ -17,13 +17,14 @@ Town is the visible side effect.
 
 # Current authority and status
 
-最終更新: 2026-07-18
+最終更新: 2026-07-19
 
 Read first:
 
 1. [Round 9 Security Authority](docs/memory-os-current-authority-order-round-9-security.md)
 2. [Current Implementation Status and Roadmap](docs/memory-os-current-implementation-status-and-roadmap-2026-07-17.md)
-3. [Preview PostgreSQL Domain Checkpoint](docs/memory-os-preview-domain-checkpoint-2026-07-18.md)
+3. [Preview Commit Repository Checkpoint](docs/memory-os-preview-commit-repository-checkpoint-2026-07-19.md)
+4. [Preview PostgreSQL Domain Checkpoint](docs/memory-os-preview-domain-checkpoint-2026-07-18.md)
 4. [Preview Spool Reconciliation Checkpoint](docs/memory-os-preview-spool-reconciliation-checkpoint-2026-07-18.md)
 5. [Preview Spool Verifier Checkpoint](docs/memory-os-preview-spool-verifier-checkpoint-2026-07-17.md)
 6. [Preview Spool Seal Checkpoint](docs/memory-os-preview-spool-seal-checkpoint-2026-07-17.md)
@@ -57,7 +58,7 @@ startup reconciliation + TTL cleanup created
 PostgreSQL:
 RLS / upload security foundations created
 production Preview domain schema created with live SQL tests
-Go pgx.CopyFrom repositories incomplete
+atomic Go Preview commit repository created (live-tested)
 
 object storage / parser supervisor / iOS / Portal:
 not implemented
@@ -141,16 +142,14 @@ Parser, adapter, dedupe, Preview and Apply are canonical backend concerns and ar
 # Current implementation order
 
 ```txt
-0. remote Security Contracts live job confirmed for the Preview domain HEAD — done
-1. short atomic pgx.CopyFrom repository
-2. epoch recheck / rollback / retry-after-COMMIT proof
-3. private versioned object storage
-4. isolated parser supervisor
-5. executable API + concrete Apple session/replay/repositories
-6. Apply / Memory / deletion fencing
-7. iOS vertical slice
-8. limited Desktop Portal
-9. Memory Town runtime after Capture / Import P0 reaches zero
+0. confirm remote workflows for the commit-repository HEAD
+1. private versioned object storage
+2. isolated parser supervisor
+3. executable API + concrete Apple session/replay/repositories
+4. Apply / Memory / deletion fencing
+5. iOS vertical slice
+6. limited Desktop Portal
+7. Memory Town runtime after Capture / Import P0 reaches zero
 ```
 
 Completed Preview spool checkpoints:
@@ -180,15 +179,24 @@ preview_ready / preview_candidate / preview_rejection
 + live PostgreSQL 16 SQL tests
 ```
 
+Completed commit-repository checkpoint:
+
+```txt
+atomic worker-role commit transaction (live PostgreSQL 16)
++ deterministic commit key (spool-attempt independent)
++ idempotent retry / conflicting-retry rejection / full rollback
++ RLS-compatible parameterized bulk insert (COPY is forbidden under RLS)
++ end-to-end spool → seal → verify → commit proof
+```
+
 Immediate next checkpoint:
 
 ```txt
-short atomic pgx.CopyFrom commit repository
-→ epoch/job/binding recheck + previewspool.Verifier in the same flow
-→ insert preview_ready (claims commit key)
-→ CopyFrom candidates and rejections
-→ assert_preview_complete → COMMIT or full ROLLBACK
-→ duplicate/conflicting retry and rollback integration tests
+signed-upload S3-compatible storage adapter
+→ private versioned bucket, presigned PUT, exact-metadata HEAD
+→ owner/epoch/job/key/size/checksum/type/expiry binding
+→ object-version verification on completion
+→ integration tests against a local S3-compatible container
 ```
 
 Do not mix object storage, parser-container or client work into that checkpoint.
