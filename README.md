@@ -23,11 +23,12 @@ Read first:
 
 1. [Round 9 Security Authority](docs/memory-os-current-authority-order-round-9-security.md)
 2. [Current Implementation Status and Roadmap](docs/memory-os-current-implementation-status-and-roadmap-2026-07-17.md)
-3. [Preview Spool Verifier Checkpoint](docs/memory-os-preview-spool-verifier-checkpoint-2026-07-17.md)
-4. [Preview Spool Seal Checkpoint](docs/memory-os-preview-spool-seal-checkpoint-2026-07-17.md)
-5. [Preview Spool and Atomic Commit Contract](docs/memory-os-preview-spool-commit-contract-round-9.md)
-6. [Import API Security Slice](services/import-api/README.md)
-7. [Security Status](SECURITY.md)
+3. [Preview Spool Reconciliation Checkpoint](docs/memory-os-preview-spool-reconciliation-checkpoint-2026-07-18.md)
+4. [Preview Spool Verifier Checkpoint](docs/memory-os-preview-spool-verifier-checkpoint-2026-07-17.md)
+5. [Preview Spool Seal Checkpoint](docs/memory-os-preview-spool-seal-checkpoint-2026-07-17.md)
+6. [Preview Spool and Atomic Commit Contract](docs/memory-os-preview-spool-commit-contract-round-9.md)
+7. [Import API Security Slice](services/import-api/README.md)
+8. [Security Status](SECURITY.md)
 
 ```txt
 product priority:
@@ -50,7 +51,7 @@ Linux attempt filesystem lifecycle created
 bounded accepted/rejected writer created
 stream fsync + no-replace manifest publication created
 independent decode / count / re-hash verifier created
-startup reconciliation / TTL cleanup missing
+startup reconciliation + TTL cleanup created
 
 PostgreSQL:
 RLS / upload security foundations created
@@ -62,8 +63,8 @@ not implemented
 current full-repository Go suite:
 PASS in a local golang:1.23 Linux container at the recorded HEAD
 
-remote Actions for the pushed verifier HEAD:
-confirmed success (first green Import API run on this branch)
+remote Actions:
+verifier HEAD confirmed green; reconciliation HEAD recorded after push
 
 production:
 NO-GO
@@ -138,18 +139,17 @@ Parser, adapter, dedupe, Preview and Apply are canonical backend concerns and ar
 # Current implementation order
 
 ```txt
-0. remote workflows confirmed for the pushed verifier HEAD — done
-1. startup reconciliation and TTL cleanup
-2. production Preview candidate/rejection/ready PostgreSQL schema
-3. short atomic pgx.CopyFrom repository
-4. epoch recheck / rollback / retry-after-COMMIT proof
-5. private versioned object storage
-6. isolated parser supervisor
-7. executable API + concrete Apple session/replay/repositories
-8. Apply / Memory / deletion fencing
-9. iOS vertical slice
-10. limited Desktop Portal
-11. Memory Town runtime after Capture / Import P0 reaches zero
+0. confirm remote workflows for the pushed reconciliation HEAD
+1. production Preview candidate/rejection/ready PostgreSQL schema (SQL + tests first)
+2. short atomic pgx.CopyFrom repository
+3. epoch recheck / rollback / retry-after-COMMIT proof
+4. private versioned object storage
+5. isolated parser supervisor
+6. executable API + concrete Apple session/replay/repositories
+7. Apply / Memory / deletion fencing
+8. iOS vertical slice
+9. limited Desktop Portal
+10. Memory Town runtime after Capture / Import P0 reaches zero
 ```
 
 Completed Preview spool checkpoints:
@@ -165,20 +165,21 @@ private Linux attempt filesystem lifecycle
 + rollback / durability-uncertain error boundary
 + independent strict-decode / re-count / re-hash verifier
 + truncation / append / malformed-length / substitution proofs
++ startup crash-residue reconciliation and TTL cleanup
 ```
 
 Immediate next checkpoint:
 
 ```txt
-enumerate the supervisor root descriptor-relative
-→ classify sealed / unsealed / temp-residue / both-name-residue / unknown attempts
-→ terminally quarantine or remove crash residue without recursive unknown deletes
-→ remove expired sealed attempts after the 24-hour TTL
-→ never delete a sealed unexpired attempt
-→ prove interruption safety with targeted tests
+candidate / rejection / ready Preview tables
+→ deterministic commit keys and uniqueness
+→ immutability and contiguous ordinal constraints
+→ FORCE RLS profiles matching the Round 9 contract
+→ no partial reader visibility
+→ SQL tests before any Go repository code
 ```
 
-Do not mix PostgreSQL, S3, parser-container or client work into that checkpoint.
+Do not mix object storage, parser-container or client work into that checkpoint.
 
 ---
 
