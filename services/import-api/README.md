@@ -21,7 +21,8 @@ It is intentionally incomplete. It does not expose a production server and must 
 - Linux Preview spool filesystem lifecycle;
 - bounded accepted/rejected stream writer;
 - stream fsync and durable no-replace manifest publication;
-- independent sealed-spool decode/count/re-hash verifier.
+- independent sealed-spool decode/count/re-hash verifier;
+- startup crash-residue reconciliation and TTL cleanup.
 
 ## Preview spool contract
 
@@ -90,12 +91,17 @@ verified root descriptor
 
 Verification is read-only, stateless and retryable; it deletes nothing and performs no database work. Truncation, appended records, torn appends, zero/oversized length prefixes and same-length content substitution are all rejected before any commit path can start.
 
+## Startup reconciliation and TTL cleanup
+
+Implemented in `previewspool.Reconciler`: a single exclusive startup pass that classifies every root entry (sealed / unsealed / temp residue / completed publication / unknown), removes only fixed-name crash residue and expired sealed attempts, completes the linkat-publication crash window when both names share one inode, quarantines everything unclassifiable in place, and never deletes a sealed unexpired attempt. A cancelled pass is safe to re-run.
+
 Detailed evidence:
 
 ```txt
 docs/memory-os-preview-spool-stream-writer-checkpoint-2026-07-17.md
 docs/memory-os-preview-spool-seal-checkpoint-2026-07-17.md
 docs/memory-os-preview-spool-verifier-checkpoint-2026-07-17.md
+docs/memory-os-preview-spool-reconciliation-checkpoint-2026-07-18.md
 ```
 
 ## Critical production boundary
@@ -125,7 +131,6 @@ version-bound quarantine object
 - production Preview candidate/rejection/ready tables;
 - concrete PostgreSQL repositories and `pgx.CopyFrom` path;
 - S3-compatible signer/HEAD/lifecycle;
-- startup reconciliation and TTL cleanup;
 - real parser supervisor and artifact verification;
 - concrete Apply/Memory persistence and complete deletion fencing;
 - iOS and Desktop Portal clients.
@@ -134,17 +139,18 @@ version-bound quarantine object
 
 ```txt
 exact repository-integrated Go suite
-(code HEAD e75b7324e0388b264d90f67ee3094d788fadf5f4, local golang:1.23 Linux container):
+(code HEAD 3628123fc978f4fcc0a12daed13235599b8218af, local golang:1.23 Linux container):
 gofmt clean + go vet + go test -race + both 5s fuzz smokes PASS
 
 Preview spool contract validator:
 PASS
 
-remote workflow result for the pushed HEAD:
-UNCONFIRMED at commit time
+remote workflows at verifier HEAD f6d9c03:
+Import API Security Slice and Security Contracts SUCCESS
+(reconciliation HEAD result recorded after its push)
 ```
 
-Earlier remote Import API runs failed at the Format check; five unformatted sources and one pointer-receiver compile error in `internal/upload/service_test.go` were repaired at this checkpoint.
+Earlier remote Import API runs had failed at the Format check; five unformatted sources and one pointer-receiver compile error in `internal/upload/service_test.go` were repaired at the verifier checkpoint, and the branch has run green since.
 
 Re-run against the exact current HEAD:
 
