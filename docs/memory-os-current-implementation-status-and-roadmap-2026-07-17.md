@@ -1,6 +1,6 @@
 # Memory OS Current Implementation Status and Roadmap
 
-最終更新: 2026-07-18
+最終更新: 2026-07-19
 
 この文書は、設計済み・契約済み・部分実装・実環境未検証を混同しないための現在地正本である。
 
@@ -27,7 +27,7 @@ not a production backend
 PostgreSQL:
 RLS / upload persistence foundation exists
 production Preview domain schema (SQL + live tests) created
-Go pgx.CopyFrom repositories do not exist
+atomic Go Preview commit repository created (live-tested)
 
 Preview spool:
 manifest contract hardened
@@ -69,8 +69,9 @@ NO-GO
 | Negative contract evidence | Advanced | 31 structural, 8 semantic rejections | Full CI and runtime adversarial tests |
 | Object authorization | Contract complete | 8 cases: 2 allow / 6 deny | Real API/repository integration |
 | PostgreSQL RLS foundation | Migration/tests created | FORCE RLS SQL, 9 table profiles, 14 logic cases | Deployment-role proof |
-| Preview PostgreSQL domain | Created (SQL) | preview_ready/candidate/rejection, commit key, immutability, completeness gate, live SQL tests | Go pgx.CopyFrom repository and commit-flow integration |
-| PostgreSQL live workflow | Created | PostgreSQL 16 workflow and SQL scripts | Remote result unconfirmed; not Go↔DB production integration |
+| Preview PostgreSQL domain | Created (SQL) | preview_ready/candidate/rejection, commit key, immutability, completeness gate, live SQL tests | Fixture-contract extension, deployment-role proof |
+| Preview commit repository | Partial | Atomic worker-role transaction, deterministic commit key, idempotent/conflicting retry, rollback, e2e spool→DB proof on live PostgreSQL | Supervisor composition, canonical-record contract, deletion-fence recheck |
+| PostgreSQL live workflow | Created and green | PostgreSQL 16 jobs in both workflows, remote runs confirmed | Deployment-role and production-environment proof |
 | Sign in with Apple contract | Contract complete | 16 cases: 1 allow / 15 deny | Code exchange, secret rotation, replay store, session issuer |
 | Apple JWT/JWKS Go core | Partial | Verification and binding interfaces | Concrete composition and persistence |
 | Signed upload OpenAPI/service | Partial | Exact request/object metadata binding | S3 signer, HEAD adapter, repository, lifecycle proof |
@@ -111,7 +112,9 @@ infra/postgresql/security/test_memory_os_preview_domain.sql
 
 These prove/exercise privilege roles, transaction-local owner/epoch context, `ENABLE/FORCE RLS`, owner/epoch policies, immutable security-row restrictions, upload constraints, and now the production Preview domain: `preview_ready` / `preview_candidate` / `preview_rejection` with deterministic commit keys, one-ready-Preview-per-job, exact seal-evidence bindings, structurally safe rejections and the `assert_preview_complete` contiguity gate.
 
-They do **not** provide the Go `pgx.CopyFrom` commit repository, Apply/Memory tables, durable replay/session stores or a production migration/rollback lifecycle.
+The atomic Go commit repository over this schema now exists in `services/import-api/internal/previewcommit` (live-tested; note PostgreSQL forbids `COPY FROM` under RLS, so it uses the contract-allowed parameterized `INSERT ... unnest` equivalent).
+
+They do **not** provide Apply/Memory tables, durable replay/session stores or a production migration/rollback lifecycle.
 
 Use:
 
@@ -119,7 +122,10 @@ Use:
 PostgreSQL security/RLS foundation + Preview domain migrations and SQL tests:
 CREATED
 
-Go pgx.CopyFrom commit repository / Apply persistence:
+atomic Go Preview commit repository:
+PARTIAL IMPLEMENTATION CREATED (live-tested)
+
+Apply/Memory persistence:
 NOT CREATED
 ```
 
@@ -304,9 +310,9 @@ Immediate sequence (Gate 4):
 
 Status: **SQL created and live-tested**. `preview_ready`/`preview_candidate`/`preview_rejection` exist with commit-key uniqueness, immutability, ordinal bounds + `assert_preview_complete` contiguity gate, FORCE RLS and atomic-only visibility. Remaining: fixture-contract extension and deployment-role proof.
 
-## Gate 5 — short atomic `pgx.CopyFrom`
+## Gate 5 — short atomic commit repository
 
-Next gate. Recheck epoch and all bindings, run `previewspool.Verifier` in the same flow, insert `preview_ready` (claims the commit key), bulk-copy both streams, call `assert_preview_complete`, mark the job, COMMIT; prove rollback and post-COMMIT retry recovery with integration tests.
+Status: **partial implementation created and live-tested**. PostgreSQL rejects `COPY FROM` under row-level security, so bulk loading uses the contract-allowed equivalent parameterized `INSERT ... unnest` protocol as the worker role with FORCE RLS in force. Atomicity, deterministic commit-key idempotency, conflicting-retry rejection, rollback and the end-to-end spool→verify→commit flow are proven against live PostgreSQL 16 (locally and in CI). Remaining: supervisor composition, canonical-record contract and deletion-fence recheck.
 
 ## Gates 6–10
 
@@ -328,9 +334,9 @@ Allowed:
 security architecture defined
 partial Go security vertical slice exists
 Preview spool filesystem, writer, seal-publication, independent-verifier and reconciliation checkpoints created
-production Preview PostgreSQL domain schema created with live SQL tests
+production Preview PostgreSQL domain schema and atomic commit repository created with live tests
 repository-integrated Go suite passes in a Linux container at the recorded HEAD
-pgx.CopyFrom repository, storage, parser and client blockers remain
+object storage, parser supervisor, executable server and client blockers remain
 production NO-GO
 ```
 
