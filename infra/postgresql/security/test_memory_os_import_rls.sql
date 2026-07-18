@@ -49,6 +49,9 @@ GRANT EXECUTE ON FUNCTION memory_os_test.expect_insufficient_privilege(text, tex
   memory_deletion_runtime;
 
 TRUNCATE TABLE
+  memory_os.preview_candidate,
+  memory_os.preview_rejection,
+  memory_os.preview_ready,
   memory_os.import_job,
   memory_os.pairing_session,
   memory_os.upload_authorization,

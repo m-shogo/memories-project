@@ -36,7 +36,12 @@ GRANT EXECUTE ON FUNCTION memory_os_upload_test.expect_sqlstate(text, text[], te
   memory_worker_runtime,
   memory_deletion_runtime;
 
-TRUNCATE TABLE memory_os.upload_authorization, memory_os.import_job;
+TRUNCATE TABLE
+  memory_os.preview_candidate,
+  memory_os.preview_rejection,
+  memory_os.preview_ready,
+  memory_os.upload_authorization,
+  memory_os.import_job;
 
 INSERT INTO memory_os.import_job (
   id,
