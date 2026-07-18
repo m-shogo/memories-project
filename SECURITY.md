@@ -26,7 +26,7 @@ Linux filesystem attempt lifecycle checkpoint created
 bounded stream writer created
 stream fsync + no-replace manifest publication created
 independent decode / count / re-hash verifier created
-startup reconciliation / TTL cleanup not implemented
+startup reconciliation + TTL cleanup created
 
 PostgreSQL:
 RLS / upload security foundation migrations and SQL tests created
@@ -109,7 +109,8 @@ Historical PASS applies only to its recorded commit. The current repository full
 - Stream records are exact length-prefixed canonical bytes with aggregate record/byte and per-record limits; writer failures are sticky and terminal.
 - Seal publication fsyncs both streams, writes an exclusive `manifest.tmp`, publishes with `linkat` no-replace semantics and fsyncs the attempt directory; existing final names are never overwritten.
 - Independent verification re-opens everything descriptor-relative with `O_NOFOLLOW`, strictly decodes exactly one canonical manifest, re-counts and re-hashes exact stream bytes, enforces expiry and rejects every binding mismatch before any database transaction.
-- Startup reconciliation, TTL cleanup and the production DB commit path are not yet implemented.
+- Startup reconciliation runs one exclusive fail-closed pass: it removes only fixed-name crash residue and expired sealed attempts, completes the linkat crash window, quarantines everything unclassifiable in place and never deletes a sealed unexpired attempt.
+- The production DB commit path is not yet implemented.
 - Final Apply is iOS-user-only, exact-hash-bound and idempotent.
 - Account deletion fences jobs, workers, URLs, objects, spools, Preview, Apply, caches, exports and backup restoration.
 - Private content is forbidden in logs, analytics, notifications and crash reports.
@@ -133,18 +134,20 @@ Preview spool cancellation stages:           5
 Preview spool writer top-level tests:        9
 Preview spool seal top-level tests:         10
 Preview spool verifier top-level tests:     15
+Preview spool reconciliation top-level tests: 8
 ```
 
 Repository-integrated Go evidence:
 
 ```txt
-code HEAD e75b7324e0388b264d90f67ee3094d788fadf5f4
+code HEAD 3628123fc978f4fcc0a12daed13235599b8218af
 (local golang:1.23 Linux container):
 gofmt clean + go vet + go test -race + both 5s fuzz smokes PASS
 
-remote Actions at pushed HEAD f6d9c03 (code identical to e75b732):
+remote Actions at verifier HEAD f6d9c03:
 Import API Security Slice run 29593229514 SUCCESS
 Security Contracts run 29593228786 SUCCESS
+(reconciliation HEAD result recorded after its push)
 ```
 
 ## Production blockers
@@ -154,7 +157,7 @@ Production remains blocked until current evidence exists for:
 - real cross-user HTTP/PostgreSQL isolation;
 - concrete Apple code exchange, replay and session issuance;
 - private versioned object storage enforcement;
-- abandoned-attempt reconciliation and expiry cleanup;
+- deployment-exclusive reconciliation execution and quarantine alerting;
 - production Preview schema and atomic `pgx.CopyFrom` repository;
 - concrete Apply/Memory persistence;
 - real parser supervisor and artifact verification;
