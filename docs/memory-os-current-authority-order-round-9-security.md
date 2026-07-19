@@ -37,7 +37,10 @@ RLS / upload persistence foundation migrations and SQL tests created
 production Preview domain schema created with live SQL tests
 atomic Go Preview commit repository created (live-tested)
 
-object storage / parser supervisor / iOS / Portal:
+object storage adapter:
+CREATED (live-tested against MinIO)
+
+parser supervisor / iOS / Portal:
 NOT IMPLEMENTED
 
 exact current HEAD full repository Go suite:
@@ -60,7 +63,8 @@ Conflicts are resolved from top to bottom:
 
 1. `docs/memory-os-current-authority-order-round-9-security.md`
 2. `docs/memory-os-current-implementation-status-and-roadmap-2026-07-17.md`
-3. `docs/memory-os-preview-commit-repository-checkpoint-2026-07-19.md`
+3. `docs/memory-os-object-storage-checkpoint-2026-07-19.md`
+4. `docs/memory-os-preview-commit-repository-checkpoint-2026-07-19.md`
 4. `docs/memory-os-preview-domain-checkpoint-2026-07-18.md`
 4. `docs/memory-os-preview-spool-reconciliation-checkpoint-2026-07-18.md`
 5. `docs/memory-os-preview-spool-verifier-checkpoint-2026-07-17.md`
@@ -317,12 +321,11 @@ Production remains forbidden while any remains:
 # 8. Correct next sequence
 
 ```txt
-0. remote workflows confirmed for the commit-repository HEAD — done
-1. implement private versioned object storage adapter
-2. implement isolated parser supervisor
-3. compose executable API/auth/repositories
-4. implement Apply/Memory/deletion
-5. begin iOS only after backend P0 closes
+0. confirm remote workflows for the object-storage HEAD
+1. implement isolated parser supervisor
+2. compose executable API/auth/repositories
+3. implement Apply/Memory/deletion
+4. begin iOS only after backend P0 closes
 ```
 
 Memory Town remains after Capture / Import P0 blockers close.
