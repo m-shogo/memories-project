@@ -23,14 +23,15 @@ Read first:
 
 1. [Round 9 Security Authority](docs/memory-os-current-authority-order-round-9-security.md)
 2. [Current Implementation Status and Roadmap](docs/memory-os-current-implementation-status-and-roadmap-2026-07-17.md)
-3. [Preview Commit Repository Checkpoint](docs/memory-os-preview-commit-repository-checkpoint-2026-07-19.md)
-4. [Preview PostgreSQL Domain Checkpoint](docs/memory-os-preview-domain-checkpoint-2026-07-18.md)
-4. [Preview Spool Reconciliation Checkpoint](docs/memory-os-preview-spool-reconciliation-checkpoint-2026-07-18.md)
-5. [Preview Spool Verifier Checkpoint](docs/memory-os-preview-spool-verifier-checkpoint-2026-07-17.md)
-6. [Preview Spool Seal Checkpoint](docs/memory-os-preview-spool-seal-checkpoint-2026-07-17.md)
-7. [Preview Spool and Atomic Commit Contract](docs/memory-os-preview-spool-commit-contract-round-9.md)
-8. [Import API Security Slice](services/import-api/README.md)
-9. [Security Status](SECURITY.md)
+3. [Object Storage Checkpoint](docs/memory-os-object-storage-checkpoint-2026-07-19.md)
+4. [Preview Commit Repository Checkpoint](docs/memory-os-preview-commit-repository-checkpoint-2026-07-19.md)
+5. [Preview PostgreSQL Domain Checkpoint](docs/memory-os-preview-domain-checkpoint-2026-07-18.md)
+6. [Preview Spool Reconciliation Checkpoint](docs/memory-os-preview-spool-reconciliation-checkpoint-2026-07-18.md)
+7. [Preview Spool Verifier Checkpoint](docs/memory-os-preview-spool-verifier-checkpoint-2026-07-17.md)
+8. [Preview Spool Seal Checkpoint](docs/memory-os-preview-spool-seal-checkpoint-2026-07-17.md)
+9. [Preview Spool and Atomic Commit Contract](docs/memory-os-preview-spool-commit-contract-round-9.md)
+10. [Import API Security Slice](services/import-api/README.md)
+11. [Security Status](SECURITY.md)
 
 ```txt
 product priority:
@@ -60,7 +61,10 @@ RLS / upload security foundations created
 production Preview domain schema created with live SQL tests
 atomic Go Preview commit repository created (live-tested)
 
-object storage / parser supervisor / iOS / Portal:
+object storage adapter:
+created (live-tested against MinIO)
+
+parser supervisor / iOS / Portal:
 not implemented
 
 current full-repository Go suite:
@@ -77,7 +81,7 @@ NO-GO
 
 “PostgreSQL migration/test created” means the RLS and upload-security foundation exists; it does not mean Preview/Apply/Memory production persistence is complete.
 
-A published spool manifest is untrusted until its independent verification passes; the verifier now exists, and the future commit path must run it (plus epoch/job recheck) inside its own transaction boundary before PostgreSQL work can proceed.
+A published spool manifest is untrusted until its independent verification passes; the verifier and the atomic commit repository now exist and are proven together end to end, but the supervisor composition that wires parse → seal → verify → commit as one production flow does not exist yet.
 
 ---
 
@@ -142,14 +146,13 @@ Parser, adapter, dedupe, Preview and Apply are canonical backend concerns and ar
 # Current implementation order
 
 ```txt
-0. remote workflows confirmed for the commit-repository HEAD — done
-1. private versioned object storage
-2. isolated parser supervisor
-3. executable API + concrete Apple session/replay/repositories
-4. Apply / Memory / deletion fencing
-5. iOS vertical slice
-6. limited Desktop Portal
-7. Memory Town runtime after Capture / Import P0 reaches zero
+0. confirm remote workflows for the object-storage HEAD
+1. isolated parser supervisor
+2. executable API + concrete Apple session/replay/repositories
+3. Apply / Memory / deletion fencing
+4. iOS vertical slice
+5. limited Desktop Portal
+6. Memory Town runtime after Capture / Import P0 reaches zero
 ```
 
 Completed Preview spool checkpoints:
@@ -189,14 +192,24 @@ atomic worker-role commit transaction (live PostgreSQL 16)
 + end-to-end spool → seal → verify → commit proof
 ```
 
+Completed object-storage checkpoint:
+
+```txt
+SDK-free SigV4 presigned PUT (length/type/checksum as signed headers)
++ versioned exact-metadata HEAD with checksum mode
++ tampering / substitution / expiry rejected by the store itself
++ live MinIO round-trip and versioning proof
+```
+
 Immediate next checkpoint:
 
 ```txt
-signed-upload S3-compatible storage adapter
-→ private versioned bucket, presigned PUT, exact-metadata HEAD
-→ owner/epoch/job/key/size/checksum/type/expiry binding
-→ object-version verification on completion
-→ integration tests against a local S3-compatible container
+isolated parser supervisor
+→ networkless, credential-free, resource-bounded worker per job
+→ version-bound quarantine object read-only
+→ synchronous canonical rows into the bounded spool writer
+→ seal on success, reconcile on crash
+→ targeted isolation and bound tests
 ```
 
 Do not mix object storage, parser-container or client work into that checkpoint.
