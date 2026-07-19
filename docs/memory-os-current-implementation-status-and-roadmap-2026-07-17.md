@@ -38,7 +38,7 @@ independent decode / count / re-hash verifier created
 startup reconciliation + TTL cleanup created
 
 object storage runtime:
-not implemented
+signed-upload adapter created (live-tested against MinIO)
 
 parser sandbox runtime:
 not implemented
@@ -74,7 +74,8 @@ NO-GO
 | PostgreSQL live workflow | Created and green | PostgreSQL 16 jobs in both workflows, remote runs confirmed | Deployment-role and production-environment proof |
 | Sign in with Apple contract | Contract complete | 16 cases: 1 allow / 15 deny | Code exchange, secret rotation, replay store, session issuer |
 | Apple JWT/JWKS Go core | Partial | Verification and binding interfaces | Concrete composition and persistence |
-| Signed upload OpenAPI/service | Partial | Exact request/object metadata binding | S3 signer, HEAD adapter, repository, lifecycle proof |
+| Signed upload OpenAPI/service | Partial | Exact request/object metadata binding | Concrete repository composition, lifecycle proof |
+| Object storage adapter | Partial | SDK-free SigV4 presign binding length/type/checksum as signed headers, versioned HEAD, MinIO live tests | TLS + scoped production credentials, lifecycle configuration evidence |
 | Parser sandbox contract | Created | Profile and 16 unsafe mutations | Real supervisor/container/process runtime |
 | Archive/JSON/CSV contracts | Created | 25 cases: 1 allow / 24 deny | Runtime corpus and fuzz evidence |
 | Generic CSV parser/iterator | Partial | Bounded synchronous pull; sticky failure | Quarantine reader and isolated worker |
@@ -89,7 +90,7 @@ NO-GO
 | AtomicMaterializer | Reference only | Hash/decision invariants | Forbidden for production PostgreSQL; parse occurs inside transaction callback |
 | Apply service | Partial | iOS authority and exact-hash idempotency interfaces | Concrete Preview/Memory repository and deletion fencing |
 | Executable Go API | Not implemented | No production `main` lifecycle | Auth/session/repositories/storage/worker composition |
-| Object storage runtime | Not implemented | Interfaces/OpenAPI only | Private versioned bucket, signer, HEAD, lifecycle proof |
+| Object storage runtime | Adapter created | SigV4 signer/HEAD proven on live versioned MinIO bucket | Production bucket policy, lifecycle and TLS deployment proof |
 | Parser supervisor runtime | Not implemented | Contract only | Isolation, limits and artifact verification |
 | iOS / Portal | Not implemented | Technology/design authority only | Client vertical slices and security evidence |
 | Memory Town | Design mature; deferred | Round 1–5 contracts | Capture / Import P0 first |
@@ -314,9 +315,12 @@ Status: **SQL created and live-tested**. `preview_ready`/`preview_candidate`/`pr
 
 Status: **partial implementation created and live-tested**. PostgreSQL rejects `COPY FROM` under row-level security, so bulk loading uses the contract-allowed equivalent parameterized `INSERT ... unnest` protocol as the worker role with FORCE RLS in force. Atomicity, deterministic commit-key idempotency, conflicting-retry rejection, rollback and the end-to-end spool→verify→commit flow are proven against live PostgreSQL 16 (locally and in CI). Remaining: supervisor composition, canonical-record contract and deletion-fence recheck.
 
-## Gates 6–10
+## Gate 6 — private versioned object storage
 
-6. private versioned object storage;
+Status: **adapter created and live-tested** (SDK-free SigV4 presign + versioned HEAD against MinIO). Remaining: production bucket policy, lifecycle and TLS deployment evidence.
+
+## Gates 7–10
+
 7. isolated parser supervisor;
 8. executable API and concrete Apple auth/session repositories;
 9. Apply/Memory/deletion fencing;
@@ -335,8 +339,9 @@ security architecture defined
 partial Go security vertical slice exists
 Preview spool filesystem, writer, seal-publication, independent-verifier and reconciliation checkpoints created
 production Preview PostgreSQL domain schema and atomic commit repository created with live tests
+signed-upload object storage adapter created with live MinIO tests
 repository-integrated Go suite passes in a Linux container at the recorded HEAD
-object storage, parser supervisor, executable server and client blockers remain
+parser supervisor, executable server and client blockers remain
 production NO-GO
 ```
 
