@@ -23,7 +23,8 @@ It is intentionally incomplete. It does not expose a production server and must 
 - stream fsync and durable no-replace manifest publication;
 - independent sealed-spool decode/count/re-hash verifier;
 - startup crash-residue reconciliation and TTL cleanup;
-- atomic Preview commit repository against live PostgreSQL.
+- atomic Preview commit repository against live PostgreSQL;
+- SDK-free SigV4 quarantine object store adapter against live MinIO.
 
 ## Preview spool contract
 
@@ -122,6 +123,15 @@ BEGIN
 
 PostgreSQL forbids `COPY FROM` under row-level security, so bulk loading uses the contract-allowed equivalent: one parameterized `INSERT ... SELECT FROM unnest(...)` per stream with FORCE RLS in force. The deterministic commit key excludes the spool attempt ID, so an identical re-parse returns the committed Preview; a conflicting retry is rejected. Live tests (gated on `MEMORY_OS_TEST_DATABASE_URL`, self-applying migrations 001–003) prove atomicity, retry, rollback and the full spool → seal → verify → commit flow.
 
+## Quarantine object storage adapter
+
+Implemented in `internal/objectstore` (no SDK; SigV4 on the standard library, pinned to the documented AWS test vector):
+
+- presigned PUT whose signature covers `content-length`, `content-type` and `x-amz-checksum-sha256` as signed headers, so the store itself rejects altered or missing bindings and substituted content;
+- exact `quarantine/{job}/{upload}` keys with dot-segment rejection; 15-minute presign cap;
+- SigV4-signed HEAD with checksum mode returning the exact version ID, ETag, length, type and hex SHA-256;
+- live MinIO tests (gated on `MEMORY_OS_TEST_S3_ENDPOINT`) prove the round trip, per-upload version IDs on a versioned bucket, tamper/expiry rejection and not-found handling.
+
 ## Critical production boundary
 
 A published manifest is untrusted until `previewspool.Verifier.Verify` passes for it in the same flow. The future commit path must hold the recomputed evidence and re-check epoch/job state inside its own transaction.
@@ -148,7 +158,7 @@ version-bound quarantine object
 - Apple code exchange/secret rotation and concrete replay/session stores;
 - supervisor composition wiring verifier and commit repository as one flow;
 - reviewed canonical-record contract for candidate JSON;
-- S3-compatible signer/HEAD/lifecycle;
+- upload service + object store composition and lifecycle/TLS deployment evidence;
 - real parser supervisor and artifact verification;
 - concrete Apply/Memory persistence and complete deletion fencing;
 - iOS and Desktop Portal clients.
@@ -157,15 +167,15 @@ version-bound quarantine object
 
 ```txt
 exact repository-integrated Go suite
-(code HEAD 0f2a86abf93313affcb81b5b12fcf79daddfc09b, local golang:1.23 Linux container + fresh postgres:16):
-gofmt clean + go vet + go test -race (live DB tests included) + both 5s fuzz smokes PASS
+(code HEAD 229c0bfa67679e868ee52601da9c411e8faafb63, local golang:1.23 Linux container + fresh postgres:16 + MinIO):
+gofmt clean + go vet + go test -race (live DB and object-store tests included) + both 5s fuzz smokes PASS
 
 Preview spool contract validator:
 PASS
 
-remote workflows at commit-repository HEAD a942532:
-Import API Security Slice run 29649255941 SUCCESS (live DB tests executed)
-Security Contracts run 29649255942 SUCCESS
+remote workflows at object-storage HEAD 27b5e33:
+Import API Security Slice run 29691864573 SUCCESS (live DB and MinIO tests executed)
+Security Contracts run 29691821341 SUCCESS
 ```
 
 Earlier remote Import API runs had failed at the Format check; five unformatted sources and one pointer-receiver compile error in `internal/upload/service_test.go` were repaired at the verifier checkpoint, and the branch has run green since.
