@@ -33,7 +33,10 @@ RLS / upload security foundation migrations and SQL tests created
 production Preview domain schema created with live SQL tests
 atomic Go Preview commit repository created (live-tested)
 
-object storage / parser supervisor / iOS / Portal:
+object storage adapter:
+CREATED (live-tested against MinIO)
+
+parser supervisor / iOS / Portal:
 NOT IMPLEMENTED
 
 GitHub Actions:
@@ -138,6 +141,7 @@ Preview spool verifier top-level tests:     15
 Preview spool reconciliation top-level tests: 8
 Preview domain live SQL test blocks:        19
 Preview commit repository top-level tests:   9
+object storage top-level tests:             10
 ```
 
 Repository-integrated Go evidence:
@@ -158,7 +162,7 @@ Production remains blocked until current evidence exists for:
 
 - real cross-user HTTP/PostgreSQL isolation;
 - concrete Apple code exchange, replay and session issuance;
-- private versioned object storage enforcement;
+- production object-storage TLS, scoped credentials and lifecycle evidence;
 - deployment-exclusive reconciliation execution and quarantine alerting;
 - supervisor composition wiring verifier and commit repository as one production flow;
 - concrete Apply/Memory persistence;
