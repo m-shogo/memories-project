@@ -71,8 +71,11 @@ local golang:1.23 + postgres:16-alpine + minio (fresh), exact HEAD 229c0bfa67679
 gofmt clean + go vet + go test -race ./... (15 packages, live DB and object-store tests included)
 + both 5s fuzz smokes PASS
 
-remote Import API workflow with postgres + MinIO services:
-recorded after the push completes
+remote Import API workflow (postgres service + docker-run MinIO,
+pushed HEAD 27b5e33, run 29691864573): SUCCESS — live object-store tests executed
+Security Contracts run 29691821341: SUCCESS
+note: bitnami/minio:latest no longer exists on Docker Hub; CI starts official
+minio/minio via docker run instead of a service container
 ```
 
 ## Residual risks

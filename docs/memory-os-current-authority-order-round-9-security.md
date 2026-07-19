@@ -47,7 +47,7 @@ exact current HEAD full repository Go suite:
 CONFIRMED in a local golang:1.23 Linux container
 
 remote Actions:
-commit-repository HEAD a942532 CONFIRMED green (Import API run 29649255941 with live DB tests, Security Contracts run 29649255942)
+object-storage HEAD 27b5e33 CONFIRMED green (Import API run 29691864573 with live DB + MinIO tests, Security Contracts run 29691821341)
 
 production:
 NO-GO
@@ -65,21 +65,21 @@ Conflicts are resolved from top to bottom:
 2. `docs/memory-os-current-implementation-status-and-roadmap-2026-07-17.md`
 3. `docs/memory-os-object-storage-checkpoint-2026-07-19.md`
 4. `docs/memory-os-preview-commit-repository-checkpoint-2026-07-19.md`
-4. `docs/memory-os-preview-domain-checkpoint-2026-07-18.md`
-4. `docs/memory-os-preview-spool-reconciliation-checkpoint-2026-07-18.md`
-5. `docs/memory-os-preview-spool-verifier-checkpoint-2026-07-17.md`
-6. `docs/memory-os-preview-spool-seal-checkpoint-2026-07-17.md`
-7. `docs/memory-os-preview-spool-stream-writer-checkpoint-2026-07-17.md`
-8. `docs/memory-os-preview-spool-commit-contract-round-9.md`
-9. security schema registry and fixture index
-10. current code under `services/import-api/`
-11. `services/import-api/README.md`
-12. `SECURITY.md`
-13. Round 9 architecture, threat model and verification gate
-14. OpenAPI, PostgreSQL migrations/tests and validators/workflows
-15. Round 8 Capture / Import architecture
-16. prior privacy / persistence / deletion contracts
-17. historical progress and handoff documents
+5. `docs/memory-os-preview-domain-checkpoint-2026-07-18.md`
+6. `docs/memory-os-preview-spool-reconciliation-checkpoint-2026-07-18.md`
+7. `docs/memory-os-preview-spool-verifier-checkpoint-2026-07-17.md`
+8. `docs/memory-os-preview-spool-seal-checkpoint-2026-07-17.md`
+9. `docs/memory-os-preview-spool-stream-writer-checkpoint-2026-07-17.md`
+10. `docs/memory-os-preview-spool-commit-contract-round-9.md`
+11. security schema registry and fixture index
+12. current code under `services/import-api/`
+13. `services/import-api/README.md`
+14. `SECURITY.md`
+15. Round 9 architecture, threat model and verification gate
+16. OpenAPI, PostgreSQL migrations/tests and validators/workflows
+17. Round 8 Capture / Import architecture
+18. prior privacy / persistence / deletion contracts
+19. historical progress and handoff documents
 
 Historical documents record old snapshots and never override current code or this order.
 
@@ -321,7 +321,7 @@ Production remains forbidden while any remains:
 # 8. Correct next sequence
 
 ```txt
-0. confirm remote workflows for the object-storage HEAD
+0. remote workflows confirmed for the object-storage HEAD — done
 1. implement isolated parser supervisor
 2. compose executable API/auth/repositories
 3. implement Apply/Memory/deletion
