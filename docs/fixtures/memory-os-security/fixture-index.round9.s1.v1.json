@@ -1,6 +1,6 @@
 {
   "indexId": "memory-os.security.fixture-index.round9.s1",
-  "indexVersion": 21,
+  "indexVersion": 22,
   "schemaRegistryPath": "docs/schemas/memory-os-security/schema-registry.v1.json",
   "fixtures": [
     { "fixtureId": "memory-os.security.issue-codes.round9", "path": "docs/fixtures/memory-os-security/security-issue-code-registry.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-issue-code-registry.v1.schema.json", "status": "targeted_validation_pass" },
@@ -70,7 +70,7 @@
     "previewCommitRepositoryRemoteLiveJobPassed": true,
     "objectStorageAdapterCreated": true,
     "objectStorageMinioLiveTestsPassed": true,
-    "objectStorageRemoteLiveJobPassed": false,
+    "objectStorageRemoteLiveJobPassed": true,
     "previewSpoolImplementationCreated": false,
     "repositoryValidatorCreated": true,
     "githubActionsWorkflowCreated": true,
@@ -117,7 +117,6 @@
     "archiveSafetyDenies": 24
   },
   "nextRequired": [
-    "confirm_remote_workflows_for_object_storage_head",
     "implement_isolated_parser_supervisor",
     "archive_parser_fuzz_corpus"
   ]
