@@ -72,8 +72,10 @@ local golang:1.23 + postgres:16 + minio (fresh), exact HEAD c09ef41bcf8cacd023ec
 gofmt clean + go vet + go test ./... + go test -race ./... (16 packages,
 live DB/object-store/supervision tests included) + both 5s fuzz smokes PASS
 
-remote workflows:
-recorded after the push completes
+remote workflows (pushed HEAD 75c34dd):
+Import API Security Slice run 29716510255 SUCCESS
+(race suite + dedicated non-race bounds step both executed)
+Security Contracts run 29716510257 SUCCESS
 ```
 
 The race-instrumented suite skips only the RLIMIT_AS hog test (the race runtime reserves enormous shadow address space, making RLIMIT_AS unenforceable on instrumented workers); CI runs the package additionally without race instrumentation so the memory bound is proven remotely too.

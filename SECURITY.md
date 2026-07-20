@@ -45,7 +45,7 @@ NOT IMPLEMENTED
 GitHub Actions:
 workflows created
 earlier Import API runs failed on formatting/vet; repaired at the verifier checkpoint
-every push since the verifier checkpoint green (latest recorded: Import API run 29691864573 with live DB + MinIO tests, Security Contracts run 29691821341)
+every push since the verifier checkpoint green (latest recorded: Import API run 29716510255, Security Contracts run 29716510257)
 
 production:
 NO-GO
@@ -156,9 +156,9 @@ code HEAD c09ef41bcf8cacd023ecba6c46086c8d554085c4
 gofmt clean + go vet + go test ./... + go test -race ./... (16 packages,
 live DB/object-store/supervision tests included) + both 5s fuzz smokes PASS
 
-remote workflows at object-storage HEAD 27b5e33:
-Import API Security Slice run 29691864573 SUCCESS (live DB + MinIO tests executed)
-Security Contracts run 29691821341 SUCCESS
+remote workflows at parser-supervisor HEAD 75c34dd:
+Import API Security Slice run 29716510255 SUCCESS (live DB + MinIO + supervision, incl. non-race bounds step)
+Security Contracts run 29716510257 SUCCESS
 ```
 
 ## Production blockers

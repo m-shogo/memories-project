@@ -50,7 +50,7 @@ exact current HEAD full repository Go suite:
 CONFIRMED in a local golang:1.23 Linux container
 
 remote Actions:
-object-storage HEAD 27b5e33 CONFIRMED green (Import API run 29691864573 with live DB + MinIO tests, Security Contracts run 29691821341)
+parser-supervisor HEAD 75c34dd CONFIRMED green (Import API run 29716510255 incl. non-race bounds step, Security Contracts run 29716510257)
 
 production:
 NO-GO
@@ -325,7 +325,7 @@ Production remains forbidden while any remains:
 # 8. Correct next sequence
 
 ```txt
-0. confirm remote workflows for the parser-supervisor HEAD
+0. remote workflows confirmed for the parser-supervisor HEAD — done
 1. compose the supervised import flow end to end (fetch → parse → verify → commit)
 2. compose executable API/auth/repositories
 3. implement Apply/Memory/deletion

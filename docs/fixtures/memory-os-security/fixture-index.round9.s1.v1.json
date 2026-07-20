@@ -1,6 +1,6 @@
 {
   "indexId": "memory-os.security.fixture-index.round9.s1",
-  "indexVersion": 23,
+  "indexVersion": 24,
   "schemaRegistryPath": "docs/schemas/memory-os-security/schema-registry.v1.json",
   "fixtures": [
     { "fixtureId": "memory-os.security.issue-codes.round9", "path": "docs/fixtures/memory-os-security/security-issue-code-registry.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-issue-code-registry.v1.schema.json", "status": "targeted_validation_pass" },
@@ -73,7 +73,7 @@
     "objectStorageRemoteLiveJobPassed": true,
     "parserSupervisorProcessBoundaryCreated": true,
     "parserSupervisorIsolationTestsPassed": true,
-    "parserSupervisorRemoteLiveJobPassed": false,
+    "parserSupervisorRemoteLiveJobPassed": true,
     "parserNetworkNamespaceDeploymentProven": false,
     "previewSpoolImplementationCreated": false,
     "repositoryValidatorCreated": true,
@@ -122,7 +122,6 @@
     "archiveSafetyDenies": 24
   },
   "nextRequired": [
-    "confirm_remote_workflows_for_parser_supervisor_head",
     "compose_supervised_import_flow_end_to_end",
     "archive_parser_fuzz_corpus"
   ]

@@ -75,7 +75,7 @@ current full-repository Go suite:
 PASS in a local golang:1.23 Linux container at the recorded HEAD
 
 remote Actions:
-object-storage HEAD 27b5e33 green (Import API run 29691864573 with live DB + MinIO tests, Security Contracts run 29691821341)
+parser-supervisor HEAD 75c34dd green (Import API run 29716510255 incl. non-race bounds step, Security Contracts run 29716510257)
 
 production:
 NO-GO
@@ -150,7 +150,7 @@ Parser, adapter, dedupe, Preview and Apply are canonical backend concerns and ar
 # Current implementation order
 
 ```txt
-0. confirm remote workflows for the parser-supervisor HEAD
+0. remote workflows confirmed for the parser-supervisor HEAD — done
 1. compose the supervised import flow end to end (fetch → parse → verify → commit)
 2. executable API + concrete Apple session/replay/repositories
 3. Apply / Memory / deletion fencing
