@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -53,38 +52,20 @@ func liveClient(t *testing.T, now func() time.Time) *Client {
 	return build(now)
 }
 
-// provisionVersionedBucket creates the private test bucket and enables
-// versioning, retrying while the container starts up.
+// provisionVersionedBucket provisions the test bucket, retrying while the
+// container starts up.
 func provisionVersionedBucket(t *testing.T, client *Client) {
 	t.Helper()
-	ctx := context.Background()
 	deadline := time.Now().Add(30 * time.Second)
 	for {
-		response, err := client.do(ctx, http.MethodPut, "/"+client.bucket, "", nil, nil, emptyPayloadSHA256)
+		err := client.ProvisionVersionedBucket(context.Background())
 		if err == nil {
-			drainAndClose(response)
-			if response.StatusCode == http.StatusOK || response.StatusCode == http.StatusConflict {
-				break
-			}
-			err = fmt.Errorf("create bucket status %d", response.StatusCode)
+			return
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("object store never became ready: %v", err)
 		}
 		time.Sleep(time.Second)
-	}
-
-	versioning := []byte(`<VersioningConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Status>Enabled</Status></VersioningConfiguration>`)
-	digest := sha256.Sum256(versioning)
-	response, err := client.do(ctx, http.MethodPut, "/"+client.bucket, "versioning=",
-		map[string]string{"content-length": fmt.Sprintf("%d", len(versioning))},
-		versioning, hex.EncodeToString(digest[:]))
-	if err != nil {
-		t.Fatal(err)
-	}
-	drainAndClose(response)
-	if response.StatusCode != http.StatusOK {
-		t.Fatalf("enable versioning status %d", response.StatusCode)
 	}
 }
 
@@ -215,4 +196,43 @@ func hexToBase64(t *testing.T, value string) string {
 		t.Fatal(err)
 	}
 	return base64.StdEncoding.EncodeToString(decoded)
+}
+
+func TestLiveGetObjectVersionPinsExactVersion(t *testing.T) {
+	client := liveClient(t, time.Now)
+	key := "quarantine/job-live-get/upl-1"
+	first := []byte("first-version-content\n")
+	presigned, firstChecksum := livePresign(t, client, key, first, 5*time.Minute)
+	if response := uploadWithHeaders(t, presigned.URL, presigned.RequiredHeaders, first); response.StatusCode != http.StatusOK {
+		t.Fatalf("first upload status %d", response.StatusCode)
+	}
+	firstMetadata, err := client.HeadObject(context.Background(), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	second := []byte("second-version-content-longer\n")
+	presigned, _ = livePresign(t, client, key, second, 5*time.Minute)
+	if response := uploadWithHeaders(t, presigned.URL, presigned.RequiredHeaders, second); response.StatusCode != http.StatusOK {
+		t.Fatalf("second upload status %d", response.StatusCode)
+	}
+
+	var pinned bytes.Buffer
+	if err := client.GetObjectVersion(context.Background(), key, firstMetadata.VersionID, int64(len(first)), firstChecksum, &pinned); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(pinned.Bytes(), first) {
+		t.Fatalf("version-pinned fetch returned different content: %q", pinned.Bytes())
+	}
+
+	wrong := sha256.Sum256(second)
+	if err := client.GetObjectVersion(context.Background(), key, firstMetadata.VersionID, int64(len(first)), hex.EncodeToString(wrong[:]), io.Discard); !errors.Is(err, ErrObjectIntegrityMismatch) {
+		t.Fatalf("checksum divergence was accepted: %v", err)
+	}
+	if err := client.GetObjectVersion(context.Background(), key, firstMetadata.VersionID, int64(len(second)), firstChecksum, io.Discard); !errors.Is(err, ErrObjectIntegrityMismatch) {
+		t.Fatalf("length divergence was accepted: %v", err)
+	}
+	if err := client.GetObjectVersion(context.Background(), key, "does-not-exist-version", int64(len(first)), firstChecksum, io.Discard); err == nil {
+		t.Fatal("missing version was served")
+	}
 }
