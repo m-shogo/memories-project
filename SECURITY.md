@@ -1,6 +1,6 @@
 # Security
 
-最終更新: 2026-07-19
+最終更新: 2026-07-20
 
 Memory OS handles highly sensitive personal context. The repository is in security-foundation and partial backend vertical-slice development.
 
@@ -36,13 +36,16 @@ atomic Go Preview commit repository created (live-tested)
 object storage adapter:
 CREATED (live-tested against MinIO)
 
-parser supervisor / iOS / Portal:
+parser supervisor:
+PROCESS BOUNDARY CREATED (live-tested; network namespace is deployment work)
+
+iOS / Portal:
 NOT IMPLEMENTED
 
 GitHub Actions:
 workflows created
 earlier Import API runs failed on formatting/vet; repaired at the verifier checkpoint
-every push since the verifier checkpoint green (latest: Import API run 29649255941 with live DB tests, Security Contracts run 29649255942)
+every push since the verifier checkpoint green (latest recorded: Import API run 29691864573 with live DB + MinIO tests, Security Contracts run 29691821341)
 
 production:
 NO-GO
@@ -114,7 +117,7 @@ Historical PASS applies only to its recorded commit. The current repository full
 - Seal publication fsyncs both streams, writes an exclusive `manifest.tmp`, publishes with `linkat` no-replace semantics and fsyncs the attempt directory; existing final names are never overwritten.
 - Independent verification re-opens everything descriptor-relative with `O_NOFOLLOW`, strictly decodes exactly one canonical manifest, re-counts and re-hashes exact stream bytes, enforces expiry and rejects every binding mismatch before any database transaction.
 - Startup reconciliation runs one exclusive fail-closed pass: it removes only fixed-name crash residue and expired sealed attempts, completes the linkat crash window, quarantines everything unclassifiable in place and never deletes a sealed unexpired attempt.
-- The production DB commit path is not yet implemented.
+- The atomic commit repository exists and is live-tested; the composed production flow (fetch → supervised parse → verify → commit) is not yet wired.
 - Final Apply is iOS-user-only, exact-hash-bound and idempotent.
 - Account deletion fences jobs, workers, URLs, objects, spools, Preview, Apply, caches, exports and backup restoration.
 - Private content is forbidden in logs, analytics, notifications and crash reports.
@@ -142,18 +145,20 @@ Preview spool reconciliation top-level tests: 8
 Preview domain live SQL test blocks:        19
 Preview commit repository top-level tests:   9
 object storage top-level tests:             10
+parser supervision top-level tests:         12
 ```
 
 Repository-integrated Go evidence:
 
 ```txt
-code HEAD 0f2a86abf93313affcb81b5b12fcf79daddfc09b
-(local golang:1.23 Linux container + fresh postgres:16):
-gofmt clean + go vet + go test -race (live DB tests included) + both 5s fuzz smokes PASS
+code HEAD c09ef41bcf8cacd023ecba6c46086c8d554085c4
+(local golang:1.23 Linux container + fresh postgres:16 + MinIO):
+gofmt clean + go vet + go test ./... + go test -race ./... (16 packages,
+live DB/object-store/supervision tests included) + both 5s fuzz smokes PASS
 
-remote workflows at commit-repository HEAD a942532:
-Import API Security Slice run 29649255941 SUCCESS (live DB tests executed)
-Security Contracts run 29649255942 SUCCESS
+remote workflows at object-storage HEAD 27b5e33:
+Import API Security Slice run 29691864573 SUCCESS (live DB + MinIO tests executed)
+Security Contracts run 29691821341 SUCCESS
 ```
 
 ## Production blockers
@@ -166,7 +171,7 @@ Production remains blocked until current evidence exists for:
 - deployment-exclusive reconciliation execution and quarantine alerting;
 - supervisor composition wiring verifier and commit repository as one production flow;
 - concrete Apply/Memory persistence;
-- real parser supervisor and artifact verification;
+- parser network-namespace/seccomp/container deployment evidence and reviewed adapter artifacts;
 - malicious corpus/fuzz evidence;
 - deletion race and backup non-resurrection;
 - iOS App Group and Portal security evidence;
