@@ -1,6 +1,6 @@
 # Memory OS Current Authority Order — Round 9 Security
 
-最終更新: 2026-07-19
+最終更新: 2026-07-20
 
 ## Current verdict
 
@@ -40,7 +40,10 @@ atomic Go Preview commit repository created (live-tested)
 object storage adapter:
 CREATED (live-tested against MinIO)
 
-parser supervisor / iOS / Portal:
+parser supervisor:
+PROCESS BOUNDARY CREATED (live-tested; network namespace is deployment work)
+
+iOS / Portal:
 NOT IMPLEMENTED
 
 exact current HEAD full repository Go suite:
@@ -63,23 +66,24 @@ Conflicts are resolved from top to bottom:
 
 1. `docs/memory-os-current-authority-order-round-9-security.md`
 2. `docs/memory-os-current-implementation-status-and-roadmap-2026-07-17.md`
-3. `docs/memory-os-object-storage-checkpoint-2026-07-19.md`
-4. `docs/memory-os-preview-commit-repository-checkpoint-2026-07-19.md`
-5. `docs/memory-os-preview-domain-checkpoint-2026-07-18.md`
-6. `docs/memory-os-preview-spool-reconciliation-checkpoint-2026-07-18.md`
-7. `docs/memory-os-preview-spool-verifier-checkpoint-2026-07-17.md`
-8. `docs/memory-os-preview-spool-seal-checkpoint-2026-07-17.md`
-9. `docs/memory-os-preview-spool-stream-writer-checkpoint-2026-07-17.md`
-10. `docs/memory-os-preview-spool-commit-contract-round-9.md`
-11. security schema registry and fixture index
-12. current code under `services/import-api/`
-13. `services/import-api/README.md`
-14. `SECURITY.md`
-15. Round 9 architecture, threat model and verification gate
-16. OpenAPI, PostgreSQL migrations/tests and validators/workflows
-17. Round 8 Capture / Import architecture
-18. prior privacy / persistence / deletion contracts
-19. historical progress and handoff documents
+3. `docs/memory-os-parser-supervisor-checkpoint-2026-07-20.md`
+4. `docs/memory-os-object-storage-checkpoint-2026-07-19.md`
+5. `docs/memory-os-preview-commit-repository-checkpoint-2026-07-19.md`
+6. `docs/memory-os-preview-domain-checkpoint-2026-07-18.md`
+7. `docs/memory-os-preview-spool-reconciliation-checkpoint-2026-07-18.md`
+8. `docs/memory-os-preview-spool-verifier-checkpoint-2026-07-17.md`
+9. `docs/memory-os-preview-spool-seal-checkpoint-2026-07-17.md`
+10. `docs/memory-os-preview-spool-stream-writer-checkpoint-2026-07-17.md`
+11. `docs/memory-os-preview-spool-commit-contract-round-9.md`
+12. security schema registry and fixture index
+13. current code under `services/import-api/`
+14. `services/import-api/README.md`
+15. `SECURITY.md`
+16. Round 9 architecture, threat model and verification gate
+17. OpenAPI, PostgreSQL migrations/tests and validators/workflows
+18. Round 8 Capture / Import architecture
+19. prior privacy / persistence / deletion contracts
+20. historical progress and handoff documents
 
 Historical documents record old snapshots and never override current code or this order.
 
@@ -321,8 +325,8 @@ Production remains forbidden while any remains:
 # 8. Correct next sequence
 
 ```txt
-0. remote workflows confirmed for the object-storage HEAD — done
-1. implement isolated parser supervisor
+0. confirm remote workflows for the parser-supervisor HEAD
+1. compose the supervised import flow end to end (fetch → parse → verify → commit)
 2. compose executable API/auth/repositories
 3. implement Apply/Memory/deletion
 4. begin iOS only after backend P0 closes
