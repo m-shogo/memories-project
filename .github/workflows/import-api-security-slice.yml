@@ -64,6 +64,9 @@ jobs:
       - name: Unit tests with race detector
         run: go test -race ./...
 
+      - name: Parser supervision bounds without race instrumentation
+        run: go test ./internal/parsersup
+
       - name: Fuzz Generic CSV parser smoke
         env:
           GOMAXPROCS: "4"
