@@ -1,6 +1,6 @@
 # Memory OS Current Implementation Status and Roadmap
 
-最終更新: 2026-07-19
+最終更新: 2026-07-20
 
 この文書は、設計済み・契約済み・部分実装・実環境未検証を混同しないための現在地正本である。
 
@@ -41,7 +41,7 @@ object storage runtime:
 signed-upload adapter created (live-tested against MinIO)
 
 parser sandbox runtime:
-not implemented
+process-boundary supervisor created (live-tested); network namespace remains deployment work
 
 iOS / Desktop Portal:
 not implemented
@@ -76,7 +76,8 @@ NO-GO
 | Apple JWT/JWKS Go core | Partial | Verification and binding interfaces | Concrete composition and persistence |
 | Signed upload OpenAPI/service | Partial | Exact request/object metadata binding | Concrete repository composition, lifecycle proof |
 | Object storage adapter | Partial | SDK-free SigV4 presign binding length/type/checksum as signed headers, versioned HEAD, MinIO live tests | TLS + scoped production credentials, lifecycle configuration evidence |
-| Parser sandbox contract | Created | Profile and 16 unsafe mutations | Real supervisor/container/process runtime |
+| Parser sandbox contract | Created | Profile and 16 unsafe mutations | Container/namespace deployment evidence |
+| Parser supervisor | Partial | Digest-pinned worker, credential-free env, prlimit AS/CPU/FSIZE bounds, frame protocol, kill+fail-closed cleanup, e2e seal+verify | Network namespace/seccomp deployment, reviewed adapter artifact, fork-freeze shim |
 | Archive/JSON/CSV contracts | Created | 25 cases: 1 allow / 24 deny | Runtime corpus and fuzz evidence |
 | Generic CSV parser/iterator | Partial | Bounded synchronous pull; sticky failure | Quarantine reader and isolated worker |
 | CSV → Preview bridge | Reference | No hidden goroutine/channel | Production verified spool and commit path |
@@ -91,7 +92,7 @@ NO-GO
 | Apply service | Partial | iOS authority and exact-hash idempotency interfaces | Concrete Preview/Memory repository and deletion fencing |
 | Executable Go API | Not implemented | No production `main` lifecycle | Auth/session/repositories/storage/worker composition |
 | Object storage runtime | Adapter created | SigV4 signer/HEAD proven on live versioned MinIO bucket | Production bucket policy, lifecycle and TLS deployment proof |
-| Parser supervisor runtime | Not implemented | Contract only | Isolation, limits and artifact verification |
+| Parser supervisor runtime | Process boundary created | prlimit-bounded digest-pinned worker with targeted isolation tests | Network namespace, seccomp and container deployment evidence |
 | iOS / Portal | Not implemented | Technology/design authority only | Client vertical slices and security evidence |
 | Memory Town | Design mature; deferred | Round 1–5 contracts | Capture / Import P0 first |
 | Production | NO-GO | Multiple P0 runtime blockers | Zero unresolved P0 + independent review |
@@ -319,9 +320,12 @@ Status: **partial implementation created and live-tested**. PostgreSQL rejects `
 
 Status: **adapter created and live-tested** (SDK-free SigV4 presign + versioned HEAD against MinIO). Remaining: production bucket policy, lifecycle and TLS deployment evidence.
 
-## Gates 7–10
+## Gate 7 — isolated parser supervisor
 
-7. isolated parser supervisor;
+Status: **process boundary created and live-tested** (digest pinning, credential-free env, kernel resource bounds, frame protocol, fail-closed cleanup, end-to-end seal+verify). Remaining: network-namespace/seccomp/container deployment evidence and reviewed adapter artifacts.
+
+## Gates 8–10
+
 8. executable API and concrete Apple auth/session repositories;
 9. Apply/Memory/deletion fencing;
 10. iOS Share Extension/App Group/confirmation, then limited Portal.
@@ -340,8 +344,9 @@ partial Go security vertical slice exists
 Preview spool filesystem, writer, seal-publication, independent-verifier and reconciliation checkpoints created
 production Preview PostgreSQL domain schema and atomic commit repository created with live tests
 signed-upload object storage adapter created with live MinIO tests
+process-boundary parser supervisor created with targeted isolation tests
 repository-integrated Go suite passes in a Linux container at the recorded HEAD
-parser supervisor, executable server and client blockers remain
+flow composition, executable server and client blockers remain
 production NO-GO
 ```
 
