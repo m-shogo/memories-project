@@ -39,6 +39,19 @@ func testPool(t *testing.T) *pgxpool.Pool {
 }
 
 func applyMigrations(pool *pgxpool.Pool) error {
+	ctx := context.Background()
+	// Migration 001 alters cluster-wide roles; the importflow package applies
+	// the same migrations concurrently on its own database, so both packages
+	// serialize on one advisory lock taken in this shared database.
+	lock, err := pool.Acquire(ctx)
+	if err != nil {
+		return err
+	}
+	defer lock.Release()
+	if _, err := lock.Exec(ctx, "SELECT pg_advisory_lock(730001)"); err != nil {
+		return err
+	}
+	defer func() { _, _ = lock.Exec(ctx, "SELECT pg_advisory_unlock(730001)") }()
 	for _, name := range []string{
 		"001_memory_os_import_rls.sql",
 		"002_memory_os_upload_authorization.sql",
@@ -48,7 +61,7 @@ func applyMigrations(pool *pgxpool.Pool) error {
 		if err != nil {
 			return err
 		}
-		if _, err := pool.Exec(context.Background(), string(payload)); err != nil {
+		if _, err := pool.Exec(ctx, string(payload)); err != nil {
 			return fmt.Errorf("apply %s: %w", name, err)
 		}
 	}
