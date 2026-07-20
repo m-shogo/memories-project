@@ -26,15 +26,18 @@ const (
 )
 
 var (
-	ErrInvalidStoreConfig   = errors.New("invalid object store configuration")
-	ErrInvalidPresignInput  = errors.New("invalid presign input")
-	ErrInvalidObjectKey     = errors.New("invalid quarantine object key")
-	ErrObjectNotFound       = errors.New("quarantine object not found")
-	ErrUnexpectedStoreReply = errors.New("unexpected object store reply")
+	ErrInvalidStoreConfig      = errors.New("invalid object store configuration")
+	ErrInvalidPresignInput     = errors.New("invalid presign input")
+	ErrInvalidObjectKey        = errors.New("invalid quarantine object key")
+	ErrInvalidObjectVersion    = errors.New("invalid quarantine object version ID")
+	ErrObjectNotFound          = errors.New("quarantine object not found")
+	ErrObjectIntegrityMismatch = errors.New("quarantine object content does not match its binding")
+	ErrUnexpectedStoreReply    = errors.New("unexpected object store reply")
 )
 
 var objectKeyPattern = regexp.MustCompile(`^quarantine/[A-Za-z0-9._:-]+/[A-Za-z0-9._:-]+$`)
 var bucketPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$`)
+var versionIDPattern = regexp.MustCompile(`^[A-Za-z0-9._~:+/=-]{1,256}$`)
 
 // validObjectKey requires the exact quarantine shape and rejects dot segments,
 // which the character class alone would admit and URL normalization could
@@ -193,8 +196,86 @@ func (c *Client) HeadObject(ctx context.Context, objectKey string) (upload.Objec
 	}, nil
 }
 
-// do sends one Signature V4 header-signed request. It exists for HEAD and for
-// test-only bucket provisioning; it never streams user payloads.
+// GetObjectVersion downloads exactly one immutable object version into
+// destination, verifying the bound content length and full-object SHA-256
+// while streaming. Any divergence — wrong length, wrong hash, growth beyond
+// the bound — is ErrObjectIntegrityMismatch and the caller must discard the
+// destination.
+func (c *Client) GetObjectVersion(ctx context.Context, objectKey string, versionID string, expectedLength int64, expectedSHA256 string, destination io.Writer) error {
+	if c == nil || destination == nil {
+		return ErrInvalidStoreConfig
+	}
+	if !validObjectKey(objectKey) {
+		return ErrInvalidObjectKey
+	}
+	if !versionIDPattern.MatchString(versionID) {
+		return ErrInvalidObjectVersion
+	}
+	expected, err := hex.DecodeString(expectedSHA256)
+	if err != nil || len(expected) != sha256.Size || expectedLength < 1 || expectedLength > upload.MaxUploadBytes {
+		return fmt.Errorf("%w: content binding", ErrInvalidObjectVersion)
+	}
+	response, err := c.do(ctx, http.MethodGet, "/"+c.bucket+"/"+objectKey,
+		"versionId="+url.QueryEscape(versionID), nil, nil, emptyPayloadSHA256)
+	if err != nil {
+		return err
+	}
+	defer drainAndClose(response)
+	switch response.StatusCode {
+	case http.StatusOK:
+	case http.StatusNotFound:
+		return ErrObjectNotFound
+	default:
+		return fmt.Errorf("%w: GET status %d", ErrUnexpectedStoreReply, response.StatusCode)
+	}
+
+	hasher := sha256.New()
+	copied, err := io.Copy(io.MultiWriter(destination, hasher), io.LimitReader(response.Body, expectedLength))
+	if err != nil {
+		return fmt.Errorf("stream quarantine object: %w", err)
+	}
+	if n, err := io.CopyN(io.Discard, response.Body, 1); n != 0 || !errors.Is(err, io.EOF) {
+		return fmt.Errorf("%w: content exceeds bound length", ErrObjectIntegrityMismatch)
+	}
+	if copied != expectedLength || hex.EncodeToString(hasher.Sum(nil)) != expectedSHA256 {
+		return fmt.Errorf("%w: length or checksum", ErrObjectIntegrityMismatch)
+	}
+	return nil
+}
+
+// ProvisionVersionedBucket creates the private quarantine bucket if missing
+// and enables versioning. It exists for deployment provisioning and test
+// containers; runtime request paths never call it.
+func (c *Client) ProvisionVersionedBucket(ctx context.Context) error {
+	if c == nil {
+		return ErrInvalidStoreConfig
+	}
+	response, err := c.do(ctx, http.MethodPut, "/"+c.bucket, "", nil, nil, emptyPayloadSHA256)
+	if err != nil {
+		return err
+	}
+	drainAndClose(response)
+	if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusConflict {
+		return fmt.Errorf("%w: create bucket status %d", ErrUnexpectedStoreReply, response.StatusCode)
+	}
+
+	versioning := []byte(`<VersioningConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Status>Enabled</Status></VersioningConfiguration>`)
+	digest := sha256.Sum256(versioning)
+	response, err = c.do(ctx, http.MethodPut, "/"+c.bucket, "versioning=",
+		map[string]string{"content-length": strconv.Itoa(len(versioning))},
+		versioning, hex.EncodeToString(digest[:]))
+	if err != nil {
+		return err
+	}
+	drainAndClose(response)
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("%w: enable versioning status %d", ErrUnexpectedStoreReply, response.StatusCode)
+	}
+	return nil
+}
+
+// do sends one Signature V4 header-signed request. It exists for HEAD/GET and
+// for provisioning; it never streams user payloads outward.
 func (c *Client) do(ctx context.Context, method string, path string, rawQuery string, extraHeaders map[string]string, body []byte, payloadSHA256 string) (*http.Response, error) {
 	if ctx == nil {
 		return nil, ErrInvalidStoreConfig
