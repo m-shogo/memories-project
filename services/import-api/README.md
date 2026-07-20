@@ -24,7 +24,8 @@ It is intentionally incomplete. It does not expose a production server and must 
 - independent sealed-spool decode/count/re-hash verifier;
 - startup crash-residue reconciliation and TTL cleanup;
 - atomic Preview commit repository against live PostgreSQL;
-- SDK-free SigV4 quarantine object store adapter against live MinIO.
+- SDK-free SigV4 quarantine object store adapter against live MinIO;
+- prlimit-bounded digest-pinned parser worker supervision.
 
 ## Preview spool contract
 
@@ -131,6 +132,10 @@ Implemented in `internal/objectstore` (no SDK; SigV4 on the standard library, pi
 - exact `quarantine/{job}/{upload}` keys with dot-segment rejection; 15-minute presign cap;
 - SigV4-signed HEAD with checksum mode returning the exact version ID, ETag, length, type and hex SHA-256;
 - live MinIO tests (gated on `MEMORY_OS_TEST_S3_ENDPOINT`) prove the round trip, per-upload version IDs on a versioned bucket, tamper/expiry rejection and not-found handling.
+
+## Isolated parser supervision
+
+Implemented in `internal/parsersup` (Linux; non-Linux fails closed): the supervisor verifies the pinned worker SHA-256, spawns the worker in its own process group with an explicit credential-free environment (credential-shaped names rejected), applies `prlimit64` AS/CPU/NOFILE/`FSIZE=0`/`CORE=0` before consuming output, streams tagged length-prefixed frames synchronously into the bounded spool writer under wall-clock and output caps, seals on clean exit and kills + fail-closed-cleans on any violation, crash or timeout. The worker holds no spool, database, storage or credential handles. Network-namespace isolation is deployment work and is not claimed. Twelve targeted tests cover digest mismatch, env minimality, memory/CPU/file-write kills, timeout, protocol violations, output caps and end-to-end seal + independent verification.
 
 ## Critical production boundary
 
