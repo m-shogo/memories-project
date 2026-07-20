@@ -17,21 +17,22 @@ Town is the visible side effect.
 
 # Current authority and status
 
-最終更新: 2026-07-19
+最終更新: 2026-07-20
 
 Read first:
 
 1. [Round 9 Security Authority](docs/memory-os-current-authority-order-round-9-security.md)
 2. [Current Implementation Status and Roadmap](docs/memory-os-current-implementation-status-and-roadmap-2026-07-17.md)
-3. [Object Storage Checkpoint](docs/memory-os-object-storage-checkpoint-2026-07-19.md)
-4. [Preview Commit Repository Checkpoint](docs/memory-os-preview-commit-repository-checkpoint-2026-07-19.md)
-5. [Preview PostgreSQL Domain Checkpoint](docs/memory-os-preview-domain-checkpoint-2026-07-18.md)
-6. [Preview Spool Reconciliation Checkpoint](docs/memory-os-preview-spool-reconciliation-checkpoint-2026-07-18.md)
-7. [Preview Spool Verifier Checkpoint](docs/memory-os-preview-spool-verifier-checkpoint-2026-07-17.md)
-8. [Preview Spool Seal Checkpoint](docs/memory-os-preview-spool-seal-checkpoint-2026-07-17.md)
-9. [Preview Spool and Atomic Commit Contract](docs/memory-os-preview-spool-commit-contract-round-9.md)
-10. [Import API Security Slice](services/import-api/README.md)
-11. [Security Status](SECURITY.md)
+3. [Parser Supervisor Checkpoint](docs/memory-os-parser-supervisor-checkpoint-2026-07-20.md)
+4. [Object Storage Checkpoint](docs/memory-os-object-storage-checkpoint-2026-07-19.md)
+5. [Preview Commit Repository Checkpoint](docs/memory-os-preview-commit-repository-checkpoint-2026-07-19.md)
+6. [Preview PostgreSQL Domain Checkpoint](docs/memory-os-preview-domain-checkpoint-2026-07-18.md)
+7. [Preview Spool Reconciliation Checkpoint](docs/memory-os-preview-spool-reconciliation-checkpoint-2026-07-18.md)
+8. [Preview Spool Verifier Checkpoint](docs/memory-os-preview-spool-verifier-checkpoint-2026-07-17.md)
+9. [Preview Spool Seal Checkpoint](docs/memory-os-preview-spool-seal-checkpoint-2026-07-17.md)
+10. [Preview Spool and Atomic Commit Contract](docs/memory-os-preview-spool-commit-contract-round-9.md)
+11. [Import API Security Slice](services/import-api/README.md)
+12. [Security Status](SECURITY.md)
 
 ```txt
 product priority:
@@ -64,7 +65,10 @@ atomic Go Preview commit repository created (live-tested)
 object storage adapter:
 created (live-tested against MinIO)
 
-parser supervisor / iOS / Portal:
+parser supervisor:
+process boundary created (live-tested; network namespace is deployment work)
+
+iOS / Portal:
 not implemented
 
 current full-repository Go suite:
@@ -146,8 +150,8 @@ Parser, adapter, dedupe, Preview and Apply are canonical backend concerns and ar
 # Current implementation order
 
 ```txt
-0. remote workflows confirmed for the object-storage HEAD — done
-1. isolated parser supervisor
+0. confirm remote workflows for the parser-supervisor HEAD
+1. compose the supervised import flow end to end (fetch → parse → verify → commit)
 2. executable API + concrete Apple session/replay/repositories
 3. Apply / Memory / deletion fencing
 4. iOS vertical slice
@@ -201,15 +205,24 @@ SDK-free SigV4 presigned PUT (length/type/checksum as signed headers)
 + live MinIO round-trip and versioning proof
 ```
 
+Completed parser-supervisor checkpoint:
+
+```txt
+digest-pinned worker process in its own process group
++ credential-free minimal environment (credential-shaped names rejected)
++ prlimit AS/CPU/NOFILE/FSIZE=0/CORE=0 kernel bounds
++ synchronous tagged frame protocol into the bounded spool writer
++ wall-clock and output caps, kill + fail-closed cleanup
++ end-to-end supervised parse → seal → independent verify
+(network namespace isolation remains deployment work)
+```
+
 Immediate next checkpoint:
 
 ```txt
-isolated parser supervisor
-→ networkless, credential-free, resource-bounded worker per job
-→ version-bound quarantine object read-only
-→ synchronous canonical rows into the bounded spool writer
-→ seal on success, reconcile on crash
-→ targeted isolation and bound tests
+compose the supervised import flow end to end (no HTTP server yet)
+→ objectstore fetch → parsersup parse → previewspool verify → previewcommit commit
+→ one test-proven flow against live PostgreSQL + MinIO
 ```
 
 Do not mix object storage, parser-container or client work into that checkpoint.
