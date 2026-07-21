@@ -126,6 +126,16 @@
     "archiveSafetyAllows": 1,
     "archiveSafetyDenies": 24
   },
+  "remoteEvidence": {
+    "checkpointLabel": "import-flow",
+    "headSha": "5c3dc4bc2179800c8530961a773963f96797f4d5",
+    "headShaShort": "381c514",
+    "importApiRunId": 29793196253,
+    "importApiRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/29793196253",
+    "securityContractsRunId": 29793196257,
+    "securityContractsRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/29793196257",
+    "confirmedAt": "2026-07-21"
+  },
   "nextRequired": [
     "create_reviewed_canonical_adapter_record_contract",
     "archive_parser_fuzz_corpus"
