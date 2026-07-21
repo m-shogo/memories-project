@@ -23,16 +23,17 @@ Read first:
 
 1. [Round 9 Security Authority](docs/memory-os-current-authority-order-round-9-security.md)
 2. [Current Implementation Status and Roadmap](docs/memory-os-current-implementation-status-and-roadmap-2026-07-17.md)
-3. [Parser Supervisor Checkpoint](docs/memory-os-parser-supervisor-checkpoint-2026-07-20.md)
-4. [Object Storage Checkpoint](docs/memory-os-object-storage-checkpoint-2026-07-19.md)
-5. [Preview Commit Repository Checkpoint](docs/memory-os-preview-commit-repository-checkpoint-2026-07-19.md)
-6. [Preview PostgreSQL Domain Checkpoint](docs/memory-os-preview-domain-checkpoint-2026-07-18.md)
-7. [Preview Spool Reconciliation Checkpoint](docs/memory-os-preview-spool-reconciliation-checkpoint-2026-07-18.md)
-8. [Preview Spool Verifier Checkpoint](docs/memory-os-preview-spool-verifier-checkpoint-2026-07-17.md)
-9. [Preview Spool Seal Checkpoint](docs/memory-os-preview-spool-seal-checkpoint-2026-07-17.md)
-10. [Preview Spool and Atomic Commit Contract](docs/memory-os-preview-spool-commit-contract-round-9.md)
-11. [Import API Security Slice](services/import-api/README.md)
-12. [Security Status](SECURITY.md)
+3. [Supervised Import Flow Checkpoint](docs/memory-os-import-flow-checkpoint-2026-07-20.md)
+4. [Parser Supervisor Checkpoint](docs/memory-os-parser-supervisor-checkpoint-2026-07-20.md)
+5. [Object Storage Checkpoint](docs/memory-os-object-storage-checkpoint-2026-07-19.md)
+6. [Preview Commit Repository Checkpoint](docs/memory-os-preview-commit-repository-checkpoint-2026-07-19.md)
+7. [Preview PostgreSQL Domain Checkpoint](docs/memory-os-preview-domain-checkpoint-2026-07-18.md)
+8. [Preview Spool Reconciliation Checkpoint](docs/memory-os-preview-spool-reconciliation-checkpoint-2026-07-18.md)
+9. [Preview Spool Verifier Checkpoint](docs/memory-os-preview-spool-verifier-checkpoint-2026-07-17.md)
+10. [Preview Spool Seal Checkpoint](docs/memory-os-preview-spool-seal-checkpoint-2026-07-17.md)
+11. [Preview Spool and Atomic Commit Contract](docs/memory-os-preview-spool-commit-contract-round-9.md)
+12. [Import API Security Slice](services/import-api/README.md)
+13. [Security Status](SECURITY.md)
 
 ```txt
 product priority:
@@ -67,6 +68,9 @@ created (live-tested against MinIO)
 
 parser supervisor:
 process boundary created (live-tested; network namespace is deployment work)
+
+supervised import flow:
+composed and live-tested end to end (fetch → parse → verify → commit)
 
 iOS / Portal:
 not implemented
@@ -150,8 +154,8 @@ Parser, adapter, dedupe, Preview and Apply are canonical backend concerns and ar
 # Current implementation order
 
 ```txt
-0. remote workflows confirmed for the parser-supervisor HEAD — done
-1. compose the supervised import flow end to end (fetch → parse → verify → commit)
+0. confirm remote workflows for the import-flow HEAD
+1. reviewed canonical adapter record contract, then real adapter wiring
 2. executable API + concrete Apple session/replay/repositories
 3. Apply / Memory / deletion fencing
 4. iOS vertical slice
@@ -217,15 +221,25 @@ digest-pinned worker process in its own process group
 (network namespace isolation remains deployment work)
 ```
 
+Completed import-flow checkpoint:
+
+```txt
+HEAD version recheck → version-pinned verified fetch
+→ supervised parse → seal → independent verify → evidence cross-check
+→ verified record collection + interim canonical decode
+→ atomic commit — all as one live-tested flow (PostgreSQL 16 + MinIO)
+drift / checksum / crash / bad-record all fail closed with no durable state
+```
+
 Immediate next checkpoint:
 
 ```txt
-compose the supervised import flow end to end (no HTTP server yet)
-→ objectstore fetch → parsersup parse → previewspool verify → previewcommit commit
-→ one test-proven flow against live PostgreSQL + MinIO
+reviewed canonical adapter record contract (schema + fixtures + validator)
+→ bind genericcsv output to the flow decode
+→ wire the real adapter through the supervised worker
 ```
 
-Do not mix object storage, parser-container or client work into that checkpoint.
+Do not add executable-server or client wiring in that checkpoint.
 
 ---
 
