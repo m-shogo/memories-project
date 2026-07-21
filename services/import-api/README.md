@@ -25,7 +25,8 @@ It is intentionally incomplete. It does not expose a production server and must 
 - startup crash-residue reconciliation and TTL cleanup;
 - atomic Preview commit repository against live PostgreSQL;
 - SDK-free SigV4 quarantine object store adapter against live MinIO;
-- prlimit-bounded digest-pinned parser worker supervision.
+- prlimit-bounded digest-pinned parser worker supervision;
+- supervised import flow composed end to end (fetch → parse → verify → commit) against live PostgreSQL and MinIO.
 
 ## Preview spool contract
 
@@ -137,34 +138,37 @@ Implemented in `internal/objectstore` (no SDK; SigV4 on the standard library, pi
 
 Implemented in `internal/parsersup` (Linux; non-Linux fails closed): the supervisor verifies the pinned worker SHA-256, spawns the worker in its own process group with an explicit credential-free environment (credential-shaped names rejected), applies `prlimit64` AS/CPU/NOFILE/`FSIZE=0`/`CORE=0` before consuming output, streams tagged length-prefixed frames synchronously into the bounded spool writer under wall-clock and output caps, seals on clean exit and kills + fail-closed-cleans on any violation, crash or timeout. The worker holds no spool, database, storage or credential handles. Network-namespace isolation is deployment work and is not claimed. Twelve targeted tests cover digest mismatch, env minimality, memory/CPU/file-write kills, timeout, protocol violations, output caps and end-to-end seal + independent verification.
 
-## Critical production boundary
+## Supervised import flow
 
-A published manifest is untrusted until `previewspool.Verifier.Verify` passes for it in the same flow. The future commit path must hold the recomputed evidence and re-check epoch/job state inside its own transaction.
-
-`preview.AtomicMaterializer` parses inside its transaction callback. It remains reference-only and must not be connected to production PostgreSQL for untrusted imports.
-
-Required flow:
+Implemented in `internal/importflow`, composing every boundary above into one flow with no HTTP surface:
 
 ```txt
-version-bound quarantine object
-→ isolated transaction-free parser
-→ private bounded spool
-→ durable no-replace manifest publication
-→ independent decode/count/re-hash
-→ epoch and binding recheck
-→ one short parameterized bulk-insert transaction (COPY is forbidden under RLS)
-→ immutable ready Preview
-→ COMMIT or full ROLLBACK
+HEAD recheck (current object version/length/checksum must equal the binding)
+→ version-pinned GET into a private exclusive scratch file
+  (streaming length + SHA-256 verification via objectstore.GetObjectVersion)
+→ supervised transaction-free parse (parsersup) into a sealed spool
+→ independent decode/count/re-hash verification (previewspool.Verifier)
+→ sealed-evidence cross-check against the supervisor's own evidence
+→ CollectSealedRecords re-reads the verified streams under the same safety checks
+→ interim canonical-record decode (sourceRow ordering/uniqueness, IMPORT_* codes)
+→ one short atomic commit (previewcommit) → COMMIT or full ROLLBACK
 ```
+
+A newer object version than the binding, a checksum mismatch, a worker crash or an invalid canonical record all fail closed with no durable database state and no spool residue. Six live end-to-end tests (gated on `MEMORY_OS_TEST_DATABASE_URL` + `MEMORY_OS_TEST_S3_ENDPOINT`) prove the happy path, idempotent re-parse, version-drift rejection, checksum-mismatch rejection, worker-crash cleanup and invalid-record rejection against live PostgreSQL and MinIO.
+
+The interim canonical-record contract (JSON object with a `sourceRow` field, `IMPORT_*` rejection codes) is explicitly a placeholder for the reviewed adapter record contract.
+
+## Critical production boundary
+
+`preview.AtomicMaterializer` parses inside its transaction callback. It remains reference-only and must not be connected to production PostgreSQL for untrusted imports; `internal/importflow` is the production-shaped replacement, though it still runs the harness worker rather than a reviewed adapter artifact.
 
 ## Not implemented
 
 - executable HTTP server/session issuer;
 - Apple code exchange/secret rotation and concrete replay/session stores;
-- supervisor composition wiring verifier and commit repository as one flow;
-- reviewed canonical-record contract for candidate JSON;
-- upload service + object store composition and lifecycle/TLS deployment evidence;
-- real parser supervisor and artifact verification;
+- reviewed canonical-record contract for candidate/rejection JSON and reviewed adapter artifacts;
+- network-namespace/seccomp/container deployment evidence for the parser supervisor;
+- production TLS/scoped-credential/lifecycle deployment evidence for object storage;
 - concrete Apply/Memory persistence and complete deletion fencing;
 - iOS and Desktop Portal clients.
 
@@ -172,15 +176,15 @@ version-bound quarantine object
 
 ```txt
 exact repository-integrated Go suite
-(code HEAD 229c0bfa67679e868ee52601da9c411e8faafb63, local golang:1.23 Linux container + fresh postgres:16 + MinIO):
-gofmt clean + go vet + go test -race (live DB and object-store tests included) + both 5s fuzz smokes PASS
+(code HEAD 5c3dc4bc2179800c8530961a773963f96797f4d5, local golang:1.23 Linux container + fresh postgres:16 + MinIO):
+gofmt clean + go vet + go test ./... + go test -race ./... (17 packages,
+live DB/object-store/supervision/flow tests included) + both 5s fuzz smokes PASS
 
 Preview spool contract validator:
 PASS
 
-remote workflows at object-storage HEAD 27b5e33:
-Import API Security Slice run 29691864573 SUCCESS (live DB and MinIO tests executed)
-Security Contracts run 29691821341 SUCCESS
+remote workflows:
+recorded after the push completes
 ```
 
 Earlier remote Import API runs had failed at the Format check; five unformatted sources and one pointer-receiver compile error in `internal/upload/service_test.go` were repaired at the verifier checkpoint, and the branch has run green since.
