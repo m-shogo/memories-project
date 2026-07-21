@@ -292,13 +292,14 @@ iOS and Desktop Portal
 Validation wording:
 
 ```txt
-code HEAD 0f2a86abf93313affcb81b5b12fcf79daddfc09b
-(local golang:1.23 Linux container + fresh postgres:16):
-gofmt clean + go vet + go test -race (live DB tests included) + both 5s fuzz smokes PASS
+code HEAD 3f9ab51 (docs only; code identical to 5c3dc4b)
+(local golang:1.23 Linux container + fresh postgres:16 + MinIO):
+gofmt clean + go vet + go test ./... + go test -race ./... (17 packages,
+live DB/object-store/supervision/import-flow tests included) + both 5s fuzz smokes PASS
 
-remote workflows at commit-repository HEAD a942532:
-Import API Security Slice run 29649255941 SUCCESS (live DB tests executed)
-Security Contracts run 29649255942 SUCCESS
+remote workflows at import-flow HEAD 381c514:
+Import API Security Slice run 29793196253 SUCCESS (live import-flow tests executed)
+Security Contracts run 29793196257 SUCCESS
 ```
 
 Earlier Import API remote runs had failed at the Format check until the verifier checkpoint repaired the suite; every push since has run green. CI evidence is repository evidence, not production evidence.

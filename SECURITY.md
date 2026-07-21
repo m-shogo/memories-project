@@ -120,7 +120,7 @@ Historical PASS applies only to its recorded commit. The current repository full
 - Seal publication fsyncs both streams, writes an exclusive `manifest.tmp`, publishes with `linkat` no-replace semantics and fsyncs the attempt directory; existing final names are never overwritten.
 - Independent verification re-opens everything descriptor-relative with `O_NOFOLLOW`, strictly decodes exactly one canonical manifest, re-counts and re-hashes exact stream bytes, enforces expiry and rejects every binding mismatch before any database transaction.
 - Startup reconciliation runs one exclusive fail-closed pass: it removes only fixed-name crash residue and expired sealed attempts, completes the linkat crash window, quarantines everything unclassifiable in place and never deletes a sealed unexpired attempt.
-- The atomic commit repository exists and is live-tested; the composed production flow (fetch → supervised parse → verify → commit) is not yet wired.
+- The composed production flow (version-pinned fetch → supervised parse → seal → independent verify → atomic commit) is wired end to end and live-tested; the canonical adapter record contract remains interim and unreviewed, and there is no executable server yet.
 - Final Apply is iOS-user-only, exact-hash-bound and idempotent.
 - Account deletion fences jobs, workers, URLs, objects, spools, Preview, Apply, caches, exports and backup restoration.
 - Private content is forbidden in logs, analytics, notifications and crash reports.
@@ -149,19 +149,20 @@ Preview domain live SQL test blocks:        19
 Preview commit repository top-level tests:   9
 object storage top-level tests:             10
 parser supervision top-level tests:         12
+import flow end-to-end tests:                6
 ```
 
 Repository-integrated Go evidence:
 
 ```txt
-code HEAD c09ef41bcf8cacd023ecba6c46086c8d554085c4
+code HEAD 3f9ab51 (docs only; code identical to 5c3dc4b)
 (local golang:1.23 Linux container + fresh postgres:16 + MinIO):
-gofmt clean + go vet + go test ./... + go test -race ./... (16 packages,
-live DB/object-store/supervision tests included) + both 5s fuzz smokes PASS
+gofmt clean + go vet + go test ./... + go test -race ./... (17 packages,
+live DB/object-store/supervision/import-flow tests included) + both 5s fuzz smokes PASS
 
-remote workflows at parser-supervisor HEAD 75c34dd:
-Import API Security Slice run 29716510255 SUCCESS (live DB + MinIO + supervision, incl. non-race bounds step)
-Security Contracts run 29716510257 SUCCESS
+remote workflows at import-flow HEAD 381c514:
+Import API Security Slice run 29793196253 SUCCESS (live import-flow tests executed)
+Security Contracts run 29793196257 SUCCESS
 ```
 
 ## Production blockers

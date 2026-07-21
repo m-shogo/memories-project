@@ -238,7 +238,7 @@ A published manifest is untrusted until its verification passes; verification is
 
 # 5. Validation status
 
-Confirmed for the exact repository-integrated module at code HEAD `0f2a86abf93313affcb81b5b12fcf79daddfc09b` in a local `golang:1.23` Linux container with a fresh `postgres:16`:
+Confirmed for the exact repository-integrated module at code HEAD `5c3dc4bc2179800c8530961a773963f96797f4d5` in a local `golang:1.23` Linux container with fresh `postgres:16` and MinIO:
 
 ```txt
 gofmt -l . (empty):
@@ -247,7 +247,7 @@ PASS
 go vet ./...:
 PASS
 
-go test -race ./... (14 packages, live DB tests included):
+go test ./... + go test -race ./... (17 packages, live DB/object-store/supervision/import-flow tests included):
 PASS
 
 both 5s fuzz smokes:
@@ -257,9 +257,9 @@ scripts/validate-memory-os-preview-spool.py and validate-memory-os-security.py:
 PASS
 ```
 
-This run also repaired the previously failing suite: five unformatted sources and one pointer-receiver compile error in `internal/upload/service_test.go` had failed the remote Format/Vet steps on every earlier push.
+The previously failing suite (five unformatted sources and one pointer-receiver compile error) was repaired at the verifier checkpoint; every push since has run green.
 
-Also confirmed after push: Import API Security Slice run 29649255941 (live DB tests executed against the CI postgres service) and Security Contracts run 29649255942 succeeded on pushed HEAD `a942532` (code identical to `0f2a86a`). Every push since the verifier checkpoint has run green.
+Also confirmed after push: Import API Security Slice run 29793196253 (live import-flow tests executed against the CI postgres + MinIO services) and Security Contracts run 29793196257 succeeded on pushed HEAD `381c514` (code identical to `5c3dc4b`).
 
 Not confirmed:
 
