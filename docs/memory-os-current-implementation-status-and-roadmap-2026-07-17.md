@@ -43,6 +43,9 @@ signed-upload adapter created (live-tested against MinIO)
 parser sandbox runtime:
 process-boundary supervisor created (live-tested); network namespace remains deployment work
 
+supervised import flow:
+composed and live-tested end to end (fetch → parse → verify → commit)
+
 iOS / Desktop Portal:
 not implemented
 
@@ -70,7 +73,8 @@ NO-GO
 | Object authorization | Contract complete | 8 cases: 2 allow / 6 deny | Real API/repository integration |
 | PostgreSQL RLS foundation | Migration/tests created | FORCE RLS SQL, 9 table profiles, 14 logic cases | Deployment-role proof |
 | Preview PostgreSQL domain | Created (SQL) | preview_ready/candidate/rejection, commit key, immutability, completeness gate, live SQL tests | Fixture-contract extension, deployment-role proof |
-| Preview commit repository | Partial | Atomic worker-role transaction, deterministic commit key, idempotent/conflicting retry, rollback, e2e spool→DB proof on live PostgreSQL | Supervisor composition, canonical-record contract, deletion-fence recheck |
+| Preview commit repository | Partial | Atomic worker-role transaction, deterministic commit key, idempotent/conflicting retry, rollback, e2e spool→DB proof on live PostgreSQL | Canonical-record contract, deletion-fence recheck |
+| Supervised import flow | Composed | fetch → parse → seal → verify → decode → commit proven on live PostgreSQL + MinIO; drift/checksum/crash/bad-record fail closed | Reviewed adapter record contract, job orchestration, deletion-fence timing |
 | PostgreSQL live workflow | Created and green | PostgreSQL 16 jobs in both workflows, remote runs confirmed | Deployment-role and production-environment proof |
 | Sign in with Apple contract | Contract complete | 16 cases: 1 allow / 15 deny | Code exchange, secret rotation, replay store, session issuer |
 | Apple JWT/JWKS Go core | Partial | Verification and binding interfaces | Concrete composition and persistence |
@@ -324,11 +328,15 @@ Status: **adapter created and live-tested** (SDK-free SigV4 presign + versioned 
 
 Status: **process boundary created and live-tested** (digest pinning, credential-free env, kernel resource bounds, frame protocol, fail-closed cleanup, end-to-end seal+verify). Remaining: network-namespace/seccomp/container deployment evidence and reviewed adapter artifacts.
 
-## Gates 8–10
+## Gate 8 — supervised flow composition
 
-8. executable API and concrete Apple auth/session repositories;
-9. Apply/Memory/deletion fencing;
-10. iOS Share Extension/App Group/confirmation, then limited Portal.
+Status: **composed and live-tested end to end** (importflow). Remaining: reviewed canonical adapter record contract and production job orchestration.
+
+## Gates 9–11
+
+9. executable API and concrete Apple auth/session repositories;
+10. Apply/Memory/deletion fencing;
+11. iOS Share Extension/App Group/confirmation, then limited Portal.
 
 Memory Town remains after Capture / Import P0 unresolved count reaches zero.
 
@@ -345,8 +353,9 @@ Preview spool filesystem, writer, seal-publication, independent-verifier and rec
 production Preview PostgreSQL domain schema and atomic commit repository created with live tests
 signed-upload object storage adapter created with live MinIO tests
 process-boundary parser supervisor created with targeted isolation tests
+supervised import flow composed and live-tested end to end
 repository-integrated Go suite passes in a Linux container at the recorded HEAD
-flow composition, executable server and client blockers remain
+reviewed adapter contract, executable server and client blockers remain
 production NO-GO
 ```
 
