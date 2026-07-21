@@ -43,6 +43,9 @@ CREATED (live-tested against MinIO)
 parser supervisor:
 PROCESS BOUNDARY CREATED (live-tested; network namespace is deployment work)
 
+supervised import flow:
+COMPOSED AND LIVE-TESTED END TO END
+
 iOS / Portal:
 NOT IMPLEMENTED
 
@@ -66,7 +69,8 @@ Conflicts are resolved from top to bottom:
 
 1. `docs/memory-os-current-authority-order-round-9-security.md`
 2. `docs/memory-os-current-implementation-status-and-roadmap-2026-07-17.md`
-3. `docs/memory-os-parser-supervisor-checkpoint-2026-07-20.md`
+3. `docs/memory-os-import-flow-checkpoint-2026-07-20.md`
+4. `docs/memory-os-parser-supervisor-checkpoint-2026-07-20.md`
 4. `docs/memory-os-object-storage-checkpoint-2026-07-19.md`
 5. `docs/memory-os-preview-commit-repository-checkpoint-2026-07-19.md`
 6. `docs/memory-os-preview-domain-checkpoint-2026-07-18.md`
@@ -325,8 +329,8 @@ Production remains forbidden while any remains:
 # 8. Correct next sequence
 
 ```txt
-0. remote workflows confirmed for the parser-supervisor HEAD — done
-1. compose the supervised import flow end to end (fetch → parse → verify → commit)
+0. confirm remote workflows for the import-flow HEAD
+1. reviewed canonical adapter record contract (schema/fixtures/validator), then real adapter wiring
 2. compose executable API/auth/repositories
 3. implement Apply/Memory/deletion
 4. begin iOS only after backend P0 closes
