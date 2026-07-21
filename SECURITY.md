@@ -48,7 +48,7 @@ NOT IMPLEMENTED
 GitHub Actions:
 workflows created
 earlier Import API runs failed on formatting/vet; repaired at the verifier checkpoint
-every push since the verifier checkpoint green (latest recorded HEAD 5c3dc4b; confirmation pending push)
+every push since the verifier checkpoint green (latest: Import API run 29793196253 with live import-flow tests, Security Contracts run 29793196257)
 
 production:
 NO-GO

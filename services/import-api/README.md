@@ -183,8 +183,9 @@ live DB/object-store/supervision/flow tests included) + both 5s fuzz smokes PASS
 Preview spool contract validator:
 PASS
 
-remote workflows:
-recorded after the push completes
+remote workflows at import-flow HEAD 381c514:
+Import API Security Slice run 29793196253 SUCCESS (live import-flow tests executed)
+Security Contracts run 29793196257 SUCCESS
 ```
 
 Earlier remote Import API runs had failed at the Format check; five unformatted sources and one pointer-receiver compile error in `internal/upload/service_test.go` were repaired at the verifier checkpoint, and the branch has run green since.

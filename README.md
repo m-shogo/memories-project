@@ -79,7 +79,7 @@ current full-repository Go suite:
 PASS in a local golang:1.23 Linux container at the recorded HEAD
 
 remote Actions:
-parser-supervisor HEAD 75c34dd green (Import API run 29716510255 incl. non-race bounds step, Security Contracts run 29716510257)
+import-flow HEAD 381c514 green (Import API run 29793196253 with live flow tests, Security Contracts run 29793196257)
 
 production:
 NO-GO
@@ -154,7 +154,7 @@ Parser, adapter, dedupe, Preview and Apply are canonical backend concerns and ar
 # Current implementation order
 
 ```txt
-0. confirm remote workflows for the import-flow HEAD
+0. remote workflows confirmed for the import-flow HEAD — done
 1. reviewed canonical adapter record contract, then real adapter wiring
 2. executable API + concrete Apple session/replay/repositories
 3. Apply / Memory / deletion fencing

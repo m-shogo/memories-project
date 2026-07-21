@@ -53,7 +53,7 @@ exact current HEAD Go suite:
 confirmed in a local golang:1.23 Linux container
 
 remote GitHub Actions:
-parser-supervisor HEAD 75c34dd confirmed green (Import API run 29716510255 incl. non-race bounds step, Security Contracts run 29716510257)
+import-flow HEAD 381c514 confirmed green (Import API run 29793196253 with live flow tests, Security Contracts run 29793196257)
 
 production:
 NO-GO

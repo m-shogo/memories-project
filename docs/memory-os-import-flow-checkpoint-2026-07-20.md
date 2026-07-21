@@ -68,8 +68,10 @@ local golang:1.23 + postgres:16 + minio (fresh), exact HEAD 5c3dc4bc2179800c8530
 gofmt clean + go vet + go test ./... + go test -race ./... (17 packages,
 all live suites included) + both 5s fuzz smokes PASS
 
-remote workflows:
-recorded after the push completes
+remote workflows (pushed HEAD 381c514):
+Import API Security Slice run 29793196253 SUCCESS
+(importflow live suite 11.579s executed under race, plus non-race parsersup bounds step)
+Security Contracts run 29793196257 SUCCESS
 ```
 
 ## Residual risks

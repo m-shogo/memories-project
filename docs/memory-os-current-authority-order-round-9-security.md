@@ -53,7 +53,7 @@ exact current HEAD full repository Go suite:
 CONFIRMED in a local golang:1.23 Linux container
 
 remote Actions:
-parser-supervisor HEAD 75c34dd CONFIRMED green (Import API run 29716510255 incl. non-race bounds step, Security Contracts run 29716510257)
+import-flow HEAD 381c514 CONFIRMED green (Import API run 29793196253 with live flow tests, Security Contracts run 29793196257)
 
 production:
 NO-GO
@@ -329,7 +329,7 @@ Production remains forbidden while any remains:
 # 8. Correct next sequence
 
 ```txt
-0. confirm remote workflows for the import-flow HEAD
+0. remote workflows confirmed for the import-flow HEAD — done
 1. reviewed canonical adapter record contract (schema/fixtures/validator), then real adapter wiring
 2. compose executable API/auth/repositories
 3. implement Apply/Memory/deletion
