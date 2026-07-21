@@ -6,15 +6,18 @@ Memory OS handles highly sensitive personal context. The repository is in securi
 
 ## Current status
 
+<!-- MEMORY_OS_STATUS_BLOCK:BEGIN -->
+
 ```txt
-security architecture / threat model / verification gate:
+product priority:
+Capture / Import first
+
+security architecture:
 DEFINED
 
-machine-readable security foundation:
-24 registered schemas
-23 positive contract fixtures
-31 structural rejection cases
-8 semantic rejection cases
+machine-readable contracts:
+24 schemas / 23 positive fixtures
+31 structural + 8 semantic rejection cases
 
 Go backend:
 PARTIAL SECURITY VERTICAL SLICE
@@ -22,37 +25,46 @@ not a production backend
 
 Preview spool:
 manifest contract hardened
-Linux filesystem attempt lifecycle checkpoint created
-bounded stream writer created
+Linux attempt filesystem lifecycle created
+bounded accepted/rejected writer created
 stream fsync + no-replace manifest publication created
 independent decode / count / re-hash verifier created
 startup reconciliation + TTL cleanup created
 
 PostgreSQL:
-RLS / upload security foundation migrations and SQL tests created
+RLS / upload security foundations created
 production Preview domain schema created with live SQL tests
 atomic Go Preview commit repository created (live-tested)
 
 object storage adapter:
-CREATED (live-tested against MinIO)
+created (live-tested against MinIO)
 
 parser supervisor:
-PROCESS BOUNDARY CREATED (live-tested; network namespace is deployment work)
+process boundary created (live-tested; network namespace is deployment work)
 
 supervised import flow:
-COMPOSED AND LIVE-TESTED END TO END
+composed and live-tested end to end (fetch → parse → verify → commit)
+
+canonical adapter record contract:
+not reviewed; supervised flow still decodes an interim placeholder record shape
+(pending: canonicalAdapterRecordContractReviewed)
 
 iOS / Portal:
-NOT IMPLEMENTED
+not implemented
 
-GitHub Actions:
-workflows created
-earlier Import API runs failed on formatting/vet; repaired at the verifier checkpoint
-every push since the verifier checkpoint green (latest: Import API run 29793196253 with live import-flow tests, Security Contracts run 29793196257)
+current full-repository Go suite:
+PASS in a local golang:1.23 Linux container at the recorded HEAD
+
+remote Actions:
+import-flow HEAD 381c514 CONFIRMED green (Import API run 29793196253, Security Contracts run 29793196257)
 
 production:
 NO-GO
 ```
+
+<!-- MEMORY_OS_STATUS_BLOCK:END -->
+
+GitHub Actions: workflows created; earlier Import API runs failed on formatting/vet and were repaired at the verifier checkpoint; every push since has run green (see the remote-Actions line above for the latest confirmed run).
 
 Do not claim perfectly secure, unhackable, fully private, backend complete, Preview spool complete or production ready.
 

@@ -35,6 +35,8 @@ Read first:
 12. [Import API Security Slice](services/import-api/README.md)
 13. [Security Status](SECURITY.md)
 
+<!-- MEMORY_OS_STATUS_BLOCK:BEGIN -->
+
 ```txt
 product priority:
 Capture / Import first
@@ -72,6 +74,10 @@ process boundary created (live-tested; network namespace is deployment work)
 supervised import flow:
 composed and live-tested end to end (fetch → parse → verify → commit)
 
+canonical adapter record contract:
+not reviewed; supervised flow still decodes an interim placeholder record shape
+(pending: canonicalAdapterRecordContractReviewed)
+
 iOS / Portal:
 not implemented
 
@@ -79,11 +85,13 @@ current full-repository Go suite:
 PASS in a local golang:1.23 Linux container at the recorded HEAD
 
 remote Actions:
-import-flow HEAD 381c514 green (Import API run 29793196253 with live flow tests, Security Contracts run 29793196257)
+import-flow HEAD 381c514 CONFIRMED green (Import API run 29793196253, Security Contracts run 29793196257)
 
 production:
 NO-GO
 ```
+
+<!-- MEMORY_OS_STATUS_BLOCK:END -->
 
 “Go backend未実装” is stale, but “backend complete” is also wrong. The exact status is **partial security vertical slice**.
 
@@ -156,11 +164,12 @@ Parser, adapter, dedupe, Preview and Apply are canonical backend concerns and ar
 ```txt
 0. remote workflows confirmed for the import-flow HEAD — done
 1. reviewed canonical adapter record contract, then real adapter wiring
-2. executable API + concrete Apple session/replay/repositories
-3. Apply / Memory / deletion fencing
-4. iOS vertical slice
-5. limited Desktop Portal
-6. Memory Town runtime after Capture / Import P0 reaches zero
+2. minimal CLI harness over internal/importflow (first visible end-to-end run)
+3. executable API + concrete Apple session/replay/repositories
+4. Apply / Memory / deletion fencing
+5. iOS vertical slice
+6. limited Desktop Portal
+7. Memory Town runtime after Capture / Import P0 reaches zero
 ```
 
 Completed Preview spool checkpoints:
@@ -240,6 +249,16 @@ reviewed canonical adapter record contract (schema + fixtures + validator)
 ```
 
 Do not add executable-server or client wiring in that checkpoint.
+
+Checkpoint after that — first visible end-to-end run, still not an HTTP server:
+
+```txt
+minimal CLI harness over internal/importflow
+→ point it at a local CSV file and a local dev stack (scripts/dev-up.sh)
+→ print the committed Preview (candidates/rejections/counts) to the terminal
+```
+
+This exists to get a real "does this actually work" feedback loop before investing in a server; its logic is reused, not thrown away, when the executable API checkpoint wraps it in HTTP.
 
 ---
 
