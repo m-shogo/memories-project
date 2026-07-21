@@ -190,6 +190,15 @@ Security Contracts run 29793196257 SUCCESS
 
 Earlier remote Import API runs had failed at the Format check; five unformatted sources and one pointer-receiver compile error in `internal/upload/service_test.go` were repaired at the verifier checkpoint, and the branch has run green since.
 
+Local iteration against live PostgreSQL/MinIO no longer requires hand-typed Docker commands:
+
+```bash
+# repository root
+scripts/dev-up.sh                # start postgres + minio, wait for health
+scripts/dev-test.sh -race ./...  # go test in a golang container on the same network
+scripts/dev-down.sh              # tear the stack down
+```
+
 Re-run against the exact current HEAD:
 
 ```bash
