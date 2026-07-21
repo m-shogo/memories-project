@@ -1,6 +1,6 @@
 {
   "indexId": "memory-os.security.fixture-index.round9.s1",
-  "indexVersion": 26,
+  "indexVersion": 27,
   "schemaRegistryPath": "docs/schemas/memory-os-security/schema-registry.v1.json",
   "fixtures": [
     { "fixtureId": "memory-os.security.issue-codes.round9", "path": "docs/fixtures/memory-os-security/security-issue-code-registry.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-issue-code-registry.v1.schema.json", "status": "targeted_validation_pass" },
@@ -79,6 +79,10 @@
     "supervisedImportFlowLiveTestsPassed": true,
     "supervisedImportFlowRemoteLiveJobPassed": true,
     "canonicalAdapterRecordContractReviewed": false,
+    "statusBlockGeneratorCreated": true,
+    "statusBlockCiCheckPassed": true,
+    "localDevStackCreated": true,
+    "cliCheckpointPlanned": true,
     "previewSpoolImplementationCreated": false,
     "repositoryValidatorCreated": true,
     "githubActionsWorkflowCreated": true,
