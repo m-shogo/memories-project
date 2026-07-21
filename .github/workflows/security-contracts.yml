@@ -65,9 +65,13 @@ jobs:
           python -m py_compile scripts/validate-memory-os-signed-upload-openapi.py
           python -m py_compile scripts/validate-memory-os-parser-security.py
           python -m py_compile scripts/validate-memory-os-preview-spool.py
+          python -m py_compile scripts/render-memory-os-status-block.py
 
       - name: Validate security schemas and fixtures
         run: python scripts/validate-memory-os-security.py
+
+      - name: Check generated status blocks are up to date
+        run: python scripts/render-memory-os-status-block.py --check
 
       - name: Validate object authorization cases
         run: python scripts/validate-memory-os-authorization.py
