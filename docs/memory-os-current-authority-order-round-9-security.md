@@ -332,9 +332,10 @@ Production remains forbidden while any remains:
 ```txt
 0. remote workflows confirmed for the import-flow HEAD — done
 1. reviewed canonical adapter record contract (schema/fixtures/validator), then real adapter wiring
-2. compose executable API/auth/repositories
-3. implement Apply/Memory/deletion
-4. begin iOS only after backend P0 closes
+2. minimal CLI harness over internal/importflow (first visible end-to-end run, no HTTP)
+3. compose executable API/auth/repositories
+4. implement Apply/Memory/deletion
+5. begin iOS only after backend P0 closes
 ```
 
 Memory Town remains after Capture / Import P0 blockers close.

@@ -90,3 +90,12 @@ then wire the real adapter through the supervised worker.
 ```
 
 Do not add executable-server or client wiring in that checkpoint.
+
+## Checkpoint after that
+
+A minimal CLI harness over this package (`internal/importflow`) — point it at a
+local CSV file and the `scripts/dev-up.sh` stack, print the committed Preview
+to the terminal. This is the first checkpoint that produces a visible,
+runnable result; it exists to close the feedback loop before investing in an
+HTTP server, and its logic carries forward unchanged into the executable API
+checkpoint.

@@ -332,11 +332,15 @@ Status: **process boundary created and live-tested** (digest pinning, credential
 
 Status: **composed and live-tested end to end** (importflow). Remaining: reviewed canonical adapter record contract and production job orchestration.
 
-## Gates 9–11
+## Gate 9 — minimal CLI harness
 
-9. executable API and concrete Apple auth/session repositories;
-10. Apply/Memory/deletion fencing;
-11. iOS Share Extension/App Group/confirmation, then limited Portal.
+First visible end-to-end run, deliberately not an HTTP server: a thin `cmd/importctl`-style entrypoint that points `internal/importflow` at a local CSV file and the `scripts/dev-up.sh` stack, then prints the committed Preview to the terminal. Its purpose is a real "does this actually work" feedback loop before investing in server/session/auth work; the logic is reused (not thrown away) when Gate 10 wraps it in HTTP.
+
+## Gates 10–12
+
+10. executable API and concrete Apple auth/session repositories;
+11. Apply/Memory/deletion fencing;
+12. iOS Share Extension/App Group/confirmation, then limited Portal.
 
 Memory Town remains after Capture / Import P0 unresolved count reaches zero.
 
