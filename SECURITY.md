@@ -39,13 +39,16 @@ CREATED (live-tested against MinIO)
 parser supervisor:
 PROCESS BOUNDARY CREATED (live-tested; network namespace is deployment work)
 
+supervised import flow:
+COMPOSED AND LIVE-TESTED END TO END
+
 iOS / Portal:
 NOT IMPLEMENTED
 
 GitHub Actions:
 workflows created
 earlier Import API runs failed on formatting/vet; repaired at the verifier checkpoint
-every push since the verifier checkpoint green (latest recorded: Import API run 29716510255, Security Contracts run 29716510257)
+every push since the verifier checkpoint green (latest recorded HEAD 5c3dc4b; confirmation pending push)
 
 production:
 NO-GO
