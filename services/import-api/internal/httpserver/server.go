@@ -23,6 +23,8 @@ type PrincipalResolver interface {
 type Config struct {
 	Sessions PrincipalResolver
 	Upload   httpapi.UploadService
+	Preview  httpapi.PreviewReadService
+	Apply    httpapi.ApplyService
 }
 
 // New builds the routing tree: an unauthenticated health probe plus the
@@ -30,6 +32,8 @@ type Config struct {
 func New(config Config) http.Handler {
 	api := http.NewServeMux()
 	httpapi.UploadHandler{Service: config.Upload}.Register(api)
+	httpapi.PreviewHandler{Service: config.Preview}.Register(api)
+	httpapi.ApplyHandler{Service: config.Apply}.Register(api)
 
 	root := http.NewServeMux()
 	root.HandleFunc("GET /healthz", func(writer http.ResponseWriter, _ *http.Request) {

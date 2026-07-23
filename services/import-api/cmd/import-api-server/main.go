@@ -21,6 +21,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/m-shogo/memories-project/services/import-api/internal/apply"
 	"github.com/m-shogo/memories-project/services/import-api/internal/authstore"
 	"github.com/m-shogo/memories-project/services/import-api/internal/cryptoids"
 	"github.com/m-shogo/memories-project/services/import-api/internal/dbscope"
@@ -28,6 +29,7 @@ import (
 	"github.com/m-shogo/memories-project/services/import-api/internal/objectstore"
 	"github.com/m-shogo/memories-project/services/import-api/internal/pgrepo"
 	"github.com/m-shogo/memories-project/services/import-api/internal/pgscope"
+	"github.com/m-shogo/memories-project/services/import-api/internal/previewread"
 	"github.com/m-shogo/memories-project/services/import-api/internal/security"
 	"github.com/m-shogo/memories-project/services/import-api/internal/upload"
 )
@@ -98,17 +100,26 @@ func run(listen, databaseURL, s3Endpoint, s3Access, s3Secret, bucket string, dev
 		}
 	}
 
-	service := &upload.Service{
-		Transactions: dbscope.New(pgscope.Beginner{Pool: pool}),
+	executor := dbscope.New(pgscope.Beginner{Pool: pool})
+	uploadService := &upload.Service{
+		Transactions: executor,
 		Repository:   pgrepo.Upload{},
 		Signer:       objects,
 		Objects:      objects,
 		IDs:          cryptoids.Generator{},
 	}
+	previewService := &previewread.Service{Transactions: executor}
+	applyService := &apply.Service{
+		Transactions: executor,
+		Repository:   pgrepo.Apply{},
+		IDs:          cryptoids.Generator{},
+	}
 
 	server := httpserver.NewHTTPServer(listen, httpserver.New(httpserver.Config{
 		Sessions: sessions,
-		Upload:   service,
+		Upload:   uploadService,
+		Preview:  previewService,
+		Apply:    applyService,
 	}))
 
 	errs := make(chan error, 1)
