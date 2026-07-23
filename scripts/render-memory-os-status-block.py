@@ -114,10 +114,11 @@ SECTIONS: list[dict] = [
             "deletionFencingImplemented",
             "deletionFencingSqlTestsPassed",
             "deletionFencingHttpLiveTestsPassed",
+            "deletionObjectStorageErasureLiveTestsPassed",
         ],
         "done_lines": [
-            "epoch bump fences every surface; authorized sweep erases all owned rows and sessions (live-tested over HTTP)",
-            "quarantine object erasure and a resumable background deletion runtime remain future work",
+            "epoch bump fences every surface; authorized sweep erases all owned rows, sessions and stored object versions (live-tested over HTTP + MinIO)",
+            "a resumable background deletion runtime remains future work",
         ],
     },
     {

@@ -111,7 +111,8 @@
     "deletionFencingSqlTestsPassed": true,
     "deletionFencingHttpLiveTestsPassed": true,
     "deletionFencingRemoteLiveJobPassed": false,
-    "deletionObjectStorageErasureImplemented": false,
+    "deletionObjectStorageErasureImplemented": true,
+    "deletionObjectStorageErasureLiveTestsPassed": true,
     "backgroundDeletionRuntimeCreated": false,
     "appleCodeExchangeImplemented": false,
     "productionNosuperuserLoginProven": false,
@@ -181,7 +182,6 @@
     "confirmedAt": "2026-07-23"
   },
   "nextRequired": [
-    "erase_quarantine_objects_on_account_deletion",
     "implement_apple_code_exchange",
     "archive_parser_fuzz_corpus"
   ]

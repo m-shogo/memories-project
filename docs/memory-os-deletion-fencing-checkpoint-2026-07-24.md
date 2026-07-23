@@ -8,7 +8,7 @@
 Account deletion fencing + authorized erasure sweep + fenced HTTP surfaces:
 CREATED AND LIVE-TESTED OVER AUTHENTICATED HTTP
 
-Apple code exchange / clients / object-storage erasure:
+Apple code exchange / clients:
 NOT IMPLEMENTED
 
 production:
@@ -103,11 +103,31 @@ services/import-api/cmd/import-api-server/main.go       fenced composition
   surface then returns 401 for the same token; all nine tables hold zero rows
   for that owner; the tombstone remains at the deletion epoch.
 
+## Quarantine object erasure
+
+Deleting rows is not deleting data: the uploaded bytes live in the object
+store, and the rows are the only record of where. Erasure therefore runs
+before the sweep, in this order:
+
+1. read the account's own object keys from `upload_authorization` and
+   `preview_ready` under the deletion runtime's sweep policies;
+2. for each key, list every version and delete marker and remove each one —
+   deleting a specific version in a versioned bucket erases it rather than
+   adding a delete marker;
+3. only then run the DB sweep and completion.
+
+The order is what makes a failed deletion retryable: the rows survive as the
+ledger, and version deletes are idempotent, so a retry converges instead of
+stranding objects nobody can find. `ListObjectVersions` takes an exact key,
+never a free prefix — quarantine keys are not account-scoped, so a prefix
+listing could reach another tenant's objects.
+
+The live HTTP proof now uploads a real object through the presigned path
+before deleting the account, and asserts afterwards that the bucket holds
+zero versions for that key.
+
 ## Not done
 
-- Object-storage erasure. The sweep removes the `quarantine_object` rows but
-  does not yet delete the underlying versioned objects from the bucket. This
-  is a real remaining gap, not a completed step.
 - Deletion is synchronous inside the request. A background deletion runtime
   with resumable sweeps is future work; today a failure leaves the account
   fenced and awaiting a retry.

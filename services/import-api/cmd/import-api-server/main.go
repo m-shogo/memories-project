@@ -128,7 +128,7 @@ func run(listen, databaseURL, s3Endpoint, s3Access, s3Secret, bucket string, dev
 		Upload:   fenced.Upload{Guard: guard, Inner: uploadService},
 		Preview:  fenced.PreviewRead{Guard: guard, Inner: previewService},
 		Apply:    fenced.Apply{Guard: guard, Inner: applyService},
-		Account:  accountdelete.Service{Repository: accountControl, Guard: guard},
+		Account:  accountdelete.Service{Repository: accountControl, Objects: objects, Guard: guard},
 	}))
 
 	errs := make(chan error, 1)

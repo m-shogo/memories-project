@@ -48,6 +48,7 @@ type liveServer struct {
 	sessions authstore.Store
 	server   *httptest.Server
 	executor *dbscope.Executor
+	objects  *objectstore.Client
 }
 
 func newLiveServer(t *testing.T) *liveServer {
@@ -172,11 +173,11 @@ func newLiveServer(t *testing.T) *liveServer {
 			Repository:   pgrepo.Apply{},
 			IDs:          cryptoids.Generator{},
 		}},
-		Account: accountdelete.Service{Repository: accountControl, Guard: guard},
+		Account: accountdelete.Service{Repository: accountControl, Objects: objects, Guard: guard},
 	})
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
-	return &liveServer{pool: pool, sessions: sessions, server: server, executor: executor}
+	return &liveServer{pool: pool, sessions: sessions, server: server, executor: executor, objects: objects}
 }
 
 func (s *liveServer) issueSession(t *testing.T, accountID string) string {
@@ -626,10 +627,65 @@ func TestAccountDeletionFencesAndErasesOverHTTP(t *testing.T) {
 	owner := fmt.Sprintf("acct_http_delete_%d", runID)
 	ownerToken := server.issueSession(t, owner)
 	jobID := server.createJob(t, owner)
+
+	// A real object in the bucket, uploaded through the presigned path, so the
+	// deletion below has actual bytes to erase rather than only rows.
+	payload := []byte("title,date\ndeleted trip,2026-07-24\n")
+	digest := sha256.Sum256(payload)
+	response, body := server.request(t, http.MethodPost,
+		"/v1/import-jobs/"+jobID+"/upload-authorizations", ownerToken,
+		map[string]any{
+			"contentLength":   len(payload),
+			"checksumSha256":  hex.EncodeToString(digest[:]),
+			"contentType":     "text/csv",
+			"sourceSurface":   "ios_files",
+			"displayFilename": "deleted.csv",
+		})
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("issue failed: %d %s", response.StatusCode, body)
+	}
+	var issued struct {
+		AuthorizationID string            `json:"authorizationId"`
+		UploadURL       string            `json:"uploadUrl"`
+		RequiredHeaders map[string]string `json:"requiredHeaders"`
+	}
+	if err := json.Unmarshal(body, &issued); err != nil {
+		t.Fatal(err)
+	}
+	put, err := http.NewRequest(http.MethodPut, issued.UploadURL, bytes.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	put.ContentLength = int64(len(payload))
+	for name, value := range issued.RequiredHeaders {
+		if name != "Content-Length" {
+			put.Header.Set(name, value)
+		}
+	}
+	uploaded, err := http.DefaultClient.Do(put)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.Copy(io.Discard, uploaded.Body)
+	_ = uploaded.Body.Close()
+	if uploaded.StatusCode != http.StatusOK {
+		t.Fatalf("presigned upload status %d", uploaded.StatusCode)
+	}
+	var objectKey string
+	if err := server.pool.QueryRow(context.Background(),
+		"SELECT object_key FROM memory_os.upload_authorization WHERE id = $1", issued.AuthorizationID,
+	).Scan(&objectKey); err != nil {
+		t.Fatal(err)
+	}
+	versions, err := server.objects.ListObjectVersions(context.Background(), objectKey)
+	if err != nil || len(versions) == 0 {
+		t.Fatalf("object was not stored before deletion: %v %v", versions, err)
+	}
+
 	previewID, previewSHA := server.commitPreviewForJob(t, owner, jobID)
 
 	applyPath := "/v1/previews/" + previewID + "/apply"
-	response, body := server.request(t, http.MethodPost, applyPath, ownerToken, map[string]any{
+	response, body = server.request(t, http.MethodPost, applyPath, ownerToken, map[string]any{
 		"previewSha256":   previewSHA,
 		"idempotencyKey":  fmt.Sprintf("idem-http-delete-%d", runID),
 		"duplicatePolicy": "skip_existing",
@@ -678,8 +734,18 @@ func TestAccountDeletionFencesAndErasesOverHTTP(t *testing.T) {
 	// The sweep must report the erasure it actually performed, including the
 	// two memory items applied above and both live sessions.
 	if removed["memory_item"] != 2 || removed["preview_ready"] != 1 ||
-		removed["import_job"] != 1 || removed["account_session"] != 2 {
+		removed["import_job"] != 1 || removed["account_session"] != 2 ||
+		removed["quarantine_object_versions"] < 1 {
 		t.Fatalf("unexpected sweep accounting: %s", body)
+	}
+
+	// The bytes are gone from the bucket, not merely unreferenced by the rows.
+	versions, err = server.objects.ListObjectVersions(context.Background(), objectKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(versions) != 0 {
+		t.Fatalf("%d object versions survived deletion", len(versions))
 	}
 
 	// Every surface now refuses the session that was valid moments ago. The

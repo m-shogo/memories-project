@@ -61,8 +61,8 @@ Apply / Memory persistence:
 idempotent exact-hash apply into memory_item over HTTP; preview read API; rich Memory domain model remains future work
 
 account deletion fencing:
-epoch bump fences every surface; authorized sweep erases all owned rows and sessions (live-tested over HTTP)
-quarantine object erasure and a resumable background deletion runtime remain future work
+epoch bump fences every surface; authorized sweep erases all owned rows, sessions and stored object versions (live-tested over HTTP + MinIO)
+a resumable background deletion runtime remains future work
 
 iOS / Portal:
 not implemented

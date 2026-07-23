@@ -95,6 +95,49 @@ func (a AccountControl) BeginDeletion(ctx context.Context, principal security.Pr
 	return deletionEpoch, nil
 }
 
+// ObjectKeys reads every quarantine key the account owns. Both surfaces that
+// can name an object are read: the authorization that minted the key and the
+// committed Preview that consumed it, because either may exist without the
+// other. The read runs under the deletion runtime's sweep policies, so it is
+// scoped to this owner across all epochs the account ever wrote.
+func (a AccountControl) ObjectKeys(ctx context.Context, accountID string, deletionEpoch int64) ([]string, error) {
+	if a.Transactions == nil {
+		return nil, errNoPool
+	}
+	principal, err := security.NewVerifiedPrincipal(accountID, deletionEpoch, security.AuthorityDeletionWorker)
+	if err != nil {
+		return nil, fmt.Errorf("build deletion principal: %w", err)
+	}
+	var keys []string
+	err = a.Transactions.WithinPrincipal(ctx, principal, dbscope.RoleDeletion,
+		func(ctx context.Context, tx dbscope.Transaction) error {
+			adapted, err := pgscope.From(tx)
+			if err != nil {
+				return err
+			}
+			rows, err := adapted.Query(ctx,
+				`SELECT object_key FROM memory_os.upload_authorization WHERE object_key IS NOT NULL
+				 UNION
+				 SELECT source_object_key FROM memory_os.preview_ready WHERE source_object_key IS NOT NULL`)
+			if err != nil {
+				return fmt.Errorf("list quarantine object keys: %w", err)
+			}
+			defer rows.Close()
+			for rows.Next() {
+				var key string
+				if err := rows.Scan(&key); err != nil {
+					return fmt.Errorf("scan quarantine object key: %w", err)
+				}
+				keys = append(keys, key)
+			}
+			return rows.Err()
+		})
+	if err != nil {
+		return nil, err
+	}
+	return keys, nil
+}
+
 // Sweep erases the account's rows and records completion in one transaction
 // under the deletion runtime role. Keeping both in a single transaction means
 // the account can never be marked 'deleted' while rows survive: a failure

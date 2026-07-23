@@ -20,6 +20,7 @@ var (
 	ErrAuthorityNotAllowed = errors.New("authority may not delete an account")
 	ErrBeginDeletion       = errors.New("account deletion could not start")
 	ErrSweepFailed         = errors.New("account deletion sweep failed")
+	ErrObjectEraseFailed   = errors.New("quarantine object erasure failed")
 )
 
 // TableRemoval reports how many rows the sweep erased from one table. It is a
@@ -40,7 +41,18 @@ type Receipt struct {
 // the deletion runtime role at the bumped epoch and also records completion.
 type Repository interface {
 	BeginDeletion(ctx context.Context, principal security.Principal) (int64, error)
+	// ObjectKeys lists the quarantine keys the account owns, read from its own
+	// RLS-scoped rows. It is the ledger that makes object erasure retryable:
+	// the rows are deleted only after the objects are gone.
+	ObjectKeys(ctx context.Context, accountID string, deletionEpoch int64) ([]string, error)
 	Sweep(ctx context.Context, accountID string, deletionEpoch int64) ([]TableRemoval, error)
+}
+
+// ObjectEraser removes every stored version of one quarantine key and reports
+// how many versions it removed. It must be idempotent so a retried deletion
+// converges instead of failing on already-erased objects.
+type ObjectEraser interface {
+	EraseObject(ctx context.Context, objectKey string) (int, error)
 }
 
 // Guard is the same epoch fence every other service uses. Deletion checks it
@@ -51,6 +63,7 @@ type Guard interface {
 
 type Service struct {
 	Repository Repository
+	Objects    ObjectEraser
 	Guard      Guard
 }
 
@@ -58,7 +71,7 @@ type Service struct {
 // do so: device sessions, browser pairings and worker leases are lower
 // authorities that must not be able to destroy an account.
 func (s Service) Delete(ctx context.Context, principal security.Principal) (Receipt, error) {
-	if s.Repository == nil || s.Guard == nil {
+	if s.Repository == nil || s.Guard == nil || s.Objects == nil {
 		return Receipt{}, ErrServiceUnavailable
 	}
 	if err := principal.Validate(); err != nil {
@@ -81,6 +94,24 @@ func (s Service) Delete(ctx context.Context, principal security.Principal) (Rece
 		return Receipt{}, fmt.Errorf("%w: deletion epoch did not advance", ErrBeginDeletion)
 	}
 
+	// Objects are erased before the rows that point at them. The rows are the
+	// only ledger of what exists in the bucket, so dropping them first would
+	// strand the objects permanently; this order means a failed attempt can
+	// simply be retried, and version deletes are idempotent.
+	keys, err := s.Repository.ObjectKeys(ctx, principal.AccountID(), deletionEpoch)
+	if err != nil {
+		return Receipt{}, fmt.Errorf("%w: %v", ErrSweepFailed, err)
+	}
+	erasedVersions := 0
+	for _, key := range keys {
+		erased, err := s.Objects.EraseObject(ctx, key)
+		erasedVersions += erased
+		if err != nil {
+			// The account stays fenced in 'deleting' with its ledger intact.
+			return Receipt{}, fmt.Errorf("%w: %v", ErrObjectEraseFailed, err)
+		}
+	}
+
 	removals, err := s.Repository.Sweep(ctx, principal.AccountID(), deletionEpoch)
 	if err != nil {
 		// The account stays fenced in 'deleting' state: no surface can reach it
@@ -91,6 +122,9 @@ func (s Service) Delete(ctx context.Context, principal security.Principal) (Rece
 	return Receipt{
 		AccountID:     principal.AccountID(),
 		DeletionEpoch: deletionEpoch,
-		Removals:      removals,
+		Removals: append(removals, TableRemoval{
+			Table:   "quarantine_object_versions",
+			Removed: int64(erasedVersions),
+		}),
 	}, nil
 }
