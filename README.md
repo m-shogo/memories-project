@@ -23,7 +23,8 @@ Read first:
 
 1. [Round 9 Security Authority](docs/memory-os-current-authority-order-round-9-security.md)
 2. [Current Implementation Status and Roadmap](docs/memory-os-current-implementation-status-and-roadmap-2026-07-17.md)
-3. [Executable HTTP Server Checkpoint](docs/memory-os-http-server-checkpoint-2026-07-23.md)
+3. [Apply / Memory Persistence Checkpoint](docs/memory-os-apply-memory-checkpoint-2026-07-23.md)
+4. [Executable HTTP Server Checkpoint](docs/memory-os-http-server-checkpoint-2026-07-23.md)
 4. [Runtime-Role Repository Checkpoint](docs/memory-os-runtime-role-repository-checkpoint-2026-07-23.md)
 4. [importctl Harness Checkpoint](docs/memory-os-importctl-checkpoint-2026-07-23.md)
 4. [Canonical Record Checkpoint](docs/memory-os-canonical-record-checkpoint-2026-07-21.md)
@@ -89,6 +90,9 @@ pgx scoped executor + concrete upload repository proven under FORCE RLS (non-sup
 
 executable HTTP server:
 bearer-session auth over the strict upload handlers; exercised for real with curl (Apple exchange remains a later boundary)
+
+Apply / Memory persistence:
+idempotent exact-hash apply into memory_item over HTTP; preview read API; rich Memory domain model remains future work
 
 iOS / Portal:
 not implemented
@@ -174,13 +178,12 @@ Parser, adapter, dedupe, Preview and Apply are canonical backend concerns and ar
 # Current implementation order
 
 ```txt
-0. remote workflows confirmed for the http-server HEAD — done
-1. Apply / Memory persistence over runtime roles (wired into the server)
+0. confirm remote workflows for the apply-memory HEAD
+1. deletion fencing: epoch bump + deletion-runtime sweep (live fencing proof)
 2. Apple code exchange / replay store (needs real Apple credentials)
-3. deletion fencing
-4. iOS vertical slice
-5. limited Desktop Portal
-6. Memory Town runtime after Capture / Import P0 reaches zero
+3. iOS vertical slice
+4. limited Desktop Portal
+5. Memory Town runtime after Capture / Import P0 reaches zero
 ```
 
 Completed Preview spool checkpoints:

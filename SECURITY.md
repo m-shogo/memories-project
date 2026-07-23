@@ -57,6 +57,9 @@ pgx scoped executor + concrete upload repository proven under FORCE RLS (non-sup
 executable HTTP server:
 bearer-session auth over the strict upload handlers; exercised for real with curl (Apple exchange remains a later boundary)
 
+Apply / Memory persistence:
+idempotent exact-hash apply into memory_item over HTTP; preview read API; rich Memory domain model remains future work
+
 iOS / Portal:
 not implemented
 

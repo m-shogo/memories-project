@@ -103,6 +103,11 @@ SECTIONS: list[dict] = [
         "done_lines": ["bearer-session auth over the strict upload handlers; exercised for real with curl (Apple exchange remains a later boundary)"],
     },
     {
+        "title": "Apply / Memory persistence",
+        "requires": ["applyMemoryPersistenceCreated", "applyMemorySqlTestsPassed", "applyMemoryHttpLiveTestsPassed"],
+        "done_lines": ["idempotent exact-hash apply into memory_item over HTTP; preview read API; rich Memory domain model remains future work"],
+    },
+    {
         "title": "iOS / Portal",
         "requires": ["neverTrueSentinel"],  # always pending until this section is intentionally flipped
         "done_lines": [],
