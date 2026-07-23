@@ -17,9 +17,14 @@ BEGIN
     'memory_readonly_observer'
   ]
   LOOP
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = role_name) THEN
+    -- Role creation is cluster-wide while advisory locks are per-database,
+    -- so concurrent appliers on different databases can race the existence
+    -- check; catching the duplicate makes creation safe instead of racy.
+    BEGIN
       EXECUTE format('CREATE ROLE %I NOLOGIN NOINHERIT NOBYPASSRLS', role_name);
-    END IF;
+    EXCEPTION
+      WHEN duplicate_object OR unique_violation THEN NULL;
+    END;
     EXECUTE format('ALTER ROLE %I NOLOGIN NOINHERIT NOBYPASSRLS', role_name);
   END LOOP;
 END
