@@ -28,7 +28,8 @@ It is intentionally incomplete. It does not expose a production server and must 
 - prlimit-bounded digest-pinned parser worker supervision;
 - supervised import flow composed end to end (fetch → parse → verify → commit) against live PostgreSQL and MinIO;
 - canonical adapter record contract with cross-language fixture enforcement;
-- real Generic CSV adapter emitting canonical records inside the supervised worker.
+- real Generic CSV adapter emitting canonical records inside the supervised worker;
+- importctl harness and separate parser-worker binary: the first visible end-to-end run.
 
 ## Preview spool contract
 
@@ -161,6 +162,10 @@ A newer object version than the binding, a checksum mismatch, a worker crash or 
 
 Records are governed by the canonical adapter record contract (`docs/schemas/memory-os-security/preview-canonical-record.v1.schema.json`): the frame payload bytes must equal the deterministic Go serialization, candidate fingerprints are recomputed on decode, and rejection records structurally cannot carry raw user values. The shared 22-case fixture is enforced by both `internal/canonrecord` tests and `scripts/validate-memory-os-canonical-records.py`, and `internal/csvworker` runs the real Generic CSV adapter through the supervised worker in the end-to-end tests.
 
+## importctl harness (cmd/importctl, cmd/parser-worker)
+
+The first visible end-to-end run, and a development tool only: `scripts/dev-import.sh` builds the separate digest-pinned `parser-worker` binary plus `importctl`, then imports a local CSV through the full supervised pipeline against the `scripts/dev-up.sh` stack and prints the committed Preview (candidates, rejections, counts, job state). The harness computes the worker digest when no pin is supplied and labels it as not a reviewed pin; a mismatched pin refuses to run. It connects as the dev stack's superuser for read-back (RLS does not bind superusers) and must never target production. Four live tests cover the full CLI path, the one-preview-per-job conflict, configuration validation and pin mismatch.
+
 ## Critical production boundary
 
 `preview.AtomicMaterializer` parses inside its transaction callback. It remains reference-only and must not be connected to production PostgreSQL for untrusted imports; `internal/importflow` is the production-shaped replacement, though it still runs the harness worker rather than a reviewed adapter artifact.
@@ -169,7 +174,7 @@ Records are governed by the canonical adapter record contract (`docs/schemas/mem
 
 - executable HTTP server/session issuer;
 - Apple code exchange/secret rotation and concrete replay/session stores;
-- a separately built digest-pinned worker binary (tests re-execute the test binary);
+- a reviewed worker-artifact registry (the binary exists; its pin is operator-supplied);
 - network-namespace/seccomp/container deployment evidence for the parser supervisor;
 - production TLS/scoped-credential/lifecycle deployment evidence for object storage;
 - concrete Apply/Memory persistence and complete deletion fencing;
@@ -179,16 +184,15 @@ Records are governed by the canonical adapter record contract (`docs/schemas/mem
 
 ```txt
 exact repository-integrated Go suite
-(code HEAD c5bf48fda48e60c802349f6efd0e2ee50e0adea4, local golang:1.23 Linux container + fresh postgres:16 + MinIO):
-gofmt clean + go vet + go test ./... + go test -race ./... (19 packages,
-live DB/object-store/supervision/flow suites included) + both 5s fuzz smokes PASS
+(code HEAD 80c3b4ecdfe67a7d79a0ec71a51e3a7c5c9bb41a, local golang:1.23 Linux container + fresh postgres:16 + MinIO):
+gofmt clean + go vet + go build ./cmd/... + go test ./... + go test -race ./... (20 packages,
+live DB/object-store/supervision/flow/CLI suites included) + both 5s fuzz smokes PASS
 
 Preview spool contract validator:
 PASS
 
-remote workflows at canonical-record HEAD 0c91e37:
-Import API Security Slice run 29992738696 SUCCESS
-Security Contracts run 29992738481 SUCCESS
+remote workflows:
+recorded after the push completes
 ```
 
 Earlier remote Import API runs had failed at the Format check; five unformatted sources and one pointer-receiver compile error in `internal/upload/service_test.go` were repaired at the verifier checkpoint, and the branch has run green since.
