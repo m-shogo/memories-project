@@ -89,7 +89,7 @@ current full-repository Go suite:
 PASS in a local golang:1.23 Linux container at the recorded HEAD
 
 remote Actions:
-canonical-record HEAD 0c91e37 CONFIRMED green (Import API run 29992738696, Security Contracts run 29992738481)
+importctl HEAD f36dc86 CONFIRMED green (Import API run 29994162132, Security Contracts run 29994162154)
 
 production:
 NO-GO
@@ -166,7 +166,7 @@ Parser, adapter, dedupe, Preview and Apply are canonical backend concerns and ar
 # Current implementation order
 
 ```txt
-0. confirm remote workflows for the importctl HEAD
+0. remote workflows confirmed for the importctl HEAD — done
 1. executable API + concrete Apple session/replay/repositories
 2. Apply / Memory / deletion fencing
 3. iOS vertical slice

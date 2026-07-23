@@ -56,7 +56,7 @@ exact current HEAD full repository Go suite:
 CONFIRMED in a local golang:1.23 Linux container
 
 remote Actions:
-canonical-record HEAD 0c91e37 CONFIRMED green (Import API run 29992738696, Security Contracts run 29992738481 incl. the canonical record validator)
+importctl HEAD f36dc86 CONFIRMED green (Import API run 29994162132 incl. the importcli live suite, Security Contracts run 29994162154)
 
 production:
 NO-GO
@@ -335,7 +335,7 @@ Production remains forbidden while any remains:
 # 8. Correct next sequence
 
 ```txt
-0. confirm remote workflows for the importctl HEAD
+0. remote workflows confirmed for the importctl HEAD — done
 1. compose executable API/auth/repositories
 2. implement Apply/Memory/deletion
 3. begin iOS only after backend P0 closes

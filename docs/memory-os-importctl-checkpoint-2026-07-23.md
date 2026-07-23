@@ -115,8 +115,9 @@ changed migration 001 re-verified on a fresh database:
 
 scripts/dev-import.sh executed for real against the dev stack: SUCCESS (output above)
 
-remote workflows:
-recorded after the push completes
+remote workflows (pushed HEAD f36dc86, code identical to 80c3b4e):
+Import API Security Slice run 29994162132 SUCCESS (importcli live suite executed under race)
+Security Contracts run 29994162154 SUCCESS
 ```
 
 ## Residual risks

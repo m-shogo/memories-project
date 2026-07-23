@@ -1,6 +1,6 @@
 {
   "indexId": "memory-os.security.fixture-index.round9.s1",
-  "indexVersion": 30,
+  "indexVersion": 31,
   "schemaRegistryPath": "docs/schemas/memory-os-security/schema-registry.v1.json",
   "fixtures": [
     { "fixtureId": "memory-os.security.issue-codes.round9", "path": "docs/fixtures/memory-os-security/security-issue-code-registry.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-issue-code-registry.v1.schema.json", "status": "targeted_validation_pass" },
@@ -90,7 +90,7 @@
     "importctlHarnessCreated": true,
     "importctlVisibleRunExecuted": true,
     "parserWorkerSeparateArtifactCreated": true,
-    "importctlRemoteLiveJobPassed": false,
+    "importctlRemoteLiveJobPassed": true,
     "previewSpoolImplementationCreated": false,
     "repositoryValidatorCreated": true,
     "githubActionsWorkflowCreated": true,
@@ -143,17 +143,16 @@
     "archiveSafetyDenies": 24
   },
   "remoteEvidence": {
-    "checkpointLabel": "canonical-record",
-    "headSha": "c5bf48fda48e60c802349f6efd0e2ee50e0adea4",
-    "headShaShort": "0c91e37",
-    "importApiRunId": 29992738696,
-    "importApiRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/29992738696",
-    "securityContractsRunId": 29992738481,
-    "securityContractsRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/29992738481",
+    "checkpointLabel": "importctl",
+    "headSha": "80c3b4ecdfe67a7d79a0ec71a51e3a7c5c9bb41a",
+    "headShaShort": "f36dc86",
+    "importApiRunId": 29994162132,
+    "importApiRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/29994162132",
+    "securityContractsRunId": 29994162154,
+    "securityContractsRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/29994162154",
     "confirmedAt": "2026-07-23"
   },
   "nextRequired": [
-    "confirm_remote_workflows_for_importctl_head",
     "compose_executable_api_auth_session_repositories",
     "archive_parser_fuzz_corpus"
   ]

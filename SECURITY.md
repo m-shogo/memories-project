@@ -58,7 +58,7 @@ current full-repository Go suite:
 PASS in a local golang:1.23 Linux container at the recorded HEAD
 
 remote Actions:
-canonical-record HEAD 0c91e37 CONFIRMED green (Import API run 29992738696, Security Contracts run 29992738481)
+importctl HEAD f36dc86 CONFIRMED green (Import API run 29994162132, Security Contracts run 29994162154)
 
 production:
 NO-GO
