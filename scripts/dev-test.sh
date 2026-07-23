@@ -18,6 +18,8 @@ fi
 
 docker run --rm \
   --network memory-os-dev \
+  -v memory-os-gomod:/go/pkg/mod \
+  -v memory-os-gobuild:/root/.cache/go-build \
   -v "$PWD:/src" \
   -w /src/services/import-api \
   -e MEMORY_OS_TEST_DATABASE_URL="postgres://postgres:postgres@postgres:5432/memory_os_security" \

@@ -19,6 +19,8 @@ fi
 
 docker run --rm \
   --network memory-os-dev \
+  -v memory-os-gomod:/go/pkg/mod \
+  -v memory-os-gobuild:/root/.cache/go-build \
   -v "$PWD:/src" \
   -w /src/services/import-api \
   "${GO_IMAGE:-golang:1.23}" \
