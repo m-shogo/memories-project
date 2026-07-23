@@ -1,6 +1,6 @@
 {
   "indexId": "memory-os.security.fixture-index.round9.s1",
-  "indexVersion": 36,
+  "indexVersion": 37,
   "schemaRegistryPath": "docs/schemas/memory-os-security/schema-registry.v1.json",
   "fixtures": [
     { "fixtureId": "memory-os.security.issue-codes.round9", "path": "docs/fixtures/memory-os-security/security-issue-code-registry.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-issue-code-registry.v1.schema.json", "status": "targeted_validation_pass" },
@@ -104,7 +104,7 @@
     "applyMemoryPersistenceCreated": true,
     "applyMemorySqlTestsPassed": true,
     "applyMemoryHttpLiveTestsPassed": true,
-    "applyMemoryRemoteLiveJobPassed": false,
+    "applyMemoryRemoteLiveJobPassed": true,
     "richMemoryDomainModelCreated": false,
     "deletionFencingImplemented": false,
     "appleCodeExchangeImplemented": false,
@@ -165,17 +165,16 @@
     "archiveSafetyDenies": 24
   },
   "remoteEvidence": {
-    "checkpointLabel": "http-server",
-    "headSha": "c36e2bd0f30079b7eff939c2cb900b4a9a3d65ed",
-    "headShaShort": "21ed7d7",
-    "importApiRunId": 30012223776,
-    "importApiRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/30012223776",
-    "securityContractsRunId": 30012223686,
-    "securityContractsRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/30012223686",
+    "checkpointLabel": "apply-memory",
+    "headSha": "556e366a03543c3ad25ceb75316bfb99c06856ef",
+    "headShaShort": "498565a",
+    "importApiRunId": 30016036537,
+    "importApiRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/30016036537",
+    "securityContractsRunId": 30016036295,
+    "securityContractsRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/30016036295",
     "confirmedAt": "2026-07-23"
   },
   "nextRequired": [
-    "confirm_remote_workflows_for_apply_memory_head",
     "implement_deletion_fencing_epoch_sweep",
     "archive_parser_fuzz_corpus"
   ]

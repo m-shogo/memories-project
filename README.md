@@ -101,7 +101,7 @@ current full-repository Go suite:
 PASS in a local golang:1.23 Linux container at the recorded HEAD
 
 remote Actions:
-http-server HEAD 21ed7d7 CONFIRMED green (Import API run 30012223776, Security Contracts run 30012223686)
+apply-memory HEAD 498565a CONFIRMED green (Import API run 30016036537, Security Contracts run 30016036295)
 
 production:
 NO-GO
@@ -178,7 +178,7 @@ Parser, adapter, dedupe, Preview and Apply are canonical backend concerns and ar
 # Current implementation order
 
 ```txt
-0. confirm remote workflows for the apply-memory HEAD
+0. remote workflows confirmed for the apply-memory HEAD — done
 1. deletion fencing: epoch bump + deletion-runtime sweep (live fencing proof)
 2. Apple code exchange / replay store (needs real Apple credentials)
 3. iOS vertical slice

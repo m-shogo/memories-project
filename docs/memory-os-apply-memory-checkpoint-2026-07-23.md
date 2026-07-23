@@ -103,8 +103,9 @@ gofmt clean + go vet + go build ./cmd/... + go test ./... + go test -race ./...
 
 migration 005 + all five SQL test suites verified on a fresh database: PASS
 
-remote workflows:
-recorded after the push completes
+remote workflows (pushed HEAD 498565a, code identical to 556e366):
+Import API Security Slice run 30016036537 SUCCESS (apply/preview HTTP journey executed under race)
+Security Contracts run 30016036295 SUCCESS (005 migration + apply/memory SQL suite executed)
 ```
 
 ## Residual risks

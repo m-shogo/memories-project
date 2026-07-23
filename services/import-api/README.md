@@ -205,8 +205,9 @@ live DB/object-store/supervision/flow/CLI/runtime-role/HTTP/apply suites include
 Preview spool contract validator:
 PASS
 
-remote workflows:
-recorded after the push completes
+remote workflows at apply-memory HEAD 498565a:
+Import API Security Slice run 30016036537 SUCCESS
+Security Contracts run 30016036295 SUCCESS
 ```
 
 Earlier remote Import API runs had failed at the Format check; five unformatted sources and one pointer-receiver compile error in `internal/upload/service_test.go` were repaired at the verifier checkpoint, and the branch has run green since.
