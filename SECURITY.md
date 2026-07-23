@@ -54,6 +54,9 @@ created and executed for real: local CSV → committed Preview printed to the te
 runtime-role database access:
 pgx scoped executor + concrete upload repository proven under FORCE RLS (non-superuser path)
 
+executable HTTP server:
+bearer-session auth over the strict upload handlers; exercised for real with curl (Apple exchange remains a later boundary)
+
 iOS / Portal:
 not implemented
 

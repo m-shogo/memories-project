@@ -1,6 +1,6 @@
 {
   "indexId": "memory-os.security.fixture-index.round9.s1",
-  "indexVersion": 33,
+  "indexVersion": 34,
   "schemaRegistryPath": "docs/schemas/memory-os-security/schema-registry.v1.json",
   "fixtures": [
     { "fixtureId": "memory-os.security.issue-codes.round9", "path": "docs/fixtures/memory-os-security/security-issue-code-registry.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-issue-code-registry.v1.schema.json", "status": "targeted_validation_pass" },
@@ -95,6 +95,13 @@
     "runtimeRoleUploadRepositoryCreated": true,
     "runtimeRoleForceRlsLiveTestsPassed": true,
     "runtimeRoleRemoteLiveJobPassed": true,
+    "accountSessionStoreCreated": true,
+    "accountSessionSqlTestsPassed": true,
+    "executableHttpServerCreated": true,
+    "httpServerLiveTestsPassed": true,
+    "httpServerCurlDemoExecuted": true,
+    "httpServerRemoteLiveJobPassed": false,
+    "appleCodeExchangeImplemented": false,
     "productionNosuperuserLoginProven": false,
     "previewSpoolImplementationCreated": false,
     "repositoryValidatorCreated": true,
@@ -128,6 +135,8 @@
     "canonicalRecordGoTopLevelTests": 5,
     "importcliTopLevelTests": 4,
     "runtimeRoleRepositoryTopLevelTests": 4,
+    "accountSessionSqlTestBlocks": 5,
+    "httpServerTopLevelTests": 3,
     "csvWorkerTopLevelTests": 2,
     "schemaNegativeRejections": 31,
     "semanticNegativeRejections": 8,
@@ -159,7 +168,8 @@
     "confirmedAt": "2026-07-23"
   },
   "nextRequired": [
-    "compose_http_server_main_with_session_principal_middleware",
+    "confirm_remote_workflows_for_http_server_head",
+    "implement_apply_memory_persistence_over_runtime_roles",
     "archive_parser_fuzz_corpus"
   ]
 }

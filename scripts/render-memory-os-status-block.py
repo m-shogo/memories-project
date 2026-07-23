@@ -98,6 +98,11 @@ SECTIONS: list[dict] = [
         "done_lines": ["pgx scoped executor + concrete upload repository proven under FORCE RLS (non-superuser path)"],
     },
     {
+        "title": "executable HTTP server",
+        "requires": ["accountSessionStoreCreated", "executableHttpServerCreated", "httpServerLiveTestsPassed"],
+        "done_lines": ["bearer-session auth over the strict upload handlers; exercised for real with curl (Apple exchange remains a later boundary)"],
+    },
+    {
         "title": "iOS / Portal",
         "requires": ["neverTrueSentinel"],  # always pending until this section is intentionally flipped
         "done_lines": [],
