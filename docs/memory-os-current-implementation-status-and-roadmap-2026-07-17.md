@@ -97,7 +97,7 @@ NO-GO
 | Preview verifier | Partial | Strict canonical decode, bounded re-scan, exact re-count/re-hash, binding/expiry rejection | Commit-path integration |
 | Preview reconciliation | Partial | Startup classification, residue removal, publication completion, TTL cleanup, fail-closed quarantine | Deployment supervisor exclusivity proof, quarantine alerting |
 | AtomicMaterializer | Reference only | Hash/decision invariants | Forbidden for production PostgreSQL; parse occurs inside transaction callback |
-| Apply service | Partial | iOS authority and exact-hash idempotency interfaces | Concrete Preview/Memory repository and deletion fencing |
+| Apply service | Concrete | Exact-hash idempotent apply into memory_item over HTTP, three duplicate policies, full accounting, replay proof | Rich Memory domain model, update-safe field allowlist, deletion fencing |
 | Runtime-role DB access | Partial | pgx scoped executor + concrete upload repository; FORCE RLS proven with runtime roles (42501 privilege probe, tenant isolation, full upload lifecycle) | NOSUPERUSER production login, scan worker, remaining repositories |
 | Account session store | Created | Definer-function-only access, digest-only storage, dedicated auth role, 5-block SQL suite | Apple exchange issuance, rotation/refresh policy |
 | Executable Go API | Created (partial) | cmd/import-api-server: session middleware over strict handlers, runtime-role DB, live HTTP tests + real curl demo | Apple exchange, Apply/Memory endpoints, TLS/rate-limit/logging policy |
