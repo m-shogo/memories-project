@@ -14,6 +14,8 @@ on:
       - "scripts/validate-memory-os-signed-upload-openapi.py"
       - "scripts/validate-memory-os-parser-security.py"
       - "scripts/validate-memory-os-preview-spool.py"
+      - "scripts/validate-memory-os-canonical-records.py"
+      - "scripts/render-memory-os-status-block.py"
       - "requirements-security-validation.txt"
       - ".github/workflows/security-contracts.yml"
   push:
@@ -31,6 +33,8 @@ on:
       - "scripts/validate-memory-os-signed-upload-openapi.py"
       - "scripts/validate-memory-os-parser-security.py"
       - "scripts/validate-memory-os-preview-spool.py"
+      - "scripts/validate-memory-os-canonical-records.py"
+      - "scripts/render-memory-os-status-block.py"
       - "requirements-security-validation.txt"
       - ".github/workflows/security-contracts.yml"
   workflow_dispatch:
