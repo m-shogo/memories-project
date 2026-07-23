@@ -1,0 +1,305 @@
+{
+  "$schema": "https://memory-os.example/schemas/security/preview-canonical-record-case-set.v1.schema.json",
+  "caseSetId": "memory-os.preview-canonical-records.round9",
+  "caseSetVersion": 1,
+  "recordSchemaId": "https://memory-os.example/schemas/security/preview-canonical-record.v1.schema.json",
+  "cases": [
+    {
+      "caseId": "accept-candidate-full",
+      "expected": "accept",
+      "record": {
+        "recordType": "candidate",
+        "recordVersion": 1,
+        "sourceRow": 1,
+        "title": "夏の旅行 <Kyoto & Nara>",
+        "occurredAt": "2026-07-21T09:30:00Z",
+        "url": "https://example.com/trip?year=2026&city=kyoto",
+        "text": "visited three temples",
+        "fingerprint": "31006478e48ba0e9e9ad980aae1c1c3e75baf447d3e101e8d54fbd40669f5333",
+        "issues": [
+          "IMPORT_CSV_FORMULA_LIKE_TEXT"
+        ]
+      },
+      "canonicalEncoding": "{\"recordType\":\"candidate\",\"recordVersion\":1,\"sourceRow\":1,\"title\":\"夏の旅行 \\u003cKyoto \\u0026 Nara\\u003e\",\"occurredAt\":\"2026-07-21T09:30:00Z\",\"url\":\"https://example.com/trip?year=2026\\u0026city=kyoto\",\"text\":\"visited three temples\",\"fingerprint\":\"31006478e48ba0e9e9ad980aae1c1c3e75baf447d3e101e8d54fbd40669f5333\",\"issues\":[\"IMPORT_CSV_FORMULA_LIKE_TEXT\"]}"
+    },
+    {
+      "caseId": "accept-candidate-minimal",
+      "expected": "accept",
+      "record": {
+        "recordType": "candidate",
+        "recordVersion": 1,
+        "sourceRow": 2,
+        "title": "ramen log",
+        "occurredAt": "",
+        "url": "",
+        "text": "",
+        "fingerprint": "1cc3620527455fb8f32d99146856ce5466551ebd2758a42c5283eabd3dae14a4",
+        "issues": []
+      },
+      "canonicalEncoding": "{\"recordType\":\"candidate\",\"recordVersion\":1,\"sourceRow\":2,\"title\":\"ramen log\",\"occurredAt\":\"\",\"url\":\"\",\"text\":\"\",\"fingerprint\":\"1cc3620527455fb8f32d99146856ce5466551ebd2758a42c5283eabd3dae14a4\",\"issues\":[]}"
+    },
+    {
+      "caseId": "accept-rejection-single",
+      "expected": "accept",
+      "record": {
+        "recordType": "rejection",
+        "recordVersion": 1,
+        "sourceRow": 3,
+        "issueCodes": [
+          "IMPORT_CSV_TITLE_REQUIRED"
+        ]
+      },
+      "canonicalEncoding": "{\"recordType\":\"rejection\",\"recordVersion\":1,\"sourceRow\":3,\"issueCodes\":[\"IMPORT_CSV_TITLE_REQUIRED\"]}"
+    },
+    {
+      "caseId": "accept-rejection-multi",
+      "expected": "accept",
+      "record": {
+        "recordType": "rejection",
+        "recordVersion": 1,
+        "sourceRow": 4,
+        "issueCodes": [
+          "IMPORT_CSV_TITLE_REQUIRED",
+          "IMPORT_CSV_DATE_INVALID"
+        ]
+      },
+      "canonicalEncoding": "{\"recordType\":\"rejection\",\"recordVersion\":1,\"sourceRow\":4,\"issueCodes\":[\"IMPORT_CSV_TITLE_REQUIRED\",\"IMPORT_CSV_DATE_INVALID\"]}"
+    },
+    {
+      "caseId": "reject-schema-rejection-free-text",
+      "expected": "reject_schema",
+      "record": {
+        "recordType": "rejection",
+        "recordVersion": 1,
+        "sourceRow": 3,
+        "issueCodes": [
+          "IMPORT_CSV_TITLE_REQUIRED"
+        ],
+        "message": "user@example.com wrote this"
+      }
+    },
+    {
+      "caseId": "reject-schema-candidate-unknown-field",
+      "expected": "reject_schema",
+      "record": {
+        "recordType": "candidate",
+        "recordVersion": 1,
+        "sourceRow": 1,
+        "title": "夏の旅行 <Kyoto & Nara>",
+        "occurredAt": "2026-07-21T09:30:00Z",
+        "url": "https://example.com/trip?year=2026&city=kyoto",
+        "text": "visited three temples",
+        "fingerprint": "31006478e48ba0e9e9ad980aae1c1c3e75baf447d3e101e8d54fbd40669f5333",
+        "issues": [
+          "IMPORT_CSV_FORMULA_LIKE_TEXT"
+        ],
+        "adapterNote": "extra"
+      }
+    },
+    {
+      "caseId": "reject-schema-missing-title",
+      "expected": "reject_schema",
+      "record": {
+        "recordType": "candidate",
+        "recordVersion": 1,
+        "sourceRow": 1,
+        "occurredAt": "2026-07-21T09:30:00Z",
+        "url": "https://example.com/trip?year=2026&city=kyoto",
+        "text": "visited three temples",
+        "fingerprint": "31006478e48ba0e9e9ad980aae1c1c3e75baf447d3e101e8d54fbd40669f5333",
+        "issues": [
+          "IMPORT_CSV_FORMULA_LIKE_TEXT"
+        ]
+      }
+    },
+    {
+      "caseId": "reject-schema-empty-title",
+      "expected": "reject_schema",
+      "record": {
+        "recordType": "candidate",
+        "recordVersion": 1,
+        "sourceRow": 1,
+        "title": "",
+        "occurredAt": "2026-07-21T09:30:00Z",
+        "url": "https://example.com/trip?year=2026&city=kyoto",
+        "text": "visited three temples",
+        "fingerprint": "31006478e48ba0e9e9ad980aae1c1c3e75baf447d3e101e8d54fbd40669f5333",
+        "issues": [
+          "IMPORT_CSV_FORMULA_LIKE_TEXT"
+        ]
+      }
+    },
+    {
+      "caseId": "reject-schema-source-row-zero",
+      "expected": "reject_schema",
+      "record": {
+        "recordType": "candidate",
+        "recordVersion": 1,
+        "sourceRow": 0,
+        "title": "夏の旅行 <Kyoto & Nara>",
+        "occurredAt": "2026-07-21T09:30:00Z",
+        "url": "https://example.com/trip?year=2026&city=kyoto",
+        "text": "visited three temples",
+        "fingerprint": "31006478e48ba0e9e9ad980aae1c1c3e75baf447d3e101e8d54fbd40669f5333",
+        "issues": [
+          "IMPORT_CSV_FORMULA_LIKE_TEXT"
+        ]
+      }
+    },
+    {
+      "caseId": "reject-schema-source-row-overflow",
+      "expected": "reject_schema",
+      "record": {
+        "recordType": "candidate",
+        "recordVersion": 1,
+        "sourceRow": 100001,
+        "title": "夏の旅行 <Kyoto & Nara>",
+        "occurredAt": "2026-07-21T09:30:00Z",
+        "url": "https://example.com/trip?year=2026&city=kyoto",
+        "text": "visited three temples",
+        "fingerprint": "31006478e48ba0e9e9ad980aae1c1c3e75baf447d3e101e8d54fbd40669f5333",
+        "issues": [
+          "IMPORT_CSV_FORMULA_LIKE_TEXT"
+        ]
+      }
+    },
+    {
+      "caseId": "reject-schema-future-version",
+      "expected": "reject_schema",
+      "record": {
+        "recordType": "candidate",
+        "recordVersion": 2,
+        "sourceRow": 1,
+        "title": "夏の旅行 <Kyoto & Nara>",
+        "occurredAt": "2026-07-21T09:30:00Z",
+        "url": "https://example.com/trip?year=2026&city=kyoto",
+        "text": "visited three temples",
+        "fingerprint": "31006478e48ba0e9e9ad980aae1c1c3e75baf447d3e101e8d54fbd40669f5333",
+        "issues": [
+          "IMPORT_CSV_FORMULA_LIKE_TEXT"
+        ]
+      }
+    },
+    {
+      "caseId": "reject-schema-non-utc-date",
+      "expected": "reject_schema",
+      "record": {
+        "recordType": "candidate",
+        "recordVersion": 1,
+        "sourceRow": 1,
+        "title": "夏の旅行 <Kyoto & Nara>",
+        "occurredAt": "2026-07-21T18:30:00+09:00",
+        "url": "https://example.com/trip?year=2026&city=kyoto",
+        "text": "visited three temples",
+        "fingerprint": "31006478e48ba0e9e9ad980aae1c1c3e75baf447d3e101e8d54fbd40669f5333",
+        "issues": [
+          "IMPORT_CSV_FORMULA_LIKE_TEXT"
+        ]
+      }
+    },
+    {
+      "caseId": "reject-schema-non-import-code",
+      "expected": "reject_schema",
+      "record": {
+        "recordType": "rejection",
+        "recordVersion": 1,
+        "sourceRow": 3,
+        "issueCodes": [
+          "SEC_CROSS_USER_ACCESS_DENIED"
+        ]
+      }
+    },
+    {
+      "caseId": "reject-schema-empty-issue-codes",
+      "expected": "reject_schema",
+      "record": {
+        "recordType": "rejection",
+        "recordVersion": 1,
+        "sourceRow": 3,
+        "issueCodes": []
+      }
+    },
+    {
+      "caseId": "reject-schema-duplicate-issue-codes",
+      "expected": "reject_schema",
+      "record": {
+        "recordType": "rejection",
+        "recordVersion": 1,
+        "sourceRow": 3,
+        "issueCodes": [
+          "IMPORT_CSV_TITLE_REQUIRED",
+          "IMPORT_CSV_TITLE_REQUIRED"
+        ]
+      }
+    },
+    {
+      "caseId": "reject-schema-malformed-fingerprint",
+      "expected": "reject_schema",
+      "record": {
+        "recordType": "candidate",
+        "recordVersion": 1,
+        "sourceRow": 1,
+        "title": "夏の旅行 <Kyoto & Nara>",
+        "occurredAt": "2026-07-21T09:30:00Z",
+        "url": "https://example.com/trip?year=2026&city=kyoto",
+        "text": "visited three temples",
+        "fingerprint": "UPPERCASE-NOT-HEX",
+        "issues": [
+          "IMPORT_CSV_FORMULA_LIKE_TEXT"
+        ]
+      }
+    },
+    {
+      "caseId": "reject-semantic-fingerprint-mismatch",
+      "expected": "reject_semantic",
+      "record": {
+        "recordType": "candidate",
+        "recordVersion": 1,
+        "sourceRow": 1,
+        "title": "夏の旅行 <Kyoto & Nara>",
+        "occurredAt": "2026-07-21T09:30:00Z",
+        "url": "https://example.com/trip?year=2026&city=kyoto",
+        "text": "visited three temples",
+        "fingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+        "issues": [
+          "IMPORT_CSV_FORMULA_LIKE_TEXT"
+        ]
+      }
+    },
+    {
+      "caseId": "reject-semantic-untrimmed-fingerprint",
+      "expected": "reject_semantic",
+      "record": {
+        "recordType": "candidate",
+        "recordVersion": 1,
+        "sourceRow": 5,
+        "title": "  padded title  ",
+        "occurredAt": "",
+        "url": "",
+        "text": "",
+        "fingerprint": "85cd27a7d28f205df252662ad76a03d731853c22ac26135d174916aaca8f324a",
+        "issues": []
+      }
+    },
+    {
+      "caseId": "reject-encoding-pretty-printed",
+      "expected": "reject_encoding",
+      "canonicalEncoding": "{\n  \"recordType\": \"candidate\",\n  \"recordVersion\": 1,\n  \"sourceRow\": 2,\n  \"title\": \"ramen log\",\n  \"occurredAt\": \"\",\n  \"url\": \"\",\n  \"text\": \"\",\n  \"fingerprint\": \"1cc3620527455fb8f32d99146856ce5466551ebd2758a42c5283eabd3dae14a4\",\n  \"issues\": []\n}"
+    },
+    {
+      "caseId": "reject-encoding-reordered-keys",
+      "expected": "reject_encoding",
+      "canonicalEncoding": "{\"recordVersion\":1,\"recordType\":\"rejection\",\"sourceRow\":3,\"issueCodes\":[\"IMPORT_CSV_TITLE_REQUIRED\"]}"
+    },
+    {
+      "caseId": "reject-encoding-trailing-newline",
+      "expected": "reject_encoding",
+      "canonicalEncoding": "{\"recordType\":\"rejection\",\"recordVersion\":1,\"sourceRow\":3,\"issueCodes\":[\"IMPORT_CSV_TITLE_REQUIRED\"]}\n"
+    },
+    {
+      "caseId": "reject-encoding-unescaped-html",
+      "expected": "reject_encoding",
+      "canonicalEncoding": "{\"recordType\":\"candidate\",\"recordVersion\":1,\"sourceRow\":1,\"title\":\"夏の旅行 <Kyoto & Nara>\",\"occurredAt\":\"2026-07-21T09:30:00Z\",\"url\":\"https://example.com/trip?year=2026&city=kyoto\",\"text\":\"visited three temples\",\"fingerprint\":\"31006478e48ba0e9e9ad980aae1c1c3e75baf447d3e101e8d54fbd40669f5333\",\"issues\":[\"IMPORT_CSV_FORMULA_LIKE_TEXT\"]}"
+    }
+  ]
+}
