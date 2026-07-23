@@ -8,15 +8,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
+	"github.com/m-shogo/memories-project/services/import-api/internal/canonrecord"
 	"github.com/m-shogo/memories-project/services/import-api/internal/objectstore"
 	"github.com/m-shogo/memories-project/services/import-api/internal/parsersup"
 	"github.com/m-shogo/memories-project/services/import-api/internal/previewcommit"
@@ -27,11 +26,9 @@ var (
 	ErrInvalidFlowConfig      = errors.New("invalid import flow configuration")
 	ErrInvalidFlowRequest     = errors.New("invalid import flow request")
 	ErrSourceBindingMismatch  = errors.New("current object state does not match the bound source")
-	ErrCanonicalRecordInvalid = errors.New("canonical record violates the interim record contract")
+	ErrCanonicalRecordInvalid = errors.New("record violates the canonical adapter record contract")
 	ErrEvidenceDiverged       = errors.New("verification evidence diverged from sealed evidence")
 )
-
-var issueCodePattern = regexp.MustCompile(`^IMPORT_[A-Z0-9_]+$`)
 
 // Flow owns the composition only; every security boundary stays inside the
 // composed packages. After a successful commit the sealed spool is left for
@@ -57,19 +54,6 @@ type Request struct {
 type Result struct {
 	Verified previewspool.VerifiedSpool
 	Commit   previewcommit.CommitResult
-}
-
-// interimAcceptedRecord and interimRejectedRecord define the flow's interim
-// canonical-record decoding rule pending the reviewed adapter record
-// contract: every record is a JSON object carrying its 1-based source row;
-// rejected records carry only IMPORT_* issue codes beside it.
-type interimAcceptedRecord struct {
-	SourceRow int64 `json:"sourceRow"`
-}
-
-type interimRejectedRecord struct {
-	SourceRow  int64    `json:"sourceRow"`
-	IssueCodes []string `json:"issueCodes"`
 }
 
 // Run executes one supervised import attempt end to end. Any failure before
@@ -148,7 +132,7 @@ func (f *Flow) Run(ctx context.Context, request Request, now time.Time) (Result,
 	}
 
 	// 5. Re-read the verified streams and decode commit rows under the
-	// interim record contract.
+	// reviewed canonical adapter record contract (internal/canonrecord).
 	acceptedRecords, rejectedRecords, err := previewspool.CollectSealedRecords(ctx, f.Spool, verified)
 	if err != nil {
 		return Result{}, err
@@ -174,9 +158,6 @@ func (f *Flow) Run(ctx context.Context, request Request, now time.Time) (Result,
 func decodeCommitRows(acceptedRecords [][]byte, rejectedRecords [][]byte) ([]previewcommit.CandidateRow, []previewcommit.RejectionRow, error) {
 	seenSourceRows := make(map[int64]struct{}, len(acceptedRecords)+len(rejectedRecords))
 	claimSourceRow := func(sourceRow int64, previous int64) error {
-		if sourceRow < 1 || sourceRow > int64(previewspool.MaxSpoolRecords) {
-			return fmt.Errorf("%w: source row %d out of range", ErrCanonicalRecordInvalid, sourceRow)
-		}
 		if sourceRow <= previous {
 			return fmt.Errorf("%w: source rows must strictly increase within a stream", ErrCanonicalRecordInvalid)
 		}
@@ -190,18 +171,21 @@ func decodeCommitRows(acceptedRecords [][]byte, rejectedRecords [][]byte) ([]pre
 	candidates := make([]previewcommit.CandidateRow, 0, len(acceptedRecords))
 	previous := int64(0)
 	for index, record := range acceptedRecords {
-		var decoded interimAcceptedRecord
-		if err := json.Unmarshal(record, &decoded); err != nil {
+		candidate, _, err := canonrecord.DecodeRecord(record)
+		if err != nil {
 			return nil, nil, fmt.Errorf("%w: accepted record %d: %v", ErrCanonicalRecordInvalid, index+1, err)
 		}
-		if err := claimSourceRow(decoded.SourceRow, previous); err != nil {
+		if candidate == nil {
+			return nil, nil, fmt.Errorf("%w: accepted stream carries a rejection record at %d", ErrCanonicalRecordInvalid, index+1)
+		}
+		if err := claimSourceRow(candidate.SourceRow, previous); err != nil {
 			return nil, nil, err
 		}
-		previous = decoded.SourceRow
+		previous = candidate.SourceRow
 		digest := sha256.Sum256(record)
 		candidates = append(candidates, previewcommit.CandidateRow{
 			Ordinal:         index + 1,
-			SourceRow:       decoded.SourceRow,
+			SourceRow:       candidate.SourceRow,
 			RecordSHA256:    hex.EncodeToString(digest[:]),
 			CanonicalRecord: record,
 		})
@@ -210,26 +194,21 @@ func decodeCommitRows(acceptedRecords [][]byte, rejectedRecords [][]byte) ([]pre
 	rejections := make([]previewcommit.RejectionRow, 0, len(rejectedRecords))
 	previous = 0
 	for index, record := range rejectedRecords {
-		var decoded interimRejectedRecord
-		if err := json.Unmarshal(record, &decoded); err != nil {
+		_, rejection, err := canonrecord.DecodeRecord(record)
+		if err != nil {
 			return nil, nil, fmt.Errorf("%w: rejected record %d: %v", ErrCanonicalRecordInvalid, index+1, err)
 		}
-		if err := claimSourceRow(decoded.SourceRow, previous); err != nil {
+		if rejection == nil {
+			return nil, nil, fmt.Errorf("%w: rejected stream carries a candidate record at %d", ErrCanonicalRecordInvalid, index+1)
+		}
+		if err := claimSourceRow(rejection.SourceRow, previous); err != nil {
 			return nil, nil, err
 		}
-		previous = decoded.SourceRow
-		if len(decoded.IssueCodes) < 1 || len(decoded.IssueCodes) > 16 {
-			return nil, nil, fmt.Errorf("%w: rejected record %d issue code count", ErrCanonicalRecordInvalid, index+1)
-		}
-		for _, code := range decoded.IssueCodes {
-			if !issueCodePattern.MatchString(code) || len(code) > 64 {
-				return nil, nil, fmt.Errorf("%w: rejected record %d issue code", ErrCanonicalRecordInvalid, index+1)
-			}
-		}
+		previous = rejection.SourceRow
 		rejections = append(rejections, previewcommit.RejectionRow{
 			Ordinal:    index + 1,
-			SourceRow:  decoded.SourceRow,
-			IssueCodes: decoded.IssueCodes,
+			SourceRow:  rejection.SourceRow,
+			IssueCodes: rejection.IssueCodes,
 		})
 	}
 	return candidates, rejections, nil

@@ -21,6 +21,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/m-shogo/memories-project/services/import-api/internal/adapters/genericcsv"
+	"github.com/m-shogo/memories-project/services/import-api/internal/csvworker"
 	"github.com/m-shogo/memories-project/services/import-api/internal/objectstore"
 	"github.com/m-shogo/memories-project/services/import-api/internal/parsersup"
 	"github.com/m-shogo/memories-project/services/import-api/internal/previewcommit"
@@ -37,6 +39,9 @@ const (
 
 func TestMain(m *testing.M) {
 	if mode := os.Getenv(parsersup.WorkerModeEnv); mode != "" {
+		if mode == "genericcsv" {
+			os.Exit(csvworker.Run(os.Getenv(csvworker.OptionsEnv), os.Stdin, os.Stdout, os.Stderr))
+		}
 		os.Exit(parsersup.RunWorker(mode, os.Stdin, os.Stdout))
 	}
 	os.Exit(m.Run())
@@ -180,7 +185,10 @@ func newFlowEnv(t *testing.T, workerMode string) *flowEnv {
 	supervisor, err := parsersup.NewSupervisor(parsersup.Config{
 		WorkerPath:   workerPath,
 		WorkerSHA256: hex.EncodeToString(hasher.Sum(nil)),
-		WorkerEnv:    []string{parsersup.WorkerModeEnv + "=" + workerMode},
+		WorkerEnv: []string{
+			parsersup.WorkerModeEnv + "=" + workerMode,
+			csvworker.OptionsEnv + "=" + flowCSVOptions,
+		},
 		Limits: parsersup.Limits{
 			AddressSpaceBytes: 1 << 46,
 			CPUSeconds:        5,
@@ -281,17 +289,36 @@ func flowRequest(spoolID string, previewID string, source previewspool.SealSourc
 				AdapterVersion: "1.0.0",
 				ArtifactSHA256: strings.Repeat("b", 64),
 			},
-			OptionsSHA256: strings.Repeat("c", 64),
+			OptionsSHA256: flowOptionsSHA256(),
 			CreatedAt:     now.Add(-time.Minute),
 			ExpiresAt:     now.Add(time.Hour),
 		},
 	}
 }
 
-var flowSource = []byte(`a:{"sourceRow":1,"title":"one"}
-r:{"sourceRow":2,"issueCodes":["IMPORT_ROW_EMPTY"]}
-a:{"sourceRow":3,"title":"three"}
+const flowCSVOptions = `{"titleColumn":"title","dateColumn":"date","dateLayout":"2006-01-02","urlColumn":"url","textColumn":"text"}`
+
+// flowSource is a real Generic CSV source: the header is physical row 1, rows
+// 2 and 4 become candidates, and row 3 (empty title) becomes a rejection.
+var flowSource = []byte(`title,date,url,text
+summer trip,2026-07-21,https://example.com/trip,three temples
+,,,missing title row
+ramen log,,,
 `)
+
+// flowOptionsSHA256 binds the seal to the exact normalized adapter options the
+// worker will run with, via the same digest the production binding uses.
+func flowOptionsSHA256() string {
+	options, err := csvworker.ParserOptions(flowCSVOptions)
+	if err != nil {
+		panic(err)
+	}
+	_, digest, err := genericcsv.NormalizeAndDigestOptions(options)
+	if err != nil {
+		panic(err)
+	}
+	return digest
+}
 
 func assertNothingImported(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
@@ -309,7 +336,7 @@ func assertNothingImported(t *testing.T, pool *pgxpool.Pool) {
 }
 
 func TestFlowImportsEndToEnd(t *testing.T) {
-	env := newFlowEnv(t, "parse")
+	env := newFlowEnv(t, "genericcsv")
 	now := time.Now().UTC()
 	source := env.uploadSource(t, "upl_01J00000000000000000000000", flowSource)
 	result, err := env.flow.Run(context.Background(), flowRequest("spl_01J00000000000000000000000", "prv_flowhappy001", source, now), now)
@@ -342,7 +369,7 @@ func TestFlowImportsEndToEnd(t *testing.T) {
 }
 
 func TestFlowIsIdempotentAcrossReparses(t *testing.T) {
-	env := newFlowEnv(t, "parse")
+	env := newFlowEnv(t, "genericcsv")
 	now := time.Now().UTC()
 	source := env.uploadSource(t, "upl_01J00000000000000000000001", flowSource)
 	first, err := env.flow.Run(context.Background(), flowRequest("spl_01J00000000000000000000001", "prv_flowfirst001", source, now), now)
@@ -366,7 +393,7 @@ func TestFlowIsIdempotentAcrossReparses(t *testing.T) {
 }
 
 func TestFlowRejectsCurrentVersionDrift(t *testing.T) {
-	env := newFlowEnv(t, "parse")
+	env := newFlowEnv(t, "genericcsv")
 	now := time.Now().UTC()
 	source := env.uploadSource(t, "upl_01J00000000000000000000002", flowSource)
 	_ = env.uploadSource(t, "upl_01J00000000000000000000002", append([]byte("a:{\"sourceRow\":1,\"title\":\"changed\"}\n"), nil...))
@@ -379,7 +406,7 @@ func TestFlowRejectsCurrentVersionDrift(t *testing.T) {
 }
 
 func TestFlowRejectsChecksumMismatch(t *testing.T) {
-	env := newFlowEnv(t, "parse")
+	env := newFlowEnv(t, "genericcsv")
 	now := time.Now().UTC()
 	source := env.uploadSource(t, "upl_01J00000000000000000000003", flowSource)
 	source.ChecksumSHA256 = strings.Repeat("0", 64)
@@ -405,7 +432,7 @@ func TestFlowCleansUpWorkerFailure(t *testing.T) {
 func TestFlowRejectsInvalidCanonicalRecords(t *testing.T) {
 	env := newFlowEnv(t, "parse")
 	now := time.Now().UTC()
-	badSource := []byte(`a:{"title":"no-source-row"}
+	badSource := []byte(`a:{"title":"not-a-canonical-record"}
 `)
 	source := env.uploadSource(t, "upl_01J00000000000000000000005", badSource)
 	_, err := env.flow.Run(context.Background(), flowRequest("spl_01J00000000000000000000006", "prv_flowbadrec01", source, now), now)
