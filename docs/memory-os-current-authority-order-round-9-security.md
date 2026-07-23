@@ -72,7 +72,8 @@ Conflicts are resolved from top to bottom:
 
 1. `docs/memory-os-current-authority-order-round-9-security.md`
 2. `docs/memory-os-current-implementation-status-and-roadmap-2026-07-17.md`
-3. `docs/memory-os-canonical-record-checkpoint-2026-07-21.md`
+3. `docs/memory-os-importctl-checkpoint-2026-07-23.md`
+4. `docs/memory-os-canonical-record-checkpoint-2026-07-21.md`
 4. `docs/memory-os-import-flow-checkpoint-2026-07-20.md`
 4. `docs/memory-os-parser-supervisor-checkpoint-2026-07-20.md`
 4. `docs/memory-os-object-storage-checkpoint-2026-07-19.md`
@@ -334,11 +335,10 @@ Production remains forbidden while any remains:
 # 8. Correct next sequence
 
 ```txt
-0. remote workflows confirmed for the canonical-record HEAD — done
-1. minimal CLI harness over internal/importflow (first visible end-to-end run, no HTTP)
-2. compose executable API/auth/repositories
-3. implement Apply/Memory/deletion
-4. begin iOS only after backend P0 closes
+0. confirm remote workflows for the importctl HEAD
+1. compose executable API/auth/repositories
+2. implement Apply/Memory/deletion
+3. begin iOS only after backend P0 closes
 ```
 
 Memory Town remains after Capture / Import P0 blockers close.
