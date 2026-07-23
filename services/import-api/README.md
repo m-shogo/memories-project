@@ -26,7 +26,9 @@ It is intentionally incomplete. It does not expose a production server and must 
 - atomic Preview commit repository against live PostgreSQL;
 - SDK-free SigV4 quarantine object store adapter against live MinIO;
 - prlimit-bounded digest-pinned parser worker supervision;
-- supervised import flow composed end to end (fetch → parse → verify → commit) against live PostgreSQL and MinIO.
+- supervised import flow composed end to end (fetch → parse → verify → commit) against live PostgreSQL and MinIO;
+- canonical adapter record contract with cross-language fixture enforcement;
+- real Generic CSV adapter emitting canonical records inside the supervised worker.
 
 ## Preview spool contract
 
@@ -150,13 +152,14 @@ HEAD recheck (current object version/length/checksum must equal the binding)
 → independent decode/count/re-hash verification (previewspool.Verifier)
 → sealed-evidence cross-check against the supervisor's own evidence
 → CollectSealedRecords re-reads the verified streams under the same safety checks
-→ interim canonical-record decode (sourceRow ordering/uniqueness, IMPORT_* codes)
+→ canonical record decode (internal/canonrecord: strict bytes, fingerprint,
+  stream/type agreement, sourceRow ordering/uniqueness)
 → one short atomic commit (previewcommit) → COMMIT or full ROLLBACK
 ```
 
 A newer object version than the binding, a checksum mismatch, a worker crash or an invalid canonical record all fail closed with no durable database state and no spool residue. Six live end-to-end tests (gated on `MEMORY_OS_TEST_DATABASE_URL` + `MEMORY_OS_TEST_S3_ENDPOINT`) prove the happy path, idempotent re-parse, version-drift rejection, checksum-mismatch rejection, worker-crash cleanup and invalid-record rejection against live PostgreSQL and MinIO.
 
-The interim canonical-record contract (JSON object with a `sourceRow` field, `IMPORT_*` rejection codes) is explicitly a placeholder for the reviewed adapter record contract.
+Records are governed by the canonical adapter record contract (`docs/schemas/memory-os-security/preview-canonical-record.v1.schema.json`): the frame payload bytes must equal the deterministic Go serialization, candidate fingerprints are recomputed on decode, and rejection records structurally cannot carry raw user values. The shared 22-case fixture is enforced by both `internal/canonrecord` tests and `scripts/validate-memory-os-canonical-records.py`, and `internal/csvworker` runs the real Generic CSV adapter through the supervised worker in the end-to-end tests.
 
 ## Critical production boundary
 
@@ -166,7 +169,7 @@ The interim canonical-record contract (JSON object with a `sourceRow` field, `IM
 
 - executable HTTP server/session issuer;
 - Apple code exchange/secret rotation and concrete replay/session stores;
-- reviewed canonical-record contract for candidate/rejection JSON and reviewed adapter artifacts;
+- a separately built digest-pinned worker binary (tests re-execute the test binary);
 - network-namespace/seccomp/container deployment evidence for the parser supervisor;
 - production TLS/scoped-credential/lifecycle deployment evidence for object storage;
 - concrete Apply/Memory persistence and complete deletion fencing;
@@ -176,16 +179,15 @@ The interim canonical-record contract (JSON object with a `sourceRow` field, `IM
 
 ```txt
 exact repository-integrated Go suite
-(code HEAD 5c3dc4bc2179800c8530961a773963f96797f4d5, local golang:1.23 Linux container + fresh postgres:16 + MinIO):
-gofmt clean + go vet + go test ./... + go test -race ./... (17 packages,
-live DB/object-store/supervision/flow tests included) + both 5s fuzz smokes PASS
+(code HEAD c5bf48fda48e60c802349f6efd0e2ee50e0adea4, local golang:1.23 Linux container + fresh postgres:16 + MinIO):
+gofmt clean + go vet + go test ./... + go test -race ./... (19 packages,
+live DB/object-store/supervision/flow suites included) + both 5s fuzz smokes PASS
 
 Preview spool contract validator:
 PASS
 
-remote workflows at import-flow HEAD 381c514:
-Import API Security Slice run 29793196253 SUCCESS (live import-flow tests executed)
-Security Contracts run 29793196257 SUCCESS
+remote workflows:
+recorded after the push completes
 ```
 
 Earlier remote Import API runs had failed at the Format check; five unformatted sources and one pointer-receiver compile error in `internal/upload/service_test.go` were repaired at the verifier checkpoint, and the branch has run green since.
