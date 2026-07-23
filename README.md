@@ -105,7 +105,7 @@ current full-repository Go suite:
 PASS in a local golang:1.23 Linux container at the recorded HEAD
 
 remote Actions:
-apply-memory HEAD 498565a CONFIRMED green (Import API run 30016036537, Security Contracts run 30016036295)
+deletion-fencing-and-object-erasure HEAD 99cd3d4 CONFIRMED green (Import API run 30052126998, Security Contracts run 30052126969)
 
 production:
 NO-GO

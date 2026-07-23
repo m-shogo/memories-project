@@ -172,14 +172,14 @@
     "archiveSafetyDenies": 24
   },
   "remoteEvidence": {
-    "checkpointLabel": "apply-memory",
-    "headSha": "556e366a03543c3ad25ceb75316bfb99c06856ef",
-    "headShaShort": "498565a",
-    "importApiRunId": 30016036537,
-    "importApiRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/30016036537",
-    "securityContractsRunId": 30016036295,
-    "securityContractsRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/30016036295",
-    "confirmedAt": "2026-07-23"
+    "checkpointLabel": "deletion-fencing-and-object-erasure",
+    "headSha": "99cd3d4538c2e91a3a669fb9e6ec90d8e1f58b76",
+    "headShaShort": "99cd3d4",
+    "importApiRunId": 30052126998,
+    "importApiRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/30052126998",
+    "securityContractsRunId": 30052126969,
+    "securityContractsRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/30052126969",
+    "confirmedAt": "2026-07-24"
   },
   "nextRequired": [
     "implement_apple_code_exchange",

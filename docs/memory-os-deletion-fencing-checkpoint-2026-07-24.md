@@ -90,6 +90,21 @@ services/import-api/cmd/import-api-server/main.go       fenced composition
   `account_control` SELECT policy filters on account_id alone, so the read
   stays RLS-scoped either way.
 
+## Operational consequence of composing the fence
+
+The guard now runs on every authenticated request, and it fails closed: an
+account with no `account_control` row is refused everywhere, not defaulted to
+active. That is the correct direction, but it makes the control row a
+provisioning prerequisite rather than an optional record — whatever creates
+accounts (today only the tests; in production the Apple exchange, which is not
+yet implemented) must insert it, and re-provisioning an account that holds a
+`deleted` tombstone must also clear `deletion_started_at` /
+`deletion_completed_at` or the state check rejects it.
+
+Each request therefore costs one extra short read of the control row. That is
+a deliberate trade: the alternative is trusting the epoch inside the session,
+which is exactly what a deletion bump is supposed to invalidate.
+
 ## Verification actually run
 
 - 7 SQL suites (`import_rls`, `account_control`, `upload_authorization`,
