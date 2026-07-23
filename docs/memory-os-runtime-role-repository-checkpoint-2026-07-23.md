@@ -68,8 +68,9 @@ exact code HEAD 41a6c1404ed3fb50aaeab7994213e8f3954ac43f:
 gofmt clean + go vet + go test ./... + go test -race ./... (21 packages,
 all live suites included) + non-race parsersup bounds + both 5s fuzz smokes PASS
 
-remote workflows:
-recorded after the push completes
+remote workflows (pushed HEAD 5dc9cc7, code identical to 41a6c14):
+Import API Security Slice run 30010006324 SUCCESS (pgrepo live suite executed under race)
+Security Contracts run 30010006374 SUCCESS
 ```
 
 ## Residual risks
