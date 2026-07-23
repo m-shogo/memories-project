@@ -99,7 +99,8 @@ NO-GO
 | AtomicMaterializer | Reference only | Hash/decision invariants | Forbidden for production PostgreSQL; parse occurs inside transaction callback |
 | Apply service | Partial | iOS authority and exact-hash idempotency interfaces | Concrete Preview/Memory repository and deletion fencing |
 | Runtime-role DB access | Partial | pgx scoped executor + concrete upload repository; FORCE RLS proven with runtime roles (42501 privilege probe, tenant isolation, full upload lifecycle) | NOSUPERUSER production login, scan worker, remaining repositories |
-| Executable Go API | Not implemented | No production `main` lifecycle | HTTP main, session middleware, Apple exchange composition |
+| Account session store | Created | Definer-function-only access, digest-only storage, dedicated auth role, 5-block SQL suite | Apple exchange issuance, rotation/refresh policy |
+| Executable Go API | Created (partial) | cmd/import-api-server: session middleware over strict handlers, runtime-role DB, live HTTP tests + real curl demo | Apple exchange, Apply/Memory endpoints, TLS/rate-limit/logging policy |
 | Object storage runtime | Adapter created | SigV4 signer/HEAD proven on live versioned MinIO bucket | Production bucket policy, lifecycle and TLS deployment proof |
 | Parser supervisor runtime | Process boundary created | prlimit-bounded digest-pinned worker with targeted isolation tests | Network namespace, seccomp and container deployment evidence |
 | iOS / Portal | Not implemented | Technology/design authority only | Client vertical slices and security evidence |
