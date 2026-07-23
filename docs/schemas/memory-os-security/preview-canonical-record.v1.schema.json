@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/security/preview-canonical-record.v1.schema.json",
+  "title": "Memory OS Preview Canonical Adapter Record v1",
+  "description": "Exactly one adapter output record as carried in one Preview spool frame. The frame payload bytes are authoritative: they must equal the deterministic Go encoding/json serialization of the record with the field order fixed by this schema's required lists (compact separators, HTML-escaping of '<', '>' and '&'). Byte-length limits are authoritative in the Go implementation; JSON Schema maxLength approximates them in code points. Rejection records structurally cannot carry raw user values.",
+  "oneOf": [
+    {"$ref": "#/$defs/CandidateRecord"},
+    {"$ref": "#/$defs/RejectionRecord"}
+  ],
+  "$defs": {
+    "SourceRow": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100000
+    },
+    "ImportIssueCode": {
+      "type": "string",
+      "pattern": "^IMPORT_[A-Z0-9_]+$",
+      "maxLength": 64
+    },
+    "CandidateRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recordType",
+        "recordVersion",
+        "sourceRow",
+        "title",
+        "occurredAt",
+        "url",
+        "text",
+        "fingerprint",
+        "issues"
+      ],
+      "properties": {
+        "recordType": {"const": "candidate"},
+        "recordVersion": {"const": 1},
+        "sourceRow": {"$ref": "#/$defs/SourceRow"},
+        "title": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "occurredAt": {
+          "type": "string",
+          "pattern": "^$|^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,9})?Z$",
+          "description": "RFC3339Nano UTC exactly as produced by Go time.Format(time.RFC3339Nano), or the empty string when the source row carries no date. The fingerprint binds this exact string."
+        },
+        "url": {"type": "string", "maxLength": 2048},
+        "text": {"type": "string", "maxLength": 1048576},
+        "fingerprint": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "hex SHA-256 of TrimSpace(title), occurredAt, TrimSpace(url) and TrimSpace(text) joined by 0x1F, matching the genericcsv adapter fingerprint"
+        },
+        "issues": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/ImportIssueCode"},
+          "description": "non-blocking warnings attached to an accepted row; may be empty"
+        }
+      }
+    },
+    "RejectionRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["recordType", "recordVersion", "sourceRow", "issueCodes"],
+      "properties": {
+        "recordType": {"const": "rejection"},
+        "recordVersion": {"const": 1},
+        "sourceRow": {"$ref": "#/$defs/SourceRow"},
+        "issueCodes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/ImportIssueCode"}
+        }
+      }
+    }
+  }
+}

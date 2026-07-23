@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/security/preview-canonical-record-case-set.v1.schema.json",
+  "title": "Memory OS Preview Canonical Record Case Set v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "caseSetId", "caseSetVersion", "recordSchemaId", "cases"],
+  "properties": {
+    "$schema": {"const": "https://memory-os.example/schemas/security/preview-canonical-record-case-set.v1.schema.json"},
+    "caseSetId": {"$ref": "core.v1.schema.json#/$defs/StableId"},
+    "caseSetVersion": {"type": "integer", "minimum": 1},
+    "recordSchemaId": {"const": "https://memory-os.example/schemas/security/preview-canonical-record.v1.schema.json"},
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 200,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["caseId", "expected"],
+        "properties": {
+          "caseId": {"$ref": "core.v1.schema.json#/$defs/StableId"},
+          "expected": {
+            "enum": ["accept", "reject_schema", "reject_semantic", "reject_encoding"],
+            "description": "accept: record + canonicalEncoding must both be present and agree; reject_schema: record fails the record schema; reject_semantic: record passes the schema but fails fingerprint or uniqueness rules; reject_encoding: canonicalEncoding parses to a valid record but is not the canonical byte serialization"
+          },
+          "record": {"description": "the record object under test"},
+          "canonicalEncoding": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 4194304,
+            "description": "exact frame payload under test as a JSON-encoded string"
+          }
+        }
+      }
+    }
+  }
+}
