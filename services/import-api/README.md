@@ -29,7 +29,8 @@ It is intentionally incomplete. It does not expose a production server and must 
 - supervised import flow composed end to end (fetch → parse → verify → commit) against live PostgreSQL and MinIO;
 - canonical adapter record contract with cross-language fixture enforcement;
 - real Generic CSV adapter emitting canonical records inside the supervised worker;
-- importctl harness and separate parser-worker binary: the first visible end-to-end run.
+- importctl harness and separate parser-worker binary: the first visible end-to-end run;
+- pgx runtime-role scoped executor and concrete upload repository under FORCE RLS.
 
 ## Preview spool contract
 
@@ -166,6 +167,10 @@ Records are governed by the canonical adapter record contract (`docs/schemas/mem
 
 The first visible end-to-end run, and a development tool only: `scripts/dev-import.sh` builds the separate digest-pinned `parser-worker` binary plus `importctl`, then imports a local CSV through the full supervised pipeline against the `scripts/dev-up.sh` stack and prints the committed Preview (candidates, rejections, counts, job state). The harness computes the worker digest when no pin is supplied and labels it as not a reviewed pin; a mismatched pin refuses to run. It connects as the dev stack's superuser for read-back (RLS does not bind superusers) and must never target production. Four live tests cover the full CLI path, the one-preview-per-job conflict, configuration validation and pin mismatch.
 
+## Runtime-role database access
+
+`internal/pgscope` adapts a pgx pool to the existing `dbscope` scoped executor: every transaction runs `SET LOCAL ROLE` to a NOLOGIN/NOINHERIT/NOBYPASSRLS runtime role plus transaction-local owner/epoch context before any repository statement, so FORCE RLS — not Go code — decides row visibility. `internal/pgrepo` implements the concrete `upload.Repository` (job lookup, authorization insert/read/consume/revoke, scan enqueue into `quarantine_object`). Live tests prove the privilege drop (`current_user` is the runtime role; an INSERT the role lacks fails with 42501), tenant isolation, the full Issue → presigned PUT → Complete lifecycle through runtime roles, double-completion rejection and foreign-executor rejection. The dev stack still logs in as a superuser and relies on SET ROLE semantics; a NOSUPERUSER production login remains deployment evidence.
+
 ## Critical production boundary
 
 `preview.AtomicMaterializer` parses inside its transaction callback. It remains reference-only and must not be connected to production PostgreSQL for untrusted imports; `internal/importflow` is the production-shaped replacement, though it still runs the harness worker rather than a reviewed adapter artifact.
@@ -184,16 +189,15 @@ The first visible end-to-end run, and a development tool only: `scripts/dev-impo
 
 ```txt
 exact repository-integrated Go suite
-(code HEAD 80c3b4ecdfe67a7d79a0ec71a51e3a7c5c9bb41a, local golang:1.23 Linux container + fresh postgres:16 + MinIO):
-gofmt clean + go vet + go build ./cmd/... + go test ./... + go test -race ./... (20 packages,
-live DB/object-store/supervision/flow/CLI suites included) + both 5s fuzz smokes PASS
+(code HEAD 41a6c1404ed3fb50aaeab7994213e8f3954ac43f, local golang:1.23 Linux container + fresh postgres:16 + MinIO):
+gofmt clean + go vet + go build ./cmd/... + go test ./... + go test -race ./... (21 packages,
+live DB/object-store/supervision/flow/CLI/runtime-role suites included) + both 5s fuzz smokes PASS
 
 Preview spool contract validator:
 PASS
 
-remote workflows at importctl HEAD f36dc86:
-Import API Security Slice run 29994162132 SUCCESS (importcli live suite executed)
-Security Contracts run 29994162154 SUCCESS
+remote workflows:
+recorded after the push completes
 ```
 
 Earlier remote Import API runs had failed at the Format check; five unformatted sources and one pointer-receiver compile error in `internal/upload/service_test.go` were repaired at the verifier checkpoint, and the branch has run green since.
