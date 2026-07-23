@@ -56,7 +56,7 @@ exact current HEAD full repository Go suite:
 CONFIRMED in a local golang:1.23 Linux container
 
 remote Actions:
-import-flow HEAD 381c514 CONFIRMED green (Import API run 29793196253 with live flow tests, Security Contracts run 29793196257)
+canonical-record HEAD 0c91e37 CONFIRMED green (Import API run 29992738696, Security Contracts run 29992738481 incl. the canonical record validator)
 
 production:
 NO-GO
@@ -334,7 +334,7 @@ Production remains forbidden while any remains:
 # 8. Correct next sequence
 
 ```txt
-0. confirm remote workflows for the canonical-record HEAD
+0. remote workflows confirmed for the canonical-record HEAD — done
 1. minimal CLI harness over internal/importflow (first visible end-to-end run, no HTTP)
 2. compose executable API/auth/repositories
 3. implement Apply/Memory/deletion

@@ -1,6 +1,6 @@
 {
   "indexId": "memory-os.security.fixture-index.round9.s1",
-  "indexVersion": 28,
+  "indexVersion": 29,
   "schemaRegistryPath": "docs/schemas/memory-os-security/schema-registry.v1.json",
   "fixtures": [
     { "fixtureId": "memory-os.security.issue-codes.round9", "path": "docs/fixtures/memory-os-security/security-issue-code-registry.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-issue-code-registry.v1.schema.json", "status": "targeted_validation_pass" },
@@ -82,7 +82,7 @@
     "canonicalAdapterRecordContractReviewed": true,
     "canonicalRecordCrossLanguageValidationPassed": true,
     "genericCsvAdapterWiredThroughSupervisedWorker": true,
-    "canonicalRecordRemoteLiveJobPassed": false,
+    "canonicalRecordRemoteLiveJobPassed": true,
     "statusBlockGeneratorCreated": true,
     "statusBlockCiCheckPassed": true,
     "localDevStackCreated": true,
@@ -138,17 +138,16 @@
     "archiveSafetyDenies": 24
   },
   "remoteEvidence": {
-    "checkpointLabel": "import-flow",
-    "headSha": "5c3dc4bc2179800c8530961a773963f96797f4d5",
-    "headShaShort": "381c514",
-    "importApiRunId": 29793196253,
-    "importApiRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/29793196253",
-    "securityContractsRunId": 29793196257,
-    "securityContractsRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/29793196257",
-    "confirmedAt": "2026-07-21"
+    "checkpointLabel": "canonical-record",
+    "headSha": "c5bf48fda48e60c802349f6efd0e2ee50e0adea4",
+    "headShaShort": "0c91e37",
+    "importApiRunId": 29992738696,
+    "importApiRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/29992738696",
+    "securityContractsRunId": 29992738481,
+    "securityContractsRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/29992738481",
+    "confirmedAt": "2026-07-23"
   },
   "nextRequired": [
-    "confirm_remote_workflows_for_canonical_record_head",
     "build_minimal_cli_harness_over_importflow",
     "archive_parser_fuzz_corpus"
   ]

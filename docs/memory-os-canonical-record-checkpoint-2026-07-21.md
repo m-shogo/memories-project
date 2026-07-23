@@ -114,8 +114,10 @@ live DB/object-store/supervision/import-flow suites included)
 scripts/validate-memory-os-canonical-records.py: PASS (22 cases)
 scripts/validate-memory-os-security.py: PASS (26 schemas)
 
-remote workflows:
-recorded after the push completes
+remote workflows (pushed HEAD 0c91e37, code identical to c5bf48f):
+Import API Security Slice run 29992738696 SUCCESS
+(canonrecord/csvworker suites + importflow live e2e with the real adapter executed under race)
+Security Contracts run 29992738481 SUCCESS (canonical record validator step executed)
 ```
 
 ## Findings recorded during implementation
