@@ -98,7 +98,8 @@ NO-GO
 | Preview reconciliation | Partial | Startup classification, residue removal, publication completion, TTL cleanup, fail-closed quarantine | Deployment supervisor exclusivity proof, quarantine alerting |
 | AtomicMaterializer | Reference only | Hash/decision invariants | Forbidden for production PostgreSQL; parse occurs inside transaction callback |
 | Apply service | Partial | iOS authority and exact-hash idempotency interfaces | Concrete Preview/Memory repository and deletion fencing |
-| Executable Go API | Not implemented | No production `main` lifecycle | Auth/session/repositories/storage/worker composition |
+| Runtime-role DB access | Partial | pgx scoped executor + concrete upload repository; FORCE RLS proven with runtime roles (42501 privilege probe, tenant isolation, full upload lifecycle) | NOSUPERUSER production login, scan worker, remaining repositories |
+| Executable Go API | Not implemented | No production `main` lifecycle | HTTP main, session middleware, Apple exchange composition |
 | Object storage runtime | Adapter created | SigV4 signer/HEAD proven on live versioned MinIO bucket | Production bucket policy, lifecycle and TLS deployment proof |
 | Parser supervisor runtime | Process boundary created | prlimit-bounded digest-pinned worker with targeted isolation tests | Network namespace, seccomp and container deployment evidence |
 | iOS / Portal | Not implemented | Technology/design authority only | Client vertical slices and security evidence |
