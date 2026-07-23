@@ -46,6 +46,9 @@ PROCESS BOUNDARY CREATED (live-tested; network namespace is deployment work)
 supervised import flow:
 COMPOSED AND LIVE-TESTED END TO END
 
+canonical adapter record contract:
+CREATED, CROSS-LANGUAGE MACHINE-VALIDATED; real Generic CSV adapter wired through the supervised worker
+
 iOS / Portal:
 NOT IMPLEMENTED
 
@@ -69,7 +72,8 @@ Conflicts are resolved from top to bottom:
 
 1. `docs/memory-os-current-authority-order-round-9-security.md`
 2. `docs/memory-os-current-implementation-status-and-roadmap-2026-07-17.md`
-3. `docs/memory-os-import-flow-checkpoint-2026-07-20.md`
+3. `docs/memory-os-canonical-record-checkpoint-2026-07-21.md`
+4. `docs/memory-os-import-flow-checkpoint-2026-07-20.md`
 4. `docs/memory-os-parser-supervisor-checkpoint-2026-07-20.md`
 4. `docs/memory-os-object-storage-checkpoint-2026-07-19.md`
 5. `docs/memory-os-preview-commit-repository-checkpoint-2026-07-19.md`
@@ -330,12 +334,11 @@ Production remains forbidden while any remains:
 # 8. Correct next sequence
 
 ```txt
-0. remote workflows confirmed for the import-flow HEAD — done
-1. reviewed canonical adapter record contract (schema/fixtures/validator), then real adapter wiring
-2. minimal CLI harness over internal/importflow (first visible end-to-end run, no HTTP)
-3. compose executable API/auth/repositories
-4. implement Apply/Memory/deletion
-5. begin iOS only after backend P0 closes
+0. confirm remote workflows for the canonical-record HEAD
+1. minimal CLI harness over internal/importflow (first visible end-to-end run, no HTTP)
+2. compose executable API/auth/repositories
+3. implement Apply/Memory/deletion
+4. begin iOS only after backend P0 closes
 ```
 
 Memory Town remains after Capture / Import P0 blockers close.
