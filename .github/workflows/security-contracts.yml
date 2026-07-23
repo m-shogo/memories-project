@@ -139,6 +139,9 @@ jobs:
       - name: Apply Preview domain migration
         run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/003_memory_os_preview_domain.sql
 
+      - name: Apply account session migration
+        run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/004_memory_os_account_session.sql
+
       - name: Execute tenant RLS integration tests
         run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/test_memory_os_import_rls.sql
 
@@ -147,3 +150,6 @@ jobs:
 
       - name: Execute Preview domain integration tests
         run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/test_memory_os_preview_domain.sql
+
+      - name: Execute account session integration tests
+        run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/test_memory_os_account_session.sql
