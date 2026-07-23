@@ -51,6 +51,9 @@ reviewed contract created; real adapter wired through the supervised worker
 importctl harness (first visible end-to-end run):
 created and executed for real: local CSV → committed Preview printed to the terminal
 
+runtime-role database access:
+pgx scoped executor + concrete upload repository proven under FORCE RLS (non-superuser path)
+
 iOS / Portal:
 not implemented
 

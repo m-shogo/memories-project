@@ -23,7 +23,8 @@ Read first:
 
 1. [Round 9 Security Authority](docs/memory-os-current-authority-order-round-9-security.md)
 2. [Current Implementation Status and Roadmap](docs/memory-os-current-implementation-status-and-roadmap-2026-07-17.md)
-3. [importctl Harness Checkpoint](docs/memory-os-importctl-checkpoint-2026-07-23.md)
+3. [Runtime-Role Repository Checkpoint](docs/memory-os-runtime-role-repository-checkpoint-2026-07-23.md)
+4. [importctl Harness Checkpoint](docs/memory-os-importctl-checkpoint-2026-07-23.md)
 4. [Canonical Record Checkpoint](docs/memory-os-canonical-record-checkpoint-2026-07-21.md)
 4. [Supervised Import Flow Checkpoint](docs/memory-os-import-flow-checkpoint-2026-07-20.md)
 4. [Parser Supervisor Checkpoint](docs/memory-os-parser-supervisor-checkpoint-2026-07-20.md)
@@ -81,6 +82,9 @@ reviewed contract created; real adapter wired through the supervised worker
 
 importctl harness (first visible end-to-end run):
 created and executed for real: local CSV → committed Preview printed to the terminal
+
+runtime-role database access:
+pgx scoped executor + concrete upload repository proven under FORCE RLS (non-superuser path)
 
 iOS / Portal:
 not implemented
@@ -166,12 +170,13 @@ Parser, adapter, dedupe, Preview and Apply are canonical backend concerns and ar
 # Current implementation order
 
 ```txt
-0. remote workflows confirmed for the importctl HEAD — done
-1. executable API + concrete Apple session/replay/repositories
-2. Apply / Memory / deletion fencing
-3. iOS vertical slice
-4. limited Desktop Portal
-5. Memory Town runtime after Capture / Import P0 reaches zero
+0. confirm remote workflows for the runtime-role HEAD
+1. HTTP server main + session-principal middleware (concrete PostgreSQL session store)
+2. Apple code exchange / replay store (needs real Apple credentials)
+3. Apply / Memory / deletion fencing
+4. iOS vertical slice
+5. limited Desktop Portal
+6. Memory Town runtime after Capture / Import P0 reaches zero
 ```
 
 Completed Preview spool checkpoints:
@@ -267,12 +272,21 @@ separate digest-pinned parser-worker binary (cmd/parser-worker)
 + one-preview-per-job conflict and worker-pin mismatch proven through the CLI
 ```
 
+Completed runtime-role repository checkpoint:
+
+```txt
+pgx scoped executor: SET LOCAL ROLE to NOLOGIN/NOBYPASSRLS runtime roles
++ concrete PostgreSQL upload repository (issue/read/consume/revoke/scan-enqueue)
++ FORCE RLS proven live: 42501 privilege probe, tenant isolation,
+  full Issue → presigned PUT → Complete lifecycle through runtime roles
+```
+
 Immediate next checkpoint:
 
 ```txt
-executable API: production main wiring auth/session/repositories
-(Apple code exchange, replay store, session issuance, runtime-role DB access)
-over the already-proven flow — still no client work
+HTTP server main + session-principal middleware
+with a concrete PostgreSQL session store — Apple code exchange remains a
+later boundary because it needs real Apple credentials; still no client work
 ```
 
 ---

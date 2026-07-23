@@ -93,6 +93,11 @@ SECTIONS: list[dict] = [
         "done_lines": ["created and executed for real: local CSV → committed Preview printed to the terminal"],
     },
     {
+        "title": "runtime-role database access",
+        "requires": ["runtimeRoleExecutorCreated", "runtimeRoleUploadRepositoryCreated", "runtimeRoleForceRlsLiveTestsPassed"],
+        "done_lines": ["pgx scoped executor + concrete upload repository proven under FORCE RLS (non-superuser path)"],
+    },
+    {
         "title": "iOS / Portal",
         "requires": ["neverTrueSentinel"],  # always pending until this section is intentionally flipped
         "done_lines": [],

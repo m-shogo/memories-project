@@ -1,6 +1,6 @@
 {
   "indexId": "memory-os.security.fixture-index.round9.s1",
-  "indexVersion": 31,
+  "indexVersion": 32,
   "schemaRegistryPath": "docs/schemas/memory-os-security/schema-registry.v1.json",
   "fixtures": [
     { "fixtureId": "memory-os.security.issue-codes.round9", "path": "docs/fixtures/memory-os-security/security-issue-code-registry.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-issue-code-registry.v1.schema.json", "status": "targeted_validation_pass" },
@@ -91,6 +91,11 @@
     "importctlVisibleRunExecuted": true,
     "parserWorkerSeparateArtifactCreated": true,
     "importctlRemoteLiveJobPassed": true,
+    "runtimeRoleExecutorCreated": true,
+    "runtimeRoleUploadRepositoryCreated": true,
+    "runtimeRoleForceRlsLiveTestsPassed": true,
+    "runtimeRoleRemoteLiveJobPassed": false,
+    "productionNosuperuserLoginProven": false,
     "previewSpoolImplementationCreated": false,
     "repositoryValidatorCreated": true,
     "githubActionsWorkflowCreated": true,
@@ -122,6 +127,7 @@
     "canonicalRecordFixtureCases": 22,
     "canonicalRecordGoTopLevelTests": 5,
     "importcliTopLevelTests": 4,
+    "runtimeRoleRepositoryTopLevelTests": 4,
     "csvWorkerTopLevelTests": 2,
     "schemaNegativeRejections": 31,
     "semanticNegativeRejections": 8,
@@ -153,7 +159,8 @@
     "confirmedAt": "2026-07-23"
   },
   "nextRequired": [
-    "compose_executable_api_auth_session_repositories",
+    "confirm_remote_workflows_for_runtime_role_head",
+    "compose_http_server_main_with_session_principal_middleware",
     "archive_parser_fuzz_corpus"
   ]
 }
