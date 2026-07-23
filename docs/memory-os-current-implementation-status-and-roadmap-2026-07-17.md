@@ -342,7 +342,7 @@ Status: **created and cross-language machine-validated**. One schema + shared 22
 
 ## Gate 9 — minimal CLI harness
 
-First visible end-to-end run, deliberately not an HTTP server: a thin `cmd/importctl`-style entrypoint that points `internal/importflow` at a local CSV file and the `scripts/dev-up.sh` stack, then prints the committed Preview to the terminal. Its purpose is a real "does this actually work" feedback loop before investing in server/session/auth work; the logic is reused (not thrown away) when Gate 10 wraps it in HTTP.
+Status: **created, live-tested, and executed for real** (`cmd/importctl` + `cmd/parser-worker` + `scripts/dev-import.sh`). One command imports a local CSV through the full supervised pipeline — presigned upload, digest-pinned separate worker binary, seal, independent verification, canonical decode, atomic commit — and prints the committed Preview. The CLI is a dev tool (superuser read-back; never production). Remaining: the executable API reads through runtime roles instead.
 
 ## Gates 10–12
 
