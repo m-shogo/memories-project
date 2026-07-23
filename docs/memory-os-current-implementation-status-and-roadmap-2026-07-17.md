@@ -46,6 +46,9 @@ process-boundary supervisor created (live-tested); network namespace remains dep
 supervised import flow:
 composed and live-tested end to end (fetch → parse → verify → commit)
 
+canonical adapter record contract:
+created and cross-language machine-validated; real Generic CSV adapter wired through the supervised worker
+
 iOS / Desktop Portal:
 not implemented
 
@@ -74,7 +77,8 @@ NO-GO
 | PostgreSQL RLS foundation | Migration/tests created | FORCE RLS SQL, 9 table profiles, 14 logic cases | Deployment-role proof |
 | Preview PostgreSQL domain | Created (SQL) | preview_ready/candidate/rejection, commit key, immutability, completeness gate, live SQL tests | Fixture-contract extension, deployment-role proof |
 | Preview commit repository | Partial | Atomic worker-role transaction, deterministic commit key, idempotent/conflicting retry, rollback, e2e spool→DB proof on live PostgreSQL | Canonical-record contract, deletion-fence recheck |
-| Supervised import flow | Composed | fetch → parse → seal → verify → decode → commit proven on live PostgreSQL + MinIO; drift/checksum/crash/bad-record fail closed | Reviewed adapter record contract, job orchestration, deletion-fence timing |
+| Supervised import flow | Composed | fetch → parse → seal → verify → decode → commit proven on live PostgreSQL + MinIO; drift/checksum/crash/bad-record fail closed | Job orchestration, deletion-fence timing |
+| Canonical adapter record contract | Created | Schema + 22-case fixture cross-validated by Go and Python; genericcsv wired through the supervised worker end to end | Separate digest-pinned worker binary, independent human review |
 | PostgreSQL live workflow | Created and green | PostgreSQL 16 jobs in both workflows, remote runs confirmed | Deployment-role and production-environment proof |
 | Sign in with Apple contract | Contract complete | 16 cases: 1 allow / 15 deny | Code exchange, secret rotation, replay store, session issuer |
 | Apple JWT/JWKS Go core | Partial | Verification and binding interfaces | Concrete composition and persistence |
@@ -331,6 +335,10 @@ Status: **process boundary created and live-tested** (digest pinning, credential
 ## Gate 8 — supervised flow composition
 
 Status: **composed and live-tested end to end** (importflow). Remaining: reviewed canonical adapter record contract and production job orchestration.
+
+## Gate 8.5 — canonical adapter record contract
+
+Status: **created and cross-language machine-validated**. One schema + shared 22-case fixture enforced by both `internal/canonrecord` tests and `scripts/validate-memory-os-canonical-records.py` (CI-gated); the real Generic CSV adapter now runs through the supervised worker in the end-to-end flow, replacing the interim placeholder decode. Remaining: a separately built digest-pinned worker binary (arrives with the CLI checkpoint) and independent human review (global blocker).
 
 ## Gate 9 — minimal CLI harness
 
