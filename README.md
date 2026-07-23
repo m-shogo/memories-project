@@ -97,7 +97,7 @@ current full-repository Go suite:
 PASS in a local golang:1.23 Linux container at the recorded HEAD
 
 remote Actions:
-runtime-role HEAD 5dc9cc7 CONFIRMED green (Import API run 30010006324, Security Contracts run 30010006374)
+http-server HEAD 21ed7d7 CONFIRMED green (Import API run 30012223776, Security Contracts run 30012223686)
 
 production:
 NO-GO
@@ -174,7 +174,7 @@ Parser, adapter, dedupe, Preview and Apply are canonical backend concerns and ar
 # Current implementation order
 
 ```txt
-0. confirm remote workflows for the http-server HEAD
+0. remote workflows confirmed for the http-server HEAD — done
 1. Apply / Memory persistence over runtime roles (wired into the server)
 2. Apple code exchange / replay store (needs real Apple credentials)
 3. deletion fencing

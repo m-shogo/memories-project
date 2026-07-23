@@ -101,8 +101,9 @@ migration 004 + all four SQL test suites re-verified on a fresh database: PASS
 
 real-server curl demo executed against the dev stack: SUCCESS (transcript above)
 
-remote workflows:
-recorded after the push completes
+remote workflows (pushed HEAD 21ed7d7, code identical to c36e2bd):
+Import API Security Slice run 30012223776 SUCCESS (httpserver live suite executed under race)
+Security Contracts run 30012223686 SUCCESS (004 migration + session SQL suite executed)
 ```
 
 ## Residual risks

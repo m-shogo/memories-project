@@ -56,7 +56,7 @@ exact current HEAD full repository Go suite:
 CONFIRMED in a local golang:1.23 Linux container
 
 remote Actions:
-runtime-role HEAD 5dc9cc7 CONFIRMED green (Import API run 30010006324 incl. the pgrepo live suite, Security Contracts run 30010006374)
+http-server HEAD 21ed7d7 CONFIRMED green (Import API run 30012223776 incl. the httpserver live suite, Security Contracts run 30012223686 incl. the session SQL suite)
 
 production:
 NO-GO
@@ -337,7 +337,7 @@ Production remains forbidden while any remains:
 # 8. Correct next sequence
 
 ```txt
-0. confirm remote workflows for the http-server HEAD
+0. remote workflows confirmed for the http-server HEAD — done
 1. Apply / Memory persistence over runtime roles, wired into the executable server
 2. Apple code exchange / replay store (needs real Apple credentials — later boundary)
 3. deletion fencing
