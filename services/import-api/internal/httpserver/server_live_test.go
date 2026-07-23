@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -20,12 +21,16 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/m-shogo/memories-project/services/import-api/internal/apply"
 	"github.com/m-shogo/memories-project/services/import-api/internal/authstore"
 	"github.com/m-shogo/memories-project/services/import-api/internal/cryptoids"
 	"github.com/m-shogo/memories-project/services/import-api/internal/dbscope"
 	"github.com/m-shogo/memories-project/services/import-api/internal/objectstore"
 	"github.com/m-shogo/memories-project/services/import-api/internal/pgrepo"
 	"github.com/m-shogo/memories-project/services/import-api/internal/pgscope"
+	"github.com/m-shogo/memories-project/services/import-api/internal/previewcommit"
+	"github.com/m-shogo/memories-project/services/import-api/internal/previewread"
+	"github.com/m-shogo/memories-project/services/import-api/internal/previewspool"
 	"github.com/m-shogo/memories-project/services/import-api/internal/security"
 	"github.com/m-shogo/memories-project/services/import-api/internal/upload"
 )
@@ -96,6 +101,7 @@ func newLiveServer(t *testing.T) *liveServer {
 			"002_memory_os_upload_authorization.sql",
 			"003_memory_os_preview_domain.sql",
 			"004_memory_os_account_session.sql",
+			"005_memory_os_apply_memory.sql",
 		} {
 			payload, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "infra", "postgresql", "security", name))
 			if err == nil {
@@ -149,6 +155,12 @@ func newLiveServer(t *testing.T) *liveServer {
 			Repository:   pgrepo.Upload{},
 			Signer:       objects,
 			Objects:      objects,
+			IDs:          cryptoids.Generator{},
+		},
+		Preview: &previewread.Service{Transactions: executor},
+		Apply: &apply.Service{
+			Transactions: executor,
+			Repository:   pgrepo.Apply{},
 			IDs:          cryptoids.Generator{},
 		},
 	})
@@ -338,5 +350,240 @@ func TestUploadLifecycleOverHTTP(t *testing.T) {
 	response, _ = server.request(t, http.MethodPost, completePath, ownerToken, nil)
 	if response.StatusCode != http.StatusConflict {
 		t.Fatalf("double completion status %d", response.StatusCode)
+	}
+}
+
+// commitPreviewForJob commits one ready Preview directly through the commit
+// repository so the HTTP tests can exercise preview read and apply without
+// running the full parse pipeline.
+func (s *liveServer) commitPreviewForJob(t *testing.T, accountID string, jobID string) (previewID string, previewSHA string) {
+	t.Helper()
+	ctx := context.Background()
+	if _, err := s.pool.Exec(ctx,
+		"UPDATE memory_os.import_job SET state = 'preview_building' WHERE id = $1", jobID); err != nil {
+		t.Fatal(err)
+	}
+	ids := cryptoids.Generator{}
+	newID := func(prefix string) string {
+		value, err := ids.NewID(prefix)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return value
+	}
+	previewID = newID("prv")
+	now := time.Now().UTC()
+
+	acceptedRecords := [][]byte{
+		[]byte(fmt.Sprintf(`{"fingerprint":"fp-http-%s-1","title":"first"}`, jobID[len(jobID)-8:])),
+		[]byte(fmt.Sprintf(`{"fingerprint":"fp-http-%s-2","title":"second"}`, jobID[len(jobID)-8:])),
+	}
+	acceptedHasher := sha256.New()
+	var acceptedBytes int64
+	candidates := make([]previewcommit.CandidateRow, 0, len(acceptedRecords))
+	for index, record := range acceptedRecords {
+		var prefix [8]byte
+		binary.BigEndian.PutUint64(prefix[:], uint64(len(record)))
+		acceptedHasher.Write(prefix[:])
+		acceptedHasher.Write(record)
+		acceptedBytes += int64(8 + len(record))
+		recordDigest := sha256.Sum256(record)
+		candidates = append(candidates, previewcommit.CandidateRow{
+			Ordinal:         index + 1,
+			SourceRow:       int64(index + 1),
+			RecordSHA256:    hex.EncodeToString(recordDigest[:]),
+			CanonicalRecord: record,
+		})
+	}
+	rejectedRecord := []byte(`{"sourceRow":3,"issueCodes":["IMPORT_ROW_EMPTY"]}`)
+	rejectedHasher := sha256.New()
+	var rejectedPrefix [8]byte
+	binary.BigEndian.PutUint64(rejectedPrefix[:], uint64(len(rejectedRecord)))
+	rejectedHasher.Write(rejectedPrefix[:])
+	rejectedHasher.Write(rejectedRecord)
+
+	verified := previewspool.VerifiedSpool{
+		SpoolID:        newID("spl"),
+		JobID:          jobID,
+		OwnerAccountID: accountID,
+		AccountEpoch:   1,
+		Source: previewspool.SealSourceBinding{
+			ObjectKey:       "quarantine/" + jobID + "/" + newID("upl"),
+			ObjectVersionID: "version-http-apply-000001",
+			ContentLength:   64,
+			ChecksumSHA256:  strings.Repeat("a", 64),
+		},
+		Adapter: previewspool.SealAdapterBinding{
+			AdapterID:      "generic-csv",
+			AdapterVersion: "1.0.0",
+			ArtifactSHA256: strings.Repeat("b", 64),
+		},
+		OptionsSHA256: strings.Repeat("c", 64),
+		CreatedAt:     now.Add(-time.Minute),
+		ExpiresAt:     now.Add(time.Hour),
+		Evidence: previewspool.WriteEvidence{
+			SourceRowCount:  3,
+			SpoolByteLength: acceptedBytes + int64(8+len(rejectedRecord)),
+			Accepted: previewspool.StreamEvidence{
+				RecordFormat: previewspool.AcceptedRecordFormat,
+				RecordCount:  2,
+				ByteLength:   acceptedBytes,
+				SHA256:       hex.EncodeToString(acceptedHasher.Sum(nil)),
+			},
+			Rejected: previewspool.StreamEvidence{
+				RecordFormat: previewspool.RejectedRecordFormat,
+				RecordCount:  1,
+				ByteLength:   int64(8 + len(rejectedRecord)),
+				SHA256:       hex.EncodeToString(rejectedHasher.Sum(nil)),
+			},
+		},
+	}
+	committer, err := previewcommit.NewCommitter(s.pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := committer.Commit(ctx, previewcommit.CommitRequest{
+		PreviewID:  previewID,
+		Verified:   verified,
+		Candidates: candidates,
+		Rejections: []previewcommit.RejectionRow{
+			{Ordinal: 1, SourceRow: 3, IssueCodes: []string{"IMPORT_ROW_EMPTY"}},
+		},
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return result.PreviewID, result.PreviewHash
+}
+
+func TestPreviewReadAndApplyOverHTTP(t *testing.T) {
+	server := newLiveServer(t)
+	// The database persists across test runs: owner and idempotency keys must
+	// be unique per invocation or earlier committed claims and memory items
+	// collide with this run.
+	runID := time.Now().UnixNano()
+	owner := fmt.Sprintf("acct_http_apply_%d", runID)
+	idemKey := func(index int) string { return fmt.Sprintf("idem-http-apply-%d-%d", runID, index) }
+	ownerToken := server.issueSession(t, owner)
+	intruderToken := server.issueSession(t, "acct_http_apply_intrud")
+	jobID := server.createJob(t, owner)
+	previewID, previewSHA := server.commitPreviewForJob(t, owner, jobID)
+
+	// Preview read: owner sees the committed Preview; a foreign tenant does not.
+	response, body := server.request(t, http.MethodGet, "/v1/import-jobs/"+jobID+"/preview", ownerToken, nil)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("preview read failed: %d %s", response.StatusCode, body)
+	}
+	var view struct {
+		PreviewID     string `json:"previewId"`
+		PreviewSHA256 string `json:"previewSha256"`
+		AcceptedCount int    `json:"acceptedCount"`
+		Candidates    []struct {
+			Record json.RawMessage `json:"record"`
+		} `json:"candidates"`
+		Rejections []struct {
+			IssueCodes []string `json:"issueCodes"`
+		} `json:"rejections"`
+	}
+	if err := json.Unmarshal(body, &view); err != nil {
+		t.Fatal(err)
+	}
+	if view.PreviewID != previewID || view.PreviewSHA256 != previewSHA ||
+		view.AcceptedCount != 2 || len(view.Candidates) != 2 || len(view.Rejections) != 1 {
+		t.Fatalf("preview view mismatch: %s", body)
+	}
+	response, _ = server.request(t, http.MethodGet, "/v1/import-jobs/"+jobID+"/preview", intruderToken, nil)
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("cross-tenant preview read status %d", response.StatusCode)
+	}
+
+	// Apply with the exact hash: two memory items materialize.
+	applyPath := "/v1/previews/" + previewID + "/apply"
+	response, body = server.request(t, http.MethodPost, applyPath, ownerToken, map[string]any{
+		"previewSha256":   previewSHA,
+		"idempotencyKey":  idemKey(1),
+		"duplicatePolicy": "skip_existing",
+	})
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("apply failed: %d %s", response.StatusCode, body)
+	}
+	var applied struct {
+		ApplyID  string `json:"applyId"`
+		Status   string `json:"status"`
+		Replayed bool   `json:"replayed"`
+		Counts   struct {
+			Created int `json:"created"`
+			Updated int `json:"updated"`
+			Skipped int `json:"skipped"`
+		} `json:"counts"`
+	}
+	if err := json.Unmarshal(body, &applied); err != nil {
+		t.Fatal(err)
+	}
+	if applied.Status != "applied" || applied.Replayed || applied.Counts.Created != 2 {
+		t.Fatalf("unexpected apply result: %s", body)
+	}
+	var items int
+	if err := server.pool.QueryRow(context.Background(),
+		"SELECT count(*) FROM memory_os.memory_item WHERE source_preview_id = $1", previewID,
+	).Scan(&items); err != nil {
+		t.Fatal(err)
+	}
+	if items != 2 {
+		t.Fatalf("expected 2 memory items, found %d", items)
+	}
+
+	// Exact idempotent replay returns the same result without re-writing.
+	response, body = server.request(t, http.MethodPost, applyPath, ownerToken, map[string]any{
+		"previewSha256":   previewSHA,
+		"idempotencyKey":  idemKey(1),
+		"duplicatePolicy": "skip_existing",
+	})
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("replay failed: %d %s", response.StatusCode, body)
+	}
+	var replayed struct {
+		ApplyID  string `json:"applyId"`
+		Replayed bool   `json:"replayed"`
+	}
+	if err := json.Unmarshal(body, &replayed); err != nil {
+		t.Fatal(err)
+	}
+	if !replayed.Replayed || replayed.ApplyID != applied.ApplyID {
+		t.Fatalf("replay did not return the original apply: %s", body)
+	}
+
+	// A new key with skip_existing skips everything already materialized.
+	response, body = server.request(t, http.MethodPost, applyPath, ownerToken, map[string]any{
+		"previewSha256":   previewSHA,
+		"idempotencyKey":  idemKey(2),
+		"duplicatePolicy": "skip_existing",
+	})
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("second apply failed: %d %s", response.StatusCode, body)
+	}
+	if err := json.Unmarshal(body, &applied); err != nil {
+		t.Fatal(err)
+	}
+	if applied.Counts.Created != 0 || applied.Counts.Skipped != 2 {
+		t.Fatalf("skip_existing did not skip: %s", body)
+	}
+
+	// Wrong hash conflicts; foreign tenant sees nothing.
+	response, _ = server.request(t, http.MethodPost, applyPath, ownerToken, map[string]any{
+		"previewSha256":   strings.Repeat("0", 64),
+		"idempotencyKey":  idemKey(3),
+		"duplicatePolicy": "skip_existing",
+	})
+	if response.StatusCode != http.StatusConflict {
+		t.Fatalf("hash mismatch status %d", response.StatusCode)
+	}
+	response, _ = server.request(t, http.MethodPost, applyPath, intruderToken, map[string]any{
+		"previewSha256":   previewSHA,
+		"idempotencyKey":  idemKey(4),
+		"duplicatePolicy": "skip_existing",
+	})
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("cross-tenant apply status %d", response.StatusCode)
 	}
 }
