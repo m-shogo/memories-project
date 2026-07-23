@@ -16,7 +16,7 @@ security architecture:
 DEFINED
 
 machine-readable contracts:
-24 schemas / 23 positive fixtures
+26 schemas / 23 positive fixtures
 31 structural + 8 semantic rejection cases
 
 Go backend:
@@ -46,8 +46,7 @@ supervised import flow:
 composed and live-tested end to end (fetch → parse → verify → commit)
 
 canonical adapter record contract:
-not reviewed; supervised flow still decodes an interim placeholder record shape
-(pending: canonicalAdapterRecordContractReviewed)
+reviewed contract created; real adapter wired through the supervised worker
 
 iOS / Portal:
 not implemented
@@ -132,7 +131,7 @@ Historical PASS applies only to its recorded commit. The current repository full
 - Seal publication fsyncs both streams, writes an exclusive `manifest.tmp`, publishes with `linkat` no-replace semantics and fsyncs the attempt directory; existing final names are never overwritten.
 - Independent verification re-opens everything descriptor-relative with `O_NOFOLLOW`, strictly decodes exactly one canonical manifest, re-counts and re-hashes exact stream bytes, enforces expiry and rejects every binding mismatch before any database transaction.
 - Startup reconciliation runs one exclusive fail-closed pass: it removes only fixed-name crash residue and expired sealed attempts, completes the linkat crash window, quarantines everything unclassifiable in place and never deletes a sealed unexpired attempt.
-- The composed production flow (version-pinned fetch → supervised parse → seal → independent verify → atomic commit) is wired end to end and live-tested; the canonical adapter record contract remains interim and unreviewed, and there is no executable server yet.
+- The composed production flow (version-pinned fetch → supervised parse → seal → independent verify → canonical decode → atomic commit) is wired end to end and live-tested with the real Generic CSV adapter under the machine-validated canonical record contract; there is no executable server yet.
 - Final Apply is iOS-user-only, exact-hash-bound and idempotent.
 - Account deletion fences jobs, workers, URLs, objects, spools, Preview, Apply, caches, exports and backup restoration.
 - Private content is forbidden in logs, analytics, notifications and crash reports.
@@ -140,7 +139,7 @@ Historical PASS applies only to its recorded commit. The current repository full
 ## Current machine evidence
 
 ```txt
-registered schemas:                         24
+registered schemas:                         26
 positive contract fixtures:                 23
 structural schema rejections:               31
 semantic rejections:                         8
@@ -162,6 +161,9 @@ Preview commit repository top-level tests:   9
 object storage top-level tests:             10
 parser supervision top-level tests:         12
 import flow end-to-end tests:                6
+canonical record fixture cases:             22
+canonical record Go top-level tests:         5
+CSV worker top-level tests:                  2
 ```
 
 Repository-integrated Go evidence:

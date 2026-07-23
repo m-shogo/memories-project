@@ -23,7 +23,8 @@ Read first:
 
 1. [Round 9 Security Authority](docs/memory-os-current-authority-order-round-9-security.md)
 2. [Current Implementation Status and Roadmap](docs/memory-os-current-implementation-status-and-roadmap-2026-07-17.md)
-3. [Supervised Import Flow Checkpoint](docs/memory-os-import-flow-checkpoint-2026-07-20.md)
+3. [Canonical Record Checkpoint](docs/memory-os-canonical-record-checkpoint-2026-07-21.md)
+4. [Supervised Import Flow Checkpoint](docs/memory-os-import-flow-checkpoint-2026-07-20.md)
 4. [Parser Supervisor Checkpoint](docs/memory-os-parser-supervisor-checkpoint-2026-07-20.md)
 5. [Object Storage Checkpoint](docs/memory-os-object-storage-checkpoint-2026-07-19.md)
 6. [Preview Commit Repository Checkpoint](docs/memory-os-preview-commit-repository-checkpoint-2026-07-19.md)
@@ -45,7 +46,7 @@ security architecture:
 DEFINED
 
 machine-readable contracts:
-24 schemas / 23 positive fixtures
+26 schemas / 23 positive fixtures
 31 structural + 8 semantic rejection cases
 
 Go backend:
@@ -75,8 +76,7 @@ supervised import flow:
 composed and live-tested end to end (fetch → parse → verify → commit)
 
 canonical adapter record contract:
-not reviewed; supervised flow still decodes an interim placeholder record shape
-(pending: canonicalAdapterRecordContractReviewed)
+reviewed contract created; real adapter wired through the supervised worker
 
 iOS / Portal:
 not implemented
@@ -97,7 +97,7 @@ NO-GO
 
 “PostgreSQL migration/test created” means the RLS and upload-security foundation exists; it does not mean Preview/Apply/Memory production persistence is complete.
 
-A published spool manifest is untrusted until its independent verification passes; the verifier and the atomic commit repository now exist and are proven together end to end, but the supervisor composition that wires parse → seal → verify → commit as one production flow does not exist yet.
+A published spool manifest is untrusted until its independent verification passes. The full supervised flow (fetch → parse → seal → verify → canonical decode → commit) is composed and live-tested with the real Generic CSV adapter; the missing layers are the executable server, Apply/Memory persistence and the clients.
 
 ---
 
@@ -162,14 +162,13 @@ Parser, adapter, dedupe, Preview and Apply are canonical backend concerns and ar
 # Current implementation order
 
 ```txt
-0. remote workflows confirmed for the import-flow HEAD — done
-1. reviewed canonical adapter record contract, then real adapter wiring
-2. minimal CLI harness over internal/importflow (first visible end-to-end run)
-3. executable API + concrete Apple session/replay/repositories
-4. Apply / Memory / deletion fencing
-5. iOS vertical slice
-6. limited Desktop Portal
-7. Memory Town runtime after Capture / Import P0 reaches zero
+0. confirm remote workflows for the canonical-record HEAD
+1. minimal CLI harness over internal/importflow (first visible end-to-end run)
+2. executable API + concrete Apple session/replay/repositories
+3. Apply / Memory / deletion fencing
+4. iOS vertical slice
+5. limited Desktop Portal
+6. Memory Town runtime after Capture / Import P0 reaches zero
 ```
 
 Completed Preview spool checkpoints:
@@ -235,27 +234,28 @@ Completed import-flow checkpoint:
 ```txt
 HEAD version recheck → version-pinned verified fetch
 → supervised parse → seal → independent verify → evidence cross-check
-→ verified record collection + interim canonical decode
+→ verified record collection + canonical decode
 → atomic commit — all as one live-tested flow (PostgreSQL 16 + MinIO)
 drift / checksum / crash / bad-record all fail closed with no durable state
 ```
 
-Immediate next checkpoint:
+Completed canonical-record checkpoint:
 
 ```txt
-reviewed canonical adapter record contract (schema + fixtures + validator)
-→ bind genericcsv output to the flow decode
-→ wire the real adapter through the supervised worker
+one reviewed record contract (schema + 22-case fixture + validator)
++ cross-language enforcement: Go tests and the Python validator share the fixture
++ canonical byte serialization with fingerprint recomputation on encode and decode
++ real Generic CSV adapter emitting canonical frames inside the supervised worker
++ importflow decodes commit rows under the contract (interim decode deleted)
 ```
 
-Do not add executable-server or client wiring in that checkpoint.
-
-Checkpoint after that — first visible end-to-end run, still not an HTTP server:
+Immediate next checkpoint — first visible end-to-end run, still not an HTTP server:
 
 ```txt
 minimal CLI harness over internal/importflow
 → point it at a local CSV file and a local dev stack (scripts/dev-up.sh)
 → print the committed Preview (candidates/rejections/counts) to the terminal
+→ build the worker as a separate digest-pinned binary while doing so
 ```
 
 This exists to get a real "does this actually work" feedback loop before investing in a server; its logic is reused, not thrown away, when the executable API checkpoint wraps it in HTTP.
