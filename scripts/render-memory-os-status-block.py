@@ -89,6 +89,11 @@ SECTIONS: list[dict] = [
         "pending_label": "not reviewed; supervised flow still decodes an interim placeholder record shape",
     },
     {
+        "title": "importctl harness (first visible end-to-end run)",
+        "requires": ["importctlHarnessCreated", "importctlVisibleRunExecuted"],
+        "done_lines": ["created and executed for real: local CSV → committed Preview printed to the terminal"],
+    },
+    {
         "title": "iOS / Portal",
         "requires": ["neverTrueSentinel"],  # always pending until this section is intentionally flipped
         "done_lines": [],

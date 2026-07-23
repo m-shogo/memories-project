@@ -23,7 +23,8 @@ Read first:
 
 1. [Round 9 Security Authority](docs/memory-os-current-authority-order-round-9-security.md)
 2. [Current Implementation Status and Roadmap](docs/memory-os-current-implementation-status-and-roadmap-2026-07-17.md)
-3. [Canonical Record Checkpoint](docs/memory-os-canonical-record-checkpoint-2026-07-21.md)
+3. [importctl Harness Checkpoint](docs/memory-os-importctl-checkpoint-2026-07-23.md)
+4. [Canonical Record Checkpoint](docs/memory-os-canonical-record-checkpoint-2026-07-21.md)
 4. [Supervised Import Flow Checkpoint](docs/memory-os-import-flow-checkpoint-2026-07-20.md)
 4. [Parser Supervisor Checkpoint](docs/memory-os-parser-supervisor-checkpoint-2026-07-20.md)
 5. [Object Storage Checkpoint](docs/memory-os-object-storage-checkpoint-2026-07-19.md)
@@ -77,6 +78,9 @@ composed and live-tested end to end (fetch → parse → verify → commit)
 
 canonical adapter record contract:
 reviewed contract created; real adapter wired through the supervised worker
+
+importctl harness (first visible end-to-end run):
+created and executed for real: local CSV → committed Preview printed to the terminal
 
 iOS / Portal:
 not implemented
@@ -162,13 +166,12 @@ Parser, adapter, dedupe, Preview and Apply are canonical backend concerns and ar
 # Current implementation order
 
 ```txt
-0. remote workflows confirmed for the canonical-record HEAD — done
-1. minimal CLI harness over internal/importflow (first visible end-to-end run)
-2. executable API + concrete Apple session/replay/repositories
-3. Apply / Memory / deletion fencing
-4. iOS vertical slice
-5. limited Desktop Portal
-6. Memory Town runtime after Capture / Import P0 reaches zero
+0. confirm remote workflows for the importctl HEAD
+1. executable API + concrete Apple session/replay/repositories
+2. Apply / Memory / deletion fencing
+3. iOS vertical slice
+4. limited Desktop Portal
+5. Memory Town runtime after Capture / Import P0 reaches zero
 ```
 
 Completed Preview spool checkpoints:
@@ -249,16 +252,28 @@ one reviewed record contract (schema + 22-case fixture + validator)
 + importflow decodes commit rows under the contract (interim decode deleted)
 ```
 
-Immediate next checkpoint — first visible end-to-end run, still not an HTTP server:
+Completed importctl checkpoint — the first visible end-to-end run:
 
-```txt
-minimal CLI harness over internal/importflow
-→ point it at a local CSV file and a local dev stack (scripts/dev-up.sh)
-→ print the committed Preview (candidates/rejections/counts) to the terminal
-→ build the worker as a separate digest-pinned binary while doing so
+```bash
+scripts/dev-up.sh
+scripts/dev-import.sh   # local CSV → committed Preview printed to the terminal
 ```
 
-This exists to get a real "does this actually work" feedback loop before investing in a server; its logic is reused, not thrown away, when the executable API checkpoint wraps it in HTTP.
+```txt
+separate digest-pinned parser-worker binary (cmd/parser-worker)
++ importctl harness: migrations → job → presigned upload → supervised parse
+  → seal → independent verify → canonical decode → atomic commit → printout
++ executed for real against the dev stack (sample CSV with Japanese titles)
++ one-preview-per-job conflict and worker-pin mismatch proven through the CLI
+```
+
+Immediate next checkpoint:
+
+```txt
+executable API: production main wiring auth/session/repositories
+(Apple code exchange, replay store, session issuance, runtime-role DB access)
+over the already-proven flow — still no client work
+```
 
 ---
 

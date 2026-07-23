@@ -1,6 +1,6 @@
 {
   "indexId": "memory-os.security.fixture-index.round9.s1",
-  "indexVersion": 29,
+  "indexVersion": 30,
   "schemaRegistryPath": "docs/schemas/memory-os-security/schema-registry.v1.json",
   "fixtures": [
     { "fixtureId": "memory-os.security.issue-codes.round9", "path": "docs/fixtures/memory-os-security/security-issue-code-registry.round9.v1.json", "schemaId": "https://memory-os.example/schemas/security/security-issue-code-registry.v1.schema.json", "status": "targeted_validation_pass" },
@@ -87,6 +87,10 @@
     "statusBlockCiCheckPassed": true,
     "localDevStackCreated": true,
     "cliCheckpointPlanned": true,
+    "importctlHarnessCreated": true,
+    "importctlVisibleRunExecuted": true,
+    "parserWorkerSeparateArtifactCreated": true,
+    "importctlRemoteLiveJobPassed": false,
     "previewSpoolImplementationCreated": false,
     "repositoryValidatorCreated": true,
     "githubActionsWorkflowCreated": true,
@@ -117,6 +121,7 @@
     "importFlowEndToEndTests": 6,
     "canonicalRecordFixtureCases": 22,
     "canonicalRecordGoTopLevelTests": 5,
+    "importcliTopLevelTests": 4,
     "csvWorkerTopLevelTests": 2,
     "schemaNegativeRejections": 31,
     "semanticNegativeRejections": 8,
@@ -148,7 +153,8 @@
     "confirmedAt": "2026-07-23"
   },
   "nextRequired": [
-    "build_minimal_cli_harness_over_importflow",
+    "confirm_remote_workflows_for_importctl_head",
+    "compose_executable_api_auth_session_repositories",
     "archive_parser_fuzz_corpus"
   ]
 }

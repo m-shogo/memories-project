@@ -48,6 +48,9 @@ composed and live-tested end to end (fetch → parse → verify → commit)
 canonical adapter record contract:
 reviewed contract created; real adapter wired through the supervised worker
 
+importctl harness (first visible end-to-end run):
+created and executed for real: local CSV → committed Preview printed to the terminal
+
 iOS / Portal:
 not implemented
 
