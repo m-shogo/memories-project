@@ -61,6 +61,19 @@ func readFrame(reader io.Reader, payload []byte) (byte, []byte, error) {
 	return tag, payload, nil
 }
 
+// WriteAcceptedFrame serializes one accepted canonical record for the worker
+// side of the protocol. Real adapter workers (internal/csvworker) and the test
+// harness share this encoder so the framing cannot drift.
+func WriteAcceptedFrame(writer io.Writer, payload []byte) error {
+	return writeFrame(writer, frameTagAccepted, payload)
+}
+
+// WriteRejectedFrame serializes one rejected canonical record for the worker
+// side of the protocol.
+func WriteRejectedFrame(writer io.Writer, payload []byte) error {
+	return writeFrame(writer, frameTagRejected, payload)
+}
+
 // writeFrame is used by the worker side of the protocol.
 func writeFrame(writer io.Writer, tag byte, payload []byte) error {
 	var header [frameHeaderBytes]byte
