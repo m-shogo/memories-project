@@ -66,6 +66,7 @@ jobs:
           python -m py_compile scripts/validate-memory-os-parser-security.py
           python -m py_compile scripts/validate-memory-os-preview-spool.py
           python -m py_compile scripts/render-memory-os-status-block.py
+          python -m py_compile scripts/validate-memory-os-canonical-records.py
 
       - name: Validate security schemas and fixtures
         run: python scripts/validate-memory-os-security.py
@@ -90,6 +91,9 @@ jobs:
 
       - name: Validate Preview spool semantic invariants
         run: python scripts/validate-memory-os-preview-spool.py
+
+      - name: Validate canonical adapter record contract
+        run: python scripts/validate-memory-os-canonical-records.py
 
   validate-live-postgresql-rls:
     runs-on: ubuntu-latest
