@@ -94,6 +94,10 @@ bearer-session auth over the strict upload handlers; exercised for real with cur
 Apply / Memory persistence:
 idempotent exact-hash apply into memory_item over HTTP; preview read API; rich Memory domain model remains future work
 
+account deletion fencing:
+epoch bump fences every surface; authorized sweep erases all owned rows and sessions (live-tested over HTTP)
+quarantine object erasure and a resumable background deletion runtime remain future work
+
 iOS / Portal:
 not implemented
 

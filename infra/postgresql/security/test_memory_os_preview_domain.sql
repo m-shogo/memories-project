@@ -110,6 +110,19 @@ GRANT EXECUTE ON FUNCTION memory_os_preview_test.insert_ready(
   memory_worker_runtime,
   memory_deletion_runtime;
 
+-- Deletion fencing requires an active account_control row at the exact epoch
+-- for every tenant these blocks act as. Provisioned as the migration superuser
+-- because the API insert policy itself depends on this row existing.
+INSERT INTO memory_os.account_control (account_id, account_epoch, state)
+VALUES
+  ('acct-a', 7, 'active'),
+  ('acct-b', 7, 'active')
+ON CONFLICT (account_id) DO UPDATE
+SET account_epoch = EXCLUDED.account_epoch,
+    state = 'active',
+    deletion_started_at = NULL,
+    deletion_completed_at = NULL;
+
 TRUNCATE TABLE
   memory_os.preview_candidate,
   memory_os.preview_rejection,

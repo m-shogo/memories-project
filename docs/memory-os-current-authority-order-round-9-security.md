@@ -328,6 +328,7 @@ Production remains forbidden while any remains:
 - partial candidate/rejection/Preview visibility;
 - missing epoch recheck immediately before commit;
 - deletion resurrection possible;
+- account deletion that leaves quarantine objects in the bucket;
 - private content in logs/analytics/notifications/crash reports;
 - remote CI unknown at release judgment;
 - unresolved P0 > 0;
@@ -338,8 +339,10 @@ Production remains forbidden while any remains:
 # 8. Correct next sequence
 
 ```txt
-0. remote workflows confirmed for the apply-memory HEAD — done
-1. deletion fencing: epoch bump + deletion-runtime sweep with live fencing proof
+0. deletion fencing: epoch bump + deletion-runtime sweep with live fencing proof — done
+   (see docs/memory-os-deletion-fencing-checkpoint-2026-07-24.md)
+1. quarantine object erasure on deletion: the sweep clears the rows, not yet the
+   versioned objects in the bucket — the remaining hole in "delete means gone"
 2. Apple code exchange / replay store (needs real Apple credentials — later boundary)
 3. begin iOS only after backend P0 closes
 ```

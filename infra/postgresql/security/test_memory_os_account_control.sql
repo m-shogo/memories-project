@@ -29,7 +29,16 @@ GRANT EXECUTE ON FUNCTION memory_os_test.expect_failure(text, text) TO
   memory_worker_runtime,
   memory_deletion_runtime;
 
-TRUNCATE TABLE memory_os.account_control, memory_os.import_job;
+TRUNCATE TABLE
+  memory_os.memory_item,
+  memory_os.apply_confirmation,
+  memory_os.preview_candidate,
+  memory_os.preview_rejection,
+  memory_os.preview_ready,
+  memory_os.quarantine_object,
+  memory_os.upload_authorization,
+  memory_os.import_job,
+  memory_os.account_control;
 
 INSERT INTO memory_os.account_control (account_id, account_epoch, state)
 VALUES
@@ -83,12 +92,17 @@ SELECT memory_os_test.expect_insufficient_privilege(
     VALUES ('job-after-delete-start', 'acct-a', 7)$$,
   'old API epoch insert after deletion start'
 );
-SELECT memory_os_test.assert_true(
-  (WITH changed AS (
-     UPDATE memory_os.import_job SET state = 'changed' WHERE id = 'job-a' RETURNING 1
-   ) SELECT count(*) = 0 FROM changed),
-  'old API epoch must not update hidden rows'
-);
+DO $stale_update$
+DECLARE
+  affected bigint;
+BEGIN
+  UPDATE memory_os.import_job SET state = 'changed' WHERE id = 'job-a';
+  GET DIAGNOSTICS affected = ROW_COUNT;
+  IF affected <> 0 THEN
+    RAISE EXCEPTION 'old API epoch must not update hidden rows';
+  END IF;
+END
+$stale_update$;
 COMMIT;
 
 SELECT memory_os_test.assert_true(
@@ -144,11 +158,22 @@ SELECT memory_os_test.assert_true(
   memory_os.account_epoch_is_authorized(),
   'deletion runtime must be authorized for deleting account cleanup'
 );
-DELETE FROM memory_os.import_job WHERE id = 'job-a';
-SELECT memory_os_test.assert_true(
-  (SELECT count(*) = 0 FROM memory_os.import_job WHERE id = 'job-a'),
-  'deletion runtime must delete scoped tenant rows'
-);
+-- The deletion runtime runs at the bumped epoch while the row still carries
+-- the old one, so the ordinary tenant policy cannot see it; the dedicated
+-- deletion-sweep policy (migration 006) is what makes erasure possible.
+-- Asserting only "count = 0" here would pass on invisibility alone, so the
+-- row count actually removed is what gets checked.
+DO $sweep$
+DECLARE
+  affected bigint;
+BEGIN
+  DELETE FROM memory_os.import_job WHERE id = 'job-a';
+  GET DIAGNOSTICS affected = ROW_COUNT;
+  IF affected <> 1 THEN
+    RAISE EXCEPTION 'deletion runtime removed % rows, expected 1', affected;
+  END IF;
+END
+$sweep$;
 ROLLBACK;
 
 -- Completion is deletion-runtime-only and keeps the tombstone row.

@@ -25,6 +25,7 @@ type Config struct {
 	Upload   httpapi.UploadService
 	Preview  httpapi.PreviewReadService
 	Apply    httpapi.ApplyService
+	Account  httpapi.AccountDeleteService
 }
 
 // New builds the routing tree: an unauthenticated health probe plus the
@@ -34,6 +35,7 @@ func New(config Config) http.Handler {
 	httpapi.UploadHandler{Service: config.Upload}.Register(api)
 	httpapi.PreviewHandler{Service: config.Preview}.Register(api)
 	httpapi.ApplyHandler{Service: config.Apply}.Register(api)
+	httpapi.AccountHandler{Service: config.Account}.Register(api)
 
 	root := http.NewServeMux()
 	root.HandleFunc("GET /healthz", func(writer http.ResponseWriter, _ *http.Request) {

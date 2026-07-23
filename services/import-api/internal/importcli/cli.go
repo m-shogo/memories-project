@@ -274,8 +274,12 @@ func applyMigrations(ctx context.Context, pool *pgxpool.Pool, databaseURL string
 	defer func() { _, _ = lock.Exec(ctx, "SELECT pg_advisory_unlock($1)", migrationAdvisoryLock) }()
 	for _, name := range []string{
 		"001_memory_os_import_rls.sql",
+		"002_memory_os_account_control.sql",
 		"002_memory_os_upload_authorization.sql",
 		"003_memory_os_preview_domain.sql",
+		"004_memory_os_account_session.sql",
+		"005_memory_os_apply_memory.sql",
+		"006_memory_os_deletion_fencing.sql",
 	} {
 		payload, err := os.ReadFile(filepath.Join(dir, name))
 		if err != nil {
@@ -313,6 +317,16 @@ func ensureJob(ctx context.Context, pool *pgxpool.Pool, ids cryptoids.Generator,
 		return "", "", 0, err
 	}
 	const epoch = int64(1)
+	// Deletion fencing requires an active account_control row at this epoch.
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO memory_os.account_control (account_id, account_epoch, state)
+		 VALUES ($1, $2, 'active')
+		 ON CONFLICT (account_id) DO UPDATE
+		 SET account_epoch = EXCLUDED.account_epoch, state = 'active',
+		     deletion_started_at = NULL, deletion_completed_at = NULL`,
+		ownerID, epoch); err != nil {
+		return "", "", 0, err
+	}
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO memory_os.import_job (id, owner_account_id, account_epoch, state, source_surface)
 		 VALUES ($1, $2, $3, 'preview_building', 'ios_files')`,

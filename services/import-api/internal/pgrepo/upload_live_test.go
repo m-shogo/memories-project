@@ -91,8 +91,12 @@ func newLiveEnv(t *testing.T) *liveEnv {
 		defer func() { _, _ = lock.Exec(ctx, "SELECT pg_advisory_unlock(730001)") }()
 		for _, name := range []string{
 			"001_memory_os_import_rls.sql",
+			"002_memory_os_account_control.sql",
 			"002_memory_os_upload_authorization.sql",
 			"003_memory_os_preview_domain.sql",
+			"004_memory_os_account_session.sql",
+			"005_memory_os_apply_memory.sql",
+			"006_memory_os_deletion_fencing.sql",
 		} {
 			payload, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "infra", "postgresql", "security", name))
 			if err == nil {
@@ -144,13 +148,31 @@ func newLiveEnv(t *testing.T) *liveEnv {
 	}
 }
 
-func livePrincipal(t *testing.T, accountID string) security.Principal {
+func (e *liveEnv) livePrincipal(t *testing.T, accountID string) security.Principal {
 	t.Helper()
 	principal, err := security.NewVerifiedPrincipal(accountID, 1, security.AuthorityIOSUser)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := provisionAccount(context.Background(), e.pool, accountID, 1); err != nil {
+		t.Fatal(err)
+	}
 	return principal
+}
+
+// provisionAccount inserts the account_control row deletion fencing requires:
+// every tenant policy now demands an active account at the exact epoch. It runs
+// on the pool's own connection (the dev/CI login is privileged, so RLS does not
+// apply) because the API insert policy itself depends on this row existing.
+func provisionAccount(ctx context.Context, pool *pgxpool.Pool, accountID string, epoch int64) error {
+	_, err := pool.Exec(ctx,
+		`INSERT INTO memory_os.account_control (account_id, account_epoch, state)
+		 VALUES ($1, $2, 'active')
+		 ON CONFLICT (account_id) DO UPDATE
+		 SET account_epoch = EXCLUDED.account_epoch, state = 'active',
+		     deletion_started_at = NULL, deletion_completed_at = NULL`,
+		accountID, epoch)
+	return err
 }
 
 func (e *liveEnv) createJob(t *testing.T, principal security.Principal) string {
@@ -184,7 +206,7 @@ func (e *liveEnv) uploadService() upload.Service {
 
 func TestRuntimeRoleDropsPrivilegeInsideScopedTransactions(t *testing.T) {
 	env := newLiveEnv(t)
-	principal := livePrincipal(t, "acct_pgrepo_priv_owner_a")
+	principal := env.livePrincipal(t, "acct_pgrepo_priv_owner_a")
 
 	err := env.executor.WithinPrincipal(context.Background(), principal, dbscope.RoleAPI,
 		func(ctx context.Context, tx dbscope.Transaction) error {
@@ -212,8 +234,8 @@ func TestRuntimeRoleDropsPrivilegeInsideScopedTransactions(t *testing.T) {
 
 func TestExecutorEnforcesTenantIsolation(t *testing.T) {
 	env := newLiveEnv(t)
-	ownerA := livePrincipal(t, "acct_pgrepo_tenant_a_01")
-	ownerB := livePrincipal(t, "acct_pgrepo_tenant_b_01")
+	ownerA := env.livePrincipal(t, "acct_pgrepo_tenant_a_01")
+	ownerB := env.livePrincipal(t, "acct_pgrepo_tenant_b_01")
 	jobID := env.createJob(t, ownerA)
 
 	err := env.executor.WithinPrincipal(context.Background(), ownerA, dbscope.RoleAPI,
@@ -243,8 +265,8 @@ func TestExecutorEnforcesTenantIsolation(t *testing.T) {
 
 func TestUploadServiceEndToEndThroughRuntimeRoles(t *testing.T) {
 	env := newLiveEnv(t)
-	owner := livePrincipal(t, "acct_pgrepo_upload_a_01")
-	intruder := livePrincipal(t, "acct_pgrepo_upload_b_01")
+	owner := env.livePrincipal(t, "acct_pgrepo_upload_a_01")
+	intruder := env.livePrincipal(t, "acct_pgrepo_upload_b_01")
 	jobID := env.createJob(t, owner)
 	service := env.uploadService()
 	ctx := context.Background()

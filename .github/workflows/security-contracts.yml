@@ -133,6 +133,9 @@ jobs:
       - name: Apply tenant RLS migration
         run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/001_memory_os_import_rls.sql
 
+      - name: Apply account control migration
+        run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/002_memory_os_account_control.sql
+
       - name: Apply upload authorization migration
         run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/002_memory_os_upload_authorization.sql
 
@@ -145,8 +148,14 @@ jobs:
       - name: Apply apply/memory migration
         run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/005_memory_os_apply_memory.sql
 
+      - name: Apply deletion fencing migration
+        run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/006_memory_os_deletion_fencing.sql
+
       - name: Execute tenant RLS integration tests
         run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/test_memory_os_import_rls.sql
+
+      - name: Execute account control integration tests
+        run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/test_memory_os_account_control.sql
 
       - name: Execute upload authorization integration tests
         run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/test_memory_os_upload_authorization.sql
@@ -159,3 +168,6 @@ jobs:
 
       - name: Execute apply/memory integration tests
         run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/test_memory_os_apply_memory.sql
+
+      - name: Execute deletion fencing integration tests
+        run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/test_memory_os_deletion_fencing.sql

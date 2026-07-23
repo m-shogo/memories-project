@@ -21,10 +21,13 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/m-shogo/memories-project/services/import-api/internal/accountdelete"
 	"github.com/m-shogo/memories-project/services/import-api/internal/apply"
 	"github.com/m-shogo/memories-project/services/import-api/internal/authstore"
 	"github.com/m-shogo/memories-project/services/import-api/internal/cryptoids"
 	"github.com/m-shogo/memories-project/services/import-api/internal/dbscope"
+	"github.com/m-shogo/memories-project/services/import-api/internal/epochguard"
+	"github.com/m-shogo/memories-project/services/import-api/internal/fenced"
 	"github.com/m-shogo/memories-project/services/import-api/internal/httpserver"
 	"github.com/m-shogo/memories-project/services/import-api/internal/objectstore"
 	"github.com/m-shogo/memories-project/services/import-api/internal/pgrepo"
@@ -101,6 +104,11 @@ func run(listen, databaseURL, s3Endpoint, s3Access, s3Secret, bucket string, dev
 	}
 
 	executor := dbscope.New(pgscope.Beginner{Pool: pool})
+	// Every request surface runs behind the deletion-epoch fence. The guard
+	// reads the canonical account_control row, so a session issued before an
+	// epoch bump stops working the moment deletion starts.
+	accountControl := pgrepo.AccountControl{Pool: pool, Transactions: executor}
+	guard := epochguard.Guard{Source: accountControl}
 	uploadService := &upload.Service{
 		Transactions: executor,
 		Repository:   pgrepo.Upload{},
@@ -117,9 +125,10 @@ func run(listen, databaseURL, s3Endpoint, s3Access, s3Secret, bucket string, dev
 
 	server := httpserver.NewHTTPServer(listen, httpserver.New(httpserver.Config{
 		Sessions: sessions,
-		Upload:   uploadService,
-		Preview:  previewService,
-		Apply:    applyService,
+		Upload:   fenced.Upload{Guard: guard, Inner: uploadService},
+		Preview:  fenced.PreviewRead{Guard: guard, Inner: previewService},
+		Apply:    fenced.Apply{Guard: guard, Inner: applyService},
+		Account:  accountdelete.Service{Repository: accountControl, Guard: guard},
 	}))
 
 	errs := make(chan error, 1)

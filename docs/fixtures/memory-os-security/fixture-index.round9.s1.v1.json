@@ -106,7 +106,13 @@
     "applyMemoryHttpLiveTestsPassed": true,
     "applyMemoryRemoteLiveJobPassed": true,
     "richMemoryDomainModelCreated": false,
-    "deletionFencingImplemented": false,
+    "accountControlMigrationWiredIntoCi": true,
+    "deletionFencingImplemented": true,
+    "deletionFencingSqlTestsPassed": true,
+    "deletionFencingHttpLiveTestsPassed": true,
+    "deletionFencingRemoteLiveJobPassed": false,
+    "deletionObjectStorageErasureImplemented": false,
+    "backgroundDeletionRuntimeCreated": false,
     "appleCodeExchangeImplemented": false,
     "productionNosuperuserLoginProven": false,
     "previewSpoolImplementationCreated": false,
@@ -175,7 +181,8 @@
     "confirmedAt": "2026-07-23"
   },
   "nextRequired": [
-    "implement_deletion_fencing_epoch_sweep",
+    "erase_quarantine_objects_on_account_deletion",
+    "implement_apple_code_exchange",
     "archive_parser_fuzz_corpus"
   ]
 }

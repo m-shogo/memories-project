@@ -21,10 +21,13 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/m-shogo/memories-project/services/import-api/internal/accountdelete"
 	"github.com/m-shogo/memories-project/services/import-api/internal/apply"
 	"github.com/m-shogo/memories-project/services/import-api/internal/authstore"
 	"github.com/m-shogo/memories-project/services/import-api/internal/cryptoids"
 	"github.com/m-shogo/memories-project/services/import-api/internal/dbscope"
+	"github.com/m-shogo/memories-project/services/import-api/internal/epochguard"
+	"github.com/m-shogo/memories-project/services/import-api/internal/fenced"
 	"github.com/m-shogo/memories-project/services/import-api/internal/objectstore"
 	"github.com/m-shogo/memories-project/services/import-api/internal/pgrepo"
 	"github.com/m-shogo/memories-project/services/import-api/internal/pgscope"
@@ -98,10 +101,12 @@ func newLiveServer(t *testing.T) *liveServer {
 		defer func() { _, _ = lock.Exec(ctx, "SELECT pg_advisory_unlock(730001)") }()
 		for _, name := range []string{
 			"001_memory_os_import_rls.sql",
+			"002_memory_os_account_control.sql",
 			"002_memory_os_upload_authorization.sql",
 			"003_memory_os_preview_domain.sql",
 			"004_memory_os_account_session.sql",
 			"005_memory_os_apply_memory.sql",
+			"006_memory_os_deletion_fencing.sql",
 		} {
 			payload, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "infra", "postgresql", "security", name))
 			if err == nil {
@@ -148,21 +153,26 @@ func newLiveServer(t *testing.T) *liveServer {
 
 	sessions := authstore.Store{Pool: pool}
 	executor := dbscope.New(pgscope.Beginner{Pool: pool})
+	// The composition under test is the deployed one: every surface behind the
+	// deletion-epoch fence, exactly as cmd/import-api-server wires it.
+	accountControl := pgrepo.AccountControl{Pool: pool, Transactions: executor}
+	guard := epochguard.Guard{Source: accountControl}
 	handler := New(Config{
 		Sessions: sessions,
-		Upload: &upload.Service{
+		Upload: fenced.Upload{Guard: guard, Inner: &upload.Service{
 			Transactions: executor,
 			Repository:   pgrepo.Upload{},
 			Signer:       objects,
 			Objects:      objects,
 			IDs:          cryptoids.Generator{},
-		},
-		Preview: &previewread.Service{Transactions: executor},
-		Apply: &apply.Service{
+		}},
+		Preview: fenced.PreviewRead{Guard: guard, Inner: &previewread.Service{Transactions: executor}},
+		Apply: fenced.Apply{Guard: guard, Inner: &apply.Service{
 			Transactions: executor,
 			Repository:   pgrepo.Apply{},
 			IDs:          cryptoids.Generator{},
-		},
+		}},
+		Account: accountdelete.Service{Repository: accountControl, Guard: guard},
 	})
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
@@ -171,6 +181,9 @@ func newLiveServer(t *testing.T) *liveServer {
 
 func (s *liveServer) issueSession(t *testing.T, accountID string) string {
 	t.Helper()
+	if err := provisionAccount(context.Background(), s.pool, accountID, 1); err != nil {
+		t.Fatal(err)
+	}
 	issued, err := s.sessions.Issue(context.Background(), authstore.IssueInput{
 		AccountID: accountID,
 		Epoch:     1,
@@ -585,5 +598,141 @@ func TestPreviewReadAndApplyOverHTTP(t *testing.T) {
 	})
 	if response.StatusCode != http.StatusNotFound {
 		t.Fatalf("cross-tenant apply status %d", response.StatusCode)
+	}
+}
+
+// provisionAccount inserts the account_control row deletion fencing requires:
+// every tenant policy now demands an active account at the exact epoch. It runs
+// on the pool's own connection (the dev/CI login is privileged, so RLS does not
+// apply) because the API insert policy itself depends on this row existing.
+func provisionAccount(ctx context.Context, pool *pgxpool.Pool, accountID string, epoch int64) error {
+	_, err := pool.Exec(ctx,
+		`INSERT INTO memory_os.account_control (account_id, account_epoch, state)
+		 VALUES ($1, $2, 'active')
+		 ON CONFLICT (account_id) DO UPDATE
+		 SET account_epoch = EXCLUDED.account_epoch, state = 'active',
+		     deletion_started_at = NULL, deletion_completed_at = NULL`,
+		accountID, epoch)
+	return err
+}
+
+// TestAccountDeletionFencesAndErasesOverHTTP is the end-to-end proof of the
+// deletion boundary: a real account with committed Preview, applied memory
+// items and a live session is deleted over HTTP, and afterwards every surface
+// refuses the same session and no owned row survives in any table.
+func TestAccountDeletionFencesAndErasesOverHTTP(t *testing.T) {
+	server := newLiveServer(t)
+	runID := time.Now().UnixNano()
+	owner := fmt.Sprintf("acct_http_delete_%d", runID)
+	ownerToken := server.issueSession(t, owner)
+	jobID := server.createJob(t, owner)
+	previewID, previewSHA := server.commitPreviewForJob(t, owner, jobID)
+
+	applyPath := "/v1/previews/" + previewID + "/apply"
+	response, body := server.request(t, http.MethodPost, applyPath, ownerToken, map[string]any{
+		"previewSha256":   previewSHA,
+		"idempotencyKey":  fmt.Sprintf("idem-http-delete-%d", runID),
+		"duplicatePolicy": "skip_existing",
+	})
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("apply before deletion failed: %d %s", response.StatusCode, body)
+	}
+
+	// A lower authority must not be able to destroy the account.
+	deviceSession, err := server.sessions.Issue(context.Background(), authstore.IssueInput{
+		AccountID: owner,
+		Epoch:     1,
+		Authority: security.AuthorityIOSDevice,
+		TTL:       time.Hour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, body = server.request(t, http.MethodDelete, "/v1/account", deviceSession.Token, nil)
+	if response.StatusCode != http.StatusForbidden {
+		t.Fatalf("device session deletion status %d %s", response.StatusCode, body)
+	}
+
+	response, body = server.request(t, http.MethodDelete, "/v1/account", ownerToken, nil)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("account deletion failed: %d %s", response.StatusCode, body)
+	}
+	var receipt struct {
+		Status        string `json:"status"`
+		DeletionEpoch int64  `json:"deletionEpoch"`
+		Removed       []struct {
+			Table   string `json:"table"`
+			Removed int64  `json:"removed"`
+		} `json:"removed"`
+	}
+	if err := json.Unmarshal(body, &receipt); err != nil {
+		t.Fatal(err)
+	}
+	if receipt.Status != "deleted" || receipt.DeletionEpoch != 2 {
+		t.Fatalf("unexpected deletion receipt: %s", body)
+	}
+	removed := map[string]int64{}
+	for _, entry := range receipt.Removed {
+		removed[entry.Table] = entry.Removed
+	}
+	// The sweep must report the erasure it actually performed, including the
+	// two memory items applied above and both live sessions.
+	if removed["memory_item"] != 2 || removed["preview_ready"] != 1 ||
+		removed["import_job"] != 1 || removed["account_session"] != 2 {
+		t.Fatalf("unexpected sweep accounting: %s", body)
+	}
+
+	// Every surface now refuses the session that was valid moments ago. The
+	// session row is gone, so authentication itself fails first.
+	for _, probe := range []struct {
+		method string
+		path   string
+		body   any
+	}{
+		{http.MethodGet, "/v1/import-jobs/" + jobID + "/preview", nil},
+		{http.MethodPost, "/v1/import-jobs/" + jobID + "/uploads", map[string]any{
+			"contentLength": 16, "checksumSha256": strings.Repeat("a", 64),
+			"declaredContentType": "text/csv", "sourceSurface": "ios_files",
+		}},
+		{http.MethodPost, applyPath, map[string]any{
+			"previewSha256": previewSHA, "idempotencyKey": "after-delete",
+			"duplicatePolicy": "skip_existing",
+		}},
+		{http.MethodDelete, "/v1/account", nil},
+	} {
+		response, body = server.request(t, probe.method, probe.path, ownerToken, probe.body)
+		if response.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("%s %s after deletion returned %d %s",
+				probe.method, probe.path, response.StatusCode, body)
+		}
+	}
+
+	// Nothing owned by the account survives anywhere.
+	for _, table := range []string{
+		"memory_item", "apply_confirmation", "preview_candidate", "preview_rejection",
+		"preview_ready", "upload_authorization", "quarantine_object", "import_job",
+		"account_session",
+	} {
+		var remaining int
+		if err := server.pool.QueryRow(context.Background(),
+			"SELECT count(*) FROM memory_os."+table+" WHERE owner_account_id = $1", owner,
+		).Scan(&remaining); err != nil {
+			t.Fatal(err)
+		}
+		if remaining != 0 {
+			t.Fatalf("%s still holds %d rows for the deleted account", table, remaining)
+		}
+	}
+
+	// The tombstone remains: the account is recorded as deleted, not forgotten.
+	var state string
+	var epoch int64
+	if err := server.pool.QueryRow(context.Background(),
+		"SELECT state, account_epoch FROM memory_os.account_control WHERE account_id = $1", owner,
+	).Scan(&state, &epoch); err != nil {
+		t.Fatal(err)
+	}
+	if state != "deleted" || epoch != 2 {
+		t.Fatalf("unexpected tombstone: state=%s epoch=%d", state, epoch)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	applydomain "github.com/m-shogo/memories-project/services/import-api/internal/apply"
 	"github.com/m-shogo/memories-project/services/import-api/internal/dbscope"
 	"github.com/m-shogo/memories-project/services/import-api/internal/preview"
+	"github.com/m-shogo/memories-project/services/import-api/internal/previewread"
 	"github.com/m-shogo/memories-project/services/import-api/internal/security"
 	"github.com/m-shogo/memories-project/services/import-api/internal/upload"
 )
@@ -147,7 +148,9 @@ type Apply struct {
 	Inner *applydomain.Service
 }
 
-func (s Apply) Execute(ctx context.Context, principal security.Principal, request applydomain.Request) (applydomain.Result, error) {
+// Apply satisfies httpapi.ApplyService, so composition can substitute the
+// fenced wrapper for the bare service without any adapter in between.
+func (s Apply) Apply(ctx context.Context, principal security.Principal, request applydomain.Request) (applydomain.Result, error) {
 	if s.Guard == nil || s.Inner == nil || s.Inner.Repository == nil {
 		return applydomain.Result{}, ErrFenceRequired
 	}
@@ -157,6 +160,24 @@ func (s Apply) Execute(ctx context.Context, principal security.Principal, reques
 	inner := *s.Inner
 	inner.Repository = applyRepository{guard: s.Guard, principal: principal, inner: s.Inner.Repository}
 	return inner.Apply(ctx, principal, request)
+}
+
+// PreviewRead fences Preview reads. A fenced account must not be able to keep
+// reading its staged Previews, so the checkpoint runs before the query, and
+// PostgreSQL owner/epoch policies remain authoritative behind it.
+type PreviewRead struct {
+	Guard Guard
+	Inner *previewread.Service
+}
+
+func (s PreviewRead) GetJobPreview(ctx context.Context, principal security.Principal, jobID string, limit int) (previewread.View, error) {
+	if s.Guard == nil || s.Inner == nil {
+		return previewread.View{}, ErrFenceRequired
+	}
+	if err := s.Guard.Check(ctx, principal); err != nil {
+		return previewread.View{}, err
+	}
+	return s.Inner.GetJobPreview(ctx, principal, jobID, limit)
 }
 
 type applyRepository struct {

@@ -32,6 +32,20 @@ GRANT USAGE ON SCHEMA memory_os_apply_test TO
 GRANT EXECUTE ON FUNCTION memory_os_apply_test.expect_sqlstate(text, text[], text) TO
   memory_api_runtime, memory_worker_runtime, memory_deletion_runtime;
 
+-- Deletion fencing requires an active account_control row at the exact epoch
+-- for every tenant these blocks act as. Provisioned as the migration superuser
+-- because the API insert policy itself depends on this row existing.
+INSERT INTO memory_os.account_control (account_id, account_epoch, state)
+VALUES
+  ('acct-apply-owner-a', 2, 'active'),
+  ('acct-apply-owner-b', 2, 'active'),
+  ('acct-apply-intruder', 2, 'active')
+ON CONFLICT (account_id) DO UPDATE
+SET account_epoch = EXCLUDED.account_epoch,
+    state = 'active',
+    deletion_started_at = NULL,
+    deletion_completed_at = NULL;
+
 TRUNCATE TABLE memory_os.memory_item, memory_os.apply_confirmation;
 
 -- API role claims, completes and re-reads an apply confirmation for its own

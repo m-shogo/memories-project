@@ -108,6 +108,19 @@ SECTIONS: list[dict] = [
         "done_lines": ["idempotent exact-hash apply into memory_item over HTTP; preview read API; rich Memory domain model remains future work"],
     },
     {
+        "title": "account deletion fencing",
+        "requires": [
+            "accountControlMigrationWiredIntoCi",
+            "deletionFencingImplemented",
+            "deletionFencingSqlTestsPassed",
+            "deletionFencingHttpLiveTestsPassed",
+        ],
+        "done_lines": [
+            "epoch bump fences every surface; authorized sweep erases all owned rows and sessions (live-tested over HTTP)",
+            "quarantine object erasure and a resumable background deletion runtime remain future work",
+        ],
+    },
+    {
         "title": "iOS / Portal",
         "requires": ["neverTrueSentinel"],  # always pending until this section is intentionally flipped
         "done_lines": [],

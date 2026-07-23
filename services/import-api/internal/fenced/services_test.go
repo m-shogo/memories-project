@@ -184,7 +184,7 @@ func TestApplyStopsBeforeMemoryWriteWhenEpochChanges(t *testing.T) {
 	}}
 	guard := &sequenceGuard{failAt: 3}
 	inner := &applydomain.Service{Transactions: fakeExecutor{}, Repository: repository, IDs: fakeIDs{value: "apl_01J00000000000000000000000"}, Now: func() time.Time { return now }}
-	_, err := (Apply{Guard: guard, Inner: inner}).Execute(context.Background(), principal, applydomain.Request{
+	_, err := (Apply{Guard: guard, Inner: inner}).Apply(context.Background(), principal, applydomain.Request{
 		PreviewID: repository.preview.ID, PreviewSHA256: repository.preview.PreviewSHA256,
 		IdempotencyKey: "idem_01J0000000000000000000000", DuplicatePolicy: applydomain.DuplicateSkipExisting,
 	})
@@ -198,7 +198,7 @@ func TestApplyStopsBeforeMemoryWriteWhenEpochChanges(t *testing.T) {
 
 func TestFencedServicesRequireGuard(t *testing.T) {
 	principal := mustPrincipal(t, security.AuthorityIOSUser)
-	if _, err := (Apply{}).Execute(context.Background(), principal, applydomain.Request{}); !errors.Is(err, ErrFenceRequired) {
+	if _, err := (Apply{}).Apply(context.Background(), principal, applydomain.Request{}); !errors.Is(err, ErrFenceRequired) {
 		t.Fatalf("expected required fence, got %v", err)
 	}
 }
