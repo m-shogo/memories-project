@@ -30,7 +30,8 @@ It is intentionally incomplete. It does not expose a production server and must 
 - canonical adapter record contract with cross-language fixture enforcement;
 - real Generic CSV adapter emitting canonical records inside the supervised worker;
 - importctl harness and separate parser-worker binary: the first visible end-to-end run;
-- pgx runtime-role scoped executor and concrete upload repository under FORCE RLS.
+- pgx runtime-role scoped executor and concrete upload repository under FORCE RLS;
+- definer-only account session store and the executable HTTP server.
 
 ## Preview spool contract
 
@@ -171,13 +172,16 @@ The first visible end-to-end run, and a development tool only: `scripts/dev-impo
 
 `internal/pgscope` adapts a pgx pool to the existing `dbscope` scoped executor: every transaction runs `SET LOCAL ROLE` to a NOLOGIN/NOINHERIT/NOBYPASSRLS runtime role plus transaction-local owner/epoch context before any repository statement, so FORCE RLS — not Go code — decides row visibility. `internal/pgrepo` implements the concrete `upload.Repository` (job lookup, authorization insert/read/consume/revoke, scan enqueue into `quarantine_object`). Live tests prove the privilege drop (`current_user` is the runtime role; an INSERT the role lacks fails with 42501), tenant isolation, the full Issue → presigned PUT → Complete lifecycle through runtime roles, double-completion rejection and foreign-executor rejection. The dev stack still logs in as a superuser and relies on SET ROLE semantics; a NOSUPERUSER production login remains deployment evidence.
 
+## Session store and executable HTTP server
+
+`memory_os.account_session` (migration 004) stores only SHA-256 token digests and is reachable exclusively through SECURITY DEFINER functions; the dedicated `memory_auth_runtime` role holds EXECUTE on them and nothing else — even it cannot SELECT the table. `internal/authstore` wraps issue/resolve/revoke in short auth-role transactions and collapses every resolution failure into one error. `internal/httpserver` mounts the strict `httpapi` handlers behind the bearer-session middleware (raw tokens never touch logs or context), and `cmd/import-api-server` is the executable main: pgx + runtime-role executor + concrete repository + SigV4 store, hardened timeouts, graceful shutdown, and a clearly-labeled `-dev-issue-session` bootstrap (session issuance is not exposed over HTTP; production issuance is the deferred Apple exchange). Live tests prove 401 for missing/malformed/forged/expired/revoked sessions and the full issue → presigned PUT → complete lifecycle over HTTP, and the real server was exercised with curl end to end.
+
 ## Critical production boundary
 
 `preview.AtomicMaterializer` parses inside its transaction callback. It remains reference-only and must not be connected to production PostgreSQL for untrusted imports; `internal/importflow` is the production-shaped replacement, though it still runs the harness worker rather than a reviewed adapter artifact.
 
 ## Not implemented
 
-- executable HTTP server/session issuer;
 - Apple code exchange/secret rotation and concrete replay/session stores;
 - a reviewed worker-artifact registry (the binary exists; its pin is operator-supplied);
 - network-namespace/seccomp/container deployment evidence for the parser supervisor;
@@ -189,16 +193,15 @@ The first visible end-to-end run, and a development tool only: `scripts/dev-impo
 
 ```txt
 exact repository-integrated Go suite
-(code HEAD 41a6c1404ed3fb50aaeab7994213e8f3954ac43f, local golang:1.23 Linux container + fresh postgres:16 + MinIO):
-gofmt clean + go vet + go build ./cmd/... + go test ./... + go test -race ./... (21 packages,
-live DB/object-store/supervision/flow/CLI/runtime-role suites included) + both 5s fuzz smokes PASS
+(code HEAD c36e2bd0f30079b7eff939c2cb900b4a9a3d65ed, local golang:1.23 Linux container + fresh postgres:16 + MinIO):
+gofmt clean + go vet + go build ./cmd/... + go test ./... + go test -race ./... (22 packages,
+live DB/object-store/supervision/flow/CLI/runtime-role/HTTP suites included) + both 5s fuzz smokes PASS
 
 Preview spool contract validator:
 PASS
 
-remote workflows at runtime-role HEAD 5dc9cc7:
-Import API Security Slice run 30010006324 SUCCESS (pgrepo live suite executed)
-Security Contracts run 30010006374 SUCCESS
+remote workflows:
+recorded after the push completes
 ```
 
 Earlier remote Import API runs had failed at the Format check; five unformatted sources and one pointer-receiver compile error in `internal/upload/service_test.go` were repaired at the verifier checkpoint, and the branch has run green since.
