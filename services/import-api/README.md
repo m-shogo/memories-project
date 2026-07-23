@@ -31,7 +31,8 @@ It is intentionally incomplete. It does not expose a production server and must 
 - real Generic CSV adapter emitting canonical records inside the supervised worker;
 - importctl harness and separate parser-worker binary: the first visible end-to-end run;
 - pgx runtime-role scoped executor and concrete upload repository under FORCE RLS;
-- definer-only account session store and the executable HTTP server.
+- definer-only account session store and the executable HTTP server;
+- concrete apply repository, minimal memory persistence and the preview read API.
 
 ## Preview spool contract
 
@@ -176,6 +177,10 @@ The first visible end-to-end run, and a development tool only: `scripts/dev-impo
 
 `memory_os.account_session` (migration 004) stores only SHA-256 token digests and is reachable exclusively through SECURITY DEFINER functions; the dedicated `memory_auth_runtime` role holds EXECUTE on them and nothing else — even it cannot SELECT the table. `internal/authstore` wraps issue/resolve/revoke in short auth-role transactions and collapses every resolution failure into one error. `internal/httpserver` mounts the strict `httpapi` handlers behind the bearer-session middleware (raw tokens never touch logs or context), and `cmd/import-api-server` is the executable main: pgx + runtime-role executor + concrete repository + SigV4 store, hardened timeouts, graceful shutdown, and a clearly-labeled `-dev-issue-session` bootstrap (session issuance is not exposed over HTTP; production issuance is the deferred Apple exchange). Live tests prove 401 for missing/malformed/forged/expired/revoked sessions and the full issue → presigned PUT → complete lifecycle over HTTP, and the real server was exercised with curl end to end.
 
+## Apply and Memory persistence
+
+Migration 005 extends `apply_confirmation` with the idempotency state machine (`in_progress → applied`, partial UNIQUE on owner+key, one deliberately-narrowed owner-scoped UPDATE policy for the API role) and adds `memory_os.memory_item` — the minimal applied-memory persistence under the standard FORCE-RLS owner policy. `pgrepo.Apply` implements the existing `apply.Repository` contract set-based inside the claim transaction: exact-hash re-read, one-count-per-candidate fingerprint matching, and the three duplicate policies with full accounting. `previewread.Service` + `GET /v1/import-jobs/{jobID}/preview` return the owner's committed Preview with bounded candidate/rejection pages, and the existing apply handler is wired into the server. The HTTP journey is live-tested: read → apply (`created=2`) → exact replay → `skip_existing` re-apply (`skipped=2`) → hash mismatch 409 → cross-tenant 404. The rich Memory domain model (shelves, search, update-safe field allowlists) remains future work.
+
 ## Critical production boundary
 
 `preview.AtomicMaterializer` parses inside its transaction callback. It remains reference-only and must not be connected to production PostgreSQL for untrusted imports; `internal/importflow` is the production-shaped replacement, though it still runs the harness worker rather than a reviewed adapter artifact.
@@ -186,23 +191,22 @@ The first visible end-to-end run, and a development tool only: `scripts/dev-impo
 - a reviewed worker-artifact registry (the binary exists; its pin is operator-supplied);
 - network-namespace/seccomp/container deployment evidence for the parser supervisor;
 - production TLS/scoped-credential/lifecycle deployment evidence for object storage;
-- concrete Apply/Memory persistence and complete deletion fencing;
+- rich Memory domain model and complete deletion fencing;
 - iOS and Desktop Portal clients.
 
 ## Validation
 
 ```txt
 exact repository-integrated Go suite
-(code HEAD c36e2bd0f30079b7eff939c2cb900b4a9a3d65ed, local golang:1.23 Linux container + fresh postgres:16 + MinIO):
+(code HEAD 556e366a03543c3ad25ceb75316bfb99c06856ef, local golang:1.23 Linux container + fresh postgres:16 + MinIO):
 gofmt clean + go vet + go build ./cmd/... + go test ./... + go test -race ./... (22 packages,
-live DB/object-store/supervision/flow/CLI/runtime-role/HTTP suites included) + both 5s fuzz smokes PASS
+live DB/object-store/supervision/flow/CLI/runtime-role/HTTP/apply suites included) + both 5s fuzz smokes PASS
 
 Preview spool contract validator:
 PASS
 
-remote workflows at http-server HEAD 21ed7d7:
-Import API Security Slice run 30012223776 SUCCESS (httpserver live suite executed)
-Security Contracts run 30012223686 SUCCESS (session migration + SQL suite executed)
+remote workflows:
+recorded after the push completes
 ```
 
 Earlier remote Import API runs had failed at the Format check; five unformatted sources and one pointer-receiver compile error in `internal/upload/service_test.go` were repaired at the verifier checkpoint, and the branch has run green since.
