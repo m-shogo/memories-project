@@ -99,7 +99,21 @@ func newFlowEnv(t *testing.T, workerMode string) *flowEnv {
 	}
 	t.Cleanup(pool.Close)
 	migrateOnce.Do(func() {
-		lock, err := admin.Acquire(ctx)
+		// Lock in the maintenance database: role DDL is cluster-wide and
+		// advisory locks are per-database, so all appliers share this scope.
+		maintenanceURL, err := url.Parse(databaseURL)
+		if err != nil {
+			migrateErr = err
+			return
+		}
+		maintenanceURL.Path = "/postgres"
+		lockPool, err := pgxpool.New(ctx, maintenanceURL.String())
+		if err != nil {
+			migrateErr = err
+			return
+		}
+		defer lockPool.Close()
+		lock, err := lockPool.Acquire(ctx)
 		if err != nil {
 			migrateErr = err
 			return

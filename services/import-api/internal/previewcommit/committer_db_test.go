@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	neturl "net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,10 +41,20 @@ func testPool(t *testing.T) *pgxpool.Pool {
 
 func applyMigrations(pool *pgxpool.Pool) error {
 	ctx := context.Background()
-	// Migration 001 alters cluster-wide roles; the importflow package applies
-	// the same migrations concurrently on its own database, so both packages
-	// serialize on one advisory lock taken in this shared database.
-	lock, err := pool.Acquire(ctx)
+	// Migration DDL touches cluster-wide role catalogs while advisory locks
+	// are scoped per database, so every applier (this suite, importflow,
+	// importcli) serializes on one lock held in the maintenance database.
+	lockURL, err := neturl.Parse(os.Getenv("MEMORY_OS_TEST_DATABASE_URL"))
+	if err != nil {
+		return err
+	}
+	lockURL.Path = "/postgres"
+	lockPool, err := pgxpool.New(ctx, lockURL.String())
+	if err != nil {
+		return err
+	}
+	defer lockPool.Close()
+	lock, err := lockPool.Acquire(ctx)
 	if err != nil {
 		return err
 	}
