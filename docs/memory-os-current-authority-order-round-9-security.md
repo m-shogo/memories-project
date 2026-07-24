@@ -1,369 +1,162 @@
-# Memory OS Current Authority Order — Round 9 Security
+# Memory OS Security Authority — Round 9
 
-最終更新: 2026-07-20
+最終更新: 2026-07-25
 
-## Current verdict
+Status: CURRENT SECURITY-ARCHITECTURE AUTHORITY, SUBORDINATE TO ROUND 10
+
+Production-readiness judgement is governed by [`memory-os-current-authority-order-round-10-operability.md`](memory-os-current-authority-order-round-10-operability.md). This document defines security architecture and invariants only. It must not be used by itself to claim production readiness.
+
+## Current security verdict
 
 ```txt
 product hierarchy:
 Capture / Import first
 
-platform:
+platform direction:
 iOS canonical client + limited Desktop Import Portal
 
 security architecture / threat model / verification gate:
 DEFINED
 
-machine-readable security foundation:
-24 registered schemas
-23 positive contract fixtures
-31 structural rejection cases
-8 semantic rejection cases
-
-Go backend:
+backend:
 PARTIAL SECURITY VERTICAL SLICE
+executable HTTP server exists
 not a production backend
 
-Preview spool:
-manifest contract hardened
-Linux attempt filesystem lifecycle created
-bounded accepted/rejected writer created
-stream fsync + no-replace manifest publication created
-independent decode / count / re-hash verifier created
-startup reconciliation + TTL cleanup created
-
-PostgreSQL:
-RLS / upload persistence foundation migrations and SQL tests created
-production Preview domain schema created with live SQL tests
-atomic Go Preview commit repository created (live-tested)
-
-object storage adapter:
-CREATED (live-tested against MinIO)
-
-parser supervisor:
-PROCESS BOUNDARY CREATED (live-tested; network namespace is deployment work)
-
-supervised import flow:
-COMPOSED AND LIVE-TESTED END TO END
-
-canonical adapter record contract:
-CREATED, CROSS-LANGUAGE MACHINE-VALIDATED; real Generic CSV adapter wired through the supervised worker
-
-iOS / Portal:
-NOT IMPLEMENTED
-
-exact current HEAD full repository Go suite:
-CONFIRMED in a local golang:1.23 Linux container
-
-remote Actions:
-apply-memory HEAD 498565a CONFIRMED green (Import API run 30016036537 incl. the apply HTTP journey, Security Contracts run 30016036295 incl. the apply/memory SQL suite)
-
 production:
-NO-GO
+NO_GO
 ```
 
-Do not claim perfect security, complete privacy, backend completion, Preview spool completion or production readiness.
-
----
-
-# 1. Authority order
-
-Conflicts are resolved from top to bottom:
-
-1. `docs/memory-os-current-authority-order-round-9-security.md`
-2. `docs/memory-os-current-implementation-status-and-roadmap-2026-07-17.md`
-3. `docs/memory-os-apply-memory-checkpoint-2026-07-23.md`
-4. `docs/memory-os-http-server-checkpoint-2026-07-23.md`
-4. `docs/memory-os-runtime-role-repository-checkpoint-2026-07-23.md`
-4. `docs/memory-os-importctl-checkpoint-2026-07-23.md`
-4. `docs/memory-os-canonical-record-checkpoint-2026-07-21.md`
-4. `docs/memory-os-import-flow-checkpoint-2026-07-20.md`
-4. `docs/memory-os-parser-supervisor-checkpoint-2026-07-20.md`
-4. `docs/memory-os-object-storage-checkpoint-2026-07-19.md`
-5. `docs/memory-os-preview-commit-repository-checkpoint-2026-07-19.md`
-6. `docs/memory-os-preview-domain-checkpoint-2026-07-18.md`
-7. `docs/memory-os-preview-spool-reconciliation-checkpoint-2026-07-18.md`
-8. `docs/memory-os-preview-spool-verifier-checkpoint-2026-07-17.md`
-9. `docs/memory-os-preview-spool-seal-checkpoint-2026-07-17.md`
-10. `docs/memory-os-preview-spool-stream-writer-checkpoint-2026-07-17.md`
-11. `docs/memory-os-preview-spool-commit-contract-round-9.md`
-12. security schema registry and fixture index
-13. current code under `services/import-api/`
-14. `services/import-api/README.md`
-15. `SECURITY.md`
-16. Round 9 architecture, threat model and verification gate
-17. OpenAPI, PostgreSQL migrations/tests and validators/workflows
-18. Round 8 Capture / Import architecture
-19. prior privacy / persistence / deletion contracts
-20. historical progress and handoff documents
-
-Historical documents record old snapshots and never override current code or this order.
-
----
-
-# 2. Binding technology direction
-
-```txt
-iOS canonical client:
-Swift 6 + SwiftUI
-Share Extension
-GRDB / SQLite
-Keychain + App Group
-
-limited bulk migration:
-Desktop Import Portal
-Vite + React + TypeScript
-
-canonical backend:
-Go API
-PostgreSQL with FORCE RLS
-private versioned S3-compatible quarantine
-isolated parser supervisor / worker
-
-Memory Town after Capture / Import P0:
-SpriteKit
-Metal only after measured need
-```
-
-Parser, adapter, dedupe, Preview and Apply logic are canonical in the backend and are not independently reimplemented across Swift/browser/Go.
-
----
-
-# 3. Binding security decisions
+Current code and executable tests decide implementation facts. Historical checkpoints explain the evidence available at their recorded commit and never override current code.
 
 ## Identity and authorization
 
-- Sign in with Apple is verified server-side with exact issuer, audience, RS256, expiry, issued-at, nonce and subject.
+- Sign in with Apple identity is verified server-side.
 - Canonical identity is issuer + subject, not email.
+- Authorization code exchange, nonce/code replay protection, account binding and session issuance are implemented against a fake Apple boundary; real-Apple deployment evidence remains required.
 - Client account/owner/epoch values are never authority.
-- Every job, pairing, upload, object, Preview, report, Apply and export requires exact lookup, owner, epoch, state and operation authority.
 - Browser pairing authority cannot final Apply.
-- `ENABLE RLS` and `FORCE RLS` are mandatory.
-- Runtime roles are `NOLOGIN NOINHERIT NOBYPASSRLS` and do not own user tables.
-- Existing SQL provides the security foundation and the production Preview domain; Apply/Memory production persistence does not exist yet.
+- Runtime roles are fixed, non-superuser and `NOBYPASSRLS`.
+- User security tables use `ENABLE RLS` and `FORCE RLS`.
+- Session storage keeps token digests rather than raw bearer tokens.
 
-## Upload and parser
+## Upload and object storage
 
-- Server generates the owner/epoch/job-bound object key and authoritative storage fields.
-- Upload authorization binds size, checksum, content type and expiry.
-- Completion verifies server-side metadata and the exact object version.
-- Parser runtime must be non-root, networkless, read-only, secretless, job-isolated and resource-bounded.
-- Reviewed digest-pinned adapter artifacts are mandatory.
+- Server-generated authorization binds owner, epoch, job, object key, size, checksum, content type and expiry.
+- Completion verifies authoritative stored metadata and exact object version.
+- Object keys are server-generated and path-normalized.
+- Private versioned object storage remains quarantine, not backup.
+- Production TLS, scoped credentials, lifecycle and independent retention evidence remain required.
 
-## CSV and Preview source
+## Parser and adapter boundary
 
-- Generic CSV is synchronous one-row pull.
-- No hidden goroutine/channel/background persistence exists in iterator, bridge or spool writer.
-- Cancellation and fatal failures are sticky.
-- Normalized parser options are SHA-256-bound.
-- Source rows strictly increase.
-- Rejections contain only source row and stable `IMPORT_*` issue codes.
+- Untrusted parsing occurs outside database transactions.
+- Generic CSV parsing is bounded synchronous pull with sticky cancellation/failure behavior.
+- Parser options are canonicalized and SHA-256-bound.
+- Worker artifacts are digest-pinned.
+- Workers are secretless and resource-bounded.
+- Network namespace/seccomp/container deployment evidence remains required.
+- Reviewed artifact registry and transition procedure remain incomplete.
 
----
-
-# 4. Preview spool and atomic commit authority
-
-Production parsing inside a PostgreSQL transaction is forbidden.
+## Preview spool and commit
 
 ```txt
 version-bound source
-→ transaction-free isolated parse
-→ supervisor-owned bounded spool attempt
+→ transaction-free supervised parse
+→ bounded private spool
 → durable no-replace manifest publication
-→ independent decode / count / re-hash
-→ epoch/source/adapter/options recheck
-→ one short client-side pgx.CopyFrom transaction
-→ candidates + safe rejections + immutable ready Preview
-→ COMMIT or full ROLLBACK
+→ independent strict decode / count / re-hash
+→ canonical record validation
+→ one short atomic PostgreSQL transaction
+→ immutable ready Preview or full rollback
 ```
 
-Manifest authority binds server-generated `spoolId`, job/owner/epoch, source key/version/size/checksum, adapter identity/reviewed digest, options digest, exact stream formats/counts/bytes/hashes, aggregate rows/bytes and a maximum 24-hour TTL. Path fields, symlink following, cross-attempt reuse and backup eligibility are forbidden.
+Binding invariants:
 
-## Implemented filesystem checkpoint
+- manifests contain no filesystem paths;
+- symlink following and cross-attempt reuse are forbidden;
+- fixed-name entries use restrictive ownership/mode/link checks;
+- unknown filesystem state fails closed or remains quarantined;
+- published manifests remain untrusted until independent verification;
+- candidates and safe rejections are counted, hashed and completeness-checked;
+- deterministic commit keys make exact retries idempotent and conflicting retries reject;
+- `FORCE RLS` remains active during persistence.
 
-- Linux-only strong implementation; non-Linux fails closed;
-- exact supervisor-owned `0700` root;
-- descriptor-relative `mkdirat/openat`;
-- `O_EXCL/O_NOFOLLOW` fixed-name `0600` entries;
-- owner/type/mode/link checks;
-- attempt device/inode substitution rejection;
-- cancellation cleanup and unknown-entry fail-closed cleanup.
+## Apply and Memory persistence
 
-## Implemented bounded writer checkpoint
-
-- separate accepted/rejected streams;
-- `8-byte big-endian length + canonical bytes`;
-- 100,000 aggregate records, 512 MiB aggregate bytes and 2 MiB per record;
-- exact-file-byte SHA-256 including length prefixes;
-- at least one accepted record;
-- sticky cancellation/limit/short-write/`ENOSPC`/lifecycle errors;
-- terminal failure closes writable handles and cannot resume;
-- exact-once writer claim.
-
-## Implemented seal/publication checkpoint
-
-- validates exact job/owner/epoch/source/adapter/options/TTL bindings;
-- fsyncs both stream files before closing them;
-- creates exclusive no-follow `manifest.tmp` with exact `0600`;
-- writes deterministic compact JSON and fsyncs it;
-- publishes `manifest.json` with `linkat` no-replace semantics;
-- unlinks temp and fsyncs the attempt directory;
-- never overwrites an existing final manifest;
-- rolls back the final name on directory-fsync failure;
-- emits `ErrSealDurabilityUncertain` if rollback durability cannot be established;
-- same-Sealer/same-input reseal is idempotent; conflicting input is rejected.
-
-An ordinary rename is not the authority because it may replace an existing final name.
-
-## Implemented independent verifier checkpoint
-
-- descriptor-relative `O_NOFOLLOW` re-open of attempt, manifest and both streams;
-- fixed-name allowlist; `manifest.tmp` residue and unknown entries reject;
-- regular/`0600`/single-link/owner checks on every entry;
-- strict single-value JSON decode with unknown fields forbidden;
-- canonical re-serialization equality against the seal builder (duplicate keys, whitespace, reordering, non-UTC timestamps and altered security constants all reject);
-- expiry enforced against the caller clock;
-- exact job/owner/epoch/source/adapter/options expectation match required;
-- bounded length-prefix re-decode with record/byte limits enforced while reading;
-- independent re-count and exact-byte SHA-256 compared to every manifest stream binding;
-- truncation, append, torn append, malformed lengths and same-length substitution proved;
-- read-only, stateless, retryable; performs no deletion and no database work.
-
-## Implemented reconciliation checkpoint
-
-- one exclusive startup pass under the manager lock, deterministic name order;
-- classifies sealed / unsealed / temp-residue / completed-publication / unknown;
-- removes only fixed-name crash residue and expired sealed attempts;
-- completes the linkat crash window when both manifest names share exactly one inode with two links;
-- quarantines foreign names, symlinks, unknown entries, non-canonical manifests and conflicting temp inodes in place, without deletion;
-- never deletes a sealed unexpired attempt; kept attempts still pass independent verification;
-- cancellation returns a partial report and re-running is safe; non-Linux fails closed.
-
-## Implemented Preview PostgreSQL domain checkpoint
-
-- `memory_os.preview_ready` / `preview_candidate` / `preview_rejection` with FORCE RLS and the standard owner/epoch policy;
-- worker-only INSERT, no UPDATE for any runtime role, deletion-runtime-only DELETE;
-- globally unique deterministic `commit_key`; one ready Preview per job and per spool attempt;
-- `state = 'ready'` only — no `building` Preview can exist;
-- exact seal-evidence bindings (source key/version/length/hash, adapter, options, counts, bytes, stream hashes, TTL) as database CHECKs;
-- rejection rows structurally cannot hold raw user values (source row + `IMPORT_*` codes only);
-- `assert_preview_complete` proves exact counts and contiguous `1..n` ordinals under invoker RLS before COMMIT;
-- live PostgreSQL 16 SQL tests in the Security Contracts workflow.
-
-## Implemented commit repository checkpoint
-
-- one short atomic worker-role transaction from `previewspool.VerifiedSpool` evidence to committed Preview;
-- PostgreSQL forbids `COPY FROM` under RLS, so bulk loading is the contract-allowed parameterized `INSERT ... unnest` equivalent with FORCE RLS in force;
-- deterministic commit key excludes the spool attempt ID; identical retries return the committed Preview (also after acknowledgement loss), conflicting retries reject;
-- completeness gate, rollback, stale-binding rejection and the end-to-end spool→verify→commit flow proven on live PostgreSQL 16, locally and in CI.
-
-## Still incomplete and forbidden
-
-- no supervisor composition wiring verifier and committer as one production flow;
-- no reviewed canonical-record contract for candidate JSON;
-- no deletion-fence recheck integration;
-- no production mount/runtime evidence;
-- no operator alerting for quarantined residue;
-- RLS contract fixture not yet extended to the three preview domain tables.
-
-A published manifest remains untrusted until its verification passes; the commit path must run the verifier and re-check epoch/job state inside its own transaction boundary. `preview.AtomicMaterializer` remains reference-only and is forbidden as the production PostgreSQL path.
-
----
-
-# 5. Apply and deletion authority
-
-- Final Apply is iOS-user-only and exact Preview hash-bound.
-- Apply never reparses.
-- Idempotency key binds the request hash.
-- Created + updated + skipped accounts for every accepted candidate or rollback.
+- Final Apply is exact-Preview-hash-bound and idempotent.
 - Rejected rows never enter Apply.
-- Account epoch fences jobs, leases, uploads, objects, spools, Preview, Apply, exports, caches and backup restoration.
+- Created + updated + skipped must account for every accepted candidate or the transaction rolls back.
+- Current minimal `memory_item` persistence is not the rich Memory domain.
+- Destructive `update_safe_fields` behavior is closed fail-closed and live-proven to modify no row.
+- Append-only supersession is the required future replacement.
 
----
+## Account deletion
 
-# 6. Executable status
+- Epoch bump fences subsequent jobs, sessions, uploads, objects, Preview and Apply activity.
+- Account deletion returns after fencing; leased deletion work erases asynchronously and resumes after interruption.
+- Stored object versions are included in erasure evidence.
+- Backup restore non-resurrection remains unproven and is governed by `OPS-P0-007`.
 
-Partial Go security/reference code exists for verified principal/context, scoped PostgreSQL transactions, Apple JWT/JWKS, signed upload, bounded CSV, Preview hashing, reference Apply, account epoch guards, fuzz targets, Preview spool filesystem, bounded writer, durable no-replace manifest publication and the independent sealed-spool verifier.
+## Privacy boundaries
 
-Not implemented:
+The following must never enter logs, metrics, tracing attributes, analytics, notifications or crash reports:
 
-```txt
-production executable server/session issuer
-Apple code exchange/secret rotation/replay/session persistence
-production account/session/repository composition
-private versioned S3 signer/HEAD/lifecycle
-isolated parser supervisor runtime
-concrete Apply/Memory persistence and complete deletion fencing
-iOS and Desktop Portal
+- imported memory content;
+- raw Apple authorization codes or nonce values;
+- private keys, client secrets or signing material;
+- bearer/session tokens;
+- signed object URLs or object credentials;
+- unbounded parser payloads;
+- email as canonical identity.
+
+Opaque request/job/trace identifiers may be used only under bounded retention and redaction rules.
+
+## Security evidence versus production evidence
+
+The following distinctions are binding:
+
+- transaction rollback is not migration rollback;
+- object versioning is not backup completion;
+- component fault injection is not chaos completion;
+- CI green is not production observability;
+- fake-Apple integration is not real-provider deployment evidence;
+- authentication is not rate limiting;
+- restartable deletion work is not an operator incident runbook.
+
+## Current blockers
+
+Security and production remain blocked on, at minimum:
+
+- real-provider/key-rotation evidence;
+- production object-storage security configuration;
+- parser deployment isolation evidence;
+- structured privacy-safe telemetry and canary tests;
+- distributed rate limiting;
+- load/capacity evidence;
+- backup/PITR and isolated restore rehearsal;
+- migration and incident procedures;
+- mixed-version compatibility proof;
+- critical system-level failure drills;
+- client security evidence;
+- independent review with zero unresolved Critical/High;
+- zero unresolved P0.
+
+## Validation
+
+```bash
+python -m pip install -r requirements-security-validation.txt
+python scripts/validate-memory-os-security.py
+python scripts/validate-memory-os-authorization.py
+python scripts/validate-memory-os-postgresql-rls.py
+python scripts/validate-memory-os-apple-auth.py
+python scripts/validate-memory-os-signed-upload-openapi.py
+python scripts/validate-memory-os-parser-security.py
+python scripts/validate-memory-os-preview-spool.py
+python scripts/validate-memory-os-canonical-records.py
+python scripts/validate-memory-os-memory-provenance.py
+python scripts/validate-memory-os-operability.py
+python scripts/validate-memory-os-entry-docs.py
 ```
 
-Validation wording:
-
-```txt
-code HEAD 3f9ab51 (docs only; code identical to 5c3dc4b)
-(local golang:1.23 Linux container + fresh postgres:16 + MinIO):
-gofmt clean + go vet + go test ./... + go test -race ./... (17 packages,
-live DB/object-store/supervision/import-flow tests included) + both 5s fuzz smokes PASS
-
-remote workflows at HEAD 0f79f5c (deployment login + deletion runtime + fuzz corpus):
-Import API Security Slice run 30059874457 SUCCESS
-Security Contracts run 30059815370 SUCCESS at b030b66 — it does not run at
-0f79f5c, whose only changes are fuzz testdata and a script its path filters
-exclude; b030b66 is the newest commit touching anything it checks.
-
-One failure occurred in this sequence and was fixed rather than retried:
-Import API run 30059231116 at 26a86c1 failed because migration 007 was missing
-from the httpserver migration list, hidden locally by a stale database.
-```
-
-Earlier Import API remote runs had failed at the Format check until the verifier checkpoint repaired the suite; every push since has run green. CI evidence is repository evidence, not production evidence.
-
----
-
-# 7. Hard stops
-
-Production remains forbidden while any remains:
-
-- concrete Apple exchange/session/replay missing;
-- cross-user authorization/RLS failure;
-- browser final Apply;
-- upload key/metadata not exact-bound;
-- parser network/host/secrets/unbounded resources;
-- untrusted parse inside production DB transaction;
-- spool commit without a passed independent verification in the same flow, or without crash reconciliation;
-- partial candidate/rejection/Preview visibility;
-- missing epoch recheck immediately before commit;
-- deletion resurrection possible;
-- account deletion that leaves quarantine objects in the bucket;
-- private content in logs/analytics/notifications/crash reports;
-- remote CI unknown at release judgment;
-- unresolved P0 > 0;
-- unresolved independent Critical/High finding.
-
----
-
-# 8. Correct next sequence
-
-```txt
-done, each with a live proof and a checkpoint document:
-0. deletion fencing (epoch bump + authorized sweep)
-   docs/memory-os-deletion-fencing-checkpoint-2026-07-24.md
-1. quarantine object erasure (every version of every owned key)
-   same document
-2. non-superuser deployment login (FORCE RLS proven on the real path)
-   docs/memory-os-deployment-login-checkpoint-2026-07-24.md
-3. background deletion runtime (202 + leased, resumable worker)
-   docs/memory-os-deletion-runtime-checkpoint-2026-07-24.md
-
-4. parser fuzz corpus archived as replayed seed corpora
-   (scripts/archive-fuzz-corpus.sh grows it)
-
-5. deletion backlog alerting (counts to the observer, identifiers to the runtime)
-   docs/memory-os-deletion-visibility-checkpoint-2026-07-24.md
-
-next:
-6. Apple code exchange / replay store (needs real Apple credentials — later boundary)
-7. begin iOS only after backend P0 closes
-```
-
-Memory Town remains after Capture / Import P0 blockers close.
+Historical PASS applies only to the exact tested commit and scope. A newer HEAD requires new evidence.
