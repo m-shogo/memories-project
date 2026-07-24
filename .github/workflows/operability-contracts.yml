@@ -3,24 +3,36 @@ name: Operability Contracts
 on:
   pull_request:
     paths:
+      - "README.md"
+      - "SECURITY.md"
+      - "services/import-api/README.md"
       - "contracts/operations/**"
       - "docs/memory-os-current-authority-order-round-10-operability.md"
       - "docs/memory-os-production-operability-audit-2026-07-24.md"
       - "scripts/validate-memory-os-operability.py"
+      - "scripts/validate-memory-os-entry-docs.py"
       - ".github/workflows/operability-contracts.yml"
   push:
     branches:
       - so
     paths:
+      - "README.md"
+      - "SECURITY.md"
+      - "services/import-api/README.md"
       - "contracts/operations/**"
       - "docs/memory-os-current-authority-order-round-10-operability.md"
       - "docs/memory-os-production-operability-audit-2026-07-24.md"
       - "scripts/validate-memory-os-operability.py"
+      - "scripts/validate-memory-os-entry-docs.py"
       - ".github/workflows/operability-contracts.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: operability-contracts-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate-operability-contracts:
@@ -35,8 +47,13 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Compile validator
-        run: python -m py_compile scripts/validate-memory-os-operability.py
+      - name: Compile validators
+        run: |
+          python -m py_compile scripts/validate-memory-os-operability.py
+          python -m py_compile scripts/validate-memory-os-entry-docs.py
 
       - name: Validate production operability authority
         run: python scripts/validate-memory-os-operability.py
+
+      - name: Validate current entrypoint documents
+        run: python scripts/validate-memory-os-entry-docs.py
