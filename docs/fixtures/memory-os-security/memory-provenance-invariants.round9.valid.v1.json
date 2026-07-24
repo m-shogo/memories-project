@@ -103,8 +103,8 @@
       },
       {
         "gapId": "GAP-MEM-005",
-        "description": "memory_item stores exactly one canonical_record per row with no assertion kind, and the update_safe_fields duplicate policy overwrites it in place while repointing source_preview_id.",
-        "risk": "A later import silently replaces both the earlier content and the record of where the earlier content came from. Nothing preserves the superseded version, so a correction is indistinguishable from an erasure.",
+        "description": "memory_item stores exactly one canonical_record per row with no assertion kind. The update_safe_fields policy that overwrote it in place is now closed fail-closed, but no append-only supersession exists to replace it, so a correction cannot yet be recorded at all.",
+        "risk": "The destructive overwrite is prevented. The remaining gap is the absence of a non-destructive correction path, which is future work gated behind the Memory domain.",
         "affectedPath": "services/import-api/internal/pgrepo/apply.go"
       }
     ]
@@ -170,9 +170,9 @@
       "preventedFailure": "Silent Rewrite: the 2026 view of 2022 replacing the 2022 record, leaving no trace that the person ever thought differently.",
       "testable": {
         "kind": "go_testable",
-        "description": "Violated today. See currentlyViolatedBy."
+        "description": "The destructive path is closed: update_safe_fields is refused fail-closed at the service and repository layers, and the in-place UPDATE is removed. Enforcing the positive rule — corrections stored as append-only supersession — still requires the unbuilt domain."
       },
-      "currentlyViolatedBy": "services/import-api/internal/pgrepo/apply.go ApplyMaterializedPreview, duplicate policy update_safe_fields: UPDATE memory_os.memory_item SET canonical_record = ..., source_preview_id = ... replaces both content and provenance in place with no history."
+      "closedBy": "services/import-api/internal/apply/service.go validateRequest and internal/pgrepo/apply.go ApplyMaterializedPreview both return ErrDuplicatePolicyUnsupported; the UPDATE memory_os.memory_item that overwrote content and provenance is deleted. Append-only supersession remains future work."
     },
     {
       "invariantId": "INV-MEM-004",

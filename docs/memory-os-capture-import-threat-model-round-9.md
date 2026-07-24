@@ -535,10 +535,11 @@ keeping content (INV-MEM-002).
 Detective: an item whose source reference does not resolve is an integrity
 failure, checkable in SQL.
 Deletion: unaffected.
-Testability: go-testable. **Currently weakened**: the update_safe_fields policy
-repoints source_preview_id to a different Preview
-(services/import-api/internal/pgrepo/apply.go, GAP-MEM-005), so the reference
-survives but no longer describes the content it is attached to.
+Testability: go-testable. The update_safe_fields policy that repointed
+source_preview_id is now closed fail-closed at the service and repository
+layers (services/import-api/internal/pgrepo/apply.go, GAP-MEM-005), so no
+shipped path repoints the reference. Restoring the reference on a genuine
+correction requires append-only supersession, which is future work.
 
 ## T-033 Interpretation Promotion
 
@@ -581,9 +582,11 @@ supersede; records are not supersedable (INV-MEM-003, MEMCASE-007/008).
 Detective: absent — an in-place overwrite leaves nothing to detect, which is
 what makes this class serious.
 Deletion: unaffected.
-Testability: go-testable. **Currently violated** by update_safe_fields, which
-overwrites canonical_record in place with no history. Fixing it changes Apply
-semantics and is gated to the future migration plan.
+Testability: go-testable, and proven: the in-place overwrite is removed and
+update_safe_fields is refused fail-closed (INV-MEM-003 closedBy), covered by a
+unit test, a repository test and a live HTTP test that snapshots every row and
+shows none change. The non-destructive correction path that replaces it —
+append-only supersession — remains gated to the future migration plan.
 
 ## T-036 Context Collapse
 

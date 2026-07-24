@@ -112,7 +112,7 @@ NOINHERIT / NOBYPASSRLS login with no table privileges; the HTTP journey and the
 
 Memory domain (provenance and interpretation):
 invariants, origin/assertion axes and semantic cases are machine-readable and CI-gated; the rich Memory domain itself is deliberately NOT implemented
-one shipped path (apply update_safe_fields) violates the non-destructive invariant and is recorded, not fixed
+the destructive apply update_safe_fields path is closed fail-closed and live-proven to change no row; append-only supersession that would replace it is future work
 
 iOS / Portal:
 not implemented

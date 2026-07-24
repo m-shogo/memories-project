@@ -126,6 +126,8 @@
     "deploymentLoginPrincipalCreated": true,
     "memoryProvenanceInvariantsFormalized": true,
     "memoryProvenanceSemanticValidatorCreated": true,
+    "destructiveUpdateSafeFieldsClosed": true,
+    "destructiveUpdateSafeFieldsLiveProven": true,
     "richMemoryDomainImplemented": false,
     "productionNosuperuserLoginProven": true,
     "previewSpoolImplementationCreated": false,

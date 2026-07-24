@@ -69,9 +69,15 @@ This violates INV-P0-002 in spirit and INV-MEM-003 explicitly. The policy name
 is also misleading: it does not update "safe fields", it replaces the whole
 canonical record.
 
-**Not fixed in this checkpoint.** Fixing it changes Apply semantics, which
-Architecture Gate condition 3 forbids. It is recorded as `currentlyViolatedBy`
-on INV-MEM-003 and as GAP-MEM-005, so it cannot be lost.
+**Closed in a follow-up checkpoint** (see
+`docs/memory-os-apply-update-safe-fields-closure-checkpoint-2026-07-24.md`).
+The destructive UPDATE is removed and the policy is refused fail-closed at the
+service and repository layers with a distinct, stable error code; a unit test,
+a repository test and a live HTTP test prove no row changes. This closes the
+destructive path without changing skip_existing / keep_both semantics and
+without building supersession — the non-destructive correction path remains
+future work. INV-MEM-003 now records `closedBy` rather than
+`currentlyViolatedBy`.
 
 ### F2 — the canonical record carries no provenance of its own
 

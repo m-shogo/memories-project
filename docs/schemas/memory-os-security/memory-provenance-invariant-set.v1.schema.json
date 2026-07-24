@@ -174,6 +174,10 @@
           "currentlyViolatedBy": {
             "type": "string",
             "description": "Repository path and symbol of shipped code that violates this invariant today. Present only where a real violation was found; its presence is not permission to leave it unfixed."
+          },
+          "closedBy": {
+            "type": "string",
+            "description": "Repository path and symbol where a previously-shipped violation was closed. Replaces currentlyViolatedBy once the destructive path is prevented, even if the positive rule still awaits the unbuilt domain."
           }
         }
       }
