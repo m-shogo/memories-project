@@ -73,6 +73,10 @@ coverage-interesting inputs for both parsers committed as seed corpora and repla
 background deletion runtime:
 DELETE /v1/account returns 202 after fencing only; a leased worker erases and resumes after interruption (live-proven)
 
+Sign in with Apple:
+code exchange, single-use nonce/code replay store, issuer+subject account provisioning and POST /v1/auth/apple are implemented and live-proven against a fake Apple over HTTP + PostgreSQL
+the live proof against real Apple needs developer credentials and is the sole remaining Apple gate (appleCodeExchangeLiveProven=false)
+
 deployment login principal:
 NOINHERIT / NOBYPASSRLS login with no table privileges; the HTTP journey and the RLS proofs now run through it, not through a superuser
 

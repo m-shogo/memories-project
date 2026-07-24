@@ -151,6 +151,14 @@ SECTIONS: list[dict] = [
         ],
     },
     {
+        "title": "Sign in with Apple",
+        "requires": ["appleCodeExchangeImplemented", "appleCodeExchangeSqlTestsPassed", "appleCodeExchangeMockLiveTestsPassed"],
+        "done_lines": [
+            "code exchange, single-use nonce/code replay store, issuer+subject account provisioning and POST /v1/auth/apple are implemented and live-proven against a fake Apple over HTTP + PostgreSQL",
+            "the live proof against real Apple needs developer credentials and is the sole remaining Apple gate (appleCodeExchangeLiveProven=false)",
+        ],
+    },
+    {
         "title": "deployment login principal",
         "requires": ["deploymentLoginPrincipalCreated", "productionNosuperuserLoginProven"],
         "done_lines": [

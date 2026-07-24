@@ -112,7 +112,7 @@
     "deletionFencingImplemented": true,
     "deletionFencingSqlTestsPassed": true,
     "deletionFencingHttpLiveTestsPassed": true,
-    "deletionFencingRemoteLiveJobPassed": false,
+    "deletionFencingRemoteLiveJobPassed": true,
     "deletionObjectStorageErasureImplemented": true,
     "deletionObjectStorageErasureLiveTestsPassed": true,
     "backgroundDeletionRuntimeCreated": true,
@@ -122,7 +122,10 @@
     "deletionBacklogLiveTestsPassed": true,
     "deletionRuntimeClaimSqlTestsPassed": true,
     "deletionRuntimeResumptionLiveTestsPassed": true,
-    "appleCodeExchangeImplemented": false,
+    "appleCodeExchangeImplemented": true,
+    "appleCodeExchangeSqlTestsPassed": true,
+    "appleCodeExchangeMockLiveTestsPassed": true,
+    "appleCodeExchangeLiveProven": false,
     "deploymentLoginPrincipalCreated": true,
     "memoryProvenanceInvariantsFormalized": true,
     "memoryProvenanceSemanticValidatorCreated": true,
@@ -202,6 +205,6 @@
     "confirmedAt": "2026-07-24"
   },
   "nextRequired": [
-    "implement_apple_code_exchange"
+    "prove_apple_code_exchange_against_real_apple"
   ]
 }

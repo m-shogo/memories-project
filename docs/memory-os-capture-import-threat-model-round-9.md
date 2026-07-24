@@ -570,6 +570,10 @@ Detective: cross-tenant links are structurally unwritable rather than merely
 audited.
 Deletion: relations are owned rows, swept with the account.
 Testability: SQL-testable by the same pattern as the existing RLS suite.
+Apple sign-in now realises this control: the account is bound by (issuer,
+subject) alone (migration 010, provision_apple_identity), email never
+auto-links, and a returning identity whose account is not active is refused
+rather than revived — proven live in the Apple login journey.
 
 ## T-035 Silent Rewrite
 

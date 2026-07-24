@@ -129,6 +129,11 @@ def main() -> int:
     for entry in invariant_set["invariants"]:
         if not all(str(source).strip() for source in entry["derivedFrom"]):
             failures.append(f"{entry['invariantId']}: empty derivedFrom entry")
+        # An invariant is either currently violated or its violation is closed,
+        # never both: the two states are contradictory and a fixture asserting
+        # both would misreport shipped reality.
+        if entry.get("currentlyViolatedBy") and entry.get("closedBy"):
+            failures.append(f"{entry['invariantId']}: currentlyViolatedBy and closedBy both set")
 
     seen_cases: set[str] = set()
     for case in case_set["cases"]:
