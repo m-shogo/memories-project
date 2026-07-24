@@ -72,7 +72,6 @@ coverage-interesting inputs for both parsers committed as seed corpora and repla
 
 background deletion runtime:
 DELETE /v1/account returns 202 after fencing only; a leased worker erases and resumes after interruption (live-proven)
-no alerting yet on an account whose deletion attempts keep climbing
 
 deployment login principal:
 NOINHERIT / NOBYPASSRLS login with no table privileges; the HTTP journey and the RLS proofs now run through it, not through a superuser

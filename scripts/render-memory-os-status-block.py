@@ -148,7 +148,6 @@ SECTIONS: list[dict] = [
         ],
         "done_lines": [
             "DELETE /v1/account returns 202 after fencing only; a leased worker erases and resumes after interruption (live-proven)",
-            "no alerting yet on an account whose deletion attempts keep climbing",
         ],
     },
     {
