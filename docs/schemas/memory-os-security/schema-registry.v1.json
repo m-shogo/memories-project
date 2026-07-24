@@ -1,6 +1,6 @@
 {
   "registryId": "memory-os.security.schema-registry",
-  "registryVersion": 9,
+  "registryVersion": 10,
   "networkResolutionAllowed": false,
   "logicalBaseUri": "https://memory-os.example/schemas/security/",
   "resolutionPolicy": "resolve_exact_id_to_repository_path",
@@ -30,7 +30,9 @@
     { "schemaId": "https://memory-os.example/schemas/security/preview-spool-manifest.v1.schema.json", "repositoryPath": "docs/schemas/memory-os-security/preview-spool-manifest.v1.schema.json" },
     { "schemaId": "https://memory-os.example/schemas/security/preview-spool-semantic-case-set.v1.schema.json", "repositoryPath": "docs/schemas/memory-os-security/preview-spool-semantic-case-set.v1.schema.json" },
     { "schemaId": "https://memory-os.example/schemas/security/preview-canonical-record.v1.schema.json", "repositoryPath": "docs/schemas/memory-os-security/preview-canonical-record.v1.schema.json" },
-    { "schemaId": "https://memory-os.example/schemas/security/preview-canonical-record-case-set.v1.schema.json", "repositoryPath": "docs/schemas/memory-os-security/preview-canonical-record-case-set.v1.schema.json" }
+    { "schemaId": "https://memory-os.example/schemas/security/preview-canonical-record-case-set.v1.schema.json", "repositoryPath": "docs/schemas/memory-os-security/preview-canonical-record-case-set.v1.schema.json" },
+    { "schemaId": "https://memory-os.example/schemas/security/memory-provenance-invariant-set.v1.schema.json", "repositoryPath": "docs/schemas/memory-os-security/memory-provenance-invariant-set.v1.schema.json" },
+    { "schemaId": "https://memory-os.example/schemas/security/memory-provenance-case-set.v1.schema.json", "repositoryPath": "docs/schemas/memory-os-security/memory-provenance-case-set.v1.schema.json" }
   ],
   "rules": {
     "duplicateSchemaIdAllowed": false,

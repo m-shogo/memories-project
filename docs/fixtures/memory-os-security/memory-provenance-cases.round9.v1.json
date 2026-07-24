@@ -1,0 +1,262 @@
+{
+  "caseSetId": "memory-os.memory.provenance-cases.round9",
+  "caseSetVersion": 1,
+  "invariantSetPath": "docs/fixtures/memory-os-security/memory-provenance-invariants.round9.valid.v1.json",
+  "description": "Semantic cases for the memory provenance and interpretation invariants. Each case is a candidate stored item described only in terms this checkpoint has actually fixed — origin, assertion kind, source reference, supersession target, owner — and never in terms of a table or column, because none exist yet. The validator decides allow or deny from the invariant set alone, so a future implementation inherits these decisions rather than reinventing them.",
+  "cases": [
+    {
+      "caseId": "MEMCASE-001",
+      "title": "A firsthand entry with a source reference is storable as a record",
+      "expect": "allow",
+      "item": {
+        "origin": "firsthand",
+        "assertion": "record",
+        "sourceRef": "artifact:ios-capture-0001",
+        "owner": "acct-a"
+      },
+      "invariants": ["INV-MEM-001", "INV-MEM-002"]
+    },
+    {
+      "caseId": "MEMCASE-002",
+      "title": "An AI summary cannot be stored as a record",
+      "expect": "deny",
+      "denyReason": "MEM_AI_ORIGIN_CANNOT_BE_RECORD",
+      "item": {
+        "origin": "ai_summary",
+        "assertion": "record",
+        "sourceRef": "memory:mem-0001",
+        "owner": "acct-a"
+      },
+      "invariants": ["INV-MEM-001"],
+      "note": "This is the single most important denial in the set. An AI summary stored as a record is indistinguishable from something the person wrote."
+    },
+    {
+      "caseId": "MEMCASE-003",
+      "title": "An AI inference cannot be stored as a record",
+      "expect": "deny",
+      "denyReason": "MEM_AI_ORIGIN_CANNOT_BE_RECORD",
+      "item": {
+        "origin": "ai_inferred",
+        "assertion": "record",
+        "sourceRef": "memory:mem-0001",
+        "owner": "acct-a"
+      },
+      "invariants": ["INV-MEM-001"]
+    },
+    {
+      "caseId": "MEMCASE-004",
+      "title": "An AI summary is storable as an explicit AI view",
+      "expect": "allow",
+      "item": {
+        "origin": "ai_summary",
+        "assertion": "ai_view",
+        "sourceRef": "memory:mem-0001",
+        "owner": "acct-a"
+      },
+      "invariants": ["INV-MEM-001"],
+      "note": "The product may hold model output. It may not hold it as the person's own words."
+    },
+    {
+      "caseId": "MEMCASE-005",
+      "title": "Derived content without a source reference is refused",
+      "expect": "deny",
+      "denyReason": "MEM_SOURCE_REF_REQUIRED",
+      "item": {
+        "origin": "derived",
+        "assertion": "ai_view",
+        "sourceRef": null,
+        "owner": "acct-a"
+      },
+      "invariants": ["INV-MEM-002"],
+      "note": "Derived content that cannot name what it was derived from is unauditable and cannot be recomputed."
+    },
+    {
+      "caseId": "MEMCASE-006",
+      "title": "A firsthand record without a source reference is refused",
+      "expect": "deny",
+      "denyReason": "MEM_SOURCE_REF_REQUIRED",
+      "item": {
+        "origin": "firsthand",
+        "assertion": "record",
+        "sourceRef": null,
+        "owner": "acct-a"
+      },
+      "invariants": ["INV-MEM-002"],
+      "note": "Applies to every origin, including the account holder's own: without it, an injected record is indistinguishable from a captured one."
+    },
+    {
+      "caseId": "MEMCASE-007",
+      "title": "A record cannot be superseded, only added to",
+      "expect": "deny",
+      "denyReason": "MEM_RECORD_NOT_SUPERSEDABLE",
+      "item": {
+        "origin": "firsthand",
+        "assertion": "correction",
+        "sourceRef": "artifact:ios-capture-0002",
+        "supersedes": { "targetAssertion": "record", "owner": "acct-a" },
+        "owner": "acct-a"
+      },
+      "invariants": ["INV-MEM-003"],
+      "note": "A correction is stored and linked; what it corrects stays readable. Marking the original superseded is a display decision, not a change to the original."
+    },
+    {
+      "caseId": "MEMCASE-008",
+      "title": "A later interpretation may supersede an earlier interpretation",
+      "expect": "allow",
+      "item": {
+        "origin": "firsthand",
+        "assertion": "later_interpretation",
+        "sourceRef": "memory:mem-0001",
+        "supersedes": { "targetAssertion": "later_interpretation", "owner": "acct-a" },
+        "owner": "acct-a"
+      },
+      "invariants": ["INV-MEM-003", "INV-MEM-004"],
+      "note": "2022 'I want to stay', 2024 'I think I wanted to leave', 2026 'it was hard but not all bad' — all three persist, each dated to when it was held."
+    },
+    {
+      "caseId": "MEMCASE-009",
+      "title": "An AI view cannot supersede something a person wrote",
+      "expect": "deny",
+      "denyReason": "MEM_AI_CANNOT_SUPERSEDE_PERSON",
+      "item": {
+        "origin": "ai_inferred",
+        "assertion": "ai_view",
+        "sourceRef": "memory:mem-0001",
+        "supersedes": { "targetAssertion": "later_interpretation", "owner": "acct-a" },
+        "owner": "acct-a"
+      },
+      "invariants": ["INV-MEM-001", "INV-MEM-003"]
+    },
+    {
+      "caseId": "MEMCASE-010",
+      "title": "Supersession across accounts is refused",
+      "expect": "deny",
+      "denyReason": "MEM_CROSS_TENANT_LINK",
+      "item": {
+        "origin": "firsthand",
+        "assertion": "correction",
+        "sourceRef": "artifact:ios-capture-0003",
+        "supersedes": { "targetAssertion": "later_interpretation", "owner": "acct-b" },
+        "owner": "acct-a"
+      },
+      "invariants": ["INV-MEM-012"],
+      "note": "Structurally impossible under the existing FORCE RLS predicates; asserted here so a future relation table inherits the same requirement rather than rediscovering it."
+    },
+    {
+      "caseId": "MEMCASE-011",
+      "title": "Secondhand content cannot become the account holder's own record",
+      "expect": "deny",
+      "denyReason": "MEM_ORIGIN_CANNOT_BE_USER_FACT",
+      "item": {
+        "origin": "secondhand",
+        "assertion": "record",
+        "sourceRef": "artifact:message-0007",
+        "owner": "acct-a"
+      },
+      "invariants": ["INV-MEM-001"],
+      "note": "Restates INV-P0-013: what someone else said is their account, stored as such, not silently absorbed."
+    },
+    {
+      "caseId": "MEMCASE-012",
+      "title": "Service history is storable as a record of what happened",
+      "expect": "allow",
+      "item": {
+        "origin": "service_record",
+        "assertion": "record",
+        "sourceRef": "artifact:spotify-export-0001",
+        "owner": "acct-a"
+      },
+      "invariants": ["INV-MEM-001", "INV-MEM-002"],
+      "note": "A track played at a time is a fact about behaviour. What it meant is not part of the record."
+    },
+    {
+      "caseId": "MEMCASE-013",
+      "title": "An item carrying a life or importance score is refused",
+      "expect": "deny",
+      "denyReason": "MEM_EVALUATION_FIELD_FORBIDDEN",
+      "item": {
+        "origin": "firsthand",
+        "assertion": "record",
+        "sourceRef": "artifact:ios-capture-0004",
+        "owner": "acct-a",
+        "evaluation": { "importanceScore": 0.92 }
+      },
+      "invariants": ["INV-MEM-008"],
+      "note": "Restates INV-P0-012 at the item level, so the prohibition survives into whatever the Memory domain becomes."
+    },
+    {
+      "caseId": "MEMCASE-014",
+      "title": "An unremarkable record is as storable as any other",
+      "expect": "allow",
+      "item": {
+        "origin": "firsthand",
+        "assertion": "record",
+        "sourceRef": "artifact:ios-capture-0005",
+        "owner": "acct-a"
+      },
+      "invariants": ["INV-MEM-011"],
+      "note": "A photo of a bowl of ramen on the way home. No field exists that could rank it below anything else, which is the point."
+    },
+    {
+      "caseId": "MEMCASE-015",
+      "title": "Copies sharing one origin are one piece of evidence",
+      "expect": "deny",
+      "denyReason": "MEM_DUPLICATE_NOT_INDEPENDENT",
+      "item": {
+        "origin": "imported_document",
+        "assertion": "record",
+        "sourceRef": "artifact:takeout-2026-01",
+        "owner": "acct-a",
+        "claimsIndependentEvidence": 3,
+        "distinctOrigins": 1
+      },
+      "invariants": ["INV-MEM-005"],
+      "note": "Three copies of one export are three artifacts and one origin. The current TrustScore contract would count three (GAP-MEM-002)."
+    },
+    {
+      "caseId": "MEMCASE-016",
+      "title": "Genuinely distinct origins do corroborate",
+      "expect": "allow",
+      "item": {
+        "origin": "firsthand",
+        "assertion": "record",
+        "sourceRef": "artifact:ios-capture-0006",
+        "owner": "acct-a",
+        "claimsIndependentEvidence": 2,
+        "distinctOrigins": 2
+      },
+      "invariants": ["INV-MEM-005"],
+      "note": "A photo the person took and a calendar entry are two origins. Corroboration is not forbidden; counting copies as corroboration is."
+    },
+    {
+      "caseId": "MEMCASE-017",
+      "title": "A single permission cannot stand in for storage, search, analysis and resurfacing",
+      "expect": "deny",
+      "denyReason": "MEM_PRESENTATION_POLICY_NOT_BOOLEAN",
+      "item": {
+        "origin": "firsthand",
+        "assertion": "record",
+        "sourceRef": "artifact:ios-capture-0007",
+        "owner": "acct-a",
+        "presentationPolicy": true
+      },
+      "invariants": ["INV-MEM-007"],
+      "note": "Deliberately denied even though no policy structure is defined yet. The one shape known to be wrong is a boolean, so it is refused before it can be built."
+    },
+    {
+      "caseId": "MEMCASE-018",
+      "title": "Speaking as a person rather than citing the record is refused",
+      "expect": "deny",
+      "denyReason": "MEM_PERSONA_RECONSTRUCTION",
+      "item": {
+        "origin": "ai_inferred",
+        "assertion": "ai_view",
+        "sourceRef": "memory:mem-0002",
+        "owner": "acct-a",
+        "presentsAsPerson": true
+      },
+      "invariants": ["INV-MEM-009"],
+      "note": "Restates INV-P0-018. Output about a person says what the record states, never what the person would say."
+    }
+  ]
+}

@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/security/memory-provenance-case-set.v1.schema.json",
+  "title": "Memory OS Memory Provenance Semantic Case Set v1",
+  "description": "Allow/deny cases for the memory provenance and interpretation invariants. A case describes a candidate stored item only in terms this checkpoint has fixed — origin, assertion kind, source reference, supersession target, owner — and never in terms of a table or column, because none exist yet. Deny cases must name a reason the validator recognises, so a case cannot assert a rule that no invariant supports.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["caseSetId", "caseSetVersion", "invariantSetPath", "description", "cases"],
+  "properties": {
+    "caseSetId": { "const": "memory-os.memory.provenance-cases.round9" },
+    "caseSetVersion": { "type": "integer", "minimum": 1 },
+    "invariantSetPath": { "type": "string", "pattern": "^docs/fixtures/.+\\.json$" },
+    "description": { "type": "string", "minLength": 1 },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["caseId", "title", "expect", "item", "invariants"],
+        "properties": {
+          "caseId": { "type": "string", "pattern": "^MEMCASE-[0-9]{3}$" },
+          "title": { "type": "string", "minLength": 1 },
+          "expect": { "type": "string", "enum": ["allow", "deny"] },
+          "denyReason": {
+            "type": "string",
+            "pattern": "^MEM_[A-Z0-9_]+$",
+            "description": "Required on deny cases. The validator additionally requires it to be one of the reasons it can actually produce."
+          },
+          "note": { "type": "string", "minLength": 1 },
+          "invariants": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^INV-MEM-[0-9]{3}$" }
+          },
+          "item": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["origin", "assertion", "owner"],
+            "properties": {
+              "origin": {
+                "type": "string",
+                "enum": [
+                  "firsthand",
+                  "service_record",
+                  "secondhand",
+                  "imported_document",
+                  "derived",
+                  "ai_summary",
+                  "ai_inferred"
+                ]
+              },
+              "assertion": {
+                "type": "string",
+                "enum": ["record", "later_interpretation", "correction", "ai_view"]
+              },
+              "sourceRef": {
+                "type": ["string", "null"],
+                "description": "Null models the absence the invariant forbids, so the refusal is exercised rather than assumed."
+              },
+              "owner": { "type": "string", "minLength": 1 },
+              "supersedes": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["targetAssertion", "owner"],
+                "properties": {
+                  "targetAssertion": {
+                    "type": "string",
+                    "enum": ["record", "later_interpretation", "correction", "ai_view"]
+                  },
+                  "owner": { "type": "string", "minLength": 1 }
+                }
+              },
+              "evaluation": {
+                "type": "object",
+                "description": "Any evaluation payload at all is a violation; the shape is irrelevant, which is why it is unconstrained here.",
+                "minProperties": 1
+              },
+              "claimsIndependentEvidence": { "type": "integer", "minimum": 0 },
+              "distinctOrigins": { "type": "integer", "minimum": 0 },
+              "presentationPolicy": {
+                "description": "Deliberately unconstrained in type. The point of the case is that a boolean is refused while the real structure is still undecided."
+              },
+              "presentsAsPerson": { "type": "boolean" }
+            }
+          }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "expect": { "const": "deny" } }, "required": ["expect"] },
+            "then": { "required": ["denyReason"] }
+          },
+          {
+            "if": { "properties": { "expect": { "const": "allow" } }, "required": ["expect"] },
+            "then": { "not": { "required": ["denyReason"] } }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,277 @@
+{
+  "$schema": "https://memory-os.example/schemas/security/memory-provenance-invariant-set.v1.schema.json",
+  "invariantSetId": "memory-os.memory.provenance-invariants.round9",
+  "invariantSetVersion": 1,
+  "boundAuthorities": [
+    "docs/formal-invariants.md",
+    "docs/trust-and-provenance.md",
+    "docs/identity-and-impersonation-safety.md",
+    "docs/memory-constitution-v1.md"
+  ],
+  "originAxis": {
+    "axisName": "origin",
+    "rationale": "Where content came from, kept separate from how strongly it is supported. The existing ProvenanceLevel enum mixes both — user_direct is an origin, cross_source_confirmed is a corroboration state — which means a record cannot currently say 'this is firsthand' without also implying something about its evidential weight.",
+    "values": [
+      {
+        "value": "firsthand",
+        "meaning": "The account holder's own direct experience, words, capture or entry.",
+        "canBecomeUserFact": true,
+        "requiresSourceRef": true
+      },
+      {
+        "value": "service_record",
+        "meaning": "Behavioural history held by an external service the account holder used: playback, watch, purchase, check-in. Evidence that something happened, not a statement of what it meant.",
+        "canBecomeUserFact": true,
+        "requiresSourceRef": true
+      },
+      {
+        "value": "secondhand",
+        "meaning": "Something another person said, about the account holder or about an event. It is that person's account, never automatically the account holder's fact.",
+        "canBecomeUserFact": false,
+        "requiresSourceRef": true
+      },
+      {
+        "value": "imported_document",
+        "meaning": "Content extracted from a file or export the account holder supplied. The document is theirs to import; its contents are not therefore their own statement.",
+        "canBecomeUserFact": true,
+        "requiresSourceRef": true
+      },
+      {
+        "value": "derived",
+        "meaning": "Produced by a deterministic, reproducible transformation of an identified source — a fingerprint, a normalised timestamp, an extracted field. Recomputable, and therefore auditable.",
+        "canBecomeUserFact": false,
+        "requiresSourceRef": true
+      },
+      {
+        "value": "ai_summary",
+        "meaning": "A model's condensation of one or more records. One model's view at one time under one prompt, never the memory itself.",
+        "canBecomeUserFact": false,
+        "requiresSourceRef": true
+      },
+      {
+        "value": "ai_inferred",
+        "meaning": "A model's guess across records about something no record states. The most dangerous class: it reads like a fact and has no author.",
+        "canBecomeUserFact": false,
+        "requiresSourceRef": true
+      }
+    ],
+    "existingVocabularyMapping": [
+      { "origin": "firsthand", "existingProvenanceLevel": "user_direct" },
+      {
+        "origin": "service_record",
+        "existingProvenanceLevel": "metadata_confirmed",
+        "note": "Approximate only. metadata_confirmed currently covers calendar and photo metadata; streaming and purchase history has no existing value."
+      },
+      { "origin": "secondhand", "existingProvenanceLevel": "third_party_statement" },
+      {
+        "origin": "imported_document",
+        "existingProvenanceLevel": null,
+        "note": "No existing ProvenanceLevel expresses it, even though the entire shipped import pipeline produces exactly this."
+      },
+      {
+        "origin": "derived",
+        "existingProvenanceLevel": null,
+        "note": "No existing value. The genericcsv fingerprint is already derived content with no way to say so."
+      },
+      { "origin": "ai_summary", "existingProvenanceLevel": "ai_summary" },
+      { "origin": "ai_inferred", "existingProvenanceLevel": "ai_inference" }
+    ],
+    "gaps": [
+      {
+        "gapId": "GAP-MEM-001",
+        "description": "ProvenanceLevel conflates origin with corroboration: user_repeated and cross_source_confirmed describe how often something was seen, not where it came from.",
+        "risk": "A record cannot state its origin without also asserting evidential weight, so the two can never be reasoned about independently.",
+        "affectedPath": "docs/trust-and-provenance.md"
+      },
+      {
+        "gapId": "GAP-MEM-002",
+        "description": "TrustScore.evidenceCount counts evidence without requiring the pieces to be independent in origin.",
+        "risk": "Duplicate amplification is built into the current contract: re-importing one export, or a repost of one original, raises confidence exactly as independent corroboration would.",
+        "affectedPath": "docs/trust-and-provenance.md"
+      },
+      {
+        "gapId": "GAP-MEM-003",
+        "description": "Trust rises on 'repeated appearance' with no requirement that repetitions have distinct origins.",
+        "risk": "The same failure as GAP-MEM-002 on the temporal axis: one belief written down many times becomes indistinguishable from a belief confirmed many ways.",
+        "affectedPath": "docs/trust-and-provenance.md"
+      },
+      {
+        "gapId": "GAP-MEM-004",
+        "description": "No origin value exists for content produced by the shipped import pipeline or by deterministic transformation.",
+        "risk": "Everything the product currently ingests is unclassifiable under the vocabulary that is supposed to classify it.",
+        "affectedPath": "docs/schemas/memory-os-security/preview-canonical-record.v1.schema.json"
+      },
+      {
+        "gapId": "GAP-MEM-005",
+        "description": "memory_item stores exactly one canonical_record per row with no assertion kind, and the update_safe_fields duplicate policy overwrites it in place while repointing source_preview_id.",
+        "risk": "A later import silently replaces both the earlier content and the record of where the earlier content came from. Nothing preserves the superseded version, so a correction is indistinguishable from an erasure.",
+        "affectedPath": "services/import-api/internal/pgrepo/apply.go"
+      }
+    ]
+  },
+  "assertionAxis": {
+    "axisName": "assertion",
+    "rationale": "What kind of claim an item makes. A 2022 entry, a 2026 reflection on 2022, and a model's summary of both are three different claims about one period, and flattening them into one field is how a life gets overwritten by its latest interpretation.",
+    "values": [
+      {
+        "value": "record",
+        "meaning": "What was captured at the time, by the account holder or from a source. Append-only.",
+        "supersedable": false,
+        "coexistsWithContradiction": true
+      },
+      {
+        "value": "later_interpretation",
+        "meaning": "The account holder's own later view of an earlier record. It is a record in its own right, dated to when it was made.",
+        "supersedable": true,
+        "coexistsWithContradiction": true
+      },
+      {
+        "value": "correction",
+        "meaning": "A statement that an earlier item was factually wrong. It supersedes; it does not rewrite. The earlier item stays readable as what was believed then.",
+        "supersedable": true,
+        "coexistsWithContradiction": false
+      },
+      {
+        "value": "ai_view",
+        "meaning": "A model's summary, index or hypothesis. Never supersedes anything a person wrote, and never becomes a record.",
+        "supersedable": true,
+        "coexistsWithContradiction": true
+      }
+    ]
+  },
+  "invariants": [
+    {
+      "invariantId": "INV-MEM-001",
+      "statement": "Content whose origin is ai_summary, ai_inferred or derived may never be stored as, promoted to, or presented as a record authored by the account holder.",
+      "derivedFrom": ["INV-P0-002", "INV-P1-007", "docs/trust-and-provenance.md#最上位原則"],
+      "severity": "P0",
+      "preventedFailure": "Interpretation Promotion and AI Output Laundering: a model's guess acquires the standing of something the person actually said.",
+      "testable": {
+        "kind": "requires_unbuilt_domain",
+        "description": "Enforceable once assertion kind is stored. Until then it constrains design review only, which is exactly why it is written down before the schema exists."
+      }
+    },
+    {
+      "invariantId": "INV-MEM-002",
+      "statement": "Every stored item, of every origin, resolves to at least one source reference that identifies where it came from, and no operation may remove that reference while keeping the content.",
+      "derivedFrom": ["INV-P0-001", "INV-P1-006"],
+      "severity": "P0",
+      "preventedFailure": "Provenance Stripping: content outliving the record of its own origin, after which nothing can tell whether a person wrote it.",
+      "testable": {
+        "kind": "go_testable",
+        "description": "Partially holds today: memory_item.source_preview_id is NOT NULL and constrained. It is weakened by the update path recorded in GAP-MEM-005, which repoints it to a different preview."
+      }
+    },
+    {
+      "invariantId": "INV-MEM-003",
+      "statement": "A later item never destructively updates an earlier one. Corrections and reinterpretations are new items linked to what they supersede.",
+      "derivedFrom": ["INV-P0-002", "docs/trust-and-provenance.md#source-conflict"],
+      "severity": "P0",
+      "preventedFailure": "Silent Rewrite: the 2026 view of 2022 replacing the 2022 record, leaving no trace that the person ever thought differently.",
+      "testable": {
+        "kind": "go_testable",
+        "description": "Violated today. See currentlyViolatedBy."
+      },
+      "currentlyViolatedBy": "services/import-api/internal/pgrepo/apply.go ApplyMaterializedPreview, duplicate policy update_safe_fields: UPDATE memory_os.memory_item SET canonical_record = ..., source_preview_id = ... replaces both content and provenance in place with no history."
+    },
+    {
+      "invariantId": "INV-MEM-004",
+      "statement": "Mutually contradictory interpretations of the same period may both persist. The system does not resolve them, rank them, or choose a winner.",
+      "derivedFrom": ["docs/trust-and-provenance.md#source-conflict", "INV-P0-012"],
+      "severity": "P0",
+      "preventedFailure": "A life being flattened into a single consistent story it never had.",
+      "testable": {
+        "kind": "requires_unbuilt_domain",
+        "description": "Enforceable once interpretations are storable. The design constraint is that no uniqueness constraint may forbid two contradictory interpretations of one subject."
+      }
+    },
+    {
+      "invariantId": "INV-MEM-005",
+      "statement": "Copies sharing one origin count as one piece of evidence. Re-imports, reposts, quotes, cross-device duplicates and repeated self-entry of one belief are not independent corroboration.",
+      "derivedFrom": ["INV-P1-002", "docs/trust-and-provenance.md#trustscore"],
+      "severity": "P0",
+      "preventedFailure": "Duplicate Amplification: frequency being mistaken for truth, which the current TrustScore contract actively enables.",
+      "testable": {
+        "kind": "contract_only",
+        "description": "Cannot be tested until evidence counting exists. Recorded now because the existing contract already gets it wrong (GAP-MEM-002, GAP-MEM-003)."
+      }
+    },
+    {
+      "invariantId": "INV-MEM-006",
+      "statement": "Presenting several records as one event never merges their stored form. Each retains its own artifact, canonical record, retrieval path, timestamps and hashes.",
+      "derivedFrom": ["INV-P0-001", "INV-MEM-002"],
+      "severity": "P1",
+      "preventedFailure": "Context Collapse: display-level grouping quietly becoming storage-level identity, after which the evidence for the grouping cannot be re-examined.",
+      "testable": {
+        "kind": "requires_unbuilt_domain",
+        "description": "Constrains the future event-grouping design: grouping is a view over artifacts, never a replacement for them."
+      }
+    },
+    {
+      "invariantId": "INV-MEM-007",
+      "statement": "Storing a memory is not consent to search it, analyse it, resurface it, or show it in the Town. These are separate permissions with separate defaults.",
+      "derivedFrom": ["INV-P0-003", "INV-P0-004", "INV-P0-019"],
+      "severity": "P0",
+      "preventedFailure": "Unauthorized Resurfacing: something deliberately set aside being pushed back into view by a feature that only checked whether it existed.",
+      "testable": {
+        "kind": "requires_unbuilt_domain",
+        "description": "Explicitly must not be represented as a single boolean. The set of permissions is not yet fixed, and fixing it prematurely in a schema is what this checkpoint avoids."
+      }
+    },
+    {
+      "invariantId": "INV-MEM-008",
+      "statement": "No field, score or ranking expresses the worth, happiness, health, productivity or importance of a person or of their life. Mechanical judgements are confined to concrete inputs and security boundaries.",
+      "derivedFrom": ["INV-P0-012", "INV-P1-003"],
+      "severity": "P0",
+      "preventedFailure": "The product becoming an instrument that grades a life.",
+      "testable": {
+        "kind": "sql_testable",
+        "description": "A schema-level check can assert that no column matching importance/score/rank/valence naming appears in memory tables. Holds today: memory_item has no such column."
+      }
+    },
+    {
+      "invariantId": "INV-MEM-009",
+      "statement": "A collection of memories is not the person. The system does not present a simulation of the account holder, a deceased person, a family member or a partner as that person, and statements about a person are attributed to the record that carries them.",
+      "derivedFrom": ["INV-P0-018", "docs/identity-and-impersonation-safety.md"],
+      "severity": "P0",
+      "preventedFailure": "Persona Reconstruction: a high-fidelity imitation being offered, or received, as the person themselves.",
+      "testable": {
+        "kind": "requires_unbuilt_domain",
+        "description": "Constrains any future generation surface: output about a person cites the record it came from and is phrased as what the record says, never as what the person would say."
+      }
+    },
+    {
+      "invariantId": "INV-MEM-010",
+      "statement": "Every derivative — index, embedding, summary, hypothesis, relation, presentation preference — is reachable from the source it came from, and is erased with the account that owns it.",
+      "derivedFrom": ["INV-P0-005", "INV-P0-016"],
+      "severity": "P0",
+      "preventedFailure": "Deletion that removes the records while leaving the model's conclusions about them.",
+      "testable": {
+        "kind": "sql_testable",
+        "description": "The deletion sweep in migration 006 currently erases nine tables. Any table added by the Memory domain must be added to sweep_deleted_account() in the same change, and the existing deletion test extended to prove it."
+      }
+    },
+    {
+      "invariantId": "INV-MEM-011",
+      "statement": "A small, unremarkable record is a first-class memory. Nothing may drop, downrank or exclude a record on the grounds that it is minor.",
+      "derivedFrom": ["INV-P2-001", "INV-P0-012"],
+      "severity": "P1",
+      "preventedFailure": "A memory system that only remembers what looked significant, which is the opposite of what it is for.",
+      "testable": {
+        "kind": "contract_only",
+        "description": "Storage cost, retrieval performance and legal erasure remain real constraints and are handled as capacity decisions, never as judgements about a record's worth."
+      }
+    },
+    {
+      "invariantId": "INV-MEM-012",
+      "statement": "A relation, grouping or attribution may only link items owned by the same account, and may never bind a record to a person on inference alone.",
+      "derivedFrom": ["INV-P0-009", "INV-P0-013"],
+      "severity": "P0",
+      "preventedFailure": "Identity Misbinding: another person's record attaching to this account holder, or an inferred identity hardening into a stored fact.",
+      "testable": {
+        "kind": "sql_testable",
+        "description": "Enforceable exactly as the existing tenant policies are: any relation table carries owner and epoch and is covered by the same FORCE RLS predicate, so a cross-tenant link cannot be written at all."
+      }
+    }
+  ]
+}

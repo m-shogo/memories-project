@@ -1,0 +1,182 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/schemas/security/memory-provenance-invariant-set.v1.schema.json",
+  "title": "Memory OS Provenance and Interpretation Invariant Set v1",
+  "description": "Machine-readable form of the memory-domain invariants that already exist as prose in docs/formal-invariants.md and docs/trust-and-provenance.md. This contract exists because prose invariants gate nothing: an implementation can violate them and every test still passes. Each entry binds one invariant to the origin axis it constrains, the failure it prevents, and how it is testable. It defines no table, column or enum: naming is deliberately deferred until the Memory domain is actually built.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "invariantSetId",
+    "invariantSetVersion",
+    "boundAuthorities",
+    "originAxis",
+    "assertionAxis",
+    "invariants"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "invariantSetId": { "const": "memory-os.memory.provenance-invariants.round9" },
+    "invariantSetVersion": { "type": "integer", "minimum": 1 },
+    "boundAuthorities": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Repository documents this contract is derived from. The contract may not introduce a principle absent from these; it makes existing ones enforceable.",
+      "items": { "type": "string", "pattern": "^docs/.+\\.md$" }
+    },
+    "originAxis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["axisName", "rationale", "values", "existingVocabularyMapping", "gaps"],
+      "description": "Where a piece of content came from. Deliberately separate from how strongly it is supported: the existing ProvenanceLevel enum conflates the two, which is recorded under gaps rather than silently replaced.",
+      "properties": {
+        "axisName": { "const": "origin" },
+        "rationale": { "type": "string", "minLength": 1 },
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["value", "meaning", "canBecomeUserFact", "requiresSourceRef"],
+            "properties": {
+              "value": {
+                "type": "string",
+                "enum": [
+                  "firsthand",
+                  "service_record",
+                  "secondhand",
+                  "imported_document",
+                  "derived",
+                  "ai_summary",
+                  "ai_inferred"
+                ]
+              },
+              "meaning": { "type": "string", "minLength": 1 },
+              "canBecomeUserFact": {
+                "type": "boolean",
+                "description": "Whether content of this origin may ever be stored as the account holder's own first-person record. False for every AI origin: promotion is what this contract exists to forbid."
+              },
+              "requiresSourceRef": { "const": true }
+            }
+          }
+        },
+        "existingVocabularyMapping": {
+          "type": "array",
+          "description": "Mapping onto the ProvenanceLevel values already defined in docs/trust-and-provenance.md, so this axis refines existing vocabulary instead of forking it.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["origin", "existingProvenanceLevel"],
+            "properties": {
+              "origin": { "type": "string" },
+              "existingProvenanceLevel": { "type": ["string", "null"] },
+              "note": { "type": "string" }
+            }
+          }
+        },
+        "gaps": {
+          "type": "array",
+          "description": "Known problems in the existing vocabulary, recorded rather than quietly fixed. Resolving them is future work with its own gate.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["gapId", "description", "risk"],
+            "properties": {
+              "gapId": { "type": "string", "pattern": "^GAP-MEM-[0-9]{3}$" },
+              "description": { "type": "string", "minLength": 1 },
+              "risk": { "type": "string", "minLength": 1 },
+              "affectedPath": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "assertionAxis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["axisName", "rationale", "values"],
+      "description": "What kind of claim a stored item makes. Separate from origin because a firsthand record and an AI summary can both be about the same event while making very different claims.",
+      "properties": {
+        "axisName": { "const": "assertion" },
+        "rationale": { "type": "string", "minLength": 1 },
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["value", "meaning", "supersedable", "coexistsWithContradiction"],
+            "properties": {
+              "value": {
+                "type": "string",
+                "enum": [
+                  "record",
+                  "later_interpretation",
+                  "correction",
+                  "ai_view"
+                ]
+              },
+              "meaning": { "type": "string", "minLength": 1 },
+              "supersedable": {
+                "type": "boolean",
+                "description": "Whether a later item may mark this one superseded. Superseding never deletes or rewrites: the earlier item stays readable as the view held at its own time."
+              },
+              "coexistsWithContradiction": {
+                "type": "boolean",
+                "description": "Whether two mutually contradictory items of this kind may both persist. True for interpretation: a life is allowed to disagree with itself across years."
+              }
+            }
+          }
+        }
+      }
+    },
+    "invariants": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "invariantId",
+          "statement",
+          "derivedFrom",
+          "severity",
+          "preventedFailure",
+          "testable"
+        ],
+        "properties": {
+          "invariantId": { "type": "string", "pattern": "^INV-MEM-[0-9]{3}$" },
+          "statement": { "type": "string", "minLength": 1 },
+          "derivedFrom": {
+            "type": "array",
+            "minItems": 1,
+            "description": "Existing invariant identifiers or authority sections this restates. An invariant with no ancestor is a new product decision and must be argued in the authority document first.",
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "severity": { "type": "string", "enum": ["P0", "P1", "P2"] },
+          "preventedFailure": { "type": "string", "minLength": 1 },
+          "testable": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "description"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["contract_only", "sql_testable", "go_testable", "requires_unbuilt_domain"]
+              },
+              "description": { "type": "string", "minLength": 1 }
+            }
+          },
+          "currentlyViolatedBy": {
+            "type": "string",
+            "description": "Repository path and symbol of shipped code that violates this invariant today. Present only where a real violation was found; its presence is not permission to leave it unfixed."
+          }
+        }
+      }
+    }
+  }
+}
