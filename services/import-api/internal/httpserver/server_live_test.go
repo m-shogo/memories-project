@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -52,6 +53,8 @@ type liveServer struct {
 	server   *httptest.Server
 	executor *dbscope.Executor
 	objects  *objectstore.Client
+
+	accountControl pgrepo.AccountControl
 }
 
 func newLiveServer(t *testing.T) *liveServer {
@@ -111,6 +114,8 @@ func newLiveServer(t *testing.T) *liveServer {
 			"004_memory_os_account_session.sql",
 			"005_memory_os_apply_memory.sql",
 			"006_memory_os_deletion_fencing.sql",
+			"007_memory_os_app_login.sql",
+			"008_memory_os_deletion_runtime.sql",
 		} {
 			payload, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "infra", "postgresql", "security", name))
 			if err == nil {
@@ -181,12 +186,12 @@ func newLiveServer(t *testing.T) *liveServer {
 			Repository:   pgrepo.Apply{},
 			IDs:          cryptoids.Generator{},
 		}},
-		Account: accountdelete.Service{Repository: accountControl, Objects: objects, Guard: guard},
+		Account: accountdelete.Service{Repository: accountControl, Guard: guard},
 	})
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 	return &liveServer{pool: pool, appPool: appPool, sessions: sessions,
-		server: server, executor: executor, objects: objects}
+		server: server, executor: executor, objects: objects, accountControl: accountControl}
 }
 
 func (s *liveServer) issueSession(t *testing.T, accountID string) string {
@@ -719,25 +724,75 @@ func TestAccountDeletionFencesAndErasesOverHTTP(t *testing.T) {
 	}
 
 	response, body = server.request(t, http.MethodDelete, "/v1/account", ownerToken, nil)
-	if response.StatusCode != http.StatusOK {
+	if response.StatusCode != http.StatusAccepted {
 		t.Fatalf("account deletion failed: %d %s", response.StatusCode, body)
 	}
 	var receipt struct {
 		Status        string `json:"status"`
 		DeletionEpoch int64  `json:"deletionEpoch"`
-		Removed       []struct {
-			Table   string `json:"table"`
-			Removed int64  `json:"removed"`
-		} `json:"removed"`
 	}
 	if err := json.Unmarshal(body, &receipt); err != nil {
 		t.Fatal(err)
 	}
-	if receipt.Status != "deleted" || receipt.DeletionEpoch != 2 {
+	if receipt.Status != "deleting" || receipt.DeletionEpoch != 2 {
 		t.Fatalf("unexpected deletion receipt: %s", body)
 	}
+
+	// The request itself performed no erasure — the fence is what it promised.
+	var stillThere int
+	if err := server.pool.QueryRow(context.Background(),
+		"SELECT count(*) FROM memory_os.memory_item WHERE owner_account_id = $1", owner,
+	).Scan(&stillThere); err != nil {
+		t.Fatal(err)
+	}
+	if stillThere != 2 {
+		t.Fatalf("the request erased %d memory items; erasure belongs to the runtime", 2-stillThere)
+	}
+
+	// An interrupted attempt must leave the account claimable, not finished.
+	// A worker whose object store always fails stands in for a crash mid-sweep.
+	broken := accountdelete.Worker{
+		Queue:      server.accountControl,
+		Repository: server.accountControl,
+		Objects:    failingEraser{},
+	}
+	if _, err := broken.Sweep(context.Background(), 4); err == nil {
+		t.Fatal("a broken object store reported a successful erasure")
+	}
+	var state string
+	var attempts int
+	if err := server.pool.QueryRow(context.Background(),
+		`SELECT state, deletion_attempts FROM memory_os.account_control WHERE account_id = $1`, owner,
+	).Scan(&state, &attempts); err != nil {
+		t.Fatal(err)
+	}
+	if state != "deleting" || attempts < 1 {
+		t.Fatalf("after a failed attempt: state=%s attempts=%d", state, attempts)
+	}
+	if err := server.pool.QueryRow(context.Background(),
+		"SELECT count(*) FROM memory_os.memory_item WHERE owner_account_id = $1", owner,
+	).Scan(&stillThere); err != nil {
+		t.Fatal(err)
+	}
+	if stillThere != 2 {
+		t.Fatal("a failed attempt destroyed rows before its objects were gone")
+	}
+
+	// The next worker resumes and finishes it.
+	worker := accountdelete.Worker{
+		Queue:      server.accountControl,
+		Repository: server.accountControl,
+		Objects:    server.objects,
+	}
+	receipts, err := worker.Sweep(context.Background(), 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(receipts) != 1 || receipts[0].AccountID != owner || receipts[0].Attempts < 2 {
+		t.Fatalf("unexpected worker receipts: %+v", receipts)
+	}
 	removed := map[string]int64{}
-	for _, entry := range receipt.Removed {
+	for _, entry := range receipts[0].Removals {
 		removed[entry.Table] = entry.Removed
 	}
 	// The sweep must report the erasure it actually performed, including the
@@ -745,7 +800,7 @@ func TestAccountDeletionFencesAndErasesOverHTTP(t *testing.T) {
 	if removed["memory_item"] != 2 || removed["preview_ready"] != 1 ||
 		removed["import_job"] != 1 || removed["account_session"] != 2 ||
 		removed["quarantine_object_versions"] < 1 {
-		t.Fatalf("unexpected sweep accounting: %s", body)
+		t.Fatalf("unexpected sweep accounting: %+v", removed)
 	}
 
 	// The bytes are gone from the bucket, not merely unreferenced by the rows.
@@ -800,7 +855,6 @@ func TestAccountDeletionFencesAndErasesOverHTTP(t *testing.T) {
 	}
 
 	// The tombstone remains: the account is recorded as deleted, not forgotten.
-	var state string
 	var epoch int64
 	if err := server.pool.QueryRow(context.Background(),
 		"SELECT state, account_epoch FROM memory_os.account_control WHERE account_id = $1", owner,
@@ -868,4 +922,11 @@ func appLoginPool(t *testing.T, ctx context.Context, admin *pgxpool.Pool, adminU
 			currentUser, isSuperuser, bypassesRLS)
 	}
 	return pool
+}
+
+// failingEraser stands in for an object store that is unreachable mid-sweep.
+type failingEraser struct{}
+
+func (failingEraser) EraseObject(context.Context, string) (int, error) {
+	return 0, errors.New("object store unreachable")
 }

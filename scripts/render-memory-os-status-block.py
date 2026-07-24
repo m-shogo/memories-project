@@ -118,7 +118,18 @@ SECTIONS: list[dict] = [
         ],
         "done_lines": [
             "epoch bump fences every surface; authorized sweep erases all owned rows, sessions and stored object versions (live-tested over HTTP + MinIO)",
-            "a resumable background deletion runtime remains future work",
+        ],
+    },
+    {
+        "title": "background deletion runtime",
+        "requires": [
+            "backgroundDeletionRuntimeCreated",
+            "deletionRuntimeClaimSqlTestsPassed",
+            "deletionRuntimeResumptionLiveTestsPassed",
+        ],
+        "done_lines": [
+            "DELETE /v1/account returns 202 after fencing only; a leased worker erases and resumes after interruption (live-proven)",
+            "no alerting yet on an account whose deletion attempts keep climbing",
         ],
     },
     {

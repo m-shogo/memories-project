@@ -22,12 +22,12 @@ func (h AccountHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /v1/account", h.deleteAccount)
 }
 
-// accountDeleteResponse reports the erasure that actually happened. The counts
-// are the sweep's own accounting, not an estimate.
+// accountDeleteResponse reports that the account is fenced, not that erasure
+// has finished. Reporting counts here would claim an erasure the request did
+// not perform — the background runtime does that work.
 type accountDeleteResponse struct {
-	Status        string                       `json:"status"`
-	DeletionEpoch int64                        `json:"deletionEpoch"`
-	Removed       []accountdelete.TableRemoval `json:"removed"`
+	Status        string `json:"status"`
+	DeletionEpoch int64  `json:"deletionEpoch"`
 }
 
 func (h AccountHandler) deleteAccount(writer http.ResponseWriter, request *http.Request) {
@@ -47,10 +47,11 @@ func (h AccountHandler) deleteAccount(writer http.ResponseWriter, request *http.
 		writeAccountDeleteError(writer, err)
 		return
 	}
-	writeJSON(writer, http.StatusOK, accountDeleteResponse{
-		Status:        "deleted",
+	// 202: the account is unreachable from every surface as of now, and the
+	// erasure it was fenced for is still to come.
+	writeJSON(writer, http.StatusAccepted, accountDeleteResponse{
+		Status:        "deleting",
 		DeletionEpoch: receipt.DeletionEpoch,
-		Removed:       receipt.Removals,
 	})
 }
 

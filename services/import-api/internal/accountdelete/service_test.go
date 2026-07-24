@@ -64,14 +64,37 @@ func userPrincipal(t *testing.T) security.Principal {
 	return principal
 }
 
-func TestDeleteBumpsEpochThenSweeps(t *testing.T) {
-	repository := &stubRepository{
-		epoch:      5,
-		removals:   []TableRemoval{{Table: "memory_item", Removed: 3}},
-		objectKeys: []string{"quarantine/job-1/upl-1", "quarantine/job-1/upl-2"},
+type stubQueue struct {
+	claims    []Claim
+	index     int
+	claimErr  error
+	released  []string
+	releaseOk bool
+}
+
+func (q *stubQueue) Claim(context.Context, int) (Claim, bool, error) {
+	if q.claimErr != nil {
+		return Claim{}, false, q.claimErr
 	}
-	eraser := &stubEraser{perKey: 2}
-	service := Service{Repository: repository, Objects: eraser, Guard: stubGuard{}}
+	if q.index >= len(q.claims) {
+		return Claim{}, false, nil
+	}
+	claim := q.claims[q.index]
+	q.index++
+	return claim, true, nil
+}
+
+func (q *stubQueue) Release(_ context.Context, accountID string, _ int64) error {
+	q.released = append(q.released, accountID)
+	q.releaseOk = true
+	return nil
+}
+
+// Delete is now a fence, not an erasure. Claiming otherwise in the response
+// would tell the user their data was gone before anything had touched it.
+func TestDeleteFencesWithoutSweeping(t *testing.T) {
+	repository := &stubRepository{epoch: 5}
+	service := Service{Repository: repository, Guard: stubGuard{}}
 
 	receipt, err := service.Delete(context.Background(), userPrincipal(t))
 	if err != nil {
@@ -80,49 +103,74 @@ func TestDeleteBumpsEpochThenSweeps(t *testing.T) {
 	if receipt.DeletionEpoch != 5 || receipt.AccountID != "acct-delete-subject-01" {
 		t.Fatalf("unexpected receipt: %+v", receipt)
 	}
-	// The sweep must target the principal's own account at the bumped epoch.
-	if repository.sweptID != "acct-delete-subject-01" || repository.sweptEpoch != 5 {
-		t.Fatalf("sweep ran against %s at epoch %d", repository.sweptID, repository.sweptEpoch)
-	}
-	// Every listed object is erased, and the receipt carries the version count
-	// alongside the row counts.
-	if len(eraser.erased) != 2 {
-		t.Fatalf("erased %v", eraser.erased)
-	}
-	if len(receipt.Removals) != 2 || receipt.Removals[0].Removed != 3 ||
-		receipt.Removals[1].Table != "quarantine_object_versions" || receipt.Removals[1].Removed != 4 {
-		t.Fatalf("unexpected removals: %+v", receipt.Removals)
+	if repository.swept || len(receipt.Removals) != 0 {
+		t.Fatalf("the request performed erasure: swept=%v removals=%+v",
+			repository.swept, receipt.Removals)
 	}
 }
 
-// Objects must be gone before the rows that name them: the rows are the only
-// ledger of what the bucket holds, so a failed erasure must leave them intact
-// for the retry rather than stranding the objects forever.
-func TestDeleteKeepsTheLedgerWhenObjectErasureFails(t *testing.T) {
+func TestWorkerErasesClaimedAccounts(t *testing.T) {
 	repository := &stubRepository{
-		epoch:      5,
+		removals:   []TableRemoval{{Table: "memory_item", Removed: 3}},
 		objectKeys: []string{"quarantine/job-1/upl-1", "quarantine/job-1/upl-2"},
 	}
-	eraser := &stubEraser{perKey: 1, failOn: "quarantine/job-1/upl-2", failErr: errors.New("bucket unreachable")}
-	service := Service{Repository: repository, Objects: eraser, Guard: stubGuard{}}
+	eraser := &stubEraser{perKey: 2}
+	queue := &stubQueue{claims: []Claim{{AccountID: "acct-delete-subject-01", DeletionEpoch: 5, Attempts: 1}}}
+	worker := Worker{Queue: queue, Repository: repository, Objects: eraser}
 
-	if _, err := service.Delete(context.Background(), userPrincipal(t)); !errors.Is(err, ErrObjectEraseFailed) {
-		t.Fatalf("object erasure failure error = %v", err)
+	receipts, err := worker.Sweep(context.Background(), 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(receipts) != 1 || receipts[0].DeletionEpoch != 5 || receipts[0].Attempts != 1 {
+		t.Fatalf("unexpected receipts: %+v", receipts)
+	}
+	if repository.sweptID != "acct-delete-subject-01" || repository.sweptEpoch != 5 {
+		t.Fatalf("swept %s at epoch %d", repository.sweptID, repository.sweptEpoch)
+	}
+	if len(eraser.erased) != 2 {
+		t.Fatalf("erased %v", eraser.erased)
+	}
+	if len(receipts[0].Removals) != 2 ||
+		receipts[0].Removals[1].Table != "quarantine_object_versions" ||
+		receipts[0].Removals[1].Removed != 4 {
+		t.Fatalf("unexpected removals: %+v", receipts[0].Removals)
+	}
+	if queue.releaseOk {
+		t.Fatal("a successful sweep released its lease")
+	}
+}
+
+// A resumed attempt must be able to start immediately, so a failure hands the
+// lease back rather than making the account wait the lease out.
+func TestWorkerReleasesTheLeaseWhenErasureFails(t *testing.T) {
+	repository := &stubRepository{objectKeys: []string{"quarantine/job-1/upl-1"}}
+	eraser := &stubEraser{failOn: "quarantine/job-1/upl-1", failErr: errors.New("bucket unreachable")}
+	queue := &stubQueue{claims: []Claim{{AccountID: "acct-delete-subject-01", DeletionEpoch: 5}}}
+	worker := Worker{Queue: queue, Repository: repository, Objects: eraser}
+
+	if _, err := worker.Sweep(context.Background(), 4); !errors.Is(err, ErrObjectEraseFailed) {
+		t.Fatalf("worker error = %v", err)
 	}
 	if repository.swept {
 		t.Fatal("rows were swept even though objects survived")
 	}
+	if len(queue.released) != 1 {
+		t.Fatalf("lease releases: %v", queue.released)
+	}
 }
 
-func TestDeleteReportsLedgerReadFailure(t *testing.T) {
-	repository := &stubRepository{epoch: 5, keysErr: errors.New("connection lost")}
-	eraser := &stubEraser{}
-	service := Service{Repository: repository, Objects: eraser, Guard: stubGuard{}}
-	if _, err := service.Delete(context.Background(), userPrincipal(t)); !errors.Is(err, ErrSweepFailed) {
-		t.Fatalf("ledger read failure error = %v", err)
+func TestWorkerStopsWhenNothingIsPending(t *testing.T) {
+	worker := Worker{Queue: &stubQueue{}, Repository: &stubRepository{}, Objects: &stubEraser{}}
+	receipts, err := worker.Sweep(context.Background(), 4)
+	if err != nil || len(receipts) != 0 {
+		t.Fatalf("idle sweep returned %v, %v", receipts, err)
 	}
-	if len(eraser.erased) != 0 || repository.swept {
-		t.Fatal("erasure proceeded without a readable ledger")
+}
+
+func TestWorkerRequiresComposition(t *testing.T) {
+	if _, err := (Worker{}).Sweep(context.Background(), 1); !errors.Is(err, ErrServiceUnavailable) {
+		t.Fatalf("uncomposed worker error = %v", err)
 	}
 }
 
@@ -138,7 +186,7 @@ func TestDeleteRejectsLowerAuthorities(t *testing.T) {
 			t.Fatal(err)
 		}
 		repository := &stubRepository{epoch: 5}
-		service := Service{Repository: repository, Objects: &stubEraser{}, Guard: stubGuard{}}
+		service := Service{Repository: repository, Guard: stubGuard{}}
 		if _, err := service.Delete(context.Background(), principal); !errors.Is(err, ErrAuthorityNotAllowed) {
 			t.Fatalf("%s deletion error = %v", authority, err)
 		}
@@ -150,7 +198,7 @@ func TestDeleteRejectsLowerAuthorities(t *testing.T) {
 
 func TestDeleteStopsOnFencedAccount(t *testing.T) {
 	repository := &stubRepository{epoch: 5}
-	service := Service{Repository: repository, Objects: &stubEraser{}, Guard: stubGuard{err: epochguard.ErrAccountDeleting}}
+	service := Service{Repository: repository, Guard: stubGuard{err: epochguard.ErrAccountDeleting}}
 	if _, err := service.Delete(context.Background(), userPrincipal(t)); !errors.Is(err, epochguard.ErrAccountDeleting) {
 		t.Fatalf("fenced deletion error = %v", err)
 	}
@@ -164,23 +212,13 @@ func TestDeleteStopsOnFencedAccount(t *testing.T) {
 func TestDeleteRefusesToSweepWithoutAnEpochBump(t *testing.T) {
 	for _, epoch := range []int64{4, 3, 0} {
 		repository := &stubRepository{epoch: epoch}
-		service := Service{Repository: repository, Objects: &stubEraser{}, Guard: stubGuard{}}
+		service := Service{Repository: repository, Guard: stubGuard{}}
 		if _, err := service.Delete(context.Background(), userPrincipal(t)); !errors.Is(err, ErrBeginDeletion) {
 			t.Fatalf("epoch %d error = %v", epoch, err)
 		}
 		if repository.swept {
 			t.Fatalf("epoch %d reached the sweep", epoch)
 		}
-	}
-}
-
-// A failed sweep is reported as a failure; claiming success would assert an
-// erasure that did not happen.
-func TestDeleteReportsSweepFailure(t *testing.T) {
-	repository := &stubRepository{epoch: 5, sweepErr: errors.New("connection lost")}
-	service := Service{Repository: repository, Objects: &stubEraser{}, Guard: stubGuard{}}
-	if _, err := service.Delete(context.Background(), userPrincipal(t)); !errors.Is(err, ErrSweepFailed) {
-		t.Fatalf("sweep failure error = %v", err)
 	}
 }
 

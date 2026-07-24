@@ -281,6 +281,7 @@ func applyMigrations(ctx context.Context, pool *pgxpool.Pool, databaseURL string
 		"005_memory_os_apply_memory.sql",
 		"006_memory_os_deletion_fencing.sql",
 		"007_memory_os_app_login.sql",
+		"008_memory_os_deletion_runtime.sql",
 	} {
 		payload, err := os.ReadFile(filepath.Join(dir, name))
 		if err != nil {

@@ -339,12 +339,21 @@ Production remains forbidden while any remains:
 # 8. Correct next sequence
 
 ```txt
-0. deletion fencing: epoch bump + deletion-runtime sweep with live fencing proof — done
-   (see docs/memory-os-deletion-fencing-checkpoint-2026-07-24.md)
-1. quarantine object erasure on deletion: the sweep clears the rows, not yet the
-   versioned objects in the bucket — the remaining hole in "delete means gone"
-4. Apple code exchange / replay store (needs real Apple credentials — later boundary)
-5. begin iOS only after backend P0 closes
+done, each with a live proof and a checkpoint document:
+0. deletion fencing (epoch bump + authorized sweep)
+   docs/memory-os-deletion-fencing-checkpoint-2026-07-24.md
+1. quarantine object erasure (every version of every owned key)
+   same document
+2. non-superuser deployment login (FORCE RLS proven on the real path)
+   docs/memory-os-deployment-login-checkpoint-2026-07-24.md
+3. background deletion runtime (202 + leased, resumable worker)
+   docs/memory-os-deletion-runtime-checkpoint-2026-07-24.md
+
+next:
+4. archive the parser fuzz corpus so found inputs become regression tests
+5. alerting on accounts whose deletion_attempts keeps climbing
+6. Apple code exchange / replay store (needs real Apple credentials — later boundary)
+7. begin iOS only after backend P0 closes
 ```
 
 Memory Town remains after Capture / Import P0 blockers close.

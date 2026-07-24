@@ -128,8 +128,18 @@ func run(listen, databaseURL, s3Endpoint, s3Access, s3Secret, bucket string, dev
 		Upload:   fenced.Upload{Guard: guard, Inner: uploadService},
 		Preview:  fenced.PreviewRead{Guard: guard, Inner: previewService},
 		Apply:    fenced.Apply{Guard: guard, Inner: applyService},
-		Account:  accountdelete.Service{Repository: accountControl, Objects: objects, Guard: guard},
+		Account:  accountdelete.Service{Repository: accountControl, Guard: guard},
 	}))
+
+	// The deletion runtime drains accounts the API already fenced. It runs in
+	// the same process for now, but it claims through the database lease, so
+	// moving it to its own deployment later changes nothing about correctness.
+	deletionWorker := accountdelete.Worker{
+		Queue:      accountControl,
+		Repository: accountControl,
+		Objects:    objects,
+	}
+	go runDeletionRuntime(ctx, deletionWorker)
 
 	errs := make(chan error, 1)
 	go func() {
@@ -155,4 +165,28 @@ func envOr(name string, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+// runDeletionRuntime polls for fenced accounts until the process shuts down. A
+// failed sweep is logged without a reason string: the account stays fenced and
+// claimable, and this log line must never carry a fragment of user content.
+func runDeletionRuntime(ctx context.Context, worker accountdelete.Worker) {
+	const interval = 30 * time.Second
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			receipts, err := worker.Sweep(ctx, 8)
+			for _, receipt := range receipts {
+				fmt.Printf("deletion runtime erased account at epoch %d (attempt %d)\n",
+					receipt.DeletionEpoch, receipt.Attempts)
+			}
+			if err != nil && ctx.Err() == nil {
+				fmt.Printf("deletion runtime sweep failed; account remains fenced and claimable\n")
+			}
+		}
+	}
 }

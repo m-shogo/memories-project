@@ -138,6 +138,70 @@ func (a AccountControl) ObjectKeys(ctx context.Context, accountID string, deleti
 	return keys, nil
 }
 
+// Claim leases one account that is already committed to deletion. The worker
+// cannot name the account: claim_deletion_work() picks it, so a worker can
+// never be aimed at a live tenant. The deletion principal used here carries a
+// placeholder account context because the claim runs before an account is
+// known; the function itself is gated on the EXECUTE grant.
+func (a AccountControl) Claim(ctx context.Context, leaseSeconds int) (accountdelete.Claim, bool, error) {
+	if a.Transactions == nil {
+		return accountdelete.Claim{}, false, errNoPool
+	}
+	principal, err := security.NewVerifiedPrincipal(claimContextAccount, 0, security.AuthorityDeletionWorker)
+	if err != nil {
+		return accountdelete.Claim{}, false, fmt.Errorf("build deletion principal: %w", err)
+	}
+	var claim accountdelete.Claim
+	found := false
+	err = a.Transactions.WithinPrincipal(ctx, principal, dbscope.RoleDeletion,
+		func(ctx context.Context, tx dbscope.Transaction) error {
+			adapted, err := pgscope.From(tx)
+			if err != nil {
+				return err
+			}
+			row := adapted.QueryRow(ctx,
+				"SELECT account_id, account_epoch, attempts FROM memory_os.claim_deletion_work($1)",
+				leaseSeconds)
+			switch err := row.Scan(&claim.AccountID, &claim.DeletionEpoch, &claim.Attempts); {
+			case errors.Is(err, pgx.ErrNoRows):
+				return nil
+			case err != nil:
+				return fmt.Errorf("claim deletion work: %w", err)
+			}
+			found = true
+			return nil
+		})
+	if err != nil {
+		return accountdelete.Claim{}, false, err
+	}
+	return claim, found, nil
+}
+
+// claimContextAccount satisfies the principal validator for the one call that
+// legitimately has no account yet. It is not a real account and never reaches
+// a policy predicate: claim_deletion_work() ignores the account context.
+const claimContextAccount = "deletion-runtime-claim-context"
+
+// Release hands a lease back after a failed attempt so the next worker can
+// retry immediately instead of waiting the lease out.
+func (a AccountControl) Release(ctx context.Context, accountID string, deletionEpoch int64) error {
+	if a.Transactions == nil {
+		return errNoPool
+	}
+	principal, err := security.NewVerifiedPrincipal(accountID, deletionEpoch, security.AuthorityDeletionWorker)
+	if err != nil {
+		return fmt.Errorf("build deletion principal: %w", err)
+	}
+	return a.Transactions.WithinPrincipal(ctx, principal, dbscope.RoleDeletion,
+		func(ctx context.Context, tx dbscope.Transaction) error {
+			adapted, err := pgscope.From(tx)
+			if err != nil {
+				return err
+			}
+			return adapted.Exec(ctx, "SELECT memory_os.release_deletion_lease()")
+		})
+}
+
 // Sweep erases the account's rows and records completion in one transaction
 // under the deletion runtime role. Keeping both in a single transaction means
 // the account can never be marked 'deleted' while rows survive: a failure

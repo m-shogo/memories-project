@@ -33,6 +33,7 @@ type TableRemoval struct {
 type Receipt struct {
 	AccountID     string
 	DeletionEpoch int64
+	Attempts      int
 	Removals      []TableRemoval
 }
 
@@ -63,7 +64,6 @@ type Guard interface {
 
 type Service struct {
 	Repository Repository
-	Objects    ObjectEraser
 	Guard      Guard
 }
 
@@ -71,7 +71,7 @@ type Service struct {
 // do so: device sessions, browser pairings and worker leases are lower
 // authorities that must not be able to destroy an account.
 func (s Service) Delete(ctx context.Context, principal security.Principal) (Receipt, error) {
-	if s.Repository == nil || s.Guard == nil || s.Objects == nil {
+	if s.Repository == nil || s.Guard == nil {
 		return Receipt{}, ErrServiceUnavailable
 	}
 	if err := principal.Validate(); err != nil {
@@ -94,37 +94,14 @@ func (s Service) Delete(ctx context.Context, principal security.Principal) (Rece
 		return Receipt{}, fmt.Errorf("%w: deletion epoch did not advance", ErrBeginDeletion)
 	}
 
-	// Objects are erased before the rows that point at them. The rows are the
-	// only ledger of what exists in the bucket, so dropping them first would
-	// strand the objects permanently; this order means a failed attempt can
-	// simply be retried, and version deletes are idempotent.
-	keys, err := s.Repository.ObjectKeys(ctx, principal.AccountID(), deletionEpoch)
-	if err != nil {
-		return Receipt{}, fmt.Errorf("%w: %v", ErrSweepFailed, err)
-	}
-	erasedVersions := 0
-	for _, key := range keys {
-		erased, err := s.Objects.EraseObject(ctx, key)
-		erasedVersions += erased
-		if err != nil {
-			// The account stays fenced in 'deleting' with its ledger intact.
-			return Receipt{}, fmt.Errorf("%w: %v", ErrObjectEraseFailed, err)
-		}
-	}
-
-	removals, err := s.Repository.Sweep(ctx, principal.AccountID(), deletionEpoch)
-	if err != nil {
-		// The account stays fenced in 'deleting' state: no surface can reach it
-		// and a retry can resume the sweep. Reporting failure is required —
-		// silently returning success would claim an erasure that did not happen.
-		return Receipt{}, fmt.Errorf("%w: %v", ErrSweepFailed, err)
-	}
+	// Erasure itself is deliberately not done here. It touches every table and
+	// the object store, and tying it to one HTTP connection meant a timeout, a
+	// deploy or a crash mid-sweep left the account fenced with nothing looking
+	// for it again. The bump above is the part that must be synchronous: from
+	// this point the account is unreachable from every surface, which is the
+	// promise the user is actually owed at request time.
 	return Receipt{
 		AccountID:     principal.AccountID(),
 		DeletionEpoch: deletionEpoch,
-		Removals: append(removals, TableRemoval{
-			Table:   "quarantine_object_versions",
-			Removed: int64(erasedVersions),
-		}),
 	}, nil
 }
