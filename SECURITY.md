@@ -91,7 +91,7 @@ current full-repository Go suite:
 PASS in a local golang:1.23 Linux container at the recorded HEAD
 
 remote Actions:
-update-safe-fields-closure HEAD 28bb5d2 CONFIRMED green (Import API run 30067896241, Security Contracts run 30067896190)
+apple-code-exchange HEAD ad089bf CONFIRMED green (Import API run 30094485640, Security Contracts run 30094485689)
 
 production:
 NO-GO

@@ -194,14 +194,14 @@
     "archiveSafetyDenies": 24
   },
   "remoteEvidence": {
-    "checkpointLabel": "update-safe-fields-closure",
-    "headSha": "28bb5d22097197b2b556c3f008f4b81c24e1e4da",
-    "headShaShort": "28bb5d2",
-    "importApiRunId": 30067896241,
-    "importApiRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/30067896241",
-    "securityContractsRunId": 30067896190,
-    "securityContractsRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/30067896190",
-    "note": "Both workflows ran at this HEAD: this checkpoint changes services/ (Import API) and docs+scripts (Security Contracts). No path-filter skip applies.",
+    "checkpointLabel": "apple-code-exchange",
+    "headSha": "ad089bf5936a70a13aaa4ac992c3caf388dca5a2",
+    "headShaShort": "ad089bf",
+    "importApiRunId": 30094485640,
+    "importApiRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/30094485640",
+    "securityContractsRunId": 30094485689,
+    "securityContractsRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/30094485689",
+    "note": "Both workflows ran at this HEAD: this checkpoint changes services/ (Import API) and docs/schemas/scripts (Security Contracts). No path-filter skip applies. Apple is mock-proven only; appleCodeExchangeLiveProven is false pending real credentials.",
     "confirmedAt": "2026-07-24"
   },
   "nextRequired": [
