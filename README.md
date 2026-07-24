@@ -121,8 +121,8 @@ current full-repository Go suite:
 PASS in a local golang:1.23 Linux container at the recorded HEAD
 
 remote Actions:
-deletion-backlog-alerting HEAD 4fc0af8 CONFIRMED green (Import API run 30065115933, Security Contracts run 30065126528)
-Import API Security Slice last ran at 067350c, not at HEAD: Import API does not run at 4fc0af8: that commit changes only the status-block generator, which its path filters exclude. 067350c is the newest commit touching anything it checks.
+memory-domain-architecture-checkpoint HEAD 7de3bc5 CONFIRMED green (Import API run 30065115933, Security Contracts run 30067013808)
+Import API Security Slice last ran at 067350c, not at HEAD: Import API does not run at 7de3bc5: this checkpoint changes only documents, schemas, fixtures, one validator and the workflow it is wired into, and nothing under services/. 067350c is the newest commit touching anything it checks. Its result is not evidence for this HEAD and is not treated as such.
 
 production:
 NO-GO

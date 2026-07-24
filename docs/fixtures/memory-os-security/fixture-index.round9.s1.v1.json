@@ -189,15 +189,15 @@
     "archiveSafetyDenies": 24
   },
   "remoteEvidence": {
-    "checkpointLabel": "deletion-backlog-alerting",
-    "headSha": "4fc0af8",
-    "headShaShort": "4fc0af8",
+    "checkpointLabel": "memory-domain-architecture-checkpoint",
+    "headSha": "7de3bc5",
+    "headShaShort": "7de3bc5",
     "importApiRunId": 30065115933,
     "importApiRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/30065115933",
-    "securityContractsRunId": 30065126528,
-    "securityContractsRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/30065126528",
+    "securityContractsRunId": 30067013808,
+    "securityContractsRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/30067013808",
     "importApiHeadShaShort": "067350c",
-    "importApiNote": "Import API does not run at 4fc0af8: that commit changes only the status-block generator, which its path filters exclude. 067350c is the newest commit touching anything it checks.",
+    "importApiNote": "Import API does not run at 7de3bc5: this checkpoint changes only documents, schemas, fixtures, one validator and the workflow it is wired into, and nothing under services/. 067350c is the newest commit touching anything it checks. Its result is not evidence for this HEAD and is not treated as such.",
     "confirmedAt": "2026-07-24"
   },
   "nextRequired": [
