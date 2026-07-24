@@ -179,15 +179,15 @@
     "archiveSafetyDenies": 24
   },
   "remoteEvidence": {
-    "checkpointLabel": "deployment-login-deletion-runtime-fuzz-corpus",
-    "headSha": "0f79f5c82b4736b59218b8965ae04aba382846af",
-    "headShaShort": "0f79f5c",
-    "importApiRunId": 30059874457,
-    "importApiRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/30059874457",
-    "securityContractsRunId": 30059815370,
-    "securityContractsRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/30059815370",
-    "securityContractsHeadShaShort": "b030b66",
-    "securityContractsNote": "Security Contracts does not run at 0f79f5c: that commit touches only fuzz testdata and a script, which its path filters exclude. b030b66 is the newest commit that changed anything it checks.",
+    "checkpointLabel": "deletion-backlog-alerting",
+    "headSha": "4fc0af8",
+    "headShaShort": "4fc0af8",
+    "importApiRunId": 30065115933,
+    "importApiRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/30065115933",
+    "securityContractsRunId": 30065126528,
+    "securityContractsRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/30065126528",
+    "importApiHeadShaShort": "067350c",
+    "importApiNote": "Import API does not run at 4fc0af8: that commit changes only the status-block generator, which its path filters exclude. 067350c is the newest commit touching anything it checks.",
     "confirmedAt": "2026-07-24"
   },
   "nextRequired": [

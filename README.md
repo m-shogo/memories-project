@@ -117,8 +117,8 @@ current full-repository Go suite:
 PASS in a local golang:1.23 Linux container at the recorded HEAD
 
 remote Actions:
-deployment-login-deletion-runtime-fuzz-corpus HEAD 0f79f5c CONFIRMED green (Import API run 30059874457, Security Contracts run 30059815370)
-Security Contracts last ran at b030b66, not at HEAD: Security Contracts does not run at 0f79f5c: that commit touches only fuzz testdata and a script, which its path filters exclude. b030b66 is the newest commit that changed anything it checks.
+deletion-backlog-alerting HEAD 4fc0af8 CONFIRMED green (Import API run 30065115933, Security Contracts run 30065126528)
+Import API Security Slice last ran at 067350c, not at HEAD: Import API does not run at 4fc0af8: that commit changes only the status-block generator, which its path filters exclude. 067350c is the newest commit touching anything it checks.
 
 production:
 NO-GO

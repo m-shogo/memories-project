@@ -77,6 +77,29 @@ surface, not a tenant one.
   resumed worker completes the deletion the backlog is healthy again, because
   an alert that never clears is an alert nobody reads.
 
+## Observed in the real binary
+
+The alert was watched end to end, not only unit-proven. `cmd/import-api-server`
+was pointed at the dev PostgreSQL with a deliberately unreachable object-store
+endpoint and an account seeded in `deleting`:
+
+```txt
+deletion runtime sweep failed; account remains fenced and claimable
+ALERT deletion backlog: 1 pending, 1 stuck at >=3 attempts (worst 6 attempts, oldest pending 5h0m40s)
+deletion runtime sweep failed; account remains fenced and claimable
+ALERT deletion backlog: 1 pending, 1 stuck at >=3 attempts (worst 7 attempts, oldest pending 5h1m10s)
+```
+
+Three things this confirmed that the unit tests could not: the failure line
+carries no reason string, the alert carries counts and ages but no account
+identifier, and the attempt count actually climbs across cycles rather than
+resetting. The seeded rows were removed from the dev database afterwards.
+
+An earlier attempt at this demo seeded an account with a high attempt count but
+nothing to erase — the runtime simply deleted it and no alert fired. That was
+correct: the account was not stuck, only labelled as such. The alert follows
+whether erasure fails, not what the counter says.
+
 ## Not done
 
 - The alert is a line on stdout from the runtime loop. Wiring it to a real
