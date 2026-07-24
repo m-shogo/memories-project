@@ -191,15 +191,14 @@
     "archiveSafetyDenies": 24
   },
   "remoteEvidence": {
-    "checkpointLabel": "memory-domain-architecture-checkpoint",
-    "headSha": "7de3bc5",
-    "headShaShort": "7de3bc5",
-    "importApiRunId": 30065115933,
-    "importApiRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/30065115933",
-    "securityContractsRunId": 30067013808,
-    "securityContractsRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/30067013808",
-    "importApiHeadShaShort": "067350c",
-    "importApiNote": "Import API does not run at 7de3bc5: this checkpoint changes only documents, schemas, fixtures, one validator and the workflow it is wired into, and nothing under services/. 067350c is the newest commit touching anything it checks. Its result is not evidence for this HEAD and is not treated as such.",
+    "checkpointLabel": "update-safe-fields-closure",
+    "headSha": "28bb5d22097197b2b556c3f008f4b81c24e1e4da",
+    "headShaShort": "28bb5d2",
+    "importApiRunId": 30067896241,
+    "importApiRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/30067896241",
+    "securityContractsRunId": 30067896190,
+    "securityContractsRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/30067896190",
+    "note": "Both workflows ran at this HEAD: this checkpoint changes services/ (Import API) and docs+scripts (Security Contracts). No path-filter skip applies.",
     "confirmedAt": "2026-07-24"
   },
   "nextRequired": [

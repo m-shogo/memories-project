@@ -121,8 +121,7 @@ current full-repository Go suite:
 PASS in a local golang:1.23 Linux container at the recorded HEAD
 
 remote Actions:
-memory-domain-architecture-checkpoint HEAD 7de3bc5 CONFIRMED green (Import API run 30065115933, Security Contracts run 30067013808)
-Import API Security Slice last ran at 067350c, not at HEAD: Import API does not run at 7de3bc5: this checkpoint changes only documents, schemas, fixtures, one validator and the workflow it is wired into, and nothing under services/. 067350c is the newest commit touching anything it checks. Its result is not evidence for this HEAD and is not treated as such.
+update-safe-fields-closure HEAD 28bb5d2 CONFIRMED green (Import API run 30067896241, Security Contracts run 30067896190)
 
 production:
 NO-GO
