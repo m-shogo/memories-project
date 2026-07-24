@@ -50,6 +50,31 @@ ENTRYPOINTS = {
             "the branch has run green since",
         ],
     },
+    "docs/memory-os-current-authority-order-round-10-operability.md": {
+        "required": [
+            "Implementation truth:",
+            "Readiness judgement:",
+            "current code, migrations and executable tests for implementation facts",
+            "scripts/validate-memory-os-entry-docs.py",
+            "a checkpoint statement is not stronger than current code and tests",
+        ],
+        "forbidden": [
+            "newest applicable implementation checkpoint\n7. current code",
+        ],
+    },
+    "docs/memory-os-current-authority-order-round-9-security.md": {
+        "required": [
+            "SUBORDINATE TO ROUND 10",
+            "memory-os-current-authority-order-round-10-operability.md",
+            "executable HTTP server exists",
+            "Production-readiness judgement is governed by",
+        ],
+        "forbidden": [
+            "# Memory OS Current Authority Order — Round 9 Security",
+            "there is no executable server yet",
+            "Apple code exchange/secret rotation/replay/session persistence",
+        ],
+    },
 }
 
 
@@ -70,7 +95,8 @@ def main() -> int:
             if phrase in text:
                 failures.append(f"{relative}: contains stale or unsafe completion claim: {phrase!r}")
 
-        if "production ready" in text.lower() and "not production ready" not in text.lower():
+        lowered = text.lower()
+        if "production ready" in lowered and "not production ready" not in lowered:
             failures.append(f"{relative}: unqualified production-ready wording")
 
     if failures:
