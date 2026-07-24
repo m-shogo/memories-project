@@ -15,6 +15,7 @@ on:
       - "scripts/validate-memory-os-parser-security.py"
       - "scripts/validate-memory-os-preview-spool.py"
       - "scripts/validate-memory-os-canonical-records.py"
+      - "scripts/validate-memory-os-memory-provenance.py"
       - "scripts/render-memory-os-status-block.py"
       - "requirements-security-validation.txt"
       - ".github/workflows/security-contracts.yml"
@@ -34,6 +35,7 @@ on:
       - "scripts/validate-memory-os-parser-security.py"
       - "scripts/validate-memory-os-preview-spool.py"
       - "scripts/validate-memory-os-canonical-records.py"
+      - "scripts/validate-memory-os-memory-provenance.py"
       - "scripts/render-memory-os-status-block.py"
       - "requirements-security-validation.txt"
       - ".github/workflows/security-contracts.yml"
@@ -71,6 +73,7 @@ jobs:
           python -m py_compile scripts/validate-memory-os-preview-spool.py
           python -m py_compile scripts/render-memory-os-status-block.py
           python -m py_compile scripts/validate-memory-os-canonical-records.py
+          python -m py_compile scripts/validate-memory-os-memory-provenance.py
 
       - name: Validate security schemas and fixtures
         run: python scripts/validate-memory-os-security.py
@@ -98,6 +101,9 @@ jobs:
 
       - name: Validate canonical adapter record contract
         run: python scripts/validate-memory-os-canonical-records.py
+
+      - name: Validate memory provenance and interpretation invariants
+        run: python scripts/validate-memory-os-memory-provenance.py
 
   validate-live-postgresql-rls:
     runs-on: ubuntu-latest
