@@ -179,9 +179,18 @@ def validate_global_boundary(document: dict[str, Any]) -> None:
         if boundary.get(field) is not True:
             raise ValidationFailure(f"global signed-upload boundary must be true: {field}")
 
+    # The Apple login endpoint is the one operation that is legitimately
+    # unauthenticated: it is what mints a session. Its own verifier — Apple
+    # token signature, server-side code exchange, single-use nonce/code — is the
+    # authentication, so it carries no bearer scheme. Every other operation must.
+    unauthenticated_by_design = {"/v1/auth/apple"}
     for path, path_item in document["paths"].items():
         for method, operation in path_item.items():
             if method not in {"get", "post", "put", "patch", "delete"}:
+                continue
+            if path in unauthenticated_by_design:
+                if operation.get("security"):
+                    raise ValidationFailure(f"session-minting endpoint must not require a bearer: {method.upper()} {path}")
                 continue
             if not operation.get("security"):
                 raise ValidationFailure(f"unauthenticated operation forbidden: {method.upper()} {path}")

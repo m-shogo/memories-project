@@ -9,9 +9,53 @@
     { "url": "https://api.memory-os.example" }
   ],
   "tags": [
+    { "name": "AppleAuth" },
     { "name": "ImportUpload" }
   ],
   "paths": {
+    "/v1/auth/apple": {
+      "post": {
+        "tags": ["AppleAuth"],
+        "operationId": "appleLogin",
+        "summary": "Exchange a verified Apple identity for a Memory OS session.",
+        "description": "Unauthenticated: this endpoint mints the session. The server verifies the identity token against Apple's keys, exchanges the authorization code server-side, enforces single-use nonce and code, and binds the account by issuer+subject. No account id or email in the body is trusted.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AppleLoginRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Session issued.",
+            "headers": { "Cache-Control": { "$ref": "#/components/headers/NoStore" } },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AppleLoginResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "SEC_APPLE_LOGIN_REQUEST_INVALID: the request or identity token is malformed.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SafeError" } } }
+          },
+          "401": {
+            "description": "SEC_APPLE_LOGIN_REJECTED: the identity or code did not verify, or a credential was replayed. One code, so the failing check cannot be probed.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SafeError" } } }
+          },
+          "409": {
+            "description": "SEC_APPLE_ACCOUNT_CONFLICT: the Apple identity resolves to a non-active account; recovery is required rather than revival.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SafeError" } } }
+          },
+          "503": {
+            "description": "SEC_SERVICE_UNAVAILABLE: Apple or a dependency was unavailable, or Apple login is not configured. Safe to retry.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SafeError" } } }
+          }
+        }
+      }
+    },
     "/v1/import-jobs/{jobId}/upload-authorizations": {
       "post": {
         "tags": ["ImportUpload"],
@@ -193,6 +237,29 @@
       }
     },
     "schemas": {
+      "AppleLoginRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["identityToken", "authorizationCode", "clientId", "nonce"],
+        "description": "Client-supplied Apple material. Carries no account id and no email; every field is validated against Apple's signed token before it influences anything.",
+        "properties": {
+          "identityToken": { "type": "string", "maxLength": 16384, "description": "The Apple identity token (JWT) from the client." },
+          "authorizationCode": { "type": "string", "maxLength": 4096, "description": "The single-use Apple authorization code, exchanged server-side." },
+          "clientId": { "type": "string", "maxLength": 255, "description": "The Apple Services ID / client id; must equal the token audience." },
+          "nonce": { "type": "string", "maxLength": 256, "description": "The expected nonce claim (already the client's sha256 per the Apple auth contract)." },
+          "redirectUri": { "type": "string", "maxLength": 2048, "description": "Optional; when present, must match the code's original redirect." }
+        }
+      },
+      "AppleLoginResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sessionToken", "accountId"],
+        "description": "The issued session. No Apple material and no token internals are returned.",
+        "properties": {
+          "sessionToken": { "type": "string", "description": "Bearer token for subsequent authenticated requests." },
+          "accountId": { "type": "string", "description": "The resolved Memory OS account id." }
+        }
+      },
       "OpaqueId": {
         "type": "string",
         "minLength": 16,
