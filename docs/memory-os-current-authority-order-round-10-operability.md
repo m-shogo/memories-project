@@ -1,6 +1,6 @@
 # Memory OS Current Authority Order — Round 10 Operability
 
-最終更新: 2026-07-24
+最終更新: 2026-07-25
 
 Status: CURRENT PRODUCTION-READINESS AUTHORITY
 
@@ -26,20 +26,29 @@ before additional product breadth
 
 The repository must not claim production readiness from design quality, local tests, CI health or component-level recovery alone. A capability moves to READY only when executable evidence exists at a named repository path and the operability validator accepts it.
 
+## Two kinds of authority
+
+Do not mix implementation truth with readiness judgement.
+
+- **Implementation truth:** current code, migrations, executable tests and exact-HEAD runtime evidence decide what exists.
+- **Readiness judgement:** this Round 10 authority, the machine-readable operability status and the audit decide whether that implementation is sufficient for production.
+
+A checkpoint is historical evidence. It can explain a change, but it cannot override newer code or tests.
+
 ## Authority order
 
 Conflicts are resolved from top to bottom:
 
-1. `docs/memory-os-current-authority-order-round-10-operability.md`
-2. `contracts/operations/production-operability-status.json`
-3. `docs/memory-os-production-operability-audit-2026-07-24.md`
-4. `docs/memory-os-current-authority-order-round-9-security.md`
-5. `docs/memory-os-current-implementation-status-and-roadmap-2026-07-17.md`
-6. newest applicable implementation checkpoint
-7. current code and executable tests
-8. historical progress documents
+1. `docs/memory-os-current-authority-order-round-10-operability.md` for production-readiness judgement;
+2. `contracts/operations/production-operability-status.json` for machine-readable gate state;
+3. `docs/memory-os-production-operability-audit-2026-07-24.md` for detailed gate interpretation;
+4. current code, migrations and executable tests for implementation facts;
+5. exact-HEAD local/runtime/remote evidence whose scope is explicitly recorded;
+6. `docs/memory-os-current-authority-order-round-9-security.md` for subordinate security architecture decisions;
+7. current roadmap and newest applicable implementation checkpoint;
+8. historical progress and handoff documents.
 
-Code and tests show what exists. This authority decides whether that evidence supports a production-readiness claim. Historical documents never override a newer narrower verdict.
+Historical documents never override newer code or a newer narrower verdict. A green workflow at an older commit never proves a newer HEAD.
 
 ## Binding distinctions
 
@@ -52,6 +61,8 @@ Code and tests show what exists. This authority decides whether that evidence su
 - a restartable worker is not an incident-recovery procedure
 - version pinning is not a compatibility policy
 - documentation without executable evidence is not completion
+- a checkpoint statement is not stronger than current code and tests
+- a fake external dependency proves integration behavior, not production credentials or provider behavior
 
 ## Mandatory production gates
 
@@ -109,11 +120,22 @@ Detailed audit:
 
 `docs/memory-os-production-operability-audit-2026-07-24.md`
 
-CI validator:
+CI validators:
 
-`scripts/validate-memory-os-operability.py`
+- `scripts/validate-memory-os-operability.py`
+- `scripts/validate-memory-os-entry-docs.py`
 
-The validator must fail when a mandatory gate disappears, a P0 stops being blocking, READY retains missing evidence, READY lacks repository evidence references, a referenced evidence file does not exist, production is marked GO while a P0 is incomplete, the authority documents disagree, or a binding distinction is removed.
+The validators must fail when:
+
+- a mandatory gate disappears;
+- a P0 stops being blocking;
+- READY retains missing evidence;
+- READY lacks repository evidence references;
+- a referenced evidence file does not exist;
+- production is marked GO while a P0 is incomplete;
+- authority documents disagree;
+- a binding distinction is removed;
+- root entry documents point to an obsolete authority or repeat a known stale implementation claim.
 
 ## Completion rule
 
