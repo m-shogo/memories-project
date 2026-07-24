@@ -32,19 +32,32 @@ func appLoginPool(t *testing.T, ctx context.Context, admin *pgxpool.Pool, adminU
 		t.Skip("test database URL carries no password; skipping deployment-principal test")
 	}
 
-	// ALTER ROLE is cluster-wide, so two packages running in parallel collide
-	// with "tuple concurrently updated". Serialize through the same advisory
-	// lock discipline the migrations use.
-	if _, err := admin.Exec(ctx, "SELECT pg_advisory_lock(730002)"); err != nil {
+	// ALTER ROLE is cluster-wide but pg_advisory_lock is per-database, so the
+	// lock must be taken on the shared postgres maintenance database, exactly as
+	// the migration appliers do. It uses lock id 730001 — the SAME id the
+	// migration appliers hold — because migration 007 also ALTERs this role, and
+	// a password change guarded by a different id can still run concurrently
+	// with that migration and collide with "tuple concurrently updated".
+	maintenance := *parsed
+	maintenance.Path = "/postgres"
+	lockPool, err := pgxpool.New(ctx, maintenance.String())
+	if err != nil {
 		t.Fatal(err)
 	}
-	_, alterErr := admin.Exec(ctx,
-		"ALTER ROLE memory_app_login PASSWORD '"+strings.ReplaceAll(password, "'", "''")+"'")
-	if _, err := admin.Exec(ctx, "SELECT pg_advisory_unlock(730002)"); err != nil {
+	defer lockPool.Close()
+	lock, err := lockPool.Acquire(ctx)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if alterErr != nil {
-		t.Fatal(alterErr)
+	defer lock.Release()
+	if _, err := lock.Exec(ctx, "SELECT pg_advisory_lock(730001)"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = lock.Exec(ctx, "SELECT pg_advisory_unlock(730001)") }()
+
+	if _, err := admin.Exec(ctx,
+		"ALTER ROLE memory_app_login PASSWORD '"+strings.ReplaceAll(password, "'", "''")+"'"); err != nil {
+		t.Fatal(err)
 	}
 
 	parsed.User = neturl.UserPassword("memory_app_login", password)

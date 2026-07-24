@@ -632,6 +632,117 @@ func provisionAccount(ctx context.Context, pool *pgxpool.Pool, accountID string,
 	return err
 }
 
+// TestApplyRefusesUpdateSafeFieldsOverHTTP proves the closure against a real
+// database: the destructive path used to overwrite canonical_record in place
+// and repoint source_preview_id, so the test applies a preview, snapshots every
+// stored row, then sends update_safe_fields and shows nothing moved.
+func TestApplyRefusesUpdateSafeFieldsOverHTTP(t *testing.T) {
+	server := newLiveServer(t)
+	runID := time.Now().UnixNano()
+	owner := fmt.Sprintf("acct_http_noupdate_%d", runID)
+	ownerToken := server.issueSession(t, owner)
+	jobID := server.createJob(t, owner)
+	previewID, previewSHA := server.commitPreviewForJob(t, owner, jobID)
+	applyPath := "/v1/previews/" + previewID + "/apply"
+
+	response, body := server.request(t, http.MethodPost, applyPath, ownerToken, map[string]any{
+		"previewSha256":   previewSHA,
+		"idempotencyKey":  fmt.Sprintf("idem-noupdate-%d-1", runID),
+		"duplicatePolicy": "skip_existing",
+	})
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("initial apply failed: %d %s", response.StatusCode, body)
+	}
+
+	type row struct {
+		id        string
+		record    string
+		previewID string
+		updatedAt time.Time
+	}
+	snapshot := func() []row {
+		t.Helper()
+		rows, err := server.pool.Query(context.Background(),
+			`SELECT id, canonical_record::text, source_preview_id, updated_at
+			 FROM memory_os.memory_item WHERE owner_account_id = $1 ORDER BY id`, owner)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		var out []row
+		for rows.Next() {
+			var each row
+			if err := rows.Scan(&each.id, &each.record, &each.previewID, &each.updatedAt); err != nil {
+				t.Fatal(err)
+			}
+			out = append(out, each)
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+
+	before := snapshot()
+	if len(before) == 0 {
+		t.Fatal("nothing was applied, so the test could not detect an overwrite")
+	}
+
+	// A second Preview over the same job would previously have overwritten the
+	// rows above. Now the request is refused before anything is read.
+	response, body = server.request(t, http.MethodPost, applyPath, ownerToken, map[string]any{
+		"previewSha256":   previewSHA,
+		"idempotencyKey":  fmt.Sprintf("idem-noupdate-%d-2", runID),
+		"duplicatePolicy": "update_safe_fields",
+	})
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("update_safe_fields status %d %s", response.StatusCode, body)
+	}
+	var problem struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(body, &problem); err != nil {
+		t.Fatal(err)
+	}
+	if problem.Code != "SEC_APPLY_DUPLICATE_POLICY_UNSUPPORTED" {
+		t.Fatalf("refusal code %q; a client cannot tell this from a malformed request", problem.Code)
+	}
+
+	after := snapshot()
+	if len(after) != len(before) {
+		t.Fatalf("row count moved from %d to %d", len(before), len(after))
+	}
+	for index := range before {
+		if after[index] != before[index] {
+			t.Fatalf("memory_item changed:\n before %+v\n after  %+v", before[index], after[index])
+		}
+	}
+
+	// The refusal must not consume the idempotency key either: no claim row may
+	// exist for it, or a retry would replay a request that never ran.
+	var claims int
+	if err := server.pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM memory_os.apply_confirmation
+		 WHERE owner_account_id = $1 AND idempotency_key = $2`,
+		owner, fmt.Sprintf("idem-noupdate-%d-2", runID),
+	).Scan(&claims); err != nil {
+		t.Fatal(err)
+	}
+	if claims != 0 {
+		t.Fatalf("the refused request left %d claim rows", claims)
+	}
+
+	// keep_both still works afterwards: the closure is scoped to one policy.
+	response, body = server.request(t, http.MethodPost, applyPath, ownerToken, map[string]any{
+		"previewSha256":   previewSHA,
+		"idempotencyKey":  fmt.Sprintf("idem-noupdate-%d-3", runID),
+		"duplicatePolicy": "keep_both",
+	})
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("keep_both after refusal failed: %d %s", response.StatusCode, body)
+	}
+}
+
 // TestAccountDeletionFencesAndErasesOverHTTP is the end-to-end proof of the
 // deletion boundary: a real account with committed Preview, applied memory
 // items and a live session is deleted over HTTP, and afterwards every surface
@@ -926,19 +1037,32 @@ func appLoginPool(t *testing.T, ctx context.Context, admin *pgxpool.Pool, adminU
 		t.Skip("test database URL carries no password; skipping deployment-principal test")
 	}
 
-	// ALTER ROLE is cluster-wide, so two packages running in parallel collide
-	// with "tuple concurrently updated". Serialize through the same advisory
-	// lock discipline the migrations use.
-	if _, err := admin.Exec(ctx, "SELECT pg_advisory_lock(730002)"); err != nil {
+	// ALTER ROLE is cluster-wide but pg_advisory_lock is per-database, so the
+	// lock must be taken on the shared postgres maintenance database, exactly as
+	// the migration appliers do. It uses lock id 730001 — the SAME id the
+	// migration appliers hold — because migration 007 also ALTERs this role, and
+	// a password change guarded by a different id can still run concurrently
+	// with that migration and collide with "tuple concurrently updated".
+	maintenance := *parsed
+	maintenance.Path = "/postgres"
+	lockPool, err := pgxpool.New(ctx, maintenance.String())
+	if err != nil {
 		t.Fatal(err)
 	}
-	_, alterErr := admin.Exec(ctx,
-		"ALTER ROLE memory_app_login PASSWORD '"+strings.ReplaceAll(password, "'", "''")+"'")
-	if _, err := admin.Exec(ctx, "SELECT pg_advisory_unlock(730002)"); err != nil {
+	defer lockPool.Close()
+	lock, err := lockPool.Acquire(ctx)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if alterErr != nil {
-		t.Fatal(alterErr)
+	defer lock.Release()
+	if _, err := lock.Exec(ctx, "SELECT pg_advisory_lock(730001)"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = lock.Exec(ctx, "SELECT pg_advisory_unlock(730001)") }()
+
+	if _, err := admin.Exec(ctx,
+		"ALTER ROLE memory_app_login PASSWORD '"+strings.ReplaceAll(password, "'", "''")+"'"); err != nil {
+		t.Fatal(err)
 	}
 
 	parsed.User = neturl.UserPassword("memory_app_login", password)
