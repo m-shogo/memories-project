@@ -50,7 +50,7 @@ security architecture:
 DEFINED
 
 machine-readable contracts:
-26 schemas / 23 positive fixtures
+28 schemas / 25 positive fixtures
 31 structural + 8 semantic rejection cases
 
 Go backend:
@@ -109,6 +109,10 @@ DELETE /v1/account returns 202 after fencing only; a leased worker erases and re
 
 deployment login principal:
 NOINHERIT / NOBYPASSRLS login with no table privileges; the HTTP journey and the RLS proofs now run through it, not through a superuser
+
+Memory domain (provenance and interpretation):
+invariants, origin/assertion axes and semantic cases are machine-readable and CI-gated; the rich Memory domain itself is deliberately NOT implemented
+one shipped path (apply update_safe_fields) violates the non-destructive invariant and is recorded, not fixed
 
 iOS / Portal:
 not implemented

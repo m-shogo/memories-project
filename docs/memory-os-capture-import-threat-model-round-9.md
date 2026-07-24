@@ -509,6 +509,154 @@ Controls:
 - package review
 - release artifact signing / traceability
 
+## T-031 False Memory Injection
+
+Asset: the account holder's own record of their life.
+Failure mode: a record that nobody lived is stored as firsthand, by a
+compromised adapter, a malicious import file, or a bug that mislabels origin.
+Trust boundary: adapter output → Preview → Apply.
+Preventive: every item carries a source reference to an object version whose
+checksum was verified before parsing (INV-MEM-002); origin is assigned by the
+pipeline, never taken from parsed content.
+Detective: the artifact chain is re-walkable — item → preview → object version
+→ checksum — so an item with no reachable artifact is detectable.
+Deletion: injected items are owned rows and are erased by the account sweep.
+Testability: SQL-testable once origin is stored; today only the checksum half
+is proven, by the existing spool verifier and upload binding tests.
+
+## T-032 Provenance Stripping
+
+Asset: the link between content and where it came from.
+Failure mode: content survives an update or migration while its source
+reference does not, after which nothing can say whether a person wrote it.
+Trust boundary: any write path that touches a stored item.
+Preventive: source reference is NOT NULL and no operation may drop it while
+keeping content (INV-MEM-002).
+Detective: an item whose source reference does not resolve is an integrity
+failure, checkable in SQL.
+Deletion: unaffected.
+Testability: go-testable. **Currently weakened**: the update_safe_fields policy
+repoints source_preview_id to a different Preview
+(services/import-api/internal/pgrepo/apply.go, GAP-MEM-005), so the reference
+survives but no longer describes the content it is attached to.
+
+## T-033 Interpretation Promotion
+
+Asset: the distinction between what a person said and what a model guessed.
+Failure mode: an AI summary or inference is stored under an assertion kind that
+speaks for the account holder, and later reads as their own words.
+Trust boundary: any future generation surface writing into memory storage.
+Preventive: origins ai_summary, ai_inferred and derived have
+canBecomeUserFact=false and cannot take a person-authored assertion kind
+(INV-MEM-001, cases MEMCASE-002/003/011).
+Detective: an item whose origin is AI and whose assertion is record is a
+constraint violation, not a judgement call.
+Deletion: AI outputs are derivatives and are erased with the account
+(INV-MEM-010).
+Testability: contract-only today — nothing stores AI output yet (finding F7),
+which is why the boundary is cheap to place now.
+
+## T-034 Identity Misbinding
+
+Asset: whose life a record belongs to.
+Failure mode: another person's record attaches to this account, or an inferred
+identity hardens into a stored fact.
+Trust boundary: tenant isolation, and any future relation or grouping table.
+Preventive: relations may only link items of one owner (INV-MEM-012), enforced
+by the same FORCE RLS predicates as every existing table; secondhand origin
+cannot become the account holder's record (INV-MEM-001).
+Detective: cross-tenant links are structurally unwritable rather than merely
+audited.
+Deletion: relations are owned rows, swept with the account.
+Testability: SQL-testable by the same pattern as the existing RLS suite.
+
+## T-035 Silent Rewrite
+
+Asset: what the person believed at the time they believed it.
+Failure mode: a later record replaces an earlier one in place, leaving no trace
+that the earlier view existed.
+Trust boundary: the Apply write path.
+Preventive: corrections and reinterpretations are new items linked to what they
+supersede; records are not supersedable (INV-MEM-003, MEMCASE-007/008).
+Detective: absent — an in-place overwrite leaves nothing to detect, which is
+what makes this class serious.
+Deletion: unaffected.
+Testability: go-testable. **Currently violated** by update_safe_fields, which
+overwrites canonical_record in place with no history. Fixing it changes Apply
+semantics and is gated to the future migration plan.
+
+## T-036 Context Collapse
+
+Asset: the separateness of events that merely resemble each other.
+Failure mode: display-level grouping becomes storage-level identity, and the
+evidence for the grouping can no longer be re-examined.
+Trust boundary: any future event-grouping or dedupe surface.
+Preventive: grouping is a view over artifacts and never replaces them; each
+retains its own artifact, canonical record, retrieval path, timestamps and
+hashes (INV-MEM-006).
+Detective: if the underlying artifacts survive, a wrong grouping is reversible;
+if they do not, it is not.
+Deletion: unaffected.
+Testability: requires the unbuilt domain. Note the existing fingerprint already
+merges on a hash of title, date, url and text — a deliberate narrow rule, but
+one that will need re-examining before it drives grouping.
+
+## T-037 Duplicate Amplification
+
+Asset: the difference between corroboration and repetition.
+Failure mode: copies sharing one origin — a re-import, a repost, a quote, the
+same photo on two devices — are counted as independent evidence.
+Trust boundary: any confidence or ranking computation.
+Preventive: evidence counts distinct origins, not artifacts (INV-MEM-005,
+MEMCASE-015/016).
+Detective: comparing artifact count against distinct-origin count exposes it.
+Deletion: unaffected.
+Testability: contract-only. **The current contract gets this wrong**:
+TrustScore.evidenceCount and the "repeated appearance" trust rule both count
+copies (GAP-MEM-002, GAP-MEM-003).
+
+## T-038 Unauthorized Resurfacing
+
+Asset: the right not to be shown something right now.
+Failure mode: a memory deliberately set aside is pushed back into view by a
+feature that only checked whether it existed.
+Trust boundary: search, reflection, anniversary notification, Town display.
+Preventive: storage is not consent to search, analyse, resurface or display;
+these are separate permissions (INV-MEM-007), and a single boolean is refused
+(MEMCASE-017).
+Detective: each resurfacing surface must name which permission it checked.
+Deletion: presentation preferences are owned rows, swept with the account.
+Testability: requires the unbuilt domain. The permission set is deliberately
+not fixed yet.
+
+## T-039 Persona Reconstruction
+
+Asset: the distinction between a person and a collection of records about them.
+Failure mode: a high-fidelity imitation is offered, or received, as the person
+— the account holder, a deceased person, a family member, a partner.
+Trust boundary: any generation surface that speaks about a person.
+Preventive: statements about a person are attributed to the record that carries
+them and phrased as what the record says, never as what the person would say
+(INV-MEM-009, MEMCASE-018); restates INV-P0-018.
+Detective: output without a citable source record is a policy failure.
+Deletion: unaffected.
+Testability: requires the unbuilt domain.
+
+## T-040 AI Output Laundering
+
+Asset: the traceability of model output back to a model.
+Failure mode: an AI summary loses its origin marking through an export, an
+import round-trip, or a migration, and re-enters as user-authored text.
+Trust boundary: export and re-import — the round trip is where origin is most
+easily lost.
+Preventive: origin is required and non-removable (INV-MEM-002); AI origins can
+never take a person-authored assertion kind (INV-MEM-001).
+Detective: an import whose content matches a prior AI output is a signal, not a
+proof; the durable control is that export carries origin.
+Deletion: unaffected.
+Testability: blocked on an export contract, which does not exist yet
+(finding F9). Recorded as an open gap rather than a solved threat.
+
 ---
 
 # 4. Additional abuse cases

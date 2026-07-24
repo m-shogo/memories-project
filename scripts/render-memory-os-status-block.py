@@ -158,6 +158,14 @@ SECTIONS: list[dict] = [
         ],
     },
     {
+        "title": "Memory domain (provenance and interpretation)",
+        "requires": ["memoryProvenanceInvariantsFormalized", "memoryProvenanceSemanticValidatorCreated"],
+        "done_lines": [
+            "invariants, origin/assertion axes and semantic cases are machine-readable and CI-gated; the rich Memory domain itself is deliberately NOT implemented",
+            "one shipped path (apply update_safe_fields) violates the non-destructive invariant and is recorded, not fixed",
+        ],
+    },
+    {
         "title": "iOS / Portal",
         "requires": ["neverTrueSentinel"],  # always pending until this section is intentionally flipped
         "done_lines": [],
