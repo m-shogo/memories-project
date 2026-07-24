@@ -63,6 +63,9 @@ idempotent exact-hash apply into memory_item over HTTP; preview read API; rich M
 account deletion fencing:
 epoch bump fences every surface; authorized sweep erases all owned rows, sessions and stored object versions (live-tested over HTTP + MinIO)
 
+fuzz corpus:
+coverage-interesting inputs for both parsers committed as seed corpora and replayed by every test run
+
 background deletion runtime:
 DELETE /v1/account returns 202 after fencing only; a leased worker erases and resumes after interruption (live-proven)
 no alerting yet on an account whose deletion attempts keep climbing

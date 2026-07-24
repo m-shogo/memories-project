@@ -1,0 +1,2 @@
+go test fuzz v1
+string("MC40.N0.00")

@@ -349,8 +349,10 @@ done, each with a live proof and a checkpoint document:
 3. background deletion runtime (202 + leased, resumable worker)
    docs/memory-os-deletion-runtime-checkpoint-2026-07-24.md
 
+4. parser fuzz corpus archived as replayed seed corpora
+   (scripts/archive-fuzz-corpus.sh grows it)
+
 next:
-4. archive the parser fuzz corpus so found inputs become regression tests
 5. alerting on accounts whose deletion_attempts keeps climbing
 6. Apple code exchange / replay store (needs real Apple credentials — later boundary)
 7. begin iOS only after backend P0 closes

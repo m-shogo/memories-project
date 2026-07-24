@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("0,1,!,7,8,%,A,B,C,9,X,Y,Z,2,#,$")

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("Ӂ噁Ӂ噁噍噍")

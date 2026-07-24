@@ -67,6 +67,10 @@ jobs:
       - name: Parser supervision bounds without race instrumentation
         run: go test ./internal/parsersup
 
+      - name: Replay archived fuzz corpus
+        working-directory: services/import-api
+        run: go test -run='^Fuzz' ./internal/adapters/genericcsv ./internal/appleauth
+
       - name: Fuzz Generic CSV parser smoke
         env:
           GOMAXPROCS: "4"

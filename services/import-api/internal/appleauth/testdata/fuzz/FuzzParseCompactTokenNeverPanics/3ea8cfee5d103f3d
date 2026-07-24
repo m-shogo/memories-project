@@ -1,0 +1,2 @@
+go test fuzz v1
+string("j00.00.00")

@@ -1,0 +1,2 @@
+go test fuzz v1
+string("MX0.00.00")

@@ -114,6 +114,7 @@
     "deletionObjectStorageErasureImplemented": true,
     "deletionObjectStorageErasureLiveTestsPassed": true,
     "backgroundDeletionRuntimeCreated": true,
+    "parserFuzzCorpusArchived": true,
     "deletionRuntimeClaimSqlTestsPassed": true,
     "deletionRuntimeResumptionLiveTestsPassed": true,
     "appleCodeExchangeImplemented": false,
@@ -186,6 +187,6 @@
   },
   "nextRequired": [
     "implement_apple_code_exchange",
-    "archive_parser_fuzz_corpus"
+    "alert_on_climbing_deletion_attempts"
   ]
 }

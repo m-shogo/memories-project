@@ -121,6 +121,13 @@ SECTIONS: list[dict] = [
         ],
     },
     {
+        "title": "fuzz corpus",
+        "requires": ["parserFuzzCorpusArchived"],
+        "done_lines": [
+            "coverage-interesting inputs for both parsers committed as seed corpora and replayed by every test run",
+        ],
+    },
+    {
         "title": "background deletion runtime",
         "requires": [
             "backgroundDeletionRuntimeCreated",
