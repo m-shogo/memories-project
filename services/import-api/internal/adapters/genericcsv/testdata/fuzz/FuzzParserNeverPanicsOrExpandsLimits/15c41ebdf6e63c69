@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("Ҡ0,К00,К0,К0")

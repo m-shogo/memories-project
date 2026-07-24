@@ -57,3 +57,9 @@ done
 echo
 echo "Committed seeds are replayed by plain 'go test'. Run the suite before committing:"
 echo "  scripts/dev-test.sh -count=1 ./..."
+echo
+# The corpus only grows: every run starts from the committed seeds and adds
+# whatever new coverage it finds. At 57KB for the first ~470 entries that is
+# cheap, but it is unbounded, and there is no pruning policy yet. Revisit when
+# replay time or repository size starts to show it.
+echo "note: the corpus only grows; there is no pruning policy yet."
