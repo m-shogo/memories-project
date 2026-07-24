@@ -105,6 +105,13 @@ func (Apply) ClaimIdempotency(ctx context.Context, tx dbscope.Transaction, claim
 // set-based inside the claim transaction. Dedupe matches on the canonical
 // record's fingerprint within the owner scope RLS provides.
 func (Apply) ApplyMaterializedPreview(ctx context.Context, tx dbscope.Transaction, previewID string, previewSHA256 string, policy apply.DuplicatePolicy) (apply.Counts, error) {
+	// Refused before anything is read. The service already rejects this policy
+	// before opening a transaction, so reaching here means that check was
+	// bypassed — and overwriting a stored record is the one thing this
+	// repository must never do, however it was called.
+	if policy == apply.DuplicateUpdateSafe {
+		return apply.Counts{}, apply.ErrDuplicatePolicyUnsupported
+	}
 	adapted, err := pgscope.From(tx)
 	if err != nil {
 		return apply.Counts{}, err
@@ -123,45 +130,15 @@ func (Apply) ApplyMaterializedPreview(ctx context.Context, tx dbscope.Transactio
 		return apply.Counts{}, fmt.Errorf("re-read preview binding: %w", err)
 	}
 
-	// matched counts candidates whose fingerprint already exists for this
-	// owner; each candidate is counted exactly once, so the policy counts
-	// always account for the full candidate set.
-	var matched int
-	if err := adapted.QueryRow(ctx,
-		`SELECT count(*) FROM memory_os.preview_candidate c
-		 WHERE c.preview_id = $1
-		   AND EXISTS (
-		     SELECT 1 FROM memory_os.memory_item m
-		     WHERE m.fingerprint = c.canonical_record->>'fingerprint'
-		   )`, previewID,
-	).Scan(&matched); err != nil {
-		return apply.Counts{}, fmt.Errorf("count matching fingerprints: %w", err)
-	}
-
 	insertFilter := ""
 	switch policy {
-	case apply.DuplicateSkipExisting, apply.DuplicateUpdateSafe:
+	case apply.DuplicateSkipExisting:
 		insertFilter = `AND NOT EXISTS (
 			SELECT 1 FROM memory_os.memory_item m
 			WHERE m.fingerprint = c.canonical_record->>'fingerprint')`
 	case apply.DuplicateKeepBoth:
 	default:
 		return apply.Counts{}, fmt.Errorf("unsupported duplicate policy %q", policy)
-	}
-
-	if policy == apply.DuplicateUpdateSafe && matched > 0 {
-		if _, err := adapted.ExecTag(ctx,
-			`UPDATE memory_os.memory_item m
-			 SET canonical_record = c.canonical_record,
-			     source_preview_id = c.preview_id,
-			     updated_at = now()
-			 FROM memory_os.preview_candidate c
-			 WHERE c.preview_id = $1
-			   AND m.fingerprint = c.canonical_record->>'fingerprint'`,
-			previewID,
-		); err != nil {
-			return apply.Counts{}, fmt.Errorf("update matching memory items: %w", err)
-		}
 	}
 
 	tag, err := adapted.ExecTag(ctx, fmt.Sprintf(
@@ -182,8 +159,6 @@ func (Apply) ApplyMaterializedPreview(ctx context.Context, tx dbscope.Transactio
 	switch policy {
 	case apply.DuplicateSkipExisting:
 		return apply.Counts{Created: inserted, Skipped: total - inserted}, nil
-	case apply.DuplicateUpdateSafe:
-		return apply.Counts{Created: inserted, Updated: total - inserted}, nil
 	default: // keep_both
 		return apply.Counts{Created: inserted}, nil
 	}

@@ -77,6 +77,13 @@ func (h ApplyHandler) bodyLimit() int64 {
 
 func writeApplyError(writer http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, applydomain.ErrDuplicatePolicyUnsupported):
+		// Distinct from SEC_APPLY_REQUEST_INVALID on purpose: the value is
+		// well-formed and was previously accepted, so the client is told the
+		// policy is unsupported rather than that it sent nonsense. Nothing was
+		// written, and the request must not be retried as a different policy
+		// without the caller deciding to.
+		writeProblem(writer, http.StatusBadRequest, "SEC_APPLY_DUPLICATE_POLICY_UNSUPPORTED")
 	case errors.Is(err, applydomain.ErrInvalidRequest):
 		writeProblem(writer, http.StatusBadRequest, "SEC_APPLY_REQUEST_INVALID")
 	case errors.Is(err, applydomain.ErrAuthorityNotAllowed),

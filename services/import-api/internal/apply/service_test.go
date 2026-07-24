@@ -32,13 +32,17 @@ type fakeRepository struct {
 	claim       Claim
 	counts      Counts
 	applyCalls  int
+	claimCalls  int
+	previewGets int
 	completed   bool
 }
 
 func (r *fakeRepository) GetPreview(context.Context, dbscope.Transaction, string) (Preview, error) {
+	r.previewGets++
 	return r.preview, nil
 }
 func (r *fakeRepository) ClaimIdempotency(_ context.Context, _ dbscope.Transaction, claim Claim) (ClaimResult, error) {
+	r.claimCalls++
 	r.claim = claim
 	return r.claimResult, nil
 }
@@ -154,4 +158,99 @@ func repeatHex(value byte) string {
 		result[index] = value
 	}
 	return string(result)
+}
+
+// update_safe_fields overwrote a stored record and its provenance in place. The
+// path is closed until append-only supersession exists, and closed means the
+// request never reaches the database at all — not that it quietly becomes a
+// different policy.
+func TestApplyRefusesUpdateSafeFieldsWithoutTouchingAnything(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0).UTC()
+	principal := iosPrincipal(t)
+	repository := &fakeRepository{
+		preview:     validPreview(now, principal),
+		claimResult: ClaimResult{Disposition: ClaimNew, ApplyID: "apl_01J00000000000000000000000"},
+		counts:      Counts{Created: 2},
+	}
+	service := Service{Transactions: fakeExecutor{}, Repository: repository, IDs: fakeIDs{value: "apl_01J00000000000000000000000"}, Now: func() time.Time { return now }}
+
+	request := validRequest()
+	request.DuplicatePolicy = DuplicateUpdateSafe
+	result, err := service.Apply(context.Background(), principal, request)
+
+	if !errors.Is(err, ErrDuplicatePolicyUnsupported) {
+		t.Fatalf("update_safe_fields error = %v, want ErrDuplicatePolicyUnsupported", err)
+	}
+	// Distinct from a malformed request: the client sent a value this API used
+	// to accept, and must be able to tell the difference.
+	if errors.Is(err, ErrInvalidRequest) {
+		t.Fatal("refusal is indistinguishable from a malformed request")
+	}
+	if result.Status != "" || result.Counts != (Counts{}) {
+		t.Fatalf("refusal returned a result: %#v", result)
+	}
+	// No preview read, no idempotency claim, no materialization, no completion.
+	// A claim row would make the refusal look like a consumed attempt.
+	if repository.previewGets != 0 || repository.claimCalls != 0 ||
+		repository.applyCalls != 0 || repository.completed {
+		t.Fatalf("the refused request reached the repository: %#v", repository)
+	}
+}
+
+// A refusal must never be laundered into a policy the caller did not ask for:
+// a client told "applied" would believe its update landed.
+func TestApplyDoesNotFallBackToAnotherPolicy(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0).UTC()
+	principal := iosPrincipal(t)
+	repository := &fakeRepository{
+		preview:     validPreview(now, principal),
+		claimResult: ClaimResult{Disposition: ClaimNew, ApplyID: "apl_01J00000000000000000000000"},
+		counts:      Counts{Created: 2},
+	}
+	service := Service{Transactions: fakeExecutor{}, Repository: repository, IDs: fakeIDs{value: "apl_01J00000000000000000000000"}, Now: func() time.Time { return now }}
+
+	request := validRequest()
+	request.DuplicatePolicy = DuplicateUpdateSafe
+	if _, err := service.Apply(context.Background(), principal, request); err == nil {
+		t.Fatal("update_safe_fields succeeded")
+	}
+	if repository.claim.DuplicatePolicy == DuplicateSkipExisting ||
+		repository.claim.DuplicatePolicy == DuplicateKeepBoth {
+		t.Fatalf("the refused policy was rewritten to %q", repository.claim.DuplicatePolicy)
+	}
+}
+
+// The supported policies keep their existing behaviour, including the counts a
+// client reconciles against.
+func TestSupportedDuplicatePoliciesStillApply(t *testing.T) {
+	for _, testCase := range []struct {
+		policy DuplicatePolicy
+		counts Counts
+	}{
+		{DuplicateSkipExisting, Counts{Created: 2, Skipped: 1}},
+		{DuplicateKeepBoth, Counts{Created: 3}},
+	} {
+		now := time.Unix(1_800_000_000, 0).UTC()
+		principal := iosPrincipal(t)
+		repository := &fakeRepository{
+			preview:     validPreview(now, principal),
+			claimResult: ClaimResult{Disposition: ClaimNew, ApplyID: "apl_01J00000000000000000000000"},
+			counts:      testCase.counts,
+		}
+		service := Service{Transactions: fakeExecutor{}, Repository: repository, IDs: fakeIDs{value: "apl_01J00000000000000000000000"}, Now: func() time.Time { return now }}
+
+		request := validRequest()
+		request.DuplicatePolicy = testCase.policy
+		result, err := service.Apply(context.Background(), principal, request)
+		if err != nil {
+			t.Fatalf("%s: %v", testCase.policy, err)
+		}
+		if result.Status != "applied" || result.Counts != testCase.counts ||
+			repository.applyCalls != 1 || !repository.completed {
+			t.Fatalf("%s: unexpected result %#v repository=%#v", testCase.policy, result, repository)
+		}
+		if repository.claim.DuplicatePolicy != testCase.policy {
+			t.Fatalf("%s: claim recorded policy %q", testCase.policy, repository.claim.DuplicatePolicy)
+		}
+	}
 }

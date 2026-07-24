@@ -26,6 +26,11 @@ var (
 	ErrApplyInProgress         = errors.New("apply request is already in progress")
 	ErrApplyAccountingMismatch = errors.New("apply result does not account for every preview candidate")
 	ErrApplyClaimInvalid       = errors.New("invalid apply claim result")
+	// ErrDuplicatePolicyUnsupported is deliberately distinct from
+	// ErrInvalidRequest: update_safe_fields is a value this API used to accept,
+	// so a client that sends it deserves to be told it is no longer supported
+	// rather than that its request was malformed.
+	ErrDuplicatePolicyUnsupported = errors.New("duplicate policy is not supported")
 )
 
 type ScopedExecutor interface {
@@ -41,7 +46,22 @@ type DuplicatePolicy string
 const (
 	DuplicateSkipExisting DuplicatePolicy = "skip_existing"
 	DuplicateKeepBoth     DuplicatePolicy = "keep_both"
-	DuplicateUpdateSafe   DuplicatePolicy = "update_safe_fields"
+
+	// DuplicateUpdateSafe is recognised and refused. It is kept as a named
+	// constant rather than deleted so the refusal is explicit everywhere the
+	// value can still arrive — from an older client, a stored claim row, or the
+	// migration 005 CHECK constraint that still lists it.
+	//
+	// Its implementation overwrote memory_item.canonical_record in place and
+	// repointed source_preview_id, destroying both the earlier content and the
+	// record of where it came from. Append-only supersession is the correct
+	// replacement and is future work; until it exists the path is closed rather
+	// than left open, because a caller cannot tell a destructive update from a
+	// safe one by looking at the response.
+	//
+	// It is never silently mapped onto skip_existing or keep_both: a client
+	// that asked to update must not be told its update succeeded.
+	DuplicateUpdateSafe DuplicatePolicy = "update_safe_fields"
 )
 
 type Request struct {
@@ -220,8 +240,12 @@ func validateRequest(request Request) error {
 		return ErrInvalidRequest
 	}
 	switch request.DuplicatePolicy {
-	case DuplicateSkipExisting, DuplicateKeepBoth, DuplicateUpdateSafe:
+	case DuplicateSkipExisting, DuplicateKeepBoth:
 		return nil
+	case DuplicateUpdateSafe:
+		// Refused here, before any transaction is opened, so no idempotency
+		// claim row is written and no candidate is ever read for this request.
+		return ErrDuplicatePolicyUnsupported
 	default:
 		return ErrInvalidRequest
 	}
