@@ -1,0 +1,178 @@
+{
+  "schemaVersion": "memory-os-operability-status.0.1",
+  "asOf": "2026-07-24",
+  "productionDecision": "NO_GO",
+  "authority": "docs/memory-os-production-operability-audit-2026-07-24.md",
+  "rules": {
+    "evidenceRequiredForReady": true,
+    "componentFaultInjectionIsNotChaosCompletion": true,
+    "objectVersioningIsNotBackupCompletion": true,
+    "transactionRollbackIsNotMigrationRollbackCompletion": true,
+    "localOrCIHealthIsNotProductionObservability": true
+  },
+  "areas": [
+    {
+      "id": "OPS-P0-001",
+      "area": "migration_rollback",
+      "status": "PARTIAL",
+      "blocking": true,
+      "existingEvidence": [
+        "atomic transaction rollback",
+        "conflicting retry rollback tests",
+        "spool publication rollback boundary"
+      ],
+      "missingEvidence": [
+        "expand-contract migration policy",
+        "production-shaped rehearsal",
+        "rollback-or-forward-fix runbook",
+        "mixed-version deployment proof"
+      ]
+    },
+    {
+      "id": "OPS-P0-002",
+      "area": "incident_recovery",
+      "status": "PARTIAL_FOUNDATIONS_ONLY",
+      "blocking": true,
+      "existingEvidence": [
+        "startup reconciliation",
+        "TTL cleanup",
+        "leased deletion worker resume"
+      ],
+      "missingEvidence": [
+        "operator runbooks",
+        "severity and escalation model",
+        "tabletop or recovery drill evidence"
+      ]
+    },
+    {
+      "id": "OPS-P0-003",
+      "area": "observability",
+      "status": "MINIMAL",
+      "blocking": true,
+      "existingEvidence": [
+        "selected security-safe logs",
+        "count-only deletion backlog alert line"
+      ],
+      "missingEvidence": [
+        "structured event contract",
+        "correlation IDs",
+        "redaction tests",
+        "retention and alert routing"
+      ]
+    },
+    {
+      "id": "OPS-P0-004",
+      "area": "metrics",
+      "status": "NOT_IMPLEMENTED",
+      "blocking": true,
+      "existingEvidence": [],
+      "missingEvidence": [
+        "bounded-cardinality runtime metrics",
+        "SLI and SLO definitions",
+        "dashboards and alert thresholds",
+        "error-budget policy"
+      ]
+    },
+    {
+      "id": "OPS-P1-001",
+      "area": "tracing",
+      "status": "NOT_IMPLEMENTED",
+      "blocking": false,
+      "becomesP0When": "independently deployed services or opaque asynchronous hops enter production",
+      "existingEvidence": [],
+      "missingEvidence": [
+        "W3C trace context",
+        "cross-boundary span propagation",
+        "sampling and redaction policy"
+      ]
+    },
+    {
+      "id": "OPS-P0-005",
+      "area": "rate_limiting",
+      "status": "NOT_IMPLEMENTED",
+      "blocking": true,
+      "existingEvidence": [
+        "strict request validation and authentication"
+      ],
+      "missingEvidence": [
+        "per-principal and per-network limiter",
+        "endpoint budgets",
+        "429 and Retry-After contract",
+        "distributed concurrency and bypass tests",
+        "load-calibrated limits"
+      ]
+    },
+    {
+      "id": "OPS-P0-006",
+      "area": "load_testing",
+      "status": "NOT_IMPLEMENTED",
+      "blocking": true,
+      "existingEvidence": [
+        "unit tests",
+        "race tests",
+        "fuzz smoke tests",
+        "live integration tests"
+      ],
+      "missingEvidence": [
+        "production-shaped workload model",
+        "sustained and burst tests",
+        "latency percentile and saturation report",
+        "post-burst recovery proof"
+      ]
+    },
+    {
+      "id": "OPS-P0-009",
+      "area": "chaos_and_failure_drills",
+      "status": "COMPONENT_FAULT_INJECTION_ONLY",
+      "blocking": true,
+      "existingEvidence": [
+        "crash and cancellation tests",
+        "checksum and drift rejection",
+        "short-write and ENOSPC tests",
+        "retry and idempotency tests"
+      ],
+      "missingEvidence": [
+        "API interruption drill",
+        "database loss or failover drill",
+        "object-store outage drill",
+        "parser restart matrix",
+        "mixed-version failure drill"
+      ]
+    },
+    {
+      "id": "OPS-P0-007",
+      "area": "backup_restore",
+      "status": "NOT_IMPLEMENTED_OR_PROVEN",
+      "blocking": true,
+      "existingEvidence": [
+        "versioned object-store behavior in MinIO"
+      ],
+      "missingEvidence": [
+        "PostgreSQL backup and PITR configuration",
+        "independent object-version retention",
+        "RPO and RTO",
+        "isolated restore rehearsal",
+        "deletion and expired-session semantics after restore"
+      ]
+    },
+    {
+      "id": "OPS-P0-008",
+      "area": "version_compatibility",
+      "status": "PARTIAL_PINNING_NO_POLICY",
+      "blocking": true,
+      "existingEvidence": [
+        "Go 1.23 test baseline",
+        "PostgreSQL 16 test baseline",
+        "digest-pinned parser worker",
+        "schema and checksum validation"
+      ],
+      "missingEvidence": [
+        "supported-version matrix",
+        "API and schema compatibility rules",
+        "rolling upgrade and downgrade policy",
+        "old-new mixed-version tests",
+        "future client-server skew policy"
+      ]
+    }
+  ]
+}
