@@ -1,0 +1,42 @@
+name: Operability Contracts
+
+on:
+  pull_request:
+    paths:
+      - "contracts/operations/**"
+      - "docs/memory-os-current-authority-order-round-10-operability.md"
+      - "docs/memory-os-production-operability-audit-2026-07-24.md"
+      - "scripts/validate-memory-os-operability.py"
+      - ".github/workflows/operability-contracts.yml"
+  push:
+    branches:
+      - so
+    paths:
+      - "contracts/operations/**"
+      - "docs/memory-os-current-authority-order-round-10-operability.md"
+      - "docs/memory-os-production-operability-audit-2026-07-24.md"
+      - "scripts/validate-memory-os-operability.py"
+      - ".github/workflows/operability-contracts.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-operability-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile validator
+        run: python -m py_compile scripts/validate-memory-os-operability.py
+
+      - name: Validate production operability authority
+        run: python scripts/validate-memory-os-operability.py
