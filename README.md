@@ -97,6 +97,10 @@ idempotent exact-hash apply into memory_item over HTTP; preview read API; rich M
 account deletion fencing:
 epoch bump fences every surface; authorized sweep erases all owned rows, sessions and stored object versions (live-tested over HTTP + MinIO)
 
+deletion backlog alerting:
+stuck deletions alert as counts only; identifiers go to the runtime that must act, never to the alerting surface
+the alert is a log line — wiring it to a real alerting system is deployment work
+
 fuzz corpus:
 coverage-interesting inputs for both parsers committed as seed corpora and replayed by every test run
 

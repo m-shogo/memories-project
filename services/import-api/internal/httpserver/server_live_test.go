@@ -116,6 +116,7 @@ func newLiveServer(t *testing.T) *liveServer {
 			"006_memory_os_deletion_fencing.sql",
 			"007_memory_os_app_login.sql",
 			"008_memory_os_deletion_runtime.sql",
+			"009_memory_os_deletion_visibility.sql",
 		} {
 			payload, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "infra", "postgresql", "security", name))
 			if err == nil {
@@ -778,6 +779,38 @@ func TestAccountDeletionFencesAndErasesOverHTTP(t *testing.T) {
 		t.Fatal("a failed attempt destroyed rows before its objects were gone")
 	}
 
+	// The failure is visible to an operator, and the aggregate carries no
+	// identifiers — an alert needs a number, not a list of people.
+	observing := accountdelete.Worker{
+		Queue:      server.accountControl,
+		Repository: server.accountControl,
+		Objects:    server.objects,
+	}
+	backlog, err := observing.Backlog(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if backlog.Pending < 1 || backlog.MaxAttempts < 1 {
+		t.Fatalf("backlog did not see the fenced account: %+v", backlog)
+	}
+	// One failure is not yet "stuck": the threshold exists so ordinary retries
+	// do not page anyone.
+	if !backlog.Healthy() {
+		t.Fatalf("a single failed attempt was reported as stuck: %+v", backlog)
+	}
+	// Drive the account past the threshold and confirm it does alert.
+	for attempt := 0; attempt < accountdelete.StuckAttemptsThreshold; attempt++ {
+		_, _ = broken.Sweep(context.Background(), 1)
+	}
+	backlog, err = observing.Backlog(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if backlog.Healthy() || backlog.Stuck < 1 ||
+		backlog.MaxAttempts < accountdelete.StuckAttemptsThreshold {
+		t.Fatalf("a repeatedly failing deletion did not alert: %+v", backlog)
+	}
+
 	// The next worker resumes and finishes it.
 	worker := accountdelete.Worker{
 		Queue:      server.accountControl,
@@ -863,6 +896,16 @@ func TestAccountDeletionFencesAndErasesOverHTTP(t *testing.T) {
 	}
 	if state != "deleted" || epoch != 2 {
 		t.Fatalf("unexpected tombstone: state=%s epoch=%d", state, epoch)
+	}
+
+	// A finished deletion stops being backlog; an alert that never clears is
+	// an alert nobody reads.
+	backlog, err = observing.Backlog(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !backlog.Healthy() {
+		t.Fatalf("the completed deletion is still reported as stuck: %+v", backlog)
 	}
 }
 

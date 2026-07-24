@@ -157,6 +157,9 @@ jobs:
       - name: Apply deletion runtime migration
         run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/008_memory_os_deletion_runtime.sql
 
+      - name: Apply deletion visibility migration
+        run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/009_memory_os_deletion_visibility.sql
+
       - name: Execute tenant RLS integration tests
         run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/test_memory_os_import_rls.sql
 
@@ -183,3 +186,6 @@ jobs:
 
       - name: Execute deletion runtime claim tests
         run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/test_memory_os_deletion_runtime.sql
+
+      - name: Execute deletion visibility tests
+        run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/test_memory_os_deletion_visibility.sql

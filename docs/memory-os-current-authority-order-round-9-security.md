@@ -358,8 +358,10 @@ done, each with a live proof and a checkpoint document:
 4. parser fuzz corpus archived as replayed seed corpora
    (scripts/archive-fuzz-corpus.sh grows it)
 
+5. deletion backlog alerting (counts to the observer, identifiers to the runtime)
+   docs/memory-os-deletion-visibility-checkpoint-2026-07-24.md
+
 next:
-5. alerting on accounts whose deletion_attempts keeps climbing
 6. Apple code exchange / replay store (needs real Apple credentials — later boundary)
 7. begin iOS only after backend P0 closes
 ```

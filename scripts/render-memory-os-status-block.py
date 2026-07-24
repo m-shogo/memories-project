@@ -121,6 +121,18 @@ SECTIONS: list[dict] = [
         ],
     },
     {
+        "title": "deletion backlog alerting",
+        "requires": [
+            "deletionBacklogAlertingCreated",
+            "deletionBacklogSqlTestsPassed",
+            "deletionBacklogLiveTestsPassed",
+        ],
+        "done_lines": [
+            "stuck deletions alert as counts only; identifiers go to the runtime that must act, never to the alerting surface",
+            "the alert is a log line — wiring it to a real alerting system is deployment work",
+        ],
+    },
+    {
         "title": "fuzz corpus",
         "requires": ["parserFuzzCorpusArchived"],
         "done_lines": [

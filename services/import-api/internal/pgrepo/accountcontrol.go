@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -200,6 +201,37 @@ func (a AccountControl) Release(ctx context.Context, accountID string, deletionE
 			}
 			return adapted.Exec(ctx, "SELECT memory_os.release_deletion_lease()")
 		})
+}
+
+// Backlog reads deletion health. It runs as the deletion runtime because the
+// aggregate is a SECURITY DEFINER function granted to that role; the observer
+// role may call the same function from a dashboard without going through here.
+func (a AccountControl) Backlog(ctx context.Context, stuckAttempts int) (accountdelete.Backlog, error) {
+	if a.Transactions == nil {
+		return accountdelete.Backlog{}, errNoPool
+	}
+	principal, err := security.NewVerifiedPrincipal(claimContextAccount, 0, security.AuthorityDeletionWorker)
+	if err != nil {
+		return accountdelete.Backlog{}, fmt.Errorf("build deletion principal: %w", err)
+	}
+	var backlog accountdelete.Backlog
+	var oldestSeconds int64
+	err = a.Transactions.WithinPrincipal(ctx, principal, dbscope.RoleDeletion,
+		func(ctx context.Context, tx dbscope.Transaction) error {
+			adapted, err := pgscope.From(tx)
+			if err != nil {
+				return err
+			}
+			return adapted.QueryRow(ctx,
+				`SELECT pending_count, stuck_count, max_attempts, oldest_pending_seconds
+				 FROM memory_os.deletion_backlog($1)`, stuckAttempts,
+			).Scan(&backlog.Pending, &backlog.Stuck, &backlog.MaxAttempts, &oldestSeconds)
+		})
+	if err != nil {
+		return accountdelete.Backlog{}, fmt.Errorf("read deletion backlog: %w", err)
+	}
+	backlog.OldestPending = time.Duration(oldestSeconds) * time.Second
+	return backlog, nil
 }
 
 // Sweep erases the account's rows and records completion in one transaction

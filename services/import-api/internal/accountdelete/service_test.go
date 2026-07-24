@@ -65,11 +65,13 @@ func userPrincipal(t *testing.T) security.Principal {
 }
 
 type stubQueue struct {
-	claims    []Claim
-	index     int
-	claimErr  error
-	released  []string
-	releaseOk bool
+	claims     []Claim
+	index      int
+	claimErr   error
+	released   []string
+	releaseOk  bool
+	backlog    Backlog
+	backlogErr error
 }
 
 func (q *stubQueue) Claim(context.Context, int) (Claim, bool, error) {
@@ -82,6 +84,10 @@ func (q *stubQueue) Claim(context.Context, int) (Claim, bool, error) {
 	claim := q.claims[q.index]
 	q.index++
 	return claim, true, nil
+}
+
+func (q *stubQueue) Backlog(context.Context, int) (Backlog, error) {
+	return q.backlog, q.backlogErr
 }
 
 func (q *stubQueue) Release(_ context.Context, accountID string, _ int64) error {
@@ -225,5 +231,35 @@ func TestDeleteRefusesToSweepWithoutAnEpochBump(t *testing.T) {
 func TestDeleteRequiresComposition(t *testing.T) {
 	if _, err := (Service{}).Delete(context.Background(), userPrincipal(t)); !errors.Is(err, ErrServiceUnavailable) {
 		t.Fatalf("uncomposed service error = %v", err)
+	}
+}
+
+// A backlog with stuck accounts is not healthy: someone asked to be deleted
+// and is not being, which is the whole reason the count exists.
+func TestBacklogHealthReflectsStuckAccounts(t *testing.T) {
+	for _, testCase := range []struct {
+		name    string
+		backlog Backlog
+		healthy bool
+	}{
+		{"idle", Backlog{}, true},
+		{"pending but progressing", Backlog{Pending: 4}, true},
+		{"one stuck", Backlog{Pending: 4, Stuck: 1, MaxAttempts: 7}, false},
+	} {
+		queue := &stubQueue{backlog: testCase.backlog}
+		worker := Worker{Queue: queue, Repository: &stubRepository{}, Objects: &stubEraser{}}
+		backlog, err := worker.Backlog(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if backlog.Healthy() != testCase.healthy {
+			t.Fatalf("%s: healthy = %v, want %v", testCase.name, backlog.Healthy(), testCase.healthy)
+		}
+	}
+}
+
+func TestBacklogRequiresAQueue(t *testing.T) {
+	if _, err := (Worker{}).Backlog(context.Background()); !errors.Is(err, ErrServiceUnavailable) {
+		t.Fatalf("uncomposed backlog error = %v", err)
 	}
 }

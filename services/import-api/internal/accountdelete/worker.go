@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 )
 
 // Claim is one leased unit of deletion work. The worker never chooses which
@@ -21,7 +22,28 @@ type Claim struct {
 type WorkQueue interface {
 	Claim(ctx context.Context, leaseSeconds int) (Claim, bool, error)
 	Release(ctx context.Context, accountID string, deletionEpoch int64) error
+	Backlog(ctx context.Context, stuckAttempts int) (Backlog, error)
 }
+
+// Backlog is the operational view of deletion health. It carries counts and
+// ages only — no account identifiers — because an alert needs a number, and a
+// surface that identified accounts would make watching deletion health a way
+// to enumerate people.
+type Backlog struct {
+	Pending       int64
+	Stuck         int64
+	MaxAttempts   int
+	OldestPending time.Duration
+}
+
+// StuckAttemptsThreshold is where an account stops looking like a normal retry
+// and starts looking like one that will never succeed. Three attempts is a
+// judgement call, not a measurement.
+const StuckAttemptsThreshold = 3
+
+// Healthy reports whether anything needs a human. A deletion in progress is
+// ordinary; a deletion that has failed repeatedly is not.
+func (b Backlog) Healthy() bool { return b.Stuck == 0 }
 
 // Worker drains accounts that a request already fenced. It is safe to run more
 // than one: the lease and SKIP LOCKED make concurrent workers take disjoint
@@ -102,3 +124,13 @@ func (w Worker) erase(ctx context.Context, claim Claim) (Receipt, error) {
 
 // ErrNoDeletionWork lets a caller distinguish an idle queue from a failure.
 var ErrNoDeletionWork = errors.New("no account is pending deletion")
+
+// Backlog reports deletion health so a caller can alert on it. It is separate
+// from Sweep on purpose: an operator must be able to see that erasure is stuck
+// even when — especially when — no worker can make progress.
+func (w Worker) Backlog(ctx context.Context) (Backlog, error) {
+	if w.Queue == nil {
+		return Backlog{}, ErrServiceUnavailable
+	}
+	return w.Queue.Backlog(ctx, StuckAttemptsThreshold)
+}

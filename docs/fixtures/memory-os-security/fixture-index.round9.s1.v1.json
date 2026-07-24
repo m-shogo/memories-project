@@ -115,6 +115,9 @@
     "deletionObjectStorageErasureLiveTestsPassed": true,
     "backgroundDeletionRuntimeCreated": true,
     "parserFuzzCorpusArchived": true,
+    "deletionBacklogAlertingCreated": true,
+    "deletionBacklogSqlTestsPassed": true,
+    "deletionBacklogLiveTestsPassed": true,
     "deletionRuntimeClaimSqlTestsPassed": true,
     "deletionRuntimeResumptionLiveTestsPassed": true,
     "appleCodeExchangeImplemented": false,
@@ -188,7 +191,6 @@
     "confirmedAt": "2026-07-24"
   },
   "nextRequired": [
-    "implement_apple_code_exchange",
-    "alert_on_climbing_deletion_attempts"
+    "implement_apple_code_exchange"
   ]
 }

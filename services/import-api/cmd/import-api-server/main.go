@@ -187,6 +187,19 @@ func runDeletionRuntime(ctx context.Context, worker accountdelete.Worker) {
 			if err != nil && ctx.Err() == nil {
 				fmt.Printf("deletion runtime sweep failed; account remains fenced and claimable\n")
 			}
+			// Counting retries was pointless while nobody read the count. A
+			// stuck account means a user asked to be deleted and is not being,
+			// so it is reported every cycle until it clears.
+			backlog, backlogErr := worker.Backlog(ctx)
+			switch {
+			case backlogErr != nil && ctx.Err() == nil:
+				fmt.Printf("deletion runtime could not read its backlog\n")
+			case backlogErr == nil && !backlog.Healthy():
+				fmt.Printf("ALERT deletion backlog: %d pending, %d stuck at >=%d attempts "+
+					"(worst %d attempts, oldest pending %s)\n",
+					backlog.Pending, backlog.Stuck, accountdelete.StuckAttemptsThreshold,
+					backlog.MaxAttempts, backlog.OldestPending.Round(time.Second))
+			}
 		}
 	}
 }
