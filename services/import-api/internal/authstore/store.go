@@ -186,3 +186,19 @@ func (s Store) withAuthRole(ctx context.Context, fn func(pgx.Tx) error) error {
 	}
 	return tx.Commit(ctx)
 }
+
+// IssueForApple adapts Issue to the appleauth.SessionIssuer signature, so the
+// Apple login service can mint a session without depending on IssueInput. It
+// applies no policy of its own — Issue owns the validation.
+func (s Store) IssueForApple(ctx context.Context, accountID string, accountEpoch int64, authority security.Authority, ttl time.Duration) (string, error) {
+	issued, err := s.Issue(ctx, IssueInput{
+		AccountID: accountID,
+		Epoch:     accountEpoch,
+		Authority: authority,
+		TTL:       ttl,
+	})
+	if err != nil {
+		return "", err
+	}
+	return issued.Token, nil
+}

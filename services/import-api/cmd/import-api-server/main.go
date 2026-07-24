@@ -22,12 +22,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/m-shogo/memories-project/services/import-api/internal/accountdelete"
+	"github.com/m-shogo/memories-project/services/import-api/internal/appleauth"
 	"github.com/m-shogo/memories-project/services/import-api/internal/apply"
 	"github.com/m-shogo/memories-project/services/import-api/internal/authstore"
 	"github.com/m-shogo/memories-project/services/import-api/internal/cryptoids"
 	"github.com/m-shogo/memories-project/services/import-api/internal/dbscope"
 	"github.com/m-shogo/memories-project/services/import-api/internal/epochguard"
 	"github.com/m-shogo/memories-project/services/import-api/internal/fenced"
+	"github.com/m-shogo/memories-project/services/import-api/internal/httpapi"
 	"github.com/m-shogo/memories-project/services/import-api/internal/httpserver"
 	"github.com/m-shogo/memories-project/services/import-api/internal/objectstore"
 	"github.com/m-shogo/memories-project/services/import-api/internal/pgrepo"
@@ -123,12 +125,22 @@ func run(listen, databaseURL, s3Endpoint, s3Access, s3Secret, bucket string, dev
 		IDs:          cryptoids.Generator{},
 	}
 
+	// Sign in with Apple is wired only when the developer credentials are
+	// present in the environment. Without them the endpoint returns 503 rather
+	// than failing to start, so the binary runs in dev and CI unchanged. The
+	// private key path is read here; its bytes never leave this function.
+	appleLogin, err := buildAppleLogin(sessions, pool)
+	if err != nil {
+		return err
+	}
+
 	server := httpserver.NewHTTPServer(listen, httpserver.New(httpserver.Config{
-		Sessions: sessions,
-		Upload:   fenced.Upload{Guard: guard, Inner: uploadService},
-		Preview:  fenced.PreviewRead{Guard: guard, Inner: previewService},
-		Apply:    fenced.Apply{Guard: guard, Inner: applyService},
-		Account:  accountdelete.Service{Repository: accountControl, Guard: guard},
+		Sessions:   sessions,
+		Upload:     fenced.Upload{Guard: guard, Inner: uploadService},
+		Preview:    fenced.PreviewRead{Guard: guard, Inner: previewService},
+		Apply:      fenced.Apply{Guard: guard, Inner: applyService},
+		Account:    accountdelete.Service{Repository: accountControl, Guard: guard},
+		AppleLogin: appleLogin,
 	}))
 
 	// The deletion runtime drains accounts the API already fenced. It runs in
@@ -202,4 +214,60 @@ func runDeletionRuntime(ctx context.Context, worker accountdelete.Worker) {
 			}
 		}
 	}
+}
+
+// appleSessionIssuer adapts authstore.Store to appleauth.SessionIssuer.
+type appleSessionIssuer struct{ store authstore.Store }
+
+func (a appleSessionIssuer) Issue(ctx context.Context, accountID string, accountEpoch int64, authority security.Authority, ttl time.Duration) (string, error) {
+	return a.store.IssueForApple(ctx, accountID, accountEpoch, authority, ttl)
+}
+
+// buildAppleLogin assembles the Apple login service from environment
+// credentials. It returns (nil, nil) when unconfigured, which leaves the
+// endpoint unavailable rather than blocking startup. The .p8 bytes are read,
+// parsed, and dropped inside this function; only the parsed key is retained.
+func buildAppleLogin(sessions authstore.Store, pool *pgxpool.Pool) (httpapi.AppleLoginService, error) {
+	teamID := os.Getenv("MEMORY_OS_APPLE_TEAM_ID")
+	keyID := os.Getenv("MEMORY_OS_APPLE_KEY_ID")
+	clientID := os.Getenv("MEMORY_OS_APPLE_CLIENT_ID")
+	keyPath := os.Getenv("MEMORY_OS_APPLE_PRIVATE_KEY_PATH")
+	if teamID == "" || keyID == "" || clientID == "" || keyPath == "" {
+		return nil, nil
+	}
+	keyBytes, err := os.ReadFile(keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("read Apple private key: %w", err)
+	}
+	privateKey, err := appleauth.ParseP8PrivateKey(keyBytes)
+	for i := range keyBytes {
+		keyBytes[i] = 0
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	issuer := appleauth.DefaultIssuer
+	verifier := &appleauth.Verifier{
+		Issuer:      issuer,
+		Audiences:   map[string]struct{}{clientID: {}},
+		ClockSkew:   2 * time.Minute,
+		MaxTokenAge: 10 * time.Minute,
+		Keys:        appleauth.NewAppleJWKSClient(nil),
+		Codes: appleauth.TokenClient{
+			Endpoint: "https://appleid.apple.com/auth/token",
+			Issuer:   issuer,
+			ClientSecret: appleauth.ClientSecretConfig{
+				TeamID: teamID, KeyID: keyID, ClientID: clientID, PrivateKey: privateKey,
+			},
+		},
+		Replay:   appleauth.PostgresReplayGuard{Pool: pool},
+		Accounts: appleauth.PostgresAccountBindingStore{Pool: pool, IDs: cryptoids.Generator{}},
+	}
+	return appleauth.LoginService{
+		Verifier:   verifier,
+		Sessions:   appleSessionIssuer{store: sessions},
+		SessionTTL: 24 * time.Hour,
+		Authority:  security.AuthorityIOSUser,
+	}, nil
 }

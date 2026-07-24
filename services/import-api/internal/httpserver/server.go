@@ -21,11 +21,12 @@ type PrincipalResolver interface {
 }
 
 type Config struct {
-	Sessions PrincipalResolver
-	Upload   httpapi.UploadService
-	Preview  httpapi.PreviewReadService
-	Apply    httpapi.ApplyService
-	Account  httpapi.AccountDeleteService
+	Sessions   PrincipalResolver
+	Upload     httpapi.UploadService
+	Preview    httpapi.PreviewReadService
+	Apply      httpapi.ApplyService
+	Account    httpapi.AccountDeleteService
+	AppleLogin httpapi.AppleLoginService
 }
 
 // New builds the routing tree: an unauthenticated health probe plus the
@@ -43,6 +44,10 @@ func New(config Config) http.Handler {
 		writer.WriteHeader(http.StatusOK)
 		_, _ = writer.Write([]byte("ok"))
 	})
+	// Apple sign-in is the endpoint that mints a session, so it is mounted
+	// unauthenticated ahead of the session middleware. Its own verifier is the
+	// authentication.
+	httpapi.AppleHandler{Service: config.AppleLogin}.Register(root)
 	root.Handle("/v1/", sessionMiddleware(config.Sessions, api))
 	return root
 }
