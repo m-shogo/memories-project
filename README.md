@@ -114,7 +114,8 @@ current full-repository Go suite:
 PASS in a local golang:1.23 Linux container at the recorded HEAD
 
 remote Actions:
-deletion-fencing-and-object-erasure HEAD 99cd3d4 CONFIRMED green (Import API run 30052126998, Security Contracts run 30052126969)
+deployment-login-deletion-runtime-fuzz-corpus HEAD 0f79f5c CONFIRMED green (Import API run 30059874457, Security Contracts run 30059815370)
+Security Contracts last ran at b030b66, not at HEAD: Security Contracts does not run at 0f79f5c: that commit touches only fuzz testdata and a script, which its path filters exclude. b030b66 is the newest commit that changed anything it checks.
 
 production:
 NO-GO

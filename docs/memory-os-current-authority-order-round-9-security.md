@@ -305,9 +305,15 @@ code HEAD 3f9ab51 (docs only; code identical to 5c3dc4b)
 gofmt clean + go vet + go test ./... + go test -race ./... (17 packages,
 live DB/object-store/supervision/import-flow tests included) + both 5s fuzz smokes PASS
 
-remote workflows at deletion-fencing + object-erasure HEAD 99cd3d4:
-Import API Security Slice run 30052126998 SUCCESS (live deletion/erasure tests executed)
-Security Contracts run 30052126969 SUCCESS
+remote workflows at HEAD 0f79f5c (deployment login + deletion runtime + fuzz corpus):
+Import API Security Slice run 30059874457 SUCCESS
+Security Contracts run 30059815370 SUCCESS at b030b66 — it does not run at
+0f79f5c, whose only changes are fuzz testdata and a script its path filters
+exclude; b030b66 is the newest commit touching anything it checks.
+
+One failure occurred in this sequence and was fixed rather than retried:
+Import API run 30059231116 at 26a86c1 failed because migration 007 was missing
+from the httpserver migration list, hidden locally by a stale database.
 ```
 
 Earlier Import API remote runs had failed at the Format check until the verifier checkpoint repaired the suite; every push since has run green. CI evidence is repository evidence, not production evidence.

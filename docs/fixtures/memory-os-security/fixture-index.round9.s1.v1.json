@@ -176,13 +176,15 @@
     "archiveSafetyDenies": 24
   },
   "remoteEvidence": {
-    "checkpointLabel": "deletion-fencing-and-object-erasure",
-    "headSha": "99cd3d4538c2e91a3a669fb9e6ec90d8e1f58b76",
-    "headShaShort": "99cd3d4",
-    "importApiRunId": 30052126998,
-    "importApiRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/30052126998",
-    "securityContractsRunId": 30052126969,
-    "securityContractsRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/30052126969",
+    "checkpointLabel": "deployment-login-deletion-runtime-fuzz-corpus",
+    "headSha": "0f79f5c82b4736b59218b8965ae04aba382846af",
+    "headShaShort": "0f79f5c",
+    "importApiRunId": 30059874457,
+    "importApiRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/30059874457",
+    "securityContractsRunId": 30059815370,
+    "securityContractsRunUrl": "https://github.com/m-shogo/memories-project/actions/runs/30059815370",
+    "securityContractsHeadShaShort": "b030b66",
+    "securityContractsNote": "Security Contracts does not run at 0f79f5c: that commit touches only fuzz testdata and a script, which its path filters exclude. b030b66 is the newest commit that changed anything it checks.",
     "confirmedAt": "2026-07-24"
   },
   "nextRequired": [

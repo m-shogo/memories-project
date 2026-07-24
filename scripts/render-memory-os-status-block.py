@@ -201,6 +201,15 @@ def render(index: dict) -> str:
             f"{remote['checkpointLabel']} HEAD {remote['headShaShort']} CONFIRMED green "
             f"(Import API run {remote['importApiRunId']}, Security Contracts run {remote['securityContractsRunId']})"
         )
+        # Path filters mean a workflow can legitimately not run at HEAD. Saying
+        # "confirmed at HEAD" when one workflow last ran at an earlier commit
+        # would overstate the evidence, so the difference is always printed.
+        contracts_sha = remote.get("securityContractsHeadShaShort")
+        if contracts_sha and contracts_sha != remote["headShaShort"]:
+            lines.append(
+                f"Security Contracts last ran at {contracts_sha}, not at HEAD: "
+                f"{remote.get('securityContractsNote', 'path filters excluded the newer commit')}"
+            )
     else:
         lines.append("remote Actions:")
         lines.append("UNCONFIRMED — no remoteEvidence recorded in the fixture index")
