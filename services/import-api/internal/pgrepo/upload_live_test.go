@@ -100,6 +100,7 @@ func newLiveEnv(t *testing.T) *liveEnv {
 			"007_memory_os_app_login.sql",
 			"008_memory_os_deletion_runtime.sql",
 			"009_memory_os_deletion_visibility.sql",
+			"010_memory_os_apple_identity.sql",
 		} {
 			payload, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "infra", "postgresql", "security", name))
 			if err == nil {

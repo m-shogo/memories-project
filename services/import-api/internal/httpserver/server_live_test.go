@@ -23,12 +23,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/m-shogo/memories-project/services/import-api/internal/accountdelete"
+	"github.com/m-shogo/memories-project/services/import-api/internal/appleauth"
 	"github.com/m-shogo/memories-project/services/import-api/internal/apply"
 	"github.com/m-shogo/memories-project/services/import-api/internal/authstore"
 	"github.com/m-shogo/memories-project/services/import-api/internal/cryptoids"
 	"github.com/m-shogo/memories-project/services/import-api/internal/dbscope"
 	"github.com/m-shogo/memories-project/services/import-api/internal/epochguard"
 	"github.com/m-shogo/memories-project/services/import-api/internal/fenced"
+	"github.com/m-shogo/memories-project/services/import-api/internal/httpapi"
 	"github.com/m-shogo/memories-project/services/import-api/internal/objectstore"
 	"github.com/m-shogo/memories-project/services/import-api/internal/pgrepo"
 	"github.com/m-shogo/memories-project/services/import-api/internal/pgscope"
@@ -55,6 +57,47 @@ type liveServer struct {
 	objects  *objectstore.Client
 
 	accountControl pgrepo.AccountControl
+	apple          *appleLoginHolder
+}
+
+// appleLoginHolder lets a live test swap in an Apple login service after the
+// server is built, since the service depends on the test's fake Apple which in
+// turn depends on the running pool. It forwards to whatever inner is set; a nil
+// inner reports the endpoint unavailable, exactly like production without
+// credentials.
+type appleLoginHolder struct{ inner httpapi.AppleLoginService }
+
+func (h *appleLoginHolder) Login(ctx context.Context, input appleauth.Input) (appleauth.LoginResult, error) {
+	if h.inner == nil {
+		return appleauth.LoginResult{}, appleauth.ErrLoginUnavailable
+	}
+	return h.inner.Login(ctx, input)
+}
+
+func (s *liveServer) rewireApple(service appleauth.LoginService) {
+	s.apple.inner = service
+}
+
+// appleSessionAdapter adapts authstore.Store to appleauth.SessionIssuer for the
+// live journey, mirroring the production adapter in cmd/import-api-server.
+type appleSessionAdapter struct{ store authstore.Store }
+
+func (a appleSessionAdapter) Issue(ctx context.Context, accountID string, accountEpoch int64, authority security.Authority, ttl time.Duration) (string, error) {
+	return a.store.IssueForApple(ctx, accountID, accountEpoch, authority, ttl)
+}
+
+// bumpAccountToDeleting moves an account into the deleting state through the
+// same API path a real deletion request uses.
+func bumpAccountToDeleting(t *testing.T, s *liveServer, accountID string) {
+	t.Helper()
+	principal, err := security.NewVerifiedPrincipal(accountID, 0, security.AuthorityIOSUser)
+	if err != nil {
+		t.Fatal(err)
+	}
+	control := pgrepo.AccountControl{Pool: s.appPool, Transactions: s.executor}
+	if _, err := control.BeginDeletion(context.Background(), principal); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func newLiveServer(t *testing.T) *liveServer {
@@ -117,6 +160,7 @@ func newLiveServer(t *testing.T) *liveServer {
 			"007_memory_os_app_login.sql",
 			"008_memory_os_deletion_runtime.sql",
 			"009_memory_os_deletion_visibility.sql",
+			"010_memory_os_apple_identity.sql",
 		} {
 			payload, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "infra", "postgresql", "security", name))
 			if err == nil {
@@ -172,6 +216,7 @@ func newLiveServer(t *testing.T) *liveServer {
 	// deletion-epoch fence, exactly as cmd/import-api-server wires it.
 	accountControl := pgrepo.AccountControl{Pool: appPool, Transactions: executor}
 	guard := epochguard.Guard{Source: accountControl}
+	appleHolder := &appleLoginHolder{}
 	handler := New(Config{
 		Sessions: sessions,
 		Upload: fenced.Upload{Guard: guard, Inner: &upload.Service{
@@ -187,12 +232,14 @@ func newLiveServer(t *testing.T) *liveServer {
 			Repository:   pgrepo.Apply{},
 			IDs:          cryptoids.Generator{},
 		}},
-		Account: accountdelete.Service{Repository: accountControl, Guard: guard},
+		Account:    accountdelete.Service{Repository: accountControl, Guard: guard},
+		AppleLogin: appleHolder,
 	})
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 	return &liveServer{pool: pool, appPool: appPool, sessions: sessions,
-		server: server, executor: executor, objects: objects, accountControl: accountControl}
+		server: server, executor: executor, objects: objects, accountControl: accountControl,
+		apple: appleHolder}
 }
 
 func (s *liveServer) issueSession(t *testing.T, accountID string) string {

@@ -166,6 +166,9 @@ jobs:
       - name: Apply deletion visibility migration
         run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/009_memory_os_deletion_visibility.sql
 
+      - name: Apply Apple identity migration
+        run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/010_memory_os_apple_identity.sql
+
       - name: Execute tenant RLS integration tests
         run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/test_memory_os_import_rls.sql
 
@@ -195,3 +198,6 @@ jobs:
 
       - name: Execute deletion visibility tests
         run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/test_memory_os_deletion_visibility.sql
+
+      - name: Execute Apple identity binding tests
+        run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/test_memory_os_apple_identity.sql
