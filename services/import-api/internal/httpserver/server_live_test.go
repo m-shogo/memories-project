@@ -44,7 +44,10 @@ var (
 )
 
 type liveServer struct {
+	// pool is the privileged migration/fixture connection; appPool is the
+	// unprivileged deployment principal the server itself runs through.
 	pool     *pgxpool.Pool
+	appPool  *pgxpool.Pool
 	sessions authstore.Store
 	server   *httptest.Server
 	executor *dbscope.Executor
@@ -152,11 +155,16 @@ func newLiveServer(t *testing.T) *liveServer {
 		time.Sleep(time.Second)
 	}
 
-	sessions := authstore.Store{Pool: pool}
-	executor := dbscope.New(pgscope.Beginner{Pool: pool})
+	// Everything the server touches goes through the deployment principal:
+	// NOBYPASSRLS, NOINHERIT, no table privileges of its own. Running the HTTP
+	// journey on a superuser connection would have left FORCE RLS unproven for
+	// the path a deployment actually uses.
+	appPool := appLoginPool(t, ctx, pool, serverURL)
+	sessions := authstore.Store{Pool: appPool}
+	executor := dbscope.New(pgscope.Beginner{Pool: appPool})
 	// The composition under test is the deployed one: every surface behind the
 	// deletion-epoch fence, exactly as cmd/import-api-server wires it.
-	accountControl := pgrepo.AccountControl{Pool: pool, Transactions: executor}
+	accountControl := pgrepo.AccountControl{Pool: appPool, Transactions: executor}
 	guard := epochguard.Guard{Source: accountControl}
 	handler := New(Config{
 		Sessions: sessions,
@@ -177,7 +185,8 @@ func newLiveServer(t *testing.T) *liveServer {
 	})
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
-	return &liveServer{pool: pool, sessions: sessions, server: server, executor: executor, objects: objects}
+	return &liveServer{pool: pool, appPool: appPool, sessions: sessions,
+		server: server, executor: executor, objects: objects}
 }
 
 func (s *liveServer) issueSession(t *testing.T, accountID string) string {
@@ -452,7 +461,7 @@ func (s *liveServer) commitPreviewForJob(t *testing.T, accountID string, jobID s
 			},
 		},
 	}
-	committer, err := previewcommit.NewCommitter(s.pool)
+	committer, err := previewcommit.NewCommitter(s.appPool)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -801,4 +810,62 @@ func TestAccountDeletionFencesAndErasesOverHTTP(t *testing.T) {
 	if state != "deleted" || epoch != 2 {
 		t.Fatalf("unexpected tombstone: state=%s epoch=%d", state, epoch)
 	}
+}
+
+// appLoginPool opens a connection as memory_app_login, the principal a
+// deployment would use. The password is generated per run and set through the
+// privileged connection, so no credential exists in the repository.
+func appLoginPool(t *testing.T, ctx context.Context, admin *pgxpool.Pool, adminURL string) *pgxpool.Pool {
+	t.Helper()
+	// The password is the one already in the test database URL: reusing it
+	// introduces no new secret, and — unlike a per-run random value — lets the
+	// several test binaries that share this cluster set the same thing.
+	parsed, err := neturl.Parse(adminURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	password, _ := parsed.User.Password()
+	if password == "" {
+		t.Skip("test database URL carries no password; skipping deployment-principal test")
+	}
+
+	// ALTER ROLE is cluster-wide, so two packages running in parallel collide
+	// with "tuple concurrently updated". Serialize through the same advisory
+	// lock discipline the migrations use.
+	if _, err := admin.Exec(ctx, "SELECT pg_advisory_lock(730002)"); err != nil {
+		t.Fatal(err)
+	}
+	_, alterErr := admin.Exec(ctx,
+		"ALTER ROLE memory_app_login PASSWORD '"+strings.ReplaceAll(password, "'", "''")+"'")
+	if _, err := admin.Exec(ctx, "SELECT pg_advisory_unlock(730002)"); err != nil {
+		t.Fatal(err)
+	}
+	if alterErr != nil {
+		t.Fatal(alterErr)
+	}
+
+	parsed.User = neturl.UserPassword("memory_app_login", password)
+	pool, err := pgxpool.New(ctx, parsed.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	if err := pool.Ping(ctx); err != nil {
+		t.Fatalf("deployment principal could not connect: %v", err)
+	}
+	// Assert the connection really is the unprivileged principal. Without this,
+	// repointing the URL at a superuser would silently turn every RLS proof in
+	// this package back into a no-op.
+	var currentUser string
+	var isSuperuser, bypassesRLS bool
+	if err := pool.QueryRow(ctx,
+		`SELECT current_user, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user`,
+	).Scan(&currentUser, &isSuperuser, &bypassesRLS); err != nil {
+		t.Fatal(err)
+	}
+	if currentUser != "memory_app_login" || isSuperuser || bypassesRLS {
+		t.Fatalf("connected as %q (superuser=%v bypassrls=%v); the RLS proof would be vacuous",
+			currentUser, isSuperuser, bypassesRLS)
+	}
+	return pool
 }

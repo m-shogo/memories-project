@@ -343,8 +343,8 @@ Production remains forbidden while any remains:
    (see docs/memory-os-deletion-fencing-checkpoint-2026-07-24.md)
 1. quarantine object erasure on deletion: the sweep clears the rows, not yet the
    versioned objects in the bucket — the remaining hole in "delete means gone"
-2. Apple code exchange / replay store (needs real Apple credentials — later boundary)
-3. begin iOS only after backend P0 closes
+4. Apple code exchange / replay store (needs real Apple credentials — later boundary)
+5. begin iOS only after backend P0 closes
 ```
 
 Memory Town remains after Capture / Import P0 blockers close.

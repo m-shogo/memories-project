@@ -132,6 +132,7 @@ func newFlowEnv(t *testing.T, workerMode string) *flowEnv {
 			"004_memory_os_account_session.sql",
 			"005_memory_os_apply_memory.sql",
 			"006_memory_os_deletion_fencing.sql",
+			"007_memory_os_app_login.sql",
 		} {
 			payload, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "infra", "postgresql", "security", name))
 			if err == nil {

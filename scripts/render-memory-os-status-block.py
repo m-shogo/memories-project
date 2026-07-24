@@ -122,6 +122,13 @@ SECTIONS: list[dict] = [
         ],
     },
     {
+        "title": "deployment login principal",
+        "requires": ["deploymentLoginPrincipalCreated", "productionNosuperuserLoginProven"],
+        "done_lines": [
+            "NOINHERIT / NOBYPASSRLS login with no table privileges; the HTTP journey and the RLS proofs now run through it, not through a superuser",
+        ],
+    },
+    {
         "title": "iOS / Portal",
         "requires": ["neverTrueSentinel"],  # always pending until this section is intentionally flipped
         "done_lines": [],

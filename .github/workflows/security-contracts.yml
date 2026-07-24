@@ -151,6 +151,9 @@ jobs:
       - name: Apply deletion fencing migration
         run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/006_memory_os_deletion_fencing.sql
 
+      - name: Apply deployment login migration
+        run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/007_memory_os_app_login.sql
+
       - name: Execute tenant RLS integration tests
         run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/test_memory_os_import_rls.sql
 
@@ -171,3 +174,6 @@ jobs:
 
       - name: Execute deletion fencing integration tests
         run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/test_memory_os_deletion_fencing.sql
+
+      - name: Execute deployment login principal tests
+        run: psql --set=ON_ERROR_STOP=1 --file infra/postgresql/security/test_memory_os_app_login.sql

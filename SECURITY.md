@@ -64,6 +64,9 @@ account deletion fencing:
 epoch bump fences every surface; authorized sweep erases all owned rows, sessions and stored object versions (live-tested over HTTP + MinIO)
 a resumable background deletion runtime remains future work
 
+deployment login principal:
+NOINHERIT / NOBYPASSRLS login with no table privileges; the HTTP journey and the RLS proofs now run through it, not through a superuser
+
 iOS / Portal:
 not implemented
 
