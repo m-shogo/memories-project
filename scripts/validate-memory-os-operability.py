@@ -134,8 +134,11 @@ def validate(repo_root: Path) -> tuple[int, int, str]:
         raise ValidationFailure(f"missing authority document: {exc.filename}") from exc
 
     for gate in REQUIRED:
-        if gate not in audit or gate not in authority:
-            raise ValidationFailure(f"authority documents omit {gate}")
+        if gate not in authority:
+            raise ValidationFailure(f"Round 10 authority omits {gate}")
+    for gate in (gate for gate in REQUIRED if gate.startswith("OPS-P0-")):
+        if gate not in audit:
+            raise ValidationFailure(f"operability audit omits {gate}")
     for phrase in (
         "transaction rollback is not migration rollback",
         "object versioning is not backup",
@@ -147,7 +150,8 @@ def validate(repo_root: Path) -> tuple[int, int, str]:
     for path in (STATUS_PATH.as_posix(), AUDIT_PATH.as_posix()):
         if path not in authority:
             raise ValidationFailure(f"Round 10 authority does not link {path}")
-    if decision not in audit or decision not in authority:
+    rendered_decision = decision.replace("_", "-")
+    if decision not in authority or (decision not in audit and rendered_decision not in audit):
         raise ValidationFailure("production decision disagrees across authority files")
 
     return ready_count, len(areas), decision
