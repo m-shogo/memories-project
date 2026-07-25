@@ -133,6 +133,27 @@ from a real device completes the live proof.
   the deletion-fencing SQL suite runs in Security Contracts and has been green
   remotely; set true.
 
+## Post-open hardening
+
+Because sign-in is now a public, unauthenticated endpoint, two fail-closed
+properties were locked with regression tests before real users arrive:
+
+- **Apple linkage is erased on the deployed deletion path.** The
+  account-deletion HTTP test now seeds an apple_identity binding, asserts the
+  sweep reports `apple_identity=1`, and proves zero bindings remain afterwards.
+  The SQL unit test already covered the sweep function; this closes the gap that
+  the real HTTP+worker path did not prove a deleted user's Apple identity is
+  gone.
+- **The unconfigured endpoint opens nothing.** Without credentials, POST
+  /v1/auth/apple returns 503 and provisions no identity row — verified once by
+  hand against the binary, now a regression test so the credential-free binary
+  can never ship a half-built account-creation surface.
+
+The focused audit that accompanied this — body limits, Cache-Control no-store on
+the token-returning response, bearer handling, replay ordering, audience
+authority — found no reachable destructive or trust-violating path to close on
+the Apple surface, unlike the earlier update_safe_fields case.
+
 ## Not done
 
 - Rich Memory domain, supersession, iOS, Portal, Town: untouched.
