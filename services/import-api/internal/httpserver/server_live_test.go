@@ -801,6 +801,18 @@ func TestAccountDeletionFencesAndErasesOverHTTP(t *testing.T) {
 	ownerToken := server.issueSession(t, owner)
 	jobID := server.createJob(t, owner)
 
+	// Bind an Apple identity to this account. Now that sign-in is public, a
+	// deleted user's Apple linkage (their real issuer+subject) must not survive
+	// deletion, and that must hold on the real HTTP+worker path, not only in the
+	// SQL unit test. Seeded directly through the privileged pool because the
+	// binding is otherwise reachable only via the definer provisioning function.
+	if _, err := server.pool.Exec(context.Background(),
+		`INSERT INTO memory_os.apple_identity (issuer, subject, account_id)
+		 VALUES ($1, $2, $3)`,
+		"https://appleid.apple.com", fmt.Sprintf("apple-sub-del-%d", runID), owner); err != nil {
+		t.Fatal(err)
+	}
+
 	// A real object in the bucket, uploaded through the presigned path, so the
 	// deletion below has actual bytes to erase rather than only rows.
 	payload := []byte("title,date\ndeleted trip,2026-07-24\n")
@@ -990,7 +1002,7 @@ func TestAccountDeletionFencesAndErasesOverHTTP(t *testing.T) {
 	// two memory items applied above and both live sessions.
 	if removed["memory_item"] != 2 || removed["preview_ready"] != 1 ||
 		removed["import_job"] != 1 || removed["account_session"] != 2 ||
-		removed["quarantine_object_versions"] < 1 {
+		removed["apple_identity"] != 1 || removed["quarantine_object_versions"] < 1 {
 		t.Fatalf("unexpected sweep accounting: %+v", removed)
 	}
 
@@ -1043,6 +1055,18 @@ func TestAccountDeletionFencesAndErasesOverHTTP(t *testing.T) {
 		if remaining != 0 {
 			t.Fatalf("%s still holds %d rows for the deleted account", table, remaining)
 		}
+	}
+
+	// apple_identity is keyed by account_id, so it is checked on its own: a
+	// deleted account must retain no Apple linkage.
+	var appleBindings int
+	if err := server.pool.QueryRow(context.Background(),
+		"SELECT count(*) FROM memory_os.apple_identity WHERE account_id = $1", owner,
+	).Scan(&appleBindings); err != nil {
+		t.Fatal(err)
+	}
+	if appleBindings != 0 {
+		t.Fatalf("the deleted account still holds %d Apple identity bindings", appleBindings)
 	}
 
 	// The tombstone remains: the account is recorded as deleted, not forgotten.

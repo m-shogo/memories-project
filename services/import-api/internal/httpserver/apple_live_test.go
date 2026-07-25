@@ -273,6 +273,35 @@ func TestAppleLoginJourneyOverHTTP(t *testing.T) {
 	}
 }
 
+// TestAppleLoginUnconfiguredIsUnavailable proves that without an Apple login
+// service wired the public endpoint reports 503 and provisions nothing — the
+// binary must run in this state (no credentials) without opening a half-built
+// account-creation surface.
+func TestAppleLoginUnconfiguredIsUnavailable(t *testing.T) {
+	server := newLiveServer(t)
+	// Deliberately do NOT rewire Apple: the holder's inner stays nil.
+	before := appleIdentityCount(t, server)
+	response, body := server.request(t, http.MethodPost, "/v1/auth/apple", "", map[string]any{
+		"identityToken": "x", "authorizationCode": "y", "clientId": "com.memoryos.app", "nonce": "n",
+	})
+	if response.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("unconfigured Apple login status: %d %s", response.StatusCode, body)
+	}
+	if after := appleIdentityCount(t, server); after != before {
+		t.Fatalf("unconfigured Apple login created %d identity rows", after-before)
+	}
+}
+
+func appleIdentityCount(t *testing.T, s *liveServer) int {
+	t.Helper()
+	var count int
+	if err := s.pool.QueryRow(context.Background(),
+		"SELECT count(*) FROM memory_os.apple_identity").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	return count
+}
+
 // TestAppleLoginRefusesDeletedAccountRevival proves a signed-in identity whose
 // account is deleting is refused rather than revived.
 func TestAppleLoginRefusesDeletedAccountRevival(t *testing.T) {
