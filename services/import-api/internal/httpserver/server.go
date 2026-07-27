@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/m-shogo/memories-project/services/import-api/internal/httpapi"
+	"github.com/m-shogo/memories-project/services/import-api/internal/obslog"
 	"github.com/m-shogo/memories-project/services/import-api/internal/security"
 )
 
@@ -27,6 +28,9 @@ type Config struct {
 	Apply      httpapi.ApplyService
 	Account    httpapi.AccountDeleteService
 	AppleLogin httpapi.AppleLoginService
+	// Logger receives structured request/lifecycle events. A nil logger is
+	// safe: observability never blocks the request path.
+	Logger *obslog.Logger
 }
 
 // New builds the routing tree: an unauthenticated health probe plus the
@@ -49,7 +53,7 @@ func New(config Config) http.Handler {
 	// authentication.
 	httpapi.AppleHandler{Service: config.AppleLogin}.Register(root)
 	root.Handle("/v1/", sessionMiddleware(config.Sessions, api))
-	return root
+	return observabilityMiddleware(config.Logger, root)
 }
 
 // sessionMiddleware authenticates every request under it. The raw token is

@@ -32,9 +32,11 @@ import (
 	"github.com/m-shogo/memories-project/services/import-api/internal/httpapi"
 	"github.com/m-shogo/memories-project/services/import-api/internal/httpserver"
 	"github.com/m-shogo/memories-project/services/import-api/internal/objectstore"
+	"github.com/m-shogo/memories-project/services/import-api/internal/obslog"
 	"github.com/m-shogo/memories-project/services/import-api/internal/pgrepo"
 	"github.com/m-shogo/memories-project/services/import-api/internal/pgscope"
 	"github.com/m-shogo/memories-project/services/import-api/internal/previewread"
+	"github.com/m-shogo/memories-project/services/import-api/internal/reqid"
 	"github.com/m-shogo/memories-project/services/import-api/internal/security"
 	"github.com/m-shogo/memories-project/services/import-api/internal/upload"
 )
@@ -105,6 +107,7 @@ func run(listen, databaseURL, s3Endpoint, s3Access, s3Secret, bucket string, dev
 		}
 	}
 
+	logger := obslog.New(os.Stdout)
 	executor := dbscope.New(pgscope.Beginner{Pool: pool})
 	// Every request surface runs behind the deletion-epoch fence. The guard
 	// reads the canonical account_control row, so a session issued before an
@@ -141,6 +144,7 @@ func run(listen, databaseURL, s3Endpoint, s3Access, s3Secret, bucket string, dev
 		Apply:      fenced.Apply{Guard: guard, Inner: applyService},
 		Account:    accountdelete.Service{Repository: accountControl, Guard: guard},
 		AppleLogin: appleLogin,
+		Logger:     logger,
 	}))
 
 	// The deletion runtime drains accounts the API already fenced. It runs in
@@ -151,16 +155,25 @@ func run(listen, databaseURL, s3Endpoint, s3Access, s3Secret, bucket string, dev
 		Repository: accountControl,
 		Objects:    objects,
 	}
-	go runDeletionRuntime(ctx, deletionWorker)
+	go runDeletionRuntime(ctx, deletionWorker, logger)
 
 	errs := make(chan error, 1)
 	go func() {
-		fmt.Printf("import-api-server listening on %s\n", listen)
+		logger.Emit(obslog.Event{
+			Severity: obslog.SeverityInfo, EventName: "server.started",
+			EventCode: obslog.EventServerStarted, Component: obslog.ComponentServer,
+			Operation: "listen", Outcome: obslog.OutcomeSuccess,
+		})
 		errs <- server.ListenAndServe()
 	}()
 
 	select {
 	case <-ctx.Done():
+		logger.Emit(obslog.Event{
+			Severity: obslog.SeverityInfo, EventName: "server.stopping",
+			EventCode: obslog.EventServerStopping, Component: obslog.ComponentServer,
+			Operation: "shutdown", Outcome: obslog.OutcomeSuccess,
+		})
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		return server.Shutdown(shutdownCtx)
@@ -182,7 +195,7 @@ func envOr(name string, fallback string) string {
 // runDeletionRuntime polls for fenced accounts until the process shuts down. A
 // failed sweep is logged without a reason string: the account stays fenced and
 // claimable, and this log line must never carry a fragment of user content.
-func runDeletionRuntime(ctx context.Context, worker accountdelete.Worker) {
+func runDeletionRuntime(ctx context.Context, worker accountdelete.Worker, logger *obslog.Logger) {
 	const interval = 30 * time.Second
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -191,26 +204,45 @@ func runDeletionRuntime(ctx context.Context, worker accountdelete.Worker) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			// Each sweep cycle is its own correlation boundary: worker events
+			// form their own scope rather than borrowing a request's.
+			correlationID := reqid.NewCorrelation("deletion")
 			receipts, err := worker.Sweep(ctx, 8)
 			for _, receipt := range receipts {
-				fmt.Printf("deletion runtime erased account at epoch %d (attempt %d)\n",
-					receipt.DeletionEpoch, receipt.Attempts)
+				logger.Emit(obslog.Event{
+					Severity: obslog.SeverityInfo, EventName: "deletion.completed",
+					EventCode: obslog.EventDeletionCompleted, Component: obslog.ComponentDeletionWorker,
+					Operation: "sweep", Outcome: obslog.OutcomeSuccess, CorrelationID: correlationID,
+					Count: obslog.Int64Ptr(int64(receipt.DeletionEpoch)),
+				})
 			}
 			if err != nil && ctx.Err() == nil {
-				fmt.Printf("deletion runtime sweep failed; account remains fenced and claimable\n")
+				logger.Emit(obslog.Event{
+					Severity: obslog.SeverityWarn, EventName: "deletion.retry",
+					EventCode: obslog.EventDeletionRetry, Component: obslog.ComponentDeletionWorker,
+					Operation: "sweep", Outcome: obslog.OutcomeFailure, CorrelationID: correlationID,
+					Retryable: obslog.BoolPtr(true), FailureClass: obslog.FailureDeletionRetry,
+				})
 			}
-			// Counting retries was pointless while nobody read the count. A
-			// stuck account means a user asked to be deleted and is not being,
-			// so it is reported every cycle until it clears.
+			// A stuck account means a user asked to be deleted and is not being,
+			// so it is reported as counts every cycle until it clears. The
+			// counts carry no identifier.
 			backlog, backlogErr := worker.Backlog(ctx)
 			switch {
 			case backlogErr != nil && ctx.Err() == nil:
-				fmt.Printf("deletion runtime could not read its backlog\n")
+				logger.Emit(obslog.Event{
+					Severity: obslog.SeverityWarn, EventName: "deletion.backlog_unreadable",
+					EventCode: obslog.EventDeletionBacklog, Component: obslog.ComponentDeletionWorker,
+					Operation: "backlog", Outcome: obslog.OutcomeFailure, CorrelationID: correlationID,
+					FailureClass: obslog.FailureDatabaseUnavailable,
+				})
 			case backlogErr == nil && !backlog.Healthy():
-				fmt.Printf("ALERT deletion backlog: %d pending, %d stuck at >=%d attempts "+
-					"(worst %d attempts, oldest pending %s)\n",
-					backlog.Pending, backlog.Stuck, accountdelete.StuckAttemptsThreshold,
-					backlog.MaxAttempts, backlog.OldestPending.Round(time.Second))
+				logger.Emit(obslog.Event{
+					Severity: obslog.SeverityError, EventName: "deletion.backlog_stuck",
+					EventCode: obslog.EventDeletionBacklog, Component: obslog.ComponentDeletionWorker,
+					Operation: "backlog", Outcome: obslog.OutcomeFailure, CorrelationID: correlationID,
+					Count: obslog.Int64Ptr(backlog.Stuck), FailureClass: obslog.FailureDeletionTerminal,
+				})
 			}
 		}
 	}
