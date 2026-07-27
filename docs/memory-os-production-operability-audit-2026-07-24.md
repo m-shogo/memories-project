@@ -100,6 +100,31 @@ Forbidden fields:
 
 A redaction test must fail CI when known secret-shaped fields are logged.
 
+### Implementation status (2026-07-25)
+
+Implemented and machine-verified, keeping OPS-P0-003 at PARTIAL rather than
+READY:
+
+- a structured, privacy-first event logger (`services/import-api/internal/obslog`)
+  whose event type has no free-form message, error or map field, so a secret has
+  no field to occupy; enums are closed and every string is length-bounded;
+- request and correlation identifiers (`services/import-api/internal/reqid`) that
+  reject or replace an untrusted inbound request ID and never reuse an account or
+  Apple subject for correlation;
+- an HTTP middleware emitting one request event per request with a
+  low-cardinality route template, plus panic recovery and lifecycle events;
+- redaction canary tests over the real server output, HTTP error responses and
+  panic recovery;
+- a machine-readable event contract, valid and negative fixtures, and a
+  validator that fails on forbidden fields, secret-shaped names, unbounded
+  fields, code drift between the contract and the Go implementation, and any
+  attempt to mark OPS-P0-003 READY without retention and alert routing.
+
+Still missing before READY, and the reason the gate stays PARTIAL: a configured
+log retention and access policy, and real alert routing that carries the
+structured events to an operator alerting system. Structured emission is not
+alert delivery, and a logger is not a retention policy.
+
 ## 4. Metrics and SLOs
 
 Tests are not runtime metrics. Define bounded-cardinality metrics before production.

@@ -89,7 +89,7 @@ Implemented foundations include:
 - real-Apple credential/key-rotation evidence;
 - production object-storage TLS/scoped credentials/lifecycle evidence;
 - parser network namespace/seccomp/container evidence;
-- privacy-safe structured observability, metrics and real alert routing;
+- privacy-safe structured observability, metrics and real alert routing (structured event contract, correlation IDs and redaction tests now exist under `internal/obslog` and `internal/reqid`; retention and real alert routing remain, so OPS-P0-003 stays PARTIAL, not READY);
 - endpoint-specific distributed rate limiting;
 - production-shaped load/capacity evidence;
 - PostgreSQL PITR and isolated restore rehearsal;
