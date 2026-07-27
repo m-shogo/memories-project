@@ -1,0 +1,169 @@
+{
+  "fixtureId": "memory-os.operability.observability-events.negative.v1",
+  "description": "Events that must be rejected. Each carries a reason the validator is required to detect. If any of these ever validates as clean, the redaction/bounding guarantee has a hole.",
+  "cases": [
+    {
+      "reason": "forbidden field name (free-form message)",
+      "event": {
+        "schemaVersion": "memory-os-observability-event.v1",
+        "timestamp": "2027-01-15T09:20:00Z",
+        "severity": "error",
+        "eventName": "http.request",
+        "eventCode": "OBS_HTTP_REQUEST",
+        "component": "http",
+        "outcome": "failure",
+        "message": "pq: password authentication failed for user \"app\""
+      }
+    },
+    {
+      "reason": "forbidden field name (error value)",
+      "event": {
+        "schemaVersion": "memory-os-observability-event.v1",
+        "timestamp": "2027-01-15T09:20:00Z",
+        "severity": "error",
+        "eventName": "http.request",
+        "eventCode": "OBS_HTTP_REQUEST",
+        "component": "http",
+        "outcome": "failure",
+        "error": "context deadline exceeded"
+      }
+    },
+    {
+      "reason": "secret-shaped field name (bearer token)",
+      "event": {
+        "schemaVersion": "memory-os-observability-event.v1",
+        "timestamp": "2027-01-15T09:20:00Z",
+        "severity": "info",
+        "eventName": "http.request",
+        "eventCode": "OBS_HTTP_REQUEST",
+        "component": "http",
+        "outcome": "success",
+        "sessionToken": "ses_deadbeef"
+      }
+    },
+    {
+      "reason": "secret-shaped substring (anything containing token)",
+      "event": {
+        "schemaVersion": "memory-os-observability-event.v1",
+        "timestamp": "2027-01-15T09:20:00Z",
+        "severity": "info",
+        "eventName": "http.request",
+        "eventCode": "OBS_HTTP_REQUEST",
+        "component": "http",
+        "outcome": "success",
+        "refreshTokenDigest": "abc"
+      }
+    },
+    {
+      "reason": "email field",
+      "event": {
+        "schemaVersion": "memory-os-observability-event.v1",
+        "timestamp": "2027-01-15T09:20:00Z",
+        "severity": "info",
+        "eventName": "apple.login",
+        "eventCode": "OBS_APPLE_LOGIN",
+        "component": "apple_auth",
+        "outcome": "success",
+        "email": "user@example.com"
+      }
+    },
+    {
+      "reason": "unknown event code",
+      "event": {
+        "schemaVersion": "memory-os-observability-event.v1",
+        "timestamp": "2027-01-15T09:20:00Z",
+        "severity": "info",
+        "eventName": "x",
+        "eventCode": "OBS_NOT_DECLARED",
+        "component": "http",
+        "outcome": "success"
+      }
+    },
+    {
+      "reason": "invalid severity",
+      "event": {
+        "schemaVersion": "memory-os-observability-event.v1",
+        "timestamp": "2027-01-15T09:20:00Z",
+        "severity": "critical",
+        "eventName": "x",
+        "eventCode": "OBS_HTTP_REQUEST",
+        "component": "http",
+        "outcome": "success"
+      }
+    },
+    {
+      "reason": "invalid outcome",
+      "event": {
+        "schemaVersion": "memory-os-observability-event.v1",
+        "timestamp": "2027-01-15T09:20:00Z",
+        "severity": "info",
+        "eventName": "x",
+        "eventCode": "OBS_HTTP_REQUEST",
+        "component": "http",
+        "outcome": "weird"
+      }
+    },
+    {
+      "reason": "invalid failure class",
+      "event": {
+        "schemaVersion": "memory-os-observability-event.v1",
+        "timestamp": "2027-01-15T09:20:00Z",
+        "severity": "error",
+        "eventName": "x",
+        "eventCode": "OBS_HTTP_REQUEST",
+        "component": "http",
+        "outcome": "failure",
+        "failureClass": "made_up_class"
+      }
+    },
+    {
+      "reason": "missing required field (component)",
+      "event": {
+        "schemaVersion": "memory-os-observability-event.v1",
+        "timestamp": "2027-01-15T09:20:00Z",
+        "severity": "info",
+        "eventName": "x",
+        "eventCode": "OBS_HTTP_REQUEST",
+        "outcome": "success"
+      }
+    },
+    {
+      "reason": "wrong schema version",
+      "event": {
+        "schemaVersion": "memory-os-observability-event.v0",
+        "timestamp": "2027-01-15T09:20:00Z",
+        "severity": "info",
+        "eventName": "x",
+        "eventCode": "OBS_HTTP_REQUEST",
+        "component": "http",
+        "outcome": "success"
+      }
+    },
+    {
+      "reason": "unbounded string field over the declared limit",
+      "event": {
+        "schemaVersion": "memory-os-observability-event.v1",
+        "timestamp": "2027-01-15T09:20:00Z",
+        "severity": "info",
+        "eventName": "x",
+        "eventCode": "OBS_HTTP_REQUEST",
+        "component": "http",
+        "outcome": "success",
+        "requestId": "req_this_value_is_deliberately_far_longer_than_one_hundred_and_twenty_eight_characters_to_prove_the_bound_is_enforced_by_the_validator_xxxxxxxxxxxxxxxxxxxxxxxxxx"
+      }
+    },
+    {
+      "reason": "undeclared extra field name",
+      "event": {
+        "schemaVersion": "memory-os-observability-event.v1",
+        "timestamp": "2027-01-15T09:20:00Z",
+        "severity": "info",
+        "eventName": "x",
+        "eventCode": "OBS_HTTP_REQUEST",
+        "component": "http",
+        "outcome": "success",
+        "someUndeclaredField": "value"
+      }
+    }
+  ]
+}

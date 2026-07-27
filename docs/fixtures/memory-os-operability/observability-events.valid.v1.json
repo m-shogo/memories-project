@@ -1,0 +1,89 @@
+{
+  "fixtureId": "memory-os.operability.observability-events.valid.v1",
+  "description": "Well-formed events, one per emit site, each with only allowed fields, valid enums and bounded strings. The validator asserts every event here passes and that the union of eventCodes used is a subset of the contract.",
+  "events": [
+    {
+      "schemaVersion": "memory-os-observability-event.v1",
+      "timestamp": "2027-01-15T09:20:00Z",
+      "severity": "info",
+      "eventName": "http.request",
+      "eventCode": "OBS_HTTP_REQUEST",
+      "component": "http",
+      "operation": "serve",
+      "outcome": "success",
+      "requestId": "req_0123456789abcdef0123456789abcdef",
+      "httpMethod": "POST",
+      "route": "POST /v1/auth/apple",
+      "statusCode": 200,
+      "durationMs": 42
+    },
+    {
+      "schemaVersion": "memory-os-observability-event.v1",
+      "timestamp": "2027-01-15T09:20:01Z",
+      "severity": "warn",
+      "eventName": "http.request",
+      "eventCode": "OBS_HTTP_REQUEST",
+      "component": "http",
+      "operation": "serve",
+      "outcome": "rejected",
+      "requestId": "req_0123456789abcdef0123456789abcdef",
+      "httpMethod": "POST",
+      "route": "POST /v1/auth/apple",
+      "statusCode": 401,
+      "durationMs": 8,
+      "failureClass": "authentication_failure"
+    },
+    {
+      "schemaVersion": "memory-os-observability-event.v1",
+      "timestamp": "2027-01-15T09:20:02Z",
+      "severity": "error",
+      "eventName": "http.panic",
+      "eventCode": "OBS_PANIC_RECOVERED",
+      "component": "http",
+      "operation": "serve",
+      "outcome": "failure",
+      "requestId": "req_0123456789abcdef0123456789abcdef",
+      "httpMethod": "GET",
+      "route": "GET /v1/import-jobs/{jobId}/preview",
+      "statusCode": 500,
+      "durationMs": 3,
+      "failureClass": "panic_recovered"
+    },
+    {
+      "schemaVersion": "memory-os-observability-event.v1",
+      "timestamp": "2027-01-15T09:20:03Z",
+      "severity": "info",
+      "eventName": "server.started",
+      "eventCode": "OBS_SERVER_STARTED",
+      "component": "server",
+      "operation": "listen",
+      "outcome": "success"
+    },
+    {
+      "schemaVersion": "memory-os-observability-event.v1",
+      "timestamp": "2027-01-15T09:20:04Z",
+      "severity": "warn",
+      "eventName": "deletion.retry",
+      "eventCode": "OBS_DELETION_RETRY",
+      "component": "deletion_worker",
+      "operation": "sweep",
+      "outcome": "failure",
+      "correlationId": "deletion_0123456789abcdef0123456789abcdef",
+      "retryable": true,
+      "failureClass": "deletion_retry"
+    },
+    {
+      "schemaVersion": "memory-os-observability-event.v1",
+      "timestamp": "2027-01-15T09:20:05Z",
+      "severity": "error",
+      "eventName": "deletion.backlog_stuck",
+      "eventCode": "OBS_DELETION_BACKLOG",
+      "component": "deletion_worker",
+      "operation": "backlog",
+      "outcome": "failure",
+      "correlationId": "deletion_0123456789abcdef0123456789abcdef",
+      "count": 2,
+      "failureClass": "deletion_terminal_failure"
+    }
+  ]
+}

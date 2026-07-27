@@ -11,7 +11,12 @@ on:
       - "docs/memory-os-current-authority-order-round-9-security.md"
       - "docs/memory-os-production-operability-audit-2026-07-24.md"
       - "scripts/validate-memory-os-operability.py"
+      - "scripts/validate-memory-os-observability.py"
       - "scripts/validate-memory-os-entry-docs.py"
+      - "docs/fixtures/memory-os-operability/**"
+      - "services/import-api/internal/obslog/**"
+      - "services/import-api/internal/reqid/**"
+      - "services/import-api/internal/httpserver/observability.go"
       - ".github/workflows/operability-contracts.yml"
   push:
     branches:
@@ -25,7 +30,12 @@ on:
       - "docs/memory-os-current-authority-order-round-9-security.md"
       - "docs/memory-os-production-operability-audit-2026-07-24.md"
       - "scripts/validate-memory-os-operability.py"
+      - "scripts/validate-memory-os-observability.py"
       - "scripts/validate-memory-os-entry-docs.py"
+      - "docs/fixtures/memory-os-operability/**"
+      - "services/import-api/internal/obslog/**"
+      - "services/import-api/internal/reqid/**"
+      - "services/import-api/internal/httpserver/observability.go"
       - ".github/workflows/operability-contracts.yml"
   workflow_dispatch:
 
@@ -52,10 +62,14 @@ jobs:
       - name: Compile validators
         run: |
           python -m py_compile scripts/validate-memory-os-operability.py
+          python -m py_compile scripts/validate-memory-os-observability.py
           python -m py_compile scripts/validate-memory-os-entry-docs.py
 
       - name: Validate production operability authority
         run: python scripts/validate-memory-os-operability.py
+
+      - name: Validate observability event contract
+        run: python scripts/validate-memory-os-observability.py
 
       - name: Validate current entrypoint documents
         run: python scripts/validate-memory-os-entry-docs.py
