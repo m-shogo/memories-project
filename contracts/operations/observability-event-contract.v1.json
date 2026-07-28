@@ -37,8 +37,17 @@
     "httpMethod": 64,
     "route": 128
   },
-  "severity": ["debug", "info", "warn", "error"],
-  "outcome": ["success", "failure", "rejected"],
+  "severity": [
+    "debug",
+    "info",
+    "warn",
+    "error"
+  ],
+  "outcome": [
+    "success",
+    "failure",
+    "rejected"
+  ],
   "failureClass": [
     "authentication_failure",
     "authorization_denied",
@@ -63,7 +72,8 @@
     "apply",
     "deletion_worker",
     "import_flow",
-    "server"
+    "server",
+    "rate_limit"
   ],
   "eventCodes": [
     "OBS_SERVER_STARTED",
@@ -71,6 +81,12 @@
     "OBS_PANIC_RECOVERED",
     "OBS_INTERNAL_INVARIANT",
     "OBS_HTTP_REQUEST",
+    "OBS_RATE_LIMIT_ALLOWED",
+    "OBS_RATE_LIMIT_REJECTED",
+    "OBS_RATE_LIMIT_STORE_UNAVAILABLE",
+    "OBS_RATE_LIMIT_EMERGENCY_FALLBACK",
+    "OBS_RATE_LIMIT_POLICY_INVALID",
+    "OBS_RATE_LIMIT_KEY_CAPACITY_REJECTED",
     "OBS_APPLE_LOGIN",
     "OBS_UPLOAD_ISSUE",
     "OBS_UPLOAD_COMPLETE",

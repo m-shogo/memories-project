@@ -31,6 +31,9 @@ type Config struct {
 	// Logger receives structured request/lifecycle events. A nil logger is
 	// safe: observability never blocks the request path.
 	Logger *obslog.Logger
+	// RateLimit carries the enforcer and key deriver. A nil enforcer disables
+	// rate limiting so unconfigured dev/test paths are unchanged.
+	RateLimit RateLimitConfig
 }
 
 // New builds the routing tree: an unauthenticated health probe plus the
@@ -53,7 +56,12 @@ func New(config Config) http.Handler {
 	// authentication.
 	httpapi.AppleHandler{Service: config.AppleLogin}.Register(root)
 	root.Handle("/v1/", sessionMiddleware(config.Sessions, api))
-	return observabilityMiddleware(config.Logger, root)
+	// Order: observability (request ID + panic + request event) wraps rate
+	// limiting, which wraps routing. So a 429 carries a request ID and is
+	// logged, and the rate-limit decision precedes body decode and the Apple
+	// exchange — a rejected request never reaches a handler.
+	limited := rateLimitMiddleware(config.RateLimit, config.Logger, root)
+	return observabilityMiddleware(config.Logger, limited)
 }
 
 // sessionMiddleware authenticates every request under it. The raw token is

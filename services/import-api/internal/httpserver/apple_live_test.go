@@ -3,6 +3,7 @@
 package httpserver
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/ecdsa"
@@ -11,6 +12,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -22,6 +24,8 @@ import (
 	"github.com/m-shogo/memories-project/services/import-api/internal/accountdelete"
 	"github.com/m-shogo/memories-project/services/import-api/internal/appleauth"
 	"github.com/m-shogo/memories-project/services/import-api/internal/cryptoids"
+	"github.com/m-shogo/memories-project/services/import-api/internal/obslog"
+	"github.com/m-shogo/memories-project/services/import-api/internal/ratelimit"
 )
 
 // fakeApple stands in for Apple: it signs identity tokens with a test RSA key,
@@ -377,4 +381,109 @@ func testECKey() *ecdsa.PrivateKey {
 		testECKeyValue = key
 	})
 	return testECKeyValue
+}
+
+// TestRateLimitedAppleLoginCreatesNoStateOn429 proves against a real database
+// that a rate-limited Apple request creates no account, session, Apple identity
+// or replay row: the enforcer denies before the handler, so nothing downstream
+// runs. It builds a dedicated rate-limited server over the live server's pool.
+func TestRateLimitedAppleLoginCreatesNoStateOn429(t *testing.T) {
+	base := newLiveServer(t)
+	runID := time.Now().UnixNano()
+	clientID := "com.memoryos.app"
+	apple := newFakeApple(t, clientID)
+
+	// Network capacity 1 so the second request from one network is a 429.
+	policy := ratelimit.RoutePolicy{
+		RouteTemplate: "POST /v1/auth/apple",
+		Class:         ratelimit.ClassPublicUnauthenticated,
+		Enabled:       true,
+		FailureMode:   ratelimit.FailClosed,
+		Global:        ratelimit.Policy{ID: "g", Capacity: 1000, RefillPerSec: 1000},
+		Network:       ratelimit.Policy{ID: "n", Capacity: 1, RefillPerSec: 0.001},
+	}
+	enforcer, err := ratelimit.NewEnforcer(ratelimit.NewMemoryStore(1000, time.Minute), nil, []ratelimit.RoutePolicy{policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := New(Config{
+		Logger:     obslog.New(nil),
+		AppleLogin: apple.loginService(base),
+		RateLimit: RateLimitConfig{
+			Enforcer: enforcer,
+			Deriver:  ratelimit.KeyDeriver{Secret: []byte("live-rl-secret"), IPv6PrefixBits: 64},
+		},
+	})
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+
+	subject := fmt.Sprintf("apple-subject-rl-%d", runID)
+	post := func(nonce, code string) int {
+		apple.registerCode(code, subject)
+		body, _ := json.Marshal(map[string]any{
+			"identityToken":     apple.identityToken(subject, nonce),
+			"authorizationCode": code, "clientId": clientID, "nonce": nonce,
+		})
+		request, err := http.NewRequest(http.MethodPost, srv.URL+"/v1/auth/apple", bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		request.RemoteAddr = "203.0.113.200:5000"
+		request.Header.Set("Content-Type", "application/json")
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = response.Body.Close()
+		return response.StatusCode
+	}
+
+	// First request from a fresh subject would normally create the account; use
+	// a DISTINCT subject so the 429 case below has provably created nothing for
+	// its own subject.
+	blockedSubject := fmt.Sprintf("apple-subject-rl-blocked-%d", runID)
+	// Consume the single network token with the first subject.
+	if code := post(uniq("nonce-rl-1", runID), uniq("code-rl-1", runID)); code != http.StatusOK {
+		t.Fatalf("first (allowed) login status %d", code)
+	}
+	// Second request, different subject, same network -> 429 before the handler.
+	apple.registerCode(uniq("code-rl-blocked", runID), blockedSubject)
+	body, _ := json.Marshal(map[string]any{
+		"identityToken":     apple.identityToken(blockedSubject, uniq("nonce-rl-blocked", runID)),
+		"authorizationCode": uniq("code-rl-blocked", runID), "clientId": clientID, "nonce": uniq("nonce-rl-blocked", runID),
+	})
+	request, _ := http.NewRequest(http.MethodPost, srv.URL+"/v1/auth/apple", bytes.NewReader(body))
+	request.RemoteAddr = "203.0.113.200:5001"
+	request.Header.Set("Content-Type", "application/json")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("second login not rate limited: %d", response.StatusCode)
+	}
+
+	// The blocked subject created no identity, and therefore no account.
+	var identities int
+	if err := base.pool.QueryRow(context.Background(),
+		"SELECT count(*) FROM memory_os.apple_identity WHERE subject = $1", blockedSubject,
+	).Scan(&identities); err != nil {
+		t.Fatal(err)
+	}
+	if identities != 0 {
+		t.Fatalf("rate-limited login created %d apple_identity rows", identities)
+	}
+	// And no replay row was consumed for the blocked attempt's code digest.
+	blockedCodeDigest := sha256.Sum256([]byte(uniq("code-rl-blocked", runID)))
+	var replays int
+	if err := base.pool.QueryRow(context.Background(),
+		"SELECT count(*) FROM memory_os.apple_replay WHERE scope = 'code' AND digest = $1",
+		hex.EncodeToString(blockedCodeDigest[:]),
+	).Scan(&replays); err != nil {
+		t.Fatal(err)
+	}
+	if replays != 0 {
+		t.Fatalf("rate-limited login consumed %d replay rows", replays)
+	}
 }

@@ -122,6 +122,7 @@ const (
 	ComponentDeletionWorker Component = "deletion_worker"
 	ComponentImportFlow     Component = "import_flow"
 	ComponentServer         Component = "server"
+	ComponentRateLimit      Component = "rate_limit"
 )
 
 // Event is the sole shape the logger emits. Required fields (SchemaVersion,

@@ -37,6 +37,14 @@ const (
 	// Import flow boundary.
 	EventImportFlow EventCode = "OBS_IMPORT_FLOW"
 
+	// Rate limiting.
+	EventRateLimitAllowed           EventCode = "OBS_RATE_LIMIT_ALLOWED"
+	EventRateLimitRejected          EventCode = "OBS_RATE_LIMIT_REJECTED"
+	EventRateLimitStoreUnavailable  EventCode = "OBS_RATE_LIMIT_STORE_UNAVAILABLE"
+	EventRateLimitEmergencyFallback EventCode = "OBS_RATE_LIMIT_EMERGENCY_FALLBACK"
+	EventRateLimitPolicyInvalid     EventCode = "OBS_RATE_LIMIT_POLICY_INVALID"
+	EventRateLimitKeyCapacity       EventCode = "OBS_RATE_LIMIT_KEY_CAPACITY_REJECTED"
+
 	// Account deletion request and background worker.
 	EventDeletionRequested EventCode = "OBS_DELETION_REQUESTED"
 	EventDeletionClaimed   EventCode = "OBS_DELETION_CLAIMED"
@@ -53,6 +61,12 @@ var AllEventCodes = []EventCode{
 	EventPanicRecovered,
 	EventInternalInvariant,
 	EventHTTPRequest,
+	EventRateLimitAllowed,
+	EventRateLimitRejected,
+	EventRateLimitStoreUnavailable,
+	EventRateLimitEmergencyFallback,
+	EventRateLimitPolicyInvalid,
+	EventRateLimitKeyCapacity,
 	EventAppleLogin,
 	EventUploadIssue,
 	EventUploadComplete,

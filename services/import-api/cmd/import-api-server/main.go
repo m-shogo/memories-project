@@ -10,6 +10,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"flag"
 	"fmt"
@@ -36,6 +37,7 @@ import (
 	"github.com/m-shogo/memories-project/services/import-api/internal/pgrepo"
 	"github.com/m-shogo/memories-project/services/import-api/internal/pgscope"
 	"github.com/m-shogo/memories-project/services/import-api/internal/previewread"
+	"github.com/m-shogo/memories-project/services/import-api/internal/ratelimit"
 	"github.com/m-shogo/memories-project/services/import-api/internal/reqid"
 	"github.com/m-shogo/memories-project/services/import-api/internal/security"
 	"github.com/m-shogo/memories-project/services/import-api/internal/upload"
@@ -137,6 +139,11 @@ func run(listen, databaseURL, s3Endpoint, s3Access, s3Secret, bucket string, dev
 		return err
 	}
 
+	rateLimit, err := buildRateLimit()
+	if err != nil {
+		return err
+	}
+
 	server := httpserver.NewHTTPServer(listen, httpserver.New(httpserver.Config{
 		Sessions:   sessions,
 		Upload:     fenced.Upload{Guard: guard, Inner: uploadService},
@@ -145,6 +152,7 @@ func run(listen, databaseURL, s3Endpoint, s3Access, s3Secret, bucket string, dev
 		Account:    accountdelete.Service{Repository: accountControl, Guard: guard},
 		AppleLogin: appleLogin,
 		Logger:     logger,
+		RateLimit:  rateLimit,
 	}))
 
 	// The deletion runtime drains accounts the API already fenced. It runs in
@@ -301,5 +309,35 @@ func buildAppleLogin(sessions authstore.Store, pool *pgxpool.Pool) (httpapi.Appl
 		Sessions:   appleSessionIssuer{store: sessions},
 		SessionTTL: 24 * time.Hour,
 		Authority:  security.AuthorityIOSUser,
+	}, nil
+}
+
+// buildRateLimit assembles the rate-limit enforcer from environment
+// configuration. The trusted-proxy list defaults to empty (trust no proxy, use
+// the transport peer); a deployment behind a proxy sets it explicitly. The
+// HMAC secret keys the derived network keys; without one set, a per-process
+// random secret is used so keys are still unlinkable across restarts. The
+// in-memory store is single-instance only and is not distributed enforcement.
+func buildRateLimit() (httpserver.RateLimitConfig, error) {
+	trusted, err := ratelimit.ParseTrustedProxies(os.Getenv("MEMORY_OS_TRUSTED_PROXIES"))
+	if err != nil {
+		return httpserver.RateLimitConfig{}, fmt.Errorf("parse trusted proxies: %w", err)
+	}
+	secret := []byte(os.Getenv("MEMORY_OS_RATELIMIT_SECRET"))
+	if len(secret) == 0 {
+		secret = make([]byte, 32)
+		if _, err := rand.Read(secret); err != nil {
+			return httpserver.RateLimitConfig{}, fmt.Errorf("generate rate-limit secret: %w", err)
+		}
+	}
+	primary := ratelimit.NewMemoryStore(200_000, 10*time.Minute)
+	fallback := ratelimit.NewMemoryStore(50_000, 10*time.Minute)
+	enforcer, err := ratelimit.NewEnforcer(primary, fallback, ratelimit.DefaultPolicies())
+	if err != nil {
+		return httpserver.RateLimitConfig{}, fmt.Errorf("build rate-limit enforcer: %w", err)
+	}
+	return httpserver.RateLimitConfig{
+		Enforcer: enforcer,
+		Deriver:  ratelimit.KeyDeriver{Secret: secret, TrustedProxies: trusted, IPv6PrefixBits: 64},
 	}, nil
 }
