@@ -201,11 +201,14 @@ const (
 	// Apple.
 	OpAppleExchange   Operation = "apple_exchange"
 	OpSessionIssuance Operation = "session_issuance"
-	// DB.
-	OpDBBeginDeletion Operation = "begin_deletion"
-	OpDBSweep         Operation = "sweep"
-	OpDBResolve       Operation = "resolve_session"
-	OpDBProvision     Operation = "provision_identity"
+	// DB. These name the load-critical database seams on the Apple sign-in path.
+	OpDBAppleIdentityUpsert Operation = "apple_identity_upsert"
+	OpDBAppleReplayConsume  Operation = "apple_replay_consume"
+	OpDBSessionInsert       Operation = "session_insert"
+	OpDBBeginDeletion       Operation = "begin_deletion"
+	OpDBSweep               Operation = "sweep"
+	OpDBResolve             Operation = "resolve_session"
+	OpDBProvision           Operation = "provision_identity"
 	// Object store.
 	OpObjPresign Operation = "presign"
 	OpObjHead    Operation = "head"
@@ -219,7 +222,8 @@ const (
 )
 
 var operations = map[Operation]struct{}{
-	OpAppleExchange: {}, OpSessionIssuance: {}, OpDBBeginDeletion: {}, OpDBSweep: {},
+	OpAppleExchange: {}, OpSessionIssuance: {}, OpDBAppleIdentityUpsert: {},
+	OpDBAppleReplayConsume: {}, OpDBSessionInsert: {}, OpDBBeginDeletion: {}, OpDBSweep: {},
 	OpDBResolve: {}, OpDBProvision: {}, OpObjPresign: {}, OpObjHead: {}, OpObjErase: {},
 	OpImportParse: {}, OpImportVerify: {}, OpImportCommit: {}, OpDeletionSweep: {},
 }

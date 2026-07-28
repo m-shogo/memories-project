@@ -119,6 +119,9 @@
     "operation": [
       "apple_exchange",
       "session_issuance",
+      "apple_identity_upsert",
+      "apple_replay_consume",
+      "session_insert",
       "begin_deletion",
       "sweep",
       "resolve_session",

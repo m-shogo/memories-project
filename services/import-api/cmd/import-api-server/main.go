@@ -144,8 +144,10 @@ func run(listen, databaseURL, s3Endpoint, s3Access, s3Secret, bucket string, dev
 	// Sign in with Apple is wired only when the developer credentials are
 	// present in the environment. Without them the endpoint returns 503 rather
 	// than failing to start, so the binary runs in dev and CI unchanged. The
-	// private key path is read here; its bytes never leave this function.
-	appleLogin, err := buildAppleLogin(sessions, pool)
+	// private key path is read here; its bytes never leave this function. The
+	// login service and its database seams are instrumented so the load-critical
+	// Apple path is diagnosable.
+	appleLogin, err := buildAppleLogin(sessions, pool, recorder)
 	if err != nil {
 		return err
 	}
@@ -285,7 +287,7 @@ func (a appleSessionIssuer) Issue(ctx context.Context, accountID string, account
 // credentials. It returns (nil, nil) when unconfigured, which leaves the
 // endpoint unavailable rather than blocking startup. The .p8 bytes are read,
 // parsed, and dropped inside this function; only the parsed key is retained.
-func buildAppleLogin(sessions authstore.Store, pool *pgxpool.Pool) (httpapi.AppleLoginService, error) {
+func buildAppleLogin(sessions authstore.Store, pool *pgxpool.Pool, recorder metrics.Recorder) (httpapi.AppleLoginService, error) {
 	teamID := os.Getenv("MEMORY_OS_APPLE_TEAM_ID")
 	keyID := os.Getenv("MEMORY_OS_APPLE_KEY_ID")
 	clientID := os.Getenv("MEMORY_OS_APPLE_CLIENT_ID")
@@ -319,15 +321,20 @@ func buildAppleLogin(sessions authstore.Store, pool *pgxpool.Pool) (httpapi.Appl
 				TeamID: teamID, KeyID: keyID, ClientID: clientID, PrivateKey: privateKey,
 			},
 		},
-		Replay:   appleauth.PostgresReplayGuard{Pool: pool},
-		Accounts: appleauth.PostgresAccountBindingStore{Pool: pool, IDs: cryptoids.Generator{}},
+		// The replay and account-binding database seams are metered so the Apple
+		// path's database latency and failure rate are observable under load.
+		Replay:   appleauth.MeteredReplayGuard{Inner: appleauth.PostgresReplayGuard{Pool: pool}, Recorder: recorder},
+		Accounts: appleauth.MeteredAccountBindingStore{Inner: appleauth.PostgresAccountBindingStore{Pool: pool, IDs: cryptoids.Generator{}}, Recorder: recorder},
 	}
-	return appleauth.LoginService{
+	login := appleauth.LoginService{
 		Verifier:   verifier,
-		Sessions:   appleSessionIssuer{store: sessions},
+		Sessions:   appleauth.MeteredSessionIssuer{Inner: appleSessionIssuer{store: sessions}, Recorder: recorder},
 		SessionTTL: 24 * time.Hour,
 		Authority:  security.AuthorityIOSUser,
-	}, nil
+	}
+	// The outer meter records the exchange outcome, its duration, session
+	// issuance and replay rejections at the login boundary.
+	return appleauth.MeteredLoginService{Inner: login, Recorder: recorder}, nil
 }
 
 // buildRateLimit assembles the rate-limit enforcer from environment
