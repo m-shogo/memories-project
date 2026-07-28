@@ -176,6 +176,35 @@ Required behavior:
 
 Exact numeric limits remain deployment configuration and must be calibrated by load tests.
 
+### Implementation status (2026-07-28)
+
+Implemented and machine-verified, keeping OPS-P0-005 at PARTIAL rather than
+READY:
+
+- a token-bucket limiter (`services/import-api/internal/ratelimit`) with bounded
+  memory, a key-cardinality cap, clock-rollback safety and concurrency-safe
+  atomic consume;
+- a whole-route global guard plus a per-network guard, keyed by an HMAC digest
+  of the normalized client network (IPv4 /32, IPv6 /64) with an explicit
+  trusted-proxy boundary — no raw IP is stored or logged, and an arbitrary
+  X-Forwarded-For is never trusted;
+- per-route-class failure modes: the public pre-auth Apple exchange fails closed
+  with a strict local emergency fallback, other public routes fail closed, and
+  health is exempt so readiness is not coupled to the limiter store;
+- a stable `429 SEC_RATE_LIMITED` with a bounded `Retry-After` and no policy,
+  key, network or bucket detail; a live-DB test proves a 429 creates no account,
+  session, Apple identity or replay row;
+- structured rate-limit observability events carrying no raw key or address;
+- a machine-readable policy contract, negative fixtures and a validator that
+  fails on forbidden key dimensions, unbounded capacity, missing failure modes,
+  public fail-open, and Go/contract drift.
+
+Still missing before READY, and the reason the gate stays PARTIAL: a
+production-equivalent distributed (shared atomic) store — the in-memory store
+protects one instance only — plus per-deployment trusted-proxy configuration,
+load-calibrated limits, and a disable/rollback runbook. An in-memory limiter is
+not distributed production enforcement.
+
 ## 7. Load testing
 
 A green race/fuzz/integration suite does not establish capacity.
