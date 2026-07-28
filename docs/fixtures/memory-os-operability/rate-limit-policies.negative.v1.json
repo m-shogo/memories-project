@@ -1,0 +1,269 @@
+{
+  "fixtureId": "memory-os.operability.rate-limit-policies.negative.v1",
+  "description": "Policy sets that must be rejected. Each is a whole policies array plus a reason the validator is required to detect. If any validates clean, a protection is missing.",
+  "cases": [
+    {
+      "reason": "a public unauthenticated route has no enabled policy",
+      "policies": [
+        {
+          "policyId": "healthz",
+          "routeTemplate": "GET /healthz",
+          "routeClass": "HEALTH",
+          "enabled": false,
+          "failureMode": "health_exempt",
+          "keyDimensions": [],
+          "algorithm": "token_bucket",
+          "privacyClassification": "exempt",
+          "cardinalityRisk": "none"
+        }
+      ],
+      "routeInventory": [
+        {
+          "routeTemplate": "POST /v1/auth/apple",
+          "routeClass": "PUBLIC_UNAUTHENTICATED"
+        }
+      ]
+    },
+    {
+      "reason": "duplicate policy id",
+      "policies": [
+        {
+          "policyId": "dup",
+          "routeTemplate": "POST /v1/auth/apple",
+          "routeClass": "PUBLIC_UNAUTHENTICATED",
+          "enabled": true,
+          "failureMode": "fail_closed",
+          "keyDimensions": [
+            "route_global",
+            "client_network"
+          ],
+          "algorithm": "token_bucket",
+          "privacyClassification": "pre_auth_network_bounded",
+          "cardinalityRisk": "bounded",
+          "global": {
+            "capacity": 10,
+            "refillPerSecond": 1
+          },
+          "network": {
+            "capacity": 2,
+            "refillPerSecond": 1
+          }
+        },
+        {
+          "policyId": "dup",
+          "routeTemplate": "DELETE /v1/account",
+          "routeClass": "PUBLIC_AUTHENTICATED",
+          "enabled": true,
+          "failureMode": "fail_closed",
+          "keyDimensions": [
+            "route_global",
+            "client_network"
+          ],
+          "algorithm": "token_bucket",
+          "privacyClassification": "authenticated_network_bounded",
+          "cardinalityRisk": "bounded",
+          "global": {
+            "capacity": 10,
+            "refillPerSecond": 1
+          },
+          "network": {
+            "capacity": 2,
+            "refillPerSecond": 1
+          }
+        }
+      ]
+    },
+    {
+      "reason": "forbidden key dimension (raw_ip)",
+      "policies": [
+        {
+          "policyId": "p",
+          "routeTemplate": "POST /v1/auth/apple",
+          "routeClass": "PUBLIC_UNAUTHENTICATED",
+          "enabled": true,
+          "failureMode": "fail_closed",
+          "keyDimensions": [
+            "raw_ip"
+          ],
+          "algorithm": "token_bucket",
+          "privacyClassification": "pre_auth_network_bounded",
+          "cardinalityRisk": "bounded",
+          "global": {
+            "capacity": 10,
+            "refillPerSecond": 1
+          },
+          "network": {
+            "capacity": 2,
+            "refillPerSecond": 1
+          }
+        }
+      ]
+    },
+    {
+      "reason": "unlimited capacity",
+      "policies": [
+        {
+          "policyId": "p",
+          "routeTemplate": "POST /v1/auth/apple",
+          "routeClass": "PUBLIC_UNAUTHENTICATED",
+          "enabled": true,
+          "failureMode": "fail_closed",
+          "keyDimensions": [
+            "route_global",
+            "client_network"
+          ],
+          "algorithm": "token_bucket",
+          "privacyClassification": "pre_auth_network_bounded",
+          "cardinalityRisk": "bounded",
+          "global": {
+            "capacity": 99999999,
+            "refillPerSecond": 1
+          },
+          "network": {
+            "capacity": 2,
+            "refillPerSecond": 1
+          }
+        }
+      ]
+    },
+    {
+      "reason": "invalid refill (zero)",
+      "policies": [
+        {
+          "policyId": "p",
+          "routeTemplate": "POST /v1/auth/apple",
+          "routeClass": "PUBLIC_UNAUTHENTICATED",
+          "enabled": true,
+          "failureMode": "fail_closed",
+          "keyDimensions": [
+            "route_global",
+            "client_network"
+          ],
+          "algorithm": "token_bucket",
+          "privacyClassification": "pre_auth_network_bounded",
+          "cardinalityRisk": "bounded",
+          "global": {
+            "capacity": 10,
+            "refillPerSecond": 0
+          },
+          "network": {
+            "capacity": 2,
+            "refillPerSecond": 1
+          }
+        }
+      ]
+    },
+    {
+      "reason": "missing failure mode",
+      "policies": [
+        {
+          "policyId": "p",
+          "routeTemplate": "POST /v1/auth/apple",
+          "routeClass": "PUBLIC_UNAUTHENTICATED",
+          "enabled": true,
+          "keyDimensions": [
+            "route_global",
+            "client_network"
+          ],
+          "algorithm": "token_bucket",
+          "privacyClassification": "pre_auth_network_bounded",
+          "cardinalityRisk": "bounded",
+          "global": {
+            "capacity": 10,
+            "refillPerSecond": 1
+          },
+          "network": {
+            "capacity": 2,
+            "refillPerSecond": 1
+          }
+        }
+      ]
+    },
+    {
+      "reason": "public route implicitly fails open (no fail_closed variant)",
+      "policies": [
+        {
+          "policyId": "p",
+          "routeTemplate": "POST /v1/auth/apple",
+          "routeClass": "PUBLIC_UNAUTHENTICATED",
+          "enabled": true,
+          "failureMode": "health_exempt",
+          "keyDimensions": [
+            "route_global",
+            "client_network"
+          ],
+          "algorithm": "token_bucket",
+          "privacyClassification": "pre_auth_network_bounded",
+          "cardinalityRisk": "bounded",
+          "global": {
+            "capacity": 10,
+            "refillPerSecond": 1
+          },
+          "network": {
+            "capacity": 2,
+            "refillPerSecond": 1
+          }
+        }
+      ]
+    },
+    {
+      "reason": "missing privacy classification",
+      "policies": [
+        {
+          "policyId": "p",
+          "routeTemplate": "POST /v1/auth/apple",
+          "routeClass": "PUBLIC_UNAUTHENTICATED",
+          "enabled": true,
+          "failureMode": "fail_closed",
+          "keyDimensions": [
+            "route_global",
+            "client_network"
+          ],
+          "algorithm": "token_bucket",
+          "cardinalityRisk": "bounded",
+          "global": {
+            "capacity": 10,
+            "refillPerSecond": 1
+          },
+          "network": {
+            "capacity": 2,
+            "refillPerSecond": 1
+          }
+        }
+      ]
+    },
+    {
+      "reason": "unknown route template not in inventory",
+      "policies": [
+        {
+          "policyId": "p",
+          "routeTemplate": "POST /v1/not-a-route",
+          "routeClass": "PUBLIC_UNAUTHENTICATED",
+          "enabled": true,
+          "failureMode": "fail_closed",
+          "keyDimensions": [
+            "route_global",
+            "client_network"
+          ],
+          "algorithm": "token_bucket",
+          "privacyClassification": "pre_auth_network_bounded",
+          "cardinalityRisk": "bounded",
+          "global": {
+            "capacity": 10,
+            "refillPerSecond": 1
+          },
+          "network": {
+            "capacity": 2,
+            "refillPerSecond": 1
+          }
+        }
+      ],
+      "routeInventory": [
+        {
+          "routeTemplate": "POST /v1/auth/apple",
+          "routeClass": "PUBLIC_UNAUTHENTICATED"
+        }
+      ]
+    }
+  ]
+}

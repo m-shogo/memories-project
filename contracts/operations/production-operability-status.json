@@ -1,6 +1,6 @@
 {
   "schemaVersion": "memory-os-operability-status.0.1",
-  "asOf": "2026-07-25",
+  "asOf": "2026-07-28",
   "productionDecision": "NO_GO",
   "authority": "docs/memory-os-production-operability-audit-2026-07-24.md",
   "rules": {
@@ -100,17 +100,30 @@
     {
       "id": "OPS-P0-005",
       "area": "rate_limiting",
-      "status": "NOT_IMPLEMENTED",
+      "status": "PARTIAL",
       "blocking": true,
       "existingEvidence": [
-        "strict request validation and authentication"
+        "strict request validation and authentication",
+        "token-bucket limiter with bounded memory, key-cardinality cap and clock-rollback safety",
+        "route-global and per-network guards with explicit trusted-proxy boundary and keyed IP digest (no raw IP stored or logged)",
+        "per-route-class failure modes: public fail-closed with strict local emergency fallback, health exempt",
+        "stable 429 SEC_RATE_LIMITED with bounded Retry-After and no internal detail",
+        "429 creates no account/session/apple-identity/replay row (live-DB proven)",
+        "machine-readable policy contract, negative fixtures and validator"
       ],
       "missingEvidence": [
-        "per-principal and per-network limiter",
-        "endpoint budgets",
-        "429 and Retry-After contract",
-        "distributed concurrency and bypass tests",
-        "load-calibrated limits"
+        "production-equivalent distributed enforcement (shared atomic store)",
+        "trusted-proxy configuration owned per deployment",
+        "load-calibrated limits from observed traffic",
+        "operational disable/rollback runbook"
+      ],
+      "evidenceRefs": [
+        "contracts/operations/rate-limit-policy-contract.v1.json",
+        "docs/fixtures/memory-os-operability/rate-limit-policies.negative.v1.json",
+        "scripts/validate-memory-os-rate-limit.py",
+        "services/import-api/internal/ratelimit/enforce.go",
+        "services/import-api/internal/httpserver/ratelimit.go",
+        "services/import-api/internal/httpserver/ratelimit_privacy_test.go"
       ]
     },
     {

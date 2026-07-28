@@ -1,0 +1,195 @@
+{
+  "contractId": "memory-os.operability.rate-limit-policy-contract.v1",
+  "schemaVersion": "memory-os-rate-limit-policy.v1",
+  "description": "Machine-readable rate-limit policy set for the HTTP boundary. The validator checks this against the Go implementation (route classes, failure modes, observability event codes) and against the route inventory: every public unauthenticated route must have an enabled policy, no forbidden key dimension may appear, capacities and bursts must be bounded, and OPS-P0-005 may not be READY without distributed-enforcement, store-failure and load evidence.",
+  "goImplementation": "services/import-api/internal/ratelimit",
+  "routeClasses": [
+    "PUBLIC_UNAUTHENTICATED",
+    "PUBLIC_AUTHENTICATED",
+    "HEALTH",
+    "INTERNAL"
+  ],
+  "failureModes": [
+    "fail_closed",
+    "fail_closed_emergency_local",
+    "health_exempt"
+  ],
+  "allowedKeyDimensions": [
+    "route_global",
+    "client_network"
+  ],
+  "forbiddenKeyDimensions": [
+    "raw_ip",
+    "bearer_token",
+    "session_token",
+    "apple_authorization_code",
+    "identity_token",
+    "email",
+    "apple_subject",
+    "account_id",
+    "request_body",
+    "user_content",
+    "presigned_url"
+  ],
+  "observabilityEventCodes": [
+    "OBS_RATE_LIMIT_ALLOWED",
+    "OBS_RATE_LIMIT_REJECTED",
+    "OBS_RATE_LIMIT_STORE_UNAVAILABLE",
+    "OBS_RATE_LIMIT_EMERGENCY_FALLBACK",
+    "OBS_RATE_LIMIT_POLICY_INVALID",
+    "OBS_RATE_LIMIT_KEY_CAPACITY_REJECTED"
+  ],
+  "rejectionResponse": {
+    "httpStatus": 429,
+    "publicErrorCode": "SEC_RATE_LIMITED",
+    "retryAfterHeader": "Retry-After",
+    "retryAfterBoundedSeconds": { "min": 1, "max": 3600 },
+    "bodyRevealsInternalState": false
+  },
+  "metricCardinality": {
+    "allowedLabels": ["policy_id", "route_template", "route_class", "outcome", "failure_class"],
+    "forbiddenLabels": ["request_id", "correlation_id", "ip", "ip_digest", "account_id", "apple_subject", "url", "error"]
+  },
+  "algorithm": {
+    "kind": "token_bucket",
+    "boundedMemory": true,
+    "keyCardinalityCap": true,
+    "clockRollbackSafe": true,
+    "concurrencySafe": true
+  },
+  "store": {
+    "shippedImplementation": "in_memory_single_instance",
+    "distributedEnforcementImplemented": false,
+    "distributedStoreContractDefined": true,
+    "note": "The in-memory store protects a single instance only. Multi-instance production requires a shared atomic store; its contract is defined and fake-tested but not implemented, which is why OPS-P0-005 is not READY."
+  },
+  "privacy": {
+    "rawIpStored": false,
+    "rawIpLogged": false,
+    "networkKeyIsKeyedDigest": true,
+    "digestIsDurableIdentifier": false,
+    "trustedProxyBoundaryExplicit": true,
+    "arbitraryForwardedHeaderTrusted": false
+  },
+  "policies": [
+    {
+      "policyId": "apple-exchange",
+      "routeTemplate": "POST /v1/auth/apple",
+      "routeClass": "PUBLIC_UNAUTHENTICATED",
+      "enabled": true,
+      "algorithm": "token_bucket",
+      "keyDimensions": ["route_global", "client_network"],
+      "failureMode": "fail_closed_emergency_local",
+      "privacyClassification": "pre_auth_network_bounded",
+      "cardinalityRisk": "bounded",
+      "global": { "capacity": 100, "refillPerSecond": 20 },
+      "network": { "capacity": 5, "refillPerSecond": 0.2 }
+    },
+    {
+      "policyId": "account-delete",
+      "routeTemplate": "DELETE /v1/account",
+      "routeClass": "PUBLIC_AUTHENTICATED",
+      "enabled": true,
+      "algorithm": "token_bucket",
+      "keyDimensions": ["route_global", "client_network"],
+      "failureMode": "fail_closed",
+      "privacyClassification": "authenticated_network_bounded",
+      "cardinalityRisk": "bounded",
+      "global": { "capacity": 50, "refillPerSecond": 10 },
+      "network": { "capacity": 5, "refillPerSecond": 0.5 }
+    },
+    {
+      "policyId": "upload-issue",
+      "routeTemplate": "POST /v1/import-jobs/{jobId}/upload-authorizations",
+      "routeClass": "PUBLIC_AUTHENTICATED",
+      "enabled": true,
+      "algorithm": "token_bucket",
+      "keyDimensions": ["route_global", "client_network"],
+      "failureMode": "fail_closed",
+      "privacyClassification": "authenticated_network_bounded",
+      "cardinalityRisk": "bounded",
+      "global": { "capacity": 200, "refillPerSecond": 50 },
+      "network": { "capacity": 20, "refillPerSecond": 2 }
+    },
+    {
+      "policyId": "upload-complete",
+      "routeTemplate": "POST /v1/import-jobs/{jobId}/upload-authorizations/{id}/complete",
+      "routeClass": "PUBLIC_AUTHENTICATED",
+      "enabled": true,
+      "algorithm": "token_bucket",
+      "keyDimensions": ["route_global", "client_network"],
+      "failureMode": "fail_closed",
+      "privacyClassification": "authenticated_network_bounded",
+      "cardinalityRisk": "bounded",
+      "global": { "capacity": 200, "refillPerSecond": 50 },
+      "network": { "capacity": 20, "refillPerSecond": 2 }
+    },
+    {
+      "policyId": "preview-read",
+      "routeTemplate": "GET /v1/import-jobs/{jobId}/preview",
+      "routeClass": "PUBLIC_AUTHENTICATED",
+      "enabled": true,
+      "algorithm": "token_bucket",
+      "keyDimensions": ["route_global", "client_network"],
+      "failureMode": "fail_closed",
+      "privacyClassification": "authenticated_network_bounded",
+      "cardinalityRisk": "bounded",
+      "global": { "capacity": 400, "refillPerSecond": 100 },
+      "network": { "capacity": 40, "refillPerSecond": 5 }
+    },
+    {
+      "policyId": "apply",
+      "routeTemplate": "POST /v1/previews/{previewId}/apply",
+      "routeClass": "PUBLIC_AUTHENTICATED",
+      "enabled": true,
+      "algorithm": "token_bucket",
+      "keyDimensions": ["route_global", "client_network"],
+      "failureMode": "fail_closed",
+      "privacyClassification": "authenticated_network_bounded",
+      "cardinalityRisk": "bounded",
+      "global": { "capacity": 100, "refillPerSecond": 20 },
+      "network": { "capacity": 10, "refillPerSecond": 1 }
+    },
+    {
+      "policyId": "unmatched",
+      "routeTemplate": "other",
+      "routeClass": "PUBLIC_UNAUTHENTICATED",
+      "enabled": true,
+      "algorithm": "token_bucket",
+      "keyDimensions": ["route_global", "client_network"],
+      "failureMode": "fail_closed",
+      "privacyClassification": "pre_auth_network_bounded",
+      "cardinalityRisk": "bounded",
+      "global": { "capacity": 100, "refillPerSecond": 20 },
+      "network": { "capacity": 20, "refillPerSecond": 5 }
+    },
+    {
+      "policyId": "healthz",
+      "routeTemplate": "GET /healthz",
+      "routeClass": "HEALTH",
+      "enabled": false,
+      "algorithm": "token_bucket",
+      "keyDimensions": [],
+      "failureMode": "health_exempt",
+      "privacyClassification": "exempt",
+      "cardinalityRisk": "none"
+    }
+  ],
+  "routeInventory": [
+    { "routeTemplate": "POST /v1/auth/apple", "routeClass": "PUBLIC_UNAUTHENTICATED" },
+    { "routeTemplate": "DELETE /v1/account", "routeClass": "PUBLIC_AUTHENTICATED" },
+    { "routeTemplate": "POST /v1/import-jobs/{jobId}/upload-authorizations", "routeClass": "PUBLIC_AUTHENTICATED" },
+    { "routeTemplate": "POST /v1/import-jobs/{jobId}/upload-authorizations/{id}/complete", "routeClass": "PUBLIC_AUTHENTICATED" },
+    { "routeTemplate": "GET /v1/import-jobs/{jobId}/preview", "routeClass": "PUBLIC_AUTHENTICATED" },
+    { "routeTemplate": "POST /v1/previews/{previewId}/apply", "routeClass": "PUBLIC_AUTHENTICATED" },
+    { "routeTemplate": "other", "routeClass": "PUBLIC_UNAUTHENTICATED" },
+    { "routeTemplate": "GET /healthz", "routeClass": "HEALTH" }
+  ],
+  "evidenceRefs": [
+    "services/import-api/internal/ratelimit/limiter.go",
+    "services/import-api/internal/ratelimit/keys.go",
+    "services/import-api/internal/ratelimit/enforce.go",
+    "services/import-api/internal/ratelimit/policies.go",
+    "services/import-api/internal/httpserver/ratelimit.go"
+  ]
+}
