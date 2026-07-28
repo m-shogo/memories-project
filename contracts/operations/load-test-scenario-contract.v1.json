@@ -1,0 +1,167 @@
+{
+  "contractId": "memory-os.operability.load-test-scenario-contract.v1",
+  "schemaVersion": "memory-os-load-scenario.v1",
+  "resultsSchemaVersion": "memory-os-load-results.v1",
+  "description": "Machine-readable load-test scenario matrix for the Import API. The validator checks that every result in a results document names a scenario defined here, that executed scenarios carry the metrics they claim to measure, and that no scenario or result claims production-equivalent dependencies or real-Apple evidence. Every scenario here runs against MOCK dependencies in-process; these are local, non-production figures. OPS-P0-006 may not be READY on this evidence.",
+  "goHarness": "services/import-api/internal/loadtest",
+  "dependencyModes": ["MOCK", "LOCAL_POSTGRES", "LOCAL_OBJECT_STORE", "FAILURE_INJECTED", "PRODUCTION_EQUIVALENT"],
+  "workloadTypes": ["STEADY", "BURST", "RAMP", "SOAK", "OVERLOAD", "DEPENDENCY_DEGRADED"],
+  "forbiddenAsPass": ["REAL_APPLE", "PRODUCTION_EQUIVALENT"],
+  "executedScenarios": [
+    {
+      "scenarioId": "health-baseline-mock",
+      "route": "GET /healthz",
+      "routeClass": "HEALTH",
+      "workloadType": "STEADY",
+      "concurrency": 8,
+      "requestRate": "unbounded-count",
+      "duration": "count:400",
+      "rampUp": "none",
+      "payloadClass": "none",
+      "dependencyMode": "MOCK",
+      "rateLimitPolicy": "exempt",
+      "expectedStatusClasses": ["2xx"],
+      "measurementMetrics": ["memory_os_http_requests_total", "memory_os_http_request_duration_seconds", "memory_os_http_in_flight"],
+      "successCriteria": "all 2xx; harness overhead observable; Apple path untouched",
+      "abortCriteria": "any 5xx; goroutine or heap runaway",
+      "privacyClass": "operational_nonpersonal",
+      "evidenceRefs": ["services/import-api/internal/loadtest/scenarios_test.go"]
+    },
+    {
+      "scenarioId": "apple-steady-mock",
+      "route": "POST /v1/auth/apple",
+      "routeClass": "PUBLIC_UNAUTHENTICATED",
+      "workloadType": "STEADY",
+      "concurrency": 16,
+      "requestRate": "unbounded-count",
+      "duration": "count:1000",
+      "rampUp": "none",
+      "payloadClass": "unique-nonce-and-code",
+      "dependencyMode": "MOCK",
+      "rateLimitPolicy": "permissive",
+      "expectedStatusClasses": ["2xx"],
+      "measurementMetrics": [
+        "memory_os_http_requests_total",
+        "memory_os_http_request_duration_seconds",
+        "memory_os_apple_exchange_total",
+        "memory_os_apple_exchange_duration_seconds",
+        "memory_os_session_issuance_total",
+        "memory_os_db_operations_total"
+      ],
+      "successCriteria": "all 2xx; one account for one subject; one session per request; series bounded",
+      "abortCriteria": "any 5xx; series above budget; goroutine or heap runaway",
+      "privacyClass": "operational_nonpersonal",
+      "evidenceRefs": ["services/import-api/internal/loadtest/scenarios_test.go", "services/import-api/internal/appleauth/metered.go"]
+    },
+    {
+      "scenarioId": "apple-burst-mock",
+      "route": "POST /v1/auth/apple",
+      "routeClass": "PUBLIC_UNAUTHENTICATED",
+      "workloadType": "BURST",
+      "concurrency": 32,
+      "requestRate": "unbounded-count",
+      "duration": "count:1000",
+      "rampUp": "none",
+      "payloadClass": "unique-nonce-and-code",
+      "dependencyMode": "MOCK",
+      "rateLimitPolicy": "tight-network-guard",
+      "expectedStatusClasses": ["2xx", "4xx"],
+      "measurementMetrics": [
+        "memory_os_http_requests_total",
+        "memory_os_rate_limit_decisions_total"
+      ],
+      "successCriteria": "network guard rejects the burst with bounded 429; sessions equal 2xx count (handler never runs for a rejected request); no 5xx; series bounded",
+      "abortCriteria": "any 5xx; sessions exceed 2xx; series above budget",
+      "privacyClass": "operational_nonpersonal",
+      "evidenceRefs": ["services/import-api/internal/loadtest/scenarios_test.go", "services/import-api/internal/httpserver/ratelimit.go"]
+    },
+    {
+      "scenarioId": "ratelimit-store-failure-mock",
+      "route": "POST /v1/auth/apple",
+      "routeClass": "PUBLIC_UNAUTHENTICATED",
+      "workloadType": "DEPENDENCY_DEGRADED",
+      "concurrency": 16,
+      "requestRate": "unbounded-count",
+      "duration": "count:500",
+      "rampUp": "none",
+      "payloadClass": "unique-nonce-and-code",
+      "dependencyMode": "FAILURE_INJECTED",
+      "rateLimitPolicy": "fail-closed-store-down",
+      "expectedStatusClasses": ["4xx"],
+      "measurementMetrics": [
+        "memory_os_http_requests_total",
+        "memory_os_rate_limit_decisions_total",
+        "memory_os_rate_limit_store_failures_total"
+      ],
+      "successCriteria": "pre-auth route fails closed; no account, session or replay mutation; store-failure metric recorded",
+      "abortCriteria": "any 2xx; any business-state mutation",
+      "privacyClass": "operational_nonpersonal",
+      "evidenceRefs": ["services/import-api/internal/loadtest/scenarios_test.go", "services/import-api/internal/ratelimit/enforce.go"]
+    },
+    {
+      "scenarioId": "cardinality-attack-mock",
+      "route": "various hostile paths",
+      "routeClass": "PUBLIC_UNAUTHENTICATED",
+      "workloadType": "OVERLOAD",
+      "concurrency": 16,
+      "requestRate": "unbounded-count",
+      "duration": "count:5000",
+      "rampUp": "none",
+      "payloadClass": "hostile-unique-path-header-token",
+      "dependencyMode": "MOCK",
+      "rateLimitPolicy": "permissive",
+      "expectedStatusClasses": ["4xx"],
+      "measurementMetrics": ["memory_os_http_requests_total"],
+      "successCriteria": "distinct request ids, paths, forwarded headers and bearer tokens never become series identity; total series stays bounded",
+      "abortCriteria": "series above budget; any hostile value present in a label",
+      "privacyClass": "operational_nonpersonal",
+      "evidenceRefs": ["services/import-api/internal/loadtest/scenarios_test.go", "services/import-api/internal/metrics/labels.go"]
+    }
+  ],
+  "deferredScenarios": [
+    {
+      "scenarioId": "authenticated-preview-local-postgres",
+      "reason": "requires live PostgreSQL and object-store instrumentation; preview/object-store metrics are DEFINED_NOT_EMITTED",
+      "requiredDependencyMode": "LOCAL_POSTGRES"
+    },
+    {
+      "scenarioId": "apply-concurrent-local-postgres",
+      "reason": "apply is a destructive boundary and needs a live fixture database with integrity re-verification under concurrency",
+      "requiredDependencyMode": "LOCAL_POSTGRES"
+    },
+    {
+      "scenarioId": "deletion-worker-under-api-load",
+      "reason": "needs the deletion runtime and API load against a shared live database to observe contention and backlog",
+      "requiredDependencyMode": "LOCAL_POSTGRES"
+    },
+    {
+      "scenarioId": "soak-memory-leak",
+      "reason": "a representative soak (RSS/heap/goroutine slope over tens of minutes) has not been run; SOAK PROOF INSUFFICIENT",
+      "requiredDependencyMode": "LOCAL_POSTGRES"
+    },
+    {
+      "scenarioId": "production-equivalent",
+      "reason": "no production-shaped workload, environment or dependency behavior exists; this is why OPS-P0-006 stays PARTIAL",
+      "requiredDependencyMode": "PRODUCTION_EQUIVALENT"
+    }
+  ],
+  "readiness": {
+    "productionShapedWorkload": false,
+    "capacityBoundaryEstablished": false,
+    "sustainedSoakEvidence": false,
+    "failureInjectionEvidence": true,
+    "dataIntegrityProof": true,
+    "cardinalityProof": true,
+    "operationalThresholds": false,
+    "productionEquivalentDependencies": false,
+    "note": "Failure-injection, integrity and cardinality are proven locally against MOCK dependencies. Production-shaped workload, capacity boundary, soak and operational thresholds are missing, so OPS-P0-006 is PARTIAL, not READY."
+  },
+  "evidenceRefs": [
+    "services/import-api/internal/loadtest/harness.go",
+    "services/import-api/internal/loadtest/applemock.go",
+    "services/import-api/internal/loadtest/results.go",
+    "services/import-api/internal/loadtest/scenarios_test.go",
+    "docs/fixtures/memory-os-operability/load-results.sample.v1.json",
+    "docs/memory-os-load-measurement-inventory.md"
+  ]
+}

@@ -167,6 +167,44 @@ func (r *Registry) DroppedSeries(name string) uint64 {
 	return r.dropped[name]
 }
 
+// TotalSeries returns the number of live series across every metric. It is the
+// cardinality figure a load test watches: it must stay bounded under a hostile
+// request stream.
+func (r *Registry) TotalSeries() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	total := 0
+	for _, series := range r.seriesMap {
+		total += len(series)
+	}
+	return total
+}
+
+// SumCounter returns the summed value of a counter metric across the series
+// whose labels match every key in filter (an empty filter matches all series).
+// It reads counter and histogram observation counts; for other kinds it returns
+// what the series recorded. It exists so a load test can read, for example, the
+// number of allowed versus rejected rate-limit decisions without parsing the
+// text export.
+func (r *Registry) SumCounter(name string, filter map[string]string) uint64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var total uint64
+	for _, s := range r.seriesMap[name] {
+		match := true
+		for k, v := range filter {
+			if s.labels[k] != v {
+				match = false
+				break
+			}
+		}
+		if match {
+			total += s.count
+		}
+	}
+	return total
+}
+
 func isBadFloat(v float64) bool { return math.IsNaN(v) || math.IsInf(v, 0) }
 
 func seriesKey(labelOrder []string, labels map[string]string) string {
