@@ -1,0 +1,223 @@
+{
+  "fixtureId": "memory-os.operability.metrics.negative.v1",
+  "description": "Each case is a single metric definition that the metrics contract checker MUST reject. If the checker accepts any of them, the checker has a hole and the validator fails.",
+  "cases": [
+    {
+      "reason": "duplicate metric name",
+      "metric": {
+        "metricName": "memory_os_http_requests_total",
+        "type": "counter",
+        "unit": "count",
+        "component": "http",
+        "requiredLabels": [
+          "route_class"
+        ],
+        "cardinalityBudget": 8,
+        "privacyClassification": "operational_nonpersonal",
+        "sliUse": [],
+        "alertCandidate": null
+      },
+      "duplicatesShipped": true
+    },
+    {
+      "reason": "unknown metric type",
+      "metric": {
+        "metricName": "memory_os_bad_type",
+        "type": "summary",
+        "unit": "count",
+        "component": "http",
+        "requiredLabels": [],
+        "cardinalityBudget": 1,
+        "privacyClassification": "operational_nonpersonal",
+        "sliUse": [],
+        "alertCandidate": null
+      }
+    },
+    {
+      "reason": "unknown unit",
+      "metric": {
+        "metricName": "memory_os_bad_unit",
+        "type": "counter",
+        "unit": "bytes",
+        "component": "http",
+        "requiredLabels": [],
+        "cardinalityBudget": 1,
+        "privacyClassification": "operational_nonpersonal",
+        "sliUse": [],
+        "alertCandidate": null
+      }
+    },
+    {
+      "reason": "forbidden high-cardinality label request_id",
+      "metric": {
+        "metricName": "memory_os_bad_reqid",
+        "type": "counter",
+        "unit": "count",
+        "component": "http",
+        "requiredLabels": [
+          "request_id"
+        ],
+        "cardinalityBudget": 8,
+        "privacyClassification": "operational_nonpersonal",
+        "sliUse": [],
+        "alertCandidate": null
+      }
+    },
+    {
+      "reason": "forbidden personal label account_id",
+      "metric": {
+        "metricName": "memory_os_bad_account",
+        "type": "counter",
+        "unit": "count",
+        "component": "http",
+        "requiredLabels": [
+          "account_id"
+        ],
+        "cardinalityBudget": 8,
+        "privacyClassification": "operational_nonpersonal",
+        "sliUse": [],
+        "alertCandidate": null
+      }
+    },
+    {
+      "reason": "raw status_code used as a label",
+      "metric": {
+        "metricName": "memory_os_bad_status",
+        "type": "counter",
+        "unit": "count",
+        "component": "http",
+        "requiredLabels": [
+          "status_code"
+        ],
+        "cardinalityBudget": 8,
+        "privacyClassification": "operational_nonpersonal",
+        "sliUse": [],
+        "alertCandidate": null
+      }
+    },
+    {
+      "reason": "label value set not defined in labelValues",
+      "metric": {
+        "metricName": "memory_os_bad_unbounded_label",
+        "type": "counter",
+        "unit": "count",
+        "component": "http",
+        "requiredLabels": [
+          "freeform"
+        ],
+        "cardinalityBudget": 8,
+        "privacyClassification": "operational_nonpersonal",
+        "sliUse": [],
+        "alertCandidate": null
+      }
+    },
+    {
+      "reason": "missing cardinality budget",
+      "metric": {
+        "metricName": "memory_os_bad_no_budget",
+        "type": "counter",
+        "unit": "count",
+        "component": "http",
+        "requiredLabels": [],
+        "privacyClassification": "operational_nonpersonal",
+        "sliUse": [],
+        "alertCandidate": null
+      }
+    },
+    {
+      "reason": "missing privacy classification",
+      "metric": {
+        "metricName": "memory_os_bad_no_privacy",
+        "type": "counter",
+        "unit": "count",
+        "component": "http",
+        "requiredLabels": [],
+        "cardinalityBudget": 1,
+        "sliUse": [],
+        "alertCandidate": null
+      }
+    },
+    {
+      "reason": "histogram missing buckets",
+      "metric": {
+        "metricName": "memory_os_bad_no_buckets_seconds",
+        "type": "histogram",
+        "unit": "seconds",
+        "component": "http",
+        "requiredLabels": [],
+        "cardinalityBudget": 1,
+        "privacyClassification": "operational_nonpersonal",
+        "sliUse": [],
+        "alertCandidate": null
+      }
+    },
+    {
+      "reason": "histogram with descending buckets",
+      "metric": {
+        "metricName": "memory_os_bad_desc_buckets",
+        "type": "histogram",
+        "unit": "seconds",
+        "component": "http",
+        "requiredLabels": [],
+        "cardinalityBudget": 1,
+        "buckets": [
+          3,
+          2,
+          1
+        ],
+        "privacyClassification": "operational_nonpersonal",
+        "sliUse": [],
+        "alertCandidate": null
+      }
+    },
+    {
+      "reason": "counter carrying histogram buckets",
+      "metric": {
+        "metricName": "memory_os_bad_counter_buckets",
+        "type": "counter",
+        "unit": "count",
+        "component": "http",
+        "requiredLabels": [],
+        "cardinalityBudget": 1,
+        "buckets": [
+          1,
+          2,
+          3
+        ],
+        "privacyClassification": "operational_nonpersonal",
+        "sliUse": [],
+        "alertCandidate": null
+      }
+    },
+    {
+      "reason": "sliUse references an undefined SLI",
+      "metric": {
+        "metricName": "memory_os_bad_sli_ref",
+        "type": "counter",
+        "unit": "count",
+        "component": "http",
+        "requiredLabels": [],
+        "cardinalityBudget": 1,
+        "privacyClassification": "operational_nonpersonal",
+        "sliUse": [
+          "sli_does_not_exist"
+        ],
+        "alertCandidate": null
+      }
+    },
+    {
+      "reason": "alertCandidate references an undefined alert",
+      "metric": {
+        "metricName": "memory_os_bad_alert_ref",
+        "type": "counter",
+        "unit": "count",
+        "component": "http",
+        "requiredLabels": [],
+        "cardinalityBudget": 1,
+        "privacyClassification": "operational_nonpersonal",
+        "sliUse": [],
+        "alertCandidate": "alert_does_not_exist"
+      }
+    }
+  ]
+}

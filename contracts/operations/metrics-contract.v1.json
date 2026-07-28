@@ -1,0 +1,953 @@
+{
+  "contractId": "memory-os.operability.metrics-contract.v1",
+  "schemaVersion": "memory-os-metrics.v1",
+  "description": "Machine-readable runtime metrics contract for the import-api boundary. The validator checks this against the Go registry (metric names, types, required labels, histogram buckets, schema version and per-metric cardinality budgets), forbids any personal or high-cardinality label, requires a privacy classification and cardinality budget on every metric, requires each referenced SLI/SLO/alert to resolve, holds every SLO to PROPOSED-with-no-owner honesty and every alert to NOT_CONFIGURED until routing evidence exists, and forbids OPS-P0-004 READY until an exporter, scrape endpoint, dashboards, alert routing, retention and load evidence all exist. This contract defines the SLI base; it is not a running metrics stack.",
+  "goImplementation": "services/import-api/internal/metrics",
+  "goRecorderFile": "services/import-api/internal/metrics/recorder.go",
+  "goLabelsFile": "services/import-api/internal/metrics/labels.go",
+  "allowedTypes": [
+    "counter",
+    "gauge",
+    "histogram"
+  ],
+  "allowedUnits": [
+    "count",
+    "seconds"
+  ],
+  "bucketsAreProvisional": true,
+  "bucketProvisionalNote": "Histogram buckets are provisional: chosen before load evidence exists and to be re-tuned after OPS-P0-006 load testing. They are not derived from production data.",
+  "forbiddenLabels": [
+    "request_id",
+    "correlation_id",
+    "job_id",
+    "account_id",
+    "session_id",
+    "apple_subject",
+    "email",
+    "ip",
+    "ip_digest",
+    "network_digest",
+    "raw_url",
+    "raw_path",
+    "url",
+    "path",
+    "token",
+    "bearer",
+    "authorization",
+    "filename",
+    "object_key",
+    "error",
+    "sql",
+    "query",
+    "status_code",
+    "user_agent",
+    "forwarded_for",
+    "preview_id",
+    "upload_id"
+  ],
+  "labelValues": {
+    "route_template": [
+      "GET /healthz",
+      "POST /v1/auth/apple",
+      "DELETE /v1/account",
+      "POST /v1/import-jobs/{jobId}/upload-authorizations",
+      "POST /v1/import-jobs/{jobId}/upload-authorizations/{id}/complete",
+      "GET /v1/import-jobs/{jobId}/preview",
+      "POST /v1/previews/{previewId}/apply",
+      "other"
+    ],
+    "route_class": [
+      "PUBLIC_UNAUTHENTICATED",
+      "PUBLIC_AUTHENTICATED",
+      "HEALTH",
+      "INTERNAL",
+      "unknown"
+    ],
+    "method": [
+      "GET",
+      "POST",
+      "DELETE",
+      "other"
+    ],
+    "status_class": [
+      "1xx",
+      "2xx",
+      "3xx",
+      "4xx",
+      "5xx",
+      "unknown"
+    ],
+    "outcome": [
+      "success",
+      "failure",
+      "rejected",
+      "unknown"
+    ],
+    "failure_class": [
+      "none",
+      "authentication_failure",
+      "authorization_denied",
+      "invalid_request",
+      "replay_rejected",
+      "external_apple_failure",
+      "database_unavailable",
+      "object_store_unavailable",
+      "parser_failure",
+      "integrity_failure",
+      "rate_limited",
+      "store_unavailable",
+      "deletion_retry",
+      "deletion_terminal_failure",
+      "internal_invariant_violation",
+      "panic_recovered",
+      "unknown"
+    ],
+    "provider": [
+      "apple",
+      "unknown"
+    ],
+    "policy_id": [
+      "POST /v1/auth/apple",
+      "DELETE /v1/account",
+      "POST /v1/import-jobs/{jobId}/upload-authorizations",
+      "POST /v1/import-jobs/{jobId}/upload-authorizations/{id}/complete",
+      "GET /v1/import-jobs/{jobId}/preview",
+      "POST /v1/previews/{previewId}/apply",
+      "other",
+      "unknown"
+    ],
+    "operation": [
+      "apple_exchange",
+      "session_issuance",
+      "begin_deletion",
+      "sweep",
+      "resolve_session",
+      "provision_identity",
+      "presign",
+      "head",
+      "erase",
+      "parse",
+      "verify",
+      "commit",
+      "deletion_sweep",
+      "unknown"
+    ],
+    "worker_name": [
+      "deletion_runtime",
+      "unknown"
+    ]
+  },
+  "metrics": [
+    {
+      "metricName": "memory_os_http_requests_total",
+      "type": "counter",
+      "unit": "count",
+      "component": "http",
+      "requiredLabels": [
+        "route_template",
+        "route_class",
+        "method",
+        "status_class",
+        "outcome"
+      ],
+      "cardinalityBudget": 512,
+      "privacyClassification": "operational_nonpersonal",
+      "sourceEvents": [
+        "http.request"
+      ],
+      "sliUse": [
+        "sli_http_availability"
+      ],
+      "alertCandidate": "alert_http_5xx_burst"
+    },
+    {
+      "metricName": "memory_os_http_request_duration_seconds",
+      "type": "histogram",
+      "unit": "seconds",
+      "component": "http",
+      "requiredLabels": [
+        "route_template",
+        "route_class"
+      ],
+      "cardinalityBudget": 64,
+      "privacyClassification": "operational_nonpersonal",
+      "sourceEvents": [
+        "http.request"
+      ],
+      "sliUse": [
+        "sli_http_latency"
+      ],
+      "alertCandidate": null,
+      "buckets": [
+        0.005,
+        0.01,
+        0.025,
+        0.05,
+        0.1,
+        0.25,
+        0.5,
+        1,
+        2.5,
+        5,
+        10
+      ]
+    },
+    {
+      "metricName": "memory_os_http_in_flight",
+      "type": "gauge",
+      "unit": "count",
+      "component": "http",
+      "requiredLabels": [],
+      "cardinalityBudget": 1,
+      "privacyClassification": "operational_nonpersonal",
+      "sourceEvents": [
+        "http.request"
+      ],
+      "sliUse": [
+        "sli_http_saturation"
+      ],
+      "alertCandidate": null
+    },
+    {
+      "metricName": "memory_os_http_request_body_rejected_total",
+      "type": "counter",
+      "unit": "count",
+      "component": "http",
+      "requiredLabels": [
+        "route_template",
+        "route_class"
+      ],
+      "cardinalityBudget": 64,
+      "privacyClassification": "operational_nonpersonal",
+      "sourceEvents": [
+        "http.body_rejected"
+      ],
+      "sliUse": [],
+      "alertCandidate": null
+    },
+    {
+      "metricName": "memory_os_http_panics_total",
+      "type": "counter",
+      "unit": "count",
+      "component": "http",
+      "requiredLabels": [
+        "route_template",
+        "route_class"
+      ],
+      "cardinalityBudget": 64,
+      "privacyClassification": "operational_nonpersonal",
+      "sourceEvents": [
+        "http.panic"
+      ],
+      "sliUse": [
+        "sli_http_availability"
+      ],
+      "alertCandidate": "alert_panic_detected"
+    },
+    {
+      "metricName": "memory_os_apple_exchange_total",
+      "type": "counter",
+      "unit": "count",
+      "component": "apple_auth",
+      "requiredLabels": [
+        "provider",
+        "outcome",
+        "failure_class"
+      ],
+      "cardinalityBudget": 64,
+      "privacyClassification": "operational_nonpersonal",
+      "sourceEvents": [
+        "apple.exchange"
+      ],
+      "sliUse": [
+        "sli_apple_exchange_success"
+      ],
+      "alertCandidate": "alert_apple_exchange_failure_spike"
+    },
+    {
+      "metricName": "memory_os_apple_exchange_duration_seconds",
+      "type": "histogram",
+      "unit": "seconds",
+      "component": "apple_auth",
+      "requiredLabels": [
+        "provider"
+      ],
+      "cardinalityBudget": 4,
+      "privacyClassification": "operational_nonpersonal",
+      "sourceEvents": [
+        "apple.exchange"
+      ],
+      "sliUse": [
+        "sli_apple_exchange_latency"
+      ],
+      "alertCandidate": null,
+      "buckets": [
+        0.05,
+        0.1,
+        0.25,
+        0.5,
+        1,
+        2,
+        5,
+        10
+      ]
+    },
+    {
+      "metricName": "memory_os_apple_replay_rejections_total",
+      "type": "counter",
+      "unit": "count",
+      "component": "apple_auth",
+      "requiredLabels": [],
+      "cardinalityBudget": 1,
+      "privacyClassification": "operational_nonpersonal",
+      "sourceEvents": [
+        "apple.replay_rejected"
+      ],
+      "sliUse": [],
+      "alertCandidate": null
+    },
+    {
+      "metricName": "memory_os_session_issuance_total",
+      "type": "counter",
+      "unit": "count",
+      "component": "apple_auth",
+      "requiredLabels": [
+        "outcome"
+      ],
+      "cardinalityBudget": 8,
+      "privacyClassification": "operational_nonpersonal",
+      "sourceEvents": [
+        "session.issued"
+      ],
+      "sliUse": [],
+      "alertCandidate": null
+    },
+    {
+      "metricName": "memory_os_rate_limit_decisions_total",
+      "type": "counter",
+      "unit": "count",
+      "component": "rate_limit",
+      "requiredLabels": [
+        "policy_id",
+        "route_class",
+        "outcome",
+        "failure_class"
+      ],
+      "cardinalityBudget": 256,
+      "privacyClassification": "operational_nonpersonal",
+      "sourceEvents": [
+        "rate_limit"
+      ],
+      "sliUse": [
+        "sli_rate_limit_rejection_ratio"
+      ],
+      "alertCandidate": null
+    },
+    {
+      "metricName": "memory_os_rate_limit_decision_duration_seconds",
+      "type": "histogram",
+      "unit": "seconds",
+      "component": "rate_limit",
+      "requiredLabels": [
+        "route_class"
+      ],
+      "cardinalityBudget": 8,
+      "privacyClassification": "operational_nonpersonal",
+      "sourceEvents": [
+        "rate_limit"
+      ],
+      "sliUse": [],
+      "alertCandidate": null,
+      "buckets": [
+        0.0001,
+        0.0005,
+        0.001,
+        0.005,
+        0.01,
+        0.05
+      ]
+    },
+    {
+      "metricName": "memory_os_rate_limit_store_failures_total",
+      "type": "counter",
+      "unit": "count",
+      "component": "rate_limit",
+      "requiredLabels": [
+        "policy_id"
+      ],
+      "cardinalityBudget": 16,
+      "privacyClassification": "operational_nonpersonal",
+      "sourceEvents": [
+        "rate_limit.store_unavailable"
+      ],
+      "sliUse": [
+        "sli_rate_limit_store_health"
+      ],
+      "alertCandidate": "alert_rate_limit_store_failing"
+    },
+    {
+      "metricName": "memory_os_rate_limit_active_keys",
+      "type": "gauge",
+      "unit": "count",
+      "component": "rate_limit",
+      "requiredLabels": [],
+      "cardinalityBudget": 1,
+      "privacyClassification": "operational_nonpersonal",
+      "sourceEvents": [
+        "rate_limit"
+      ],
+      "sliUse": [
+        "sli_rate_limit_key_saturation"
+      ],
+      "alertCandidate": null
+    },
+    {
+      "metricName": "memory_os_db_operations_total",
+      "type": "counter",
+      "unit": "count",
+      "component": "db",
+      "requiredLabels": [
+        "operation",
+        "outcome",
+        "failure_class"
+      ],
+      "cardinalityBudget": 128,
+      "privacyClassification": "operational_nonpersonal",
+      "sourceEvents": [
+        "db.operation"
+      ],
+      "sliUse": [],
+      "alertCandidate": null
+    },
+    {
+      "metricName": "memory_os_db_operation_duration_seconds",
+      "type": "histogram",
+      "unit": "seconds",
+      "component": "db",
+      "requiredLabels": [
+        "operation"
+      ],
+      "cardinalityBudget": 32,
+      "privacyClassification": "operational_nonpersonal",
+      "sourceEvents": [
+        "db.operation"
+      ],
+      "sliUse": [
+        "sli_db_latency"
+      ],
+      "alertCandidate": null,
+      "buckets": [
+        0.001,
+        0.005,
+        0.01,
+        0.05,
+        0.1,
+        0.5,
+        1,
+        5
+      ]
+    },
+    {
+      "metricName": "memory_os_db_failures_total",
+      "type": "counter",
+      "unit": "count",
+      "component": "db",
+      "requiredLabels": [
+        "operation",
+        "failure_class"
+      ],
+      "cardinalityBudget": 64,
+      "privacyClassification": "operational_nonpersonal",
+      "sourceEvents": [
+        "db.operation"
+      ],
+      "sliUse": [
+        "sli_db_availability"
+      ],
+      "alertCandidate": "alert_db_failing"
+    },
+    {
+      "metricName": "memory_os_object_store_operations_total",
+      "type": "counter",
+      "unit": "count",
+      "component": "object_store",
+      "requiredLabels": [
+        "operation",
+        "outcome",
+        "failure_class"
+      ],
+      "cardinalityBudget": 64,
+      "privacyClassification": "operational_nonpersonal",
+      "sourceEvents": [
+        "object_store.operation"
+      ],
+      "sliUse": [],
+      "alertCandidate": null
+    },
+    {
+      "metricName": "memory_os_object_store_operation_duration_seconds",
+      "type": "histogram",
+      "unit": "seconds",
+      "component": "object_store",
+      "requiredLabels": [
+        "operation"
+      ],
+      "cardinalityBudget": 16,
+      "privacyClassification": "operational_nonpersonal",
+      "sourceEvents": [
+        "object_store.operation"
+      ],
+      "sliUse": [
+        "sli_object_store_latency"
+      ],
+      "alertCandidate": null,
+      "buckets": [
+        0.01,
+        0.05,
+        0.1,
+        0.25,
+        0.5,
+        1,
+        2.5,
+        5,
+        10
+      ]
+    },
+    {
+      "metricName": "memory_os_object_store_failures_total",
+      "type": "counter",
+      "unit": "count",
+      "component": "object_store",
+      "requiredLabels": [
+        "operation",
+        "failure_class"
+      ],
+      "cardinalityBudget": 32,
+      "privacyClassification": "operational_nonpersonal",
+      "sourceEvents": [
+        "object_store.operation"
+      ],
+      "sliUse": [
+        "sli_object_store_availability"
+      ],
+      "alertCandidate": null
+    },
+    {
+      "metricName": "memory_os_import_operations_total",
+      "type": "counter",
+      "unit": "count",
+      "component": "import",
+      "requiredLabels": [
+        "operation",
+        "outcome",
+        "failure_class"
+      ],
+      "cardinalityBudget": 64,
+      "privacyClassification": "operational_nonpersonal",
+      "sourceEvents": [
+        "import.operation"
+      ],
+      "sliUse": [],
+      "alertCandidate": null
+    },
+    {
+      "metricName": "memory_os_import_operation_duration_seconds",
+      "type": "histogram",
+      "unit": "seconds",
+      "component": "import",
+      "requiredLabels": [
+        "operation"
+      ],
+      "cardinalityBudget": 16,
+      "privacyClassification": "operational_nonpersonal",
+      "sourceEvents": [
+        "import.operation"
+      ],
+      "sliUse": [
+        "sli_import_latency"
+      ],
+      "alertCandidate": null,
+      "buckets": [
+        0.05,
+        0.25,
+        1,
+        5,
+        15,
+        60,
+        300
+      ]
+    },
+    {
+      "metricName": "memory_os_import_items_total",
+      "type": "counter",
+      "unit": "count",
+      "component": "import",
+      "requiredLabels": [
+        "operation"
+      ],
+      "cardinalityBudget": 16,
+      "privacyClassification": "operational_nonpersonal",
+      "sourceEvents": [
+        "import.operation"
+      ],
+      "sliUse": [],
+      "alertCandidate": null
+    },
+    {
+      "metricName": "memory_os_import_failures_total",
+      "type": "counter",
+      "unit": "count",
+      "component": "import",
+      "requiredLabels": [
+        "operation",
+        "failure_class"
+      ],
+      "cardinalityBudget": 32,
+      "privacyClassification": "operational_nonpersonal",
+      "sourceEvents": [
+        "import.operation"
+      ],
+      "sliUse": [
+        "sli_import_success"
+      ],
+      "alertCandidate": null
+    },
+    {
+      "metricName": "memory_os_deletion_jobs_total",
+      "type": "counter",
+      "unit": "count",
+      "component": "deletion_worker",
+      "requiredLabels": [
+        "worker_name",
+        "outcome",
+        "failure_class"
+      ],
+      "cardinalityBudget": 32,
+      "privacyClassification": "operational_nonpersonal",
+      "sourceEvents": [
+        "deletion.job"
+      ],
+      "sliUse": [
+        "sli_deletion_success"
+      ],
+      "alertCandidate": null
+    },
+    {
+      "metricName": "memory_os_deletion_job_duration_seconds",
+      "type": "histogram",
+      "unit": "seconds",
+      "component": "deletion_worker",
+      "requiredLabels": [
+        "worker_name"
+      ],
+      "cardinalityBudget": 4,
+      "privacyClassification": "operational_nonpersonal",
+      "sourceEvents": [
+        "deletion.job"
+      ],
+      "sliUse": [
+        "sli_deletion_latency"
+      ],
+      "alertCandidate": null,
+      "buckets": [
+        0.1,
+        0.5,
+        1,
+        5,
+        15,
+        60,
+        300
+      ]
+    },
+    {
+      "metricName": "memory_os_deletion_backlog",
+      "type": "gauge",
+      "unit": "count",
+      "component": "deletion_worker",
+      "requiredLabels": [],
+      "cardinalityBudget": 1,
+      "privacyClassification": "operational_nonpersonal",
+      "sourceEvents": [
+        "deletion.backlog"
+      ],
+      "sliUse": [
+        "sli_deletion_freshness"
+      ],
+      "alertCandidate": "alert_deletion_backlog_stuck"
+    },
+    {
+      "metricName": "memory_os_deletion_retries_total",
+      "type": "counter",
+      "unit": "count",
+      "component": "deletion_worker",
+      "requiredLabels": [
+        "worker_name"
+      ],
+      "cardinalityBudget": 4,
+      "privacyClassification": "operational_nonpersonal",
+      "sourceEvents": [
+        "deletion.retry"
+      ],
+      "sliUse": [],
+      "alertCandidate": null
+    },
+    {
+      "metricName": "memory_os_deletion_terminal_failures_total",
+      "type": "counter",
+      "unit": "count",
+      "component": "deletion_worker",
+      "requiredLabels": [
+        "worker_name"
+      ],
+      "cardinalityBudget": 4,
+      "privacyClassification": "operational_nonpersonal",
+      "sourceEvents": [
+        "deletion.terminal_failure"
+      ],
+      "sliUse": [
+        "sli_deletion_success"
+      ],
+      "alertCandidate": "alert_deletion_terminal_failure"
+    }
+  ],
+  "slis": [
+    {
+      "id": "sli_http_availability",
+      "description": "Fraction of HTTP requests that are not 5xx.",
+      "goodEventQuery": "sum(rate(memory_os_http_requests_total{status_class!=\"5xx\"}[5m]))",
+      "totalEventQuery": "sum(rate(memory_os_http_requests_total[5m]))",
+      "sourceMetrics": [
+        "memory_os_http_requests_total",
+        "memory_os_http_panics_total"
+      ]
+    },
+    {
+      "id": "sli_http_latency",
+      "description": "HTTP request duration distribution (percentiles).",
+      "sourceMetrics": [
+        "memory_os_http_request_duration_seconds"
+      ]
+    },
+    {
+      "id": "sli_http_saturation",
+      "description": "Concurrent in-flight HTTP requests.",
+      "sourceMetrics": [
+        "memory_os_http_in_flight"
+      ]
+    },
+    {
+      "id": "sli_apple_exchange_success",
+      "description": "Apple code-exchange success ratio.",
+      "sourceMetrics": [
+        "memory_os_apple_exchange_total"
+      ]
+    },
+    {
+      "id": "sli_apple_exchange_latency",
+      "description": "Apple code-exchange duration distribution.",
+      "sourceMetrics": [
+        "memory_os_apple_exchange_duration_seconds"
+      ]
+    },
+    {
+      "id": "sli_rate_limit_rejection_ratio",
+      "description": "Fraction of requests rejected by rate limiting.",
+      "sourceMetrics": [
+        "memory_os_rate_limit_decisions_total"
+      ]
+    },
+    {
+      "id": "sli_rate_limit_store_health",
+      "description": "Rate-limit store failure rate.",
+      "sourceMetrics": [
+        "memory_os_rate_limit_store_failures_total"
+      ]
+    },
+    {
+      "id": "sli_rate_limit_key_saturation",
+      "description": "Active rate-limit keys vs the cardinality cap.",
+      "sourceMetrics": [
+        "memory_os_rate_limit_active_keys"
+      ]
+    },
+    {
+      "id": "sli_db_latency",
+      "description": "Database operation duration distribution.",
+      "sourceMetrics": [
+        "memory_os_db_operation_duration_seconds"
+      ]
+    },
+    {
+      "id": "sli_db_availability",
+      "description": "Database operation failure rate.",
+      "sourceMetrics": [
+        "memory_os_db_failures_total",
+        "memory_os_db_operations_total"
+      ]
+    },
+    {
+      "id": "sli_object_store_latency",
+      "description": "Object-store operation duration distribution.",
+      "sourceMetrics": [
+        "memory_os_object_store_operation_duration_seconds"
+      ]
+    },
+    {
+      "id": "sli_object_store_availability",
+      "description": "Object-store operation failure rate.",
+      "sourceMetrics": [
+        "memory_os_object_store_failures_total",
+        "memory_os_object_store_operations_total"
+      ]
+    },
+    {
+      "id": "sli_import_latency",
+      "description": "Import operation duration distribution.",
+      "sourceMetrics": [
+        "memory_os_import_operation_duration_seconds"
+      ]
+    },
+    {
+      "id": "sli_import_success",
+      "description": "Import operation success ratio.",
+      "sourceMetrics": [
+        "memory_os_import_failures_total",
+        "memory_os_import_operations_total"
+      ]
+    },
+    {
+      "id": "sli_deletion_success",
+      "description": "Deletion job success ratio.",
+      "sourceMetrics": [
+        "memory_os_deletion_jobs_total",
+        "memory_os_deletion_terminal_failures_total"
+      ]
+    },
+    {
+      "id": "sli_deletion_latency",
+      "description": "Deletion job duration distribution.",
+      "sourceMetrics": [
+        "memory_os_deletion_job_duration_seconds"
+      ]
+    },
+    {
+      "id": "sli_deletion_freshness",
+      "description": "Age/size of the deletion backlog (right-to-erasure timeliness).",
+      "sourceMetrics": [
+        "memory_os_deletion_backlog"
+      ]
+    }
+  ],
+  "slos": [
+    {
+      "id": "slo_http_availability",
+      "sli": "sli_http_availability",
+      "status": "PROPOSED",
+      "owner": "UNASSIGNED",
+      "objective": "provisional: 99.5% non-5xx over 30d",
+      "target": 0.995,
+      "window": "30d",
+      "basedOnData": false,
+      "note": "Placeholder target; not calibrated against production load or an error-budget policy."
+    },
+    {
+      "id": "slo_http_latency_p95",
+      "sli": "sli_http_latency",
+      "status": "PROPOSED",
+      "owner": "UNASSIGNED",
+      "objective": "provisional: p95 < 1s",
+      "target": 1.0,
+      "window": "30d",
+      "basedOnData": false,
+      "note": "Placeholder; buckets are provisional and unvalidated by load testing."
+    },
+    {
+      "id": "slo_deletion_freshness",
+      "sli": "sli_deletion_freshness",
+      "status": "PROPOSED",
+      "owner": "UNASSIGNED",
+      "objective": "provisional: backlog drains within an operational window",
+      "target": null,
+      "window": "24h",
+      "basedOnData": false,
+      "note": "Placeholder; the right-to-erasure timeliness target needs a policy decision."
+    }
+  ],
+  "alertCandidates": [
+    {
+      "id": "alert_http_5xx_burst",
+      "sli": "sli_http_availability",
+      "condition": "elevated 5xx ratio over a short window",
+      "severity": "high",
+      "routingStatus": "NOT_CONFIGURED",
+      "runbook": null
+    },
+    {
+      "id": "alert_panic_detected",
+      "sli": "sli_http_availability",
+      "condition": "any recovered HTTP panic",
+      "severity": "high",
+      "routingStatus": "NOT_CONFIGURED",
+      "runbook": null
+    },
+    {
+      "id": "alert_apple_exchange_failure_spike",
+      "sli": "sli_apple_exchange_success",
+      "condition": "Apple exchange failure ratio spike",
+      "severity": "medium",
+      "routingStatus": "NOT_CONFIGURED",
+      "runbook": null
+    },
+    {
+      "id": "alert_rate_limit_store_failing",
+      "sli": "sli_rate_limit_store_health",
+      "condition": "rate-limit store failures observed",
+      "severity": "high",
+      "routingStatus": "NOT_CONFIGURED",
+      "runbook": null
+    },
+    {
+      "id": "alert_db_failing",
+      "sli": "sli_db_availability",
+      "condition": "database failure rate elevated",
+      "severity": "high",
+      "routingStatus": "NOT_CONFIGURED",
+      "runbook": null
+    },
+    {
+      "id": "alert_deletion_backlog_stuck",
+      "sli": "sli_deletion_freshness",
+      "condition": "deletion backlog stuck above threshold",
+      "severity": "high",
+      "routingStatus": "NOT_CONFIGURED",
+      "runbook": null
+    },
+    {
+      "id": "alert_deletion_terminal_failure",
+      "sli": "sli_deletion_success",
+      "condition": "any deletion terminal failure",
+      "severity": "high",
+      "routingStatus": "NOT_CONFIGURED",
+      "runbook": null
+    }
+  ],
+  "readiness": {
+    "exporterImplemented": false,
+    "scrapeEndpointExposed": false,
+    "dashboardsDefined": false,
+    "alertRoutingConfigured": false,
+    "retentionDefined": false,
+    "loadCalibrated": false,
+    "note": "The typed registry and recorder exist and are wired at the HTTP, rate-limit and deletion-worker boundaries, but there is no Prometheus/OTel exporter, no scrape endpoint, no dashboard, no alert routing, no retention policy and no load-calibrated buckets or SLO targets. OPS-P0-004 is PARTIAL, not READY."
+  },
+  "evidenceRefs": [
+    "services/import-api/internal/metrics/labels.go",
+    "services/import-api/internal/metrics/registry.go",
+    "services/import-api/internal/metrics/recorder.go",
+    "services/import-api/internal/metrics/export.go",
+    "services/import-api/internal/metrics/metrics_test.go",
+    "services/import-api/internal/httpserver/observability.go",
+    "services/import-api/internal/httpserver/ratelimit.go",
+    "services/import-api/internal/httpserver/metrics_test.go"
+  ]
+}
