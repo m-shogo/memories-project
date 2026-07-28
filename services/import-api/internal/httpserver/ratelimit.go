@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/m-shogo/memories-project/services/import-api/internal/metrics"
 	"github.com/m-shogo/memories-project/services/import-api/internal/obslog"
 	"github.com/m-shogo/memories-project/services/import-api/internal/ratelimit"
 	"github.com/m-shogo/memories-project/services/import-api/internal/reqid"
@@ -23,11 +24,12 @@ type RateLimitConfig struct {
 // inside the observability middleware (so a 429 still carries a request ID and
 // is logged) and outside the router (so the decision precedes body decode and
 // the Apple exchange).
-func rateLimitMiddleware(config RateLimitConfig, logger *obslog.Logger, next http.Handler) http.Handler {
+func rateLimitMiddleware(config RateLimitConfig, logger *obslog.Logger, recorder metrics.Recorder, next http.Handler) http.Handler {
 	if config.Enforcer == nil {
 		return next
 	}
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		start := time.Now()
 		route := routeTemplate(request.Method, request.URL.Path)
 		requestID := reqid.RequestID(request.Context())
 
@@ -35,6 +37,11 @@ func rateLimitMiddleware(config RateLimitConfig, logger *obslog.Logger, next htt
 		networkKey := config.Deriver.NetworkKey(request.RemoteAddr, request.Header.Get("X-Forwarded-For"))
 
 		result := config.Enforcer.Check(route, routeKey, networkKey)
+		recorder.RecordRateLimitDecision(route, route, metricsRouteClass(route),
+			metricsRateLimitOutcome(result), metricsRateLimitFailure(result), time.Since(start))
+		if result.Reason == ratelimit.ReasonStoreUnavailable {
+			recorder.RecordRateLimitStoreFailure(route, route)
+		}
 		if result.Allowed {
 			// Exempt routes (health) are logged at debug only when a policy
 			// applied; a plain exempt is not logged to avoid noise.
@@ -130,4 +137,28 @@ func itoa(v int64) string {
 		v /= 10
 	}
 	return string(buf[i:])
+}
+
+func metricsRateLimitOutcome(result ratelimit.Result) metrics.Outcome {
+	switch {
+	case result.Allowed:
+		return metrics.OutcomeSuccess
+	case result.Reason == ratelimit.ReasonRejected:
+		return metrics.OutcomeRejected
+	default:
+		return metrics.OutcomeFailure
+	}
+}
+
+func metricsRateLimitFailure(result ratelimit.Result) metrics.FailureClass {
+	switch result.Reason {
+	case ratelimit.ReasonRejected:
+		return metrics.FailRateLimited
+	case ratelimit.ReasonStoreUnavailable:
+		return metrics.FailStoreUnavail
+	case ratelimit.ReasonPolicyInvalid:
+		return metrics.FailInternal
+	default:
+		return metrics.FailNone
+	}
 }

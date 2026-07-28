@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/m-shogo/memories-project/services/import-api/internal/metrics"
 	"github.com/m-shogo/memories-project/services/import-api/internal/obslog"
 	"github.com/m-shogo/memories-project/services/import-api/internal/reqid"
 )
@@ -15,16 +16,18 @@ import (
 // exactly one structured request event carrying method, a low-cardinality route
 // template, status, duration and a failure class — never a token, a path
 // containing an account or job ID, a query string or an error string.
-func observabilityMiddleware(logger *obslog.Logger, next http.Handler) http.Handler {
+func observabilityMiddleware(logger *obslog.Logger, recorder metrics.Recorder, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		start := time.Now()
+		recorder.IncHTTPInFlight(1)
+		defer recorder.IncHTTPInFlight(-1)
 
 		requestID, _ := reqid.FromInbound(request.Header.Get("X-Request-Id"))
 		writer.Header().Set("X-Request-Id", requestID)
 		ctx := reqid.WithRequestID(request.Context(), requestID)
 		request = request.WithContext(ctx)
 
-		recorder := &statusRecorder{ResponseWriter: writer, status: http.StatusOK}
+		rec := &statusRecorder{ResponseWriter: writer, status: http.StatusOK}
 		route := routeTemplate(request.Method, request.URL.Path)
 
 		defer func() {
@@ -32,12 +35,15 @@ func observabilityMiddleware(logger *obslog.Logger, next http.Handler) http.Hand
 				// A panic never reaches the client as detail: a fixed 500 body
 				// and a bounded event with no recovered value, no stack, no
 				// request content.
-				if !recorder.wroteHeader {
-					recorder.Header().Set("Content-Type", "application/json")
-					recorder.Header().Set("Cache-Control", "no-store")
-					recorder.WriteHeader(http.StatusInternalServerError)
-					_, _ = recorder.Write([]byte(`{"code":"SEC_INTERNAL_ERROR"}`))
+				if !rec.wroteHeader {
+					rec.Header().Set("Content-Type", "application/json")
+					rec.Header().Set("Cache-Control", "no-store")
+					rec.WriteHeader(http.StatusInternalServerError)
+					_, _ = rec.Write([]byte(`{"code":"SEC_INTERNAL_ERROR"}`))
 				}
+				recorder.RecordHTTPPanic(route, metricsRouteClass(route))
+				recorder.RecordHTTPRequest(route, metricsRouteClass(route), metrics.MethodFor(request.Method),
+					metrics.Status5xx, metrics.OutcomeFailure, time.Since(start))
 				logger.Emit(obslog.Event{
 					Severity:     obslog.SeverityError,
 					EventName:    "http.panic",
@@ -55,21 +61,23 @@ func observabilityMiddleware(logger *obslog.Logger, next http.Handler) http.Hand
 			}
 		}()
 
-		next.ServeHTTP(recorder, request)
+		next.ServeHTTP(rec, request)
 
+		recorder.RecordHTTPRequest(route, metricsRouteClass(route), metrics.MethodFor(request.Method),
+			metrics.StatusClassFor(rec.status), metricsOutcomeForStatus(rec.status), time.Since(start))
 		logger.Emit(obslog.Event{
-			Severity:     severityForStatus(recorder.status),
+			Severity:     severityForStatus(rec.status),
 			EventName:    "http.request",
 			EventCode:    obslog.EventHTTPRequest,
 			Component:    obslog.ComponentHTTP,
 			Operation:    "serve",
-			Outcome:      outcomeForStatus(recorder.status),
+			Outcome:      outcomeForStatus(rec.status),
 			RequestID:    requestID,
 			HTTPMethod:   request.Method,
 			Route:        route,
-			StatusCode:   obslog.IntPtr(recorder.status),
+			StatusCode:   obslog.IntPtr(rec.status),
 			DurationMs:   obslog.Int64Ptr(time.Since(start).Milliseconds()),
-			FailureClass: failureClassForStatus(recorder.status),
+			FailureClass: failureClassForStatus(rec.status),
 		})
 	})
 }
@@ -180,5 +188,32 @@ func failureClassForStatus(status int) obslog.FailureClass {
 		return obslog.FailureInvalidRequest
 	default:
 		return obslog.FailureNone
+	}
+}
+
+// metricsRouteClass maps a route template to its metrics route class using the
+// same fixed table the rate-limit policies use.
+func metricsRouteClass(route string) metrics.RouteClass {
+	switch {
+	case route == "GET /healthz":
+		return metrics.RouteHealth
+	case route == "POST /v1/auth/apple", strings.HasSuffix(route, " other"):
+		// The pre-auth Apple exchange and any unmatched route are treated as the
+		// public unauthenticated class for metrics purposes.
+		return metrics.RoutePublicUnauthenticated
+	default:
+		return metrics.RoutePublicAuthenticated
+	}
+}
+
+// metricsOutcomeForStatus maps a status to the metrics outcome enum.
+func metricsOutcomeForStatus(status int) metrics.Outcome {
+	switch {
+	case status >= 500:
+		return metrics.OutcomeFailure
+	case status >= 400:
+		return metrics.OutcomeRejected
+	default:
+		return metrics.OutcomeSuccess
 	}
 }

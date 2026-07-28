@@ -32,6 +32,7 @@ import (
 	"github.com/m-shogo/memories-project/services/import-api/internal/fenced"
 	"github.com/m-shogo/memories-project/services/import-api/internal/httpapi"
 	"github.com/m-shogo/memories-project/services/import-api/internal/httpserver"
+	"github.com/m-shogo/memories-project/services/import-api/internal/metrics"
 	"github.com/m-shogo/memories-project/services/import-api/internal/objectstore"
 	"github.com/m-shogo/memories-project/services/import-api/internal/obslog"
 	"github.com/m-shogo/memories-project/services/import-api/internal/pgrepo"
@@ -110,6 +111,16 @@ func run(listen, databaseURL, s3Endpoint, s3Access, s3Secret, bucket string, dev
 	}
 
 	logger := obslog.New(os.Stdout)
+	// A metrics registry with a panic observer that surfaces a metrics fault as
+	// a single low-information event, never recursively.
+	registry := metrics.NewRegistry()
+	recorder := metrics.NewRegistryRecorder(registry, func() {
+		logger.Emit(obslog.Event{
+			Severity: obslog.SeverityError, EventName: "metrics.recorder_panic",
+			EventCode: obslog.EventInternalInvariant, Component: obslog.ComponentServer,
+			Operation: "metrics", Outcome: obslog.OutcomeFailure, FailureClass: obslog.FailureInternalInvariant,
+		})
+	})
 	executor := dbscope.New(pgscope.Beginner{Pool: pool})
 	// Every request surface runs behind the deletion-epoch fence. The guard
 	// reads the canonical account_control row, so a session issued before an
@@ -153,6 +164,7 @@ func run(listen, databaseURL, s3Endpoint, s3Access, s3Secret, bucket string, dev
 		AppleLogin: appleLogin,
 		Logger:     logger,
 		RateLimit:  rateLimit,
+		Metrics:    recorder,
 	}))
 
 	// The deletion runtime drains accounts the API already fenced. It runs in
@@ -163,7 +175,7 @@ func run(listen, databaseURL, s3Endpoint, s3Access, s3Secret, bucket string, dev
 		Repository: accountControl,
 		Objects:    objects,
 	}
-	go runDeletionRuntime(ctx, deletionWorker, logger)
+	go runDeletionRuntime(ctx, deletionWorker, logger, recorder)
 
 	errs := make(chan error, 1)
 	go func() {
@@ -203,7 +215,7 @@ func envOr(name string, fallback string) string {
 // runDeletionRuntime polls for fenced accounts until the process shuts down. A
 // failed sweep is logged without a reason string: the account stays fenced and
 // claimable, and this log line must never carry a fragment of user content.
-func runDeletionRuntime(ctx context.Context, worker accountdelete.Worker, logger *obslog.Logger) {
+func runDeletionRuntime(ctx context.Context, worker accountdelete.Worker, logger *obslog.Logger, recorder metrics.Recorder) {
 	const interval = 30 * time.Second
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -215,8 +227,10 @@ func runDeletionRuntime(ctx context.Context, worker accountdelete.Worker, logger
 			// Each sweep cycle is its own correlation boundary: worker events
 			// form their own scope rather than borrowing a request's.
 			correlationID := reqid.NewCorrelation("deletion")
+			sweepStart := time.Now()
 			receipts, err := worker.Sweep(ctx, 8)
 			for _, receipt := range receipts {
+				recorder.RecordDeletionJob(metrics.WorkerDeletion, metrics.OutcomeSuccess, metrics.FailNone, time.Since(sweepStart))
 				logger.Emit(obslog.Event{
 					Severity: obslog.SeverityInfo, EventName: "deletion.completed",
 					EventCode: obslog.EventDeletionCompleted, Component: obslog.ComponentDeletionWorker,
@@ -225,6 +239,8 @@ func runDeletionRuntime(ctx context.Context, worker accountdelete.Worker, logger
 				})
 			}
 			if err != nil && ctx.Err() == nil {
+				recorder.RecordDeletionRetry(metrics.WorkerDeletion)
+				recorder.RecordDeletionJob(metrics.WorkerDeletion, metrics.OutcomeFailure, metrics.FailDeletionRetry, time.Since(sweepStart))
 				logger.Emit(obslog.Event{
 					Severity: obslog.SeverityWarn, EventName: "deletion.retry",
 					EventCode: obslog.EventDeletionRetry, Component: obslog.ComponentDeletionWorker,
@@ -245,6 +261,8 @@ func runDeletionRuntime(ctx context.Context, worker accountdelete.Worker, logger
 					FailureClass: obslog.FailureDatabaseUnavailable,
 				})
 			case backlogErr == nil && !backlog.Healthy():
+				recorder.SetDeletionBacklog(int(backlog.Stuck))
+				recorder.RecordDeletionTerminalFailure(metrics.WorkerDeletion)
 				logger.Emit(obslog.Event{
 					Severity: obslog.SeverityError, EventName: "deletion.backlog_stuck",
 					EventCode: obslog.EventDeletionBacklog, Component: obslog.ComponentDeletionWorker,

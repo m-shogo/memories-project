@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/m-shogo/memories-project/services/import-api/internal/httpapi"
+	"github.com/m-shogo/memories-project/services/import-api/internal/metrics"
 	"github.com/m-shogo/memories-project/services/import-api/internal/obslog"
 	"github.com/m-shogo/memories-project/services/import-api/internal/security"
 )
@@ -34,6 +35,9 @@ type Config struct {
 	// RateLimit carries the enforcer and key deriver. A nil enforcer disables
 	// rate limiting so unconfigured dev/test paths are unchanged.
 	RateLimit RateLimitConfig
+	// Metrics records bounded runtime metrics. A nil recorder becomes a no-op,
+	// so metrics never block or fail the request path.
+	Metrics metrics.Recorder
 }
 
 // New builds the routing tree: an unauthenticated health probe plus the
@@ -60,8 +64,12 @@ func New(config Config) http.Handler {
 	// limiting, which wraps routing. So a 429 carries a request ID and is
 	// logged, and the rate-limit decision precedes body decode and the Apple
 	// exchange — a rejected request never reaches a handler.
-	limited := rateLimitMiddleware(config.RateLimit, config.Logger, root)
-	return observabilityMiddleware(config.Logger, limited)
+	recorder := config.Metrics
+	if recorder == nil {
+		recorder = metrics.Nop{}
+	}
+	limited := rateLimitMiddleware(config.RateLimit, config.Logger, recorder, root)
+	return observabilityMiddleware(config.Logger, recorder, limited)
 }
 
 // sessionMiddleware authenticates every request under it. The raw token is
