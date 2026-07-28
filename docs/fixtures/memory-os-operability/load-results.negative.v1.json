@@ -1,0 +1,524 @@
+{
+  "fixtureId": "memory-os.operability.load-results.negative.v1",
+  "description": "Each case is a results document the load checker MUST reject. If any is accepted, the checker has a hole and the validator fails.",
+  "cases": [
+    {
+      "reason": "missing commit SHA",
+      "doc": {
+        "schemaVersion": "memory-os-load-results.v1",
+        "generatedAt": "2026-07-28T00:00:00Z",
+        "environment": {
+          "os": "linux",
+          "arch": "arm64",
+          "numCpu": 8,
+          "goVersion": "go1.23",
+          "dependencyMode": "MOCK",
+          "note": "test"
+        },
+        "scenarios": [
+          {
+            "scenarioId": "apple-steady-mock",
+            "workloadType": "STEADY",
+            "dependencyMode": "MOCK",
+            "startedAt": "2026-07-28T00:00:00Z",
+            "durationSeconds": 0.1,
+            "concurrency": 16,
+            "requests": 1000,
+            "successes": 1000,
+            "failures": 0,
+            "statusClassCounts": {
+              "2xx": 1000
+            },
+            "throughput": 6000.0,
+            "latencyP50Ms": 1.0,
+            "latencyP95Ms": 4.0,
+            "latencyP99Ms": 6.0,
+            "maxInFlight": 16,
+            "rateLimitAllowed": 1000,
+            "rateLimitRejected": 0,
+            "goroutinesBefore": 10,
+            "goroutinesAfter": 10,
+            "heapAllocBeforeBytes": 1000,
+            "heapAllocAfterBytes": 2000,
+            "metricsSeriesBefore": 0,
+            "metricsSeriesAfter": 14,
+            "integrityResult": "PASS",
+            "abortReason": "",
+            "result": "PASS"
+          }
+        ]
+      }
+    },
+    {
+      "reason": "missing environment metadata",
+      "doc": {
+        "schemaVersion": "memory-os-load-results.v1",
+        "commitSha": "deadbeef",
+        "generatedAt": "2026-07-28T00:00:00Z",
+        "scenarios": [
+          {
+            "scenarioId": "apple-steady-mock",
+            "workloadType": "STEADY",
+            "dependencyMode": "MOCK",
+            "startedAt": "2026-07-28T00:00:00Z",
+            "durationSeconds": 0.1,
+            "concurrency": 16,
+            "requests": 1000,
+            "successes": 1000,
+            "failures": 0,
+            "statusClassCounts": {
+              "2xx": 1000
+            },
+            "throughput": 6000.0,
+            "latencyP50Ms": 1.0,
+            "latencyP95Ms": 4.0,
+            "latencyP99Ms": 6.0,
+            "maxInFlight": 16,
+            "rateLimitAllowed": 1000,
+            "rateLimitRejected": 0,
+            "goroutinesBefore": 10,
+            "goroutinesAfter": 10,
+            "heapAllocBeforeBytes": 1000,
+            "heapAllocAfterBytes": 2000,
+            "metricsSeriesBefore": 0,
+            "metricsSeriesAfter": 14,
+            "integrityResult": "PASS",
+            "abortReason": "",
+            "result": "PASS"
+          }
+        ]
+      }
+    },
+    {
+      "reason": "scenario not in contract",
+      "doc": {
+        "schemaVersion": "memory-os-load-results.v1",
+        "commitSha": "deadbeef",
+        "generatedAt": "2026-07-28T00:00:00Z",
+        "environment": {
+          "os": "linux",
+          "arch": "arm64",
+          "numCpu": 8,
+          "goVersion": "go1.23",
+          "dependencyMode": "MOCK",
+          "note": "test"
+        },
+        "scenarios": [
+          {
+            "scenarioId": "not-a-real-scenario",
+            "workloadType": "STEADY",
+            "dependencyMode": "MOCK",
+            "startedAt": "2026-07-28T00:00:00Z",
+            "durationSeconds": 0.1,
+            "concurrency": 16,
+            "requests": 1000,
+            "successes": 1000,
+            "failures": 0,
+            "statusClassCounts": {
+              "2xx": 1000
+            },
+            "throughput": 6000.0,
+            "latencyP50Ms": 1.0,
+            "latencyP95Ms": 4.0,
+            "latencyP99Ms": 6.0,
+            "maxInFlight": 16,
+            "rateLimitAllowed": 1000,
+            "rateLimitRejected": 0,
+            "goroutinesBefore": 10,
+            "goroutinesAfter": 10,
+            "heapAllocBeforeBytes": 1000,
+            "heapAllocAfterBytes": 2000,
+            "metricsSeriesBefore": 0,
+            "metricsSeriesAfter": 14,
+            "integrityResult": "PASS",
+            "abortReason": "",
+            "result": "PASS"
+          }
+        ]
+      }
+    },
+    {
+      "reason": "missing p95 latency",
+      "doc": {
+        "schemaVersion": "memory-os-load-results.v1",
+        "commitSha": "deadbeef",
+        "generatedAt": "2026-07-28T00:00:00Z",
+        "environment": {
+          "os": "linux",
+          "arch": "arm64",
+          "numCpu": 8,
+          "goVersion": "go1.23",
+          "dependencyMode": "MOCK",
+          "note": "test"
+        },
+        "scenarios": [
+          {
+            "scenarioId": "apple-steady-mock",
+            "workloadType": "STEADY",
+            "dependencyMode": "MOCK",
+            "startedAt": "2026-07-28T00:00:00Z",
+            "durationSeconds": 0.1,
+            "concurrency": 16,
+            "requests": 1000,
+            "successes": 1000,
+            "failures": 0,
+            "statusClassCounts": {
+              "2xx": 1000
+            },
+            "throughput": 6000.0,
+            "latencyP50Ms": 1.0,
+            "latencyP99Ms": 6.0,
+            "maxInFlight": 16,
+            "rateLimitAllowed": 1000,
+            "rateLimitRejected": 0,
+            "goroutinesBefore": 10,
+            "goroutinesAfter": 10,
+            "heapAllocBeforeBytes": 1000,
+            "heapAllocAfterBytes": 2000,
+            "metricsSeriesBefore": 0,
+            "metricsSeriesAfter": 14,
+            "integrityResult": "PASS",
+            "abortReason": "",
+            "result": "PASS"
+          }
+        ]
+      }
+    },
+    {
+      "reason": "aborted run marked PASS",
+      "doc": {
+        "schemaVersion": "memory-os-load-results.v1",
+        "commitSha": "deadbeef",
+        "generatedAt": "2026-07-28T00:00:00Z",
+        "environment": {
+          "os": "linux",
+          "arch": "arm64",
+          "numCpu": 8,
+          "goVersion": "go1.23",
+          "dependencyMode": "MOCK",
+          "note": "test"
+        },
+        "scenarios": [
+          {
+            "scenarioId": "apple-steady-mock",
+            "workloadType": "STEADY",
+            "dependencyMode": "MOCK",
+            "startedAt": "2026-07-28T00:00:00Z",
+            "durationSeconds": 0.1,
+            "concurrency": 16,
+            "requests": 1000,
+            "successes": 1000,
+            "failures": 0,
+            "statusClassCounts": {
+              "2xx": 1000
+            },
+            "throughput": 6000.0,
+            "latencyP50Ms": 1.0,
+            "latencyP95Ms": 4.0,
+            "latencyP99Ms": 6.0,
+            "maxInFlight": 16,
+            "rateLimitAllowed": 1000,
+            "rateLimitRejected": 0,
+            "goroutinesBefore": 10,
+            "goroutinesAfter": 10,
+            "heapAllocBeforeBytes": 1000,
+            "heapAllocAfterBytes": 2000,
+            "metricsSeriesBefore": 0,
+            "metricsSeriesAfter": 14,
+            "integrityResult": "PASS",
+            "abortReason": "rss ceiling",
+            "result": "PASS"
+          }
+        ]
+      }
+    },
+    {
+      "reason": "PASS without integrity PASS",
+      "doc": {
+        "schemaVersion": "memory-os-load-results.v1",
+        "commitSha": "deadbeef",
+        "generatedAt": "2026-07-28T00:00:00Z",
+        "environment": {
+          "os": "linux",
+          "arch": "arm64",
+          "numCpu": 8,
+          "goVersion": "go1.23",
+          "dependencyMode": "MOCK",
+          "note": "test"
+        },
+        "scenarios": [
+          {
+            "scenarioId": "apple-steady-mock",
+            "workloadType": "STEADY",
+            "dependencyMode": "MOCK",
+            "startedAt": "2026-07-28T00:00:00Z",
+            "durationSeconds": 0.1,
+            "concurrency": 16,
+            "requests": 1000,
+            "successes": 1000,
+            "failures": 0,
+            "statusClassCounts": {
+              "2xx": 1000
+            },
+            "throughput": 6000.0,
+            "latencyP50Ms": 1.0,
+            "latencyP95Ms": 4.0,
+            "latencyP99Ms": 6.0,
+            "maxInFlight": 16,
+            "rateLimitAllowed": 1000,
+            "rateLimitRejected": 0,
+            "goroutinesBefore": 10,
+            "goroutinesAfter": 10,
+            "heapAllocBeforeBytes": 1000,
+            "heapAllocAfterBytes": 2000,
+            "metricsSeriesBefore": 0,
+            "metricsSeriesAfter": 14,
+            "integrityResult": "FAIL",
+            "abortReason": "",
+            "result": "PASS"
+          }
+        ]
+      }
+    },
+    {
+      "reason": "production-equivalent claimed as PASS",
+      "doc": {
+        "schemaVersion": "memory-os-load-results.v1",
+        "commitSha": "deadbeef",
+        "generatedAt": "2026-07-28T00:00:00Z",
+        "environment": {
+          "os": "linux",
+          "arch": "arm64",
+          "numCpu": 8,
+          "goVersion": "go1.23",
+          "dependencyMode": "MOCK",
+          "note": "test"
+        },
+        "scenarios": [
+          {
+            "scenarioId": "apple-steady-mock",
+            "workloadType": "STEADY",
+            "dependencyMode": "PRODUCTION_EQUIVALENT",
+            "startedAt": "2026-07-28T00:00:00Z",
+            "durationSeconds": 0.1,
+            "concurrency": 16,
+            "requests": 1000,
+            "successes": 1000,
+            "failures": 0,
+            "statusClassCounts": {
+              "2xx": 1000
+            },
+            "throughput": 6000.0,
+            "latencyP50Ms": 1.0,
+            "latencyP95Ms": 4.0,
+            "latencyP99Ms": 6.0,
+            "maxInFlight": 16,
+            "rateLimitAllowed": 1000,
+            "rateLimitRejected": 0,
+            "goroutinesBefore": 10,
+            "goroutinesAfter": 10,
+            "heapAllocBeforeBytes": 1000,
+            "heapAllocAfterBytes": 2000,
+            "metricsSeriesBefore": 0,
+            "metricsSeriesAfter": 14,
+            "integrityResult": "PASS",
+            "abortReason": "",
+            "result": "PASS"
+          }
+        ]
+      }
+    },
+    {
+      "reason": "cardinality breach",
+      "doc": {
+        "schemaVersion": "memory-os-load-results.v1",
+        "commitSha": "deadbeef",
+        "generatedAt": "2026-07-28T00:00:00Z",
+        "environment": {
+          "os": "linux",
+          "arch": "arm64",
+          "numCpu": 8,
+          "goVersion": "go1.23",
+          "dependencyMode": "MOCK",
+          "note": "test"
+        },
+        "scenarios": [
+          {
+            "scenarioId": "apple-steady-mock",
+            "workloadType": "STEADY",
+            "dependencyMode": "MOCK",
+            "startedAt": "2026-07-28T00:00:00Z",
+            "durationSeconds": 0.1,
+            "concurrency": 16,
+            "requests": 1000,
+            "successes": 1000,
+            "failures": 0,
+            "statusClassCounts": {
+              "2xx": 1000
+            },
+            "throughput": 6000.0,
+            "latencyP50Ms": 1.0,
+            "latencyP95Ms": 4.0,
+            "latencyP99Ms": 6.0,
+            "maxInFlight": 16,
+            "rateLimitAllowed": 1000,
+            "rateLimitRejected": 0,
+            "goroutinesBefore": 10,
+            "goroutinesAfter": 10,
+            "heapAllocBeforeBytes": 1000,
+            "heapAllocAfterBytes": 2000,
+            "metricsSeriesBefore": 0,
+            "metricsSeriesAfter": 99999,
+            "integrityResult": "PASS",
+            "abortReason": "",
+            "result": "PASS"
+          }
+        ]
+      }
+    },
+    {
+      "reason": "SOAK labelled but too short",
+      "doc": {
+        "schemaVersion": "memory-os-load-results.v1",
+        "commitSha": "deadbeef",
+        "generatedAt": "2026-07-28T00:00:00Z",
+        "environment": {
+          "os": "linux",
+          "arch": "arm64",
+          "numCpu": 8,
+          "goVersion": "go1.23",
+          "dependencyMode": "MOCK",
+          "note": "test"
+        },
+        "scenarios": [
+          {
+            "scenarioId": "apple-steady-mock",
+            "workloadType": "SOAK",
+            "dependencyMode": "MOCK",
+            "startedAt": "2026-07-28T00:00:00Z",
+            "durationSeconds": 5,
+            "concurrency": 16,
+            "requests": 1000,
+            "successes": 1000,
+            "failures": 0,
+            "statusClassCounts": {
+              "2xx": 1000
+            },
+            "throughput": 6000.0,
+            "latencyP50Ms": 1.0,
+            "latencyP95Ms": 4.0,
+            "latencyP99Ms": 6.0,
+            "maxInFlight": 16,
+            "rateLimitAllowed": 1000,
+            "rateLimitRejected": 0,
+            "goroutinesBefore": 10,
+            "goroutinesAfter": 10,
+            "heapAllocBeforeBytes": 1000,
+            "heapAllocAfterBytes": 2000,
+            "metricsSeriesBefore": 0,
+            "metricsSeriesAfter": 14,
+            "integrityResult": "PASS",
+            "abortReason": "",
+            "result": "PASS"
+          }
+        ]
+      }
+    },
+    {
+      "reason": "unknown result value",
+      "doc": {
+        "schemaVersion": "memory-os-load-results.v1",
+        "commitSha": "deadbeef",
+        "generatedAt": "2026-07-28T00:00:00Z",
+        "environment": {
+          "os": "linux",
+          "arch": "arm64",
+          "numCpu": 8,
+          "goVersion": "go1.23",
+          "dependencyMode": "MOCK",
+          "note": "test"
+        },
+        "scenarios": [
+          {
+            "scenarioId": "apple-steady-mock",
+            "workloadType": "STEADY",
+            "dependencyMode": "MOCK",
+            "startedAt": "2026-07-28T00:00:00Z",
+            "durationSeconds": 0.1,
+            "concurrency": 16,
+            "requests": 1000,
+            "successes": 1000,
+            "failures": 0,
+            "statusClassCounts": {
+              "2xx": 1000
+            },
+            "throughput": 6000.0,
+            "latencyP50Ms": 1.0,
+            "latencyP95Ms": 4.0,
+            "latencyP99Ms": 6.0,
+            "maxInFlight": 16,
+            "rateLimitAllowed": 1000,
+            "rateLimitRejected": 0,
+            "goroutinesBefore": 10,
+            "goroutinesAfter": 10,
+            "heapAllocBeforeBytes": 1000,
+            "heapAllocAfterBytes": 2000,
+            "metricsSeriesBefore": 0,
+            "metricsSeriesAfter": 14,
+            "integrityResult": "PASS",
+            "abortReason": "",
+            "result": "MAYBE"
+          }
+        ]
+      }
+    },
+    {
+      "reason": "results schema version drift",
+      "doc": {
+        "schemaVersion": "wrong.v9",
+        "commitSha": "deadbeef",
+        "generatedAt": "2026-07-28T00:00:00Z",
+        "environment": {
+          "os": "linux",
+          "arch": "arm64",
+          "numCpu": 8,
+          "goVersion": "go1.23",
+          "dependencyMode": "MOCK",
+          "note": "test"
+        },
+        "scenarios": [
+          {
+            "scenarioId": "apple-steady-mock",
+            "workloadType": "STEADY",
+            "dependencyMode": "MOCK",
+            "startedAt": "2026-07-28T00:00:00Z",
+            "durationSeconds": 0.1,
+            "concurrency": 16,
+            "requests": 1000,
+            "successes": 1000,
+            "failures": 0,
+            "statusClassCounts": {
+              "2xx": 1000
+            },
+            "throughput": 6000.0,
+            "latencyP50Ms": 1.0,
+            "latencyP95Ms": 4.0,
+            "latencyP99Ms": 6.0,
+            "maxInFlight": 16,
+            "rateLimitAllowed": 1000,
+            "rateLimitRejected": 0,
+            "goroutinesBefore": 10,
+            "goroutinesAfter": 10,
+            "heapAllocBeforeBytes": 1000,
+            "heapAllocAfterBytes": 2000,
+            "metricsSeriesBefore": 0,
+            "metricsSeriesAfter": 14,
+            "integrityResult": "PASS",
+            "abortReason": "",
+            "result": "PASS"
+          }
+        ]
+      }
+    }
+  ]
+}
