@@ -123,7 +123,12 @@ Detailed audit:
 CI validators:
 
 - `scripts/validate-memory-os-operability.py`
+- `scripts/validate-memory-os-observability.py`
+- `scripts/validate-memory-os-rate-limit.py`
+- `scripts/validate-memory-os-metrics.py`
 - `scripts/validate-memory-os-entry-docs.py`
+
+The metrics validator additionally fails when a metric carries a forbidden or unbounded label, lacks a cardinality budget or privacy class, drifts from the Go registry (name, type, labels, buckets or budget), an SLO is marked APPROVED without an owner or supporting data, an alert is marked CONFIGURED without routing evidence, or `OPS-P0-004` is marked READY without exporter, scrape, dashboard, alert-routing, retention and load evidence.
 
 The validators must fail when:
 

@@ -74,14 +74,34 @@
     {
       "id": "OPS-P0-004",
       "area": "metrics",
-      "status": "NOT_IMPLEMENTED",
+      "status": "PARTIAL",
       "blocking": true,
-      "existingEvidence": [],
+      "existingEvidence": [
+        "typed, bounded-cardinality metrics registry and recorder (no arbitrary metric name or label-map API exposed to business code; every label is a closed enum normalized to a fixed token)",
+        "per-metric cardinality budgets with drop accounting, histogram bucket validation and NaN/Inf/negative rejection",
+        "HTTP, rate-limit and deletion-worker boundaries instrumented; a nil recorder is a no-op and recorder panics are isolated from the request path",
+        "machine-readable metrics contract (names, types, units, labels, provisional buckets, budgets, privacy class), 17 SLIs, 3 PROPOSED SLOs and 7 NOT_CONFIGURED alert candidates",
+        "fail-closed validator cross-checking the contract against the Go registry with a 14-case negative fixture, proven to fail on drift and on a non-rejecting negative case",
+        "privacy, cardinality-flood and panic-isolation tests over the registry and the HTTP export"
+      ],
       "missingEvidence": [
-        "bounded-cardinality runtime metrics",
-        "SLI and SLO definitions",
-        "dashboards and alert thresholds",
-        "error-budget policy"
+        "Prometheus/OTel exporter and an exposed scrape endpoint",
+        "dashboards and load-calibrated histogram buckets and SLO targets (depends on OPS-P0-006)",
+        "alert routing, on-call and runbooks",
+        "metrics retention policy and an error-budget policy"
+      ],
+      "evidenceRefs": [
+        "services/import-api/internal/metrics/labels.go",
+        "services/import-api/internal/metrics/registry.go",
+        "services/import-api/internal/metrics/recorder.go",
+        "services/import-api/internal/metrics/export.go",
+        "services/import-api/internal/metrics/metrics_test.go",
+        "services/import-api/internal/httpserver/observability.go",
+        "services/import-api/internal/httpserver/ratelimit.go",
+        "services/import-api/internal/httpserver/metrics_test.go",
+        "contracts/operations/metrics-contract.v1.json",
+        "docs/fixtures/memory-os-operability/metrics.negative.v1.json",
+        "scripts/validate-memory-os-metrics.py"
       ]
     },
     {

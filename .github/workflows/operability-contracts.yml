@@ -13,11 +13,13 @@ on:
       - "scripts/validate-memory-os-operability.py"
       - "scripts/validate-memory-os-observability.py"
       - "scripts/validate-memory-os-rate-limit.py"
+      - "scripts/validate-memory-os-metrics.py"
       - "scripts/validate-memory-os-entry-docs.py"
       - "docs/fixtures/memory-os-operability/**"
       - "services/import-api/internal/obslog/**"
       - "services/import-api/internal/reqid/**"
       - "services/import-api/internal/ratelimit/**"
+      - "services/import-api/internal/metrics/**"
       - "services/import-api/internal/httpserver/observability.go"
       - "services/import-api/internal/httpserver/ratelimit.go"
       - ".github/workflows/operability-contracts.yml"
@@ -35,11 +37,13 @@ on:
       - "scripts/validate-memory-os-operability.py"
       - "scripts/validate-memory-os-observability.py"
       - "scripts/validate-memory-os-rate-limit.py"
+      - "scripts/validate-memory-os-metrics.py"
       - "scripts/validate-memory-os-entry-docs.py"
       - "docs/fixtures/memory-os-operability/**"
       - "services/import-api/internal/obslog/**"
       - "services/import-api/internal/reqid/**"
       - "services/import-api/internal/ratelimit/**"
+      - "services/import-api/internal/metrics/**"
       - "services/import-api/internal/httpserver/observability.go"
       - "services/import-api/internal/httpserver/ratelimit.go"
       - ".github/workflows/operability-contracts.yml"
@@ -70,6 +74,7 @@ jobs:
           python -m py_compile scripts/validate-memory-os-operability.py
           python -m py_compile scripts/validate-memory-os-observability.py
           python -m py_compile scripts/validate-memory-os-rate-limit.py
+          python -m py_compile scripts/validate-memory-os-metrics.py
           python -m py_compile scripts/validate-memory-os-entry-docs.py
 
       - name: Validate production operability authority
@@ -80,6 +85,9 @@ jobs:
 
       - name: Validate rate-limit policy contract
         run: python scripts/validate-memory-os-rate-limit.py
+
+      - name: Validate metrics contract
+        run: python scripts/validate-memory-os-metrics.py
 
       - name: Validate current entrypoint documents
         run: python scripts/validate-memory-os-entry-docs.py

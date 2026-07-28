@@ -89,7 +89,8 @@ Implemented foundations include:
 - real-Apple credential/key-rotation evidence;
 - production object-storage TLS/scoped credentials/lifecycle evidence;
 - parser network namespace/seccomp/container evidence;
-- privacy-safe structured observability, metrics and real alert routing (structured event contract, correlation IDs and redaction tests now exist under `internal/obslog` and `internal/reqid`; retention and real alert routing remain, so OPS-P0-003 stays PARTIAL, not READY);
+- privacy-safe structured observability and real alert routing (structured event contract, correlation IDs and redaction tests now exist under `internal/obslog` and `internal/reqid`; retention and real alert routing remain, so OPS-P0-003 stays PARTIAL, not READY);
+- bounded-cardinality runtime metrics with SLIs, SLOs, dashboards, thresholds and an error-budget policy (a typed, privacy-preserving metrics registry and recorder now exist under `internal/metrics`, wired at the HTTP, rate-limit and deletion-worker boundaries, with a machine-readable contract, PROPOSED SLOs, NOT_CONFIGURED alert candidates and a fail-closed validator; no exporter, scrape endpoint, dashboard, alert routing, retention or load-calibrated buckets exist yet, so OPS-P0-004 stays PARTIAL, not READY);
 - endpoint-specific distributed rate limiting (a fail-closed token-bucket limiter with route-global and keyed per-network guards, explicit trusted-proxy boundary and a stable 429 now exists under `internal/ratelimit`; a distributed shared store, trusted-proxy configuration and load-calibrated limits remain, so OPS-P0-005 stays PARTIAL, not READY);
 - production-shaped load/capacity evidence;
 - PostgreSQL PITR and isolated restore rehearsal;
