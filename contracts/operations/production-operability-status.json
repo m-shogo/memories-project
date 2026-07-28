@@ -149,19 +149,31 @@
     {
       "id": "OPS-P0-006",
       "area": "load_testing",
-      "status": "NOT_IMPLEMENTED",
+      "status": "PARTIAL",
       "blocking": true,
       "existingEvidence": [
-        "unit tests",
-        "race tests",
-        "fuzz smoke tests",
-        "live integration tests"
+        "deterministic in-process load harness (concurrency, p50/p95/p99 latency, max in-flight, status-class counts, goroutine and heap-alloc deltas, total metric-series count)",
+        "mock Apple sign-in load path through the real measurement decorators (apple exchange, session issuance, replay, three database seams) over in-memory stores",
+        "steady, burst, rate-limit-store-failure and cardinality-attack scenarios with data-integrity assertions (accounts/sessions/replay state, sessions equal admitted 2xx, no state mutation on fail-closed)",
+        "failure-injection proof (rate-limit store outage fails closed with no business-state mutation) and a bounded-cardinality proof under a 5000-request hostile stream",
+        "machine-readable scenario contract and results document with environment metadata, plus a fail-closed load validator with an 11-case negative fixture"
       ],
       "missingEvidence": [
-        "production-shaped workload model",
-        "sustained and burst tests",
-        "latency percentile and saturation report",
-        "post-burst recovery proof"
+        "production-shaped workload against live PostgreSQL and object storage (preview/apply/object-store/import paths are not yet load-measured)",
+        "capacity boundary, saturation report and load-calibrated operational thresholds",
+        "sustained soak with RSS/heap/goroutine-slope evidence (SOAK PROOF INSUFFICIENT)",
+        "production-equivalent dependency behavior and real-Apple load evidence"
+      ],
+      "evidenceRefs": [
+        "services/import-api/internal/loadtest/harness.go",
+        "services/import-api/internal/loadtest/applemock.go",
+        "services/import-api/internal/loadtest/results.go",
+        "services/import-api/internal/loadtest/scenarios_test.go",
+        "contracts/operations/load-test-scenario-contract.v1.json",
+        "docs/fixtures/memory-os-operability/load-results.sample.v1.json",
+        "docs/fixtures/memory-os-operability/load-results.negative.v1.json",
+        "docs/memory-os-load-measurement-inventory.md",
+        "scripts/validate-memory-os-load.py"
       ]
     },
     {

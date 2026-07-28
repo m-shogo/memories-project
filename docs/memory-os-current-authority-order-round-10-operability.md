@@ -126,9 +126,12 @@ CI validators:
 - `scripts/validate-memory-os-observability.py`
 - `scripts/validate-memory-os-rate-limit.py`
 - `scripts/validate-memory-os-metrics.py`
+- `scripts/validate-memory-os-load.py`
 - `scripts/validate-memory-os-entry-docs.py`
 
 The metrics validator additionally fails when a metric carries a forbidden or unbounded label, lacks a cardinality budget or privacy class, drifts from the Go registry (name, type, labels, buckets or budget), an SLO is marked APPROVED without an owner or supporting data, an alert is marked CONFIGURED without routing evidence, or `OPS-P0-004` is marked READY without exporter, scrape, dashboard, alert-routing, retention and load evidence.
+
+The load-test validator additionally fails when a results document lacks a commit SHA or environment metadata, names a scenario absent from the contract, omits percentile latencies, marks an aborted or integrity-failed run as PASS, claims a production-equivalent or real-Apple run as PASS evidence, breaches the series-cardinality ceiling, labels a short run as a soak, or marks `OPS-P0-006` READY without a production-shaped workload, capacity boundary, soak and operational thresholds. Its scenarios run against mock dependencies only: a passing load smoke is local evidence, never proof of production capacity.
 
 The validators must fail when:
 
