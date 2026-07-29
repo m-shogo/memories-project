@@ -321,6 +321,37 @@ func TestWriteLoadResultsFixture(t *testing.T) {
 		doc.Scenarios = append(doc.Scenarios, sr)
 	}
 
+	// Authenticated preview (MOCK session + fake DB-backed service).
+	{
+		reg := metrics.NewRegistry()
+		rec := metrics.NewRegistryRecorder(reg, nil)
+		before := reg.TotalSeries()
+		server := buildAuthServer(t, rec, "GET /v1/import-jobs/{jobId}/preview", 1_000_000)
+		res := Run(server, Options{Concurrency: 16, TotalRequests: 1000, Factory: previewFactory}, nil)
+		integrity := "PASS"
+		if reg.SumCounter(metrics.MetricDBOperationsTotal, map[string]string{"operation": "preview_read", "outcome": "success"}) != uint64(res.Successes) {
+			integrity = "FAIL"
+		}
+		sr := Summarize("authenticated-preview-mock", "STEADY", res, reg, before, integrity, "PASS")
+		sr.Concurrency = 16
+		doc.Scenarios = append(doc.Scenarios, sr)
+	}
+	// Concurrent apply (MOCK session + fake DB-backed service).
+	{
+		reg := metrics.NewRegistry()
+		rec := metrics.NewRegistryRecorder(reg, nil)
+		before := reg.TotalSeries()
+		server := buildAuthServer(t, rec, "POST /v1/previews/{previewId}/apply", 1_000_000)
+		res := Run(server, Options{Concurrency: 24, TotalRequests: 800, Factory: applyFactory}, nil)
+		integrity := "PASS"
+		if res.StatusClassCounts["5xx"] != 0 {
+			integrity = "FAIL"
+		}
+		sr := Summarize("concurrent-apply-mock", "STEADY", res, reg, before, integrity, "PASS")
+		sr.Concurrency = 24
+		doc.Scenarios = append(doc.Scenarios, sr)
+	}
+
 	blob, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
 		t.Fatal(err)

@@ -116,6 +116,54 @@
       "abortCriteria": "series above budget; any hostile value present in a label",
       "privacyClass": "operational_nonpersonal",
       "evidenceRefs": ["services/import-api/internal/loadtest/scenarios_test.go", "services/import-api/internal/metrics/labels.go"]
+    },
+    {
+      "scenarioId": "authenticated-preview-mock",
+      "route": "GET /v1/import-jobs/{jobId}/preview",
+      "routeClass": "PUBLIC_AUTHENTICATED",
+      "workloadType": "STEADY",
+      "concurrency": 16,
+      "requestRate": "unbounded-count",
+      "duration": "count:1000",
+      "rampUp": "none",
+      "payloadClass": "authenticated-bearer",
+      "dependencyMode": "MOCK",
+      "rateLimitPolicy": "permissive-authenticated",
+      "expectedStatusClasses": ["2xx"],
+      "measurementMetrics": [
+        "memory_os_http_requests_total",
+        "memory_os_http_request_duration_seconds",
+        "memory_os_db_operations_total",
+        "memory_os_db_operation_duration_seconds"
+      ],
+      "successCriteria": "all 2xx through the session middleware and fence; preview_read db op recorded once per request; job id never a label; series bounded",
+      "abortCriteria": "any 5xx; series above budget; job id present in a label",
+      "privacyClass": "operational_nonpersonal",
+      "evidenceRefs": ["services/import-api/internal/loadtest/authenticated_test.go", "services/import-api/internal/servicemetrics/servicemetrics.go"]
+    },
+    {
+      "scenarioId": "concurrent-apply-mock",
+      "route": "POST /v1/previews/{previewId}/apply",
+      "routeClass": "PUBLIC_AUTHENTICATED",
+      "workloadType": "STEADY",
+      "concurrency": 24,
+      "requestRate": "unbounded-count",
+      "duration": "count:800",
+      "rampUp": "none",
+      "payloadClass": "authenticated-bearer-json",
+      "dependencyMode": "MOCK",
+      "rateLimitPolicy": "permissive-authenticated",
+      "expectedStatusClasses": ["2xx"],
+      "measurementMetrics": [
+        "memory_os_http_requests_total",
+        "memory_os_http_request_duration_seconds",
+        "memory_os_db_operations_total",
+        "memory_os_db_operation_duration_seconds"
+      ],
+      "successCriteria": "concurrent apply requests return 2xx with no 5xx; apply_transaction db op recorded once per request; preview/apply ids never a label; series bounded",
+      "abortCriteria": "any 5xx; series above budget; preview id present in a label",
+      "privacyClass": "operational_nonpersonal",
+      "evidenceRefs": ["services/import-api/internal/loadtest/authenticated_test.go", "services/import-api/internal/servicemetrics/servicemetrics.go"]
     }
   ],
   "deferredScenarios": [

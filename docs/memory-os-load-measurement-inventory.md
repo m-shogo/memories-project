@@ -26,10 +26,10 @@ As of commit that adds Apple/DB dependency instrumentation.
 | `memory_os_apple_exchange_duration_seconds` | apple_auth | DEFINED_AND_EMITTED | `internal/appleauth/metered.go` |
 | `memory_os_apple_replay_rejections_total` | apple_auth | DEFINED_AND_EMITTED | `internal/appleauth/metered.go` |
 | `memory_os_session_issuance_total` | apple_auth | DEFINED_AND_EMITTED | `internal/appleauth/metered.go` |
-| `memory_os_db_operations_total` | db | DEFINED_AND_EMITTED (Apple seams only) | `internal/appleauth/metered.go` — `apple_identity_upsert`, `apple_replay_consume`, `session_insert` |
-| `memory_os_db_operation_duration_seconds` | db | DEFINED_AND_EMITTED (Apple seams only) | same |
-| `memory_os_db_failures_total` | db | DEFINED_AND_EMITTED (Apple seams only) | same |
-| DB ops `resolve_session`, `begin_deletion`, `sweep`, `provision_identity` | db | DEFINED_NOT_EMITTED | not on the load-critical Apple path exercised here |
+| `memory_os_db_operations_total` | db | DEFINED_AND_EMITTED (Apple + request seams) | `internal/appleauth/metered.go` — `apple_identity_upsert`, `apple_replay_consume`, `session_insert`; `internal/servicemetrics/servicemetrics.go` — `preview_read`, `apply_transaction` |
+| `memory_os_db_operation_duration_seconds` | db | DEFINED_AND_EMITTED (Apple + request seams) | same |
+| `memory_os_db_failures_total` | db | DEFINED_AND_EMITTED (Apple + request seams) | same |
+| DB ops `resolve_session`, `begin_deletion`, `sweep`, `provision_identity` | db | DEFINED_NOT_EMITTED | not on the load-critical paths exercised here |
 | `memory_os_object_store_operations_total` (+ duration, failures) | object_store | DEFINED_NOT_EMITTED → NOT_REQUIRED_FOR_THIS_LOAD_CHECKPOINT | object-store paths (presign/head/erase) are not in the steady/burst Apple + rate-limit scenarios |
 | `memory_os_import_operations_total` (+ duration, items, failures) | import | DEFINED_NOT_EMITTED → NOT_REQUIRED_FOR_THIS_LOAD_CHECKPOINT | the import/parse path is not driven by this checkpoint's scenarios |
 | `memory_os_deletion_jobs_total` (+ duration) | deletion_worker | DEFINED_AND_EMITTED | `cmd/import-api-server/main.go` (deletion runtime) |
@@ -40,12 +40,14 @@ As of commit that adds Apple/DB dependency instrumentation.
 ## Consequences for this checkpoint
 
 - Apple sign-in (HTTP + Apple exchange + session issuance + replay + the three
-  Apple database seams) and rate limiting are fully observable and are the load
-  targets driven here.
-- Preview read, apply, object storage and import remain `DEFINED_NOT_EMITTED`
-  and are **not** claimed as load-measured. Their instrumentation and a
-  live-PostgreSQL/object-store load run are recorded as missing evidence, which
-  is one reason `OPS-P0-004` and `OPS-P0-006` stay `PARTIAL`.
+  Apple database seams), the authenticated preview-read and apply request
+  boundaries, and rate limiting are observable and are the load targets driven
+  here.
+- Object storage and import remain `DEFINED_NOT_EMITTED` and are **not** claimed
+  as load-measured. Preview read and apply are now emitted, but only exercised
+  under **MOCK** load (a fixed session resolver and fake DB-backed services); a
+  live-PostgreSQL/object-store load run against real queries is still missing,
+  which is one reason `OPS-P0-004` and `OPS-P0-006` stay `PARTIAL`.
 - Every number produced by this checkpoint comes from an in-process server over
   **mocked** Apple and **in-memory** stores (`dependencyMode: MOCK`). These are
   local, non-production figures. No production capacity is claimed.
