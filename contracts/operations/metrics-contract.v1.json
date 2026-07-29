@@ -122,6 +122,8 @@
       "apple_identity_upsert",
       "apple_replay_consume",
       "session_insert",
+      "preview_read",
+      "apply_transaction",
       "begin_deletion",
       "sweep",
       "resolve_session",

@@ -205,6 +205,8 @@ const (
 	OpDBAppleIdentityUpsert Operation = "apple_identity_upsert"
 	OpDBAppleReplayConsume  Operation = "apple_replay_consume"
 	OpDBSessionInsert       Operation = "session_insert"
+	OpDBPreviewRead         Operation = "preview_read"
+	OpDBApplyTransaction    Operation = "apply_transaction"
 	OpDBBeginDeletion       Operation = "begin_deletion"
 	OpDBSweep               Operation = "sweep"
 	OpDBResolve             Operation = "resolve_session"
@@ -223,7 +225,8 @@ const (
 
 var operations = map[Operation]struct{}{
 	OpAppleExchange: {}, OpSessionIssuance: {}, OpDBAppleIdentityUpsert: {},
-	OpDBAppleReplayConsume: {}, OpDBSessionInsert: {}, OpDBBeginDeletion: {}, OpDBSweep: {},
+	OpDBAppleReplayConsume: {}, OpDBSessionInsert: {}, OpDBPreviewRead: {}, OpDBApplyTransaction: {},
+	OpDBBeginDeletion: {}, OpDBSweep: {},
 	OpDBResolve: {}, OpDBProvision: {}, OpObjPresign: {}, OpObjHead: {}, OpObjErase: {},
 	OpImportParse: {}, OpImportVerify: {}, OpImportCommit: {}, OpDeletionSweep: {},
 }

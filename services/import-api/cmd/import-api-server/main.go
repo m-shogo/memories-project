@@ -41,6 +41,7 @@ import (
 	"github.com/m-shogo/memories-project/services/import-api/internal/ratelimit"
 	"github.com/m-shogo/memories-project/services/import-api/internal/reqid"
 	"github.com/m-shogo/memories-project/services/import-api/internal/security"
+	"github.com/m-shogo/memories-project/services/import-api/internal/servicemetrics"
 	"github.com/m-shogo/memories-project/services/import-api/internal/upload"
 )
 
@@ -158,10 +159,12 @@ func run(listen, databaseURL, s3Endpoint, s3Access, s3Secret, bucket string, dev
 	}
 
 	server := httpserver.NewHTTPServer(listen, httpserver.New(httpserver.Config{
-		Sessions:   sessions,
-		Upload:     fenced.Upload{Guard: guard, Inner: uploadService},
-		Preview:    fenced.PreviewRead{Guard: guard, Inner: previewService},
-		Apply:      fenced.Apply{Guard: guard, Inner: applyService},
+		Sessions: sessions,
+		Upload:   fenced.Upload{Guard: guard, Inner: uploadService},
+		// The preview-read and apply request boundaries are metered so their
+		// database latency and failure rate are observable under load.
+		Preview:    servicemetrics.PreviewRead{Inner: fenced.PreviewRead{Guard: guard, Inner: previewService}, Recorder: recorder},
+		Apply:      servicemetrics.Apply{Inner: fenced.Apply{Guard: guard, Inner: applyService}, Recorder: recorder},
 		Account:    accountdelete.Service{Repository: accountControl, Guard: guard},
 		AppleLogin: appleLogin,
 		Logger:     logger,
