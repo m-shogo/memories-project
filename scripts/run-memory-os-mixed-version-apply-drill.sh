@@ -418,6 +418,8 @@ INSERT INTO memory_os.test_apply_block_target (preview_id) VALUES (:'preview_id'
 CREATE FUNCTION memory_os.test_block_apply_memory_insert()
 RETURNS trigger
 LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, memory_os
 AS $$
 BEGIN
   IF EXISTS (
