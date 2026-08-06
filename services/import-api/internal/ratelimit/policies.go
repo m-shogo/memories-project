@@ -37,7 +37,7 @@ func DefaultPolicies() []RoutePolicy {
 			Network:       Policy{ID: "upload-issue-network", Capacity: 20, RefillPerSec: 2},
 		},
 		{
-			RouteTemplate: "POST /v1/import-jobs/{jobId}/upload-authorizations/{id}/complete",
+			RouteTemplate: "POST /v1/upload-authorizations/{id}/complete",
 			Class:         ClassPublicAuthenticated,
 			Enabled:       true,
 			FailureMode:   FailClosed,

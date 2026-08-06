@@ -158,7 +158,7 @@
     },
     {
       "policyId": "upload-complete",
-      "routeTemplate": "POST /v1/import-jobs/{jobId}/upload-authorizations/{id}/complete",
+      "routeTemplate": "POST /v1/upload-authorizations/{id}/complete",
       "routeClass": "PUBLIC_AUTHENTICATED",
       "enabled": true,
       "algorithm": "token_bucket",
@@ -270,7 +270,7 @@
       "routeClass": "PUBLIC_AUTHENTICATED"
     },
     {
-      "routeTemplate": "POST /v1/import-jobs/{jobId}/upload-authorizations/{id}/complete",
+      "routeTemplate": "POST /v1/upload-authorizations/{id}/complete",
       "routeClass": "PUBLIC_AUTHENTICATED"
     },
     {

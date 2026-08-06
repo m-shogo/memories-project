@@ -23,7 +23,7 @@ in-memory limiter is not distributed production enforcement.
 | `POST /v1/auth/apple` | PUBLIC_UNAUTHENTICATED (pre-auth, primary target) |
 | `DELETE /v1/account` | PUBLIC_AUTHENTICATED |
 | `POST /v1/import-jobs/{jobId}/upload-authorizations` | PUBLIC_AUTHENTICATED |
-| `POST /v1/import-jobs/{jobId}/upload-authorizations/{id}/complete` | PUBLIC_AUTHENTICATED |
+| `POST /v1/upload-authorizations/{id}/complete` | PUBLIC_AUTHENTICATED |
 | `GET /v1/import-jobs/{jobId}/preview` | PUBLIC_AUTHENTICATED |
 | `POST /v1/previews/{previewId}/apply` | PUBLIC_AUTHENTICATED |
 | unmatched (`other`) | PUBLIC_UNAUTHENTICATED (global-guarded) |

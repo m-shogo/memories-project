@@ -70,8 +70,8 @@ func New(config Config) http.Handler {
 		// Reject an unknown API shape before touching the session backend. This
 		// keeps hostile high-cardinality paths a stable 404 rather than turning
 		// an unconfigured or unavailable resolver into a misleading 503, while
-		// known route shapes still pass through authentication and preserve 405.
-		if strings.HasSuffix(routeTemplate(request.Method, request.URL.Path), " other") {
+		// known route shapes and the explicit legacy tombstone still pass through authentication; unknown shapes remain pre-auth 404.
+		if !knownAPIRouteShape(request.URL.Path) {
 			http.NotFound(writer, request)
 			return
 		}

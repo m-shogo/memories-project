@@ -122,18 +122,50 @@ func routeTemplate(method, path string) string {
 		return method + " /v1/account"
 	case len(segments) == 4 && segments[0] == "v1" && segments[1] == "import-jobs" && segments[3] == "upload-authorizations":
 		return method + " /v1/import-jobs/{jobId}/upload-authorizations"
-	case len(segments) == 6 && segments[0] == "v1" && segments[1] == "import-jobs" &&
-		segments[3] == "upload-authorizations" && segments[5] == "complete":
-		return method + " /v1/import-jobs/{jobId}/upload-authorizations/{id}/complete"
-	case len(segments) == 5 && segments[0] == "v1" && segments[1] == "import-jobs" &&
-		segments[3] == "upload-authorizations":
-		return method + " /v1/import-jobs/{jobId}/upload-authorizations/{id}"
+	case len(segments) == 4 && segments[0] == "v1" &&
+		segments[1] == "upload-authorizations" && segments[3] == "complete":
+		return method + " /v1/upload-authorizations/{id}/complete"
 	case len(segments) == 4 && segments[0] == "v1" && segments[1] == "import-jobs" && segments[3] == "preview":
 		return method + " /v1/import-jobs/{jobId}/preview"
 	case len(segments) == 4 && segments[0] == "v1" && segments[1] == "previews" && segments[3] == "apply":
 		return method + " /v1/previews/{previewId}/apply"
 	default:
 		return method + " other"
+	}
+}
+
+// knownAPIRouteShape is the pre-auth route-shape authority. It is deliberately
+// separate from routeTemplate: the legacy /uploads tombstone must authenticate
+// before returning 404 so a revoked session is still rejected consistently,
+// but it remains the low-cardinality "other" metrics label and is not restored
+// as a supported API. Every other unknown shape is rejected before session
+// lookup to prevent hostile cardinality from becoming dependency load.
+func knownAPIRouteShape(path string) bool {
+	segments := strings.Split(strings.Trim(path, "/"), "/")
+	switch {
+	case matches(segments, "v1", "auth", "apple"):
+		return true
+	case matches(segments, "v1", "account"):
+		return true
+	case len(segments) == 4 && segments[0] == "v1" &&
+		segments[1] == "import-jobs" && segments[3] == "upload-authorizations":
+		return true
+	case len(segments) == 4 && segments[0] == "v1" &&
+		segments[1] == "upload-authorizations" && segments[3] == "complete":
+		return true
+	case len(segments) == 4 && segments[0] == "v1" &&
+		segments[1] == "import-jobs" && segments[3] == "preview":
+		return true
+	case len(segments) == 4 && segments[0] == "v1" &&
+		segments[1] == "previews" && segments[3] == "apply":
+		return true
+	case len(segments) == 4 && segments[0] == "v1" &&
+		segments[1] == "import-jobs" && segments[3] == "uploads":
+		// Explicit unsupported legacy tombstone; authentication still runs,
+		// then the protected mux returns 404 without issuing an upload.
+		return true
+	default:
+		return false
 	}
 }
 

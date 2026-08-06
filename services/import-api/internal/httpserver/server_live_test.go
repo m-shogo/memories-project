@@ -1023,9 +1023,9 @@ func TestAccountDeletionFencesAndErasesOverHTTP(t *testing.T) {
 		body   any
 	}{
 		{http.MethodGet, "/v1/import-jobs/" + jobID + "/preview", nil},
-		{http.MethodPost, "/v1/import-jobs/" + jobID + "/uploads", map[string]any{
+		{http.MethodPost, "/v1/import-jobs/" + jobID + "/upload-authorizations", map[string]any{
 			"contentLength": 16, "checksumSha256": strings.Repeat("a", 64),
-			"declaredContentType": "text/csv", "sourceSurface": "ios_files",
+			"contentType": "text/csv", "sourceSurface": "ios_files",
 		}},
 		{http.MethodPost, applyPath, map[string]any{
 			"previewSha256": previewSHA, "idempotencyKey": "after-delete",
