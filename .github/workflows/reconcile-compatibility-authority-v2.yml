@@ -1,0 +1,84 @@
+name: Reconcile Compatibility Authority V2
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/reconcile-compatibility-authority-v2.yml"
+      - "contracts/operations/version-compatibility-contract.v1.json"
+      - "contracts/operations/version-compatibility-foundations.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "scripts/reconcile-memory-os-version-compatibility-canonical.py"
+      - "scripts/reconcile-memory-os-version-compatibility-foundation-status.py"
+      - "scripts/validate-memory-os-version-compatibility-foundations.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reconcile-compatibility-authority-v2-so
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    if: >-
+      github.event_name != 'push' ||
+      !contains(github.event.head_commit.message, 'docs(version): reconcile canonical and bounded authorities v2')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout latest so
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile authority tools
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          python -m py_compile \
+            scripts/reconcile-memory-os-version-compatibility-canonical.py \
+            scripts/reconcile-memory-os-version-compatibility-foundation-status.py \
+            scripts/validate-memory-os-version-compatibility-foundations.py
+
+      - name: Reconcile canonical and bounded status
+        run: |
+          set -euo pipefail
+          python scripts/reconcile-memory-os-version-compatibility-canonical.py
+          python scripts/validate-memory-os-version-compatibility.py
+          python scripts/reconcile-memory-os-version-compatibility-foundation-status.py
+          python scripts/validate-memory-os-version-compatibility-foundations.py
+          python scripts/validate-memory-os-operability.py
+
+      - name: Commit reconciled authority
+        run: |
+          set -euo pipefail
+          git add \
+            contracts/operations/version-compatibility-contract.v1.json \
+            contracts/operations/production-operability-status.json
+          if git diff --cached --quiet; then
+            echo "Compatibility authority is already reconciled."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs(version): reconcile canonical and bounded authorities v2"
+          git pull --rebase origin so
+          git push origin HEAD:so
+
+      - name: Re-read and validate committed authority
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          git reset --hard origin/so
+          python scripts/validate-memory-os-version-compatibility.py
+          python scripts/validate-memory-os-version-compatibility-foundations.py
+          python scripts/validate-memory-os-operability.py
