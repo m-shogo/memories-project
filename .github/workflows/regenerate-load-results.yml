@@ -47,6 +47,7 @@ jobs:
           test "$(git branch --show-current)" = "so"
           test -z "$(git status --porcelain)"
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          test -d "$GITHUB_WORKSPACE/docs/fixtures/memory-os-operability"
           bash -n scripts/regenerate-memory-os-load-results.sh
 
       - name: Run load regression tests
@@ -55,7 +56,10 @@ jobs:
 
       - name: Regenerate exact-source load evidence
         env:
-          MEMORY_OS_LOAD_RESULTS_PATH: ../../docs/fixtures/memory-os-operability/load-results.sample.v1.json
+          # go test runs each package binary from the package directory, not
+          # from working-directory. Use an absolute path so the fixture always
+          # resolves to the repository root.
+          MEMORY_OS_LOAD_RESULTS_PATH: ${{ github.workspace }}/docs/fixtures/memory-os-operability/load-results.sample.v1.json
           MEMORY_OS_COMMIT_SHA: ${{ github.sha }}
         working-directory: services/import-api
         run: go test ./internal/loadtest -run '^TestWriteLoadResultsFixture$' -count=1
