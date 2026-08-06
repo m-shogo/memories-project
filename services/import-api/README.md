@@ -92,7 +92,7 @@ Implemented foundations include:
 - privacy-safe structured observability and real alert routing (structured event contract, correlation IDs and redaction tests now exist under `internal/obslog` and `internal/reqid`; retention and real alert routing remain, so OPS-P0-003 stays PARTIAL, not READY);
 - bounded-cardinality runtime metrics with SLIs, SLOs, dashboards, thresholds and an error-budget policy (a typed, privacy-preserving metrics registry and recorder now exist under `internal/metrics`, wired at the HTTP, rate-limit and deletion-worker boundaries, with a machine-readable contract, PROPOSED SLOs, NOT_CONFIGURED alert candidates and a fail-closed validator; no exporter, scrape endpoint, dashboard, alert routing, retention or load-calibrated buckets exist yet, so OPS-P0-004 stays PARTIAL, not READY);
 - endpoint-specific distributed rate limiting (a fail-closed token-bucket limiter with route-global and keyed per-network guards, explicit trusted-proxy boundary and a stable 429 now exists under `internal/ratelimit`; a distributed shared store, trusted-proxy configuration and load-calibrated limits remain, so OPS-P0-005 stays PARTIAL, not READY);
-- production-shaped load/capacity evidence (a deterministic in-process load harness now exists under `internal/loadtest` with steady, burst, store-failure and cardinality-attack scenarios over mocked dependencies, a machine-readable scenario contract, a results document and a fail-closed validator; these are local, non-production figures, and a live-PostgreSQL/object-store production-shaped workload, capacity boundary and soak remain, so OPS-P0-006 stays PARTIAL, not READY);
+- production-shaped load/capacity evidence (the committed mock harness and results cover deterministic steady, burst, failure and cardinality scenarios; executable live checkpoints now drive Preview read and concurrent idempotent Apply through bearer sessions, the deployment PostgreSQL principal and `FORCE RLS`, and drive signed authorization, presigned PUT, exact object-version verification and scan enqueue through PostgreSQL 16 plus MinIO. Both live checkpoints have machine-readable contracts, independent fail-closed validators and an automatic push-triggered/daily regeneration workflow. Exact-HEAD committed live results are still pending, and local PostgreSQL/MinIO evidence does not establish a production capacity boundary, sustained soak, production-equivalent dependencies or production object-storage controls, so OPS-P0-006 stays PARTIAL, not READY);
 - PostgreSQL PITR and isolated restore rehearsal;
 - migration lifecycle and operator incident runbooks;
 - mixed-version compatibility tests;
@@ -113,9 +113,14 @@ python scripts/validate-memory-os-parser-security.py
 python scripts/validate-memory-os-preview-spool.py
 python scripts/validate-memory-os-canonical-records.py
 python scripts/validate-memory-os-memory-provenance.py
+python scripts/validate-memory-os-load.py
+python scripts/validate-memory-os-live-load.py
+python scripts/validate-memory-os-live-object-load.py
 python scripts/validate-memory-os-operability.py
 python scripts/validate-memory-os-entry-docs.py
 ```
+
+The two live validators require their generated result documents. The automatic workflow creates those documents from the exact source SHA before running the validators. Their absence is a missing-evidence signal, not a reason to fabricate a PASS fixture.
 
 From `services/import-api`:
 
