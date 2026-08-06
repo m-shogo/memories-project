@@ -415,10 +415,13 @@
         "empty release registry explicitly records that no approved predecessor or rollback-eligible release exists",
         "release records require distinct Security, Operability and Release Owner approvals plus immutable API, migration, parser artifact and runtime configuration digests",
         "fail-closed release registry validator prevents active or rejected historical candidates from being relabeled as approved releases",
-        "exclusive-lock and atomic-replacement release writer verifies exact clean HEAD, exact tag binding, external input record, three-role approval, complete evidence and unique release ID, tag and commit without manufacturing any authority"
+        "exclusive-lock and atomic-replacement release writer verifies exact clean HEAD, exact tag binding, external input record, three-role approval, complete evidence and unique release ID, tag and commit without manufacturing any authority",
+        "pinned historical-candidate and current Import API processes mutate and replay persisted Apply idempotency claims on one current expanded PostgreSQL schema",
+        "historical-candidate Apply followed by current replay returns the original Apply ID without duplicate materialization",
+        "current Apply followed by historical-candidate replay returns the original Apply ID without duplicate materialization",
+        "cross-Preview idempotency-key reuse is rejected while exactly two applied claims and two memory items remain with zero in-progress claims"
       ],
       "missingEvidence": [
-        "persisted-state compatibility fixtures across releases",
         "reviewed parser artifact registry and old parser artifact replay tests",
         "implemented client support windows and client/server skew tests",
         "PostgreSQL minor/major upgrade policy and rehearsal",
@@ -432,7 +435,11 @@
         "production-shaped mixed-version review with zero unresolved Critical or High findings",
         "approved predecessor release record with three distinct required approvers and complete compatibility, restore, security, migration, parser and load evidence",
         "rollback-eligible approved release whose binary and retained artifacts are verified against the expanded target schema",
-        "independent review of the first release registration and writer execution evidence"
+        "independent review of the first release registration and writer execution evidence",
+        "persisted Preview and Apply compatibility fixtures across an approved predecessor and successor release pair",
+        "simultaneous old/current mutation traffic and concurrent idempotency-claim race coverage on one production-shaped database",
+        "process termination during in-progress Apply with deterministic recovery or safe blocking evidence",
+        "rolling deployment, traffic drain and application rollback rehearsal using rollback-eligible approved release artifacts"
       ],
       "evidenceRefs": [
         ".github/workflows/security-contracts.yml",
@@ -459,7 +466,14 @@
         "scripts/register-memory-os-release-baseline.py",
         "scripts/validate-memory-os-release-baseline-registry.py",
         "scripts/reconcile-memory-os-release-baseline-registry.py",
-        ".github/workflows/release-baseline-registry.yml"
+        ".github/workflows/release-baseline-registry.yml",
+        "contracts/operations/mixed-version-apply-contract.v1.json",
+        "services/import-api/cmd/memory-os-mixed-version-fixture/main.go",
+        "scripts/run-memory-os-mixed-version-apply-drill.sh",
+        "scripts/validate-memory-os-mixed-version-apply.py",
+        "scripts/reconcile-memory-os-mixed-version-apply.py",
+        "docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json",
+        ".github/workflows/mixed-version-apply.yml"
       ]
     }
   ]

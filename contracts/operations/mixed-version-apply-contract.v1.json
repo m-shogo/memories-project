@@ -80,7 +80,7 @@
     "runnerImplemented": true,
     "validatorImplemented": true,
     "automaticWorkflowImplemented": true,
-    "exactSourcePassResultCommitted": false,
+    "exactSourcePassResultCommitted": true,
     "approvedReleasePairAvailable": false,
     "concurrentClaimRaceExecuted": false,
     "rollbackRehearsalExecuted": false,
@@ -89,6 +89,10 @@
   "evidenceRefs": [
     "contracts/operations/mixed-version-apply-contract.v1.json",
     "services/import-api/cmd/memory-os-mixed-version-fixture/main.go",
-    "scripts/run-memory-os-mixed-version-apply-drill.sh"
+    "scripts/run-memory-os-mixed-version-apply-drill.sh",
+    "scripts/validate-memory-os-mixed-version-apply.py",
+    "scripts/reconcile-memory-os-mixed-version-apply.py",
+    "docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json",
+    ".github/workflows/mixed-version-apply.yml"
   ]
 }
