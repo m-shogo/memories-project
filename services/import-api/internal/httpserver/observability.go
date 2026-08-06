@@ -114,6 +114,8 @@ func routeTemplate(method, path string) string {
 	switch {
 	case path == "/healthz":
 		return method + " /healthz"
+	case method == http.MethodGet && path == "/metrics":
+		return "GET /metrics"
 	case matches(segments, "v1", "auth", "apple"):
 		return method + " /v1/auth/apple"
 	case matches(segments, "v1", "account"):
@@ -197,6 +199,8 @@ func metricsRouteClass(route string) metrics.RouteClass {
 	switch {
 	case route == "GET /healthz":
 		return metrics.RouteHealth
+	case route == "GET /metrics":
+		return metrics.RouteInternal
 	case route == "POST /v1/auth/apple", strings.HasSuffix(route, " other"):
 		// The pre-auth Apple exchange and any unmatched route are treated as the
 		// public unauthenticated class for metrics purposes.
