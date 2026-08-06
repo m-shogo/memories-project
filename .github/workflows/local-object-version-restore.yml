@@ -95,11 +95,13 @@ jobs:
               encoding='utf-8', errors='replace'
           )[-4000:]
           diagnostic = {
-              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'schemaVersion': 'memory-os-validator-diagnostic.v2',
               'workflow': 'local-object-version-restore-drill',
               'sourceCommitSha': os.environ['SOURCE_SHA'],
-              'result': 'PASS' if os.environ['DRILL_EXIT_CODE'] == '0' else 'FAIL',
-              'exitCode': int(os.environ['DRILL_EXIT_CODE']),
+              'drillResult': 'PASS' if os.environ['DRILL_EXIT_CODE'] == '0' else 'FAIL',
+              'drillExitCode': int(os.environ['DRILL_EXIT_CODE']),
+              'validationResult': 'NOT_RUN',
+              'validationExitCode': None,
               'output': output,
               'containsSecrets': False,
               'productionEvidence': False,
@@ -110,16 +112,42 @@ jobs:
           PY
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
 
-      - name: Validate exact-source PASS result
+      - name: Validate exact-source result without losing diagnostic
+        id: validation
         if: steps.drill.outputs.exit_code == '0'
         env:
           EXPECTED_COMMIT_SHA: ${{ env.SOURCE_SHA }}
-        run: python scripts/validate-memory-os-local-object-version-restore.py
+        run: |
+          set +e
+          python scripts/validate-memory-os-local-object-version-restore.py > /tmp/local-object-version-validation.log 2>&1
+          code=$?
+          set -e
+          VALIDATION_EXIT_CODE="$code" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
 
-      - name: Commit result or failure diagnostic
+          path = Path('docs/fixtures/memory-os-operability/local-object-version-restore-diagnostic.last.json')
+          diagnostic = json.loads(path.read_text(encoding='utf-8'))
+          validation_output = Path('/tmp/local-object-version-validation.log').read_text(
+              encoding='utf-8', errors='replace'
+          )[-4000:]
+          diagnostic['validationResult'] = (
+              'PASS' if os.environ['VALIDATION_EXIT_CODE'] == '0' else 'FAIL'
+          )
+          diagnostic['validationExitCode'] = int(os.environ['VALIDATION_EXIT_CODE'])
+          diagnostic['output'] = (
+              str(diagnostic.get('output', '')) + '\n--- validator ---\n' + validation_output
+          )[-4000:]
+          path.write_text(json.dumps(diagnostic, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+          PY
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+
+      - name: Commit result or bounded failure diagnostic
         run: |
           git add docs/fixtures/memory-os-operability/local-object-version-restore-diagnostic.last.json
-          if [ "${{ steps.drill.outputs.exit_code }}" = "0" ]; then
+          if [ "${{ steps.drill.outputs.exit_code }}" = "0" ] && \
+             [ "${{ steps.validation.outputs.exit_code }}" = "0" ]; then
             git add docs/fixtures/memory-os-operability/local-object-version-restore-results.sample.v1.json
           fi
           if git diff --cached --quiet; then
@@ -127,7 +155,8 @@ jobs:
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            if [ "${{ steps.drill.outputs.exit_code }}" = "0" ]; then
+            if [ "${{ steps.drill.outputs.exit_code }}" = "0" ] && \
+               [ "${{ steps.validation.outputs.exit_code }}" = "0" ]; then
               git commit -m "test(backup): record local object-version restore evidence"
             else
               git commit -m "test(backup): record object restore failure diagnostic"
@@ -137,7 +166,7 @@ jobs:
           fi
 
       - name: Reconcile exact-source PASS into status
-        if: steps.drill.outputs.exit_code == '0'
+        if: steps.drill.outputs.exit_code == '0' && steps.validation.outputs.exit_code == '0'
         env:
           EXPECTED_COMMIT_SHA: ${{ env.SOURCE_SHA }}
         run: |
@@ -158,5 +187,5 @@ jobs:
           fi
 
       - name: Fail workflow after preserving diagnostic
-        if: steps.drill.outputs.exit_code != '0'
+        if: steps.drill.outputs.exit_code != '0' || steps.validation.outputs.exit_code != '0'
         run: exit 1
