@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "mixed-version-candidate",
+  "sourceCommitSha": "aef24cb7076d5a41d50b8e5a19421f42eafe4e0a",
+  "result": "FAIL",
+  "exitCode": 1,
+  "generatedAt": "2026-08-06T09:38:53.930622Z",
+  "output": "candidate compatibility drill failed; inspect GitHub Actions step logs",
+  "containsSecrets": false,
+  "productionEvidence": false
+}
