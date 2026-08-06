@@ -297,8 +297,7 @@
         "independent child-process orphan/reaping scan after parser process-group termination",
         "parser host or container restart recovery using a reviewed production artifact",
         "database loss or failover drill",
-        "object-store outage drill",
-        "expanded parser restart matrix across timeout, CPU, memory, cancellation, process-group and host-restart failures"
+        "object-store outage drill"
       ],
       "evidenceRefs": [
         "contracts/operations/chaos-failure-drill-contract.v1.json",
