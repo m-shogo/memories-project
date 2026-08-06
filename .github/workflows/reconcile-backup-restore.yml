@@ -1,0 +1,71 @@
+name: Reconcile Backup Restore Policy
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/reconcile-backup-restore.yml"
+      - "contracts/operations/backup-restore-contract.v1.json"
+      - "contracts/operations/local-logical-restore-contract.v1.json"
+      - "docs/runbooks/memory-os-backup-restore.md"
+      - "scripts/validate-memory-os-backup-restore.py"
+      - "scripts/reconcile-memory-os-backup-restore.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reconcile-backup-restore-so
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout latest so
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm exact source state
+        run: |
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+
+      - name: Compile and validate backup policy
+        run: |
+          python -m py_compile \
+            scripts/validate-memory-os-backup-restore.py \
+            scripts/reconcile-memory-os-backup-restore.py
+          python scripts/validate-memory-os-backup-restore.py
+
+      - name: Reconcile status
+        run: |
+          python scripts/reconcile-memory-os-backup-restore.py
+          python scripts/validate-memory-os-backup-restore.py
+          python scripts/validate-memory-os-local-logical-restore.py
+          python scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-entry-docs.py
+
+      - name: Commit reconciled status
+        run: |
+          git add contracts/operations/production-operability-status.json
+          if git diff --cached --quiet; then
+            echo "Backup/restore authority is already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs(backup): reconcile restore policy authority"
+          git pull --rebase origin so
+          git push origin HEAD:so
