@@ -7,10 +7,12 @@ on:
     paths:
       - ".github/workflows/reconcile-chaos-authority.yml"
       - "scripts/reconcile-memory-os-chaos-authority.py"
+      - "scripts/reconcile-memory-os-chaos-inflight-overlay.py"
       - "contracts/operations/production-operability-status.json"
       - "docs/fixtures/memory-os-operability/chaos-failure-drill-results.v2.sample.json"
       - "docs/fixtures/memory-os-operability/parser-restart-matrix-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/database-commit-outage-results.sample.v1.json"
+      - "docs/fixtures/memory-os-operability/parser-inflight-cancellation-results.sample.v1.json"
   schedule:
     - cron: "23 20 * * *"
   workflow_dispatch:
@@ -46,9 +48,13 @@ jobs:
 
       - name: Normalize all committed drill generations
         run: |
-          python -m py_compile scripts/reconcile-memory-os-chaos-authority.py
+          python -m py_compile \
+            scripts/reconcile-memory-os-chaos-authority.py \
+            scripts/reconcile-memory-os-chaos-inflight-overlay.py
           python scripts/reconcile-memory-os-chaos-authority.py
+          python scripts/reconcile-memory-os-chaos-inflight-overlay.py
           python scripts/reconcile-memory-os-chaos-authority.py --check
+          python scripts/reconcile-memory-os-chaos-inflight-overlay.py --check
           python scripts/validate-memory-os-chaos-failure-drills-v2.py
           python scripts/validate-memory-os-parser-restart-matrix.py
           if python - <<'PY'
@@ -62,6 +68,11 @@ jobs:
             python scripts/validate-memory-os-database-commit-outage.py
           else
             echo "Legacy new-spool database result retained until same-spool exact-source evidence arrives."
+          fi
+          if test -f docs/fixtures/memory-os-operability/parser-inflight-cancellation-results.sample.v1.json; then
+            python scripts/validate-memory-os-parser-inflight-cancellation.py
+          else
+            echo "In-flight cancellation result not committed yet; gap remains open."
           fi
           python scripts/validate-memory-os-operability.py
 
