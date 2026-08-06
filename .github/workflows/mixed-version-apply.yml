@@ -128,31 +128,111 @@ jobs:
           python scripts/validate-memory-os-version-compatibility.py
 
       - name: Execute bidirectional persisted Apply drill
+        id: execute
         env:
           MEMORY_OS_COMMIT_SHA: ${{ env.SOURCE_SHA }}
           MEMORY_OS_MIXED_VERSION_APPLY_RESULTS_PATH: ${{ github.workspace }}/docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json
-        run: bash scripts/run-memory-os-mixed-version-apply-drill.sh
+        run: |
+          set +e
+          bash scripts/run-memory-os-mixed-version-apply-drill.sh > /tmp/mixed-version-apply.log 2>&1
+          code=$?
+          set -e
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          EXECUTE_EXIT_CODE="$code" python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          output = Path('/tmp/mixed-version-apply.log').read_text(
+              encoding='utf-8', errors='replace'
+          )[-8000:]
+          patterns = (
+              (r'postgres(?:ql)?://[^\s]+', '<redacted-database-url>'),
+              (r'Bearer\s+[^\s]+', 'Bearer <redacted>'),
+              (r'memoryos_sess_[A-Za-z0-9._:-]+', '<redacted-session>'),
+              (r'(?:acct|job|prv|spl|upl)_[A-Za-z0-9._:-]+', '<redacted-synthetic-id>'),
+              (r'idem-mixed-[A-Za-z0-9._:-]+', '<redacted-idempotency-key>'),
+              (r'minioadmin', '<redacted-local-credential>'),
+          )
+          for pattern, replacement in patterns:
+              output = re.sub(pattern, replacement, output, flags=re.IGNORECASE)
+          diagnostic = {
+              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'workflow': 'mixed-version-apply',
+              'sourceCommitSha': os.environ['SOURCE_SHA'],
+              'result': 'PASS' if os.environ['EXECUTE_EXIT_CODE'] == '0' else 'FAIL',
+              'exitCode': int(os.environ['EXECUTE_EXIT_CODE']),
+              'validationResult': 'NOT_RUN',
+              'validationExitCode': None,
+              'output': output,
+              'containsSecrets': False,
+              'productionEvidence': False,
+              'releaseCompatibilityEvidence': False,
+          }
+          path = Path('docs/fixtures/memory-os-operability/mixed-version-apply-diagnostic.last.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(diagnostic, indent=2) + '\n', encoding='utf-8')
+          PY
 
       - name: Validate exact-source result
-        run: python scripts/validate-memory-os-mixed-version-apply.py --expected-commit-sha "$SOURCE_SHA"
+        id: validation
+        if: steps.execute.outputs.exit_code == '0'
+        run: |
+          set +e
+          python scripts/validate-memory-os-mixed-version-apply.py \
+            --expected-commit-sha "$SOURCE_SHA" > /tmp/mixed-version-apply-validation.log 2>&1
+          code=$?
+          set -e
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          VALIDATION_EXIT_CODE="$code" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
 
-      - name: Commit exact-source result
+          path = Path('docs/fixtures/memory-os-operability/mixed-version-apply-diagnostic.last.json')
+          diagnostic = json.loads(path.read_text(encoding='utf-8'))
+          output = Path('/tmp/mixed-version-apply-validation.log').read_text(
+              encoding='utf-8', errors='replace'
+          )[-3000:]
+          diagnostic['validationResult'] = (
+              'PASS' if os.environ['VALIDATION_EXIT_CODE'] == '0' else 'FAIL'
+          )
+          diagnostic['validationExitCode'] = int(os.environ['VALIDATION_EXIT_CODE'])
+          diagnostic['output'] = (
+              str(diagnostic.get('output', '')) + '\n--- validator ---\n' + output
+          )[-8000:]
+          path.write_text(json.dumps(diagnostic, indent=2) + '\n', encoding='utf-8')
+          PY
+
+      - name: Commit result or bounded diagnostic
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         run: |
-          git add docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json
+          git add docs/fixtures/memory-os-operability/mixed-version-apply-diagnostic.last.json
+          if [ "${{ steps.execute.outputs.exit_code }}" = "0" ] && \
+             [ "${{ steps.validation.outputs.exit_code }}" = "0" ]; then
+            git add docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json
+          fi
           if git diff --cached --quiet; then
             echo "Mixed-version Apply evidence is already current."
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "test(compat): record mixed-version Apply evidence"
+            if [ "${{ steps.execute.outputs.exit_code }}" = "0" ] && \
+               [ "${{ steps.validation.outputs.exit_code }}" = "0" ]; then
+              git commit -m "test(compat): record mixed-version Apply evidence"
+            else
+              git commit -m "test(compat): record mixed-version Apply diagnostic"
+            fi
             git fetch origin so
             git rebase origin/so
             git push origin HEAD:so
           fi
 
       - name: Reconcile candidate-only compatibility authority
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        if: >-
+          github.event_name != 'pull_request' && github.ref == 'refs/heads/so' &&
+          steps.execute.outputs.exit_code == '0' && steps.validation.outputs.exit_code == '0'
         run: |
           git fetch origin so
           git rebase origin/so
@@ -174,10 +254,16 @@ jobs:
           fi
 
       - name: Re-read authority and run aggregate checks
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        if: >-
+          github.event_name != 'pull_request' && github.ref == 'refs/heads/so' &&
+          steps.execute.outputs.exit_code == '0' && steps.validation.outputs.exit_code == '0'
         run: |
           git fetch origin so
           git reset --hard origin/so
           python scripts/validate-memory-os-mixed-version-apply.py --require-reconciled
           python scripts/validate-memory-os-version-compatibility.py
           python scripts/validate-memory-os-operability.py
+
+      - name: Fail after preserving diagnostic
+        if: steps.execute.outputs.exit_code != '0' || steps.validation.outputs.exit_code != '0'
+        run: exit 1
