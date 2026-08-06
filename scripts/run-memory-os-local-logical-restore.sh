@@ -140,13 +140,14 @@ TARGET_ACCOUNT_COUNT="$(psql --dbname "$TARGET_DB" --tuples-only --no-align --co
   "SELECT count(*) FROM memory_os.account_control WHERE account_id = '$SYNTHETIC_ACCOUNT';")"
 TARGET_SESSION_COUNT="$(psql --dbname "$TARGET_DB" --tuples-only --no-align --command \
   "SELECT count(*) FROM memory_os.account_session WHERE token_digest = '$SYNTHETIC_DIGEST';")"
-RESOLVED_SESSION_COUNT="$(psql --dbname "$TARGET_DB" --tuples-only --no-align <<SQL
+RESOLVED_SESSION_OUTPUT="$(psql --dbname "$TARGET_DB" --tuples-only --no-align --quiet <<SQL
 SET ROLE memory_auth_runtime;
 SELECT count(*) FROM memory_os.resolve_account_session('$SYNTHETIC_DIGEST');
 RESET ROLE;
 SQL
 )"
-RESOLVED_SESSION_COUNT="$(printf '%s\n' "$RESOLVED_SESSION_COUNT" | tail -n 1)"
+RESOLVED_SESSION_COUNT="$(printf '%s\n' "$RESOLVED_SESSION_OUTPUT" | grep -E '^[0-9]+$' | tail -n 1)"
+[[ -n "$RESOLVED_SESSION_COUNT" ]] || fail "deleted synthetic token resolution count was not numeric"
 
 [[ "$ROLE_COUNT" == "4" ]] || fail "runtime role verification failed: $ROLE_COUNT"
 [[ "$FORCE_RLS_COUNT" =~ ^[0-9]+$ && "$FORCE_RLS_COUNT" -gt 0 ]] || \
