@@ -129,9 +129,13 @@ def validate_result(result: dict[str, Any], expected_sha: str | None) -> None:
     ):
         require(phrase in joined, f"result limitation omitted: {phrase}")
 
+    # containsSecrets is an explicit safe boolean and must not trigger a broad
+    # substring scan for "secret". Reject only raw credential field names,
+    # known local credential values, endpoints and provider identifiers.
     serialized = json.dumps(result, ensure_ascii=False).lower()
     for forbidden in (
-        "minioadmin", "secret", "access_key", "secret_key",
+        "minioadmin", "aws_access_key_id", "aws_secret_access_key",
+        '"access_key"', '"secret_key"', '"accesskeyid"', '"secretaccesskey"',
         "http://", "https://", "memory-os-source-", "memory-os-backup-",
         "memory-os-restore-", "synthetic/exact-version-recovery.json",
         '"versionid"', "fixture\":\"memory-os-object-restore",
