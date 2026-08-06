@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "memory-os-mixed-version-apply-results.v1",
+  "currentCommitSha": "666ae4c72aecefc2a997180f38aeec6dbc1183a7",
+  "oldBackendCommitSha": "2af6e8e10755cc707c6bdd958a049a0f4afb3d70",
+  "generatedAt": "2026-08-06T11:09:24.661944Z",
+  "environment": {
+    "mode": "GITHUB_ACTIONS_OR_LOCAL_POSTGRES16_MINIO_TWO_PROCESSES_SHARED_SCHEMA",
+    "productionEvidence": false,
+    "releaseCompatibilityEvidence": false,
+    "historicalCandidateOnly": true,
+    "containsSecrets": false,
+    "syntheticDataOnly": true
+  },
+  "result": "PASS",
+  "integrityResult": "PASS",
+  "assertions": {
+    "oldFirstApplyStatus": 200,
+    "currentReplayStatus": 200,
+    "currentFirstApplyStatus": 200,
+    "oldReplayStatus": 200,
+    "crossPreviewIdempotencyConflictStatus": 409,
+    "oldToCurrentApplyIdStable": true,
+    "currentToOldApplyIdStable": true,
+    "oldToCurrentReplayMarked": true,
+    "currentToOldReplayMarked": true,
+    "rawTokensPersisted": false,
+    "rawSyntheticIdsPersisted": false,
+    "applyConfirmationRows": 2,
+    "memoryItemRows": 2,
+    "distinctSourcePreviews": 2,
+    "inProgressApplyRows": 0,
+    "sharedCurrentSchema": true,
+    "oldAndCurrentProcessesConcurrent": true,
+    "sameRequestHashStableAcrossVersions": true,
+    "noDuplicateMaterialization": true
+  },
+  "limitations": [
+    "historical candidate rather than an approved predecessor release",
+    "two synthetic ready Previews with one candidate each",
+    "sequential mutation and replay rather than concurrent claim racing",
+    "no process termination during an in-progress transaction",
+    "no rolling traffic drain, rollback or destructive contract migration",
+    "ephemeral PostgreSQL 16 and MinIO only",
+    "not production compatibility evidence"
+  ]
+}
