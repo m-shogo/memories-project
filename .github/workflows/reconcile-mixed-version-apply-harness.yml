@@ -37,18 +37,20 @@ jobs:
 
           path = Path("scripts/run-memory-os-mixed-version-apply-drill.sh")
           text = path.read_text(encoding="utf-8")
-          insecure = """CREATE FUNCTION memory_os.test_block_apply_memory_insert()
-          RETURNS trigger
-          LANGUAGE plpgsql
-          AS $$
-          """
-          secure = """CREATE FUNCTION memory_os.test_block_apply_memory_insert()
-          RETURNS trigger
-          LANGUAGE plpgsql
-          SECURITY DEFINER
-          SET search_path = pg_catalog, memory_os
-          AS $$
-          """
+          insecure = (
+              "CREATE FUNCTION memory_os.test_block_apply_memory_insert()\n"
+              "RETURNS trigger\n"
+              "LANGUAGE plpgsql\n"
+              "AS $$\n"
+          )
+          secure = (
+              "CREATE FUNCTION memory_os.test_block_apply_memory_insert()\n"
+              "RETURNS trigger\n"
+              "LANGUAGE plpgsql\n"
+              "SECURITY DEFINER\n"
+              "SET search_path = pg_catalog, memory_os\n"
+              "AS $$\n"
+          )
           if text.count(secure) == 1 and text.count(insecure) == 0:
               print("Termination test trigger authority is already secure.")
           elif text.count(insecure) == 1 and text.count(secure) == 0:
