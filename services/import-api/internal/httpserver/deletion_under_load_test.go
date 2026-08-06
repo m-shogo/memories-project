@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"runtime"
@@ -86,7 +87,16 @@ func runDeletionExactHTTPBatch(requests, concurrency int, factory func(int) (*ht
 					samples[index] = liveHTTPSample{Duration: time.Since(started), Err: err}
 					continue
 				}
-				_ = response.Body.Close()
+				_, copyErr := io.Copy(io.Discard, response.Body)
+				closeErr := response.Body.Close()
+				if copyErr != nil {
+					samples[index] = liveHTTPSample{Duration: time.Since(started), Err: copyErr}
+					continue
+				}
+				if closeErr != nil {
+					samples[index] = liveHTTPSample{Duration: time.Since(started), Err: closeErr}
+					continue
+				}
 				samples[index] = liveHTTPSample{Status: response.StatusCode, Duration: time.Since(started)}
 			}
 		}()
