@@ -16,6 +16,7 @@ on:
       - "scripts/validate-memory-os-metrics.py"
       - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-entry-docs.py"
+      - "scripts/regenerate-memory-os-load-results.sh"
       - "docs/fixtures/memory-os-operability/**"
       - "services/import-api/internal/obslog/**"
       - "services/import-api/internal/reqid/**"
@@ -41,6 +42,7 @@ on:
       - "scripts/validate-memory-os-metrics.py"
       - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-entry-docs.py"
+      - "scripts/regenerate-memory-os-load-results.sh"
       - "docs/fixtures/memory-os-operability/**"
       - "services/import-api/internal/obslog/**"
       - "services/import-api/internal/reqid/**"
@@ -79,6 +81,7 @@ jobs:
           python -m py_compile scripts/validate-memory-os-metrics.py
           python -m py_compile scripts/validate-memory-os-load.py
           python -m py_compile scripts/validate-memory-os-entry-docs.py
+          bash -n scripts/regenerate-memory-os-load-results.sh
 
       - name: Validate production operability authority
         run: python scripts/validate-memory-os-operability.py
