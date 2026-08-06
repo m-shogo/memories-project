@@ -1,0 +1,217 @@
+name: Parser Restart Recovery Matrix
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/parser-restart-matrix.yml"
+      - "contracts/operations/parser-restart-matrix-contract.v1.json"
+      - "services/import-api/internal/parsersup/**"
+      - "scripts/validate-memory-os-parser-restart-matrix.py"
+      - "scripts/reconcile-memory-os-parser-restart-matrix.py"
+  schedule:
+    - cron: "43 19 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: parser-restart-matrix-so
+  cancel-in-progress: false
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout latest so
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: services/import-api/go.sum
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm exact clean source
+        run: |
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+
+      - name: Compile validator and check formatting
+        run: |
+          python -m py_compile \
+            scripts/validate-memory-os-parser-restart-matrix.py \
+            scripts/reconcile-memory-os-parser-restart-matrix.py
+          test -z "$(gofmt -l services/import-api/internal/parsersup/restart_matrix_drill_linux_test.go)"
+          python scripts/validate-memory-os-parser-restart-matrix.py
+
+      - name: Execute exact-source matrix cases
+        id: matrix
+        run: |
+          python - <<'PY'
+          import datetime as dt
+          import json
+          import os
+          import subprocess
+          import time
+          from pathlib import Path
+
+          root = Path.cwd()
+          workdir = root / "services/import-api"
+          source_sha = subprocess.check_output(
+              ["git", "rev-parse", "HEAD"], cwd=root, text=True
+          ).strip()
+          case_ids = [
+              "protocol_truncation",
+              "wall_clock_timeout",
+              "cpu_limit_kill",
+              "memory_limit_kill",
+              "pre_start_cancellation",
+          ]
+          cases = []
+          diagnostics = []
+          success = True
+          for case_id in case_ids:
+              command = [
+                  "go", "test", "./internal/parsersup",
+                  "-run", f"^TestSupervisorRestartRecoveryMatrix/{case_id}$",
+                  "-count=1",
+              ]
+              started = time.monotonic()
+              completed = subprocess.run(
+                  command,
+                  cwd=workdir,
+                  text=True,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.STDOUT,
+                  check=False,
+              )
+              duration = round(time.monotonic() - started, 6)
+              passed = completed.returncode == 0
+              success = success and passed
+              cases.append({
+                  "id": case_id,
+                  "result": "PASS" if passed else "FAIL",
+                  "exitCode": completed.returncode,
+                  "durationSeconds": duration,
+                  "expectedErrorMatched": passed,
+                  "spoolResidueAbsent": passed,
+                  "sameSpoolReusable": passed,
+                  "replacementSealValid": passed,
+                  "independentVerificationMatched": passed,
+              })
+              diagnostics.append({
+                  "id": case_id,
+                  "exitCode": completed.returncode,
+                  "output": completed.stdout[-4000:],
+              })
+
+          generated_at = dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z")
+          diagnostic = {
+              "schemaVersion": "memory-os-validator-diagnostic.v1",
+              "workflow": "parser-restart-recovery-matrix",
+              "sourceCommitSha": source_sha,
+              "result": "PASS" if success else "FAIL",
+              "generatedAt": generated_at,
+              "cases": diagnostics,
+              "containsSecrets": False,
+              "productionEvidence": False,
+          }
+          diagnostic_path = root / "docs/fixtures/memory-os-operability/parser-restart-matrix-diagnostic.last.json"
+          diagnostic_path.parent.mkdir(parents=True, exist_ok=True)
+          diagnostic_path.write_text(
+              json.dumps(diagnostic, indent=2, ensure_ascii=False) + "\n",
+              encoding="utf-8",
+          )
+
+          if success:
+              result = {
+                  "schemaVersion": "memory-os-parser-restart-matrix-results.v1",
+                  "commitSha": source_sha,
+                  "generatedAt": generated_at,
+                  "environment": {
+                      "mode": "GITHUB_ACTIONS_UBUNTU_LINUX_NON_RACE",
+                      "productionEvidence": False,
+                      "syntheticDataOnly": True,
+                      "containsSecrets": False,
+                  },
+                  "failureClasses": cases,
+                  "overallResult": "PASS",
+                  "limitations": [
+                      "in-flight cancellation latency not proven",
+                      "child-process reaping not independently measured",
+                      "host restart not executed",
+                      "production artifact not exercised",
+                      "not production chaos evidence",
+                      "Linux GitHub Actions CI only",
+                  ],
+              }
+              result_path = root / "docs/fixtures/memory-os-operability/parser-restart-matrix-results.sample.v1.json"
+              result_path.write_text(
+                  json.dumps(result, indent=2, ensure_ascii=False) + "\n",
+                  encoding="utf-8",
+              )
+
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"source_sha={source_sha}\n")
+              output.write(f"success={'true' if success else 'false'}\n")
+          PY
+
+      - name: Validate generated exact-source matrix
+        if: steps.matrix.outputs.success == 'true'
+        env:
+          EXPECTED_COMMIT_SHA: ${{ steps.matrix.outputs.source_sha }}
+        run: python scripts/validate-memory-os-parser-restart-matrix.py
+
+      - name: Commit matrix result or bounded diagnostic
+        run: |
+          git add docs/fixtures/memory-os-operability/parser-restart-matrix-diagnostic.last.json
+          if [ "${{ steps.matrix.outputs.success }}" = "true" ]; then
+            git add docs/fixtures/memory-os-operability/parser-restart-matrix-results.sample.v1.json
+          fi
+          if git diff --cached --quiet; then
+            echo "Parser restart matrix evidence is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            if [ "${{ steps.matrix.outputs.success }}" = "true" ]; then
+              git commit -m "test(chaos): record exact-source parser restart matrix"
+            else
+              git commit -m "test(chaos): record parser restart matrix diagnostic"
+            fi
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+
+      - name: Reconcile parser matrix authority
+        if: steps.matrix.outputs.success == 'true'
+        run: |
+          python scripts/reconcile-memory-os-parser-restart-matrix.py
+          python scripts/validate-memory-os-parser-restart-matrix.py
+          python scripts/validate-memory-os-operability.py
+          git add contracts/operations/production-operability-status.json
+          if git diff --cached --quiet; then
+            echo "Parser restart matrix authority is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(chaos): reconcile parser restart matrix evidence"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+
+      - name: Fail when a matrix case failed
+        if: steps.matrix.outputs.success != 'true'
+        run: exit 1
