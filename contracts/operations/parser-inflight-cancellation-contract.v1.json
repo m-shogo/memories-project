@@ -44,7 +44,7 @@
     "implementationUpdated": true,
     "testImplemented": true,
     "validatorImplemented": true,
-    "automaticWorkflowImplemented": false,
+    "automaticWorkflowImplemented": true,
     "exactSourcePassResultCommitted": false,
     "childProcessOrphanScanCompleted": false,
     "hostRestartExecuted": false,
@@ -56,6 +56,8 @@
     "services/import-api/internal/parsersup/supervisor_linux.go",
     "services/import-api/internal/parsersup/worker.go",
     "services/import-api/internal/parsersup/inflight_cancellation_drill_linux_test.go",
-    "scripts/validate-memory-os-parser-inflight-cancellation.py"
+    "scripts/validate-memory-os-parser-inflight-cancellation.py",
+    "scripts/reconcile-memory-os-parser-inflight-cancellation.py",
+    ".github/workflows/parser-inflight-cancellation.yml"
   ]
 }
