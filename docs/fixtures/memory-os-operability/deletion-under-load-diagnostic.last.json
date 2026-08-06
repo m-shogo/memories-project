@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "deletion-under-load",
+  "sourceCommitSha": "401ece0dc46bd6bebe3b382262d5ec67adc3a7c0",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "STAGE: format-and-compile\nSTAGE: execute-post-fence-load\n# github.com/m-shogo/memories-project/services/import-api/internal/httpserver [github.com/m-shogo/memories-project/services/import-api/internal/httpserver.test]\ninternal/httpserver/deletion_under_load_test.go:70:12: undefined: liveHTTPClient\ninternal/httpserver/deletion_under_load_test.go:120:21: undefined: summarizeLiveHTTPSamples\nFAIL\tgithub.com/m-shogo/memories-project/services/import-api/internal/httpserver [build failed]\nFAIL\n",
+  "containsSecrets": false,
+  "productionEvidence": false,
+  "requestsStartedBeforeFenceCovered": false
+}
