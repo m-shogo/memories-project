@@ -187,13 +187,17 @@
         "per-route-class failure modes: public fail-closed with strict local emergency fallback, health exempt",
         "stable 429 SEC_RATE_LIMITED with bounded Retry-After and no internal detail",
         "429 creates no account/session/apple-identity/replay row (live-DB proven)",
-        "machine-readable policy contract, negative fixtures and validator"
+        "machine-readable policy contract, negative fixtures and validator",
+        "binding emergency-operation policy that forbids unlimited/fail-open public traffic and permits only normal bounded, strict local emergency or route fail-closed modes",
+        "trusted-proxy disablement procedure for uncertain deployment ownership",
+        "canonical activation, rollback, shared-store recovery and no-business-mutation verification runbook"
       ],
       "missingEvidence": [
         "production-equivalent distributed enforcement (shared atomic store)",
         "trusted-proxy configuration owned per deployment",
         "load-calibrated limits from observed traffic",
-        "operational disable/rollback runbook"
+        "production emergency control plane with automatic expiry and append-only operation evidence ledger",
+        "completed emergency-mode, shared-store recovery and trusted-proxy disablement drills"
       ],
       "evidenceRefs": [
         "contracts/operations/rate-limit-policy-contract.v1.json",
@@ -201,7 +205,11 @@
         "scripts/validate-memory-os-rate-limit.py",
         "services/import-api/internal/ratelimit/enforce.go",
         "services/import-api/internal/httpserver/ratelimit.go",
-        "services/import-api/internal/httpserver/ratelimit_privacy_test.go"
+        "services/import-api/internal/httpserver/ratelimit_privacy_test.go",
+        "contracts/operations/rate-limit-operations-contract.v1.json",
+        "docs/runbooks/memory-os-rate-limit-operations.md",
+        "scripts/validate-memory-os-rate-limit-operations.py",
+        "scripts/reconcile-memory-os-rate-limit-operations.py"
       ]
     },
     {

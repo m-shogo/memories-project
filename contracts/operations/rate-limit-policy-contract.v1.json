@@ -43,12 +43,30 @@
     "httpStatus": 429,
     "publicErrorCode": "SEC_RATE_LIMITED",
     "retryAfterHeader": "Retry-After",
-    "retryAfterBoundedSeconds": { "min": 1, "max": 3600 },
+    "retryAfterBoundedSeconds": {
+      "min": 1,
+      "max": 3600
+    },
     "bodyRevealsInternalState": false
   },
   "metricCardinality": {
-    "allowedLabels": ["policy_id", "route_template", "route_class", "outcome", "failure_class"],
-    "forbiddenLabels": ["request_id", "correlation_id", "ip", "ip_digest", "account_id", "apple_subject", "url", "error"]
+    "allowedLabels": [
+      "policy_id",
+      "route_template",
+      "route_class",
+      "outcome",
+      "failure_class"
+    ],
+    "forbiddenLabels": [
+      "request_id",
+      "correlation_id",
+      "ip",
+      "ip_digest",
+      "account_id",
+      "apple_subject",
+      "url",
+      "error"
+    ]
   },
   "algorithm": {
     "kind": "token_bucket",
@@ -78,12 +96,21 @@
       "routeClass": "PUBLIC_UNAUTHENTICATED",
       "enabled": true,
       "algorithm": "token_bucket",
-      "keyDimensions": ["route_global", "client_network"],
+      "keyDimensions": [
+        "route_global",
+        "client_network"
+      ],
       "failureMode": "fail_closed_emergency_local",
       "privacyClassification": "pre_auth_network_bounded",
       "cardinalityRisk": "bounded",
-      "global": { "capacity": 100, "refillPerSecond": 20 },
-      "network": { "capacity": 5, "refillPerSecond": 0.2 }
+      "global": {
+        "capacity": 100,
+        "refillPerSecond": 20
+      },
+      "network": {
+        "capacity": 5,
+        "refillPerSecond": 0.2
+      }
     },
     {
       "policyId": "account-delete",
@@ -91,12 +118,21 @@
       "routeClass": "PUBLIC_AUTHENTICATED",
       "enabled": true,
       "algorithm": "token_bucket",
-      "keyDimensions": ["route_global", "client_network"],
+      "keyDimensions": [
+        "route_global",
+        "client_network"
+      ],
       "failureMode": "fail_closed",
       "privacyClassification": "authenticated_network_bounded",
       "cardinalityRisk": "bounded",
-      "global": { "capacity": 50, "refillPerSecond": 10 },
-      "network": { "capacity": 5, "refillPerSecond": 0.5 }
+      "global": {
+        "capacity": 50,
+        "refillPerSecond": 10
+      },
+      "network": {
+        "capacity": 5,
+        "refillPerSecond": 0.5
+      }
     },
     {
       "policyId": "upload-issue",
@@ -104,12 +140,21 @@
       "routeClass": "PUBLIC_AUTHENTICATED",
       "enabled": true,
       "algorithm": "token_bucket",
-      "keyDimensions": ["route_global", "client_network"],
+      "keyDimensions": [
+        "route_global",
+        "client_network"
+      ],
       "failureMode": "fail_closed",
       "privacyClassification": "authenticated_network_bounded",
       "cardinalityRisk": "bounded",
-      "global": { "capacity": 200, "refillPerSecond": 50 },
-      "network": { "capacity": 20, "refillPerSecond": 2 }
+      "global": {
+        "capacity": 200,
+        "refillPerSecond": 50
+      },
+      "network": {
+        "capacity": 20,
+        "refillPerSecond": 2
+      }
     },
     {
       "policyId": "upload-complete",
@@ -117,12 +162,21 @@
       "routeClass": "PUBLIC_AUTHENTICATED",
       "enabled": true,
       "algorithm": "token_bucket",
-      "keyDimensions": ["route_global", "client_network"],
+      "keyDimensions": [
+        "route_global",
+        "client_network"
+      ],
       "failureMode": "fail_closed",
       "privacyClassification": "authenticated_network_bounded",
       "cardinalityRisk": "bounded",
-      "global": { "capacity": 200, "refillPerSecond": 50 },
-      "network": { "capacity": 20, "refillPerSecond": 2 }
+      "global": {
+        "capacity": 200,
+        "refillPerSecond": 50
+      },
+      "network": {
+        "capacity": 20,
+        "refillPerSecond": 2
+      }
     },
     {
       "policyId": "preview-read",
@@ -130,12 +184,21 @@
       "routeClass": "PUBLIC_AUTHENTICATED",
       "enabled": true,
       "algorithm": "token_bucket",
-      "keyDimensions": ["route_global", "client_network"],
+      "keyDimensions": [
+        "route_global",
+        "client_network"
+      ],
       "failureMode": "fail_closed",
       "privacyClassification": "authenticated_network_bounded",
       "cardinalityRisk": "bounded",
-      "global": { "capacity": 400, "refillPerSecond": 100 },
-      "network": { "capacity": 40, "refillPerSecond": 5 }
+      "global": {
+        "capacity": 400,
+        "refillPerSecond": 100
+      },
+      "network": {
+        "capacity": 40,
+        "refillPerSecond": 5
+      }
     },
     {
       "policyId": "apply",
@@ -143,12 +206,21 @@
       "routeClass": "PUBLIC_AUTHENTICATED",
       "enabled": true,
       "algorithm": "token_bucket",
-      "keyDimensions": ["route_global", "client_network"],
+      "keyDimensions": [
+        "route_global",
+        "client_network"
+      ],
       "failureMode": "fail_closed",
       "privacyClassification": "authenticated_network_bounded",
       "cardinalityRisk": "bounded",
-      "global": { "capacity": 100, "refillPerSecond": 20 },
-      "network": { "capacity": 10, "refillPerSecond": 1 }
+      "global": {
+        "capacity": 100,
+        "refillPerSecond": 20
+      },
+      "network": {
+        "capacity": 10,
+        "refillPerSecond": 1
+      }
     },
     {
       "policyId": "unmatched",
@@ -156,12 +228,21 @@
       "routeClass": "PUBLIC_UNAUTHENTICATED",
       "enabled": true,
       "algorithm": "token_bucket",
-      "keyDimensions": ["route_global", "client_network"],
+      "keyDimensions": [
+        "route_global",
+        "client_network"
+      ],
       "failureMode": "fail_closed",
       "privacyClassification": "pre_auth_network_bounded",
       "cardinalityRisk": "bounded",
-      "global": { "capacity": 100, "refillPerSecond": 20 },
-      "network": { "capacity": 20, "refillPerSecond": 5 }
+      "global": {
+        "capacity": 100,
+        "refillPerSecond": 20
+      },
+      "network": {
+        "capacity": 20,
+        "refillPerSecond": 5
+      }
     },
     {
       "policyId": "healthz",
@@ -176,20 +257,56 @@
     }
   ],
   "routeInventory": [
-    { "routeTemplate": "POST /v1/auth/apple", "routeClass": "PUBLIC_UNAUTHENTICATED" },
-    { "routeTemplate": "DELETE /v1/account", "routeClass": "PUBLIC_AUTHENTICATED" },
-    { "routeTemplate": "POST /v1/import-jobs/{jobId}/upload-authorizations", "routeClass": "PUBLIC_AUTHENTICATED" },
-    { "routeTemplate": "POST /v1/import-jobs/{jobId}/upload-authorizations/{id}/complete", "routeClass": "PUBLIC_AUTHENTICATED" },
-    { "routeTemplate": "GET /v1/import-jobs/{jobId}/preview", "routeClass": "PUBLIC_AUTHENTICATED" },
-    { "routeTemplate": "POST /v1/previews/{previewId}/apply", "routeClass": "PUBLIC_AUTHENTICATED" },
-    { "routeTemplate": "other", "routeClass": "PUBLIC_UNAUTHENTICATED" },
-    { "routeTemplate": "GET /healthz", "routeClass": "HEALTH" }
+    {
+      "routeTemplate": "POST /v1/auth/apple",
+      "routeClass": "PUBLIC_UNAUTHENTICATED"
+    },
+    {
+      "routeTemplate": "DELETE /v1/account",
+      "routeClass": "PUBLIC_AUTHENTICATED"
+    },
+    {
+      "routeTemplate": "POST /v1/import-jobs/{jobId}/upload-authorizations",
+      "routeClass": "PUBLIC_AUTHENTICATED"
+    },
+    {
+      "routeTemplate": "POST /v1/import-jobs/{jobId}/upload-authorizations/{id}/complete",
+      "routeClass": "PUBLIC_AUTHENTICATED"
+    },
+    {
+      "routeTemplate": "GET /v1/import-jobs/{jobId}/preview",
+      "routeClass": "PUBLIC_AUTHENTICATED"
+    },
+    {
+      "routeTemplate": "POST /v1/previews/{previewId}/apply",
+      "routeClass": "PUBLIC_AUTHENTICATED"
+    },
+    {
+      "routeTemplate": "other",
+      "routeClass": "PUBLIC_UNAUTHENTICATED"
+    },
+    {
+      "routeTemplate": "GET /healthz",
+      "routeClass": "HEALTH"
+    }
   ],
   "evidenceRefs": [
     "services/import-api/internal/ratelimit/limiter.go",
     "services/import-api/internal/ratelimit/keys.go",
     "services/import-api/internal/ratelimit/enforce.go",
     "services/import-api/internal/ratelimit/policies.go",
-    "services/import-api/internal/httpserver/ratelimit.go"
-  ]
+    "services/import-api/internal/httpserver/ratelimit.go",
+    "contracts/operations/rate-limit-operations-contract.v1.json",
+    "docs/runbooks/memory-os-rate-limit-operations.md",
+    "scripts/validate-memory-os-rate-limit-operations.py",
+    "scripts/reconcile-memory-os-rate-limit-operations.py"
+  ],
+  "operations": {
+    "policyDefined": true,
+    "policyContract": "contracts/operations/rate-limit-operations-contract.v1.json",
+    "productionControlPlaneImplemented": false,
+    "automaticExpiryImplemented": false,
+    "evidenceLedgerImplemented": false,
+    "drillCompleted": false
+  }
 }
