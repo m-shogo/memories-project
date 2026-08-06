@@ -96,7 +96,8 @@ func TestMetricsScrapeMountIsAuthenticatedAndOutsidePublicRateLimit(t *testing.T
 			t.Fatalf("scrape secret or address leaked:\n%s", output)
 		}
 	}
-	if !strings.Contains(registry.Prometheus(), `route_class="INTERNAL"`) {
+	expectedInternal := "route_class=" + string('"') + "INTERNAL" + string('"')
+	if !strings.Contains(registry.Prometheus(), expectedInternal) {
 		t.Fatalf("scrape requests were not classified as internal:\n%s", registry.Prometheus())
 	}
 }
