@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "memory-os-parser-artifact-registry.v1",
+  "registryClass": "REVIEWED_RETAINED_PARSER_ARTIFACTS",
+  "appendOnly": true,
+  "productionEvidence": false,
+  "reviewedArtifactCount": 0,
+  "retainedRollbackArtifactCount": 0,
+  "replayProvenArtifactCount": 0,
+  "latestReviewedArtifactId": null,
+  "artifacts": [],
+  "limitations": [
+    "no production parser artifact is reviewed",
+    "repository test harness is explicitly not an approved artifact",
+    "no old parser artifact replay is proven",
+    "no parser artifact is retained for rollback",
+    "no approved release can currently bind to a parser artifact"
+  ]
+}
