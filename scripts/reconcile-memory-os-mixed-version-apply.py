@@ -27,14 +27,19 @@ RACE_EXISTING = (
     "simultaneous historical-candidate and current Apply requests using one Preview and idempotency key converge on one Apply ID with exactly one new application and one replay",
     "concurrent old/current idempotency claim race leaves one durable claim, one materialized memory item and zero in-progress residue for the raced Preview",
 )
+TERMINATION_EXISTING = (
+    "historical-candidate process is SIGKILLed while its Apply transaction is blocked before memory materialization; PostgreSQL rolls back the uncommitted claim and memory mutation completely",
+    "current process safely retries the same Preview and idempotency key after historical-process death, creates exactly one durable claim and memory item, and leaves zero in-progress residue",
+)
 OBSOLETE_GAPS = (
     "persisted-state compatibility fixtures across releases",
     "simultaneous old/current mutation traffic and concurrent idempotency-claim race coverage on one production-shaped database",
+    "process termination during in-progress Apply with deterministic recovery or safe blocking evidence",
 )
 PRECISE_GAPS = (
     "persisted Preview and Apply compatibility fixtures across an approved predecessor and successor release pair",
     "simultaneous approved-release old/current mutation traffic and concurrent idempotency-claim race coverage on one production-shaped database",
-    "process termination during in-progress Apply with deterministic recovery or safe blocking evidence",
+    "approved-release process termination during in-progress Apply with production-shaped connection-pool cleanup and deterministic recovery evidence",
     "rolling deployment, traffic drain and application rollback rehearsal using rollback-eligible approved release artifacts",
 )
 REFS = (
@@ -116,6 +121,7 @@ def main() -> int:
     assertions = result.get("assertions")
     require(isinstance(assertions, dict), "mixed-version Apply assertions missing")
     race_passed = assertions.get("concurrentOldCurrentClaimRacePassed") is True
+    termination_passed = assertions.get("oldProcessTerminationRecoveryPassed") is True
 
     contract = load(CONTRACT_PATH)
     require(contract.get("oldBackendCommitSha") == old_sha,
@@ -140,6 +146,12 @@ def main() -> int:
     if not race_passed:
         require(readiness.get("concurrentClaimRaceExecuted") is False,
                 "contract claims concurrent race evidence absent from result")
+    if termination_passed and readiness.get("inProgressProcessTerminationExecuted") is not True:
+        readiness["inProgressProcessTerminationExecuted"] = True
+        contract_changed = True
+    if not termination_passed:
+        require(readiness.get("inProgressProcessTerminationExecuted") in (None, False),
+                "contract claims process termination evidence absent from result")
     for ref in REFS:
         require((ROOT / ref).is_file(), f"mixed-version Apply evidence missing: {ref}")
         contract_changed = append_once(refs, ref) or contract_changed
@@ -164,6 +176,9 @@ def main() -> int:
     if race_passed:
         for item in RACE_EXISTING:
             status_changed = append_once(existing, item) or status_changed
+    if termination_passed:
+        for item in TERMINATION_EXISTING:
+            status_changed = append_once(existing, item) or status_changed
     for item in OBSOLETE_GAPS:
         if item in missing:
             missing.remove(item)
@@ -177,7 +192,7 @@ def main() -> int:
     for label, terms in {
         "approved release pair": ("approved", "predecessor", "successor"),
         "approved concurrent mixed mutation": ("approved-release", "concurrent", "idempotency"),
-        "in-progress termination": ("termination", "in-progress"),
+        "approved in-progress termination": ("approved-release", "termination", "in-progress"),
         "rolling rollback": ("rolling", "rollback", "rollback-eligible"),
     }.items():
         require(any(all(term in item for term in terms) for item in lowered),
