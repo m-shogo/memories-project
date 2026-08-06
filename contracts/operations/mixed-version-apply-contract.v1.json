@@ -2,7 +2,7 @@
   "contractId": "memory-os.operability.mixed-version-apply.v1",
   "schemaVersion": "memory-os-mixed-version-apply.v1",
   "resultsSchemaVersion": "memory-os-mixed-version-apply-results.v1",
-  "description": "Exact-source two-process compatibility drill proving that a pinned historical candidate and current Import API can mutate, replay and concurrently contend for persisted Apply idempotency claims on one current expanded PostgreSQL schema. The candidate remains explicitly non-release evidence.",
+  "description": "Exact-source two-process compatibility drill proving that a pinned historical candidate and current Import API can mutate, replay, concurrently contend for and safely recover an interrupted persisted Apply idempotency claim on one current expanded PostgreSQL schema. The candidate remains explicitly non-release evidence.",
   "oldBackendCommitSha": "2af6e8e10755cc707c6bdd958a049a0f4afb3d70",
   "oldBackendClassification": "HISTORICAL_CANDIDATE_NOT_APPROVED_RELEASE",
   "fixtureGenerator": "services/import-api/cmd/memory-os-mixed-version-fixture/main.go",
@@ -20,7 +20,11 @@
     "reusing Preview A idempotency key for Preview B is rejected as conflict",
     "sequential scenarios leave exactly two applied claims and two memory items with no in-progress claim",
     "historical candidate and current process simultaneously Apply Preview C with one idempotency key and converge on one Apply ID with one first application and one replay",
-    "after the concurrent race exactly three applied claims, three memory items and three source Previews remain with one claim and one memory item for Preview C and zero in-progress claims"
+    "after the concurrent race exactly three applied claims, three memory items and three source Previews remain with one claim and one memory item for Preview C and zero in-progress claims",
+    "a test-only advisory-lock boundary proves historical Apply for Preview D is inside its PostgreSQL transaction before memory materialization and the historical process is then SIGKILLed",
+    "the killed historical transaction leaves zero Apply claims, zero memory items and zero in-progress residue for Preview D",
+    "the current process accepts the same historical-issued session, Preview D and idempotency key after process death and creates exactly one durable claim and memory item",
+    "after recovery exactly four applied claims, four memory items and four distinct source Previews remain with zero in-progress claims"
   ],
   "successCriteria": {
     "oldFirstApplyStatus": 200,
@@ -39,6 +43,16 @@
     "concurrentOldCurrentClaimRaceReplaySplit": true,
     "concurrentOldCurrentClaimRaceApplyIdStable": true,
     "concurrentOldCurrentClaimRacePassed": true,
+    "oldProcessTerminationWaitObserved": true,
+    "oldProcessKilledDuringInProgressApply": true,
+    "terminatedAttemptHttpFailed": true,
+    "terminatedAttemptApplyRows": 0,
+    "terminatedAttemptMemoryRows": 0,
+    "terminatedAttemptInProgressRows": 0,
+    "currentRecoveryStatus": 200,
+    "currentRecoveryReplayed": false,
+    "currentRecoveryCreatedCount": 1,
+    "oldProcessTerminationRecoveryPassed": true,
     "applyConfirmationRows": 2,
     "memoryItemRows": 2,
     "distinctSourcePreviews": 2,
@@ -49,6 +63,12 @@
     "finalInProgressApplyRows": 0,
     "racedPreviewApplyConfirmationRows": 1,
     "racedPreviewMemoryItemRows": 1,
+    "postTerminationRecoveryApplyConfirmationRows": 4,
+    "postTerminationRecoveryMemoryItemRows": 4,
+    "postTerminationRecoveryDistinctSourcePreviews": 4,
+    "postTerminationRecoveryInProgressRows": 0,
+    "recoveredPreviewApplyConfirmationRows": 1,
+    "recoveredPreviewMemoryItemRows": 1,
     "sameRequestHashStableAcrossVersions": true,
     "noDuplicateMaterialization": true
   },
@@ -63,6 +83,9 @@
     "simultaneous old/current claims do not both return success after contention",
     "concurrent claims do not split into exactly one first application and one replay",
     "concurrent claims return different Apply IDs or materialize more than one memory item",
+    "historical Apply does not reach the observed blocked in-transaction boundary before process termination",
+    "the killed historical transaction leaves any Apply claim, memory item or in-progress residue",
+    "current recovery of the exact historical request does not create exactly one durable claim and memory item",
     "any Apply claim remains in progress",
     "result would contain a token, database URL, account, job, Preview or idempotency identifier"
   ],
@@ -75,6 +98,8 @@
     "rollbackEvidence": false,
     "concurrentClaimRaceEvidence": true,
     "concurrentClaimRaceClass": "HISTORICAL_CANDIDATE_CURRENT_EPHEMERAL_SHARED_SCHEMA",
+    "inProgressProcessTerminationEvidence": true,
+    "inProgressProcessTerminationClass": "HISTORICAL_CANDIDATE_TO_CURRENT_EPHEMERAL_POSTGRES_TRANSACTION_ROLLBACK",
     "productionReady": false
   },
   "privacy": {
@@ -87,7 +112,8 @@
   "limitations": [
     "historical candidate is not an approved predecessor release",
     "one simultaneous old/current claim race only",
-    "no process death during in-progress Apply",
+    "one historical-process SIGKILL at a test-only advisory-lock boundary before memory materialization",
+    "no host failure, network partition or production connection pool",
     "no rolling traffic drain or application rollback",
     "no destructive contract migration or downgrade",
     "ephemeral PostgreSQL 16 and MinIO only",
@@ -102,9 +128,9 @@
     "exactSourcePassResultCommitted": true,
     "approvedReleasePairAvailable": false,
     "concurrentClaimRaceExecuted": true,
+    "inProgressProcessTerminationExecuted": true,
     "rollbackRehearsalExecuted": false,
-    "productionReady": false,
-    "inProgressProcessTerminationExecuted": true
+    "productionReady": false
   },
   "evidenceRefs": [
     "contracts/operations/mixed-version-apply-contract.v1.json",
