@@ -1,0 +1,106 @@
+{
+  "contractId": "memory-os.operability.release-baseline-registry.v1",
+  "schemaVersion": "memory-os-release-baseline-registry-contract.v1",
+  "description": "Binding append-only registry contract for approved Memory OS release baselines. Historical candidates, CI-compatible commits and branch heads are never release baselines by implication. A record exists only after named multi-role approval and immutable compatibility, recovery and artifact evidence are present.",
+  "registryPath": "contracts/operations/release-baseline-registry.v1.json",
+  "canonicalRunbook": "docs/evidence/releases/README.md",
+  "validator": "scripts/validate-memory-os-release-baseline-registry.py",
+  "writer": "scripts/register-memory-os-release-baseline.py",
+  "recordSchemaVersion": "memory-os-release-baseline-record.v1",
+  "appendOnly": true,
+  "productionDecision": "NO_GO",
+  "requiredFields": [
+    "schemaVersion",
+    "releaseId",
+    "releaseTag",
+    "commitSha",
+    "approvedAt",
+    "approvalClass",
+    "approvers",
+    "apiContractSha256",
+    "migrationSequenceSha256",
+    "parserArtifactSetSha256",
+    "runtimeConfigurationSchemaSha256",
+    "compatibilityEvidenceRefs",
+    "restoreEvidenceRefs",
+    "securityEvidenceRefs",
+    "rollbackEligibility",
+    "openRisks"
+  ],
+  "approvalPolicy": {
+    "approvalClass": "PRODUCTION_RELEASE_BASELINE",
+    "minimumDistinctApprovers": 3,
+    "requiredRoles": [
+      "SECURITY_REVIEWER",
+      "OPERABILITY_REVIEWER",
+      "RELEASE_OWNER"
+    ],
+    "selfApprovalForbidden": true,
+    "candidateCommitIsInsufficient": true,
+    "ciPassIsInsufficient": true,
+    "tagAloneIsInsufficient": true,
+    "branchHeadIsInsufficient": true,
+    "productionTrafficIsForbiddenBeforeRegistration": true
+  },
+  "requiredEvidenceClasses": [
+    "current exact-source security and authorization evidence",
+    "approved old/current mixed-version compatibility evidence",
+    "isolated restore and non-resurrection evidence",
+    "migration recovery-point and operator evidence",
+    "parser artifact registry and retention evidence",
+    "load, capacity and operational alert evidence",
+    "known open risks with named owners and deadlines"
+  ],
+  "rollbackEligibility": {
+    "allowedValues": [
+      "ELIGIBLE",
+      "CONDITIONALLY_ELIGIBLE",
+      "NOT_ELIGIBLE"
+    ],
+    "eligibleRequires": [
+      "binary starts against the expanded target schema",
+      "security, tenant, deletion and idempotency invariants remain valid",
+      "required parser artifacts and exact object versions remain retained",
+      "no destructive contract migration has removed required surfaces",
+      "rollback operation and recovery decision are reviewed"
+    ],
+    "unknownMeans": "NOT_ELIGIBLE"
+  },
+  "forbiddenRecordContent": [
+    "credentials or tokens",
+    "database or object-store connection URLs",
+    "raw user or imported content",
+    "account, session, job, preview or object identifiers",
+    "unhashed environment-specific infrastructure identities",
+    "claims that candidate or local CI evidence is production evidence"
+  ],
+  "registrationGuards": [
+    "repository HEAD equals the requested commit SHA",
+    "working tree is clean",
+    "release ID and tag have never been registered",
+    "commit SHA has never been registered under another release",
+    "all evidence references are repository-relative existing files",
+    "all required SHA-256 bindings are lowercase 64-character digests",
+    "approval roles are complete and assigned to distinct approver identifiers",
+    "release record states productionReady false when any required evidence is incomplete",
+    "registry update uses exclusive creation semantics and reviewable commit history"
+  ],
+  "readiness": {
+    "contractDefined": true,
+    "registryImplemented": true,
+    "validatorImplemented": true,
+    "writerImplemented": false,
+    "approvedReleaseCount": 0,
+    "approvedPredecessorAvailable": false,
+    "rollbackEligibleReleaseAvailable": false,
+    "independentReviewCompleted": false,
+    "productionReady": false,
+    "note": "The registry authority is defined, but no release is approved. Historical candidate compatibility remains candidate-only and cannot satisfy approved predecessor or rollback evidence."
+  },
+  "evidenceRefs": [
+    "contracts/operations/release-baseline-registry-contract.v1.json",
+    "contracts/operations/release-baseline-registry.v1.json",
+    "docs/evidence/releases/README.md",
+    "scripts/validate-memory-os-release-baseline-registry.py"
+  ]
+}
