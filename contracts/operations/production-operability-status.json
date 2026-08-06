@@ -23,16 +23,17 @@
         "binding EXPAND_MIGRATE_CONTRACT lifecycle with forward-fix as the default recovery after committed additive changes",
         "canonical full-filename migration registry covering the current PostgreSQL security sequence",
         "operator runbook for preflight, expand, bounded backfill, mixed-version observation, contract and failure decisions",
-        "fail-closed validator for migration registry, policy, runbook and READY claims"
+        "fail-closed validator for migration registry, policy, runbook and READY claims",
+        "Security Contracts provisions a clean PostgreSQL 16 database, applies the complete canonical migration sequence and executes every SQL integration suite"
       ],
       "missingEvidence": [
-        "clean-database CI dry run of the complete canonical migration sequence",
         "production-shaped rehearsal with lock and runtime budgets",
         "automated recovery-point verification and append-only operator evidence record",
         "mixed-version deployment proof",
         "isolated restore linkage for destructive contract decisions"
       ],
       "evidenceRefs": [
+        ".github/workflows/security-contracts.yml",
         "contracts/operations/migration-lifecycle-contract.v1.json",
         "docs/runbooks/memory-os-migration-recovery.md",
         "scripts/validate-memory-os-migration-lifecycle.py"
