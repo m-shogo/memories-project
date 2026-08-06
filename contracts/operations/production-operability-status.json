@@ -110,13 +110,17 @@
         "HTTP, rate-limit and deletion-worker boundaries instrumented; a nil recorder is a no-op and recorder panics are isolated from the request path",
         "machine-readable metrics contract (names, types, units, labels, provisional buckets, budgets, privacy class), 17 SLIs, 3 PROPOSED SLOs and 7 NOT_CONFIGURED alert candidates",
         "fail-closed validator cross-checking the contract against the Go registry with a 14-case negative fixture, proven to fail on drift and on a non-rejecting negative case",
-        "privacy, cardinality-flood and panic-isolation tests over the registry and the HTTP export"
+        "privacy, cardinality-flood and panic-isolation tests over the registry and the HTTP export",
+        "deterministic concurrency-safe Prometheus text exporter with TYPE directives and mandatory histogram +Inf buckets",
+        "fail-closed bearer-authenticated metrics scrape handler with constant-time digest comparison, no-store/nosniff responses and a bounded snapshot size",
+        "explicit default-disabled HTTP server metrics mount seam isolated from public API rate-limit buckets while remaining inside privacy-safe request observability"
       ],
       "missingEvidence": [
-        "Prometheus/OTel exporter and an exposed scrape endpoint",
         "dashboards and load-calibrated histogram buckets and SLO targets (depends on OPS-P0-006)",
         "alert routing, on-call and runbooks",
-        "metrics retention policy and an error-budget policy"
+        "metrics retention policy and an error-budget policy",
+        "production metrics scrape secret provisioning, private operational network policy and deliberate runtime mount",
+        "external Prometheus/OTel scraper integration and scrape availability monitoring"
       ],
       "evidenceRefs": [
         "services/import-api/internal/metrics/labels.go",
@@ -129,7 +133,15 @@
         "services/import-api/internal/httpserver/metrics_test.go",
         "contracts/operations/metrics-contract.v1.json",
         "docs/fixtures/memory-os-operability/metrics.negative.v1.json",
-        "scripts/validate-memory-os-metrics.py"
+        "scripts/validate-memory-os-metrics.py",
+        "contracts/operations/metrics-scrape-contract.v1.json",
+        "services/import-api/internal/metrics/prometheus.go",
+        "services/import-api/internal/metrics/scrape.go",
+        "services/import-api/internal/metrics/prometheus_test.go",
+        "services/import-api/internal/httpserver/server.go",
+        "services/import-api/internal/httpserver/metrics_scrape_test.go",
+        "scripts/validate-memory-os-metrics-scrape.py",
+        "scripts/reconcile-memory-os-metrics-scrape-status.py"
       ]
     },
     {
