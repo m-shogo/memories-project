@@ -22,7 +22,7 @@ permissions:
 
 concurrency:
   group: regenerate-live-dependency-load-v2-so
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   regenerate:
