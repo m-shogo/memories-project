@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "incident-control-exercise",
+  "sourceCommitSha": "f63de25d1d9528b730c44978b25d10a42ba07bd0",
+  "result": "FAIL",
+  "exitCode": 1,
+  "validationResult": "NOT_RUN",
+  "validationExitCode": null,
+  "output": "INCIDENT CONTROL EXERCISE FAILED: one or more incident control scenarios failed\n",
+  "containsSecrets": false,
+  "productionEvidence": false,
+  "humanTabletopCompleted": false
+}
