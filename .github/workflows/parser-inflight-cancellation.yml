@@ -1,0 +1,215 @@
+name: Parser In-Flight Cancellation
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/parser-inflight-cancellation.yml"
+      - "contracts/operations/parser-inflight-cancellation-contract.v1.json"
+      - "services/import-api/internal/parsersup/supervisor_linux.go"
+      - "services/import-api/internal/parsersup/worker.go"
+      - "services/import-api/internal/parsersup/inflight_cancellation_drill_linux_test.go"
+      - "scripts/validate-memory-os-parser-inflight-cancellation.py"
+      - "scripts/reconcile-memory-os-parser-inflight-cancellation.py"
+  schedule:
+    - cron: "41 20 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: parser-inflight-cancellation-so
+  cancel-in-progress: false
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout latest so
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: services/import-api/go.sum
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm exact clean source
+        run: |
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+
+      - name: Compile validator and check formatting
+        run: |
+          python -m py_compile \
+            scripts/validate-memory-os-parser-inflight-cancellation.py \
+            scripts/reconcile-memory-os-parser-inflight-cancellation.py
+          test -z "$(gofmt -l \
+            services/import-api/internal/parsersup/supervisor_linux.go \
+            services/import-api/internal/parsersup/worker.go \
+            services/import-api/internal/parsersup/inflight_cancellation_drill_linux_test.go)"
+          python scripts/validate-memory-os-parser-inflight-cancellation.py
+
+      - name: Execute exact-source in-flight cancellation drill
+        id: drill
+        run: |
+          python - <<'PY'
+          import datetime as dt
+          import json
+          import os
+          import re
+          import subprocess
+          import time
+          from pathlib import Path
+
+          root = Path.cwd()
+          workdir = root / "services/import-api"
+          source_sha = subprocess.check_output(
+              ["git", "rev-parse", "HEAD"], cwd=root, text=True
+          ).strip()
+          command = [
+              "go", "test", "-v", "./internal/parsersup",
+              "-run", "^TestSupervisorCancelsStartedWorkerPromptly$", "-count=1",
+          ]
+          started = time.monotonic()
+          completed = subprocess.run(
+              command,
+              cwd=workdir,
+              text=True,
+              stdout=subprocess.PIPE,
+              stderr=subprocess.STDOUT,
+              check=False,
+          )
+          duration = round(time.monotonic() - started, 6)
+          match = re.search(r"MEMORY_OS_CANCELLATION_LATENCY_MS=(\d+)", completed.stdout)
+          latency_ms = int(match.group(1)) if match else None
+          success = (
+              completed.returncode == 0
+              and latency_ms is not None
+              and 0 <= latency_ms < 1000
+          )
+          generated_at = dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z")
+
+          diagnostic = {
+              "schemaVersion": "memory-os-validator-diagnostic.v1",
+              "workflow": "parser-inflight-cancellation",
+              "sourceCommitSha": source_sha,
+              "result": "PASS" if success else "FAIL",
+              "exitCode": completed.returncode,
+              "durationSeconds": duration,
+              "cancellationLatencyMilliseconds": latency_ms,
+              "output": completed.stdout[-4000:],
+              "containsSecrets": False,
+              "productionEvidence": False,
+          }
+          diagnostic_path = root / "docs/fixtures/memory-os-operability/parser-inflight-cancellation-diagnostic.last.json"
+          diagnostic_path.parent.mkdir(parents=True, exist_ok=True)
+          diagnostic_path.write_text(
+              json.dumps(diagnostic, indent=2, ensure_ascii=False) + "\n",
+              encoding="utf-8",
+          )
+
+          if success:
+              result = {
+                  "schemaVersion": "memory-os-parser-inflight-cancellation-results.v1",
+                  "commitSha": source_sha,
+                  "generatedAt": generated_at,
+                  "environment": {
+                      "mode": "GITHUB_ACTIONS_UBUNTU_LINUX",
+                      "productionEvidence": False,
+                      "syntheticDataOnly": True,
+                      "containsSecrets": False,
+                  },
+                  "result": "PASS",
+                  "integrityResult": "PASS",
+                  "exitCode": 0,
+                  "durationSeconds": duration,
+                  "assertions": {
+                      "workerFrameObservedBeforeCancel": True,
+                      "spoolDataObservedBeforeCancel": True,
+                      "returnedContextCanceled": True,
+                      "cancellationLatencyMilliseconds": latency_ms,
+                      "configuredWallClockMilliseconds": 10000,
+                      "spoolResidueAbsent": True,
+                      "sameSpoolReusable": True,
+                      "replacementSealValid": True,
+                      "independentVerificationMatched": True,
+                  },
+                  "limitations": [
+                      "child-process orphan scan not measured",
+                      "host restart not executed",
+                      "production artifact not exercised",
+                      "not production chaos evidence",
+                      "one worker process in one process group",
+                      "Linux GitHub Actions CI only",
+                  ],
+              }
+              result_path = root / "docs/fixtures/memory-os-operability/parser-inflight-cancellation-results.sample.v1.json"
+              result_path.write_text(
+                  json.dumps(result, indent=2, ensure_ascii=False) + "\n",
+                  encoding="utf-8",
+              )
+
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"source_sha={source_sha}\n")
+              output.write(f"success={'true' if success else 'false'}\n")
+          PY
+
+      - name: Validate generated exact-source evidence
+        if: steps.drill.outputs.success == 'true'
+        env:
+          EXPECTED_COMMIT_SHA: ${{ steps.drill.outputs.source_sha }}
+        run: python scripts/validate-memory-os-parser-inflight-cancellation.py
+
+      - name: Commit result or bounded diagnostic
+        run: |
+          git add docs/fixtures/memory-os-operability/parser-inflight-cancellation-diagnostic.last.json
+          if [ "${{ steps.drill.outputs.success }}" = "true" ]; then
+            git add docs/fixtures/memory-os-operability/parser-inflight-cancellation-results.sample.v1.json
+          fi
+          if git diff --cached --quiet; then
+            echo "In-flight cancellation evidence is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            if [ "${{ steps.drill.outputs.success }}" = "true" ]; then
+              git commit -m "test(chaos): record exact-source in-flight parser cancellation"
+            else
+              git commit -m "test(chaos): record in-flight parser cancellation diagnostic"
+            fi
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+
+      - name: Reconcile in-flight cancellation authority
+        if: steps.drill.outputs.success == 'true'
+        run: |
+          python scripts/reconcile-memory-os-parser-inflight-cancellation.py
+          python scripts/validate-memory-os-parser-inflight-cancellation.py
+          python scripts/validate-memory-os-operability.py
+          git add contracts/operations/production-operability-status.json
+          if git diff --cached --quiet; then
+            echo "In-flight cancellation authority is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(chaos): reconcile in-flight parser cancellation evidence"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+
+      - name: Fail when the in-flight cancellation drill failed
+        if: steps.drill.outputs.success != 'true'
+        run: exit 1
