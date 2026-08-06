@@ -125,16 +125,19 @@
         "explicit default-disabled HTTP server metrics mount seam isolated from public API rate-limit buckets while remaining inside privacy-safe request observability",
         "four provider-neutral operational dashboard specifications covering service overview, authentication/abuse, dependencies/import and deletion safety",
         "binding privacy-safe metrics retention tiers (30-day native, 180-day five-minute and 730-day daily rollups) with change-control requirements",
-        "error-budget policy with approved-SLO activation gates, data-gap safety and non-budgetable security, integrity, deletion-resurrection and data-loss events"
+        "error-budget policy with approved-SLO activation gates, data-gap safety and non-budgetable security, integrity, deletion-resurrection and data-loss events",
+        "seven provider-neutral Prometheus alert rules bound one-to-one to the primary metrics alert candidates",
+        "canonical privacy-safe response runbook covering HTTP 5xx, panic, Apple exchange, rate-limit store, database and deletion alerts",
+        "generated Prometheus rule file with stable alert IDs and explicit provisional-threshold labels"
       ],
       "missingEvidence": [
-        "alert routing, on-call and runbooks",
         "production metrics scrape secret provisioning, private operational network policy and deliberate runtime mount",
         "external Prometheus/OTel scraper integration and scrape availability monitoring",
         "provider dashboard generation/deployment, metrics data-source wiring and operator review",
         "load-calibrated histogram buckets and approved SLO targets (depends on OPS-P0-006)",
         "metrics backend retention tiers, recording rules, ingestion freshness monitoring and retention-deletion verification",
-        "error-budget burn-rate automation remains inactive until SLO approval, owner assignment and validated production data"
+        "error-budget burn-rate automation remains inactive until SLO approval, owner assignment and validated production data",
+        "production alert routing, paging delivery, on-call ownership, acknowledgement/escalation targets, inhibition rules and delivery/response drills"
       ],
       "evidenceRefs": [
         "services/import-api/internal/metrics/labels.go",
@@ -159,7 +162,12 @@
         "contracts/operations/metrics-dashboard-contract.v1.json",
         "contracts/operations/metrics-retention-error-budget-contract.v1.json",
         "scripts/validate-memory-os-metrics-operations.py",
-        "scripts/reconcile-memory-os-metrics-operations.py"
+        "scripts/reconcile-memory-os-metrics-operations.py",
+        "contracts/operations/metrics-alerting-contract.v1.json",
+        "infra/observability/prometheus/memory-os-alerts.yml",
+        "docs/runbooks/memory-os-metrics-alerts.md",
+        "scripts/validate-memory-os-metrics-alerting.py",
+        "scripts/reconcile-memory-os-metrics-alerting.py"
       ]
     },
     {

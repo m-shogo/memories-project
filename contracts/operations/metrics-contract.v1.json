@@ -885,7 +885,7 @@
       "condition": "elevated 5xx ratio over a short window",
       "severity": "high",
       "routingStatus": "NOT_CONFIGURED",
-      "runbook": null
+      "runbook": "docs/runbooks/memory-os-metrics-alerts.md#alert-http-5xx-burst"
     },
     {
       "id": "alert_panic_detected",
@@ -893,7 +893,7 @@
       "condition": "any recovered HTTP panic",
       "severity": "high",
       "routingStatus": "NOT_CONFIGURED",
-      "runbook": null
+      "runbook": "docs/runbooks/memory-os-metrics-alerts.md#alert-panic-detected"
     },
     {
       "id": "alert_apple_exchange_failure_spike",
@@ -901,7 +901,7 @@
       "condition": "Apple exchange failure ratio spike",
       "severity": "medium",
       "routingStatus": "NOT_CONFIGURED",
-      "runbook": null
+      "runbook": "docs/runbooks/memory-os-metrics-alerts.md#alert-apple-exchange-failure-spike"
     },
     {
       "id": "alert_rate_limit_store_failing",
@@ -909,7 +909,7 @@
       "condition": "rate-limit store failures observed",
       "severity": "high",
       "routingStatus": "NOT_CONFIGURED",
-      "runbook": null
+      "runbook": "docs/runbooks/memory-os-metrics-alerts.md#alert-rate-limit-store-failing"
     },
     {
       "id": "alert_db_failing",
@@ -917,7 +917,7 @@
       "condition": "database failure rate elevated",
       "severity": "high",
       "routingStatus": "NOT_CONFIGURED",
-      "runbook": null
+      "runbook": "docs/runbooks/memory-os-metrics-alerts.md#alert-db-failing"
     },
     {
       "id": "alert_deletion_backlog_stuck",
@@ -925,7 +925,7 @@
       "condition": "deletion backlog stuck above threshold",
       "severity": "high",
       "routingStatus": "NOT_CONFIGURED",
-      "runbook": null
+      "runbook": "docs/runbooks/memory-os-metrics-alerts.md#alert-deletion-backlog-stuck"
     },
     {
       "id": "alert_deletion_terminal_failure",
@@ -933,7 +933,7 @@
       "condition": "any deletion terminal failure",
       "severity": "high",
       "routingStatus": "NOT_CONFIGURED",
-      "runbook": null
+      "runbook": "docs/runbooks/memory-os-metrics-alerts.md#alert-deletion-terminal-failure"
     }
   ],
   "readiness": {
@@ -943,7 +943,7 @@
     "alertRoutingConfigured": false,
     "retentionDefined": true,
     "loadCalibrated": false,
-    "note": "The typed registry, deterministic Prometheus exporter, authenticated default-disabled scrape mount seam, four provider-neutral dashboard specifications, retention tiers and error-budget policy are defined. Production mounting, secret/network provisioning, external scraping, dashboard/data-source deployment, retention backend configuration, alert routing, approved SLOs and load-calibrated thresholds remain missing. OPS-P0-004 is PARTIAL, not READY."
+    "note": "The typed registry, Prometheus exporter, authenticated default-disabled scrape seam, dashboard specifications, retention/error-budget policy, seven alert rules and canonical alert runbooks are defined. Production mounting, external scraping, dashboard/data-source deployment, retention backend configuration, alert routing/paging/on-call ownership, approved SLOs, promtool validation and load-calibrated thresholds remain missing. OPS-P0-004 is PARTIAL, not READY."
   },
   "evidenceRefs": [
     "services/import-api/internal/metrics/labels.go",
@@ -964,6 +964,11 @@
     "contracts/operations/metrics-dashboard-contract.v1.json",
     "contracts/operations/metrics-retention-error-budget-contract.v1.json",
     "scripts/validate-memory-os-metrics-operations.py",
-    "scripts/reconcile-memory-os-metrics-operations.py"
+    "scripts/reconcile-memory-os-metrics-operations.py",
+    "contracts/operations/metrics-alerting-contract.v1.json",
+    "infra/observability/prometheus/memory-os-alerts.yml",
+    "docs/runbooks/memory-os-metrics-alerts.md",
+    "scripts/validate-memory-os-metrics-alerting.py",
+    "scripts/reconcile-memory-os-metrics-alerting.py"
   ]
 }
