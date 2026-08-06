@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "reconcile-load-foundation-authorities",
+  "sourceCommitSha": "f45efcd9def7cba7275f783267f4ad17d0d40f12",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "STAGE: compile\nSTAGE: short-stability\nMemory OS short CI stability validation PASS\nsource: 166d023d03d6\nwindows: 6\nsustained soak evidence: False\nleak proof: False\nproduction decision: NO_GO\nMemory OS short CI stability validation PASS\nsource: 166d023d03d6\nwindows: 6\nsustained soak evidence: False\nleak proof: False\nproduction decision: NO_GO\nSHORT STABILITY STATUS RECONCILE FAILED: short sample cannot promote load readiness: sustainedSoak\n",
+  "containsSecrets": false,
+  "productionEvidence": false,
+  "capacityBoundaryEstablished": false,
+  "sustainedSoakEvidence": false,
+  "leakProof": false
+}
