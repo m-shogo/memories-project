@@ -161,17 +161,17 @@ func TestAuthenticatedPreviewCapacityRampLocalPostgres(t *testing.T) {
 	document.Scenario.FirstSaturationSignal = firstSaturationSignal
 	document.Scenario.Decision = "BOUNDARY_NOT_ESTABLISHED"
 	document.Scenario.Assertions = map[string]any{
-		"allStepsExecuted":                  len(steps) == len(concurrencySteps),
-		"allStepsNo5xx":                     allNo5xx,
-		"allStepsNoTransportErrors":         allNoTransport,
-		"allStepsAll2xx":                    all2xx,
-		"previewReadyRowsAfterRamp":         counts["previewReadyRowsAfterRamp"],
-		"previewCandidateRowsAfterRamp":     counts["previewCandidateRowsAfterRamp"],
-		"previewRejectionRowsAfterRamp":     counts["previewRejectionRowsAfterRamp"],
-		"productionEvidence":                false,
+		"allStepsExecuted":                 len(steps) == len(concurrencySteps),
+		"allStepsNo5xx":                    allNo5xx,
+		"allStepsNoTransportErrors":        allNoTransport,
+		"allStepsAll2xx":                   all2xx,
+		"previewReadyRowsAfterRamp":        counts["previewReadyRowsAfterRamp"],
+		"previewCandidateRowsAfterRamp":    counts["previewCandidateRowsAfterRamp"],
+		"previewRejectionRowsAfterRamp":    counts["previewRejectionRowsAfterRamp"],
+		"productionEvidence":               false,
 		"productionEquivalentDependencies": false,
-		"capacityBoundaryEstablished":       false,
-		"operationalThresholdApproved":      false,
+		"capacityBoundaryEstablished":      false,
+		"operationalThresholdApproved":     false,
 	}
 	document.Scenario.Result = "PASS"
 	document.Scenario.IntegrityResult = "PASS"
