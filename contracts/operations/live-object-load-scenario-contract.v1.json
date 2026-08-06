@@ -1,0 +1,45 @@
+{
+  "contractId": "memory-os.operability.live-object-load-scenario-contract.v1",
+  "schemaVersion": "memory-os-live-object-load-scenario.v1",
+  "resultsSchemaVersion": "memory-os-live-object-load-results.v1",
+  "description": "Machine-readable checkpoint for signed upload authorization, presigned PUT, exact object-version verification and scan enqueue over ephemeral PostgreSQL 16 and MinIO. This is local integration evidence, not production capacity evidence.",
+  "sourceWorkflow": ".github/workflows/regenerate-live-postgres-load-results.yml",
+  "resultPath": "docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json",
+  "dependencyMode": "LOCAL_POSTGRES_MINIO",
+  "productionEvidence": false,
+  "scenarios": [
+    {
+      "scenarioId": "signed-upload-lifecycle-local-minio-postgres",
+      "route": "POST authorization -> presigned PUT -> POST complete",
+      "workloadType": "STEADY",
+      "requests": 32,
+      "concurrency": 8,
+      "expectedStatusClasses": [
+        "2xx"
+      ],
+      "successCriteria": "all 32 complete upload lifecycles finish with HTTP 202, with no transport or 5xx failures",
+      "integrityCriteria": "32 consumed authorizations and 32 scan_pending quarantine rows exist with 32 distinct object keys and exact version ids",
+      "privacyClass": "operational_nonpersonal",
+      "evidenceRefs": [
+        "services/import-api/internal/httpserver/live_object_load_test.go",
+        "services/import-api/internal/httpserver/server_live_test.go",
+        "services/import-api/internal/upload/service.go",
+        "services/import-api/internal/objectstore/client.go",
+        "services/import-api/internal/pgrepo/upload.go"
+      ]
+    }
+  ],
+  "readiness": {
+    "signedAuthorizationMeasured": true,
+    "presignedPutMeasured": true,
+    "exactVersionVerificationMeasured": true,
+    "scanEnqueueMeasured": true,
+    "productionTLS": false,
+    "productionScopedCredentials": false,
+    "retentionLifecycleEvidence": false,
+    "sustainedSoakEvidence": false,
+    "capacityBoundaryEstablished": false,
+    "productionEquivalentDependencies": false,
+    "note": "This closes the object-store-not-measured blind spot only for an ephemeral MinIO integration harness. Production TLS, scoped credentials, retention/lifecycle, soak, saturation and production-equivalent evidence remain missing."
+  }
+}
