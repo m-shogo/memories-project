@@ -26,10 +26,12 @@ PRECISE_GAPS = (
     "coherent PostgreSQL and object-version recovery-point selection",
     "approved and measured RPO/RTO",
     "production deletion and expired-session non-resurrection verification after restore",
+    "production backup freshness monitoring, paging and independent review",
 )
 NEW_REFS = (
     "contracts/operations/backup-restore-contract.v1.json",
     "contracts/operations/local-logical-restore-contract.v1.json",
+    "contracts/operations/local-object-version-restore-contract.v1.json",
     "docs/runbooks/memory-os-backup-restore.md",
     "scripts/validate-memory-os-backup-restore.py",
     "scripts/reconcile-memory-os-backup-restore.py",
@@ -71,10 +73,9 @@ def main() -> int:
         "policyDefined", "protectedDomainsDefined", "restoreLifecycleDefined",
         "mandatoryVerificationDefined", "promotionGuardsDefined",
         "evidenceRecordDefined", "runbookDefined",
-        "localLogicalRestoreFoundationImplemented",
     ):
         require(readiness.get(foundation) is True,
-                f"backup foundation not validated: {foundation}")
+                f"backup policy foundation not validated: {foundation}")
     for unproven in (
         "rpoDefined", "rtoDefined", "postgresBackupConfigured",
         "postgresPitrConfigured", "objectIndependentRetentionConfigured",
@@ -134,6 +135,7 @@ def main() -> int:
         "PostgreSQL and object-version recovery-point",
         "approved and measured RPO/RTO",
         "production deletion and expired-session",
+        "backup freshness monitoring",
     ):
         require(any(required_gap in item for item in missing),
                 f"required OPS-P0-007 gap disappeared: {required_gap}")
