@@ -12,6 +12,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+SECURITY_WORKFLOW_PATH = ROOT / ".github/workflows/security-contracts.yml"
 EXPECTED_PHASES = [
     "PREFLIGHT",
     "EXPAND",
@@ -109,6 +110,22 @@ def main() -> int:
     )
     require(actual == sequence,
             f"canonical migration registry mismatch: expected={sequence}, actual={actual}")
+
+    try:
+        security_workflow = SECURITY_WORKFLOW_PATH.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise ValidationFailure("Security Contracts workflow is missing") from exc
+    require("image: postgres:16-alpine" in security_workflow,
+            "clean migration CI must use the PostgreSQL 16 service baseline")
+    positions: list[int] = []
+    for migration in sequence:
+        require(security_workflow.count(migration) == 1,
+                f"Security Contracts must apply {migration} exactly once")
+        positions.append(security_workflow.index(migration))
+    require(positions == sorted(positions),
+            "Security Contracts migration application order differs from the canonical registry")
+    require("psql --set=ON_ERROR_STOP=1" in security_workflow,
+            "clean migration CI must stop on the first SQL error")
 
     strategy = contract.get("strategy")
     require(isinstance(strategy, dict), "strategy must be an object")
@@ -250,7 +267,7 @@ def main() -> int:
 
     print("Memory OS migration lifecycle validation PASS")
     print(f"canonical migrations: {len(sequence)}")
-    print("clean PostgreSQL CI dry-run: configured")
+    print("clean PostgreSQL CI dry-run: configured and registry-ordered")
     print(f"OPS-P0-001 status: {area.get('status')}")
     print("production decision: NO_GO")
     return 0
