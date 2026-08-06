@@ -1,0 +1,334 @@
+{
+  "schemaVersion": "memory-os-incident-tabletop-plan.v1",
+  "generatedAt": "2026-08-06T00:00:00Z",
+  "productionEvidence": false,
+  "note": "These are PLANNED tabletop records only. Empty execution fields are intentional and must not be interpreted as completed drill evidence.",
+  "exercises": [
+    {
+      "exerciseId": "tabletop-ir-drill-001-v1",
+      "scenarioId": "IR-DRILL-001",
+      "status": "PLANNED",
+      "result": "NOT_RUN",
+      "plannedSeverity": "SEV0",
+      "objective": "Prove the team can fail closed, preserve evidence and independently verify tenant isolation and session authority after a credible cross-tenant Preview visibility report.",
+      "scope": [
+        "Preview read API",
+        "bearer-session authority",
+        "runtime role and FORCE RLS",
+        "privacy-safe scope assessment"
+      ],
+      "facilitator": "UNASSIGNED",
+      "participants": [],
+      "plannedInjects": [
+        {
+          "sequence": 1,
+          "inject": "A support report includes a correlation ID and claims another account's Preview was visible.",
+          "expectedDecision": "Declare provisional SEV0, assign incident command and stop affected reads/writes through a reviewed fail-closed control."
+        },
+        {
+          "sequence": 2,
+          "inject": "A privileged manual query can see both tenants, while runtime-role behavior remains unknown.",
+          "expectedDecision": "Do not treat privileged visibility as proof of runtime exposure; preserve evidence and reproduce through the deployment principal."
+        },
+        {
+          "sequence": 3,
+          "inject": "Runtime negative test shows one cross-tenant row is visible.",
+          "expectedDecision": "Maintain containment, revoke/fence affected authority as justified, scope impacted tenants and engage security/privacy review."
+        }
+      ],
+      "assumptions": [
+        "No user identity or raw content is included in the tabletop material.",
+        "The exercise uses synthetic accounts and privacy-safe identifiers."
+      ],
+      "safetyConstraints": [
+        "No production data mutation.",
+        "No unrestricted database URL, token or personal content in evidence.",
+        "No closure without an independent runtime-role negative test."
+      ],
+      "startedAt": null,
+      "completedAt": null,
+      "timeline": [],
+      "decisions": [],
+      "verificationResults": [],
+      "observedGaps": [],
+      "remediationItems": [],
+      "openRisks": [
+        "Paging and security/privacy contact ownership are not configured."
+      ],
+      "evidenceRefs": [],
+      "reviewers": []
+    },
+    {
+      "exerciseId": "tabletop-ir-drill-002-v1",
+      "scenarioId": "IR-DRILL-002",
+      "status": "PLANNED",
+      "result": "NOT_RUN",
+      "plannedSeverity": "SEV1",
+      "objective": "Prove PostgreSQL loss during Preview or Apply is contained without partial memory materialization or dishonest idempotency accounting.",
+      "scope": [
+        "Preview read",
+        "Apply transaction",
+        "idempotency confirmation",
+        "database backlog and recovery"
+      ],
+      "facilitator": "UNASSIGNED",
+      "participants": [],
+      "plannedInjects": [
+        {
+          "sequence": 1,
+          "inject": "PostgreSQL becomes unavailable while concurrent Apply requests are in flight.",
+          "expectedDecision": "Declare SEV1, stop or fail affected writes, preserve request/idempotency evidence and prohibit blind replay."
+        },
+        {
+          "sequence": 2,
+          "inject": "Database returns but one client retries the same idempotency key and another uses a new key.",
+          "expectedDecision": "Verify confirmation and memory-item accounting before allowing retries."
+        },
+        {
+          "sequence": 3,
+          "inject": "Health endpoint is green but Apply accounting has not been checked.",
+          "expectedDecision": "Refuse closure until independent database integrity and replay verification pass."
+        }
+      ],
+      "assumptions": [
+        "Synthetic Preview and account data are used.",
+        "Database interruption is simulated in an isolated environment."
+      ],
+      "safetyConstraints": [
+        "No production failover action.",
+        "No replay before idempotency/accounting verification.",
+        "No health-check-only recovery claim."
+      ],
+      "startedAt": null,
+      "completedAt": null,
+      "timeline": [],
+      "decisions": [],
+      "verificationResults": [],
+      "observedGaps": [],
+      "remediationItems": [],
+      "openRisks": [
+        "Production failover and isolated restore have not been rehearsed."
+      ],
+      "evidenceRefs": [],
+      "reviewers": []
+    },
+    {
+      "exerciseId": "tabletop-ir-drill-003-v1",
+      "scenarioId": "IR-DRILL-003",
+      "status": "PLANNED",
+      "result": "NOT_RUN",
+      "plannedSeverity": "SEV1",
+      "objective": "Prove an object-store outage or exact-version mismatch cannot move unverified content into parsing and that ambiguous versions remain preserved.",
+      "scope": [
+        "signed upload authorization",
+        "presigned PUT",
+        "exact object version and checksum verification",
+        "scan enqueue"
+      ],
+      "facilitator": "UNASSIGNED",
+      "participants": [],
+      "plannedInjects": [
+        {
+          "sequence": 1,
+          "inject": "Upload succeeds but completion cannot read authoritative object metadata.",
+          "expectedDecision": "Fail completion closed, preserve authorization and object versions, and stop parsing."
+        },
+        {
+          "sequence": 2,
+          "inject": "A later object version exists at the same key with different content.",
+          "expectedDecision": "Use only the authorization-bound exact version; never substitute latest."
+        },
+        {
+          "sequence": 3,
+          "inject": "Lifecycle cleanup is scheduled while scope is uncertain.",
+          "expectedDecision": "Pause cleanup that could erase evidence and record retention risk."
+        }
+      ],
+      "assumptions": [
+        "The exercise uses versioned synthetic MinIO objects.",
+        "No production retention policy is changed."
+      ],
+      "safetyConstraints": [
+        "No parsing of unverified bytes.",
+        "No deletion of ambiguous object versions.",
+        "No claim that local MinIO reproduces production controls."
+      ],
+      "startedAt": null,
+      "completedAt": null,
+      "timeline": [],
+      "decisions": [],
+      "verificationResults": [],
+      "observedGaps": [],
+      "remediationItems": [],
+      "openRisks": [
+        "Production TLS, scoped credentials and retention controls are not proven."
+      ],
+      "evidenceRefs": [],
+      "reviewers": []
+    },
+    {
+      "exerciseId": "tabletop-ir-drill-004-v1",
+      "scenarioId": "IR-DRILL-004",
+      "status": "PLANNED",
+      "result": "NOT_RUN",
+      "plannedSeverity": "SEV1",
+      "objective": "Prove the team can distinguish transaction rollback, application rollback and forward-fix after a committed migration or mixed-version incompatibility.",
+      "scope": [
+        "migration preflight",
+        "expand/migrate/contract phases",
+        "old/new application compatibility",
+        "recovery-point decision"
+      ],
+      "facilitator": "UNASSIGNED",
+      "participants": [],
+      "plannedInjects": [
+        {
+          "sequence": 1,
+          "inject": "An additive migration commits and the new application version fails startup.",
+          "expectedDecision": "Confirm whether the old application remains compatible; choose application rollback or forward-fix explicitly."
+        },
+        {
+          "sequence": 2,
+          "inject": "A backfill partially writes valid rows and then encounters ambiguous data.",
+          "expectedDecision": "Pause, preserve checkpoint and ambiguity, and forward-fix rather than mark rows complete."
+        },
+        {
+          "sequence": 3,
+          "inject": "A destructive contract step has already committed.",
+          "expectedDecision": "Escalate to incident command for forward-fix or isolated restore review; never assume a down migration is safe."
+        }
+      ],
+      "assumptions": [
+        "The exercise uses an isolated PostgreSQL environment.",
+        "The canonical migration registry is available."
+      ],
+      "safetyConstraints": [
+        "No production migration.",
+        "No destructive down migration.",
+        "No contract decision without recovery-point ownership."
+      ],
+      "startedAt": null,
+      "completedAt": null,
+      "timeline": [],
+      "decisions": [],
+      "verificationResults": [],
+      "observedGaps": [],
+      "remediationItems": [],
+      "openRisks": [
+        "Mixed-version behavior and production lock budgets are not proven."
+      ],
+      "evidenceRefs": [],
+      "reviewers": []
+    },
+    {
+      "exerciseId": "tabletop-ir-drill-005-v1",
+      "scenarioId": "IR-DRILL-005",
+      "status": "PLANNED",
+      "result": "NOT_RUN",
+      "plannedSeverity": "SEV0",
+      "objective": "Prove a restore that resurrects deleted records or expired/revoked sessions remains isolated and cannot serve users.",
+      "scope": [
+        "account-control epoch",
+        "memory and Preview deletion",
+        "session expiry and revocation",
+        "object-version retention",
+        "isolated restore"
+      ],
+      "facilitator": "UNASSIGNED",
+      "participants": [],
+      "plannedInjects": [
+        {
+          "sequence": 1,
+          "inject": "An isolated restore contains a previously deleted account's memory items.",
+          "expectedDecision": "Declare SEV0, keep restore isolated, preserve evidence and verify deletion epoch/state."
+        },
+        {
+          "sequence": 2,
+          "inject": "A session that had expired before the recovery point authenticates in the restored database.",
+          "expectedDecision": "Block user access and verify expiry/revocation reconstruction before any promotion."
+        },
+        {
+          "sequence": 3,
+          "inject": "Service health is green and an operator proposes promoting the restore.",
+          "expectedDecision": "Refuse promotion until memory, Preview, session and object non-resurrection checks pass independently."
+        }
+      ],
+      "assumptions": [
+        "Restore occurs in a network-isolated environment.",
+        "Synthetic deletion and session fixtures are available."
+      ],
+      "safetyConstraints": [
+        "Restored environment cannot serve normal users.",
+        "No evidence cleanup before scope is known.",
+        "No promotion based only on availability checks."
+      ],
+      "startedAt": null,
+      "completedAt": null,
+      "timeline": [],
+      "decisions": [],
+      "verificationResults": [],
+      "observedGaps": [],
+      "remediationItems": [],
+      "openRisks": [
+        "PITR configuration and isolated restore rehearsal are not implemented."
+      ],
+      "evidenceRefs": [],
+      "reviewers": []
+    },
+    {
+      "exerciseId": "tabletop-ir-drill-006-v1",
+      "scenarioId": "IR-DRILL-006",
+      "status": "PLANNED",
+      "result": "NOT_RUN",
+      "plannedSeverity": "SEV0",
+      "objective": "Prove a suspected parser escape or hostile payload compromise stops the affected artifact, preserves object/spool evidence and assesses host impact without broadening authority.",
+      "scope": [
+        "parser artifact digest",
+        "process-group and resource limits",
+        "network and credential isolation",
+        "source object and Preview spool",
+        "host impact"
+      ],
+      "facilitator": "UNASSIGNED",
+      "participants": [],
+      "plannedInjects": [
+        {
+          "sequence": 1,
+          "inject": "A worker exceeds its expected process boundary while parsing a hostile archive.",
+          "expectedDecision": "Declare SEV0, stop the artifact digest, quarantine object/spool state and preserve host evidence."
+        },
+        {
+          "sequence": 2,
+          "inject": "The worker environment unexpectedly contains a credential or reachable network path.",
+          "expectedDecision": "Treat authority exposure as confirmed scope expansion and rotate/restrict affected credentials."
+        },
+        {
+          "sequence": 3,
+          "inject": "A patched worker is available before host impact is understood.",
+          "expectedDecision": "Do not restart on the potentially affected host until independent host and containment verification completes."
+        }
+      ],
+      "assumptions": [
+        "The exercise uses synthetic hostile fixtures.",
+        "No production parser host is modified."
+      ],
+      "safetyConstraints": [
+        "No real malware execution.",
+        "No credential material in exercise evidence.",
+        "No restart before host impact classification."
+      ],
+      "startedAt": null,
+      "completedAt": null,
+      "timeline": [],
+      "decisions": [],
+      "verificationResults": [],
+      "observedGaps": [],
+      "remediationItems": [],
+      "openRisks": [
+        "Network namespace, seccomp and production container evidence remain missing."
+      ],
+      "evidenceRefs": [],
+      "reviewers": []
+    }
+  ]
+}
