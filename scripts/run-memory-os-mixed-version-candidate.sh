@@ -64,6 +64,7 @@ CURRENT_SCHEMA_BEFORE="$WORKTREE/current-schema-before.sql"
 CURRENT_SCHEMA_AFTER="$WORKTREE/current-schema-after.sql"
 
 cleanup() {
+  set +e
   git -C "$ROOT" worktree remove --force "$BASELINE_WORKTREE" >/dev/null 2>&1 || true
   rm -rf "$WORKTREE"
   if [[ "${MEMORY_OS_KEEP_MIXED_VERSION_DATABASES:-0}" != "1" ]]; then
@@ -96,20 +97,6 @@ PY
 )
 [[ "${#CURRENT_MIGRATIONS[@]}" -gt 0 ]] || fail "current migration sequence is empty"
 
-BASELINE_MIGRATION_CONTRACT="$BASELINE_WORKTREE/contracts/operations/migration-lifecycle-contract.v1.json"
-[[ -f "$BASELINE_MIGRATION_CONTRACT" ]] || fail "baseline migration contract is missing"
-mapfile -t BASELINE_MIGRATIONS < <(
-  python - "$BASELINE_MIGRATION_CONTRACT" <<'PY'
-import json
-import sys
-from pathlib import Path
-value = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
-for item in value['migrationSequence']:
-    print(item)
-PY
-)
-[[ "${#BASELINE_MIGRATIONS[@]}" -gt 0 ]] || fail "baseline migration sequence is empty"
-
 CURRENT_SQL_TESTS=()
 for migration in "${CURRENT_MIGRATIONS[@]}"; do
   migration_path="$CURRENT_MIGRATION_DIR/$migration"
@@ -119,11 +106,83 @@ for migration in "${CURRENT_MIGRATIONS[@]}"; do
   CURRENT_SQL_TESTS+=("$test_path")
 done
 
+# Prefer a baseline-owned migration registry when one exists. Older authority
+# points predate that registry, so their own Security Contracts workflow is the
+# canonical ordered record of SQL integration tests. Never infer the order from
+# directory sorting.
+BASELINE_MIGRATION_CONTRACT="$BASELINE_WORKTREE/contracts/operations/migration-lifecycle-contract.v1.json"
+BASELINE_SQL_ORDER_SOURCE=""
 BASELINE_SQL_TESTS=()
-for migration in "${BASELINE_MIGRATIONS[@]}"; do
-  test_path="$BASELINE_WORKTREE/infra/postgresql/security/test_${migration#*_}"
-  [[ -f "$test_path" ]] || fail "missing baseline SQL test: ${test_path##*/}"
-  BASELINE_SQL_TESTS+=("$test_path")
+if [[ -f "$BASELINE_MIGRATION_CONTRACT" ]]; then
+  mapfile -t BASELINE_MIGRATIONS < <(
+    python - "$BASELINE_MIGRATION_CONTRACT" <<'PY'
+import json
+import sys
+from pathlib import Path
+value = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
+for item in value['migrationSequence']:
+    print(item)
+PY
+  )
+  [[ "${#BASELINE_MIGRATIONS[@]}" -gt 0 ]] || fail "baseline migration sequence is empty"
+  for migration in "${BASELINE_MIGRATIONS[@]}"; do
+    test_path="$BASELINE_WORKTREE/infra/postgresql/security/test_${migration#*_}"
+    [[ -f "$test_path" ]] || fail "missing baseline SQL test: ${test_path##*/}"
+    BASELINE_SQL_TESTS+=("$test_path")
+  done
+  BASELINE_SQL_ORDER_SOURCE="BASELINE_MIGRATION_REGISTRY"
+else
+  BASELINE_SECURITY_WORKFLOW="$BASELINE_WORKTREE/.github/workflows/security-contracts.yml"
+  [[ -f "$BASELINE_SECURITY_WORKFLOW" ]] || \
+    fail "baseline has neither migration registry nor Security Contracts workflow"
+  mapfile -t BASELINE_TEST_NAMES < <(
+    python - "$BASELINE_SECURITY_WORKFLOW" <<'PY'
+import re
+import sys
+from pathlib import Path
+text = Path(sys.argv[1]).read_text(encoding='utf-8')
+pattern = re.compile(r"--file\s+infra/postgresql/security/(test_memory_os_[A-Za-z0-9_]+\.sql)")
+seen = set()
+for name in pattern.findall(text):
+    if name not in seen:
+        seen.add(name)
+        print(name)
+PY
+  )
+  [[ "${#BASELINE_TEST_NAMES[@]}" -gt 0 ]] || \
+    fail "baseline Security Contracts workflow contains no ordered SQL tests"
+  for name in "${BASELINE_TEST_NAMES[@]}"; do
+    test_path="$BASELINE_WORKTREE/infra/postgresql/security/$name"
+    [[ -f "$test_path" ]] || fail "baseline workflow references missing SQL test: $name"
+    BASELINE_SQL_TESTS+=("$test_path")
+  done
+  BASELINE_SQL_ORDER_SOURCE="BASELINE_SECURITY_CONTRACTS_WORKFLOW"
+fi
+
+# Only execute packages that exist in both exact source trees. The allowlist is
+# reviewed and intentionally small; a missing critical package fails rather
+# than silently reducing coverage.
+GO_PACKAGE_CANDIDATES=(
+  ./internal/authstore
+  ./internal/httpserver
+  ./internal/previewcommit
+  ./internal/importflow
+)
+GO_PACKAGES=()
+for package in "${GO_PACKAGE_CANDIDATES[@]}"; do
+  relative="${package#./}"
+  if [[ -d "$BASELINE_WORKTREE/services/import-api/$relative" && -d "$ROOT/services/import-api/$relative" ]]; then
+    GO_PACKAGES+=("$package")
+  fi
+done
+[[ "${#GO_PACKAGES[@]}" -ge 3 ]] || \
+  fail "fewer than three reviewed Go package surfaces exist in both source trees"
+for required in ./internal/httpserver ./internal/previewcommit ./internal/importflow; do
+  found=0
+  for package in "${GO_PACKAGES[@]}"; do
+    [[ "$package" == "$required" ]] && found=1
+  done
+  [[ "$found" == "1" ]] || fail "required common Go package is missing: $required"
 done
 
 psql --dbname postgres --set=ON_ERROR_STOP=1 --quiet <<SQL
@@ -153,15 +212,10 @@ done
 
 BASELINE_DATABASE_URL="postgres://$PGUSER:${PGPASSWORD:-}@${PGHOST}:$PGPORT/$BASELINE_DB?sslmode=disable"
 CURRENT_DATABASE_URL="postgres://$PGUSER:${PGPASSWORD:-}@${PGHOST}:$PGPORT/$CURRENT_DB?sslmode=disable"
-GO_PACKAGES=(
-  ./internal/authorization
-  ./internal/httpserver
-  ./internal/previewcommit
-  ./internal/importflow
-)
 (
   cd "$BASELINE_WORKTREE/services/import-api"
   MEMORY_OS_TEST_DATABASE_URL="$BASELINE_DATABASE_URL" \
+  MEMORY_OS_TEST_S3_ENDPOINT="${MEMORY_OS_TEST_S3_ENDPOINT:-http://127.0.0.1:9000}" \
   go test "${GO_PACKAGES[@]}" -count=1
 ) >/dev/null
 
@@ -177,6 +231,7 @@ done
 (
   cd "$ROOT/services/import-api"
   MEMORY_OS_TEST_DATABASE_URL="$CURRENT_DATABASE_URL" \
+  MEMORY_OS_TEST_S3_ENDPOINT="${MEMORY_OS_TEST_S3_ENDPOINT:-http://127.0.0.1:9000}" \
   go test "${GO_PACKAGES[@]}" -count=1
 ) >/dev/null
 
@@ -196,6 +251,7 @@ CURRENT_MIGRATION_COUNT="${#CURRENT_MIGRATIONS[@]}" \
 BASELINE_SQL_TEST_COUNT="${#BASELINE_SQL_TESTS[@]}" \
 CURRENT_SQL_TEST_COUNT="${#CURRENT_SQL_TESTS[@]}" \
 GO_PACKAGE_COUNT="${#GO_PACKAGES[@]}" \
+BASELINE_SQL_ORDER_SOURCE="$BASELINE_SQL_ORDER_SOURCE" \
 SCHEMA_SHA="$SCHEMA_AFTER_SHA" \
 RESULT_PATH="$RESULT_PATH" \
 python - <<'PY'
@@ -215,6 +271,7 @@ result = {
         'releaseCompatibilityEvidence': False,
         'candidateBaselineOnly': True,
         'containsSecrets': False,
+        'syntheticDataOnly': True,
         'databaseIdentityDigest': os.environ['DATABASE_IDENTITY_DIGEST'],
     },
     'scenario': {
@@ -227,6 +284,7 @@ result = {
         'currentSqlTestsExecuted': int(os.environ['CURRENT_SQL_TEST_COUNT']),
         'candidateBaselineGoPackagesExecuted': int(os.environ['GO_PACKAGE_COUNT']),
         'currentGoPackagesExecuted': int(os.environ['GO_PACKAGE_COUNT']),
+        'baselineSqlOrderSource': os.environ['BASELINE_SQL_ORDER_SOURCE'],
         'memoryOsSchemaFingerprintSha256': os.environ['SCHEMA_SHA'],
         'assertions': {
             'baselineIsAncestorOfCurrent': True,
@@ -243,7 +301,7 @@ result = {
     'limitations': [
         'candidate baseline is not an approved release',
         'single PostgreSQL 16 major version',
-        'separate databases rather than simultaneous mixed traffic',
+        'separate databases rather than simultaneous old/current traffic',
         'local MinIO rather than production object storage',
         'no rolling deployment order or connection-drain failure injection',
         'no downgrade or destructive contract migration',
