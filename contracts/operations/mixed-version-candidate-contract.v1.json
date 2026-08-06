@@ -1,0 +1,94 @@
+{
+  "contractId": "memory-os.operability.mixed-version-candidate.v1",
+  "schemaVersion": "memory-os-mixed-version-candidate.v1",
+  "resultsSchemaVersion": "memory-os-mixed-version-candidate-results.v1",
+  "description": "Exact-source CI compatibility drill between a pinned historical candidate baseline and current so. The baseline is explicitly not a release artifact. Current expanded PostgreSQL migrations are applied first; the baseline SQL and Go integration surfaces must still pass without changing the current memory_os schema fingerprint, then current tests must pass independently. This is a pre-release compatibility foundation, not rolling deployment, downgrade or production mixed-version evidence.",
+  "candidateBaseline": {
+    "commitSha": "a1f39560468ebd5d39c4dd7a336140cb455cf2e8",
+    "classification": "HISTORICAL_CANDIDATE_NOT_RELEASE",
+    "selectionReason": "Known exact so authority point before the current observability, recovery and chaos work; core import schema and backend existed, but no release approval is claimed.",
+    "mustBeAncestorOfCurrent": true,
+    "releaseApproved": false
+  },
+  "runner": "scripts/run-memory-os-mixed-version-candidate.sh",
+  "validator": "scripts/validate-memory-os-mixed-version-candidate.py",
+  "workflow": ".github/workflows/mixed-version-candidate.yml",
+  "reconcile": "scripts/reconcile-memory-os-mixed-version-candidate.py",
+  "resultPath": "docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json",
+  "diagnosticPath": "docs/fixtures/memory-os-operability/mixed-version-candidate-diagnostic.last.json",
+  "dependencyMode": "EPHEMERAL_POSTGRESQL_16_MINIO_TWO_DATABASE_CANDIDATE_BASELINE",
+  "requiredSteps": [
+    "verify candidate baseline is an ancestor of current exact source SHA",
+    "create a detached read-only worktree at the pinned candidate baseline",
+    "create separate baseline-compatibility and current-verification PostgreSQL databases",
+    "apply the current canonical migration sequence to both databases",
+    "capture the production memory_os schema fingerprint before baseline execution",
+    "execute the candidate baseline canonical SQL integration tests in its own migration order against the current expanded schema",
+    "execute candidate baseline Go tests for authorization, HTTP, Preview commit and import flow against the expanded schema and local MinIO",
+    "capture the production memory_os schema fingerprint after baseline execution and require equality",
+    "execute current canonical SQL and Go integration tests against the separate current database",
+    "write exact baseline/current SHAs and bounded counts without credentials or database URLs"
+  ],
+  "successCriteria": [
+    "candidate baseline is an ancestor of current source",
+    "both databases receive all current canonical migrations",
+    "all candidate baseline canonical SQL tests pass on current expanded schema",
+    "candidate baseline selected Go packages compile and pass",
+    "baseline execution does not change the current memory_os schema fingerprint",
+    "all current canonical SQL tests pass",
+    "current selected Go packages compile and pass",
+    "no secret, database URL, object key, token or user content enters evidence",
+    "result remains classified as candidate compatibility rather than release or production evidence"
+  ],
+  "abortCriteria": [
+    "baseline SHA is missing, not an ancestor or differs from the contract",
+    "source or target database identity is ambiguous",
+    "current migration sequence cannot apply cleanly",
+    "baseline worktree has local modifications",
+    "any baseline SQL or Go test fails",
+    "memory_os schema fingerprint changes after baseline execution",
+    "any current SQL or Go test fails",
+    "evidence would include credentials, connection URLs or user content"
+  ],
+  "evidenceBoundary": {
+    "productionEvidence": false,
+    "releaseCompatibilityEvidence": false,
+    "candidateBaselineOnly": true,
+    "rollingDeploymentEvidence": false,
+    "sharedLiveTrafficEvidence": false,
+    "downgradeEvidence": false,
+    "contractMigrationEvidence": false,
+    "productionReady": false
+  },
+  "privacy": {
+    "syntheticDataOnly": true,
+    "databaseUrlInEvidenceForbidden": true,
+    "credentialInEvidenceForbidden": true,
+    "rawWorktreePathInEvidenceForbidden": true,
+    "userContentInEvidenceForbidden": true,
+    "databaseIdentityStoredAsDigestOnly": true
+  },
+  "limitations": [
+    "candidate baseline is not an approved release",
+    "single PostgreSQL 16 major version",
+    "separate databases rather than simultaneous old/current traffic",
+    "local MinIO rather than production object storage",
+    "no rolling deployment order or connection-drain failure injection",
+    "no downgrade or destructive contract migration",
+    "not production mixed-version evidence"
+  ],
+  "readiness": {
+    "contractDefined": true,
+    "runnerImplemented": false,
+    "validatorImplemented": false,
+    "automaticWorkflowImplemented": false,
+    "exactSourcePassResultCommitted": false,
+    "approvedReleaseBaselineAvailable": false,
+    "simultaneousMixedTrafficExecuted": false,
+    "rollingDeploymentFailureExecuted": false,
+    "productionReady": false
+  },
+  "evidenceRefs": [
+    "contracts/operations/mixed-version-candidate-contract.v1.json"
+  ]
+}
