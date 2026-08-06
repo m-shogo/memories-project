@@ -1,0 +1,79 @@
+name: Release Baseline Registry
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/release-baseline-registry.yml"
+      - "contracts/operations/release-baseline-registry-contract.v1.json"
+      - "contracts/operations/release-baseline-registry.v1.json"
+      - "docs/evidence/releases/README.md"
+      - "scripts/validate-memory-os-release-baseline-registry.py"
+      - "scripts/reconcile-memory-os-release-baseline-registry.py"
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/release-baseline-registry.yml"
+      - "contracts/operations/release-baseline-registry-contract.v1.json"
+      - "contracts/operations/release-baseline-registry.v1.json"
+      - "docs/evidence/releases/README.md"
+      - "scripts/validate-memory-os-release-baseline-registry.py"
+      - "scripts/reconcile-memory-os-release-baseline-registry.py"
+  schedule:
+    - cron: "23 3 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-baseline-registry-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm clean source
+        run: |
+          test -z "$(git status --porcelain)"
+          python -m py_compile \
+            scripts/validate-memory-os-release-baseline-registry.py \
+            scripts/reconcile-memory-os-release-baseline-registry.py
+
+      - name: Validate approved release authority
+        run: python scripts/validate-memory-os-release-baseline-registry.py
+
+      - name: Reconcile empty registry foundation
+        if: github.event_name != 'pull_request'
+        run: |
+          python scripts/reconcile-memory-os-release-baseline-registry.py
+          python scripts/validate-memory-os-release-baseline-registry.py
+          python scripts/validate-memory-os-version-compatibility.py
+          python scripts/validate-memory-os-operability.py
+
+      - name: Commit reconciled status
+        if: github.event_name != 'pull_request'
+        run: |
+          git add contracts/operations/production-operability-status.json
+          if git diff --cached --quiet; then
+            echo "Release baseline registry authority is already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs(version): register empty release baseline authority"
+          git pull --rebase origin so
+          git push origin HEAD:so
