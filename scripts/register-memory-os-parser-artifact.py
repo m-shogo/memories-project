@@ -1,0 +1,301 @@
+#!/usr/bin/env python3
+"""Register one reviewed parser artifact under an exclusive repository lock."""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+CONTRACT_PATH = ROOT / "contracts/operations/parser-artifact-registry-contract.v1.json"
+REGISTRY_PATH = ROOT / "contracts/operations/parser-artifact-registry.v1.json"
+RELEASE_REGISTRY_PATH = ROOT / "contracts/operations/release-baseline-registry.v1.json"
+LOCK_PATH = ROOT / "contracts/operations/.parser-artifact-registry.lock"
+CONFIRMATION = "REGISTER REVIEWED PARSER ARTIFACT"
+DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
+ARTIFACT_ID_RE = re.compile(r"^par_[a-z0-9][a-z0-9._-]{7,95}$")
+ADAPTER_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,63}$")
+VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$")
+APPROVER_RE = re.compile(r"^apr_[a-z0-9][a-z0-9_-]{7,63}$")
+REQUIRED_ROLES = {"SECURITY_REVIEWER", "RUNTIME_REVIEWER", "RELEASE_OWNER"}
+RETENTION_STATES = {"RETAINED", "RETENTION_PENDING", "RETIRED_BLOCKED_FROM_ROLLBACK"}
+
+
+class RegistrationFailure(RuntimeError):
+    pass
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise RegistrationFailure(message)
+
+
+def load(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise RegistrationFailure(f"missing file: {path}") from exc
+    except json.JSONDecodeError as exc:
+        raise RegistrationFailure(f"invalid JSON: {path}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be an object: {path}")
+    return value
+
+
+def git(*arguments: str) -> str:
+    completed = subprocess.run(
+        ["git", *arguments], cwd=ROOT, text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+    )
+    require(completed.returncode == 0,
+            f"git {' '.join(arguments)} failed without registration")
+    return completed.stdout.strip()
+
+
+def strings(value: Any, field: str, minimum: int = 1) -> list[str]:
+    require(isinstance(value, list) and len(value) >= minimum,
+            f"{field} requires at least {minimum} entries")
+    require(all(isinstance(item, str) and item.strip() for item in value),
+            f"{field} contains an invalid value")
+    require(len(value) == len(set(value)), f"{field} contains duplicates")
+    return value
+
+
+def parse_utc(value: Any) -> None:
+    require(isinstance(value, str) and value.endswith("Z"),
+            "registeredAt must be RFC3339 UTC ending in Z")
+    try:
+        parsed = dt.datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError as exc:
+        raise RegistrationFailure("registeredAt must be valid RFC3339 UTC") from exc
+    require(parsed.tzinfo is not None and parsed.utcoffset() == dt.timedelta(0),
+            "registeredAt must be UTC")
+
+
+def safe_ref(value: Any, field: str) -> str:
+    require(isinstance(value, str) and value.strip(), f"{field} is required")
+    path = Path(value)
+    require(not path.is_absolute() and ".." not in path.parts,
+            f"{field} contains an unsafe path")
+    require((ROOT / path).is_file(), f"{field} does not exist: {value}")
+    return value
+
+
+def sha256_file(path: Path) -> tuple[str, int]:
+    digest = hashlib.sha256()
+    size = 0
+    with path.open("rb") as handle:
+        while chunk := handle.read(1 << 20):
+            digest.update(chunk)
+            size += len(chunk)
+    return digest.hexdigest(), size
+
+
+def validate_record(record: dict[str, Any], required_fields: set[str],
+                    artifact_path: Path, approved_release_ids: set[str]) -> None:
+    require(set(record) >= required_fields,
+            f"record missing fields: {sorted(required_fields - set(record))}")
+    require(record.get("schemaVersion") == "memory-os-parser-artifact-record.v1",
+            "record schemaVersion drift")
+    require(isinstance(record.get("artifactId"), str) and
+            ARTIFACT_ID_RE.fullmatch(record["artifactId"]) is not None,
+            "artifactId format invalid")
+    require(isinstance(record.get("adapterId"), str) and
+            ADAPTER_RE.fullmatch(record["adapterId"]) is not None,
+            "adapterId format invalid")
+    require(isinstance(record.get("adapterVersion"), str) and
+            VERSION_RE.fullmatch(record["adapterVersion"]) is not None,
+            "adapterVersion format invalid")
+    require(record.get("reviewClass") == "REVIEWED_PARSER_ARTIFACT",
+            "reviewClass must be REVIEWED_PARSER_ARTIFACT")
+    parse_utc(record.get("registeredAt"))
+
+    actual_digest, actual_size = sha256_file(artifact_path)
+    require(isinstance(record.get("artifactSha256"), str) and
+            DIGEST_RE.fullmatch(record["artifactSha256"]) is not None and
+            record["artifactSha256"] == actual_digest,
+            "artifact SHA-256 does not match exact bytes")
+    require(isinstance(record.get("artifactSizeBytes"), int) and
+            record["artifactSizeBytes"] > 0 and
+            record["artifactSizeBytes"] == actual_size,
+            "artifactSizeBytes does not match exact bytes")
+    for field in ("artifactFormat", "targetOs", "targetArch", "protocolVersion"):
+        require(isinstance(record.get(field), str) and record[field].strip(),
+                f"{field} is required")
+
+    approvers = record.get("approvers")
+    require(isinstance(approvers, list) and len(approvers) == 3,
+            "exactly three artifact approvers are required")
+    roles: set[str] = set()
+    identities: set[str] = set()
+    for approver in approvers:
+        require(isinstance(approver, dict), "approver entry must be an object")
+        role = approver.get("role")
+        identity = approver.get("approverRef")
+        require(role in REQUIRED_ROLES and role not in roles,
+                f"approval role invalid or duplicated: {role}")
+        require(isinstance(identity, str) and APPROVER_RE.fullmatch(identity) is not None,
+                "approverRef must be an operational pseudonym")
+        require(identity not in identities, "duplicate or self-approval detected")
+        roles.add(role)
+        identities.add(identity)
+    require(roles == REQUIRED_ROLES, "required artifact approval roles incomplete")
+
+    for field in ("buildProvenanceRef", "securityReviewRef", "retentionEvidenceRef"):
+        safe_ref(record.get(field), field)
+    for ref in strings(record.get("replayEvidenceRefs"), "replayEvidenceRefs", 1):
+        safe_ref(ref, "replayEvidenceRefs")
+    compatible = strings(record.get("compatibleReleaseIds"), "compatibleReleaseIds", 1)
+    require(set(compatible) <= approved_release_ids,
+            "compatibleReleaseIds contains an unapproved release")
+
+    retention = record.get("rollbackRetentionState")
+    require(isinstance(retention, dict) and retention.get("state") in RETENTION_STATES,
+            "rollbackRetentionState invalid")
+    if retention.get("state") == "RETAINED":
+        require(retention.get("immutableLocationVerified") is True,
+                "RETAINED artifact requires immutableLocationVerified=true")
+        safe_ref(retention.get("verificationEvidenceRef"),
+                 "rollbackRetentionState.verificationEvidenceRef")
+    else:
+        require(retention.get("immutableLocationVerified") is False,
+                "non-retained artifact cannot claim immutable location verification")
+
+    risks = record.get("openRisks")
+    require(isinstance(risks, list), "openRisks must be a list")
+    for risk in risks:
+        require(isinstance(risk, dict) and risk.get("riskId") and
+                risk.get("ownerRef") and risk.get("deadline") and risk.get("status"),
+                "open risk entry is incomplete")
+
+    serialized = json.dumps(record, ensure_ascii=False).lower()
+    for forbidden in (
+        "postgres://", "postgresql://", "password=", "authorization: bearer",
+        "minioadmin", "secretaccesskey", "account_id", "session_id", "job_id",
+        "preview_id", "object_key", "apple_subject", "@",
+    ):
+        require(forbidden not in serialized,
+                f"record contains forbidden content: {forbidden}")
+
+
+def acquire_lock() -> int:
+    try:
+        return os.open(LOCK_PATH, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError as exc:
+        raise RegistrationFailure("parser artifact registry lock already exists") from exc
+
+
+def atomic_write(value: dict[str, Any]) -> None:
+    descriptor, temp_name = tempfile.mkstemp(
+        prefix=".parser-artifact-registry.", suffix=".tmp",
+        dir=REGISTRY_PATH.parent,
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(value, handle, indent=2, ensure_ascii=False)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, REGISTRY_PATH)
+    finally:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--record", required=True,
+                        help="JSON record outside the repository working tree")
+    parser.add_argument("--artifact", required=True,
+                        help="exact artifact bytes outside the repository working tree")
+    parser.add_argument("--confirm", required=True)
+    arguments = parser.parse_args()
+
+    require(arguments.confirm == CONFIRMATION,
+            f"confirmation must equal: {CONFIRMATION}")
+    record_path = Path(arguments.record).resolve()
+    artifact_path = Path(arguments.artifact).resolve()
+    for path, label in ((record_path, "record"), (artifact_path, "artifact")):
+        try:
+            path.relative_to(ROOT)
+        except ValueError:
+            pass
+        else:
+            raise RegistrationFailure(f"input {label} must be outside the repository")
+    require(artifact_path.is_file() and artifact_path.stat().st_size > 0,
+            "artifact input must be a non-empty regular file")
+    require(git("status", "--porcelain") == "",
+            "working tree must be clean before artifact registration")
+
+    contract = load(CONTRACT_PATH)
+    required_fields = set(strings(contract.get("requiredRecordFields"),
+                                  "requiredRecordFields", 20))
+    release_registry = load(RELEASE_REGISTRY_PATH)
+    releases = release_registry.get("releases")
+    require(isinstance(releases, list), "approved release registry is invalid")
+    approved_release_ids = {
+        item.get("releaseId") for item in releases
+        if isinstance(item, dict) and isinstance(item.get("releaseId"), str)
+    }
+    record = load(record_path)
+    validate_record(record, required_fields, artifact_path, approved_release_ids)
+
+    lock_fd = acquire_lock()
+    try:
+        os.write(lock_fd, f"{record['artifactId']}\n".encode("ascii"))
+        os.fsync(lock_fd)
+        registry = load(REGISTRY_PATH)
+        artifacts = registry.get("artifacts")
+        require(isinstance(artifacts, list) and
+                all(isinstance(item, dict) for item in artifacts),
+                "parser artifact registry is invalid")
+        require(all(item.get("artifactId") != record["artifactId"] for item in artifacts),
+                "artifactId is already registered")
+        require(all(item.get("artifactSha256") != record["artifactSha256"]
+                    for item in artifacts),
+                "artifact digest is already registered")
+        require(all(not (
+            item.get("adapterId") == record["adapterId"] and
+            item.get("adapterVersion") == record["adapterVersion"]
+        ) for item in artifacts),
+                "adapter ID and version are already registered")
+
+        artifacts.append(record)
+        registry["reviewedArtifactCount"] = len(artifacts)
+        registry["retainedRollbackArtifactCount"] = sum(
+            1 for item in artifacts
+            if item.get("rollbackRetentionState", {}).get("state") == "RETAINED"
+        )
+        registry["replayProvenArtifactCount"] = sum(
+            1 for item in artifacts if item.get("replayEvidenceRefs")
+        )
+        registry["latestReviewedArtifactId"] = record["artifactId"]
+        atomic_write(registry)
+    finally:
+        os.close(lock_fd)
+        try:
+            LOCK_PATH.unlink()
+        except FileNotFoundError:
+            pass
+
+    print(f"Registered reviewed parser artifact: {record['artifactId']}")
+    print("No release or production decision was changed.")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except RegistrationFailure as exc:
+        print(f"PARSER ARTIFACT REGISTRATION FAILED: {exc}", file=sys.stderr)
+        raise SystemExit(1)
