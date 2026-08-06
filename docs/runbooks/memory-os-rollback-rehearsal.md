@@ -1,0 +1,68 @@
+# Memory OS rollback rehearsal admission
+
+## Purpose
+
+This runbook defines admission to an isolated rollback rehearsal. Admission is a planning record only. It does not execute rollback, change traffic, approve a release or create production evidence.
+
+## Candidate is not a release
+
+A historical candidate, branch head, tag or CI compatibility PASS is not an approved source or rollback target. Both sides of the rehearsal must already exist in `release-baseline-registry.v1.json` as distinct approved production release baselines.
+
+## Required release pair
+
+The source release is the version being rehearsed as the active version. The rollback target is the previously approved version to which the application would return. The target must have `rollbackEligibility.status` equal to `ELIGIBLE` or `CONDITIONALLY_ELIGIBLE` and `verified` equal to `true`.
+
+A conditional target carries every unresolved condition into the rehearsal stop conditions. Admission is rejected when a condition is omitted or weakened.
+
+## Required environment boundary
+
+The request must state:
+
+- `environmentClass`: `ISOLATED_NON_PRODUCTION_REHEARSAL`
+- production traffic forbidden
+- production credentials forbidden
+- synthetic or approved sanitized data only
+- automatic promotion forbidden
+- destructive down migration forbidden
+
+No request may route user traffic, alter a production database or automatically approve recovery.
+
+## Required evidence
+
+Entry criteria must reference repository evidence for:
+
+- approved source and rollback-target release records
+- mixed-version and persisted-state compatibility
+- database recovery point and restore verification
+- retained parser artifacts and exact object versions
+- migration operation and forward-fix decision procedure
+- monitoring, stop conditions and evidence preservation
+
+The request must retain the exact release IDs, tags and commit SHAs from the approved registry.
+
+## Required approvals
+
+Two distinct operational pseudonyms are required:
+
+- `RELEASE_OWNER`
+- `DATABASE_RECOVERY_OWNER`
+
+These approvals authorize an isolated rehearsal request only. They do not authorize production traffic, release promotion or incident closure.
+
+## Stop conditions
+
+The request must stop before mutation or traffic movement when any of the following is true:
+
+- source or target identity differs from the approved registry
+- rollback eligibility is absent, expired or conditional terms are incomplete
+- required binary, parser artifact or exact object version is missing
+- database recovery point is unavailable or incoherent
+- destructive schema contraction would be required
+- tenant isolation, deletion fencing, idempotency or session authority is ambiguous
+- monitoring, evidence capture or human command authority is incomplete
+
+## Current state
+
+No release is approved. No rollback-eligible target exists. Therefore no rehearsal request is admissible.
+
+Production remains **NO_GO**.
