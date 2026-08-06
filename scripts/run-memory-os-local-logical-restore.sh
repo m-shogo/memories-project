@@ -53,8 +53,15 @@ PY
 )
 [[ "${#MIGRATIONS[@]}" -gt 0 ]] || fail "canonical migration sequence is empty"
 
-mapfile -t SQL_TESTS < <(find "$MIGRATION_DIR" -maxdepth 1 -type f -name 'test_memory_os_*.sql' -print | sort)
-[[ "${#SQL_TESTS[@]}" -gt 0 ]] || fail "no SQL integration tests found"
+SQL_TESTS=()
+for migration in "${MIGRATIONS[@]}"; do
+  test_name="test_${migration#*_}"
+  test_path="$MIGRATION_DIR/$test_name"
+  [[ -f "$test_path" ]] || fail "missing SQL integration test for migration: $migration"
+  SQL_TESTS+=("$test_path")
+done
+[[ "${#SQL_TESTS[@]}" -eq "${#MIGRATIONS[@]}" ]] || \
+  fail "SQL integration test count does not match migration count"
 
 DUMP_FILE="$(mktemp "${TMPDIR:-/tmp}/memory-os-logical-restore.XXXXXX.dump")"
 cleanup() {
