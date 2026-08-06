@@ -1,8 +1,8 @@
 {
   "schemaVersion": "memory-os-mixed-version-apply-results.v1",
-  "currentCommitSha": "b91280c276d47ed6b887645c6f060b80db83642a",
+  "currentCommitSha": "711267f44e82507295c5c35ea5af659b3b84e219",
   "oldBackendCommitSha": "2af6e8e10755cc707c6bdd958a049a0f4afb3d70",
-  "generatedAt": "2026-08-06T11:20:24.763736Z",
+  "generatedAt": "2026-08-06T11:22:07.421908Z",
   "environment": {
     "mode": "GITHUB_ACTIONS_OR_LOCAL_POSTGRES16_MINIO_TWO_PROCESSES_SHARED_SCHEMA",
     "productionEvidence": false,
@@ -25,10 +25,23 @@
     "currentToOldReplayMarked": true,
     "rawTokensPersisted": false,
     "rawSyntheticIdsPersisted": false,
+    "concurrentOldCurrentClaimRaceStatuses": [
+      200,
+      200
+    ],
+    "concurrentOldCurrentClaimRaceReplaySplit": true,
+    "concurrentOldCurrentClaimRaceApplyIdStable": true,
+    "concurrentOldCurrentClaimRacePassed": true,
     "applyConfirmationRows": 2,
     "memoryItemRows": 2,
     "distinctSourcePreviews": 2,
     "inProgressApplyRows": 0,
+    "finalApplyConfirmationRows": 3,
+    "finalMemoryItemRows": 3,
+    "finalDistinctSourcePreviews": 3,
+    "finalInProgressApplyRows": 0,
+    "racedPreviewApplyConfirmationRows": 1,
+    "racedPreviewMemoryItemRows": 1,
     "sharedCurrentSchema": true,
     "oldAndCurrentProcessesConcurrent": true,
     "sameRequestHashStableAcrossVersions": true,
@@ -36,9 +49,9 @@
   },
   "limitations": [
     "historical candidate rather than an approved predecessor release",
-    "two synthetic ready Previews with one candidate each",
-    "sequential mutation and replay rather than concurrent claim racing",
-    "no process termination during an in-progress transaction",
+    "three synthetic ready Previews with one candidate each",
+    "one simultaneous old/current claim race without process termination",
+    "no host or process failure during an in-progress transaction",
     "no rolling traffic drain, rollback or destructive contract migration",
     "ephemeral PostgreSQL 16 and MinIO only",
     "not production compatibility evidence"
