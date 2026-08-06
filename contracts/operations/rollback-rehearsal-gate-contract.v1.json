@@ -1,0 +1,98 @@
+{
+  "contractId": "memory-os.operability.rollback-rehearsal-gate.v1",
+  "schemaVersion": "memory-os-rollback-rehearsal-gate-contract.v1",
+  "description": "Fail-closed admission authority for a rollback rehearsal. A historical candidate, branch head, tag or CI PASS cannot authorize rehearsal. Both source and rollback target must be distinct approved release-baseline records, and the target must already be rollback eligible. Admission records planning authority only; it never executes rollback, changes traffic or creates production evidence.",
+  "approvedReleaseRegistry": "contracts/operations/release-baseline-registry.v1.json",
+  "rehearsalRegistry": "contracts/operations/rollback-rehearsal-registry.v1.json",
+  "writer": "scripts/request-memory-os-rollback-rehearsal.py",
+  "validator": "scripts/validate-memory-os-rollback-rehearsal-gate.py",
+  "reconcile": "scripts/reconcile-memory-os-rollback-rehearsal-gate.py",
+  "runbook": "docs/runbooks/memory-os-rollback-rehearsal.md",
+  "workflow": ".github/workflows/rollback-rehearsal-gate.yml",
+  "recordSchemaVersion": "memory-os-rollback-rehearsal-request.v1",
+  "appendOnly": true,
+  "requiredRequestFields": [
+    "schemaVersion",
+    "rehearsalId",
+    "requestedAt",
+    "sourceReleaseId",
+    "rollbackTargetReleaseId",
+    "sourceCommitSha",
+    "rollbackTargetCommitSha",
+    "sourceReleaseTag",
+    "rollbackTargetReleaseTag",
+    "environmentClass",
+    "trafficPolicy",
+    "databasePolicy",
+    "artifactPolicy",
+    "entryCriteriaRefs",
+    "stopConditions",
+    "approvers",
+    "openRisks"
+  ],
+  "admissionGuards": [
+    "source and rollback target release IDs are distinct approved records",
+    "source and target SHA and tag values exactly match their approved records",
+    "rollback target eligibility is ELIGIBLE or CONDITIONALLY_ELIGIBLE with verified true",
+    "all target eligibility conditions are explicitly copied into stop conditions",
+    "request input is external to the repository and repository working tree is clean",
+    "request uses an isolated non-production environment with production traffic forbidden",
+    "automatic destructive down migration and automatic traffic promotion are forbidden",
+    "retained parser artifacts and exact object-version evidence are referenced",
+    "database recovery point and forward-fix decision references exist",
+    "Release Owner and Database Recovery Owner are distinct pseudonymous approvers",
+    "rehearsal ID and release-pair request are unique",
+    "registry update uses exclusive lock and atomic replacement"
+  ],
+  "forbiddenAdmissionSources": [
+    "historical candidate commit",
+    "candidate compatibility PASS",
+    "branch head",
+    "unreviewed tag",
+    "local restore evidence alone",
+    "production traffic or credentials",
+    "automatic down migration",
+    "automatic promotion decision"
+  ],
+  "environmentPolicy": {
+    "allowedEnvironmentClass": "ISOLATED_NON_PRODUCTION_REHEARSAL",
+    "productionTrafficAllowed": false,
+    "productionCredentialsAllowed": false,
+    "syntheticOrApprovedSanitizedDataOnly": true,
+    "automaticTrafficPromotionAllowed": false,
+    "destructiveDownMigrationAllowed": false
+  },
+  "currentAdmissionState": {
+    "approvedReleaseCount": 0,
+    "rollbackEligibleReleaseCount": 0,
+    "admissibleReleasePairCount": 0,
+    "rehearsalRequestCount": 0,
+    "admissionDecision": "BLOCKED_NO_APPROVED_ROLLBACK_PAIR"
+  },
+  "evidenceBoundary": {
+    "planningAuthorityOnly": true,
+    "rehearsalExecuted": false,
+    "rollbackExecuted": false,
+    "productionEvidence": false,
+    "releaseCompatibilityEvidence": false,
+    "productionReady": false
+  },
+  "readiness": {
+    "contractDefined": true,
+    "registryImplemented": true,
+    "writerImplemented": true,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": true,
+    "approvedReleasePairAvailable": false,
+    "rollbackTargetAvailable": false,
+    "rehearsalRequested": false,
+    "rehearsalExecuted": false,
+    "independentReviewCompleted": false,
+    "productionReady": false
+  },
+  "evidenceRefs": [
+    "contracts/operations/rollback-rehearsal-gate-contract.v1.json",
+    "contracts/operations/rollback-rehearsal-registry.v1.json",
+    "contracts/operations/release-baseline-registry.v1.json"
+  ]
+}
