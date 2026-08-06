@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "memory-os-mixed-version-session-results.v1",
+  "commitSha": "065b095af5347f3a6be1e74bdb8a0a0d6f1d6ded",
+  "oldBackendCommitSha": "2af6e8e10755cc707c6bdd958a049a0f4afb3d70",
+  "generatedAt": "2026-08-06T09:25:35.070266Z",
+  "environment": {
+    "mode": "GITHUB_ACTIONS_OR_LOCAL_POSTGRES16_MINIO_TWO_PROCESSES",
+    "productionEvidence": false,
+    "containsSecrets": false,
+    "syntheticDataOnly": true
+  },
+  "result": "PASS",
+  "integrityResult": "PASS",
+  "assertions": {
+    "oldHealthStatus": 200,
+    "currentHealthStatus": 200,
+    "currentAcceptsOldIssuedSessionStatus": 404,
+    "oldAcceptsCurrentIssuedSessionStatus": 404,
+    "activeSessionRows": 2,
+    "sharedCurrentSchema": true,
+    "oldAndCurrentProcessesConcurrent": true,
+    "rawTokensPersisted": false
+  },
+  "limitations": [
+    "session issuance, session resolution, account fencing and read-route entry only",
+    "not full rolling-deployment route coverage",
+    "not mixed persisted Preview or parser artifact coverage",
+    "not a rollback-under-live-traffic drill",
+    "ephemeral PostgreSQL 16 and MinIO only",
+    "not production compatibility evidence"
+  ]
+}
