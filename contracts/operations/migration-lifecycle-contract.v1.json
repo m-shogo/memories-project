@@ -1,0 +1,160 @@
+{
+  "contractId": "memory-os.operability.migration-lifecycle.v1",
+  "schemaVersion": "memory-os-migration-lifecycle.v1",
+  "description": "Binding lifecycle and recovery policy for Memory OS PostgreSQL schema changes. Transaction rollback is not treated as migration rollback completion. Additive expansion and forward-fix are the defaults; destructive contraction requires separate evidence and approval.",
+  "canonicalDirectory": "infra/postgresql/security",
+  "canonicalRunbook": "docs/runbooks/memory-os-migration-recovery.md",
+  "validator": "scripts/validate-memory-os-migration-lifecycle.py",
+  "migrationSequence": [
+    "001_memory_os_import_rls.sql",
+    "002_memory_os_account_control.sql",
+    "002_memory_os_upload_authorization.sql",
+    "003_memory_os_preview_domain.sql",
+    "004_memory_os_account_session.sql",
+    "005_memory_os_apply_memory.sql",
+    "006_memory_os_deletion_fencing.sql",
+    "007_memory_os_app_login.sql",
+    "008_memory_os_deletion_runtime.sql",
+    "009_memory_os_deletion_visibility.sql",
+    "010_memory_os_apple_identity.sql"
+  ],
+  "strategy": {
+    "name": "EXPAND_MIGRATE_CONTRACT",
+    "defaultRecovery": "FORWARD_FIX",
+    "productionAutoApply": false,
+    "destructiveChangeInSameRelease": false,
+    "mixedVersionWindowRequired": true,
+    "oldApplicationVersionMustRemainCompatibleDuringExpand": true,
+    "backfillsMustBeIdempotentAndResumable": true,
+    "contractRequiresOldVersionDrain": true,
+    "contractRequiresIndependentRecoveryPoint": true,
+    "schemaChangeAndLargeBackfillMustBeSeparateSteps": true
+  },
+  "phases": [
+    {
+      "phase": "PREFLIGHT",
+      "requiredEvidence": [
+        "exact repository commit",
+        "target database identity and environment",
+        "current migration fingerprint",
+        "available recovery point and restore owner",
+        "old and new application version compatibility statement",
+        "lock and runtime budget",
+        "named operator and reviewer"
+      ],
+      "exitCriteria": "all required evidence recorded; no ambiguity about target, recovery point or compatibility"
+    },
+    {
+      "phase": "EXPAND",
+      "allowed": [
+        "add nullable columns",
+        "add tables and indexes without removing old paths",
+        "add compatible functions, policies and constraints in non-enforcing form",
+        "introduce dual-compatible schema surfaces"
+      ],
+      "forbidden": [
+        "drop columns or tables still read by any deployed version",
+        "rename a required surface without a compatibility bridge",
+        "rewrite a large table inside an unbounded deployment transaction",
+        "silently weaken FORCE RLS or deployment-role isolation"
+      ],
+      "exitCriteria": "old and new application versions can both operate against the expanded schema"
+    },
+    {
+      "phase": "MIGRATE_DATA",
+      "allowed": [
+        "bounded idempotent backfill",
+        "resumable progress checkpoints",
+        "read-only verification queries",
+        "pause and resume without deleting ambiguous state"
+      ],
+      "forbidden": [
+        "unbounded one-shot backfill coupled to application deployment",
+        "destructive cleanup before verification",
+        "marking incomplete rows complete to clear an alert"
+      ],
+      "exitCriteria": "backfill accounting is complete and independently verified"
+    },
+    {
+      "phase": "OBSERVE_MIXED_VERSION",
+      "requiredEvidence": [
+        "old and new version traffic observed",
+        "error and latency comparison",
+        "RLS and authorization invariants rechecked",
+        "no migration-specific alert or lock backlog",
+        "rollback target remains deployable"
+      ],
+      "exitCriteria": "defined observation window completed with no unresolved integrity or compatibility issue"
+    },
+    {
+      "phase": "CONTRACT",
+      "allowed": [
+        "remove compatibility surfaces only after old-version drain",
+        "enforce constraints after verified backfill",
+        "remove deprecated data only after retention and recovery review"
+      ],
+      "forbidden": [
+        "same-release destructive cleanup",
+        "contract while an old application version can still run",
+        "contract without an isolated recovery point",
+        "automatic destructive rollback"
+      ],
+      "exitCriteria": "deprecated surfaces removed deliberately and post-contract verification completed"
+    }
+  ],
+  "recoveryDecision": {
+    "beforeMutation": "STOP_AND_CORRECT",
+    "transactionFailedBeforeCommit": "VERIFY_DATABASE_ROLLBACK_THEN_CORRECT",
+    "additiveMigrationCommittedApplicationUnhealthy": "ROLL_BACK_APPLICATION_IF_SCHEMA_COMPATIBLE_OR_FORWARD_FIX",
+    "backfillIncorrectOrIncomplete": "PAUSE_BACKFILL_PRESERVE_STATE_AND_FORWARD_FIX",
+    "contractMigrationCommitted": "INCIDENT_COMMAND_DECIDES_FORWARD_FIX_OR_ISOLATED_RESTORE; NEVER_ASSUME_DOWN_MIGRATION_IS_SAFE",
+    "externalSideEffectOccurred": "FORWARD_FIX_OR_COMPENSATING_ACTION_WITH_INCIDENT_RECORD"
+  },
+  "operatorGuards": {
+    "requireExactHead": true,
+    "requireCleanWorkingTree": true,
+    "requireExplicitTargetDatabase": true,
+    "requireProductionConfirmationPhrase": true,
+    "requireSingleWriterMigrationLock": true,
+    "requireLockTimeout": true,
+    "requireStatementTimeout": true,
+    "requirePostMigrationVerification": true,
+    "forbidSuperuserRuntimeTraffic": true,
+    "forbidSecretValuesInEvidence": true
+  },
+  "evidenceRecord": {
+    "requiredFields": [
+      "migrationRunId",
+      "environment",
+      "databaseIdentityDigest",
+      "sourceCommitSha",
+      "migrationSequenceBefore",
+      "migrationSequenceAfter",
+      "startedAt",
+      "completedAt",
+      "operator",
+      "reviewer",
+      "recoveryPointReference",
+      "preflightResult",
+      "applyResult",
+      "verificationResult",
+      "recoveryDecision",
+      "openRisks"
+    ],
+    "privacyClass": "operational_sensitive_no_secrets",
+    "appendOnly": true
+  },
+  "readiness": {
+    "policyDefined": true,
+    "runbookDefined": true,
+    "migrationRegistryComplete": true,
+    "ciDryRunAgainstCleanDatabase": false,
+    "mixedVersionCompatibilityProven": false,
+    "productionShapedRehearsalCompleted": false,
+    "isolatedRestoreLinked": false,
+    "operatorEvidenceRecordImplemented": false,
+    "automatedDestructiveRollback": false,
+    "ready": false,
+    "note": "The lifecycle policy and runbook are foundations only. A clean-database dry run, mixed-version proof, recovery-point integration, evidence ledger and production-shaped rehearsal remain required, so OPS-P0-001 stays PARTIAL."
+  }
+}
