@@ -1,4 +1,4 @@
-name: Regenerate Live PostgreSQL Load Results
+name: Regenerate Live PostgreSQL and Object Load Results
 
 on:
   push:
@@ -9,7 +9,9 @@ on:
       - "services/import-api/**"
       - "infra/postgresql/security/**"
       - "contracts/operations/live-postgres-load-scenario-contract.v1.json"
+      - "contracts/operations/live-object-load-scenario-contract.v1.json"
       - "scripts/validate-memory-os-live-load.py"
+      - "scripts/validate-memory-os-live-object-load.py"
   schedule:
     # Daily self-heal at 03:17 JST. Scheduled runs use the default branch (so).
     - cron: "17 18 * * *"
@@ -19,13 +21,13 @@ permissions:
   contents: write
 
 concurrency:
-  group: regenerate-live-postgres-load-results-so
+  group: regenerate-live-dependency-load-results-so
   cancel-in-progress: true
 
 jobs:
-  live-postgres-load:
+  live-dependency-load:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:16-alpine
@@ -84,39 +86,47 @@ jobs:
       - name: Check load checkpoint sources
         working-directory: services/import-api
         run: |
-          test -z "$(gofmt -l internal/httpserver/live_load_test.go)"
-          python -m py_compile ../../scripts/validate-memory-os-live-load.py
+          test -z "$(gofmt -l internal/httpserver/live_load_test.go internal/httpserver/live_object_load_test.go)"
+          python -m py_compile \
+            ../../scripts/validate-memory-os-live-load.py \
+            ../../scripts/validate-memory-os-live-object-load.py
 
-      - name: Run live PostgreSQL HTTP baseline and load checkpoint
+      - name: Run live PostgreSQL and MinIO HTTP checkpoints
         env:
           MEMORY_OS_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/memory_os_security?sslmode=disable
           MEMORY_OS_TEST_S3_ENDPOINT: http://127.0.0.1:9000
           MEMORY_OS_TEST_S3_ACCESS_KEY: minioadmin
           MEMORY_OS_TEST_S3_SECRET_KEY: minioadmin
           MEMORY_OS_RUN_LIVE_LOAD: "1"
+          MEMORY_OS_RUN_LIVE_OBJECT_LOAD: "1"
           MEMORY_OS_LIVE_LOAD_RESULTS_PATH: ${{ github.workspace }}/docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json
+          MEMORY_OS_LIVE_OBJECT_LOAD_RESULTS_PATH: ${{ github.workspace }}/docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json
           MEMORY_OS_COMMIT_SHA: ${{ env.SOURCE_SHA }}
         working-directory: services/import-api
         run: |
           go test ./internal/httpserver \
-            -run '^(TestPreviewReadAndApplyOverHTTP|TestLivePostgresPreviewReadAndIdempotentApplyLoad)$' \
-            -count=1 -timeout=12m
+            -run '^(TestPreviewReadAndApplyOverHTTP|TestLivePostgresPreviewReadAndIdempotentApplyLoad|TestLiveMinIOSignedUploadLifecycleLoad)$' \
+            -count=1 -timeout=15m
 
-      - name: Validate live-load evidence
+      - name: Validate live dependency evidence
         env:
           EXPECTED_COMMIT_SHA: ${{ env.SOURCE_SHA }}
-        run: python scripts/validate-memory-os-live-load.py
+        run: |
+          python scripts/validate-memory-os-live-load.py
+          python scripts/validate-memory-os-live-object-load.py
 
       - name: Commit regenerated evidence
         run: |
-          git add docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json
+          git add \
+            docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json \
+            docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json
           if git diff --cached --quiet; then
-            echo "Live PostgreSQL load evidence is already current."
+            echo "Live dependency load evidence is already current."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "test(load): record live PostgreSQL load checkpoint"
+          git commit -m "test(load): record live PostgreSQL and MinIO checkpoints"
           git fetch origin so
           git rebase origin/so
           git push origin HEAD:so
