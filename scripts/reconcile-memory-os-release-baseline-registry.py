@@ -19,18 +19,24 @@ EXISTING = (
     "empty release registry explicitly records that no approved predecessor or rollback-eligible release exists",
     "release records require distinct Security, Operability and Release Owner approvals plus immutable API, migration, parser artifact and runtime configuration digests",
     "fail-closed release registry validator prevents active or rejected historical candidates from being relabeled as approved releases",
+    "exclusive-lock and atomic-replacement release writer verifies exact clean HEAD, exact tag binding, external input record, three-role approval, complete evidence and unique release ID, tag and commit without manufacturing any authority",
 )
 MISSING = (
-    "implemented append-only release registration writer with exclusive release ID, tag and commit uniqueness enforcement",
     "approved predecessor release record with three distinct required approvers and complete compatibility, restore, security, migration, parser and load evidence",
     "rollback-eligible approved release whose binary and retained artifacts are verified against the expanded target schema",
+    "independent review of the first release registration and writer execution evidence",
+)
+OBSOLETE_MISSING = (
+    "implemented append-only release registration writer with exclusive release ID, tag and commit uniqueness enforcement",
 )
 REFS = (
     "contracts/operations/release-baseline-registry-contract.v1.json",
     "contracts/operations/release-baseline-registry.v1.json",
     "docs/evidence/releases/README.md",
+    "scripts/register-memory-os-release-baseline.py",
     "scripts/validate-memory-os-release-baseline-registry.py",
     "scripts/reconcile-memory-os-release-baseline-registry.py",
+    ".github/workflows/release-baseline-registry.yml",
 )
 
 
@@ -66,18 +72,18 @@ def main() -> int:
     registry = load(REGISTRY_PATH)
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "release registry readiness missing")
-    require(readiness.get("contractDefined") is True and
-            readiness.get("registryImplemented") is True and
-            readiness.get("validatorImplemented") is True,
-            "release registry foundations are incomplete")
-    require(readiness.get("writerImplemented") is False,
-            "release writer has not been reviewed or implemented")
+    for foundation in (
+        "contractDefined", "registryImplemented", "validatorImplemented", "writerImplemented"
+    ):
+        require(readiness.get(foundation) is True,
+                f"release registry foundation is incomplete: {foundation}")
     require(registry.get("approvedReleaseCount") == 0 and
             registry.get("releases") == [],
             "foundation reconcile cannot run after a release is registered")
     require(readiness.get("approvedReleaseCount") == 0 and
             readiness.get("approvedPredecessorAvailable") is False and
             readiness.get("rollbackEligibleReleaseAvailable") is False and
+            readiness.get("independentReviewCompleted") is False and
             readiness.get("productionReady") is False,
             "empty release registry readiness drift")
 
@@ -98,6 +104,10 @@ def main() -> int:
     changed = False
     for item in EXISTING:
         changed = append_once(existing, item) or changed
+    for item in OBSOLETE_MISSING:
+        if item in missing:
+            missing.remove(item)
+            changed = True
     for item in MISSING:
         changed = append_once(missing, item) or changed
     for ref in REFS:
@@ -110,6 +120,11 @@ def main() -> int:
             "approved predecessor release gap disappeared")
     require(any("rollback-eligible" in item for item in lowered),
             "rollback-eligible release gap disappeared")
+    require(any("independent review" in item for item in lowered),
+            "release registration review gap disappeared")
+    require(not any("implemented append-only release registration writer" in item
+                    for item in lowered),
+            "implemented writer remains listed as missing")
     require(gate.get("status") == "PARTIAL" and
             status.get("productionDecision") == "NO_GO",
             "release foundation changed readiness")
@@ -120,7 +135,7 @@ def main() -> int:
     status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
     STATUS_PATH.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n",
                            encoding="utf-8")
-    print("Registered empty release baseline registry; OPS-P0-008 remains PARTIAL")
+    print("Registered release writer foundation; approved release count remains zero")
     return 0
 
 
