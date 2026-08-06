@@ -26,14 +26,16 @@ func TestSupervisorCancelsStartedWorkerPromptly(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	source := sourceFile(t, "a:{\"title\":\"source\"}\n")
+	seal := testSealInput()
 	ctx, cancel := context.WithCancel(context.Background())
 	result := make(chan error, 1)
 	go func() {
 		_, parseErr := supervisor.Parse(ctx, ParseRequest{
 			Manager: manager,
 			SpoolID: testSpoolID,
-			Source:  sourceFile(t, "a:{\"title\":\"source\"}\n"),
-			Seal:    testSealInput(),
+			Source:  source,
+			Seal:    seal,
 		})
 		result <- parseErr
 	}()
@@ -81,19 +83,19 @@ func TestSupervisorCancelsStartedWorkerPromptly(t *testing.T) {
 		t.Fatalf("unexpected recovery evidence: %+v", evidence.WriteEvidence)
 	}
 
-	seal := testSealInput()
+	verificationSeal := testSealInput()
 	verifier, err := previewspool.NewVerifier(manager)
 	if err != nil {
 		t.Fatal(err)
 	}
 	verified, err := verifier.Verify(context.Background(), testSpoolID, previewspool.VerifyExpectation{
-		JobID:          seal.JobID,
-		OwnerAccountID: seal.OwnerAccountID,
-		AccountEpoch:   seal.AccountEpoch,
-		Source:         seal.Source,
-		Adapter:        seal.Adapter,
-		OptionsSHA256:  seal.OptionsSHA256,
-	}, seal.CreatedAt.Add(time.Second))
+		JobID:          verificationSeal.JobID,
+		OwnerAccountID: verificationSeal.OwnerAccountID,
+		AccountEpoch:   verificationSeal.AccountEpoch,
+		Source:         verificationSeal.Source,
+		Adapter:        verificationSeal.Adapter,
+		OptionsSHA256:  verificationSeal.OptionsSHA256,
+	}, verificationSeal.CreatedAt.Add(time.Second))
 	if err != nil {
 		t.Fatalf("recovered spool failed independent verification: %v", err)
 	}
