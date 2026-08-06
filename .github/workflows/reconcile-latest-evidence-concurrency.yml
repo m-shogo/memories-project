@@ -1,0 +1,83 @@
+name: Reconcile Latest Evidence Concurrency
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/reconcile-latest-evidence-concurrency.yml"
+      - ".github/workflows/regenerate-live-dependency-load-v2.yml"
+      - ".github/workflows/capacity-ramp.yml"
+      - ".github/workflows/short-stability-sample.yml"
+      - ".github/workflows/reconcile-load-foundation-authorities.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reconcile-latest-evidence-concurrency-so
+  cancel-in-progress: true
+
+jobs:
+  reconcile:
+    if: >-
+      github.event_name != 'push' ||
+      !contains(github.event.head_commit.message, 'ci: cancel stale exact-source evidence runs')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout latest so
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Require latest-run concurrency
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          paths = [
+              Path('.github/workflows/regenerate-live-dependency-load-v2.yml'),
+              Path('.github/workflows/capacity-ramp.yml'),
+              Path('.github/workflows/short-stability-sample.yml'),
+              Path('.github/workflows/reconcile-load-foundation-authorities.yml'),
+          ]
+          for path in paths:
+              text = path.read_text(encoding='utf-8')
+              group_marker = 'concurrency:\n'
+              if text.count(group_marker) != 1:
+                  raise SystemExit(f'{path}: concurrency authority drift')
+              section_start = text.index(group_marker)
+              section_end = text.find('\n\njobs:', section_start)
+              if section_end < 0:
+                  raise SystemExit(f'{path}: concurrency section boundary drift')
+              section = text[section_start:section_end]
+              if 'cancel-in-progress: true' in section:
+                  continue
+              if section.count('cancel-in-progress: false') != 1:
+                  raise SystemExit(f'{path}: cancel-in-progress authority drift')
+              section = section.replace('cancel-in-progress: false', 'cancel-in-progress: true')
+              text = text[:section_start] + section + text[section_end:]
+              path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Commit concurrency authority
+        run: |
+          set -euo pipefail
+          git add \
+            .github/workflows/regenerate-live-dependency-load-v2.yml \
+            .github/workflows/capacity-ramp.yml \
+            .github/workflows/short-stability-sample.yml \
+            .github/workflows/reconcile-load-foundation-authorities.yml
+          if git diff --cached --quiet; then
+            echo "Evidence workflows already prefer the latest source."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "ci: cancel stale exact-source evidence runs"
+          git pull --rebase origin so
+          git push origin HEAD:so
