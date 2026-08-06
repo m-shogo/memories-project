@@ -1,0 +1,79 @@
+name: Reconcile Chaos Authority
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/reconcile-chaos-authority.yml"
+      - "scripts/reconcile-memory-os-chaos-authority.py"
+      - "contracts/operations/production-operability-status.json"
+      - "docs/fixtures/memory-os-operability/chaos-failure-drill-results.v2.sample.json"
+      - "docs/fixtures/memory-os-operability/parser-restart-matrix-results.sample.v1.json"
+      - "docs/fixtures/memory-os-operability/database-commit-outage-results.sample.v1.json"
+  schedule:
+    - cron: "23 20 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reconcile-chaos-authority-so
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout latest so
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm exact clean authority source
+        run: |
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+
+      - name: Normalize all committed drill generations
+        run: |
+          python -m py_compile scripts/reconcile-memory-os-chaos-authority.py
+          python scripts/reconcile-memory-os-chaos-authority.py
+          python scripts/reconcile-memory-os-chaos-authority.py --check
+          python scripts/validate-memory-os-chaos-failure-drills-v2.py
+          python scripts/validate-memory-os-parser-restart-matrix.py
+          if python - <<'PY'
+          import json
+          from pathlib import Path
+          value = json.loads(Path('docs/fixtures/memory-os-operability/database-commit-outage-results.sample.v1.json').read_text())
+          assertions = value.get('assertions', {})
+          raise SystemExit(0 if assertions.get('sameSpoolIdReused') is True else 1)
+          PY
+          then
+            python scripts/validate-memory-os-database-commit-outage.py
+          else
+            echo "Legacy new-spool database result retained until same-spool exact-source evidence arrives."
+          fi
+          python scripts/validate-memory-os-operability.py
+
+      - name: Commit normalized authority
+        run: |
+          git add contracts/operations/production-operability-status.json
+          if git diff --cached --quiet; then
+            echo "Chaos authority is already normalized."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs(chaos): normalize failure-drill authority"
+          git pull --rebase origin so
+          git push origin HEAD:so
