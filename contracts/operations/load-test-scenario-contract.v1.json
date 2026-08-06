@@ -253,6 +253,16 @@
       "dependencyMode": "LOCAL_POSTGRES",
       "productionEvidence": false,
       "capacityBoundaryEstablished": false
+    },
+    {
+      "scenarioId": "authenticated-preview-short-ci-stability-local-postgres",
+      "contractRef": "contracts/operations/short-stability-sample-contract.v1.json",
+      "validatorRef": "scripts/validate-memory-os-short-stability-sample.py",
+      "dependencyMode": "LOCAL_POSTGRES",
+      "classification": "SHORT_CI_STABILITY_SAMPLE",
+      "productionEvidence": false,
+      "sustainedSoakEvidence": false,
+      "leakProof": false
     }
   ],
   "deferredScenarios": [
@@ -275,6 +285,11 @@
       "scenarioId": "production-equivalent",
       "reason": "ephemeral PostgreSQL and MinIO do not reproduce production topology, TLS, scoped credentials, retention, latency or failure behavior",
       "requiredDependencyMode": "PRODUCTION_EQUIVALENT"
+    },
+    {
+      "scenarioId": "soak",
+      "reason": "a six-window short CI process sample now records RSS, heap and goroutine trends, but it is not a 60-minute repeated soak, does not cover MinIO/parser/queue/deletion/Apple dependencies and cannot prove leak freedom or production stability",
+      "requiredDependencyMode": "PRODUCTION_EQUIVALENT"
     }
   ],
   "readiness": {
@@ -289,8 +304,9 @@
     "cardinalityProof": true,
     "operationalThresholds": false,
     "productionEquivalentDependencies": false,
-    "note": "Mock and local dependency checkpoints are supplemented by a bounded authenticated Preview concurrency ramp. The ramp records a local candidate-safe step but observed no saturation transition, does not measure MinIO on the ramped path and cannot establish capacity or operational thresholds. OPS-P0-006 remains PARTIAL.",
-    "boundedLocalCapacityRampExecuted": true
+    "note": "Mock and local dependency checkpoints are supplemented by bounded ramp and short CI stability samples. These record local concurrency and process trends but establish neither a saturation boundary nor sustained-soak/leak proof; OPS-P0-006 remains PARTIAL.",
+    "boundedLocalCapacityRampExecuted": true,
+    "shortCIStabilitySampleExecuted": true
   },
   "evidenceRefs": [
     "services/import-api/internal/loadtest/harness.go",
@@ -308,6 +324,10 @@
     "services/import-api/internal/httpserver/capacity_ramp_test.go",
     "contracts/operations/capacity-ramp-contract.v1.json",
     "scripts/validate-memory-os-capacity-ramp.py",
-    "docs/fixtures/memory-os-operability/capacity-ramp-results.sample.v1.json"
+    "docs/fixtures/memory-os-operability/capacity-ramp-results.sample.v1.json",
+    "services/import-api/internal/httpserver/short_stability_sample_test.go",
+    "contracts/operations/short-stability-sample-contract.v1.json",
+    "scripts/validate-memory-os-short-stability-sample.py",
+    "docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json"
   ]
 }

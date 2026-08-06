@@ -247,7 +247,8 @@
         "machine-readable live PostgreSQL and live object-storage contracts with independent fail-closed validators",
         "automatic push-triggered and daily self-healing GitHub Actions workflow for PostgreSQL 16 and MinIO evidence regeneration",
         "machine-readable partition between mock executed, external live executed and genuinely deferred scenarios",
-        "bounded authenticated Preview concurrency ramp over local PostgreSQL records six concurrency steps with all-2xx integrity and a local candidate-safe concurrency while explicitly leaving the saturation boundary and operating threshold unproven"
+        "bounded authenticated Preview concurrency ramp over local PostgreSQL records six concurrency steps with all-2xx integrity and a local candidate-safe concurrency while explicitly leaving the saturation boundary and operating threshold unproven",
+        "six-window authenticated Preview short CI stability sample records Linux RSS, Go heap and goroutine observations plus per-window throughput and latency while explicitly refusing sustained-soak, leak-proof or capacity claims"
       ],
       "missingEvidence": [
         "exact-HEAD committed PASS results from the live PostgreSQL and MinIO checkpoint (automatic generation pending)",
@@ -255,7 +256,8 @@
         "sustained soak with RSS/heap/goroutine-slope evidence (SOAK PROOF INSUFFICIENT)",
         "production-equivalent dependency behavior and real-Apple load evidence",
         "production object-store TLS, scoped credentials, retention and lifecycle evidence",
-        "deliberate local PostgreSQL plus MinIO saturation ramp with queue/backlog signals, first-failure transition, repeatability and independently reviewed safe operating thresholds"
+        "deliberate local PostgreSQL plus MinIO saturation ramp with queue/backlog signals, first-failure transition, repeatability and independently reviewed safe operating thresholds",
+        "60-minute-or-longer repeated soak over PostgreSQL, object storage, parser, queue, deletion and authentication paths with RSS/heap/goroutine slope review and independently approved leak/stability criteria"
       ],
       "evidenceRefs": [
         "services/import-api/internal/loadtest/harness.go",
@@ -283,7 +285,13 @@
         "scripts/validate-memory-os-capacity-ramp.py",
         "scripts/reconcile-memory-os-capacity-ramp-status.py",
         "docs/fixtures/memory-os-operability/capacity-ramp-results.sample.v1.json",
-        ".github/workflows/capacity-ramp.yml"
+        ".github/workflows/capacity-ramp.yml",
+        "contracts/operations/short-stability-sample-contract.v1.json",
+        "services/import-api/internal/httpserver/short_stability_sample_test.go",
+        "scripts/validate-memory-os-short-stability-sample.py",
+        "scripts/reconcile-memory-os-short-stability-status.py",
+        "docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json",
+        ".github/workflows/short-stability-sample.yml"
       ]
     },
     {
