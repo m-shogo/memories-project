@@ -1,7 +1,7 @@
 {
   "contractId": "memory-os.operability.release-baseline-registry.v1",
   "schemaVersion": "memory-os-release-baseline-registry-contract.v1",
-  "description": "Binding append-only registry contract for approved Memory OS release baselines. Historical candidates, CI-compatible commits and branch heads are never release baselines by implication. A record exists only after named multi-role approval and immutable compatibility, recovery and artifact evidence are present.",
+  "description": "Binding append-only registry contract for approved Memory OS release baselines. Historical candidates, CI-compatible commits and branch heads are never release baselines by implication. A record exists only after named multi-role approval and immutable compatibility, recovery and artifact evidence are present. The writer verifies but never creates approvals, tags, evidence or production readiness.",
   "registryPath": "contracts/operations/release-baseline-registry.v1.json",
   "canonicalRunbook": "docs/evidence/releases/README.md",
   "validator": "scripts/validate-memory-os-release-baseline-registry.py",
@@ -25,7 +25,9 @@
     "restoreEvidenceRefs",
     "securityEvidenceRefs",
     "rollbackEligibility",
-    "openRisks"
+    "openRisks",
+    "evidenceComplete",
+    "productionReady"
   ],
   "approvalPolicy": {
     "approvalClass": "PRODUCTION_RELEASE_BASELINE",
@@ -76,31 +78,36 @@
   ],
   "registrationGuards": [
     "repository HEAD equals the requested commit SHA",
-    "working tree is clean",
+    "working tree is clean and input record is outside the repository",
+    "release tag resolves to the exact requested commit",
     "release ID and tag have never been registered",
     "commit SHA has never been registered under another release",
     "all evidence references are repository-relative existing files",
     "all required SHA-256 bindings are lowercase 64-character digests",
     "approval roles are complete and assigned to distinct approver identifiers",
-    "release record states productionReady false when any required evidence is incomplete",
-    "registry update uses exclusive creation semantics and reviewable commit history"
+    "record states evidenceComplete and productionReady true before registry mutation",
+    "registry update is protected by an exclusive filesystem lock and atomic replacement",
+    "registry change still requires validator execution and independent Git review"
   ],
   "readiness": {
     "contractDefined": true,
     "registryImplemented": true,
     "validatorImplemented": true,
-    "writerImplemented": false,
+    "writerImplemented": true,
     "approvedReleaseCount": 0,
     "approvedPredecessorAvailable": false,
     "rollbackEligibleReleaseAvailable": false,
     "independentReviewCompleted": false,
     "productionReady": false,
-    "note": "The registry authority is defined, but no release is approved. Historical candidate compatibility remains candidate-only and cannot satisfy approved predecessor or rollback evidence."
+    "note": "The writer exists but cannot manufacture approvals, evidence, a release tag or production readiness. No release is approved, so approved predecessor and rollback eligibility remain unavailable."
   },
   "evidenceRefs": [
     "contracts/operations/release-baseline-registry-contract.v1.json",
     "contracts/operations/release-baseline-registry.v1.json",
     "docs/evidence/releases/README.md",
-    "scripts/validate-memory-os-release-baseline-registry.py"
+    "scripts/register-memory-os-release-baseline.py",
+    "scripts/validate-memory-os-release-baseline-registry.py",
+    "scripts/reconcile-memory-os-release-baseline-registry.py",
+    ".github/workflows/release-baseline-registry.yml"
   ]
 }
