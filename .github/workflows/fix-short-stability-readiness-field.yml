@@ -1,0 +1,62 @@
+name: Fix Short Stability Readiness Field
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/fix-short-stability-readiness-field.yml"
+      - "scripts/reconcile-memory-os-short-stability-status.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fix-short-stability-readiness-field-so
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    if: >-
+      github.event_name != 'push' ||
+      !contains(github.event.head_commit.message, 'fix(load): use sustained soak evidence readiness field')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout latest so
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Fix exact readiness field
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("scripts/reconcile-memory-os-short-stability-status.py")
+          text = path.read_text(encoding="utf-8")
+          old = '("sustainedSoak", "operationalThresholds", "capacityBoundaryEstablished")'
+          new = '("sustainedSoakEvidence", "operationalThresholds", "capacityBoundaryEstablished")'
+          if new not in text:
+              if text.count(old) != 1:
+                  raise SystemExit("short stability readiness field authority drift")
+              text = text.replace(old, new)
+          path.write_text(text, encoding="utf-8")
+          PY
+          python -m py_compile scripts/reconcile-memory-os-short-stability-status.py
+
+      - name: Commit field correction
+        run: |
+          set -euo pipefail
+          git add scripts/reconcile-memory-os-short-stability-status.py
+          if git diff --cached --quiet; then
+            echo "Short stability readiness field already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix(load): use sustained soak evidence readiness field"
+          git pull --rebase origin so
+          git push origin HEAD:so
