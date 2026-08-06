@@ -1,0 +1,84 @@
+name: Diagnose Metrics Alerting
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/diagnose-metrics-alerting.yml"
+      - "contracts/operations/metrics-alerting-contract.v1.json"
+      - "infra/observability/prometheus/memory-os-alerts.yml"
+      - "docs/runbooks/memory-os-metrics-alerts.md"
+      - "scripts/validate-memory-os-metrics-alerting.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: diagnose-metrics-alerting-so
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout latest so
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run validator and write bounded diagnostic
+        id: validate
+        shell: bash
+        run: |
+          set +e
+          python scripts/validate-memory-os-metrics-alerting.py > /tmp/metrics-alerting.log 2>&1
+          code=$?
+          set -e
+          VALIDATION_EXIT_CODE="$code" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          output = Path('/tmp/metrics-alerting.log').read_text(encoding='utf-8', errors='replace')
+          output = output[:4000]
+          result = {
+              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'validator': 'scripts/validate-memory-os-metrics-alerting.py',
+              'sourceCommitSha': os.environ['GITHUB_SHA'],
+              'result': 'PASS' if os.environ['VALIDATION_EXIT_CODE'] == '0' else 'FAIL',
+              'exitCode': int(os.environ['VALIDATION_EXIT_CODE']),
+              'output': output,
+              'containsSecrets': False,
+              'productionEvidence': False,
+          }
+          path = Path('docs/fixtures/memory-os-operability/metrics-alerting-validation.last.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(result, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+          PY
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+
+      - name: Commit diagnostic
+        run: |
+          git add docs/fixtures/memory-os-operability/metrics-alerting-validation.last.json
+          if git diff --cached --quiet; then
+            echo "Alerting diagnostic is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "test(metrics): record alerting validator diagnostic"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+
+      - name: Fail when validator failed
+        if: steps.validate.outputs.exit_code != '0'
+        run: exit 1
