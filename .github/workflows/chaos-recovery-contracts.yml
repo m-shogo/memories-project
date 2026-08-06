@@ -6,16 +6,23 @@ on:
       - ".github/workflows/chaos-recovery-contracts.yml"
       - ".github/workflows/chaos-failure-drills-v2.yml"
       - ".github/workflows/parser-restart-matrix.yml"
+      - ".github/workflows/parser-inflight-cancellation.yml"
       - ".github/workflows/database-commit-outage.yml"
       - "contracts/operations/chaos-failure-drill-contract.v2.json"
       - "contracts/operations/parser-restart-matrix-contract.v1.json"
+      - "contracts/operations/parser-inflight-cancellation-contract.v1.json"
       - "contracts/operations/database-commit-outage-contract.v1.json"
       - "services/import-api/internal/httpserver/interruption_drill_test.go"
+      - "services/import-api/internal/parsersup/supervisor_linux.go"
+      - "services/import-api/internal/parsersup/worker.go"
       - "services/import-api/internal/parsersup/restart_matrix_drill_linux_test.go"
+      - "services/import-api/internal/parsersup/inflight_cancellation_drill_linux_test.go"
+      - "services/import-api/internal/importflow/resume.go"
       - "services/import-api/internal/importflow/object_outage_drill_linux_test.go"
       - "services/import-api/internal/importflow/database_outage_drill_linux_test.go"
       - "scripts/validate-memory-os-chaos-failure-drills-v2.py"
       - "scripts/validate-memory-os-parser-restart-matrix.py"
+      - "scripts/validate-memory-os-parser-inflight-cancellation.py"
       - "scripts/validate-memory-os-database-commit-outage.py"
   push:
     branches:
@@ -24,16 +31,23 @@ on:
       - ".github/workflows/chaos-recovery-contracts.yml"
       - ".github/workflows/chaos-failure-drills-v2.yml"
       - ".github/workflows/parser-restart-matrix.yml"
+      - ".github/workflows/parser-inflight-cancellation.yml"
       - ".github/workflows/database-commit-outage.yml"
       - "contracts/operations/chaos-failure-drill-contract.v2.json"
       - "contracts/operations/parser-restart-matrix-contract.v1.json"
+      - "contracts/operations/parser-inflight-cancellation-contract.v1.json"
       - "contracts/operations/database-commit-outage-contract.v1.json"
       - "services/import-api/internal/httpserver/interruption_drill_test.go"
+      - "services/import-api/internal/parsersup/supervisor_linux.go"
+      - "services/import-api/internal/parsersup/worker.go"
       - "services/import-api/internal/parsersup/restart_matrix_drill_linux_test.go"
+      - "services/import-api/internal/parsersup/inflight_cancellation_drill_linux_test.go"
+      - "services/import-api/internal/importflow/resume.go"
       - "services/import-api/internal/importflow/object_outage_drill_linux_test.go"
       - "services/import-api/internal/importflow/database_outage_drill_linux_test.go"
       - "scripts/validate-memory-os-chaos-failure-drills-v2.py"
       - "scripts/validate-memory-os-parser-restart-matrix.py"
+      - "scripts/validate-memory-os-parser-inflight-cancellation.py"
       - "scripts/validate-memory-os-database-commit-outage.py"
   workflow_dispatch:
 
@@ -93,14 +107,20 @@ jobs:
           python -m py_compile \
             scripts/validate-memory-os-chaos-failure-drills-v2.py \
             scripts/validate-memory-os-parser-restart-matrix.py \
+            scripts/validate-memory-os-parser-inflight-cancellation.py \
             scripts/validate-memory-os-database-commit-outage.py
           test -z "$(gofmt -l \
             services/import-api/internal/httpserver/interruption_drill_test.go \
+            services/import-api/internal/parsersup/supervisor_linux.go \
+            services/import-api/internal/parsersup/worker.go \
             services/import-api/internal/parsersup/restart_matrix_drill_linux_test.go \
+            services/import-api/internal/parsersup/inflight_cancellation_drill_linux_test.go \
+            services/import-api/internal/importflow/resume.go \
             services/import-api/internal/importflow/object_outage_drill_linux_test.go \
             services/import-api/internal/importflow/database_outage_drill_linux_test.go)"
           python scripts/validate-memory-os-chaos-failure-drills-v2.py
           python scripts/validate-memory-os-parser-restart-matrix.py
+          python scripts/validate-memory-os-parser-inflight-cancellation.py
           python scripts/validate-memory-os-database-commit-outage.py
 
       - name: Execute current recovery drills
@@ -109,6 +129,6 @@ jobs:
           go test ./internal/httpserver \
             -run '^TestHTTPServerGracefulInterruptionDrainsInFlightRequest$' -count=1
           go test ./internal/parsersup \
-            -run '^TestSupervisorRestartRecoveryMatrix$' -count=1
+            -run '^(TestSupervisorRestartRecoveryMatrix|TestSupervisorCancelsStartedWorkerPromptly)$' -count=1
           go test ./internal/importflow \
             -run '^(TestFlowRecoversAfterObjectStoreOutage|TestFlowRecoversAfterDatabaseCommitOutage)$' -count=1
