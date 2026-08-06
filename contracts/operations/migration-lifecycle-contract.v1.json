@@ -144,17 +144,23 @@
     "privacyClass": "operational_sensitive_no_secrets",
     "appendOnly": true
   },
+  "evidenceRefs": [
+    ".github/workflows/security-contracts.yml",
+    "contracts/operations/migration-lifecycle-contract.v1.json",
+    "docs/runbooks/memory-os-migration-recovery.md",
+    "scripts/validate-memory-os-migration-lifecycle.py"
+  ],
   "readiness": {
     "policyDefined": true,
     "runbookDefined": true,
     "migrationRegistryComplete": true,
-    "ciDryRunAgainstCleanDatabase": false,
+    "ciDryRunAgainstCleanDatabase": true,
     "mixedVersionCompatibilityProven": false,
     "productionShapedRehearsalCompleted": false,
     "isolatedRestoreLinked": false,
     "operatorEvidenceRecordImplemented": false,
     "automatedDestructiveRollback": false,
     "ready": false,
-    "note": "The lifecycle policy and runbook are foundations only. A clean-database dry run, mixed-version proof, recovery-point integration, evidence ledger and production-shaped rehearsal remain required, so OPS-P0-001 stays PARTIAL."
+    "note": "Security Contracts already provisions a clean PostgreSQL 16 database, applies the complete canonical migration sequence and runs every SQL integration suite. Mixed-version proof, recovery-point integration, evidence ledger and production-shaped rehearsal remain required, so OPS-P0-001 stays PARTIAL."
   }
 }
