@@ -1,0 +1,56 @@
+{
+  "schemaVersion": "memory-os-postgresql-major-upgrade-results.v1",
+  "commitSha": "18275760a8be87bacd7ad05ee6e9559a1326c1de",
+  "generatedAt": "2026-08-06T11:50:29.217054Z",
+  "environment": {
+    "mode": "EPHEMERAL_DOCKER_POSTGRESQL_16_TO_17_LOGICAL_FORWARD_RESTORE",
+    "productionEvidence": false,
+    "productionTraffic": false,
+    "productionCredentials": false,
+    "containsSecrets": false,
+    "syntheticDataOnly": true
+  },
+  "scenario": {
+    "scenarioId": "postgresql-16-to-17-logical-forward-upgrade",
+    "startedAt": "2026-08-06T11:50:13Z",
+    "completedAt": "2026-08-06T11:50:29Z",
+    "durationSeconds": 16,
+    "sourceMajor": 16,
+    "targetMajor": 17,
+    "migrationFilesAppliedPerDatabase": 11,
+    "sqlIntegrationTestsExecutedOnTarget": 11,
+    "dumpBytes": 7288,
+    "schemaAuthorityFingerprintSha256": "93e98f812ae53808f4131339f2d2d1f39ff373f338bd3196c7af993941f34f84",
+    "assertions": {
+      "sourceMajor": 16,
+      "targetMajor": 17,
+      "allCurrentMigrationsAppliedToSource": true,
+      "allCurrentMigrationsAppliedToTarget": true,
+      "dataOnlyDumpCreated": true,
+      "dataOnlyRestoreCompleted": true,
+      "schemaAuthorityFingerprintEqual": true,
+      "runtimeRolesWithoutBypassRls": 4,
+      "forceRlsTables": 14,
+      "activeSyntheticAccountsAfterUpgrade": 1,
+      "activeSyntheticSessionsAfterUpgrade": 1,
+      "activeSyntheticSessionsResolvedAfterUpgrade": 1,
+      "deletedSyntheticAccountsAfterUpgrade": 0,
+      "deletedSyntheticSessionDigestsAfterUpgrade": 0,
+      "deletedSyntheticSessionsResolvedAfterUpgrade": 0,
+      "allCanonicalSqlTestsPassedOnTarget": true,
+      "integrityResult": "PASS",
+      "result": "PASS"
+    },
+    "integrityResult": "PASS",
+    "result": "PASS"
+  },
+  "limitations": [
+    "ephemeral single-node PostgreSQL 16 and PostgreSQL 17 Docker containers",
+    "logical data-only dump and restore rather than in-place pg_upgrade",
+    "no extensions, replication slots, WAL, failover or connection-pool migration",
+    "synthetic authority and deletion state only",
+    "no production traffic, credentials or operator promotion",
+    "no downgrade or destructive contract migration",
+    "not production database upgrade evidence"
+  ]
+}
