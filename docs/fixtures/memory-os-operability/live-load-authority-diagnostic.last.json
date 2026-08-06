@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "reconcile-live-load-authority-v2",
+  "sourceCommitSha": "e2824553c05c4efd12e6225aff27c09868712617",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "STAGE: validate-live-postgresql-load\nERROR: missing required evidence: docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json\nSTAGE: validate-live-object-load\nERROR: missing required evidence: docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json\n",
+  "containsSecrets": false,
+  "productionEvidence": false
+}
