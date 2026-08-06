@@ -56,9 +56,11 @@ func TestSupervisorCancelsStartedWorkerPromptly(t *testing.T) {
 		if !errors.Is(parseErr, context.Canceled) {
 			t.Fatalf("in-flight cancellation error drift: %v", parseErr)
 		}
-		if elapsed := time.Since(cancelStarted); elapsed >= time.Second {
+		elapsed := time.Since(cancelStarted)
+		if elapsed >= time.Second {
 			t.Fatalf("in-flight cancellation was not prompt: %s", elapsed)
 		}
+		t.Logf("MEMORY_OS_CANCELLATION_LATENCY_MS=%d", elapsed.Milliseconds())
 	case <-time.After(time.Second):
 		t.Fatal("in-flight cancellation waited for the wall-clock limit")
 	}
