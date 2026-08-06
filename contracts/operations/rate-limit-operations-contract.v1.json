@@ -1,0 +1,153 @@
+{
+  "contractId": "memory-os.operability.rate-limit-operations.v1",
+  "schemaVersion": "memory-os-rate-limit-operations.v1",
+  "description": "Binding emergency-operation and recovery policy for Memory OS rate limiting. The policy forbids unlimited or fail-open public traffic. It defines strict local fallback, route fail-closed and trusted-proxy disablement, but no production control plane or completed drill exists.",
+  "sourcePolicyContract": "contracts/operations/rate-limit-policy-contract.v1.json",
+  "canonicalRunbook": "docs/runbooks/memory-os-rate-limit-operations.md",
+  "status": "POLICY_DEFINED_CONTROL_PLANE_NOT_IMPLEMENTED",
+  "operationalModes": [
+    {
+      "id": "NORMAL_CONFIGURED",
+      "description": "Configured policy and store behavior for the deployment.",
+      "publicTrafficBehavior": "bounded_by_route_and_network_policy",
+      "allowed": true
+    },
+    {
+      "id": "STRICT_LOCAL_EMERGENCY",
+      "description": "Short-lived bounded local fallback for explicitly approved routes whose policy already declares fail_closed_emergency_local.",
+      "publicTrafficBehavior": "stricter_local_token_bucket",
+      "allowed": true
+    },
+    {
+      "id": "ROUTE_FAIL_CLOSED",
+      "description": "Reject the affected public route with bounded public error behavior while preserving health and internal operational access.",
+      "publicTrafficBehavior": "reject_affected_route",
+      "allowed": true
+    },
+    {
+      "id": "UNLIMITED_OR_FAIL_OPEN",
+      "description": "Permit traffic without enforceable limits or allow on store uncertainty.",
+      "publicTrafficBehavior": "unbounded_or_uncertain_allow",
+      "allowed": false
+    }
+  ],
+  "proxyModes": [
+    {
+      "id": "TRUSTED_PROXY_CONFIGURED",
+      "allowed": true,
+      "requirement": "deployment-owned exact proxy boundary"
+    },
+    {
+      "id": "TRUSTED_PROXY_DISABLED",
+      "allowed": true,
+      "requirement": "ignore forwarded client address and derive only from direct peer"
+    },
+    {
+      "id": "ARBITRARY_FORWARDED_HEADERS",
+      "allowed": false,
+      "requirement": "never trust unowned forwarding headers"
+    }
+  ],
+  "allowedTransitions": [
+    {
+      "from": "NORMAL_CONFIGURED",
+      "to": "STRICT_LOCAL_EMERGENCY",
+      "condition": "shared store unavailable and route contract explicitly permits emergency local fallback"
+    },
+    {
+      "from": "NORMAL_CONFIGURED",
+      "to": "ROUTE_FAIL_CLOSED",
+      "condition": "store, policy, identity or cardinality state is uncertain"
+    },
+    {
+      "from": "STRICT_LOCAL_EMERGENCY",
+      "to": "ROUTE_FAIL_CLOSED",
+      "condition": "local fallback saturates, loses accounting or exceeds its approved duration"
+    },
+    {
+      "from": "STRICT_LOCAL_EMERGENCY",
+      "to": "NORMAL_CONFIGURED",
+      "condition": "shared store atomicity, latency and policy generation are verified"
+    },
+    {
+      "from": "ROUTE_FAIL_CLOSED",
+      "to": "NORMAL_CONFIGURED",
+      "condition": "dependency and integrity checks pass through a bounded canary"
+    }
+  ],
+  "activationGuards": {
+    "incidentReferenceRequired": true,
+    "exactSourceCommitRequired": true,
+    "namedOperatorRequired": true,
+    "independentReviewerRequired": true,
+    "affectedPoliciesExplicitRequired": true,
+    "startAndExpiryRequired": true,
+    "maximumEmergencyDurationMinutes": 60,
+    "automaticExpiryRequired": true,
+    "publicCommunicationDecisionRequired": true,
+    "rawIpOrTokenEvidenceForbidden": true,
+    "productionConfirmationRequired": true
+  },
+  "forbiddenActions": [
+    "switch public routes to fail open",
+    "set unlimited capacity or refill",
+    "disable authentication or authorization",
+    "trust arbitrary forwarded client headers",
+    "use raw IP, token, account or request content as a metric label",
+    "clear rate-limit counters to hide an incident",
+    "change policy generation without exact-source evidence",
+    "disable structured events or metrics to reduce load",
+    "mark recovery complete without mutation and integrity checks"
+  ],
+  "recoveryVerification": [
+    "shared store atomic increment and expiry behavior verified",
+    "configured policy generation matches exact source",
+    "trusted proxy boundary verified or explicitly disabled",
+    "rejected requests created no account session replay upload apply or memory mutation",
+    "rate-limit store failure and emergency fallback metrics return to baseline",
+    "bounded canary passes before full traffic restoration",
+    "temporary mode expires and evidence record is closed"
+  ],
+  "evidenceRecord": {
+    "requiredFields": [
+      "operationId",
+      "incidentReference",
+      "sourceCommitSha",
+      "environment",
+      "operator",
+      "reviewer",
+      "previousMode",
+      "newMode",
+      "proxyMode",
+      "affectedPolicyIds",
+      "startedAt",
+      "expiresAt",
+      "activationReason",
+      "verificationResults",
+      "restoredAt",
+      "openRisks"
+    ],
+    "appendOnly": true,
+    "privacyClass": "operational_sensitive_no_secrets"
+  },
+  "readiness": {
+    "policyDefined": true,
+    "runbookDefined": true,
+    "safeModesDefined": true,
+    "transitionGuardsDefined": true,
+    "recoveryVerificationDefined": true,
+    "productionControlPlaneImplemented": false,
+    "automaticExpiryImplemented": false,
+    "evidenceLedgerImplemented": false,
+    "sharedStoreImplemented": false,
+    "trustedProxyDeploymentConfigured": false,
+    "drillCompleted": false,
+    "operatorReviewCompleted": false,
+    "productionReady": false
+  },
+  "evidenceRefs": [
+    "contracts/operations/rate-limit-operations-contract.v1.json",
+    "docs/runbooks/memory-os-rate-limit-operations.md",
+    "scripts/validate-memory-os-rate-limit-operations.py"
+  ]
+}
