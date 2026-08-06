@@ -1,10 +1,10 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "regenerate-live-dependency-load-v2",
-  "sourceCommitSha": "86fdaf51ec1191eb1c6b49600ac3ba25afd3f3a1",
+  "sourceCommitSha": "5bb40ea78f74fb188c6c9077dfbd85aa8a717953",
   "result": "FAIL",
   "exitCode": 1,
-  "output": "STAGE: compile-and-format\nSTAGE: live-postgresql-and-minio-tests\n# github.com/m-shogo/memories-project/services/import-api/internal/httpserver [github.com/m-shogo/memories-project/services/import-api/internal/httpserver.test]\ninternal/httpserver/capacity_ramp_test.go:78:71: undefined: http\ninternal/httpserver/capacity_ramp_test.go:79:23: undefined: http\nFAIL\tgithub.com/m-shogo/memories-project/services/import-api/internal/httpserver [build failed]\nFAIL\n",
+  "output": "STAGE: compile-and-format\nSTAGE: live-postgresql-and-minio-tests\n--- FAIL: TestLivePostgresPreviewReadAndIdempotentApplyLoad (61.07s)\n    live_load_test.go:241: live apply load produced infrastructure/internal failures: {Requests:96 Concurrency:24 Successes:0 Failures:96 StatusClassCounts:map[transport_error:96] DurationSeconds:60.025578306 Throughput:1.599318202493754 LatencyP50Ms:0 LatencyP95Ms:0 LatencyP99Ms:0}\n--- FAIL: TestLiveMinIOSignedUploadLifecycleLoad (120.14s)\n    live_object_load_test.go:276: live object load violated status boundary: {Requests:32 Concurrency:8 Successes:0 Failures:32 StatusClassCounts:map[transport_error:32] DurationSeconds:120.049319894 Throughput:0.26655711192912257 LatencyP50Ms:0 LatencyP95Ms:0 LatencyP99Ms:0}\nFAIL\nFAIL\tgithub.com/m-shogo/memories-project/services/import-api/internal/httpserver\t181.327s\nFAIL\n",
   "containsSecrets": false,
   "productionEvidence": false
 }
