@@ -23,7 +23,7 @@ permissions:
 
 concurrency:
   group: reconcile-load-foundation-authorities-so
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   reconcile:
