@@ -83,7 +83,9 @@ def validate_result(result: dict[str, Any], expected_sha: str | None) -> None:
         "candidateRowsAfterRecovery": 2,
         "rejectionRowsAfterRecovery": 1,
         "sameSourceAndPreviewIdReused": True,
-        "newSpoolAttemptUsed": True,
+        "sameSpoolIdReused": True,
+        "resumeWithoutObjectStore": True,
+        "resumeWithoutParser": True,
         "recoveryMarkedAsReplay": False,
     }
     for field, value in expected.items():
@@ -94,8 +96,9 @@ def validate_result(result: dict[str, Any], expected_sha: str | None) -> None:
     for phrase in (
         "not PostgreSQL process loss",
         "not replication failover",
-        "new spool attempt",
+        "same sealed spool",
         "ephemeral PostgreSQL 16 and MinIO",
+        "host restart not executed",
         "not production chaos evidence",
     ):
         require(phrase in joined, f"database outage limitation omitted: {phrase}")
@@ -126,7 +129,11 @@ def main() -> int:
     require(contract.get("dependencyMode") ==
             "EPHEMERAL_POSTGRESQL_16_MINIO_WITH_UNREACHABLE_COMMIT_POOL",
             "database outage dependency mode drift")
-    strings(contract.get("requiredAssertions"), "requiredAssertions", 7)
+    assertions = strings(contract.get("requiredAssertions"), "requiredAssertions", 8)
+    require(any("same request" in value and "spool ID" in value for value in assertions),
+            "contract must bind recovery to the exact same request/spool")
+    require(any("object storage" in value and "parser" in value for value in assertions),
+            "contract must prove object/parser-independent resume")
     privacy = contract.get("privacy")
     require(isinstance(privacy, dict), "database outage privacy must be an object")
     require(privacy.get("productionEvidence") is False,
@@ -143,21 +150,34 @@ def main() -> int:
     source = test_path.read_text(encoding="utf-8")
     for snippet in (
         "127.0.0.1:1", "ConnectTimeout", "assertNothingImported",
-        "sealed spool evidence", "healthyCommitter", "new spool attempt",
+        "sealed spool evidence", "healthyCommitter", "ResumeCommit",
+        "env.flow.Objects = nil", "env.flow.Supervisor = nil",
     ):
         require(snippet in source, f"database outage test missing boundary: {snippet}")
+    resume_path = ROOT / "services/import-api/internal/importflow/resume.go"
+    require(resume_path.is_file(), "ResumeCommit implementation missing")
+    resume = resume_path.read_text(encoding="utf-8")
+    for snippet in (
+        "func (f *Flow) ResumeCommit", "verifier.Verify", "CollectSealedRecords",
+        "decodeCommitRows", "f.Committer.Commit",
+    ):
+        require(snippet in resume, f"ResumeCommit missing boundary: {snippet}")
+    require("f.Objects" not in resume and "f.Supervisor" not in resume,
+            "ResumeCommit must not depend on object storage or parser supervisor")
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "database outage readiness must be an object")
-    for foundation in ("contractDefined", "testImplemented", "validatorImplemented"):
+    for foundation in (
+        "contractDefined", "testImplemented", "validatorImplemented",
+        "automaticWorkflowImplemented", "sameSealedSpoolCommitResumeImplemented",
+    ):
         require(readiness.get(foundation) is True,
                 f"database outage readiness.{foundation} must be true")
     for unproven in (
-        "databaseProcessLossExecuted", "replicationFailoverExecuted",
-        "sameSealedSpoolCommitResumeImplemented", "productionReady",
+        "databaseProcessLossExecuted", "replicationFailoverExecuted", "productionReady",
     ):
         require(readiness.get(unproven) is False,
                 f"unproven database outage readiness cannot be true: {unproven}")
-    refs = strings(contract.get("evidenceRefs"), "evidenceRefs", 5)
+    refs = strings(contract.get("evidenceRefs"), "evidenceRefs", 8)
     for ref in refs:
         require((ROOT / ref).is_file(), f"database outage evidence missing: {ref}")
     expected_sha = os.environ.get("EXPECTED_COMMIT_SHA")
