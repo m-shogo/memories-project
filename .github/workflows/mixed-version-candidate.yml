@@ -60,6 +60,7 @@ jobs:
       PGPORT: "5432"
       PGUSER: postgres
       PGPASSWORD: postgres
+      PGOPTIONS: "-c client_min_messages=warning"
       MEMORY_OS_TEST_S3_ENDPOINT: http://127.0.0.1:9000
       MEMORY_OS_ALLOW_EPHEMERAL_DATABASE_DROP: "1"
 
