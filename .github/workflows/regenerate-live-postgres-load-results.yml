@@ -14,6 +14,7 @@ on:
       - "scripts/validate-memory-os-live-object-load.py"
       - "scripts/reconcile-memory-os-live-load-status.py"
       - "scripts/validate-memory-os-load.py"
+      - "scripts/validate-memory-os-load-evidence-index.py"
       - "scripts/validate-memory-os-operability.py"
   schedule:
     # Daily self-heal at 03:17 JST. Scheduled runs use the default branch (so).
@@ -95,6 +96,7 @@ jobs:
             ../../scripts/validate-memory-os-live-object-load.py \
             ../../scripts/reconcile-memory-os-live-load-status.py \
             ../../scripts/validate-memory-os-load.py \
+            ../../scripts/validate-memory-os-load-evidence-index.py \
             ../../scripts/validate-memory-os-operability.py
 
       - name: Run live PostgreSQL and MinIO HTTP checkpoints
@@ -122,6 +124,7 @@ jobs:
           python scripts/validate-memory-os-live-object-load.py
           python scripts/reconcile-memory-os-live-load-status.py
           python scripts/validate-memory-os-load.py
+          python scripts/validate-memory-os-load-evidence-index.py
           python scripts/validate-memory-os-operability.py
 
       - name: Commit regenerated evidence and reconciled status
