@@ -1,0 +1,87 @@
+groups:
+  - name: memory-os-operability
+    interval: 30s
+    rules:
+      - alert: MemoryOSHTTP5xxBurst
+        expr: >-
+          sum(rate(memory_os_http_requests_total{status_class="5xx"}[5m]))
+          / clamp_min(sum(rate(memory_os_http_requests_total[5m])), 1) > 0.05
+        for: 10m
+        labels:
+          severity: high
+          alert_id: alert_http_5xx_burst
+          threshold_status: provisional_not_load_calibrated
+        annotations:
+          summary: Memory OS HTTP 5xx ratio is elevated
+          runbook: docs/runbooks/memory-os-metrics-alerts.md#alert-http-5xx-burst
+
+      - alert: MemoryOSPanicDetected
+        expr: sum(increase(memory_os_http_panics_total[5m])) > 0
+        for: 0m
+        labels:
+          severity: high
+          alert_id: alert_panic_detected
+          threshold_status: invariant_any_occurrence
+        annotations:
+          summary: Memory OS recovered an HTTP panic
+          runbook: docs/runbooks/memory-os-metrics-alerts.md#alert-panic-detected
+
+      - alert: MemoryOSAppleExchangeFailureSpike
+        expr: >-
+          sum(rate(memory_os_apple_exchange_total{outcome="failure"}[10m]))
+          / clamp_min(sum(rate(memory_os_apple_exchange_total[10m])), 1) > 0.20
+        for: 15m
+        labels:
+          severity: medium
+          alert_id: alert_apple_exchange_failure_spike
+          threshold_status: provisional_not_load_calibrated
+        annotations:
+          summary: Memory OS Apple exchange failure ratio is elevated
+          runbook: docs/runbooks/memory-os-metrics-alerts.md#alert-apple-exchange-failure-spike
+
+      - alert: MemoryOSRateLimitStoreFailing
+        expr: sum(increase(memory_os_rate_limit_store_failures_total[5m])) > 0
+        for: 0m
+        labels:
+          severity: high
+          alert_id: alert_rate_limit_store_failing
+          threshold_status: invariant_any_occurrence
+        annotations:
+          summary: Memory OS rate-limit store failures were observed
+          runbook: docs/runbooks/memory-os-metrics-alerts.md#alert-rate-limit-store-failing
+
+      - alert: MemoryOSDatabaseFailing
+        expr: sum(increase(memory_os_db_failures_total[5m])) > 0
+        for: 5m
+        labels:
+          severity: high
+          alert_id: alert_db_failing
+          threshold_status: provisional_zero_tolerance_pending_baseline
+        annotations:
+          summary: Memory OS database failures are continuing
+          runbook: docs/runbooks/memory-os-metrics-alerts.md#alert-db-failing
+
+      - alert: MemoryOSDeletionBacklogStuck
+        expr: >-
+          max_over_time(memory_os_deletion_backlog[30m]) > 0
+          and max_over_time(memory_os_deletion_backlog[30m])
+          == min_over_time(memory_os_deletion_backlog[30m])
+        for: 30m
+        labels:
+          severity: high
+          alert_id: alert_deletion_backlog_stuck
+          threshold_status: provisional_policy_window
+        annotations:
+          summary: Memory OS deletion backlog is positive and not moving
+          runbook: docs/runbooks/memory-os-metrics-alerts.md#alert-deletion-backlog-stuck
+
+      - alert: MemoryOSDeletionTerminalFailure
+        expr: sum(increase(memory_os_deletion_terminal_failures_total[5m])) > 0
+        for: 0m
+        labels:
+          severity: high
+          alert_id: alert_deletion_terminal_failure
+          threshold_status: invariant_any_occurrence
+        annotations:
+          summary: Memory OS recorded a deletion terminal failure
+          runbook: docs/runbooks/memory-os-metrics-alerts.md#alert-deletion-terminal-failure
