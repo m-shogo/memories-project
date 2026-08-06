@@ -113,31 +113,47 @@ jobs:
 
       - name: Run candidate baseline compatibility drill
         id: drill
-        continue-on-error: true
         env:
           MEMORY_OS_COMMIT_SHA: ${{ github.sha }}
           MEMORY_OS_MIXED_VERSION_RESULTS_PATH: ${{ github.workspace }}/docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json
-        run: bash scripts/run-memory-os-mixed-version-candidate.sh
+        run: |
+          set +e
+          bash scripts/run-memory-os-mixed-version-candidate.sh \
+            >"$RUNNER_TEMP/mixed-version-candidate.log" 2>&1
+          exit_code=$?
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          exit 0
 
       - name: Record bounded failure diagnostic
-        if: steps.drill.outcome != 'success'
+        if: steps.drill.outputs.exit_code != '0'
         env:
           SOURCE_SHA: ${{ github.sha }}
+          DRILL_EXIT_CODE: ${{ steps.drill.outputs.exit_code }}
         run: |
           python - <<'PY'
           import datetime as dt
           import json
           import os
+          import re
           from pathlib import Path
+
+          raw_path = Path(os.environ["RUNNER_TEMP"]) / "mixed-version-candidate.log"
+          raw = raw_path.read_text(encoding="utf-8", errors="replace") if raw_path.exists() else "runner log unavailable"
+          redacted = re.sub(r"(?:postgres|postgresql)://\S+", "[REDACTED_DATABASE_URL]", raw, flags=re.I)
+          redacted = re.sub(r"(?i)(password|secret|access[_-]?key)\s*[=:]\s*\S+", r"\1=[REDACTED]", redacted)
+          redacted = redacted.replace("minioadmin", "[REDACTED_CREDENTIAL]")
+          redacted = re.sub(r"/tmp/memory-os-mixed-version\.[^\s/]+", "[REDACTED_WORKTREE]", redacted)
+          redacted = redacted[-4000:]
           path = Path("docs/fixtures/memory-os-operability/mixed-version-candidate-diagnostic.last.json")
           value = {
               "schemaVersion": "memory-os-validator-diagnostic.v1",
               "workflow": "mixed-version-candidate",
               "sourceCommitSha": os.environ["SOURCE_SHA"],
               "result": "FAIL",
-              "exitCode": 1,
+              "exitCode": int(os.environ["DRILL_EXIT_CODE"]),
               "generatedAt": dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z"),
-              "output": "candidate compatibility drill failed; inspect GitHub Actions step logs",
+              "output": redacted,
+              "outputBytesBeforeTruncation": len(raw.encode("utf-8", errors="replace")),
               "containsSecrets": False,
               "productionEvidence": False,
           }
@@ -145,7 +161,7 @@ jobs:
           PY
 
       - name: Commit failure diagnostic
-        if: steps.drill.outcome != 'success' && github.event_name != 'pull_request'
+        if: steps.drill.outputs.exit_code != '0' && github.event_name != 'pull_request'
         run: |
           git add docs/fixtures/memory-os-operability/mixed-version-candidate-diagnostic.last.json
           if git diff --cached --quiet; then exit 0; fi
@@ -157,7 +173,7 @@ jobs:
           git push origin HEAD:so
 
       - name: Fail after diagnostic
-        if: steps.drill.outcome != 'success'
+        if: steps.drill.outputs.exit_code != '0'
         run: exit 1
 
       - name: Validate exact-source result
@@ -165,10 +181,13 @@ jobs:
           EXPECTED_COMMIT_SHA: ${{ github.sha }}
         run: python scripts/validate-memory-os-mixed-version-candidate.py
 
-      - name: Commit exact-source result
+      - name: Commit exact-source result and clear stale diagnostic
         if: github.event_name != 'pull_request'
         run: |
-          git add docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json
+          rm -f docs/fixtures/memory-os-operability/mixed-version-candidate-diagnostic.last.json
+          git add -A \
+            docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json \
+            docs/fixtures/memory-os-operability/mixed-version-candidate-diagnostic.last.json
           if git diff --cached --quiet; then
             echo "Candidate compatibility evidence is already current."
           else
