@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "memory-os-migration-operation-record.v1",
+  "migrationRunId": "mgr_template_local_ci_0001",
+  "environment": "LOCAL_CI",
+  "databaseIdentityDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "sourceCommitSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "migrationSequenceBefore": [],
+  "migrationSequenceAfter": [],
+  "startedAt": "2026-08-06T00:00:00Z",
+  "completedAt": "2026-08-06T00:00:01Z",
+  "operator": "op_ci_runner",
+  "reviewer": "rv_ci_reviewer",
+  "recoveryPointReference": "rpt_template_local_ci_0001",
+  "preflightResult": "PASS",
+  "applyResult": "PASS",
+  "verificationResult": "PASS",
+  "recoveryDecision": "NO_RECOVERY_NEEDED",
+  "openRisks": [],
+  "containsSecrets": false,
+  "productionEvidence": false
+}
