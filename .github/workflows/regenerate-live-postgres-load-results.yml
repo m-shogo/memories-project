@@ -10,7 +10,6 @@ on:
       - "infra/postgresql/security/**"
       - "contracts/operations/live-postgres-load-scenario-contract.v1.json"
       - "contracts/operations/live-object-load-scenario-contract.v1.json"
-      - "contracts/operations/production-operability-status.json"
       - "scripts/validate-memory-os-live-load.py"
       - "scripts/validate-memory-os-live-object-load.py"
       - "scripts/reconcile-memory-os-live-load-status.py"
