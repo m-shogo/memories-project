@@ -1,0 +1,81 @@
+{
+  "contractId": "memory-os.operability.backup-local-foundation-evidence.v1",
+  "schemaVersion": "memory-os-backup-local-foundation-evidence.v1",
+  "description": "Machine-readable index of completed local backup/restore foundations. These drills are exact-source executable evidence but are not PostgreSQL PITR, independent provider retention, coherent database/object recovery, approved RPO/RTO or production disaster-recovery evidence.",
+  "productionEvidence": false,
+  "productionDecision": "NO_GO",
+  "evidenceClass": "LOCAL_CI_FOUNDATION",
+  "foundations": [
+    {
+      "id": "LOCAL_POSTGRESQL_LOGICAL_RESTORE",
+      "status": "PASS_EVIDENCE_COMMITTED",
+      "contract": "contracts/operations/local-logical-restore-contract.v1.json",
+      "result": "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json",
+      "validator": "scripts/validate-memory-os-local-logical-restore.py",
+      "workflow": ".github/workflows/local-logical-restore.yml",
+      "proves": [
+        "canonical migration sequence applies to an ephemeral source database",
+        "custom-format pg_dump restores into a separate empty database",
+        "all canonical SQL integration tests pass on the restored database in migration order",
+        "four runtime roles retain NOBYPASSRLS",
+        "tenant tables retain FORCE RLS",
+        "synthetic deleted account and session digest do not resurrect",
+        "deleted synthetic token cannot resolve through memory_auth_runtime"
+      ],
+      "doesNotProve": [
+        "physical backup or WAL/PITR",
+        "cross-cluster restore",
+        "production backup schedule or independent retention",
+        "approved RPO or RTO",
+        "production deletion and expired-session non-resurrection"
+      ]
+    },
+    {
+      "id": "LOCAL_EXACT_OBJECT_VERSION_RESTORE",
+      "status": "PASS_EVIDENCE_COMMITTED",
+      "contract": "contracts/operations/local-object-version-restore-contract.v1.json",
+      "result": "docs/fixtures/memory-os-operability/local-object-version-restore-results.sample.v1.json",
+      "validator": "scripts/validate-memory-os-local-object-version-restore.py",
+      "workflow": ".github/workflows/local-object-version-restore.yml",
+      "proves": [
+        "three source object versions are created in a versioned local MinIO bucket",
+        "a non-latest source version is selected explicitly",
+        "the selected version is copied to a separate backup bucket with source-version binding metadata",
+        "all source versions and delete markers are removed before recovery",
+        "the exact backup version restores to a third bucket",
+        "checksum, length and source-version binding survive recovery",
+        "provider version identifiers are distinct and stored only as digests in evidence"
+      ],
+      "doesNotProve": [
+        "independent provider retention",
+        "production TLS or credential separation",
+        "immutability or lifecycle enforcement",
+        "coherent PostgreSQL and object recovery point",
+        "approved RPO or RTO"
+      ]
+    }
+  ],
+  "combinedBoundary": {
+    "bothExactSourceResultsCommitted": true,
+    "coherentDatabaseObjectRestoreCompleted": false,
+    "postgresPitrConfigured": false,
+    "independentObjectRetentionConfigured": false,
+    "productionTlsAndCredentialSeparationVerified": false,
+    "rpoRtoApprovedAndMeasured": false,
+    "productionPromotionRehearsed": false,
+    "independentReviewCompleted": false,
+    "productionReady": false
+  },
+  "validator": "scripts/validate-memory-os-backup-local-foundations.py",
+  "reconcile": "scripts/reconcile-memory-os-backup-authority.py",
+  "evidenceRefs": [
+    "contracts/operations/backup-local-foundation-evidence.v1.json",
+    "contracts/operations/local-logical-restore-contract.v1.json",
+    "contracts/operations/local-object-version-restore-contract.v1.json",
+    "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json",
+    "docs/fixtures/memory-os-operability/local-object-version-restore-results.sample.v1.json",
+    "scripts/validate-memory-os-backup-local-foundations.py",
+    "scripts/reconcile-memory-os-backup-authority.py",
+    ".github/workflows/reconcile-backup-authority.yml"
+  ]
+}
