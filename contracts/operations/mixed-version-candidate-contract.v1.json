@@ -87,7 +87,7 @@
     "runnerImplemented": true,
     "validatorImplemented": true,
     "automaticWorkflowImplemented": true,
-    "exactSourcePassResultCommitted": false,
+    "exactSourcePassResultCommitted": true,
     "approvedReleaseBaselineAvailable": false,
     "simultaneousMixedTrafficExecuted": false,
     "rollingDeploymentFailureExecuted": false,
@@ -103,6 +103,7 @@
     "scripts/run-memory-os-mixed-version-candidate.sh",
     "scripts/validate-memory-os-mixed-version-candidate.py",
     "scripts/reconcile-memory-os-mixed-version-candidate.py",
-    ".github/workflows/mixed-version-candidate.yml"
+    ".github/workflows/mixed-version-candidate.yml",
+    "docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json"
   ]
 }
