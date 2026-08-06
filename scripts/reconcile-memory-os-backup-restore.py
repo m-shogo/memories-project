@@ -30,6 +30,18 @@ PRECISE_GAPS = (
     "production backup monitoring, freshness enforcement and paging",
     "independent review of recovery evidence and promotion decision",
 )
+OBSOLETE_GAPS = (
+    "PostgreSQL backup and PITR configuration",
+    "independent object-version retention",
+    "RPO and RTO",
+    "isolated restore rehearsal",
+    "deletion and expired-session semantics after restore",
+    "production PostgreSQL backup schedule, independent retention and PITR configuration",
+    "cross-cluster isolated restore rehearsal with approved recovery owner and promotion decision",
+    "coherent PostgreSQL and object-version recovery-point selection",
+    "approved and measured RPO/RTO",
+    "production deletion and expired-session non-resurrection verification after restore",
+)
 NEW_REFS = (
     "contracts/operations/backup-restore-contract.v1.json",
     "contracts/operations/local-logical-restore-contract.v1.json",
@@ -115,14 +127,8 @@ def main() -> int:
         changed = True
     for item in NEW_EXISTING:
         changed = append_once(existing, item) or changed
-    for obsolete in (
-        "PostgreSQL backup and PITR configuration",
-        "independent object-version retention",
-        "RPO and RTO",
-        "isolated restore rehearsal",
-        "deletion and expired-session semantics after restore",
-    ):
-        if obsolete in missing:
+    for obsolete in OBSOLETE_GAPS:
+        while obsolete in missing:
             missing.remove(obsolete)
             changed = True
     for gap in PRECISE_GAPS:
@@ -131,6 +137,8 @@ def main() -> int:
         require((ROOT / ref).is_file(), f"backup evidence missing: {ref}")
         changed = append_once(refs, ref) or changed
 
+    require(len(missing) == len(set(missing)),
+            "OPS-P0-007 missingEvidence contains exact duplicates")
     for required_gap in (
         "PostgreSQL backup and PITR",
         "independent object",
@@ -143,6 +151,8 @@ def main() -> int:
     ):
         require(any(required_gap in item for item in missing),
                 f"required OPS-P0-007 gap disappeared: {required_gap}")
+    require(not any(item in missing for item in OBSOLETE_GAPS),
+            "superseded OPS-P0-007 gap wording remains")
     require(gate.get("status") != "READY",
             "policy foundations cannot make OPS-P0-007 READY")
     require(status.get("productionDecision") == "NO_GO",
@@ -157,7 +167,7 @@ def main() -> int:
         json.dumps(status, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
-    print("Registered backup/restore policy foundations; OPS-P0-007 remains non-ready")
+    print("Normalized backup/restore gaps; OPS-P0-007 remains non-ready")
     return 0
 
 
