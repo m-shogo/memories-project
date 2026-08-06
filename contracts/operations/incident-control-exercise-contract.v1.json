@@ -1,0 +1,196 @@
+{
+  "contractId": "memory-os.operability.incident-control-exercise.v1",
+  "schemaVersion": "memory-os-incident-control-exercise.v1",
+  "resultsSchemaVersion": "memory-os-incident-control-exercise-results.v1",
+  "description": "Exact-source automated incident control exercise for six required scenarios. It executes the repository validators and committed recovery evidence relevant to each scenario, then verifies severity, containment, stop conditions, evidence preservation, recovery verification and closure gating. This is not a human-led tabletop, configured paging exercise, production incident drill or independent review.",
+  "runner": "scripts/run-memory-os-incident-control-exercise.py",
+  "validator": "scripts/validate-memory-os-incident-control-exercise.py",
+  "workflow": ".github/workflows/incident-control-exercise.yml",
+  "reconcile": "scripts/reconcile-memory-os-incident-control-exercise.py",
+  "resultPath": "docs/fixtures/memory-os-operability/incident-control-exercise-results.sample.v1.json",
+  "diagnosticPath": "docs/fixtures/memory-os-operability/incident-control-exercise-diagnostic.last.json",
+  "exerciseClass": "AUTOMATED_CONTROL_EXERCISE_NOT_HUMAN_TABLETOP",
+  "globalGuards": {
+    "productionEvidence": false,
+    "humanTabletopCompleted": false,
+    "pagingConfigured": false,
+    "externalContactTreeConfigured": false,
+    "syntheticScenariosOnly": true,
+    "exactSourceCommitRequired": true,
+    "secretsInEvidenceForbidden": true,
+    "userContentInEvidenceForbidden": true,
+    "automaticDestructiveRecoveryForbidden": true,
+    "automaticPromotionForbidden": true,
+    "closureRequiresHumanApprovals": true
+  },
+  "requiredDecisionFields": [
+    "severity",
+    "declarationDecision",
+    "containmentDecision",
+    "stopConditions",
+    "evidencePreservation",
+    "recoveryVerification",
+    "promotionDecision",
+    "closureDecision",
+    "openRisks"
+  ],
+  "scenarios": [
+    {
+      "scenarioId": "tenant-isolation-breach",
+      "severity": "SEV0",
+      "validatorCommands": [
+        "python scripts/validate-memory-os-authorization.py",
+        "python scripts/validate-memory-os-postgresql-rls.py"
+      ],
+      "requiredContainment": [
+        "stop affected write traffic",
+        "preserve request and database evidence without tenant identifiers",
+        "invalidate ambiguous sessions",
+        "block promotion until cross-tenant visibility is independently excluded"
+      ],
+      "requiredStopConditions": [
+        "tenant scope is ambiguous",
+        "verified principal or RLS authority cannot be proven",
+        "evidence preservation is incomplete"
+      ],
+      "closureGate": "HUMAN_SECURITY_AND_PRIVACY_APPROVAL_REQUIRED"
+    },
+    {
+      "scenarioId": "postgresql-unavailable-during-preview-commit",
+      "severity": "SEV1",
+      "validatorCommands": [
+        "python scripts/validate-memory-os-database-commit-outage.py",
+        "python scripts/validate-memory-os-local-logical-restore.py"
+      ],
+      "requiredContainment": [
+        "fail Preview commit closed",
+        "preserve the independently verified sealed spool",
+        "do not rerun object fetch or parser when ResumeCommit evidence is available",
+        "keep promotion blocked until durable row accounting is verified"
+      ],
+      "requiredStopConditions": [
+        "partial Preview rows exist",
+        "sealed spool binding is ambiguous",
+        "deleted or expired authority could resurrect"
+      ],
+      "closureGate": "HUMAN_INCIDENT_COMMAND_APPROVAL_REQUIRED"
+    },
+    {
+      "scenarioId": "object-store-unavailable-during-import",
+      "severity": "SEV1",
+      "validatorCommands": [
+        "python scripts/validate-memory-os-chaos-failure-drills-v2.py",
+        "python scripts/validate-memory-os-local-object-version-restore.py"
+      ],
+      "requiredContainment": [
+        "fail before parsing and database mutation",
+        "do not substitute an unverified object version",
+        "preserve checksum and source-version bindings",
+        "quarantine ambiguous object state instead of deleting it"
+      ],
+      "requiredStopConditions": [
+        "exact object version is unknown",
+        "checksum or metadata binding is inconsistent",
+        "source and backup recovery points are incoherent"
+      ],
+      "closureGate": "HUMAN_INCIDENT_COMMAND_APPROVAL_REQUIRED"
+    },
+    {
+      "scenarioId": "migration-or-version-incompatibility",
+      "severity": "SEV1",
+      "validatorCommands": [
+        "python scripts/validate-memory-os-migration-lifecycle.py",
+        "python scripts/validate-memory-os-version-compatibility.py",
+        "python scripts/validate-memory-os-mixed-version-candidate.py"
+      ],
+      "requiredContainment": [
+        "stop destructive contract migration",
+        "preserve the old application rollback target",
+        "prefer application rollback or forward fix over automatic down migration",
+        "keep candidate baseline evidence separate from approved release compatibility"
+      ],
+      "requiredStopConditions": [
+        "old/current compatibility is unproven",
+        "recovery point is unavailable",
+        "schema fingerprint or migration sequence drift is detected"
+      ],
+      "closureGate": "HUMAN_RELEASE_AND_DATABASE_APPROVAL_REQUIRED"
+    },
+    {
+      "scenarioId": "restore-non-resurrection-failure",
+      "severity": "SEV0",
+      "validatorCommands": [
+        "python scripts/validate-memory-os-backup-local-foundations.py",
+        "python scripts/validate-memory-os-backup-restore.py"
+      ],
+      "requiredContainment": [
+        "keep restored environment isolated",
+        "block traffic promotion",
+        "preserve recovery point and verification evidence",
+        "treat deleted data or expired session resurrection as a security incident"
+      ],
+      "requiredStopConditions": [
+        "deleted account or session resolves after restore",
+        "database and object recovery points are incoherent",
+        "RPO or RTO is unapproved or unmeasured"
+      ],
+      "closureGate": "HUMAN_SECURITY_PRIVACY_AND_INCIDENT_APPROVAL_REQUIRED"
+    },
+    {
+      "scenarioId": "parser-worker-compromise-or-stall",
+      "severity": "SEV1",
+      "validatorCommands": [
+        "python scripts/validate-memory-os-parser-security.py",
+        "python scripts/validate-memory-os-parser-restart-matrix.py",
+        "python scripts/validate-memory-os-parser-inflight-cancellation.py"
+      ],
+      "requiredContainment": [
+        "kill the parser process group",
+        "remove partial spool attempts",
+        "preserve sealed evidence only after independent verification",
+        "keep database and credentials outside the worker boundary"
+      ],
+      "requiredStopConditions": [
+        "worker artifact digest is unknown",
+        "process group cleanup is unverified",
+        "partial output or spool residue remains"
+      ],
+      "closureGate": "HUMAN_SECURITY_AND_RUNTIME_APPROVAL_REQUIRED"
+    }
+  ],
+  "resultPolicy": {
+    "allValidatorCommandsMustPass": true,
+    "allDecisionFieldsMustBePresent": true,
+    "allContainmentAndStopConditionsMustBeRetained": true,
+    "scenarioResultWhenControlsPass": "CONTROL_PATH_PASS",
+    "overallResultWhenAllControlsPass": "AUTOMATED_CONTROL_EXERCISE_PASS",
+    "humanTabletopResult": "NOT_COMPLETED",
+    "productionDrillResult": "NOT_COMPLETED",
+    "closureResult": "BLOCKED_PENDING_HUMAN_APPROVAL"
+  },
+  "limitations": [
+    "no human incident commander participated",
+    "no paging or acknowledgement path was exercised",
+    "no external legal, privacy or user communication contact tree was exercised",
+    "no production traffic or production credentials were used",
+    "no destructive recovery or traffic promotion occurred",
+    "no independent review was completed",
+    "not a completed tabletop or production recovery drill"
+  ],
+  "readiness": {
+    "contractDefined": true,
+    "runnerImplemented": false,
+    "validatorImplemented": false,
+    "automaticWorkflowImplemented": false,
+    "exactSourcePassResultCommitted": false,
+    "humanTabletopCompleted": false,
+    "pagingAndAcknowledgementExercised": false,
+    "externalContactTreeExercised": false,
+    "productionRecoveryDrillCompleted": false,
+    "independentReviewCompleted": false,
+    "productionReady": false
+  },
+  "evidenceRefs": [
+    "contracts/operations/incident-control-exercise-contract.v1.json"
+  ]
+}
