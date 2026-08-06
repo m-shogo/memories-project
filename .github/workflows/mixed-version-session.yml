@@ -1,0 +1,162 @@
+name: Mixed-Version Session Compatibility
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/mixed-version-session.yml"
+      - "contracts/operations/migration-lifecycle-contract.v1.json"
+      - "contracts/operations/mixed-version-session-contract.v1.json"
+      - "contracts/operations/version-compatibility-contract.v1.json"
+      - "infra/postgresql/security/**"
+      - "services/import-api/**"
+      - "scripts/run-memory-os-mixed-version-session-drill.sh"
+      - "scripts/validate-memory-os-mixed-version-session.py"
+      - "scripts/reconcile-memory-os-mixed-version-session.py"
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/mixed-version-session.yml"
+      - "contracts/operations/migration-lifecycle-contract.v1.json"
+      - "contracts/operations/mixed-version-session-contract.v1.json"
+      - "contracts/operations/version-compatibility-contract.v1.json"
+      - "infra/postgresql/security/**"
+      - "services/import-api/**"
+      - "scripts/run-memory-os-mixed-version-session-drill.sh"
+      - "scripts/validate-memory-os-mixed-version-session.py"
+      - "scripts/reconcile-memory-os-mixed-version-session.py"
+  schedule:
+    - cron: "41 18 * * 3"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mixed-version-session-${{ github.event.pull_request.number || 'so' }}
+  cancel-in-progress: false
+
+jobs:
+  drill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: memory_os_security
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d memory_os_security"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    env:
+      MEMORY_OS_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/memory_os_security?sslmode=disable
+      MEMORY_OS_TEST_S3_ENDPOINT: http://127.0.0.1:9000
+      MEMORY_OS_TEST_S3_ACCESS_KEY: minioadmin
+      MEMORY_OS_TEST_S3_SECRET_KEY: minioadmin
+      MEMORY_OS_MIXED_VERSION_OLD_SHA: 2af6e8e10755cc707c6bdd958a049a0f4afb3d70
+
+    steps:
+      - name: Checkout exact source with old commit history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: services/import-api/go.sum
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Capture exact source state
+        run: |
+          test -z "$(git status --porcelain)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          bash -n scripts/run-memory-os-mixed-version-session-drill.sh
+          python -m py_compile \
+            scripts/validate-memory-os-mixed-version-session.py \
+            scripts/reconcile-memory-os-mixed-version-session.py
+
+      - name: Start local MinIO
+        run: |
+          docker run -d --name memory-os-mixed-version-minio \
+            -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio server /data
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --show-error http://127.0.0.1:9000/minio/health/live >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs memory-os-mixed-version-minio
+          exit 1
+
+      - name: Validate static compatibility contract
+        run: |
+          python scripts/validate-memory-os-mixed-version-session.py
+          python scripts/validate-memory-os-version-compatibility.py
+
+      - name: Execute pinned old-current two-process drill
+        env:
+          MEMORY_OS_COMMIT_SHA: ${{ env.SOURCE_SHA }}
+          MEMORY_OS_MIXED_VERSION_RESULTS_PATH: ${{ github.workspace }}/docs/fixtures/memory-os-operability/mixed-version-session-results.sample.v1.json
+        run: bash scripts/run-memory-os-mixed-version-session-drill.sh
+
+      - name: Validate exact-source result
+        env:
+          EXPECTED_COMMIT_SHA: ${{ env.SOURCE_SHA }}
+        run: python scripts/validate-memory-os-mixed-version-session.py
+
+      - name: Commit exact-source result
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        run: |
+          git add docs/fixtures/memory-os-operability/mixed-version-session-results.sample.v1.json
+          if git diff --cached --quiet; then
+            echo "Mixed-version session evidence is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "test(compat): record pinned old-current session evidence"
+            git fetch origin so
+            git rebase origin/so
+            git push origin HEAD:so
+          fi
+
+      - name: Reconcile compatibility status without readiness promotion
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        env:
+          EXPECTED_COMMIT_SHA: ${{ env.SOURCE_SHA }}
+        run: |
+          git fetch origin so
+          git rebase origin/so
+          python scripts/reconcile-memory-os-mixed-version-session.py
+          python scripts/validate-memory-os-mixed-version-session.py --expected-commit-sha "$SOURCE_SHA"
+          python scripts/validate-memory-os-version-compatibility.py
+          python scripts/validate-memory-os-operability.py
+
+      - name: Commit reconciled status
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        run: |
+          git add contracts/operations/production-operability-status.json
+          if git diff --cached --quiet; then
+            echo "Mixed-version compatibility status is already reconciled."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs(compat): register mixed-version session evidence"
+          git fetch origin so
+          git rebase origin/so
+          git push origin HEAD:so
