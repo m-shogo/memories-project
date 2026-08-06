@@ -1,0 +1,117 @@
+{
+  "contractId": "memory-os.operability.parser-artifact-registry.v1",
+  "schemaVersion": "memory-os-parser-artifact-registry-contract.v1",
+  "description": "Binding append-only authority for reviewed parser artifacts retained for release compatibility and rollback. Repository test harnesses, source files, build outputs and digest strings are not approved artifacts by implication. A record exists only after exact artifact verification, multi-role review, retention evidence and replay evidence are present.",
+  "registryPath": "contracts/operations/parser-artifact-registry.v1.json",
+  "runbook": "docs/runbooks/memory-os-parser-artifact-registry.md",
+  "writer": "scripts/register-memory-os-parser-artifact.py",
+  "validator": "scripts/validate-memory-os-parser-artifact-registry.py",
+  "reconcile": "scripts/reconcile-memory-os-parser-artifact-registry.py",
+  "workflow": ".github/workflows/parser-artifact-registry.yml",
+  "recordSchemaVersion": "memory-os-parser-artifact-record.v1",
+  "appendOnly": true,
+  "requiredRecordFields": [
+    "schemaVersion",
+    "artifactId",
+    "adapterId",
+    "adapterVersion",
+    "artifactSha256",
+    "artifactSizeBytes",
+    "artifactFormat",
+    "targetOs",
+    "targetArch",
+    "protocolVersion",
+    "registeredAt",
+    "reviewClass",
+    "approvers",
+    "buildProvenanceRef",
+    "securityReviewRef",
+    "retentionEvidenceRef",
+    "replayEvidenceRefs",
+    "compatibleReleaseIds",
+    "rollbackRetentionState",
+    "openRisks"
+  ],
+  "reviewPolicy": {
+    "reviewClass": "REVIEWED_PARSER_ARTIFACT",
+    "requiredRoles": [
+      "SECURITY_REVIEWER",
+      "RUNTIME_REVIEWER",
+      "RELEASE_OWNER"
+    ],
+    "minimumDistinctApprovers": 3,
+    "selfApprovalForbidden": true,
+    "sourceCodeIsInsufficient": true,
+    "testHarnessIsInsufficient": true,
+    "successfulBuildIsInsufficient": true,
+    "digestStringAloneIsInsufficient": true,
+    "releaseTagAloneIsInsufficient": true
+  },
+  "registrationGuards": [
+    "input record and artifact are outside the repository working tree",
+    "repository working tree is clean",
+    "artifact SHA-256 and byte length are recomputed from exact bytes",
+    "artifact format, target OS, target architecture and protocol version are explicit",
+    "artifact ID, adapter-version tuple and digest are unique",
+    "three required approval roles use distinct operational pseudonyms",
+    "build provenance, security review and independent retention evidence exist",
+    "at least one exact-source replay evidence reference exists",
+    "every compatible release ID already exists in the approved release registry",
+    "rollback retention is RETAINED only when immutable retention evidence exists",
+    "record contains no credential, infrastructure URL or user content",
+    "registry update uses exclusive lock and atomic replacement"
+  ],
+  "forbiddenArtifactSources": [
+    "services/import-api/internal/parsersup/worker.go test harness",
+    "Go test binary re-executed as a worker",
+    "unreviewed local build output",
+    "historical candidate commit",
+    "CI PASS without artifact bytes and approvals",
+    "artifact digest copied from a Preview or fixture",
+    "mutable latest tag or branch head"
+  ],
+  "retentionPolicy": {
+    "allowedStates": [
+      "RETAINED",
+      "RETENTION_PENDING",
+      "RETIRED_BLOCKED_FROM_ROLLBACK"
+    ],
+    "retainedRequiresImmutableLocationEvidence": true,
+    "retiredArtifactCannotSupportRollback": true,
+    "deletionRequiresNoCompatibleRollbackRelease": true,
+    "automaticDeletionForbidden": true
+  },
+  "currentAuthorityState": {
+    "reviewedArtifactCount": 0,
+    "retainedRollbackArtifactCount": 0,
+    "replayProvenArtifactCount": 0,
+    "compatibleApprovedReleaseCount": 0,
+    "decision": "BLOCKED_NO_REVIEWED_PARSER_ARTIFACT"
+  },
+  "evidenceBoundary": {
+    "testHarnessApproved": false,
+    "productionArtifactApproved": false,
+    "oldArtifactReplayProven": false,
+    "rollbackArtifactAvailable": false,
+    "productionEvidence": false,
+    "productionReady": false
+  },
+  "readiness": {
+    "contractDefined": true,
+    "registryImplemented": true,
+    "writerImplemented": true,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": true,
+    "reviewedArtifactAvailable": false,
+    "oldArtifactReplayExecuted": false,
+    "rollbackArtifactAvailable": false,
+    "independentRetentionVerified": false,
+    "independentReviewCompleted": false,
+    "productionReady": false
+  },
+  "evidenceRefs": [
+    "contracts/operations/parser-artifact-registry-contract.v1.json",
+    "contracts/operations/parser-artifact-registry.v1.json",
+    "services/import-api/internal/parsersup/worker.go"
+  ]
+}
