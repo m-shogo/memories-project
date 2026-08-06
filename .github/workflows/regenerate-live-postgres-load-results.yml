@@ -1,6 +1,14 @@
 name: Regenerate Live PostgreSQL Load Results
 
 on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/regenerate-live-postgres-load-results.yml"
+      - "services/import-api/**"
+      - "infra/postgresql/security/**"
+      - "contracts/operations/live-postgres-load-scenario-contract.v1.json"
   workflow_dispatch:
 
 permissions:
@@ -8,7 +16,7 @@ permissions:
 
 concurrency:
   group: regenerate-live-postgres-load-results-so
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   live-postgres-load:
@@ -29,7 +37,7 @@ jobs:
           --health-retries 30
 
     steps:
-      - name: Checkout exact source commit
+      - name: Checkout latest so source
         uses: actions/checkout@v4
         with:
           ref: so
@@ -46,12 +54,12 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Verify exact source state
+      - name: Capture exact source state
         run: |
           test "$(git branch --show-current)" = "so"
           test -z "$(git status --porcelain)"
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
-          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Start local MinIO harness
         run: |
@@ -81,7 +89,7 @@ jobs:
           MEMORY_OS_TEST_S3_SECRET_KEY: minioadmin
           MEMORY_OS_RUN_LIVE_LOAD: "1"
           MEMORY_OS_LIVE_LOAD_RESULTS_PATH: ${{ github.workspace }}/docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json
-          MEMORY_OS_COMMIT_SHA: ${{ github.sha }}
+          MEMORY_OS_COMMIT_SHA: ${{ env.SOURCE_SHA }}
         working-directory: services/import-api
         run: |
           go test ./internal/httpserver \
@@ -90,7 +98,7 @@ jobs:
 
       - name: Validate live-load result contract
         env:
-          EXPECTED_COMMIT_SHA: ${{ github.sha }}
+          EXPECTED_COMMIT_SHA: ${{ env.SOURCE_SHA }}
         run: |
           python - <<'PY'
           import json
@@ -116,6 +124,9 @@ jobs:
           assert preview["integrityResult"] == "PASS"
           assert preview["batch"]["requests"] == 500
           assert preview["batch"]["statusClassCounts"] == {"2xx": 500}
+          assert preview["databaseAssertions"]["preview_ready_rows"] == 1
+          assert preview["databaseAssertions"]["preview_candidate_rows"] == 2
+          assert preview["databaseAssertions"]["preview_rejection_rows"] == 1
 
           apply_result = observed["concurrent-idempotent-apply-local-postgres"]
           assert apply_result["result"] == "PASS"
@@ -139,4 +150,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "test(load): record live PostgreSQL load checkpoint"
+          git fetch origin so
+          git rebase origin/so
           git push origin HEAD:so
