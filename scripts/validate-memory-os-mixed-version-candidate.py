@@ -18,6 +18,14 @@ STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 BASELINE_SHA = "a1f39560468ebd5d39c4dd7a336140cb455cf2e8"
+FOUNDATION_REFS = {
+    "contracts/operations/mixed-version-candidate-contract.v1.json",
+    "scripts/run-memory-os-mixed-version-candidate.sh",
+    "scripts/validate-memory-os-mixed-version-candidate.py",
+    "scripts/reconcile-memory-os-mixed-version-candidate.py",
+    ".github/workflows/mixed-version-candidate.yml",
+}
+RESULT_REF = "docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json"
 
 
 class ValidationFailure(RuntimeError):
@@ -62,15 +70,13 @@ def is_ancestor(base: str, head: str) -> bool:
         return False
 
 
-def validate_result(result: dict[str, Any], expected_sha: str | None) -> None:
-    require(result.get("schemaVersion") ==
-            "memory-os-mixed-version-candidate-results.v1",
+def validate_result(result: dict[str, Any], contract: dict[str, Any], expected_sha: str | None) -> None:
+    require(result.get("schemaVersion") == contract["resultsSchemaVersion"],
             "mixed-version result schemaVersion drift")
     current_sha = result.get("currentCommitSha")
-    baseline_sha = result.get("candidateBaselineCommitSha")
     require(isinstance(current_sha, str) and SHA_RE.fullmatch(current_sha) is not None,
             "currentCommitSha must be a full SHA")
-    require(baseline_sha == BASELINE_SHA,
+    require(result.get("candidateBaselineCommitSha") == BASELINE_SHA,
             "candidate baseline result SHA drift")
     require(is_ancestor(BASELINE_SHA, current_sha),
             "candidate baseline is not an ancestor of result current SHA")
@@ -80,8 +86,7 @@ def validate_result(result: dict[str, Any], expected_sha: str | None) -> None:
 
     environment = result.get("environment")
     require(isinstance(environment, dict), "mixed-version environment missing")
-    require(environment.get("mode") ==
-            "EPHEMERAL_POSTGRESQL_16_MINIO_TWO_DATABASE_CANDIDATE_BASELINE",
+    require(environment.get("mode") == contract["dependencyMode"],
             "mixed-version environment mode drift")
     require(environment.get("productionEvidence") is False,
             "candidate drill cannot claim production evidence")
@@ -90,7 +95,9 @@ def validate_result(result: dict[str, Any], expected_sha: str | None) -> None:
     require(environment.get("candidateBaselineOnly") is True,
             "candidate drill must remain candidate-only")
     require(environment.get("containsSecrets") is False,
-            "mixed-version result must state containsSecrets false")
+            "mixed-version result must state containsSecrets=false")
+    require(environment.get("syntheticDataOnly") is True,
+            "mixed-version result must use synthetic data only")
     digest = environment.get("databaseIdentityDigest")
     require(isinstance(digest, str) and DIGEST_RE.fullmatch(digest) is not None,
             "database identity must be a digest")
@@ -106,20 +113,29 @@ def validate_result(result: dict[str, Any], expected_sha: str | None) -> None:
     require(isinstance(scenario.get("durationSeconds"), int) and
             scenario["durationSeconds"] >= 0,
             "mixed-version duration invalid")
-    require(scenario.get("currentMigrationsAppliedPerDatabase") >= 11,
+    require(isinstance(scenario.get("currentMigrationsAppliedPerDatabase"), int) and
+            scenario["currentMigrationsAppliedPerDatabase"] >= 11,
             "current migration count is insufficient")
-    require(scenario.get("candidateBaselineSqlTestsExecuted") >= 1,
+    require(isinstance(scenario.get("candidateBaselineSqlTestsExecuted"), int) and
+            scenario["candidateBaselineSqlTestsExecuted"] >= 1,
             "candidate baseline SQL tests were not executed")
-    require(scenario.get("currentSqlTestsExecuted") >= 11,
+    require(isinstance(scenario.get("currentSqlTestsExecuted"), int) and
+            scenario["currentSqlTestsExecuted"] >= 11,
             "current canonical SQL tests were not executed")
-    require(scenario.get("candidateBaselineGoPackagesExecuted") == 4 and
-            scenario.get("currentGoPackagesExecuted") == 4,
-            "selected Go package count drift")
+    baseline_packages = scenario.get("candidateBaselineGoPackagesExecuted")
+    current_packages = scenario.get("currentGoPackagesExecuted")
+    require(isinstance(baseline_packages, int) and 3 <= baseline_packages <= 4,
+            "candidate common Go package count is outside the reviewed bound")
+    require(current_packages == baseline_packages,
+            "candidate/current Go package coverage differs")
+    require(scenario.get("baselineSqlOrderSource") in {
+        "BASELINE_MIGRATION_REGISTRY",
+        "BASELINE_SECURITY_CONTRACTS_WORKFLOW",
+    }, "baseline SQL order is not tied to a baseline-owned authority")
     schema_digest = scenario.get("memoryOsSchemaFingerprintSha256")
-    require(isinstance(schema_digest, str) and
-            DIGEST_RE.fullmatch(schema_digest) is not None,
+    require(isinstance(schema_digest, str) and DIGEST_RE.fullmatch(schema_digest) is not None,
             "schema fingerprint must be a digest")
-    assertions = scenario.get("assertions")
+
     expected_assertions = {
         "baselineIsAncestorOfCurrent",
         "currentExpandedSchemaAppliedToBothDatabases",
@@ -129,29 +145,20 @@ def validate_result(result: dict[str, Any], expected_sha: str | None) -> None:
         "currentSqlTestsPassed",
         "currentGoTestsPassed",
     }
+    assertions = scenario.get("assertions")
     require(isinstance(assertions, dict) and set(assertions) == expected_assertions,
             "mixed-version assertion set drift")
     require(all(assertions.get(field) is True for field in expected_assertions),
             "mixed-version result contains a failed assertion")
 
     limitations = strings(result.get("limitations"), "result.limitations", 7)
-    joined = "\n".join(limitations)
-    for phrase in (
-        "not an approved release",
-        "single PostgreSQL 16",
-        "separate databases",
-        "local MinIO",
-        "no rolling deployment",
-        "no downgrade",
-        "not production mixed-version evidence",
-    ):
-        require(phrase in joined, f"mixed-version limitation omitted: {phrase}")
-
+    require(limitations == contract["limitations"],
+            "result limitations must exactly match the contract")
     serialized = json.dumps(result, ensure_ascii=False).lower()
     for forbidden in (
         "postgres://", "postgresql://", "password=", "minioadmin",
         "secretaccesskey", "accesskeyid", "authorization: bearer",
-        "/tmp/memory-os-mixed-version", "user content",
+        "/tmp/memory-os-mixed-version", "token_digest",
     ):
         require(forbidden not in serialized,
                 f"mixed-version result contains forbidden evidence value: {forbidden}")
@@ -182,7 +189,7 @@ def main() -> int:
         "validator": "scripts/validate-memory-os-mixed-version-candidate.py",
         "workflow": ".github/workflows/mixed-version-candidate.yml",
         "reconcile": "scripts/reconcile-memory-os-mixed-version-candidate.py",
-        "resultPath": "docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json",
+        "resultPath": RESULT_REF,
         "diagnosticPath": "docs/fixtures/memory-os-operability/mixed-version-candidate-diagnostic.last.json",
     }
     for field, expected in expected_paths.items():
@@ -192,7 +199,7 @@ def main() -> int:
             "mixed-version dependency mode drift")
     strings(contract.get("requiredSteps"), "requiredSteps", 10)
     strings(contract.get("successCriteria"), "successCriteria", 9)
-    strings(contract.get("abortCriteria"), "abortCriteria", 8)
+    strings(contract.get("abortCriteria"), "abortCriteria", 9)
     strings(contract.get("limitations"), "limitations", 7)
 
     boundary = contract.get("evidenceBoundary")
@@ -220,7 +227,8 @@ def main() -> int:
     source = runner_path.read_text(encoding="utf-8")
     for snippet in (
         "merge-base --is-ancestor", "worktree add --detach",
-        "CURRENT_MIGRATIONS", "BASELINE_MIGRATIONS",
+        "CURRENT_MIGRATIONS", "BASELINE_SECURITY_CONTRACTS_WORKFLOW",
+        "BASELINE_SQL_ORDER_SOURCE", "GO_PACKAGE_CANDIDATES",
         "pg_dump --dbname \"$BASELINE_DB\" --schema-only",
         "SCHEMA_BEFORE_SHA", "SCHEMA_AFTER_SHA",
         "candidate baseline is not an approved release",
@@ -232,29 +240,51 @@ def main() -> int:
     ):
         require(forbidden not in source, f"mixed-version runner contains dangerous pattern: {forbidden}")
 
-    readiness = contract.get("readiness")
-    require(isinstance(readiness, dict), "readiness missing")
-    require(readiness.get("contractDefined") is True,
-            "mixed-version contract foundation missing")
-    for field in (
-        "exactSourcePassResultCommitted", "approvedReleaseBaselineAvailable",
-        "simultaneousMixedTrafficExecuted", "rollingDeploymentFailureExecuted",
-        "productionReady",
-    ):
-        require(readiness.get(field) is False,
-                f"unproven mixed-version readiness cannot be true: {field}")
-
-    refs = strings(contract.get("evidenceRefs"), "evidenceRefs", 1)
-    for ref in refs:
-        require((ROOT / ref).is_file(), f"mixed-version evidence missing: {ref}")
-
+    result_present = RESULT_PATH.is_file()
     expected_sha = os.environ.get("EXPECTED_COMMIT_SHA")
     if expected_sha:
         require(SHA_RE.fullmatch(expected_sha) is not None,
                 "EXPECTED_COMMIT_SHA must be a full SHA")
-        require(RESULT_PATH.is_file(), "exact-source mixed-version result is missing")
-    if RESULT_PATH.is_file():
-        validate_result(load(RESULT_PATH), expected_sha)
+        require(result_present, "exact-source mixed-version result is missing")
+    if result_present:
+        validate_result(load(RESULT_PATH), contract, expected_sha)
+
+    readiness = contract.get("readiness")
+    require(isinstance(readiness, dict), "readiness missing")
+    for field in (
+        "contractDefined", "runnerImplemented",
+        "validatorImplemented", "automaticWorkflowImplemented",
+    ):
+        require(readiness.get(field) is True,
+                f"implemented foundation is not registered: {field}")
+    # During the workflow's result-commit step, the result exists before the
+    # authority reconcile commit. EXPECTED_COMMIT_SHA marks that bounded
+    # transient; outside it, the contract flag and repository evidence must
+    # agree exactly.
+    if not expected_sha:
+        require(readiness.get("exactSourcePassResultCommitted") is result_present,
+                "exact-source result readiness disagrees with repository evidence")
+    else:
+        require(readiness.get("exactSourcePassResultCommitted") in {False, True},
+                "exact-source readiness must remain boolean")
+    for field in (
+        "approvedReleaseBaselineAvailable", "simultaneousMixedTrafficExecuted",
+        "rollingDeploymentFailureExecuted", "productionReady",
+    ):
+        require(readiness.get(field) is False,
+                f"unproven mixed-version readiness cannot be true: {field}")
+
+    refs = set(strings(contract.get("evidenceRefs"), "evidenceRefs", 5))
+    require(FOUNDATION_REFS <= refs,
+            f"candidate foundation evidence is incomplete: {sorted(FOUNDATION_REFS - refs)}")
+    if readiness.get("exactSourcePassResultCommitted") is True:
+        require(RESULT_REF in refs and result_present,
+                "committed-result claim lacks the exact result evidence")
+    elif not expected_sha:
+        require(RESULT_REF not in refs,
+                "uncommitted result must not be listed as contract evidence")
+    for ref in refs:
+        require((ROOT / ref).is_file(), f"mixed-version evidence missing: {ref}")
 
     status = load(STATUS_PATH)
     require(status.get("productionDecision") == "NO_GO",
@@ -267,7 +297,7 @@ def main() -> int:
 
     print("Memory OS mixed-version candidate validation PASS")
     print(f"baseline: {BASELINE_SHA}")
-    print(f"result present: {RESULT_PATH.is_file()}")
+    print(f"result present: {result_present}")
     print("production decision: NO_GO")
     return 0
 
