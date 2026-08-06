@@ -9,6 +9,10 @@ on:
       - "services/import-api/**"
       - "infra/postgresql/security/**"
       - "contracts/operations/live-postgres-load-scenario-contract.v1.json"
+      - "scripts/validate-memory-os-live-load.py"
+  schedule:
+    # Daily self-heal at 03:17 JST. Scheduled runs use the default branch (so).
+    - cron: "17 18 * * *"
   workflow_dispatch:
 
 permissions:
@@ -77,9 +81,11 @@ jobs:
           docker logs memory-os-live-load-minio
           exit 1
 
-      - name: Check Go formatting
+      - name: Check load checkpoint sources
         working-directory: services/import-api
-        run: test -z "$(gofmt -l internal/httpserver/live_load_test.go)"
+        run: |
+          test -z "$(gofmt -l internal/httpserver/live_load_test.go)"
+          python -m py_compile ../../scripts/validate-memory-os-live-load.py
 
       - name: Run live PostgreSQL HTTP baseline and load checkpoint
         env:
@@ -96,49 +102,10 @@ jobs:
             -run '^(TestPreviewReadAndApplyOverHTTP|TestLivePostgresPreviewReadAndIdempotentApplyLoad)$' \
             -count=1 -timeout=12m
 
-      - name: Validate live-load result contract
+      - name: Validate live-load evidence
         env:
           EXPECTED_COMMIT_SHA: ${{ env.SOURCE_SHA }}
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          contract_path = Path("contracts/operations/live-postgres-load-scenario-contract.v1.json")
-          result_path = Path("docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json")
-          contract = json.loads(contract_path.read_text(encoding="utf-8"))
-          result = json.loads(result_path.read_text(encoding="utf-8"))
-
-          assert result["schemaVersion"] == contract["resultsSchemaVersion"]
-          assert result["commitSha"] == os.environ["EXPECTED_COMMIT_SHA"]
-          assert result["environment"]["databaseMode"] == "LOCAL_POSTGRES"
-          assert result["environment"]["productionEvidence"] is False
-
-          expected = {item["scenarioId"]: item for item in contract["scenarios"]}
-          observed = {item["scenarioId"]: item for item in result["scenarios"]}
-          assert set(observed) == set(expected)
-
-          preview = observed["authenticated-preview-local-postgres"]
-          assert preview["result"] == "PASS"
-          assert preview["integrityResult"] == "PASS"
-          assert preview["batch"]["requests"] == 500
-          assert preview["batch"]["statusClassCounts"] == {"2xx": 500}
-          assert preview["databaseAssertions"]["preview_ready_rows"] == 1
-          assert preview["databaseAssertions"]["preview_candidate_rows"] == 2
-          assert preview["databaseAssertions"]["preview_rejection_rows"] == 1
-
-          apply_result = observed["concurrent-idempotent-apply-local-postgres"]
-          assert apply_result["result"] == "PASS"
-          assert apply_result["integrityResult"] == "PASS"
-          assert apply_result["batch"]["requests"] == 96
-          assert apply_result["batch"]["statusClassCounts"].get("2xx", 0) > 0
-          assert apply_result["batch"]["statusClassCounts"].get("5xx", 0) == 0
-          assert apply_result["batch"]["statusClassCounts"].get("transport_error", 0) == 0
-          assert apply_result["databaseAssertions"]["memory_item_rows"] == 2
-          assert apply_result["databaseAssertions"]["apply_confirmation_rows"] == 1
-          print("Live PostgreSQL load result validation PASS")
-          PY
+        run: python scripts/validate-memory-os-live-load.py
 
       - name: Commit regenerated evidence
         run: |
