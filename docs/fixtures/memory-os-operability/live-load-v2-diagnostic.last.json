@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "regenerate-live-dependency-load-v2",
+  "sourceCommitSha": "c047747b383f6e085713d32667d72c4646a41ed2",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "STAGE: compile-and-format\n",
+  "containsSecrets": false,
+  "productionEvidence": false
+}
