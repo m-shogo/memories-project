@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "memory-os-release-baseline-registry.v1",
+  "registryClass": "APPROVED_PRODUCTION_RELEASE_BASELINES",
+  "appendOnly": true,
+  "productionEvidence": false,
+  "approvedReleaseCount": 0,
+  "latestApprovedReleaseId": null,
+  "latestRollbackEligibleReleaseId": null,
+  "releases": [],
+  "limitations": [
+    "no production release has been approved",
+    "no approved predecessor release is available for binding mixed-version evidence",
+    "no rollback-eligible release is available",
+    "historical candidate commits are intentionally excluded",
+    "CI compatibility results do not create release approval"
+  ]
+}
