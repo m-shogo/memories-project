@@ -110,11 +110,12 @@ def main() -> int:
             refs.append(ref)
             changed = True
 
+    # Dashboard and retention definitions may be registered by the independent
+    # operations reconcile. This scrape reconcile guards only still-unproven
+    # deployment/routing/calibration claims and must remain composable.
     for field in (
         "scrapeEndpointExposed",
-        "dashboardsDefined",
         "alertRoutingConfigured",
-        "retentionDefined",
         "loadCalibrated",
     ):
         require(readiness.get(field) is False,
