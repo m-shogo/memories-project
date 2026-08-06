@@ -1,10 +1,10 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "regenerate-live-dependency-load-v2",
-  "sourceCommitSha": "1bd72e0dafb6070d4463b4f9e09745e180fcc05d",
+  "sourceCommitSha": "cb196c399e9509635a8c6776b91ff29c093d8357",
   "result": "FAIL",
   "exitCode": 1,
-  "output": "STAGE: compile-and-format\nSTAGE: live-postgresql-and-minio-tests\n--- FAIL: TestLivePostgresPreviewReadAndIdempotentApplyLoad (61.03s)\n    live_load_test.go:266: live replay load violated its status boundary: {Requests:96 Concurrency:24 Successes:0 Failures:96 StatusClassCounts:map[transport_error:96] DurationSeconds:60.028018102 Throughput:1.5992531993456152 LatencyP50Ms:0 LatencyP95Ms:0 LatencyP99Ms:0}\n--- FAIL: TestLiveMinIOSignedUploadLifecycleLoad (120.11s)\n    live_object_load_test.go:291: live object load violated status boundary: {Requests:32 Concurrency:8 Successes:0 Failures:32 StatusClassCounts:map[transport_error:32 transport_error_issue:32] DurationSeconds:120.03181272 Throughput:0.2665959904700171 LatencyP50Ms:0 LatencyP95Ms:0 LatencyP99Ms:0}\nFAIL\nFAIL\tgithub.com/m-shogo/memories-project/services/import-api/internal/httpserver\t181.249s\nFAIL\n",
+  "output": "STAGE: compile-and-format\nSTAGE: live-postgresql-and-minio-tests\n# github.com/m-shogo/memories-project/services/import-api/internal/httpserver\ninternal/httpserver/deletion_under_load_test.go:15:2: package memory-os-import-api/internal/accountdelete is not in std (/opt/hostedtoolcache/go/1.23.12/x64/src/memory-os-import-api/internal/accountdelete)\nFAIL\tgithub.com/m-shogo/memories-project/services/import-api/internal/httpserver [setup failed]\nFAIL\n",
   "containsSecrets": false,
   "productionEvidence": false
 }
