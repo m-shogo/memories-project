@@ -56,9 +56,6 @@ jobs:
             scripts/validate-memory-os-release-baseline-registry.py \
             scripts/reconcile-memory-os-release-baseline-registry.py
 
-      - name: Validate approved release authority
-        run: python scripts/validate-memory-os-release-baseline-registry.py
-
       - name: Prove invalid registration cannot mutate authority
         run: |
           registry="contracts/operations/release-baseline-registry.v1.json"
@@ -138,11 +135,14 @@ jobs:
           test ! -e "$lock"
           test -z "$(git status --porcelain)"
 
-      - name: Reconcile release registry foundation
-        if: github.event_name != 'pull_request'
+      - name: Reconcile then validate release registry authority
         run: |
           python scripts/reconcile-memory-os-release-baseline-registry.py
           python scripts/validate-memory-os-release-baseline-registry.py
+
+      - name: Require reconciled authority in pull requests
+        if: github.event_name == 'pull_request'
+        run: git diff --exit-code -- contracts/operations/production-operability-status.json
 
       - name: Commit release-specific authority
         if: github.event_name != 'pull_request'
