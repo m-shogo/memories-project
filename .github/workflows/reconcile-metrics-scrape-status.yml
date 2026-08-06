@@ -14,6 +14,7 @@ on:
       - "services/import-api/internal/httpserver/observability.go"
       - "services/import-api/internal/httpserver/metrics_scrape_test.go"
       - "scripts/validate-memory-os-metrics-scrape.py"
+      - "scripts/reconcile-memory-os-metrics-contract.py"
       - "scripts/reconcile-memory-os-metrics-scrape-status.py"
   workflow_dispatch:
 
@@ -68,26 +69,30 @@ jobs:
         run: |
           python -m py_compile \
             scripts/validate-memory-os-metrics-scrape.py \
+            scripts/reconcile-memory-os-metrics-contract.py \
             scripts/reconcile-memory-os-metrics-scrape-status.py
           python scripts/validate-memory-os-metrics-scrape.py
 
-      - name: Reconcile current status
+      - name: Reconcile primary contract and status
         run: |
+          python scripts/reconcile-memory-os-metrics-contract.py
           python scripts/reconcile-memory-os-metrics-scrape-status.py
           python scripts/validate-memory-os-metrics.py
           python scripts/validate-memory-os-metrics-scrape.py
           python scripts/validate-memory-os-operability.py
           python scripts/validate-memory-os-entry-docs.py
 
-      - name: Commit reconciled status
+      - name: Commit reconciled authority files
         run: |
-          git add contracts/operations/production-operability-status.json
+          git add \
+            contracts/operations/metrics-contract.v1.json \
+            contracts/operations/production-operability-status.json
           if git diff --cached --quiet; then
-            echo "Metrics scrape status is already current."
+            echo "Metrics scrape authority is already current."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "docs(metrics): register scrape foundations in operability status"
+          git commit -m "docs(metrics): reconcile scrape authority"
           git pull --rebase origin so
           git push origin HEAD:so
