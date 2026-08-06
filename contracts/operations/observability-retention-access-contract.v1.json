@@ -1,0 +1,181 @@
+{
+  "contractId": "memory-os.operability.observability-retention-access.v1",
+  "schemaVersion": "memory-os-observability-retention-access.v1",
+  "description": "Binding privacy-first retention, access, export and purge policy for structured Memory OS observability events. The policy is defined, but no production log backend, identity group, break-glass system, access audit sink or retention enforcement is configured.",
+  "sourceEventContract": "contracts/operations/observability-event-contract.v1.json",
+  "canonicalRunbook": "docs/runbooks/memory-os-observability-access.md",
+  "status": "POLICY_DEFINED_NOT_CONFIGURED",
+  "classification": {
+    "default": "operational_sensitive_no_user_content",
+    "personalDataForbidden": true,
+    "secretValuesForbidden": true,
+    "rawRequestOrResponseBodiesForbidden": true,
+    "rawErrorsOrStackTracesForbidden": true,
+    "databaseQueriesOrParametersForbidden": true,
+    "presignedUrlsAndObjectKeysForbidden": true,
+    "accountAndAppleIdentityForbidden": true
+  },
+  "retention": {
+    "timezone": "UTC",
+    "tiers": [
+      {
+        "id": "hot-searchable",
+        "selection": "all valid structured events",
+        "retentionDays": 14,
+        "purpose": "Immediate diagnosis and short incident timelines.",
+        "required": true
+      },
+      {
+        "id": "warm-operational",
+        "selection": "warn/error events plus security, rate-limit, deletion and integrity outcomes",
+        "retentionDays": 90,
+        "purpose": "Regression, abuse-control and deletion-safety review.",
+        "required": true
+      },
+      {
+        "id": "reviewed-incident-snapshot",
+        "selection": "explicitly reviewed privacy-safe incident evidence export",
+        "retentionDays": 365,
+        "purpose": "Post-incident learning and audit evidence without preserving raw telemetry indefinitely.",
+        "required": true
+      }
+    ],
+    "automaticExpiryRequired": true,
+    "expiryFailureAlertRequired": true,
+    "retentionDeletionVerificationRequired": true,
+    "silentRetentionExtensionForbidden": true,
+    "silentRetentionReductionForbidden": true,
+    "legalHoldRequiresDocumentedScopeAndExpiry": true,
+    "backendConfigured": false,
+    "expiryVerified": false
+  },
+  "accessRoles": [
+    {
+      "id": "on_call_observer",
+      "permissions": [
+        "read hot searchable structured events",
+        "filter only on bounded contract fields"
+      ],
+      "forbidden": [
+        "bulk export",
+        "retention changes",
+        "access-policy changes",
+        "raw backend administrative access"
+      ]
+    },
+    {
+      "id": "incident_commander",
+      "permissions": [
+        "read hot and warm structured events",
+        "create reviewed privacy-safe incident snapshots",
+        "request time-bounded break-glass access"
+      ],
+      "forbidden": [
+        "unreviewed bulk export",
+        "silent retention extension",
+        "deleting access audit records"
+      ]
+    },
+    {
+      "id": "security_reviewer",
+      "permissions": [
+        "read security, authorization, rate-limit, integrity and deletion events",
+        "review break-glass and export records"
+      ],
+      "forbidden": [
+        "application runtime credential access",
+        "altering incident evidence",
+        "approving own break-glass request"
+      ]
+    },
+    {
+      "id": "observability_platform_admin",
+      "permissions": [
+        "configure retention and sink health",
+        "manage provider integration through reviewed infrastructure changes"
+      ],
+      "forbidden": [
+        "routine event-content access",
+        "self-approved break-glass access",
+        "disabling access audit"
+      ]
+    }
+  ],
+  "accessControls": {
+    "leastPrivilegeRequired": true,
+    "individualIdentityRequired": true,
+    "sharedAccountsForbidden": true,
+    "multiFactorAuthenticationRequired": true,
+    "productionAndNonProductionSeparated": true,
+    "accessReviewIntervalDays": 90,
+    "inactiveAccessRevocationDays": 30,
+    "accessAuditAppendOnlyRequired": true,
+    "accessAuditRetentionDays": 365,
+    "groupAssignmentConfigured": false,
+    "periodicReviewCompleted": false
+  },
+  "breakGlass": {
+    "defaultDenied": true,
+    "incidentReferenceRequired": true,
+    "independentApproverRequired": true,
+    "maximumDurationMinutes": 60,
+    "automaticExpiryRequired": true,
+    "reasonAndScopeRequired": true,
+    "allQueriesAuditedRequired": true,
+    "postAccessReviewRequired": true,
+    "secretOrPersonalDataSearchForbidden": true,
+    "configured": false,
+    "tested": false
+  },
+  "export": {
+    "defaultDenied": true,
+    "incidentReferenceRequired": true,
+    "privacyReviewRequired": true,
+    "boundedTimeRangeRequired": true,
+    "boundedFieldSetRequired": true,
+    "checksumAndSourceCommitRequired": true,
+    "encryptedDestinationRequired": true,
+    "automaticExpiryRequired": true,
+    "rawBackendDumpForbidden": true,
+    "configured": false,
+    "tested": false
+  },
+  "sinkHealth": {
+    "ingestionFreshnessMaximumMinutes": 5,
+    "droppedEventAlertRequired": true,
+    "schemaRejectionAlertRequired": true,
+    "accessAuditFailureIsSev0": true,
+    "retentionExpiryFailureIsHighSeverity": true,
+    "configured": false,
+    "verified": false
+  },
+  "changeControl": {
+    "infrastructureAsCodeRequired": true,
+    "exactSourceCommitRequired": true,
+    "independentReviewRequired": true,
+    "rollbackPlanRequired": true,
+    "productionConfirmationRequired": true,
+    "automaticProductionDecisionChangeForbidden": true
+  },
+  "readiness": {
+    "retentionPolicyDefined": true,
+    "accessRolesDefined": true,
+    "breakGlassPolicyDefined": true,
+    "exportPolicyDefined": true,
+    "sinkHealthRequirementsDefined": true,
+    "runbookDefined": true,
+    "productionBackendConfigured": false,
+    "identityGroupsConfigured": false,
+    "accessAuditConfigured": false,
+    "retentionEnforced": false,
+    "breakGlassTested": false,
+    "exportTested": false,
+    "operatorReviewCompleted": false,
+    "productionReady": false
+  },
+  "evidenceRefs": [
+    "contracts/operations/observability-retention-access-contract.v1.json",
+    "docs/runbooks/memory-os-observability-access.md",
+    "scripts/validate-memory-os-observability-access.py"
+  ]
+}
