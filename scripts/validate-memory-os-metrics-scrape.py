@@ -15,6 +15,9 @@ EXPECTED_EVIDENCE = {
     "services/import-api/internal/metrics/prometheus.go",
     "services/import-api/internal/metrics/scrape.go",
     "services/import-api/internal/metrics/prometheus_test.go",
+    "services/import-api/internal/httpserver/server.go",
+    "services/import-api/internal/httpserver/observability.go",
+    "services/import-api/internal/httpserver/metrics_scrape_test.go",
     "scripts/validate-memory-os-metrics-scrape.py",
 }
 
@@ -57,18 +60,18 @@ def main() -> int:
 
     implementation = contract.get("implementation")
     require(isinstance(implementation, dict), "implementation must be an object")
-    require(implementation.get("prometheusExporter") ==
-            "services/import-api/internal/metrics/prometheus.go",
-            "prometheus exporter path drift")
-    require(implementation.get("scrapeHandler") ==
-            "services/import-api/internal/metrics/scrape.go",
-            "scrape handler path drift")
-    require(implementation.get("tests") ==
-            "services/import-api/internal/metrics/prometheus_test.go",
-            "scrape tests path drift")
-    require(implementation.get("validator") ==
-            "scripts/validate-memory-os-metrics-scrape.py",
-            "validator path drift")
+    expected_paths = {
+        "prometheusExporter": "services/import-api/internal/metrics/prometheus.go",
+        "scrapeHandler": "services/import-api/internal/metrics/scrape.go",
+        "metricsTests": "services/import-api/internal/metrics/prometheus_test.go",
+        "serverMount": "services/import-api/internal/httpserver/server.go",
+        "serverObservability": "services/import-api/internal/httpserver/observability.go",
+        "serverTests": "services/import-api/internal/httpserver/metrics_scrape_test.go",
+        "validator": "scripts/validate-memory-os-metrics-scrape.py",
+    }
+    for field, expected in expected_paths.items():
+        require(implementation.get(field) == expected,
+                f"implementation.{field} path drift")
 
     format_contract = contract.get("format")
     require(isinstance(format_contract, dict), "format must be an object")
@@ -88,14 +91,22 @@ def main() -> int:
 
     access = contract.get("accessBoundary")
     require(isinstance(access, dict), "accessBoundary must be an object")
+    require(access.get("runtimeMountSupported") is True,
+            "explicit runtime mount support is not recorded")
     require(access.get("runtimeMounted") is False,
-            "scrape endpoint is not yet mounted in the runtime")
+            "production scrape endpoint is not yet mounted")
     require(access.get("defaultDisabled") is True, "scrape handler must default disabled")
     require(access.get("authentication") == "BEARER_TOKEN", "authentication drift")
     require(access.get("minimumTokenLength") == 32, "minimum token length drift")
     require(access.get("maximumTokenLength") == 256, "maximum token length drift")
     require(access.get("constantTimeDigestComparisonRequired") is True,
             "constant-time digest comparison must remain required")
+    require(access.get("publicRateLimitIsolationRequired") is True,
+            "public rate-limit isolation must remain required")
+    require(access.get("observabilityRequired") is True,
+            "scrape observability must remain required")
+    require(access.get("observabilityRouteClass") == "INTERNAL",
+            "scrape route class drift")
     require(access.get("allowedMethods") == ["GET"], "allowed method drift")
     require(access.get("cacheControl") == "no-store", "cache control drift")
     require(access.get("contentTypeOptions") == "nosniff", "nosniff drift")
@@ -156,22 +167,51 @@ def main() -> int:
         require(forbidden not in scrape_source,
                 f"scrape handler contains a logging path: {forbidden}")
 
-    test_source = source(implementation["tests"])
-    contains_all(test_source, (
+    metrics_test_source = source(implementation["metricsTests"])
+    contains_all(metrics_test_source, (
         "CANARY_JOB_123",
         "CANARY_TOKEN",
         "TestNewScrapeHandlerFailsClosed",
         "TestScrapeHandlerAuthenticationAndHeaders",
         "TestScrapeHandlerRejectsOversizedSnapshot",
-        'le=\\"+Inf\\"',
-    ), "scrape tests")
+        "+Inf",
+    ), "metrics scrape tests")
+
+    server_source = source(implementation["serverMount"])
+    contains_all(server_source, (
+        "MetricsScrape http.Handler",
+        "if config.MetricsScrape != nil",
+        'operational.Handle("/metrics", config.MetricsScrape)',
+        'operational.Handle("/", limited)',
+        "served = operational",
+        "return observabilityMiddleware(config.Logger, recorder, served)",
+    ), "server scrape mount")
+
+    observability_source = source(implementation["serverObservability"])
+    contains_all(observability_source, (
+        'method == http.MethodGet && path == "/metrics"',
+        'return "GET /metrics"',
+        'case route == "GET /metrics":',
+        "return metrics.RouteInternal",
+    ), "scrape observability")
+
+    server_test_source = source(implementation["serverTests"])
+    contains_all(server_test_source, (
+        "TestMetricsScrapeIsUnmountedByDefault",
+        "TestMetricsScrapeMountIsAuthenticatedAndOutsidePublicRateLimit",
+        "registry.SumCounter(metrics.MetricRateLimitDecisions, nil)",
+        'route_class=\\"INTERNAL\\"',
+    ), "server scrape tests")
 
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "readiness must be an object")
-    require(readiness.get("prometheusExporterImplemented") is True,
-            "Prometheus exporter implementation not recorded")
-    require(readiness.get("authenticatedHandlerImplemented") is True,
-            "authenticated handler implementation not recorded")
+    for implemented in (
+        "prometheusExporterImplemented",
+        "authenticatedHandlerImplemented",
+        "serverMountSupported",
+    ):
+        require(readiness.get(implemented) is True,
+                f"readiness.{implemented} must be true")
     for unproven in (
         "runtimeMounted",
         "productionSecretProvisioned",
@@ -201,11 +241,12 @@ def main() -> int:
     require(len(matches) == 1, "OPS-P0-004 must exist exactly once")
     gate = matches[0]
     require(gate.get("status") != "READY",
-            "OPS-P0-004 cannot be READY while scrape runtime and operations are unconfigured")
+            "OPS-P0-004 cannot be READY while production scrape operations are unconfigured")
 
     print("Memory OS metrics scrape validation PASS")
     print("Prometheus exporter: implemented")
-    print("authenticated scrape handler: implemented, deliberately unmounted")
+    print("authenticated scrape handler: implemented")
+    print("HTTP server mount seam: supported, production unmounted")
     print(f"OPS-P0-004 status: {gate.get('status')}")
     print("production decision: NO_GO")
     return 0
