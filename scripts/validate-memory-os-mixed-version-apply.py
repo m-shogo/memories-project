@@ -80,7 +80,7 @@ def main() -> int:
     for field in ("requiredScenarios", "abortCriteria", "limitations", "evidenceRefs"):
         value = contract.get(field)
         require(isinstance(value, list) and value, f"{field} must be a non-empty list")
-    require(len(contract["requiredScenarios"]) >= 6,
+    require(len(contract["requiredScenarios"]) >= 12,
             "mixed-version Apply scenario coverage is too small")
     for ref in contract["evidenceRefs"]:
         require(isinstance(ref, str) and not ref.startswith("/") and
@@ -97,8 +97,14 @@ def main() -> int:
         require(boundary.get(field) is False, f"evidence boundary overclaim: {field}")
     require(boundary.get("historicalCandidateOnly") is True,
             "historical candidate boundary missing")
-    require(boundary.get("concurrentClaimRaceEvidence") in (False, True),
-            "concurrent claim race boundary must be boolean")
+    require(boundary.get("concurrentClaimRaceEvidence") is True and
+            boundary.get("concurrentClaimRaceClass") ==
+            "HISTORICAL_CANDIDATE_CURRENT_EPHEMERAL_SHARED_SCHEMA",
+            "concurrent claim race boundary drift")
+    require(boundary.get("inProgressProcessTerminationEvidence") is True and
+            boundary.get("inProgressProcessTerminationClass") ==
+            "HISTORICAL_CANDIDATE_TO_CURRENT_EPHEMERAL_POSTGRES_TRANSACTION_ROLLBACK",
+            "in-progress process termination boundary drift")
 
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "readiness missing")
@@ -111,8 +117,10 @@ def main() -> int:
         "approvedReleasePairAvailable", "rollbackRehearsalExecuted", "productionReady",
     ):
         require(readiness.get(field) is False, f"unproven readiness cannot be true: {field}")
-    require(readiness.get("concurrentClaimRaceExecuted") in (False, True),
-            "concurrentClaimRaceExecuted must be boolean")
+    require(readiness.get("concurrentClaimRaceExecuted") is True,
+            "concurrent claim race readiness missing")
+    require(readiness.get("inProgressProcessTerminationExecuted") is True,
+            "in-progress process termination readiness missing")
 
     if (arguments.allow_stale_result and
             readiness.get("exactSourcePassResultCommitted") is False):
@@ -190,9 +198,12 @@ def main() -> int:
     if arguments.require_reconciled:
         require(readiness.get("exactSourcePassResultCommitted") is True,
                 "result exists but contract readiness is not reconciled")
-        if assertions.get("concurrentOldCurrentClaimRacePassed") is True:
-            require(readiness.get("concurrentClaimRaceExecuted") is True,
-                    "concurrent claim race result is not reconciled")
+        require(assertions.get("concurrentOldCurrentClaimRacePassed") is True and
+                readiness.get("concurrentClaimRaceExecuted") is True,
+                "concurrent claim race result is not reconciled")
+        require(assertions.get("oldProcessTerminationRecoveryPassed") is True and
+                readiness.get("inProgressProcessTerminationExecuted") is True,
+                "in-progress process termination result is not reconciled")
     else:
         require(readiness.get("exactSourcePassResultCommitted") in (False, True),
                 "exactSourcePassResultCommitted must be boolean")
@@ -201,7 +212,8 @@ def main() -> int:
     print(f"old backend: {old_sha[:12]}")
     print(f"current source: {current_sha[:12]}")
     print(f"reconciled: {readiness.get('exactSourcePassResultCommitted') is True}")
-    print(f"concurrent race: {assertions.get('concurrentOldCurrentClaimRacePassed', False)}")
+    print("concurrent race: True")
+    print("in-progress process termination recovery: True")
     print("production decision: NO_GO")
     return 0
 
