@@ -260,20 +260,34 @@
     {
       "id": "OPS-P0-008",
       "area": "version_compatibility",
-      "status": "PARTIAL_PINNING_NO_POLICY",
+      "status": "PARTIAL",
       "blocking": true,
       "existingEvidence": [
         "Go 1.23 test baseline",
         "PostgreSQL 16 test baseline",
         "digest-pinned parser worker",
-        "schema and checksum validation"
+        "schema and checksum validation",
+        "binding compatibility policy separating HTTP client/server, backend/database, rolling backend, persisted job/Preview, parser artifact and exact object-version directions",
+        "machine-readable nine-entry compatibility matrix that distinguishes PROVEN_IN_CI, PARTIAL, LOCAL_PROOF_ONLY, NOT_PROVEN, NOT_IMPLEMENTED_OR_PROVEN and FORBIDDEN_RELEASE_ORDER",
+        "release runbook for contract classification, old/new matrix, rollback-target verification, rollout order, observation and later contraction",
+        "clean current backend against current PostgreSQL 16 schema proven by Security Contracts",
+        "fail-closed validator preventing unsupported promotion of mixed backend, parser, persisted-state, client/server and database-upgrade claims"
       ],
       "missingEvidence": [
-        "supported-version matrix",
-        "API and schema compatibility rules",
-        "rolling upgrade and downgrade policy",
-        "old-new mixed-version tests",
-        "future client-server skew policy"
+        "old/current backend mixed-version executable tests against an expanded schema",
+        "persisted-state compatibility fixtures across releases",
+        "reviewed parser artifact registry and old parser artifact replay tests",
+        "implemented client support windows and client/server skew tests",
+        "PostgreSQL minor/major upgrade policy and rehearsal",
+        "production rolling deployment and downgrade rehearsal",
+        "independent review of compatibility controls"
+      ],
+      "evidenceRefs": [
+        ".github/workflows/security-contracts.yml",
+        "contracts/operations/migration-lifecycle-contract.v1.json",
+        "contracts/operations/version-compatibility-contract.v1.json",
+        "docs/runbooks/memory-os-version-compatibility.md",
+        "scripts/validate-memory-os-version-compatibility.py"
       ]
     }
   ]
