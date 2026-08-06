@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+"""Exclusively create one validated rate-limit operation evidence record."""
+
+from __future__ import annotations
+
+import argparse
+import importlib.util
+import json
+import os
+import sys
+from pathlib import Path
+from types import ModuleType
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-rate-limit-operation-evidence.py"
+DEFAULT_LEDGER = ROOT / "docs/evidence/rate-limit-operations"
+
+
+class WriterFailure(RuntimeError):
+    pass
+
+
+def load_validator() -> ModuleType:
+    spec = importlib.util.spec_from_file_location(
+        "memory_os_rate_limit_operation_validator", VALIDATOR_PATH
+    )
+    if spec is None or spec.loader is None:
+        raise WriterFailure("unable to load operation evidence validator")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def load_input(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise WriterFailure(f"input file does not exist: {path}") from exc
+    except json.JSONDecodeError as exc:
+        raise WriterFailure(f"input is invalid JSON: {exc}") from exc
+    if not isinstance(value, dict):
+        raise WriterFailure("input JSON root must be an object")
+    return value
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Validate and exclusively append one rate-limit operation record"
+    )
+    parser.add_argument("--input", required=True, type=Path)
+    parser.add_argument("--ledger-dir", type=Path, default=DEFAULT_LEDGER)
+    args = parser.parse_args()
+
+    validator = load_validator()
+    record = load_input(args.input)
+    contract, policy_ids = validator.load_contract_context()
+    try:
+        validator.validate_record(record, contract, policy_ids)
+    except validator.ValidationFailure as exc:
+        raise WriterFailure(str(exc)) from exc
+
+    ledger = args.ledger_dir.resolve()
+    allowed_root = ROOT.resolve()
+    if ledger != DEFAULT_LEDGER.resolve():
+        # Alternate directories are allowed only for CI/local self-tests and
+        # must stay under the repository or system temporary directory.
+        temp_root = Path(os.environ.get("TMPDIR", "/tmp")).resolve()
+        if not (ledger.is_relative_to(allowed_root) or ledger.is_relative_to(temp_root)):
+            raise WriterFailure("ledger directory is outside approved roots")
+    ledger.mkdir(parents=True, exist_ok=True)
+
+    operation_id = record["operationId"]
+    target = ledger / f"{operation_id}.json"
+    payload = json.dumps(record, indent=2, ensure_ascii=False) + "\n"
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    try:
+        descriptor = os.open(target, flags, 0o644)
+    except FileExistsError as exc:
+        raise WriterFailure(f"operationId already exists and cannot be overwritten: {operation_id}") from exc
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except Exception:
+        try:
+            target.unlink()
+        except FileNotFoundError:
+            pass
+        raise
+
+    print(f"Created append-only rate-limit operation evidence: {target}")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except WriterFailure as exc:
+        print(f"RATE-LIMIT OPERATION EVIDENCE WRITE FAILED: {exc}", file=sys.stderr)
+        raise SystemExit(1)
