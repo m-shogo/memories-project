@@ -2,11 +2,28 @@
   "contractId": "memory-os.operability.load-test-scenario-contract.v1",
   "schemaVersion": "memory-os-load-scenario.v1",
   "resultsSchemaVersion": "memory-os-load-results.v1",
-  "description": "Machine-readable load-test scenario matrix for the Import API. The validator checks that every result in a results document names a scenario defined here, that executed scenarios carry the metrics they claim to measure, and that no scenario or result claims production-equivalent dependencies or real-Apple evidence. Every scenario here runs against MOCK dependencies in-process; these are local, non-production figures. OPS-P0-006 may not be READY on this evidence.",
+  "description": "Machine-readable load-test scenario matrix for the deterministic in-process Import API harness. The validator checks that every persisted result names a scenario defined in executedScenarios, that required scenarios have results, and that no MOCK result claims production-equivalent or real-Apple evidence. Live PostgreSQL and MinIO checkpoints are governed by separate contracts listed in externalExecutedScenarios. OPS-P0-006 may not be READY on either local evidence set.",
   "goHarness": "services/import-api/internal/loadtest",
-  "dependencyModes": ["MOCK", "LOCAL_POSTGRES", "LOCAL_OBJECT_STORE", "FAILURE_INJECTED", "PRODUCTION_EQUIVALENT"],
-  "workloadTypes": ["STEADY", "BURST", "RAMP", "SOAK", "OVERLOAD", "DEPENDENCY_DEGRADED"],
-  "forbiddenAsPass": ["REAL_APPLE", "PRODUCTION_EQUIVALENT"],
+  "dependencyModes": [
+    "MOCK",
+    "LOCAL_POSTGRES",
+    "LOCAL_OBJECT_STORE",
+    "LOCAL_POSTGRES_MINIO",
+    "FAILURE_INJECTED",
+    "PRODUCTION_EQUIVALENT"
+  ],
+  "workloadTypes": [
+    "STEADY",
+    "BURST",
+    "RAMP",
+    "SOAK",
+    "OVERLOAD",
+    "DEPENDENCY_DEGRADED"
+  ],
+  "forbiddenAsPass": [
+    "REAL_APPLE",
+    "PRODUCTION_EQUIVALENT"
+  ],
   "executedScenarios": [
     {
       "scenarioId": "health-baseline-mock",
@@ -20,12 +37,20 @@
       "payloadClass": "none",
       "dependencyMode": "MOCK",
       "rateLimitPolicy": "exempt",
-      "expectedStatusClasses": ["2xx"],
-      "measurementMetrics": ["memory_os_http_requests_total", "memory_os_http_request_duration_seconds", "memory_os_http_in_flight"],
+      "expectedStatusClasses": [
+        "2xx"
+      ],
+      "measurementMetrics": [
+        "memory_os_http_requests_total",
+        "memory_os_http_request_duration_seconds",
+        "memory_os_http_in_flight"
+      ],
       "successCriteria": "all 2xx; harness overhead observable; Apple path untouched",
       "abortCriteria": "any 5xx; goroutine or heap runaway",
       "privacyClass": "operational_nonpersonal",
-      "evidenceRefs": ["services/import-api/internal/loadtest/scenarios_test.go"]
+      "evidenceRefs": [
+        "services/import-api/internal/loadtest/scenarios_test.go"
+      ]
     },
     {
       "scenarioId": "apple-steady-mock",
@@ -39,7 +64,9 @@
       "payloadClass": "unique-nonce-and-code",
       "dependencyMode": "MOCK",
       "rateLimitPolicy": "permissive",
-      "expectedStatusClasses": ["2xx"],
+      "expectedStatusClasses": [
+        "2xx"
+      ],
       "measurementMetrics": [
         "memory_os_http_requests_total",
         "memory_os_http_request_duration_seconds",
@@ -51,7 +78,10 @@
       "successCriteria": "all 2xx; one account for one subject; one session per request; series bounded",
       "abortCriteria": "any 5xx; series above budget; goroutine or heap runaway",
       "privacyClass": "operational_nonpersonal",
-      "evidenceRefs": ["services/import-api/internal/loadtest/scenarios_test.go", "services/import-api/internal/appleauth/metered.go"]
+      "evidenceRefs": [
+        "services/import-api/internal/loadtest/scenarios_test.go",
+        "services/import-api/internal/appleauth/metered.go"
+      ]
     },
     {
       "scenarioId": "apple-burst-mock",
@@ -65,15 +95,21 @@
       "payloadClass": "unique-nonce-and-code",
       "dependencyMode": "MOCK",
       "rateLimitPolicy": "tight-network-guard",
-      "expectedStatusClasses": ["2xx", "4xx"],
+      "expectedStatusClasses": [
+        "2xx",
+        "4xx"
+      ],
       "measurementMetrics": [
         "memory_os_http_requests_total",
         "memory_os_rate_limit_decisions_total"
       ],
-      "successCriteria": "network guard rejects the burst with bounded 429; sessions equal 2xx count (handler never runs for a rejected request); no 5xx; series bounded",
+      "successCriteria": "network guard rejects the burst with bounded 429; sessions equal 2xx count; no 5xx; series bounded",
       "abortCriteria": "any 5xx; sessions exceed 2xx; series above budget",
       "privacyClass": "operational_nonpersonal",
-      "evidenceRefs": ["services/import-api/internal/loadtest/scenarios_test.go", "services/import-api/internal/httpserver/ratelimit.go"]
+      "evidenceRefs": [
+        "services/import-api/internal/loadtest/scenarios_test.go",
+        "services/import-api/internal/httpserver/ratelimit.go"
+      ]
     },
     {
       "scenarioId": "ratelimit-store-failure-mock",
@@ -87,7 +123,9 @@
       "payloadClass": "unique-nonce-and-code",
       "dependencyMode": "FAILURE_INJECTED",
       "rateLimitPolicy": "fail-closed-store-down",
-      "expectedStatusClasses": ["4xx"],
+      "expectedStatusClasses": [
+        "4xx"
+      ],
       "measurementMetrics": [
         "memory_os_http_requests_total",
         "memory_os_rate_limit_decisions_total",
@@ -96,7 +134,10 @@
       "successCriteria": "pre-auth route fails closed; no account, session or replay mutation; store-failure metric recorded",
       "abortCriteria": "any 2xx; any business-state mutation",
       "privacyClass": "operational_nonpersonal",
-      "evidenceRefs": ["services/import-api/internal/loadtest/scenarios_test.go", "services/import-api/internal/ratelimit/enforce.go"]
+      "evidenceRefs": [
+        "services/import-api/internal/loadtest/scenarios_test.go",
+        "services/import-api/internal/ratelimit/enforce.go"
+      ]
     },
     {
       "scenarioId": "cardinality-attack-mock",
@@ -110,12 +151,19 @@
       "payloadClass": "hostile-unique-path-header-token",
       "dependencyMode": "MOCK",
       "rateLimitPolicy": "permissive",
-      "expectedStatusClasses": ["4xx"],
-      "measurementMetrics": ["memory_os_http_requests_total"],
+      "expectedStatusClasses": [
+        "4xx"
+      ],
+      "measurementMetrics": [
+        "memory_os_http_requests_total"
+      ],
       "successCriteria": "distinct request ids, paths, forwarded headers and bearer tokens never become series identity; total series stays bounded",
       "abortCriteria": "series above budget; any hostile value present in a label",
       "privacyClass": "operational_nonpersonal",
-      "evidenceRefs": ["services/import-api/internal/loadtest/scenarios_test.go", "services/import-api/internal/metrics/labels.go"]
+      "evidenceRefs": [
+        "services/import-api/internal/loadtest/scenarios_test.go",
+        "services/import-api/internal/metrics/labels.go"
+      ]
     },
     {
       "scenarioId": "authenticated-preview-mock",
@@ -129,7 +177,9 @@
       "payloadClass": "authenticated-bearer",
       "dependencyMode": "MOCK",
       "rateLimitPolicy": "permissive-authenticated",
-      "expectedStatusClasses": ["2xx"],
+      "expectedStatusClasses": [
+        "2xx"
+      ],
       "measurementMetrics": [
         "memory_os_http_requests_total",
         "memory_os_http_request_duration_seconds",
@@ -139,7 +189,10 @@
       "successCriteria": "all 2xx through the session middleware and fence; preview_read db op recorded once per request; job id never a label; series bounded",
       "abortCriteria": "any 5xx; series above budget; job id present in a label",
       "privacyClass": "operational_nonpersonal",
-      "evidenceRefs": ["services/import-api/internal/loadtest/authenticated_test.go", "services/import-api/internal/servicemetrics/servicemetrics.go"]
+      "evidenceRefs": [
+        "services/import-api/internal/loadtest/authenticated_test.go",
+        "services/import-api/internal/servicemetrics/servicemetrics.go"
+      ]
     },
     {
       "scenarioId": "concurrent-apply-mock",
@@ -153,7 +206,9 @@
       "payloadClass": "authenticated-bearer-json",
       "dependencyMode": "MOCK",
       "rateLimitPolicy": "permissive-authenticated",
-      "expectedStatusClasses": ["2xx"],
+      "expectedStatusClasses": [
+        "2xx"
+      ],
       "measurementMetrics": [
         "memory_os_http_requests_total",
         "memory_os_http_request_duration_seconds",
@@ -163,19 +218,40 @@
       "successCriteria": "concurrent apply requests return 2xx with no 5xx; apply_transaction db op recorded once per request; preview/apply ids never a label; series bounded",
       "abortCriteria": "any 5xx; series above budget; preview id present in a label",
       "privacyClass": "operational_nonpersonal",
-      "evidenceRefs": ["services/import-api/internal/loadtest/authenticated_test.go", "services/import-api/internal/servicemetrics/servicemetrics.go"]
+      "evidenceRefs": [
+        "services/import-api/internal/loadtest/authenticated_test.go",
+        "services/import-api/internal/servicemetrics/servicemetrics.go"
+      ]
+    }
+  ],
+  "externalExecutedScenarios": [
+    {
+      "scenarioId": "authenticated-preview-local-postgres",
+      "contractRef": "contracts/operations/live-postgres-load-scenario-contract.v1.json",
+      "validatorRef": "scripts/validate-memory-os-live-load.py",
+      "dependencyMode": "LOCAL_POSTGRES",
+      "productionEvidence": false
+    },
+    {
+      "scenarioId": "concurrent-idempotent-apply-local-postgres",
+      "contractRef": "contracts/operations/live-postgres-load-scenario-contract.v1.json",
+      "validatorRef": "scripts/validate-memory-os-live-load.py",
+      "dependencyMode": "LOCAL_POSTGRES",
+      "productionEvidence": false
+    },
+    {
+      "scenarioId": "signed-upload-lifecycle-local-minio-postgres",
+      "contractRef": "contracts/operations/live-object-load-scenario-contract.v1.json",
+      "validatorRef": "scripts/validate-memory-os-live-object-load.py",
+      "dependencyMode": "LOCAL_POSTGRES_MINIO",
+      "productionEvidence": false
     }
   ],
   "deferredScenarios": [
     {
-      "scenarioId": "authenticated-preview-local-postgres",
-      "reason": "requires live PostgreSQL and object-store instrumentation; preview/object-store metrics are DEFINED_NOT_EMITTED",
-      "requiredDependencyMode": "LOCAL_POSTGRES"
-    },
-    {
-      "scenarioId": "apply-concurrent-local-postgres",
-      "reason": "apply is a destructive boundary and needs a live fixture database with integrity re-verification under concurrency",
-      "requiredDependencyMode": "LOCAL_POSTGRES"
+      "scenarioId": "capacity-ramp-local-postgres-minio",
+      "reason": "the live dependency checkpoints use fixed request counts and concurrency; no controlled ramp has identified first saturation, queue growth or a safe operating boundary",
+      "requiredDependencyMode": "LOCAL_POSTGRES_MINIO"
     },
     {
       "scenarioId": "deletion-worker-under-api-load",
@@ -184,16 +260,19 @@
     },
     {
       "scenarioId": "soak-memory-leak",
-      "reason": "a representative soak (RSS/heap/goroutine slope over tens of minutes) has not been run; SOAK PROOF INSUFFICIENT",
-      "requiredDependencyMode": "LOCAL_POSTGRES"
+      "reason": "a representative soak with RSS, heap and goroutine slope over tens of minutes has not been run; SOAK PROOF INSUFFICIENT",
+      "requiredDependencyMode": "LOCAL_POSTGRES_MINIO"
     },
     {
       "scenarioId": "production-equivalent",
-      "reason": "no production-shaped workload, environment or dependency behavior exists; this is why OPS-P0-006 stays PARTIAL",
+      "reason": "ephemeral PostgreSQL and MinIO do not reproduce production topology, TLS, scoped credentials, retention, latency or failure behavior",
       "requiredDependencyMode": "PRODUCTION_EQUIVALENT"
     }
   ],
   "readiness": {
+    "localLivePostgresCheckpointImplemented": true,
+    "localLiveObjectStoreCheckpointImplemented": true,
+    "exactHeadLiveResultsCommitted": false,
     "productionShapedWorkload": false,
     "capacityBoundaryEstablished": false,
     "sustainedSoakEvidence": false,
@@ -202,13 +281,19 @@
     "cardinalityProof": true,
     "operationalThresholds": false,
     "productionEquivalentDependencies": false,
-    "note": "Failure-injection, integrity and cardinality are proven locally against MOCK dependencies. Production-shaped workload, capacity boundary, soak and operational thresholds are missing, so OPS-P0-006 is PARTIAL, not READY."
+    "note": "Mock evidence is committed and validated. Separate executable local PostgreSQL and MinIO checkpoints close the MOCK-only implementation blind spot, but exact-HEAD live results, capacity boundary, soak, operational thresholds and production-equivalent dependencies remain open. OPS-P0-006 is PARTIAL, not READY."
   },
   "evidenceRefs": [
     "services/import-api/internal/loadtest/harness.go",
     "services/import-api/internal/loadtest/applemock.go",
     "services/import-api/internal/loadtest/results.go",
     "services/import-api/internal/loadtest/scenarios_test.go",
+    "services/import-api/internal/httpserver/live_load_test.go",
+    "services/import-api/internal/httpserver/live_object_load_test.go",
+    "contracts/operations/live-postgres-load-scenario-contract.v1.json",
+    "contracts/operations/live-object-load-scenario-contract.v1.json",
+    "scripts/validate-memory-os-live-load.py",
+    "scripts/validate-memory-os-live-object-load.py",
     "docs/fixtures/memory-os-operability/load-results.sample.v1.json",
     "docs/memory-os-load-measurement-inventory.md"
   ]
