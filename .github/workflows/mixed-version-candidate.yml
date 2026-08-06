@@ -1,0 +1,207 @@
+name: Mixed-Version Candidate Compatibility
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/mixed-version-candidate.yml"
+      - "scripts/run-memory-os-mixed-version-candidate.sh"
+      - "scripts/validate-memory-os-mixed-version-candidate.py"
+      - "scripts/reconcile-memory-os-mixed-version-candidate.py"
+      - "contracts/operations/mixed-version-candidate-contract.v1.json"
+      - "contracts/operations/migration-lifecycle-contract.v1.json"
+      - "infra/postgresql/security/**"
+      - "services/import-api/**"
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/mixed-version-candidate.yml"
+      - "scripts/run-memory-os-mixed-version-candidate.sh"
+      - "scripts/validate-memory-os-mixed-version-candidate.py"
+      - "scripts/reconcile-memory-os-mixed-version-candidate.py"
+      - "contracts/operations/mixed-version-candidate-contract.v1.json"
+      - "contracts/operations/migration-lifecycle-contract.v1.json"
+      - "infra/postgresql/security/**"
+      - "services/import-api/**"
+  schedule:
+    - cron: "41 4 * * 3"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mixed-version-candidate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  candidate-compatibility:
+    if: >-
+      github.event_name != 'push' ||
+      !contains(github.event.head_commit.message, 'docs(version): reconcile candidate baseline evidence')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 30
+
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      MEMORY_OS_TEST_S3_ENDPOINT: http://127.0.0.1:9000
+      MEMORY_OS_ALLOW_EPHEMERAL_DATABASE_DROP: "1"
+
+    steps:
+      - name: Checkout exact source with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: services/import-api/go.sum
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+
+      - name: Start local MinIO
+        run: |
+          docker run -d --name memory-os-mixed-version-minio \
+            -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio server /data
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --show-error http://127.0.0.1:9000/minio/health/live >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs memory-os-mixed-version-minio
+          exit 1
+
+      - name: Verify exact source state
+        run: |
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          git cat-file -e a1f39560468ebd5d39c4dd7a336140cb455cf2e8^{commit}
+          bash -n scripts/run-memory-os-mixed-version-candidate.sh
+          python -m py_compile \
+            scripts/validate-memory-os-mixed-version-candidate.py \
+            scripts/reconcile-memory-os-mixed-version-candidate.py
+
+      - name: Run candidate baseline compatibility drill
+        id: drill
+        continue-on-error: true
+        env:
+          MEMORY_OS_COMMIT_SHA: ${{ github.sha }}
+          MEMORY_OS_MIXED_VERSION_RESULTS_PATH: ${{ github.workspace }}/docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json
+        run: bash scripts/run-memory-os-mixed-version-candidate.sh
+
+      - name: Record bounded failure diagnostic
+        if: steps.drill.outcome != 'success'
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          python - <<'PY'
+          import datetime as dt
+          import json
+          import os
+          from pathlib import Path
+          path = Path("docs/fixtures/memory-os-operability/mixed-version-candidate-diagnostic.last.json")
+          value = {
+              "schemaVersion": "memory-os-validator-diagnostic.v1",
+              "workflow": "mixed-version-candidate",
+              "sourceCommitSha": os.environ["SOURCE_SHA"],
+              "result": "FAIL",
+              "exitCode": 1,
+              "generatedAt": dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z"),
+              "output": "candidate compatibility drill failed; inspect GitHub Actions step logs",
+              "containsSecrets": False,
+              "productionEvidence": False,
+          }
+          path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+          PY
+
+      - name: Commit failure diagnostic
+        if: steps.drill.outcome != 'success' && github.event_name != 'pull_request'
+        run: |
+          git add docs/fixtures/memory-os-operability/mixed-version-candidate-diagnostic.last.json
+          if git diff --cached --quiet; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "test(version): record candidate compatibility failure diagnostic"
+          git fetch origin so
+          git rebase origin/so
+          git push origin HEAD:so
+
+      - name: Fail after diagnostic
+        if: steps.drill.outcome != 'success'
+        run: exit 1
+
+      - name: Validate exact-source result
+        env:
+          EXPECTED_COMMIT_SHA: ${{ github.sha }}
+        run: python scripts/validate-memory-os-mixed-version-candidate.py
+
+      - name: Commit exact-source result
+        if: github.event_name != 'pull_request'
+        run: |
+          git add docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json
+          if git diff --cached --quiet; then
+            echo "Candidate compatibility evidence is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "test(version): record candidate baseline compatibility evidence"
+            git fetch origin so
+            git rebase origin/so
+            git push origin HEAD:so
+          fi
+
+      - name: Reconcile candidate authority
+        if: github.event_name != 'pull_request'
+        run: |
+          git fetch origin so
+          git reset --hard origin/so
+          python scripts/reconcile-memory-os-mixed-version-candidate.py
+          python scripts/validate-memory-os-mixed-version-candidate.py
+          python scripts/validate-memory-os-version-compatibility.py
+
+      - name: Commit reconciled authority
+        if: github.event_name != 'pull_request'
+        run: |
+          git add \
+            contracts/operations/mixed-version-candidate-contract.v1.json \
+            contracts/operations/production-operability-status.json
+          if git diff --cached --quiet; then
+            echo "Candidate compatibility authority is already reconciled."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs(version): reconcile candidate baseline evidence"
+          git fetch origin so
+          git rebase origin/so
+          git push origin HEAD:so
