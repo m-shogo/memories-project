@@ -1,0 +1,127 @@
+{
+  "contractId": "memory-os.operability.metrics-alerting.v1",
+  "schemaVersion": "memory-os-metrics-alerting.v1",
+  "description": "Provider-neutral alert rule definitions and runbook bindings for the seven alert candidates in the primary metrics contract. Rules and runbooks are defined but no production routing, paging destination, on-call ownership or delivery verification is configured.",
+  "sourceMetricsContract": "contracts/operations/metrics-contract.v1.json",
+  "prometheusRuleFile": "infra/observability/prometheus/memory-os-alerts.yml",
+  "canonicalRunbook": "docs/runbooks/memory-os-metrics-alerts.md",
+  "status": "RULES_DEFINED_ROUTING_NOT_CONFIGURED",
+  "rules": [
+    {
+      "alertId": "alert_http_5xx_burst",
+      "prometheusAlertName": "MemoryOSHTTP5xxBurst",
+      "sli": "sli_http_availability",
+      "severity": "high",
+      "expression": "sum(rate(memory_os_http_requests_total{status_class=\"5xx\"}[5m])) / clamp_min(sum(rate(memory_os_http_requests_total[5m])), 1) > 0.05",
+      "for": "10m",
+      "thresholdStatus": "PROVISIONAL_NOT_LOAD_CALIBRATED",
+      "runbook": "docs/runbooks/memory-os-metrics-alerts.md#alert-http-5xx-burst",
+      "routingStatus": "NOT_CONFIGURED"
+    },
+    {
+      "alertId": "alert_panic_detected",
+      "prometheusAlertName": "MemoryOSPanicDetected",
+      "sli": "sli_http_availability",
+      "severity": "high",
+      "expression": "sum(increase(memory_os_http_panics_total[5m])) > 0",
+      "for": "0m",
+      "thresholdStatus": "INVARIANT_ANY_OCCURRENCE",
+      "runbook": "docs/runbooks/memory-os-metrics-alerts.md#alert-panic-detected",
+      "routingStatus": "NOT_CONFIGURED"
+    },
+    {
+      "alertId": "alert_apple_exchange_failure_spike",
+      "prometheusAlertName": "MemoryOSAppleExchangeFailureSpike",
+      "sli": "sli_apple_exchange_success",
+      "severity": "medium",
+      "expression": "sum(rate(memory_os_apple_exchange_total{outcome=\"failure\"}[10m])) / clamp_min(sum(rate(memory_os_apple_exchange_total[10m])), 1) > 0.20",
+      "for": "15m",
+      "thresholdStatus": "PROVISIONAL_NOT_LOAD_CALIBRATED",
+      "runbook": "docs/runbooks/memory-os-metrics-alerts.md#alert-apple-exchange-failure-spike",
+      "routingStatus": "NOT_CONFIGURED"
+    },
+    {
+      "alertId": "alert_rate_limit_store_failing",
+      "prometheusAlertName": "MemoryOSRateLimitStoreFailing",
+      "sli": "sli_rate_limit_store_health",
+      "severity": "high",
+      "expression": "sum(increase(memory_os_rate_limit_store_failures_total[5m])) > 0",
+      "for": "0m",
+      "thresholdStatus": "INVARIANT_ANY_OCCURRENCE",
+      "runbook": "docs/runbooks/memory-os-metrics-alerts.md#alert-rate-limit-store-failing",
+      "routingStatus": "NOT_CONFIGURED"
+    },
+    {
+      "alertId": "alert_db_failing",
+      "prometheusAlertName": "MemoryOSDatabaseFailing",
+      "sli": "sli_db_availability",
+      "severity": "high",
+      "expression": "sum(increase(memory_os_db_failures_total[5m])) > 0",
+      "for": "5m",
+      "thresholdStatus": "PROVISIONAL_ZERO_TOLERANCE_PENDING_BASELINE",
+      "runbook": "docs/runbooks/memory-os-metrics-alerts.md#alert-db-failing",
+      "routingStatus": "NOT_CONFIGURED"
+    },
+    {
+      "alertId": "alert_deletion_backlog_stuck",
+      "prometheusAlertName": "MemoryOSDeletionBacklogStuck",
+      "sli": "sli_deletion_freshness",
+      "severity": "high",
+      "expression": "max_over_time(memory_os_deletion_backlog[30m]) > 0 and max_over_time(memory_os_deletion_backlog[30m]) == min_over_time(memory_os_deletion_backlog[30m])",
+      "for": "30m",
+      "thresholdStatus": "PROVISIONAL_POLICY_WINDOW",
+      "runbook": "docs/runbooks/memory-os-metrics-alerts.md#alert-deletion-backlog-stuck",
+      "routingStatus": "NOT_CONFIGURED"
+    },
+    {
+      "alertId": "alert_deletion_terminal_failure",
+      "prometheusAlertName": "MemoryOSDeletionTerminalFailure",
+      "sli": "sli_deletion_success",
+      "severity": "high",
+      "expression": "sum(increase(memory_os_deletion_terminal_failures_total[5m])) > 0",
+      "for": "0m",
+      "thresholdStatus": "INVARIANT_ANY_OCCURRENCE",
+      "runbook": "docs/runbooks/memory-os-metrics-alerts.md#alert-deletion-terminal-failure",
+      "routingStatus": "NOT_CONFIGURED"
+    }
+  ],
+  "routing": {
+    "configured": false,
+    "pagingDestinationConfigured": false,
+    "onCallOwnerAssigned": false,
+    "acknowledgementTargetDefined": false,
+    "escalationTimerDefined": false,
+    "inhibitionRulesDefined": false,
+    "silenceGovernanceDefined": true,
+    "deliveryTestCompleted": false,
+    "responseDrillCompleted": false
+  },
+  "safety": {
+    "personalLabelsForbidden": true,
+    "rawIdentifiersForbidden": true,
+    "secretAnnotationsForbidden": true,
+    "everyRuleRequiresRunbook": true,
+    "everyRuleRequiresStableAlertId": true,
+    "provisionalThresholdsCannotApproveSlo": true,
+    "missingMetricsMustNotResolveSafetyIncidents": true,
+    "routingConfigurationCannotChangeProductionDecision": true
+  },
+  "readiness": {
+    "ruleDefinitionsComplete": true,
+    "canonicalRunbooksDefined": true,
+    "prometheusRuleFileGenerated": true,
+    "promtoolValidationCompleted": false,
+    "productionRoutingConfigured": false,
+    "onCallOwnershipConfigured": false,
+    "deliveryVerified": false,
+    "responseDrillCompleted": false,
+    "operatorReviewCompleted": false,
+    "productionReady": false
+  },
+  "evidenceRefs": [
+    "contracts/operations/metrics-alerting-contract.v1.json",
+    "infra/observability/prometheus/memory-os-alerts.yml",
+    "docs/runbooks/memory-os-metrics-alerts.md",
+    "scripts/validate-memory-os-metrics-alerting.py"
+  ]
+}
