@@ -435,7 +435,11 @@
         "exact-source isolated PostgreSQL 16 to PostgreSQL 17 logical forward-upgrade rehearsal using fresh expand-migrated target schema and PostgreSQL 17 dump tooling",
         "cross-major data-only restore preserves active account/session authority while deleted account and session authority remain absent and unresolvable",
         "bounded schema-authority fingerprints match across PostgreSQL 16 and 17, runtime roles remain NOBYPASSRLS, FORCE RLS remains enabled and the complete canonical SQL integration suite passes on PostgreSQL 17",
-        "upgrade policy forbids automatic in-place upgrade, down migration, target-to-source downgrade, source deletion and traffic promotion"
+        "upgrade policy forbids automatic in-place upgrade, down migration, target-to-source downgrade, source deletion and traffic promotion",
+        "supplemental compatibility foundation authority records candidate-only, local-CI-only and empty-registry evidence without changing the canonical approved-release matrix",
+        "historical candidate and current processes share session authority and persisted Apply idempotency, including simultaneous claim convergence and SIGKILL rollback/retry with zero durable residue",
+        "isolated PostgreSQL 16 to 17 logical forward restore preserves schema authority, RLS, active session resolution, deletion non-resurrection and the complete canonical SQL integration suite",
+        "release, rollback-admission and parser-artifact authorities remain deliberately empty so candidate, CI, tag, digest and test-harness evidence cannot manufacture approval"
       ],
       "missingEvidence": [
         "implemented client support windows and client/server skew tests",
@@ -465,7 +469,13 @@
         "reviewed PostgreSQL minor-version support window and patch-upgrade rehearsal",
         "production-shaped in-place pg_upgrade or approved blue-green database cutover rehearsal with connection-pool drain and rollback decision evidence",
         "physical replication, WAL continuity, replication-slot and failover verification across the approved PostgreSQL upgrade path",
-        "approved rollback boundary for irreversible database-format changes and independent database recovery review"
+        "approved rollback boundary for irreversible database-format changes and independent database recovery review",
+        "approved predecessor and successor release pair despite candidate-only mixed-version evidence",
+        "production rolling traffic, connection drain and application rollback rehearsal using rollback-eligible approved releases",
+        "reviewed production parser artifact with exact-byte replay and immutable rollback retention evidence",
+        "implemented client/server support windows and client/server skew tests",
+        "production-shaped PostgreSQL blue-green cutover with connection-pool drain, replication, failover and irreversible rollback-boundary review",
+        "independent review of integrated compatibility controls with zero unresolved Critical or High findings"
       ],
       "evidenceRefs": [
         ".github/workflows/security-contracts.yml",
@@ -520,7 +530,12 @@
         "scripts/validate-memory-os-postgresql-major-upgrade.py",
         "scripts/reconcile-memory-os-postgresql-major-upgrade.py",
         "docs/fixtures/memory-os-operability/postgresql-major-upgrade-results.sample.v1.json",
-        ".github/workflows/postgresql-major-upgrade.yml"
+        ".github/workflows/postgresql-major-upgrade.yml",
+        "contracts/operations/version-compatibility-foundations.v1.json",
+        "docs/runbooks/memory-os-version-compatibility-foundations.md",
+        "scripts/validate-memory-os-version-compatibility-foundations.py",
+        "scripts/reconcile-memory-os-version-compatibility-foundation-status.py",
+        ".github/workflows/version-compatibility-foundations.yml"
       ]
     }
   ]
