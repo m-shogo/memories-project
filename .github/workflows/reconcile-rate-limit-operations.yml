@@ -1,0 +1,72 @@
+name: Reconcile Rate-Limit Operations Policy
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/reconcile-rate-limit-operations.yml"
+      - "contracts/operations/rate-limit-operations-contract.v1.json"
+      - "docs/runbooks/memory-os-rate-limit-operations.md"
+      - "scripts/validate-memory-os-rate-limit-operations.py"
+      - "scripts/reconcile-memory-os-rate-limit-operations.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reconcile-rate-limit-operations-so
+  cancel-in-progress: true
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout latest so
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm exact source state
+        run: |
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+
+      - name: Compile and validate operations policy
+        run: |
+          python -m py_compile \
+            scripts/validate-memory-os-rate-limit-operations.py \
+            scripts/reconcile-memory-os-rate-limit-operations.py
+          python scripts/validate-memory-os-rate-limit-operations.py
+
+      - name: Reconcile primary policy and status
+        run: |
+          python scripts/reconcile-memory-os-rate-limit-operations.py
+          python scripts/validate-memory-os-rate-limit.py
+          python scripts/validate-memory-os-rate-limit-operations.py
+          python scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-entry-docs.py
+
+      - name: Commit reconciled authority files
+        run: |
+          git add \
+            contracts/operations/rate-limit-policy-contract.v1.json \
+            contracts/operations/production-operability-status.json
+          if git diff --cached --quiet; then
+            echo "Rate-limit operations authority is already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs(rate-limit): reconcile operations authority"
+          git pull --rebase origin so
+          git push origin HEAD:so
