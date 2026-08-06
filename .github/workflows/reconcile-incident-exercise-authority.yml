@@ -1,0 +1,78 @@
+name: Reconcile Incident Exercise Authority
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/reconcile-incident-exercise-authority.yml"
+      - "contracts/operations/incident-control-exercise-contract.v1.json"
+      - "docs/fixtures/memory-os-operability/incident-control-exercise-results.sample.v1.json"
+      - "scripts/reconcile-memory-os-incident-control-exercise.py"
+      - "scripts/validate-memory-os-incident-control-exercise.py"
+  schedule:
+    - cron: "47 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reconcile-incident-exercise-authority-so
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    if: >-
+      github.event_name != 'push' ||
+      !contains(github.event.head_commit.message, 'docs(incident): register automated control exercise')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout latest so
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-security-validation.txt
+
+      - name: Install validation dependencies
+        run: python -m pip install --disable-pip-version-check --requirement requirements-security-validation.txt
+
+      - name: Confirm exact clean authority source
+        run: |
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          python -m py_compile \
+            scripts/reconcile-memory-os-incident-control-exercise.py \
+            scripts/validate-memory-os-incident-control-exercise.py
+
+      - name: Reconcile then validate incident authority
+        run: |
+          python scripts/reconcile-memory-os-incident-control-exercise.py
+          python scripts/validate-memory-os-incident-control-exercise.py
+          python scripts/validate-memory-os-incident-response.py
+          python scripts/validate-memory-os-incident-tabletop.py
+          python scripts/validate-memory-os-operability.py
+
+      - name: Commit incident contract and status together
+        run: |
+          git add \
+            contracts/operations/incident-control-exercise-contract.v1.json \
+            contracts/operations/production-operability-status.json
+          if git diff --cached --quiet; then
+            echo "Incident exercise authority is already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs(incident): register automated control exercise"
+          git pull --rebase origin so
+          git push origin HEAD:so
