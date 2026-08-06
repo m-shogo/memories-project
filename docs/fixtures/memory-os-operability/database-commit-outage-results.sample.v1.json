@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "memory-os-database-commit-outage-results.v1",
+  "commitSha": "f2fa22421c8aa0d5d276ec57f920452dc7abec19",
+  "generatedAt": "2026-08-06T08:40:48.489025Z",
+  "environment": {
+    "mode": "GITHUB_ACTIONS_UBUNTU_POSTGRES16_MINIO_UNREACHABLE_COMMIT_POOL",
+    "productionEvidence": false,
+    "containsSecrets": false,
+    "syntheticDataOnly": true
+  },
+  "result": "PASS",
+  "integrityResult": "PASS",
+  "exitCode": 0,
+  "durationSeconds": 1.357784,
+  "assertions": {
+    "previewRowsDuringOutage": 0,
+    "jobStateDuringOutage": "preview_building",
+    "sealedSpoolEntriesAfterFailure": 1,
+    "previewRowsAfterRecovery": 1,
+    "candidateRowsAfterRecovery": 2,
+    "rejectionRowsAfterRecovery": 1,
+    "sameSourceAndPreviewIdReused": true,
+    "newSpoolAttemptUsed": true,
+    "recoveryMarkedAsReplay": false
+  },
+  "limitations": [
+    "not PostgreSQL process loss",
+    "not replication failover",
+    "recovery uses a new spool attempt",
+    "ephemeral PostgreSQL 16 and MinIO only",
+    "source fetch and parser remain healthy",
+    "not production chaos evidence"
+  ]
+}
