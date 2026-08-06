@@ -1,0 +1,82 @@
+{
+  "contractId": "memory-os.operability.local-logical-restore.v1",
+  "schemaVersion": "memory-os-local-logical-restore.v1",
+  "resultsSchemaVersion": "memory-os-local-logical-restore-results.v1",
+  "description": "Executable local PostgreSQL logical dump/restore drill. It applies the complete canonical migration sequence to an ephemeral source database, creates and removes synthetic account/session state, performs pg_dump and pg_restore into an isolated database, rechecks FORCE RLS/runtime roles/non-resurrection and executes every SQL integration suite. It is not PITR, production backup, cross-cluster restore or object-store recovery evidence.",
+  "sourceMigrationContract": "contracts/operations/migration-lifecycle-contract.v1.json",
+  "runner": "scripts/run-memory-os-local-logical-restore.sh",
+  "validator": "scripts/validate-memory-os-local-logical-restore.py",
+  "resultPath": "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json",
+  "dependencyMode": "EPHEMERAL_POSTGRESQL_16_SAME_CLUSTER_LOGICAL_RESTORE",
+  "scenario": {
+    "scenarioId": "postgresql-logical-dump-isolated-restore-smoke",
+    "workloadType": "RECOVERY_DRILL",
+    "requiredSteps": [
+      "create clean source and restore databases",
+      "apply complete canonical migration sequence to source",
+      "create then fully remove synthetic account and session state",
+      "create custom-format logical dump after deletion",
+      "restore dump into separate empty database",
+      "verify canonical schema and migration-owned runtime roles",
+      "verify FORCE RLS remains enabled",
+      "verify deleted synthetic account and token digest remain absent",
+      "verify missing token cannot resolve through memory_auth_runtime",
+      "execute every canonical SQL integration test against restored database",
+      "write exact-source machine-readable result"
+    ],
+    "successCriteria": [
+      "pg_dump and pg_restore complete without ignored errors",
+      "all canonical migration files were applied exactly once to the source",
+      "all current SQL integration tests pass on the restored database",
+      "memory_api_runtime, memory_worker_runtime, memory_deletion_runtime and memory_auth_runtime exist with BYPASSRLS disabled",
+      "at least one tenant table retains FORCE RLS",
+      "synthetic deleted account and token digest counts are zero",
+      "memory_auth_runtime cannot resolve the deleted token digest",
+      "result integrity is PASS"
+    ],
+    "abortCriteria": [
+      "source and target database identity are ambiguous",
+      "any migration, dump, restore, assertion or SQL integration test fails",
+      "a secret or database URL would be written to evidence",
+      "synthetic deleted state appears after restore",
+      "runtime role or FORCE RLS verification fails"
+    ]
+  },
+  "evidenceBoundary": {
+    "productionEvidence": false,
+    "pitrEvidence": false,
+    "physicalBackupEvidence": false,
+    "crossClusterEvidence": false,
+    "objectStoreRestoreEvidence": false,
+    "rpoMeasured": false,
+    "rtoMeasured": false,
+    "deletionNonResurrectionScope": "synthetic account_control row and account_session token digest absent at dump time",
+    "note": "A successful local logical restore closes only the clean logical dump/restore blind spot. It does not establish production backup configuration, PITR, independent retention, coherent database/object recovery, approved RPO/RTO or full deletion/session non-resurrection."
+  },
+  "privacy": {
+    "syntheticDataOnly": true,
+    "rawDatabaseUrlInEvidenceForbidden": true,
+    "passwordInEvidenceForbidden": true,
+    "tokenDigestValueInEvidenceForbidden": true,
+    "userContentForbidden": true,
+    "databaseIdentityStoredAsDigestOnly": true
+  },
+  "readiness": {
+    "contractDefined": true,
+    "runnerImplemented": true,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": false,
+    "exactSourcePassResultCommitted": false,
+    "productionBackupConfigured": false,
+    "pitrConfigured": false,
+    "independentObjectRetentionConfigured": false,
+    "crossClusterRestoreCompleted": false,
+    "rpoRtoApprovedAndMeasured": false,
+    "productionReady": false
+  },
+  "evidenceRefs": [
+    "contracts/operations/local-logical-restore-contract.v1.json",
+    "scripts/run-memory-os-local-logical-restore.sh",
+    "scripts/validate-memory-os-local-logical-restore.py"
+  ]
+}
