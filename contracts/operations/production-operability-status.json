@@ -289,7 +289,8 @@
         "mixed-version failure drill",
         "expanded parser restart matrix across timeout, CPU, memory, cancellation, process-group and host-restart failures",
         "production multi-instance interruption, dependency and recovery drills with independent review",
-        "production-shaped object-store process outage or network-partition drill with TLS, scoped credentials, lifecycle controls and recovery verification"
+        "production-shaped object-store process outage or network-partition drill with TLS, scoped credentials, lifecycle controls and recovery verification",
+        "object-store outage drill"
       ],
       "evidenceRefs": [
         "contracts/operations/chaos-failure-drill-contract.v1.json",
