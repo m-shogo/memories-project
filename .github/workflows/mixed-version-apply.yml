@@ -1,0 +1,183 @@
+name: Mixed-Version Apply Compatibility
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/mixed-version-apply.yml"
+      - "contracts/operations/migration-lifecycle-contract.v1.json"
+      - "contracts/operations/mixed-version-apply-contract.v1.json"
+      - "contracts/operations/version-compatibility-contract.v1.json"
+      - "infra/postgresql/security/**"
+      - "services/import-api/cmd/import-api-server/**"
+      - "services/import-api/cmd/memory-os-mixed-version-fixture/**"
+      - "services/import-api/internal/apply/**"
+      - "services/import-api/internal/authstore/**"
+      - "services/import-api/internal/httpserver/**"
+      - "services/import-api/internal/pgrepo/**"
+      - "services/import-api/internal/previewcommit/**"
+      - "services/import-api/internal/previewspool/**"
+      - "scripts/run-memory-os-mixed-version-apply-drill.sh"
+      - "scripts/validate-memory-os-mixed-version-apply.py"
+      - "scripts/reconcile-memory-os-mixed-version-apply.py"
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/mixed-version-apply.yml"
+      - "contracts/operations/migration-lifecycle-contract.v1.json"
+      - "contracts/operations/mixed-version-apply-contract.v1.json"
+      - "contracts/operations/version-compatibility-contract.v1.json"
+      - "infra/postgresql/security/**"
+      - "services/import-api/cmd/import-api-server/**"
+      - "services/import-api/cmd/memory-os-mixed-version-fixture/**"
+      - "services/import-api/internal/apply/**"
+      - "services/import-api/internal/authstore/**"
+      - "services/import-api/internal/httpserver/**"
+      - "services/import-api/internal/pgrepo/**"
+      - "services/import-api/internal/previewcommit/**"
+      - "services/import-api/internal/previewspool/**"
+      - "scripts/run-memory-os-mixed-version-apply-drill.sh"
+      - "scripts/validate-memory-os-mixed-version-apply.py"
+      - "scripts/reconcile-memory-os-mixed-version-apply.py"
+  schedule:
+    - cron: "13 19 * * 4"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mixed-version-apply-${{ github.event.pull_request.number || 'so' }}
+  cancel-in-progress: false
+
+jobs:
+  drill:
+    if: >-
+      github.event_name != 'push' ||
+      !contains(github.event.head_commit.message, 'docs(compat): register mixed-version Apply evidence')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: memory_os_security
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d memory_os_security"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    env:
+      MEMORY_OS_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/memory_os_security?sslmode=disable
+      MEMORY_OS_TEST_S3_ENDPOINT: http://127.0.0.1:9000
+      MEMORY_OS_TEST_S3_ACCESS_KEY: minioadmin
+      MEMORY_OS_TEST_S3_SECRET_KEY: minioadmin
+      MEMORY_OS_MIXED_VERSION_OLD_SHA: 2af6e8e10755cc707c6bdd958a049a0f4afb3d70
+
+    steps:
+      - name: Checkout exact source with candidate history
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: services/import-api/go.sum
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Capture clean exact source
+        run: |
+          test -z "$(git status --porcelain)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          bash -n scripts/run-memory-os-mixed-version-apply-drill.sh
+          python -m py_compile \
+            scripts/validate-memory-os-mixed-version-apply.py \
+            scripts/reconcile-memory-os-mixed-version-apply.py
+          test -z "$(gofmt -l services/import-api/cmd/memory-os-mixed-version-fixture/main.go)"
+
+      - name: Start local MinIO
+        run: |
+          docker run -d --name memory-os-mixed-version-apply-minio \
+            -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio server /data
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --show-error http://127.0.0.1:9000/minio/health/live >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs memory-os-mixed-version-apply-minio
+          exit 1
+
+      - name: Validate static compatibility contract
+        run: |
+          python scripts/validate-memory-os-mixed-version-apply.py
+          python scripts/validate-memory-os-version-compatibility.py
+
+      - name: Execute bidirectional persisted Apply drill
+        env:
+          MEMORY_OS_COMMIT_SHA: ${{ env.SOURCE_SHA }}
+          MEMORY_OS_MIXED_VERSION_APPLY_RESULTS_PATH: ${{ github.workspace }}/docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json
+        run: bash scripts/run-memory-os-mixed-version-apply-drill.sh
+
+      - name: Validate exact-source result
+        run: python scripts/validate-memory-os-mixed-version-apply.py --expected-commit-sha "$SOURCE_SHA"
+
+      - name: Commit exact-source result
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        run: |
+          git add docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json
+          if git diff --cached --quiet; then
+            echo "Mixed-version Apply evidence is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "test(compat): record mixed-version Apply evidence"
+            git fetch origin so
+            git rebase origin/so
+            git push origin HEAD:so
+          fi
+
+      - name: Reconcile candidate-only compatibility authority
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        run: |
+          git fetch origin so
+          git rebase origin/so
+          python scripts/reconcile-memory-os-mixed-version-apply.py
+          python scripts/validate-memory-os-mixed-version-apply.py \
+            --expected-commit-sha "$SOURCE_SHA" --require-reconciled
+          git add \
+            contracts/operations/mixed-version-apply-contract.v1.json \
+            contracts/operations/production-operability-status.json
+          if git diff --cached --quiet; then
+            echo "Mixed-version Apply authority is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(compat): register mixed-version Apply evidence"
+            git fetch origin so
+            git rebase origin/so
+            git push origin HEAD:so
+          fi
+
+      - name: Re-read authority and run aggregate checks
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        run: |
+          git fetch origin so
+          git reset --hard origin/so
+          python scripts/validate-memory-os-mixed-version-apply.py --require-reconciled
+          python scripts/validate-memory-os-version-compatibility.py
+          python scripts/validate-memory-os-operability.py
