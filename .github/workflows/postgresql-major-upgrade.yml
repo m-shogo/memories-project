@@ -1,0 +1,206 @@
+name: PostgreSQL Major Upgrade Rehearsal
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/postgresql-major-upgrade.yml"
+      - "contracts/operations/postgresql-major-upgrade-contract.v1.json"
+      - "contracts/operations/migration-lifecycle-contract.v1.json"
+      - "infra/postgresql/security/**"
+      - "scripts/run-memory-os-postgresql-major-upgrade.sh"
+      - "scripts/validate-memory-os-postgresql-major-upgrade.py"
+      - "scripts/reconcile-memory-os-postgresql-major-upgrade.py"
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/postgresql-major-upgrade.yml"
+      - "contracts/operations/postgresql-major-upgrade-contract.v1.json"
+      - "contracts/operations/migration-lifecycle-contract.v1.json"
+      - "infra/postgresql/security/**"
+      - "scripts/run-memory-os-postgresql-major-upgrade.sh"
+      - "scripts/validate-memory-os-postgresql-major-upgrade.py"
+      - "scripts/reconcile-memory-os-postgresql-major-upgrade.py"
+  schedule:
+    - cron: "29 6 * * 3"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: postgresql-major-upgrade-${{ github.event.pull_request.number || 'so' }}
+  cancel-in-progress: false
+
+jobs:
+  rehearse:
+    if: >-
+      github.event_name != 'push' ||
+      !contains(github.event.head_commit.message, 'docs(database): register PostgreSQL 16 to 17 upgrade')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm clean source and compile tools
+        run: |
+          test -z "$(git status --porcelain)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          bash -n scripts/run-memory-os-postgresql-major-upgrade.sh
+          python -m py_compile \
+            scripts/validate-memory-os-postgresql-major-upgrade.py \
+            scripts/reconcile-memory-os-postgresql-major-upgrade.py
+
+      - name: Validate static upgrade contract
+        run: python scripts/validate-memory-os-postgresql-major-upgrade.py
+
+      - name: Execute PostgreSQL 16 to 17 logical upgrade
+        id: execute
+        env:
+          MEMORY_OS_COMMIT_SHA: ${{ env.SOURCE_SHA }}
+          MEMORY_OS_POSTGRESQL_MAJOR_UPGRADE_RESULTS_PATH: ${{ github.workspace }}/docs/fixtures/memory-os-operability/postgresql-major-upgrade-results.sample.v1.json
+        run: |
+          set +e
+          bash scripts/run-memory-os-postgresql-major-upgrade.sh > /tmp/postgresql-major-upgrade.log 2>&1
+          code=$?
+          set -e
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          EXECUTE_EXIT_CODE="$code" python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          output = Path('/tmp/postgresql-major-upgrade.log').read_text(
+              encoding='utf-8', errors='replace'
+          )[-10000:]
+          patterns = (
+              (r'postgres(?:ql)?://[^\s]+', '<redacted-database-url>'),
+              (r'password=[^\s]+', 'password=<redacted>'),
+              (r'acct_upgrade_[A-Za-z0-9._:-]+', '<redacted-synthetic-account>'),
+              (r'ses_upgrade_[A-Za-z0-9._:-]+', '<redacted-synthetic-session>'),
+              (r'memory-os-pg(?:16|17)-[A-Za-z0-9._:-]+', '<redacted-container>'),
+              (r'memory-os-pg-upgrade-[A-Za-z0-9._:-]+', '<redacted-network>'),
+              (r'postgres:postgres', '<redacted-local-credential>'),
+          )
+          for pattern, replacement in patterns:
+              output = re.sub(pattern, replacement, output, flags=re.IGNORECASE)
+          diagnostic = {
+              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'workflow': 'postgresql-major-upgrade',
+              'sourceCommitSha': os.environ['SOURCE_SHA'],
+              'result': 'PASS' if os.environ['EXECUTE_EXIT_CODE'] == '0' else 'FAIL',
+              'exitCode': int(os.environ['EXECUTE_EXIT_CODE']),
+              'validationResult': 'NOT_RUN',
+              'validationExitCode': None,
+              'output': output,
+              'containsSecrets': False,
+              'productionEvidence': False,
+              'upgradeClass': 'ISOLATED_LOGICAL_FORWARD_RESTORE_TO_FRESH_EXPANDED_SCHEMA',
+          }
+          path = Path('docs/fixtures/memory-os-operability/postgresql-major-upgrade-diagnostic.last.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(diagnostic, indent=2) + '\n', encoding='utf-8')
+          PY
+
+      - name: Validate exact-source upgrade result
+        id: validation
+        if: steps.execute.outputs.exit_code == '0'
+        run: |
+          set +e
+          python scripts/validate-memory-os-postgresql-major-upgrade.py \
+            --expected-commit-sha "$SOURCE_SHA" > /tmp/postgresql-major-upgrade-validation.log 2>&1
+          code=$?
+          set -e
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          VALIDATION_EXIT_CODE="$code" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path('docs/fixtures/memory-os-operability/postgresql-major-upgrade-diagnostic.last.json')
+          diagnostic = json.loads(path.read_text(encoding='utf-8'))
+          output = Path('/tmp/postgresql-major-upgrade-validation.log').read_text(
+              encoding='utf-8', errors='replace'
+          )[-3000:]
+          diagnostic['validationResult'] = (
+              'PASS' if os.environ['VALIDATION_EXIT_CODE'] == '0' else 'FAIL'
+          )
+          diagnostic['validationExitCode'] = int(os.environ['VALIDATION_EXIT_CODE'])
+          diagnostic['output'] = (
+              str(diagnostic.get('output', '')) + '\n--- validator ---\n' + output
+          )[-10000:]
+          path.write_text(json.dumps(diagnostic, indent=2) + '\n', encoding='utf-8')
+          PY
+
+      - name: Commit result or bounded diagnostic
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        run: |
+          git add docs/fixtures/memory-os-operability/postgresql-major-upgrade-diagnostic.last.json
+          if [ "${{ steps.execute.outputs.exit_code }}" = "0" ] && \
+             [ "${{ steps.validation.outputs.exit_code }}" = "0" ]; then
+            git add docs/fixtures/memory-os-operability/postgresql-major-upgrade-results.sample.v1.json
+          fi
+          if git diff --cached --quiet; then
+            echo "PostgreSQL major-upgrade evidence is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            if [ "${{ steps.execute.outputs.exit_code }}" = "0" ] && \
+               [ "${{ steps.validation.outputs.exit_code }}" = "0" ]; then
+              git commit -m "test(database): record PostgreSQL 16 to 17 upgrade evidence"
+            else
+              git commit -m "test(database): record PostgreSQL major-upgrade diagnostic"
+            fi
+            git fetch origin so
+            git rebase origin/so
+            git push origin HEAD:so
+          fi
+
+      - name: Reconcile logical upgrade authority
+        if: >-
+          github.event_name != 'pull_request' && github.ref == 'refs/heads/so' &&
+          steps.execute.outputs.exit_code == '0' && steps.validation.outputs.exit_code == '0'
+        run: |
+          git fetch origin so
+          git rebase origin/so
+          python scripts/reconcile-memory-os-postgresql-major-upgrade.py
+          python scripts/validate-memory-os-postgresql-major-upgrade.py \
+            --expected-commit-sha "$SOURCE_SHA" --require-reconciled
+          git add \
+            contracts/operations/postgresql-major-upgrade-contract.v1.json \
+            contracts/operations/production-operability-status.json
+          if git diff --cached --quiet; then
+            echo "PostgreSQL major-upgrade authority is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(database): register PostgreSQL 16 to 17 upgrade"
+            git fetch origin so
+            git rebase origin/so
+            git push origin HEAD:so
+          fi
+
+      - name: Re-read authority and run aggregate checks
+        if: >-
+          github.event_name != 'pull_request' && github.ref == 'refs/heads/so' &&
+          steps.execute.outputs.exit_code == '0' && steps.validation.outputs.exit_code == '0'
+        run: |
+          git fetch origin so
+          git reset --hard origin/so
+          python scripts/validate-memory-os-postgresql-major-upgrade.py --require-reconciled
+          python scripts/validate-memory-os-version-compatibility.py
+          python scripts/validate-memory-os-operability.py
+
+      - name: Fail after preserving diagnostic
+        if: steps.execute.outputs.exit_code != '0' || steps.validation.outputs.exit_code != '0'
+        run: exit 1
