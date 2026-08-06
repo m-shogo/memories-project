@@ -1,0 +1,76 @@
+name: Backup and Restore Contracts
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/backup-restore-contracts.yml"
+      - ".github/workflows/local-logical-restore.yml"
+      - ".github/workflows/reconcile-backup-restore.yml"
+      - "contracts/operations/backup-restore-contract.v1.json"
+      - "contracts/operations/local-logical-restore-contract.v1.json"
+      - "contracts/operations/migration-lifecycle-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "docs/runbooks/memory-os-backup-restore.md"
+      - "infra/postgresql/security/**"
+      - "scripts/run-memory-os-local-logical-restore.sh"
+      - "scripts/validate-memory-os-local-logical-restore.py"
+      - "scripts/reconcile-memory-os-local-logical-restore.py"
+      - "scripts/validate-memory-os-backup-restore.py"
+      - "scripts/reconcile-memory-os-backup-restore.py"
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/backup-restore-contracts.yml"
+      - ".github/workflows/local-logical-restore.yml"
+      - ".github/workflows/reconcile-backup-restore.yml"
+      - "contracts/operations/backup-restore-contract.v1.json"
+      - "contracts/operations/local-logical-restore-contract.v1.json"
+      - "contracts/operations/migration-lifecycle-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "docs/runbooks/memory-os-backup-restore.md"
+      - "infra/postgresql/security/**"
+      - "scripts/run-memory-os-local-logical-restore.sh"
+      - "scripts/validate-memory-os-local-logical-restore.py"
+      - "scripts/reconcile-memory-os-local-logical-restore.py"
+      - "scripts/validate-memory-os-backup-restore.py"
+      - "scripts/reconcile-memory-os-backup-restore.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-restore-contracts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile validators and check shell
+        run: |
+          python -m py_compile \
+            scripts/validate-memory-os-local-logical-restore.py \
+            scripts/reconcile-memory-os-local-logical-restore.py \
+            scripts/validate-memory-os-backup-restore.py \
+            scripts/reconcile-memory-os-backup-restore.py
+          bash -n scripts/run-memory-os-local-logical-restore.sh
+
+      - name: Validate backup and restore policy
+        run: python scripts/validate-memory-os-backup-restore.py
+
+      - name: Validate local logical restore foundation
+        run: python scripts/validate-memory-os-local-logical-restore.py
+
+      - name: Validate production authority remains fail-closed
+        run: python scripts/validate-memory-os-operability.py
