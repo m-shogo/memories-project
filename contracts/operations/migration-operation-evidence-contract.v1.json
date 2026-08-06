@@ -1,0 +1,121 @@
+{
+  "contractId": "memory-os.operability.migration-operation-evidence.v1",
+  "schemaVersion": "memory-os-migration-operation-evidence.v1",
+  "recordSchemaVersion": "memory-os-migration-operation-record.v1",
+  "description": "Append-only, privacy-safe operation evidence for Memory OS migration preflight, apply, verification and recovery decisions. The ledger implements the evidence record required by migration-lifecycle-contract.v1. It does not configure production backups, prove a recovery point is restorable, approve a migration or make OPS-P0-001 READY.",
+  "sourceLifecycleContract": "contracts/operations/migration-lifecycle-contract.v1.json",
+  "ledgerDirectory": "docs/evidence/migration-operations",
+  "writer": "scripts/create-memory-os-migration-operation-evidence.py",
+  "validator": "scripts/validate-memory-os-migration-operation-evidence.py",
+  "reconcile": "scripts/reconcile-memory-os-migration-operation-evidence.py",
+  "workflow": ".github/workflows/migration-operation-evidence.yml",
+  "requiredFields": [
+    "schemaVersion",
+    "migrationRunId",
+    "environment",
+    "databaseIdentityDigest",
+    "sourceCommitSha",
+    "migrationSequenceBefore",
+    "migrationSequenceAfter",
+    "startedAt",
+    "completedAt",
+    "operator",
+    "reviewer",
+    "recoveryPointReference",
+    "preflightResult",
+    "applyResult",
+    "verificationResult",
+    "recoveryDecision",
+    "openRisks",
+    "containsSecrets",
+    "productionEvidence"
+  ],
+  "enums": {
+    "environment": [
+      "LOCAL_CI",
+      "STAGING",
+      "PRODUCTION"
+    ],
+    "stepResult": [
+      "PASS",
+      "FAIL",
+      "NOT_RUN"
+    ],
+    "recoveryDecision": [
+      "NO_RECOVERY_NEEDED",
+      "STOP_AND_CORRECT",
+      "VERIFY_DATABASE_ROLLBACK_THEN_CORRECT",
+      "ROLL_BACK_APPLICATION_SCHEMA_COMPATIBLE",
+      "FORWARD_FIX",
+      "PAUSE_BACKFILL_PRESERVE_STATE",
+      "ISOLATED_RESTORE_PENDING_INCIDENT_COMMAND",
+      "COMPENSATING_ACTION_WITH_INCIDENT_RECORD"
+    ]
+  },
+  "identifierPolicy": {
+    "migrationRunIdPattern": "^mgr_[A-Za-z0-9_-]{12,96}$",
+    "operatorPattern": "^op_[A-Za-z0-9_-]{3,64}$",
+    "reviewerPattern": "^rv_[A-Za-z0-9_-]{3,64}$",
+    "operatorReviewerMustDiffer": true,
+    "databaseIdentityDigestPattern": "^[0-9a-f]{64}$",
+    "sourceCommitShaPattern": "^[0-9a-f]{40}$",
+    "recoveryPointReferencePattern": "^rpt_[A-Za-z0-9_-]{12,120}$"
+  },
+  "sequencePolicy": {
+    "canonicalMigrationContract": "contracts/operations/migration-lifecycle-contract.v1.json",
+    "filenamesOnly": true,
+    "duplicatesForbidden": true,
+    "beforeMustBeCanonicalPrefix": true,
+    "afterMustBeCanonicalPrefix": true,
+    "afterCannotBeShorterThanBefore": true,
+    "sequenceOrderMustMatchCanonical": true
+  },
+  "timePolicy": {
+    "timestampsMustBeUtc": true,
+    "completedAtCannotPrecedeStartedAt": true,
+    "maximumRecordDurationHours": 24,
+    "futureSkewMinutes": 10
+  },
+  "resultPolicy": {
+    "preflightFailRequiresApplyNotRun": true,
+    "applyFailForbidsVerificationPass": true,
+    "verificationPassRequiresApplyPass": true,
+    "noRecoveryNeededRequiresAllPass": true,
+    "failedOrPartialRunRequiresOpenRisk": true,
+    "productionRecordRequiresConfirmationPhrase": "I_CONFIRM_MEMORY_OS_PRODUCTION_MIGRATION_EVIDENCE",
+    "productionRecordIsNotProductionReadinessEvidence": true
+  },
+  "appendOnlyGuards": {
+    "exclusiveCreateRequired": true,
+    "existingMigrationRunIdCannotBeOverwritten": true,
+    "oneRecordPerFile": true,
+    "filenameMustEqualMigrationRunIdPlusJson": true,
+    "recordMutationForbidden": true,
+    "deleteRequiresSeparateIncidentRecord": true
+  },
+  "privacy": {
+    "privacyClass": "operational_sensitive_no_secrets",
+    "containsSecretsMustBeFalse": true,
+    "databaseUrlForbidden": true,
+    "passwordOrCredentialForbidden": true,
+    "rawHostnameOrDatabaseNameForbidden": true,
+    "sqlTextForbidden": true,
+    "sqlParametersForbidden": true,
+    "tenantOrAccountIdentifierForbidden": true,
+    "userContentForbidden": true,
+    "databaseIdentityStoredAsDigestOnly": true,
+    "recoveryPointStoredAsOpaqueReferenceOnly": true
+  },
+  "readiness": {
+    "contractDefined": true,
+    "writerImplemented": false,
+    "validatorImplemented": false,
+    "exclusiveCreateSelfTestImplemented": false,
+    "canonicalSequenceBindingImplemented": false,
+    "productionRecoveryPointVerificationImplemented": false,
+    "productionReady": false
+  },
+  "evidenceRefs": [
+    "contracts/operations/migration-operation-evidence-contract.v1.json"
+  ]
+}
