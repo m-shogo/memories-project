@@ -1,0 +1,188 @@
+name: Rollback Rehearsal Admission Gate
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/rollback-rehearsal-gate.yml"
+      - "contracts/operations/rollback-rehearsal-gate-contract.v1.json"
+      - "contracts/operations/rollback-rehearsal-registry.v1.json"
+      - "contracts/operations/release-baseline-registry.v1.json"
+      - "docs/runbooks/memory-os-rollback-rehearsal.md"
+      - "scripts/request-memory-os-rollback-rehearsal.py"
+      - "scripts/validate-memory-os-rollback-rehearsal-gate.py"
+      - "scripts/reconcile-memory-os-rollback-rehearsal-gate.py"
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/rollback-rehearsal-gate.yml"
+      - "contracts/operations/rollback-rehearsal-gate-contract.v1.json"
+      - "contracts/operations/rollback-rehearsal-registry.v1.json"
+      - "contracts/operations/release-baseline-registry.v1.json"
+      - "docs/runbooks/memory-os-rollback-rehearsal.md"
+      - "scripts/request-memory-os-rollback-rehearsal.py"
+      - "scripts/validate-memory-os-rollback-rehearsal-gate.py"
+      - "scripts/reconcile-memory-os-rollback-rehearsal-gate.py"
+  schedule:
+    - cron: "37 4 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rollback-rehearsal-gate-${{ github.event.pull_request.number || 'so' }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: >-
+      github.event_name != 'push' ||
+      !contains(github.event.head_commit.message, 'docs(rollback): register rehearsal admission gate')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm clean source and compile gate tools
+        run: |
+          test -z "$(git status --porcelain)"
+          python -m py_compile \
+            scripts/request-memory-os-rollback-rehearsal.py \
+            scripts/validate-memory-os-rollback-rehearsal-gate.py \
+            scripts/reconcile-memory-os-rollback-rehearsal-gate.py
+
+      - name: Validate blocked admission authority
+        run: python scripts/validate-memory-os-rollback-rehearsal-gate.py
+
+      - name: Prove invalid and unapproved requests cannot mutate authority
+        run: |
+          registry="contracts/operations/rollback-rehearsal-registry.v1.json"
+          lock="contracts/operations/.rollback-rehearsal-registry.lock"
+          before="$(sha256sum "$registry" | awk '{print $1}')"
+          incomplete="$RUNNER_TEMP/incomplete-rollback-request.json"
+          unapproved="$RUNNER_TEMP/unapproved-rollback-request.json"
+          printf '{}\n' > "$incomplete"
+
+          if python scripts/request-memory-os-rollback-rehearsal.py \
+              --request "$incomplete" --confirm "WRONG CONFIRMATION"; then
+            echo "writer accepted an incorrect confirmation" >&2
+            exit 1
+          fi
+          test "$(sha256sum "$registry" | awk '{print $1}')" = "$before"
+          test ! -e "$lock"
+
+          if python scripts/request-memory-os-rollback-rehearsal.py \
+              --request "$incomplete" --confirm "REQUEST ISOLATED ROLLBACK REHEARSAL"; then
+            echo "writer accepted an incomplete request" >&2
+            exit 1
+          fi
+          test "$(sha256sum "$registry" | awk '{print $1}')" = "$before"
+          test ! -e "$lock"
+
+          OUT="$unapproved" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          record = {
+              "schemaVersion": "memory-os-rollback-rehearsal-request.v1",
+              "rehearsalId": "rrh_20991231_unapproved-ci",
+              "requestedAt": "2099-12-31T00:00:00Z",
+              "sourceReleaseId": "rel_20991231_unapproved-source",
+              "rollbackTargetReleaseId": "rel_20991230_unapproved-target",
+              "sourceCommitSha": "1" * 40,
+              "rollbackTargetCommitSha": "2" * 40,
+              "sourceReleaseTag": "v9999.1.0-unapproved",
+              "rollbackTargetReleaseTag": "v9999.0.0-unapproved",
+              "environmentClass": "ISOLATED_NON_PRODUCTION_REHEARSAL",
+              "trafficPolicy": {
+                  "productionTrafficAllowed": False,
+                  "productionCredentialsAllowed": False,
+                  "automaticPromotionAllowed": False,
+                  "syntheticOrApprovedSanitizedDataOnly": True,
+              },
+              "databasePolicy": {
+                  "destructiveDownMigrationAllowed": False,
+                  "automaticRecoveryDecisionAllowed": False,
+                  "recoveryPointEvidenceRef": "contracts/operations/backup-restore-contract.v1.json",
+                  "forwardFixDecisionRef": "contracts/operations/migration-lifecycle-contract.v1.json",
+              },
+              "artifactPolicy": {
+                  "exactRetainedArtifactsRequired": True,
+                  "parserArtifactEvidenceRef": "contracts/operations/parser-sandbox-contract.v1.json",
+                  "objectVersionEvidenceRef": "contracts/operations/local-object-version-restore-contract.v1.json",
+              },
+              "entryCriteriaRefs": [
+                  "contracts/operations/release-baseline-registry.v1.json",
+                  "contracts/operations/mixed-version-apply-contract.v1.json",
+                  "contracts/operations/backup-restore-contract.v1.json",
+                  "contracts/operations/migration-lifecycle-contract.v1.json",
+                  "contracts/operations/version-compatibility-contract.v1.json",
+              ],
+              "stopConditions": [
+                  "release identity differs from approved authority",
+                  "rollback eligibility is absent",
+                  "exact retained artifact is unavailable",
+                  "database recovery point is incoherent",
+                  "destructive schema contraction is required",
+                  "tenant or deletion authority is ambiguous",
+              ],
+              "approvers": [
+                  {"role": "RELEASE_OWNER", "approverRef": "apr_release_ci11"},
+                  {"role": "DATABASE_RECOVERY_OWNER", "approverRef": "apr_database_ci22"},
+              ],
+              "openRisks": [],
+          }
+          Path(os.environ["OUT"]).write_text(
+              json.dumps(record, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+
+          if python scripts/request-memory-os-rollback-rehearsal.py \
+              --request "$unapproved" --confirm "REQUEST ISOLATED ROLLBACK REHEARSAL"; then
+            echo "writer admitted unapproved release IDs" >&2
+            exit 1
+          fi
+          test "$(sha256sum "$registry" | awk '{print $1}')" = "$before"
+          test ! -e "$lock"
+          test -z "$(git status --porcelain)"
+
+      - name: Reconcile blocked gate into operability status
+        run: |
+          python scripts/reconcile-memory-os-rollback-rehearsal-gate.py
+          python scripts/validate-memory-os-rollback-rehearsal-gate.py
+
+      - name: Commit rollback admission authority
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        run: |
+          git add contracts/operations/production-operability-status.json
+          if git diff --cached --quiet; then
+            echo "Rollback rehearsal admission authority is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(rollback): register rehearsal admission gate"
+            git fetch origin so
+            git rebase origin/so
+            git push origin HEAD:so
+          fi
+
+      - name: Re-read authority and run aggregate checks
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        run: |
+          git fetch origin so
+          git reset --hard origin/so
+          python scripts/validate-memory-os-rollback-rehearsal-gate.py
+          python scripts/validate-memory-os-release-baseline-registry.py
+          python scripts/validate-memory-os-version-compatibility.py
+          python scripts/validate-memory-os-operability.py
