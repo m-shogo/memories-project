@@ -347,14 +347,26 @@
         "executable local PostgreSQL custom-format logical dump and separate-database restore drill",
         "restored database verification for runtime NOBYPASSRLS roles, FORCE RLS and the complete SQL integration suite",
         "synthetic deleted account and session-digest non-resurrection check across logical dump/restore",
-        "exact-source machine-readable local restore result with explicit same-cluster/non-PITR limitations"
+        "exact-source machine-readable local restore result with explicit same-cluster/non-PITR limitations",
+        "binding backup, PITR, object-version retention and isolated-restore policy with object versioning explicitly separated from backup completion",
+        "four protected recovery domains covering canonical PostgreSQL state, exact object versions, release metadata and incident/deletion evidence",
+        "nine-phase isolated restore lifecycle with mandatory authority, integrity, idempotency and non-resurrection verification",
+        "promotion guards that block routing on cross-tenant visibility, resurrection, recovery-point incoherence, missing artifacts, unmeasured objectives or incomplete checks",
+        "canonical backup/restore runbook and fail-closed policy validator"
       ],
       "missingEvidence": [
         "production PostgreSQL backup schedule, independent retention and PITR configuration",
         "cross-cluster isolated restore rehearsal with approved recovery owner and promotion decision",
         "coherent PostgreSQL and object-version recovery-point selection",
         "approved and measured RPO/RTO",
-        "production deletion and expired-session non-resurrection verification after restore"
+        "production deletion and expired-session non-resurrection verification after restore",
+        "production PostgreSQL backup and PITR configuration with independent retention",
+        "independent object-version retention and exact-version recovery validation",
+        "approved and measured RPO and RTO under production-shaped recovery",
+        "cross-cluster isolated restore drill with approved recovery owner and promotion decision",
+        "production restore drill completion across coherent PostgreSQL and object recovery points",
+        "production backup monitoring, freshness enforcement and paging",
+        "independent review of recovery evidence and promotion decision"
       ],
       "evidenceRefs": [
         "contracts/operations/local-logical-restore-contract.v1.json",
@@ -362,7 +374,12 @@
         "scripts/validate-memory-os-local-logical-restore.py",
         "scripts/reconcile-memory-os-local-logical-restore.py",
         "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json",
-        ".github/workflows/local-logical-restore.yml"
+        ".github/workflows/local-logical-restore.yml",
+        "contracts/operations/backup-restore-contract.v1.json",
+        "contracts/operations/local-object-version-restore-contract.v1.json",
+        "docs/runbooks/memory-os-backup-restore.md",
+        "scripts/validate-memory-os-backup-restore.py",
+        "scripts/reconcile-memory-os-backup-restore.py"
       ]
     },
     {
