@@ -1,0 +1,279 @@
+name: Regenerate Live Dependency Load V2
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/regenerate-live-dependency-load-v2.yml"
+      - "services/import-api/**"
+      - "infra/postgresql/security/**"
+      - "contracts/operations/live-postgres-load-scenario-contract.v1.json"
+      - "contracts/operations/live-object-load-scenario-contract.v1.json"
+      - "scripts/validate-memory-os-live-load.py"
+      - "scripts/validate-memory-os-live-object-load.py"
+      - "scripts/reconcile-memory-os-live-load-status.py"
+  schedule:
+    - cron: "23 18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: regenerate-live-dependency-load-v2-so
+  cancel-in-progress: false
+
+jobs:
+  regenerate:
+    if: >-
+      github.event_name != 'push' ||
+      (!contains(github.event.head_commit.message, 'test(load): record live dependency results v2') &&
+       !contains(github.event.head_commit.message, 'docs(ops): register live dependency evidence v2') &&
+       !contains(github.event.head_commit.message, 'test(load): record live dependency diagnostic v2'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: memory_os_security
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d memory_os_security"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    steps:
+      - name: Checkout exact so source
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: services/import-api/go.sum
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Capture exact source
+        run: |
+          set -euo pipefail
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Start local MinIO
+        run: |
+          set -euo pipefail
+          docker run -d --name memory-os-live-load-v2-minio \
+            -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio server /data
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:9000/minio/health/live >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs memory-os-live-load-v2-minio
+          exit 1
+
+      - name: Execute and validate live checkpoints
+        env:
+          MEMORY_OS_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/memory_os_security?sslmode=disable
+          MEMORY_OS_TEST_S3_ENDPOINT: http://127.0.0.1:9000
+          MEMORY_OS_TEST_S3_ACCESS_KEY: minioadmin
+          MEMORY_OS_TEST_S3_SECRET_KEY: minioadmin
+          MEMORY_OS_RUN_LIVE_LOAD: "1"
+          MEMORY_OS_RUN_LIVE_OBJECT_LOAD: "1"
+          MEMORY_OS_LIVE_LOAD_RESULTS_PATH: ${{ github.workspace }}/docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json
+          MEMORY_OS_LIVE_OBJECT_LOAD_RESULTS_PATH: ${{ github.workspace }}/docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json
+          MEMORY_OS_COMMIT_SHA: ${{ env.SOURCE_SHA }}
+          EXPECTED_COMMIT_SHA: ${{ env.SOURCE_SHA }}
+        run: |
+          set +e
+          log=/tmp/memory-os-live-load-v2.log
+          : > "$log"
+          code=0
+
+          echo "STAGE: compile-and-format" >> "$log"
+          (
+            cd services/import-api
+            test -z "$(gofmt -l internal/httpserver/live_load_test.go internal/httpserver/live_object_load_test.go)"
+          ) >> "$log" 2>&1 || code=$?
+
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: live-postgresql-and-minio-tests" >> "$log"
+            (
+              cd services/import-api
+              go test ./internal/httpserver \
+                -run '^(TestPreviewReadAndApplyOverHTTP|TestLivePostgresPreviewReadAndIdempotentApplyLoad|TestLiveMinIOSignedUploadLifecycleLoad)$' \
+                -count=1 -timeout=15m
+            ) >> "$log" 2>&1 || code=$?
+          fi
+
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: validate-generated-results" >> "$log"
+            python scripts/validate-memory-os-live-load.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-live-object-load.py >> "$log" 2>&1 || code=$?
+          fi
+
+          echo "RUN_EXIT_CODE=$code" >> "$GITHUB_ENV"
+          if [[ "$code" == "0" ]]; then
+            mkdir -p /tmp/memory-os-live-load-v2
+            cp docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json \
+              /tmp/memory-os-live-load-v2/live-postgres-load-results.sample.v1.json
+            cp docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json \
+              /tmp/memory-os-live-load-v2/live-object-load-results.sample.v1.json
+          fi
+          exit 0
+
+      - name: Publish exact-source live results
+        if: env.RUN_EXIT_CODE == '0'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          published=false
+          for attempt in 1 2 3; do
+            git fetch origin so
+            if ! git diff --quiet "${SOURCE_SHA}" origin/so -- \
+              services/import-api \
+              infra/postgresql/security \
+              contracts/operations/live-postgres-load-scenario-contract.v1.json \
+              contracts/operations/live-object-load-scenario-contract.v1.json \
+              scripts/validate-memory-os-live-load.py \
+              scripts/validate-memory-os-live-object-load.py; then
+              echo "Newer load-critical source exists; its own run must publish evidence."
+              exit 75
+            fi
+            git reset --hard origin/so
+            cp /tmp/memory-os-live-load-v2/live-postgres-load-results.sample.v1.json \
+              docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json
+            cp /tmp/memory-os-live-load-v2/live-object-load-results.sample.v1.json \
+              docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json
+            git add \
+              docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json \
+              docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json
+            if git diff --cached --quiet; then
+              published=true
+              break
+            fi
+            git commit -m "test(load): record live dependency results v2"
+            if git push origin HEAD:so; then
+              published=true
+              break
+            fi
+          done
+          test "$published" = true
+
+      - name: Reconcile live evidence authority
+        if: env.RUN_EXIT_CODE == '0'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          reconciled=false
+          for attempt in 1 2 3; do
+            git fetch origin so
+            git reset --hard origin/so
+            EXPECTED_COMMIT_SHA="${SOURCE_SHA}" python scripts/validate-memory-os-live-load.py
+            EXPECTED_COMMIT_SHA="${SOURCE_SHA}" python scripts/validate-memory-os-live-object-load.py
+            EXPECTED_COMMIT_SHA="${SOURCE_SHA}" python scripts/reconcile-memory-os-live-load-status.py
+            python scripts/validate-memory-os-load.py
+            python scripts/validate-memory-os-load-evidence-index.py
+            python scripts/validate-memory-os-operability.py
+            git add \
+              contracts/operations/load-test-scenario-contract.v1.json \
+              contracts/operations/production-operability-status.json
+            if git diff --cached --quiet; then
+              reconciled=true
+              break
+            fi
+            git commit -m "docs(ops): register live dependency evidence v2"
+            if git push origin HEAD:so; then
+              reconciled=true
+              break
+            fi
+          done
+          test "$reconciled" = true
+
+      - name: Record privacy-safe diagnostic
+        if: env.RUN_EXIT_CODE != '0'
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          text = Path("/tmp/memory-os-live-load-v2.log").read_text(encoding="utf-8", errors="replace")
+          text = re.sub(r"postgres(?:ql)?://[^\s]+", "<redacted-database-url>", text)
+          text = text.replace("minioadmin", "<redacted-local-credential>")
+          text = re.sub(r"Bearer\s+\S+", "Bearer <redacted>", text, flags=re.I)
+          text = text[-12000:]
+          value = {
+              "schemaVersion": "memory-os-validator-diagnostic.v1",
+              "workflow": "regenerate-live-dependency-load-v2",
+              "sourceCommitSha": os.environ["SOURCE_SHA"],
+              "result": "FAIL",
+              "exitCode": int(os.environ["RUN_EXIT_CODE"]),
+              "output": text,
+              "containsSecrets": False,
+              "productionEvidence": False,
+          }
+          path = Path("docs/fixtures/memory-os-operability/live-load-v2-diagnostic.last.json")
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+          PY
+          git fetch origin so
+          git reset --hard origin/so
+          git checkout -- docs/fixtures/memory-os-operability/live-load-v2-diagnostic.last.json 2>/dev/null || true
+          # Recreate after reset so only the diagnostic is committed.
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+          text = Path("/tmp/memory-os-live-load-v2.log").read_text(encoding="utf-8", errors="replace")
+          text = re.sub(r"postgres(?:ql)?://[^\s]+", "<redacted-database-url>", text)
+          text = text.replace("minioadmin", "<redacted-local-credential>")
+          text = re.sub(r"Bearer\s+\S+", "Bearer <redacted>", text, flags=re.I)
+          value = {
+              "schemaVersion": "memory-os-validator-diagnostic.v1",
+              "workflow": "regenerate-live-dependency-load-v2",
+              "sourceCommitSha": os.environ["SOURCE_SHA"],
+              "result": "FAIL",
+              "exitCode": int(os.environ["RUN_EXIT_CODE"]),
+              "output": text[-12000:],
+              "containsSecrets": False,
+              "productionEvidence": False,
+          }
+          path = Path("docs/fixtures/memory-os-operability/live-load-v2-diagnostic.last.json")
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+          PY
+          git add docs/fixtures/memory-os-operability/live-load-v2-diagnostic.last.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "test(load): record live dependency diagnostic v2"
+          git pull --rebase origin so
+          git push origin HEAD:so
+
+      - name: Enforce checkpoint success
+        run: test "${RUN_EXIT_CODE}" = "0"
