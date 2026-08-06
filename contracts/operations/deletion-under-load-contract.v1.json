@@ -1,0 +1,79 @@
+{
+  "contractId": "memory-os.operability.deletion-under-load.v1",
+  "schemaVersion": "memory-os-deletion-under-load.v1",
+  "resultsSchemaVersion": "memory-os-deletion-under-load-results.v1",
+  "description": "Local PostgreSQL and MinIO checkpoint proving that once DELETE /v1/account returns 202 and the epoch fence is durable, high-concurrency requests using the former session are uniformly unauthorized while the leased deletion worker erases the account. Requests begun before the fence are deliberately outside the post-fence assertion.",
+  "scenarioId": "account-deletion-post-fence-load-local-dependencies",
+  "dependencyMode": "LOCAL_POSTGRES_MINIO",
+  "preFenceRequests": 120,
+  "postFenceRequests": 400,
+  "concurrency": 32,
+  "resultPath": "docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json",
+  "runner": "services/import-api/internal/httpserver/deletion_under_load_test.go",
+  "validator": "scripts/validate-memory-os-deletion-under-load.py",
+  "reconcile": "scripts/reconcile-memory-os-deletion-under-load-status.py",
+  "workflow": ".github/workflows/deletion-under-load.yml",
+  "requiredSequence": [
+    "create one synthetic account, active session, import job and committed Preview",
+    "prove pre-fence authenticated Preview reads are all 2xx",
+    "DELETE /v1/account returns 202 with deletion epoch 2",
+    "after the 202 response, start former-session Preview reads and one leased deletion worker concurrently",
+    "all post-fence requests return exactly 401 with no 5xx or transport errors",
+    "the worker completes exactly one deletion receipt for the fenced account",
+    "all account-owned rows are absent and the deleted tombstone remains at epoch 2"
+  ],
+  "successCriteria": {
+    "preFenceAll2xx": true,
+    "deletionRequestStatus": 202,
+    "deletionEpoch": 2,
+    "postFenceAllUnauthorized": true,
+    "postFenceUnauthorizedCount": 400,
+    "postFenceNo5xx": true,
+    "postFenceNoTransportErrors": true,
+    "workerCompleted": true,
+    "workerReceiptCount": 1,
+    "finalOwnedRowCount": 0,
+    "finalAccountState": "deleted",
+    "finalAccountEpoch": 2,
+    "productionEvidence": false
+  },
+  "abortCriteria": [
+    "DELETE does not return 202 before the post-fence load begins",
+    "any post-fence request returns 2xx, 3xx, 403, 404, 409, 429 or 5xx rather than 401",
+    "any post-fence transport error occurs",
+    "the deletion worker processes zero or more than one account",
+    "any owned row survives after the worker finishes",
+    "the tombstone is absent, not deleted or has an unexpected epoch",
+    "result would contain a token, account, job, Preview, object key or database URL"
+  ],
+  "evidenceBoundary": {
+    "syntheticDataOnly": true,
+    "productionTraffic": false,
+    "productionCredentials": false,
+    "productionEvidence": false,
+    "productionEquivalentDependencies": false,
+    "requestsStartedBeforeFenceCovered": false,
+    "hostFailureCovered": false,
+    "productionReady": false
+  },
+  "readiness": {
+    "contractDefined": true,
+    "runnerImplemented": true,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": true,
+    "exactSourceResultCommitted": false,
+    "postFenceLoadExecuted": false,
+    "preFenceInFlightLinearizationProven": false,
+    "productionDependenciesTested": false,
+    "independentReviewCompleted": false,
+    "productionReady": false
+  },
+  "limitations": [
+    "only requests started after the durable 202 fence are asserted",
+    "one account and one worker",
+    "authenticated Preview read path only",
+    "local PostgreSQL 16 and MinIO on a GitHub-hosted runner",
+    "no production network, TLS, scoped object credentials or independent worker deployment",
+    "not production deletion capacity evidence"
+  ]
+}
