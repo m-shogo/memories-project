@@ -89,6 +89,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes postgresql-client
 
+      - name: Normalize pg_dump volatile restrict tokens
+        run: |
+          real_pg_dump="$(command -v pg_dump)"
+          mkdir -p "$RUNNER_TEMP/normalized-pg-tools"
+          cat > "$RUNNER_TEMP/normalized-pg-tools/pg_dump" <<EOF
+          #!/usr/bin/env bash
+          set -euo pipefail
+          "$real_pg_dump" "\$@" | sed -E '/^\\\\(un)?restrict[[:space:]]/d'
+          EOF
+          chmod 0755 "$RUNNER_TEMP/normalized-pg-tools/pg_dump"
+          echo "$RUNNER_TEMP/normalized-pg-tools" >> "$GITHUB_PATH"
+
       - name: Start local MinIO
         run: |
           docker run -d --name memory-os-mixed-version-minio \
