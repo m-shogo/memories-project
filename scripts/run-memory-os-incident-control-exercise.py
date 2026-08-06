@@ -92,7 +92,6 @@ def main() -> int:
 
     started_at = dt.datetime.now(dt.timezone.utc)
     scenarios_out: list[dict[str, Any]] = []
-    all_passed = True
 
     scenarios = contract.get("scenarios")
     require(isinstance(scenarios, list) and len(scenarios) == 6,
@@ -104,7 +103,6 @@ def main() -> int:
                 f"scenario validatorCommands missing: {scenario.get('scenarioId')}")
         command_results = [command_result(command) for command in commands]
         controls_passed = all(item["result"] == "PASS" for item in command_results)
-        all_passed = all_passed and controls_passed
         scenarios_out.append({
             "scenarioId": scenario["scenarioId"],
             "severity": scenario["severity"],
@@ -133,7 +131,17 @@ def main() -> int:
             "controlResult": "CONTROL_PATH_PASS" if controls_passed else "CONTROL_PATH_FAIL",
         })
 
-    require(all_passed, "one or more incident control scenarios failed")
+    failed_commands = [
+        control["command"]
+        for scenario in scenarios_out
+        for control in scenario["controls"]
+        if control["result"] != "PASS"
+    ]
+    require(
+        not failed_commands,
+        "failed repository validators: " + ", ".join(failed_commands),
+    )
+
     completed_at = dt.datetime.now(dt.timezone.utc)
     result = {
         "schemaVersion": "memory-os-incident-control-exercise-results.v1",
