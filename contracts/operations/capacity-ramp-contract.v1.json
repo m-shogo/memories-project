@@ -1,0 +1,88 @@
+{
+  "contractId": "memory-os.operability.capacity-ramp.v1",
+  "schemaVersion": "memory-os-capacity-ramp.v1",
+  "resultsSchemaVersion": "memory-os-capacity-ramp-results.v1",
+  "description": "Bounded local PostgreSQL concurrency ramp for the authenticated Preview read boundary. The ramp records latency and throughput at increasing concurrency, but it cannot claim production capacity, an approved operating threshold or a saturation boundary unless an explicit failure/degradation transition is observed and independently reviewed.",
+  "scenarioId": "authenticated-preview-capacity-ramp-local-postgres",
+  "dependencyMode": "LOCAL_POSTGRES",
+  "workloadType": "RAMP",
+  "route": "GET /v1/import-jobs/{jobId}/preview",
+  "concurrencySteps": [4, 8, 16, 24, 32, 48],
+  "requestsPerStep": 240,
+  "resultPath": "docs/fixtures/memory-os-operability/capacity-ramp-results.sample.v1.json",
+  "runner": "services/import-api/internal/httpserver/capacity_ramp_test.go",
+  "validator": "scripts/validate-memory-os-capacity-ramp.py",
+  "reconcile": "scripts/reconcile-memory-os-capacity-ramp-status.py",
+  "workflow": ".github/workflows/capacity-ramp.yml",
+  "requiredMeasurements": [
+    "requests",
+    "concurrency",
+    "successes",
+    "failures",
+    "statusClassCounts",
+    "durationSeconds",
+    "throughput",
+    "latencyP50Ms",
+    "latencyP95Ms",
+    "latencyP99Ms"
+  ],
+  "successCriteria": {
+    "allStepsExecuted": true,
+    "allStepsNo5xx": true,
+    "allStepsNoTransportErrors": true,
+    "allStepsAll2xx": true,
+    "previewReadyRowsAfterRamp": 1,
+    "previewCandidateRowsAfterRamp": 2,
+    "previewRejectionRowsAfterRamp": 1,
+    "productionEvidence": false,
+    "productionEquivalentDependencies": false,
+    "capacityBoundaryEstablished": false,
+    "operationalThresholdApproved": false
+  },
+  "classificationRules": {
+    "candidateSafeConcurrency": "highest executed concurrency with all 2xx, no transport error and no 5xx in this ephemeral run only",
+    "firstSaturationSignal": "first step with transport error, 5xx, non-2xx or reviewed material latency/throughput degradation",
+    "noObservedSaturationDecision": "BOUNDARY_NOT_ESTABLISHED",
+    "observedSaturationDecision": "LOCAL_SATURATION_SIGNAL_REQUIRES_REVIEW",
+    "automaticProductionThresholdPromotionForbidden": true
+  },
+  "abortCriteria": [
+    "any cross-tenant or authorization invariant failure",
+    "any Preview row-count mutation",
+    "any persisted token or synthetic identifier in the result",
+    "any attempt to run with production credentials or production traffic",
+    "runner exceeds the workflow timeout"
+  ],
+  "evidenceBoundary": {
+    "syntheticDataOnly": true,
+    "productionTraffic": false,
+    "productionCredentials": false,
+    "productionEvidence": false,
+    "productionEquivalentDependencies": false,
+    "capacityBoundaryEstablished": false,
+    "operationalThresholdApproved": false,
+    "productionReady": false
+  },
+  "readiness": {
+    "contractDefined": true,
+    "runnerImplemented": true,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": true,
+    "exactSourceResultCommitted": false,
+    "localRampExecuted": false,
+    "localSaturationSignalObserved": false,
+    "capacityBoundaryEstablished": false,
+    "operationalThresholdApproved": false,
+    "independentReviewCompleted": false,
+    "productionReady": false
+  },
+  "limitations": [
+    "single authenticated Preview read route only",
+    "ephemeral GitHub-hosted runner and local PostgreSQL 16",
+    "fixed request counts rather than sustained arrival rate",
+    "no MinIO operation in the measured path",
+    "no deliberate overload beyond the bounded concurrency steps",
+    "no production network, TLS, autoscaling, connection pool or noisy-neighbor behavior",
+    "not production capacity evidence"
+  ]
+}
