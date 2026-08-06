@@ -1,0 +1,344 @@
+{
+  "schemaVersion": "memory-os-incident-control-exercise-results.v1",
+  "commitSha": "09fc0d66eff6f0d13b84a55c66847da3fdabec3f",
+  "generatedAt": "2026-08-06T10:25:29.120738Z",
+  "environment": {
+    "mode": "GITHUB_ACTIONS_REPOSITORY_CONTROL_EXERCISE",
+    "productionEvidence": false,
+    "humanTabletopCompleted": false,
+    "pagingConfigured": false,
+    "syntheticScenariosOnly": true,
+    "containsSecrets": false
+  },
+  "exercise": {
+    "exerciseClass": "AUTOMATED_CONTROL_EXERCISE_NOT_HUMAN_TABLETOP",
+    "startedAt": "2026-08-06T10:25:27.798286Z",
+    "completedAt": "2026-08-06T10:25:29.120738Z",
+    "durationSeconds": 1.322452,
+    "scenarios": [
+      {
+        "scenarioId": "tenant-isolation-breach",
+        "severity": "SEV0",
+        "controls": [
+          {
+            "command": "python scripts/validate-memory-os-authorization.py",
+            "exitCode": 0,
+            "durationSeconds": 0.441914,
+            "outputSha256": "6870a79459c18c1b27a99962cc3c60a03eb6c7e747e33d8251e99ea944d2325c",
+            "outputBytes": 148,
+            "result": "PASS"
+          },
+          {
+            "command": "python scripts/validate-memory-os-postgresql-rls.py",
+            "exitCode": 0,
+            "durationSeconds": 0.039334,
+            "outputSha256": "4ce1c68fd7da99eb8e7a1d37a2a2aa0765dd3de7587b219c77a183ca9443e2e3",
+            "outputBytes": 187,
+            "result": "PASS"
+          }
+        ],
+        "decisions": {
+          "severity": "SEV0",
+          "declarationDecision": "DECLARE_INCIDENT",
+          "containmentDecision": "APPLY_REQUIRED_CONTAINMENT",
+          "stopConditions": [
+            "tenant scope is ambiguous",
+            "verified principal or RLS authority cannot be proven",
+            "evidence preservation is incomplete"
+          ],
+          "evidencePreservation": "PRIVACY_SAFE_APPEND_ONLY_REQUIRED",
+          "recoveryVerification": "REFERENCED_CONTROLS_PASS_REVERIFY_BEFORE_PROMOTION",
+          "promotionDecision": "BLOCKED",
+          "closureDecision": "BLOCKED_PENDING_HUMAN_APPROVAL",
+          "openRisks": [
+            "human incident command not exercised",
+            "production dependencies and traffic not exercised",
+            "paging, communications and independent approval not exercised"
+          ]
+        },
+        "requiredContainment": [
+          "stop affected write traffic",
+          "preserve request and database evidence without tenant identifiers",
+          "invalidate ambiguous sessions",
+          "block promotion until cross-tenant visibility is independently excluded"
+        ],
+        "closureGate": "HUMAN_SECURITY_AND_PRIVACY_APPROVAL_REQUIRED",
+        "controlResult": "CONTROL_PATH_PASS"
+      },
+      {
+        "scenarioId": "postgresql-unavailable-during-preview-commit",
+        "severity": "SEV1",
+        "controls": [
+          {
+            "command": "python scripts/validate-memory-os-database-commit-outage.py",
+            "exitCode": 0,
+            "durationSeconds": 0.033209,
+            "outputSha256": "a8ee7d6d1b39ba74cc678546272cead624a1c3cde8cafd8dba2bc9debb3691e2",
+            "outputBytes": 141,
+            "result": "PASS"
+          },
+          {
+            "command": "python scripts/validate-memory-os-local-logical-restore.py",
+            "exitCode": 0,
+            "durationSeconds": 0.03424,
+            "outputSha256": "848c53df1427da9f283fe28ebb085971c73348e4c280862c807e0da0e1b775ac",
+            "outputBytes": 192,
+            "result": "PASS"
+          }
+        ],
+        "decisions": {
+          "severity": "SEV1",
+          "declarationDecision": "DECLARE_INCIDENT",
+          "containmentDecision": "APPLY_REQUIRED_CONTAINMENT",
+          "stopConditions": [
+            "partial Preview rows exist",
+            "sealed spool binding is ambiguous",
+            "deleted or expired authority could resurrect"
+          ],
+          "evidencePreservation": "PRIVACY_SAFE_APPEND_ONLY_REQUIRED",
+          "recoveryVerification": "REFERENCED_CONTROLS_PASS_REVERIFY_BEFORE_PROMOTION",
+          "promotionDecision": "BLOCKED",
+          "closureDecision": "BLOCKED_PENDING_HUMAN_APPROVAL",
+          "openRisks": [
+            "human incident command not exercised",
+            "production dependencies and traffic not exercised",
+            "paging, communications and independent approval not exercised"
+          ]
+        },
+        "requiredContainment": [
+          "fail Preview commit closed",
+          "preserve the independently verified sealed spool",
+          "do not rerun object fetch or parser when ResumeCommit evidence is available",
+          "keep promotion blocked until durable row accounting is verified"
+        ],
+        "closureGate": "HUMAN_INCIDENT_COMMAND_APPROVAL_REQUIRED",
+        "controlResult": "CONTROL_PATH_PASS"
+      },
+      {
+        "scenarioId": "object-store-unavailable-during-import",
+        "severity": "SEV1",
+        "controls": [
+          {
+            "command": "python scripts/validate-memory-os-chaos-failure-drills-v2.py",
+            "exitCode": 0,
+            "durationSeconds": 0.033639,
+            "outputSha256": "0ef2c5f64a5d5d61dc055513f42a9357f0bfbd84e578e03b3771769c860b9287",
+            "outputBytes": 167,
+            "result": "PASS"
+          },
+          {
+            "command": "python scripts/validate-memory-os-local-object-version-restore.py",
+            "exitCode": 0,
+            "durationSeconds": 0.033224,
+            "outputSha256": "aa520964acc31409be48bb142f0876faa041a18fffe58f5778193a3b5eea8808",
+            "outputBytes": 147,
+            "result": "PASS"
+          }
+        ],
+        "decisions": {
+          "severity": "SEV1",
+          "declarationDecision": "DECLARE_INCIDENT",
+          "containmentDecision": "APPLY_REQUIRED_CONTAINMENT",
+          "stopConditions": [
+            "exact object version is unknown",
+            "checksum or metadata binding is inconsistent",
+            "source and backup recovery points are incoherent"
+          ],
+          "evidencePreservation": "PRIVACY_SAFE_APPEND_ONLY_REQUIRED",
+          "recoveryVerification": "REFERENCED_CONTROLS_PASS_REVERIFY_BEFORE_PROMOTION",
+          "promotionDecision": "BLOCKED",
+          "closureDecision": "BLOCKED_PENDING_HUMAN_APPROVAL",
+          "openRisks": [
+            "human incident command not exercised",
+            "production dependencies and traffic not exercised",
+            "paging, communications and independent approval not exercised"
+          ]
+        },
+        "requiredContainment": [
+          "fail before parsing and database mutation",
+          "do not substitute an unverified object version",
+          "preserve checksum and source-version bindings",
+          "quarantine ambiguous object state instead of deleting it"
+        ],
+        "closureGate": "HUMAN_INCIDENT_COMMAND_APPROVAL_REQUIRED",
+        "controlResult": "CONTROL_PATH_PASS"
+      },
+      {
+        "scenarioId": "migration-or-version-incompatibility",
+        "severity": "SEV1",
+        "controls": [
+          {
+            "command": "python scripts/validate-memory-os-migration-lifecycle.py",
+            "exitCode": 0,
+            "durationSeconds": 0.033509,
+            "outputSha256": "0d66eb05a26595975bb5c9bd0dbfa0d8e945d4fb5be10a820180fba5a7051683",
+            "outputBytes": 186,
+            "result": "PASS"
+          },
+          {
+            "command": "python scripts/validate-memory-os-version-compatibility.py",
+            "exitCode": 0,
+            "durationSeconds": 0.033764,
+            "outputSha256": "cd7655b7b50a7d3ba1e2636e9050b57c157e437773f62fa08f13a06f8dbe7132",
+            "outputBytes": 148,
+            "result": "PASS"
+          },
+          {
+            "command": "python scripts/validate-memory-os-mixed-version-candidate.py",
+            "exitCode": 0,
+            "durationSeconds": 0.041823,
+            "outputSha256": "0efdb2bc5ea741b7b9826f7e63b05134fa8e7b23037a0f995ec881a0f02d15b5",
+            "outputBytes": 179,
+            "result": "PASS"
+          }
+        ],
+        "decisions": {
+          "severity": "SEV1",
+          "declarationDecision": "DECLARE_INCIDENT",
+          "containmentDecision": "APPLY_REQUIRED_CONTAINMENT",
+          "stopConditions": [
+            "old/current compatibility is unproven",
+            "recovery point is unavailable",
+            "schema fingerprint or migration sequence drift is detected"
+          ],
+          "evidencePreservation": "PRIVACY_SAFE_APPEND_ONLY_REQUIRED",
+          "recoveryVerification": "REFERENCED_CONTROLS_PASS_REVERIFY_BEFORE_PROMOTION",
+          "promotionDecision": "BLOCKED",
+          "closureDecision": "BLOCKED_PENDING_HUMAN_APPROVAL",
+          "openRisks": [
+            "human incident command not exercised",
+            "production dependencies and traffic not exercised",
+            "paging, communications and independent approval not exercised"
+          ]
+        },
+        "requiredContainment": [
+          "stop destructive contract migration",
+          "preserve the old application rollback target",
+          "prefer application rollback or forward fix over automatic down migration",
+          "keep candidate baseline evidence separate from approved release compatibility"
+        ],
+        "closureGate": "HUMAN_RELEASE_AND_DATABASE_APPROVAL_REQUIRED",
+        "controlResult": "CONTROL_PATH_PASS"
+      },
+      {
+        "scenarioId": "restore-non-resurrection-failure",
+        "severity": "SEV0",
+        "controls": [
+          {
+            "command": "python scripts/validate-memory-os-backup-local-foundations.py",
+            "exitCode": 0,
+            "durationSeconds": 0.045392,
+            "outputSha256": "32fdab9bde486d24b4b4c6632238167d7740d4dd6a8d2943046c2cb032f6198f",
+            "outputBytes": 154,
+            "result": "PASS"
+          },
+          {
+            "command": "python scripts/validate-memory-os-backup-restore.py",
+            "exitCode": 0,
+            "durationSeconds": 0.037059,
+            "outputSha256": "d908d4246794113a56c798986b33ed4a10df5f86d41a9f38195de3c2651bbdf4",
+            "outputBytes": 160,
+            "result": "PASS"
+          }
+        ],
+        "decisions": {
+          "severity": "SEV0",
+          "declarationDecision": "DECLARE_INCIDENT",
+          "containmentDecision": "APPLY_REQUIRED_CONTAINMENT",
+          "stopConditions": [
+            "deleted account or session resolves after restore",
+            "database and object recovery points are incoherent",
+            "RPO or RTO is unapproved or unmeasured"
+          ],
+          "evidencePreservation": "PRIVACY_SAFE_APPEND_ONLY_REQUIRED",
+          "recoveryVerification": "REFERENCED_CONTROLS_PASS_REVERIFY_BEFORE_PROMOTION",
+          "promotionDecision": "BLOCKED",
+          "closureDecision": "BLOCKED_PENDING_HUMAN_APPROVAL",
+          "openRisks": [
+            "human incident command not exercised",
+            "production dependencies and traffic not exercised",
+            "paging, communications and independent approval not exercised"
+          ]
+        },
+        "requiredContainment": [
+          "keep restored environment isolated",
+          "block traffic promotion",
+          "preserve recovery point and verification evidence",
+          "treat deleted data or expired session resurrection as a security incident"
+        ],
+        "closureGate": "HUMAN_SECURITY_PRIVACY_AND_INCIDENT_APPROVAL_REQUIRED",
+        "controlResult": "CONTROL_PATH_PASS"
+      },
+      {
+        "scenarioId": "parser-worker-compromise-or-stall",
+        "severity": "SEV1",
+        "controls": [
+          {
+            "command": "python scripts/validate-memory-os-parser-security.py",
+            "exitCode": 0,
+            "durationSeconds": 0.446955,
+            "outputSha256": "e9ff563a958279ef0324a8ef8b68c3113aaab048c2c7d5c02ffb90b1c6bb9847",
+            "outputBytes": 208,
+            "result": "PASS"
+          },
+          {
+            "command": "python scripts/validate-memory-os-parser-restart-matrix.py",
+            "exitCode": 0,
+            "durationSeconds": 0.034117,
+            "outputSha256": "e9fdc45597b14b338bd9e9c4abdc4cc06f610b999d44b7031a9b9a9eed3e0403",
+            "outputBytes": 115,
+            "result": "PASS"
+          },
+          {
+            "command": "python scripts/validate-memory-os-parser-inflight-cancellation.py",
+            "exitCode": 0,
+            "durationSeconds": 0.033105,
+            "outputSha256": "d95d97ed719397153055a16b10b72915aab3bec89d0bf5b4547e74ff192d11c7",
+            "outputBytes": 104,
+            "result": "PASS"
+          }
+        ],
+        "decisions": {
+          "severity": "SEV1",
+          "declarationDecision": "DECLARE_INCIDENT",
+          "containmentDecision": "APPLY_REQUIRED_CONTAINMENT",
+          "stopConditions": [
+            "worker artifact digest is unknown",
+            "process group cleanup is unverified",
+            "partial output or spool residue remains"
+          ],
+          "evidencePreservation": "PRIVACY_SAFE_APPEND_ONLY_REQUIRED",
+          "recoveryVerification": "REFERENCED_CONTROLS_PASS_REVERIFY_BEFORE_PROMOTION",
+          "promotionDecision": "BLOCKED",
+          "closureDecision": "BLOCKED_PENDING_HUMAN_APPROVAL",
+          "openRisks": [
+            "human incident command not exercised",
+            "production dependencies and traffic not exercised",
+            "paging, communications and independent approval not exercised"
+          ]
+        },
+        "requiredContainment": [
+          "kill the parser process group",
+          "remove partial spool attempts",
+          "preserve sealed evidence only after independent verification",
+          "keep database and credentials outside the worker boundary"
+        ],
+        "closureGate": "HUMAN_SECURITY_AND_RUNTIME_APPROVAL_REQUIRED",
+        "controlResult": "CONTROL_PATH_PASS"
+      }
+    ],
+    "overallResult": "AUTOMATED_CONTROL_EXERCISE_PASS",
+    "humanTabletopResult": "NOT_COMPLETED",
+    "productionDrillResult": "NOT_COMPLETED",
+    "closureResult": "BLOCKED_PENDING_HUMAN_APPROVAL"
+  },
+  "limitations": [
+    "no human incident commander participated",
+    "no paging or acknowledgement path was exercised",
+    "no external legal, privacy or user communication contact tree was exercised",
+    "no production traffic or production credentials were used",
+    "no destructive recovery or traffic promotion occurred",
+    "no independent review was completed",
+    "not a completed tabletop or production recovery drill"
+  ]
+}

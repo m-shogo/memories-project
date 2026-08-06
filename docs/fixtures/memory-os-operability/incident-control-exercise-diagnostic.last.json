@@ -1,12 +1,12 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "incident-control-exercise",
-  "sourceCommitSha": "adec55e235853f795bab730ea8c8f33cd0ad5a2b",
-  "result": "FAIL",
-  "exitCode": 1,
-  "validationResult": "NOT_RUN",
-  "validationExitCode": null,
-  "output": "INCIDENT CONTROL EXERCISE FAILED: failed repository validators: python scripts/validate-memory-os-backup-restore.py => BACKUP RESTORE VALIDATION FAILED: OPS-P0-007 omits backup evidence: ['contracts/operations/backup-restore-contract.v1.json', 'docs/runbooks/memory-os-backup-restore.md', 'scripts/validate-memory-os-backup-restore.py']\n",
+  "sourceCommitSha": "09fc0d66eff6f0d13b84a55c66847da3fdabec3f",
+  "result": "PASS",
+  "exitCode": 0,
+  "validationResult": "PASS",
+  "validationExitCode": 0,
+  "output": "Memory OS automated incident control exercise PASS\nscenarios: 6\nresult: docs/fixtures/memory-os-operability/incident-control-exercise-results.sample.v1.json\n\n--- validator ---\nMemory OS incident control exercise validation PASS\nscenarios: 6\nresult present: True\nproduction decision: NO_GO\n",
   "containsSecrets": false,
   "productionEvidence": false,
   "humanTabletopCompleted": false
