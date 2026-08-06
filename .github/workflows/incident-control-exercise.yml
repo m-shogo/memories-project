@@ -164,7 +164,7 @@ jobs:
             git push origin HEAD:so
           fi
 
-      - name: Reconcile exercise evidence into status
+      - name: Reconcile exercise evidence into authority
         if: steps.exercise.outputs.exit_code == '0' && steps.validation.outputs.exit_code == '0'
         run: |
           git pull --rebase origin so
@@ -173,7 +173,9 @@ jobs:
           python scripts/validate-memory-os-incident-response.py
           python scripts/validate-memory-os-incident-tabletop.py
           python scripts/validate-memory-os-operability.py
-          git add contracts/operations/production-operability-status.json
+          git add \
+            contracts/operations/incident-control-exercise-contract.v1.json \
+            contracts/operations/production-operability-status.json
           if git diff --cached --quiet; then
             echo "Incident control authority is already current."
           else
