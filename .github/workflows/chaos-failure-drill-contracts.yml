@@ -1,0 +1,68 @@
+name: Chaos Failure-Drill Contracts
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/chaos-failure-drill-contracts.yml"
+      - ".github/workflows/chaos-failure-drills.yml"
+      - "contracts/operations/chaos-failure-drill-contract.v1.json"
+      - "services/import-api/internal/httpserver/interruption_drill_test.go"
+      - "services/import-api/internal/parsersup/restart_drill_linux_test.go"
+      - "scripts/validate-memory-os-chaos-failure-drills.py"
+      - "scripts/reconcile-memory-os-chaos-failure-drills.py"
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/chaos-failure-drill-contracts.yml"
+      - ".github/workflows/chaos-failure-drills.yml"
+      - "contracts/operations/chaos-failure-drill-contract.v1.json"
+      - "services/import-api/internal/httpserver/interruption_drill_test.go"
+      - "services/import-api/internal/parsersup/restart_drill_linux_test.go"
+      - "scripts/validate-memory-os-chaos-failure-drills.py"
+      - "scripts/reconcile-memory-os-chaos-failure-drills.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chaos-failure-drill-contracts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: services/import-api/go.sum
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate static contract and formatting
+        run: |
+          python -m py_compile \
+            scripts/validate-memory-os-chaos-failure-drills.py \
+            scripts/reconcile-memory-os-chaos-failure-drills.py
+          test -z "$(gofmt -l \
+            services/import-api/internal/httpserver/interruption_drill_test.go \
+            services/import-api/internal/parsersup/restart_drill_linux_test.go)"
+          python scripts/validate-memory-os-chaos-failure-drills.py
+
+      - name: Execute targeted CI boundary drills
+        working-directory: services/import-api
+        run: |
+          go test ./internal/httpserver \
+            -run '^TestHTTPServerGracefulInterruptionDrainsInFlightRequest$' -count=1
+          go test ./internal/parsersup \
+            -run '^TestSupervisorRestartsSameSpoolAfterFailedAttempt$' -count=1
