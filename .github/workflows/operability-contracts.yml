@@ -12,11 +12,13 @@ on:
       - "docs/runbooks/memory-os-incident-response.md"
       - "docs/runbooks/memory-os-version-compatibility.md"
       - "docs/runbooks/memory-os-metrics-alerts.md"
+      - "docs/runbooks/memory-os-observability-access.md"
       - "docs/memory-os-current-authority-order-round-10-operability.md"
       - "docs/memory-os-current-authority-order-round-9-security.md"
       - "docs/memory-os-production-operability-audit-2026-07-24.md"
       - "scripts/validate-memory-os-operability.py"
       - "scripts/validate-memory-os-observability.py"
+      - "scripts/validate-memory-os-observability-access.py"
       - "scripts/validate-memory-os-rate-limit.py"
       - "scripts/validate-memory-os-metrics.py"
       - "scripts/validate-memory-os-metrics-scrape.py"
@@ -55,11 +57,13 @@ on:
       - "docs/runbooks/memory-os-incident-response.md"
       - "docs/runbooks/memory-os-version-compatibility.md"
       - "docs/runbooks/memory-os-metrics-alerts.md"
+      - "docs/runbooks/memory-os-observability-access.md"
       - "docs/memory-os-current-authority-order-round-10-operability.md"
       - "docs/memory-os-current-authority-order-round-9-security.md"
       - "docs/memory-os-production-operability-audit-2026-07-24.md"
       - "scripts/validate-memory-os-operability.py"
       - "scripts/validate-memory-os-observability.py"
+      - "scripts/validate-memory-os-observability-access.py"
       - "scripts/validate-memory-os-rate-limit.py"
       - "scripts/validate-memory-os-metrics.py"
       - "scripts/validate-memory-os-metrics-scrape.py"
@@ -111,6 +115,7 @@ jobs:
         run: |
           python -m py_compile scripts/validate-memory-os-operability.py
           python -m py_compile scripts/validate-memory-os-observability.py
+          python -m py_compile scripts/validate-memory-os-observability-access.py
           python -m py_compile scripts/validate-memory-os-rate-limit.py
           python -m py_compile scripts/validate-memory-os-metrics.py
           python -m py_compile scripts/validate-memory-os-metrics-scrape.py
@@ -145,6 +150,9 @@ jobs:
 
       - name: Validate observability event contract
         run: python scripts/validate-memory-os-observability.py
+
+      - name: Validate observability retention and access policy
+        run: python scripts/validate-memory-os-observability-access.py
 
       - name: Validate rate-limit policy contract
         run: python scripts/validate-memory-os-rate-limit.py
