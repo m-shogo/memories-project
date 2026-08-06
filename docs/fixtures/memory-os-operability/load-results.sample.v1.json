@@ -129,8 +129,8 @@
       "metricsSeriesBefore": 0,
       "metricsSeriesAfter": 5,
       "integrityResult": "PASS",
-      "abortReason": "",
-      "result": "PASS"
+      "abortReason": "Historical result invalidated: the scenario contract expected 4xx, but the pre-fix server resolved unknown /v1 paths through an unconfigured session backend and recorded 5xx. Regenerate after the unknown-route fix.",
+      "result": "FAIL"
     },
     {
       "scenarioId": "authenticated-preview-mock",
