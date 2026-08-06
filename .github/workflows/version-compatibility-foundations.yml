@@ -1,0 +1,108 @@
+name: Version Compatibility Foundations
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/version-compatibility-foundations.yml"
+      - "contracts/operations/version-compatibility-foundations.v1.json"
+      - "contracts/operations/version-compatibility-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "docs/runbooks/memory-os-version-compatibility-foundations.md"
+      - "scripts/validate-memory-os-version-compatibility-foundations.py"
+      - "scripts/reconcile-memory-os-version-compatibility-foundation-status.py"
+      - "docs/fixtures/memory-os-operability/mixed-version-session-results.sample.v1.json"
+      - "docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json"
+      - "docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json"
+      - "docs/fixtures/memory-os-operability/postgresql-major-upgrade-results.sample.v1.json"
+      - "contracts/operations/release-baseline-registry.v1.json"
+      - "contracts/operations/rollback-rehearsal-registry.v1.json"
+      - "contracts/operations/parser-artifact-registry.v1.json"
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/version-compatibility-foundations.yml"
+      - "contracts/operations/version-compatibility-foundations.v1.json"
+      - "contracts/operations/version-compatibility-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "docs/runbooks/memory-os-version-compatibility-foundations.md"
+      - "scripts/validate-memory-os-version-compatibility-foundations.py"
+      - "scripts/reconcile-memory-os-version-compatibility-foundation-status.py"
+      - "docs/fixtures/memory-os-operability/mixed-version-session-results.sample.v1.json"
+      - "docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json"
+      - "docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json"
+      - "docs/fixtures/memory-os-operability/postgresql-major-upgrade-results.sample.v1.json"
+      - "contracts/operations/release-baseline-registry.v1.json"
+      - "contracts/operations/rollback-rehearsal-registry.v1.json"
+      - "contracts/operations/parser-artifact-registry.v1.json"
+  schedule:
+    - cron: "59 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: version-compatibility-foundations-${{ github.event.pull_request.number || 'so' }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: >-
+      github.event_name != 'push' ||
+      !contains(github.event.head_commit.message, 'docs(version): register bounded compatibility foundations')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile foundation authority tools
+        run: |
+          test -z "$(git status --porcelain)"
+          python -m py_compile \
+            scripts/validate-memory-os-version-compatibility-foundations.py \
+            scripts/reconcile-memory-os-version-compatibility-foundation-status.py
+
+      - name: Validate canonical matrix remains conservative
+        run: python scripts/validate-memory-os-version-compatibility.py
+
+      - name: Reconcile bounded foundation status
+        run: |
+          python scripts/reconcile-memory-os-version-compatibility-foundation-status.py
+          python scripts/validate-memory-os-version-compatibility-foundations.py
+
+      - name: Commit foundation status authority
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        run: |
+          git add contracts/operations/production-operability-status.json
+          if git diff --cached --quiet; then
+            echo "Bounded compatibility foundation status is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(version): register bounded compatibility foundations"
+            git fetch origin so
+            git rebase origin/so
+            git push origin HEAD:so
+          fi
+
+      - name: Re-read committed authority
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        run: |
+          git fetch origin so
+          git reset --hard origin/so
+
+      - name: Validate canonical, foundation and aggregate authority
+        run: |
+          python scripts/validate-memory-os-version-compatibility.py
+          python scripts/validate-memory-os-version-compatibility-foundations.py
+          python scripts/validate-memory-os-operability.py
