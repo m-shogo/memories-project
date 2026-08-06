@@ -1,0 +1,152 @@
+name: Reconcile Load Foundation Authorities
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/reconcile-load-foundation-authorities.yml"
+      - "docs/fixtures/memory-os-operability/capacity-ramp-results.sample.v1.json"
+      - "docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json"
+      - "contracts/operations/capacity-ramp-contract.v1.json"
+      - "contracts/operations/short-stability-sample-contract.v1.json"
+      - "scripts/validate-memory-os-capacity-ramp.py"
+      - "scripts/reconcile-memory-os-capacity-ramp-status.py"
+      - "scripts/validate-memory-os-short-stability-sample.py"
+      - "scripts/reconcile-memory-os-short-stability-status.py"
+  schedule:
+    - cron: "7 19 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reconcile-load-foundation-authorities-so
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    if: >-
+      github.event_name != 'push' ||
+      (!contains(github.event.head_commit.message, 'docs(ops): reconcile bounded load foundations') &&
+       !contains(github.event.head_commit.message, 'test(load): record bounded load authority diagnostic'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout latest so
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Reconcile available bounded results with stage capture
+        run: |
+          set +e
+          log=/tmp/memory-os-load-foundation-authorities.log
+          : > "$log"
+          code=0
+
+          echo "STAGE: compile" >> "$log"
+          python -m py_compile \
+            scripts/validate-memory-os-capacity-ramp.py \
+            scripts/reconcile-memory-os-capacity-ramp-status.py \
+            scripts/validate-memory-os-short-stability-sample.py \
+            scripts/reconcile-memory-os-short-stability-status.py \
+            >> "$log" 2>&1 || code=$?
+
+          if [[ "$code" == "0" && -f docs/fixtures/memory-os-operability/capacity-ramp-results.sample.v1.json ]]; then
+            echo "STAGE: capacity-ramp" >> "$log"
+            capacity_sha="$(python -c 'import json; print(json.load(open("docs/fixtures/memory-os-operability/capacity-ramp-results.sample.v1.json"))["commitSha"])')"
+            EXPECTED_COMMIT_SHA="$capacity_sha" python scripts/validate-memory-os-capacity-ramp.py >> "$log" 2>&1 || code=$?
+            if [[ "$code" == "0" ]]; then
+              EXPECTED_COMMIT_SHA="$capacity_sha" python scripts/reconcile-memory-os-capacity-ramp-status.py >> "$log" 2>&1 || code=$?
+            fi
+            if [[ "$code" == "0" ]]; then
+              python scripts/validate-memory-os-capacity-ramp.py --require-reconciled >> "$log" 2>&1 || code=$?
+            fi
+          fi
+
+          if [[ "$code" == "0" && -f docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json ]]; then
+            echo "STAGE: short-stability" >> "$log"
+            stability_sha="$(python -c 'import json; print(json.load(open("docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json"))["commitSha"])')"
+            EXPECTED_COMMIT_SHA="$stability_sha" python scripts/validate-memory-os-short-stability-sample.py >> "$log" 2>&1 || code=$?
+            if [[ "$code" == "0" ]]; then
+              EXPECTED_COMMIT_SHA="$stability_sha" python scripts/reconcile-memory-os-short-stability-status.py >> "$log" 2>&1 || code=$?
+            fi
+            if [[ "$code" == "0" ]]; then
+              python scripts/validate-memory-os-short-stability-sample.py --require-reconciled >> "$log" 2>&1 || code=$?
+            fi
+          fi
+
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: aggregate" >> "$log"
+            python scripts/validate-memory-os-load.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?
+          fi
+          echo "FOUNDATION_EXIT_CODE=$code" >> "$GITHUB_ENV"
+          exit 0
+
+      - name: Commit bounded load authorities
+        if: env.FOUNDATION_EXIT_CODE == '0'
+        run: |
+          set -euo pipefail
+          git add \
+            contracts/operations/capacity-ramp-contract.v1.json \
+            contracts/operations/short-stability-sample-contract.v1.json \
+            contracts/operations/load-test-scenario-contract.v1.json \
+            contracts/operations/production-operability-status.json
+          if git diff --cached --quiet; then
+            echo "Bounded load authorities are already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs(ops): reconcile bounded load foundations"
+          git pull --rebase origin so
+          git push origin HEAD:so
+
+      - name: Record privacy-safe diagnostic
+        if: env.FOUNDATION_EXIT_CODE != '0'
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          git reset --hard origin/so
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          text = Path("/tmp/memory-os-load-foundation-authorities.log").read_text(encoding="utf-8", errors="replace")
+          value = {
+              "schemaVersion": "memory-os-validator-diagnostic.v1",
+              "workflow": "reconcile-load-foundation-authorities",
+              "sourceCommitSha": os.environ["GITHUB_SHA"],
+              "result": "FAIL",
+              "exitCode": int(os.environ["FOUNDATION_EXIT_CODE"]),
+              "output": text[-12000:],
+              "containsSecrets": False,
+              "productionEvidence": False,
+              "capacityBoundaryEstablished": False,
+              "sustainedSoakEvidence": False,
+              "leakProof": False,
+          }
+          path = Path("docs/fixtures/memory-os-operability/load-foundation-authority-diagnostic.last.json")
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+          PY
+          git add docs/fixtures/memory-os-operability/load-foundation-authority-diagnostic.last.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "test(load): record bounded load authority diagnostic"
+          git pull --rebase origin so
+          git push origin HEAD:so
+
+      - name: Enforce success
+        run: test "${FOUNDATION_EXIT_CODE}" = "0"
