@@ -1,0 +1,162 @@
+#!/usr/bin/env python3
+"""Register the append-only rate-limit operation ledger without claiming control-plane readiness."""
+
+from __future__ import annotations
+
+import datetime as dt
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+EVIDENCE_PATH = ROOT / "contracts/operations/rate-limit-operation-evidence-contract.v1.json"
+OPERATIONS_PATH = ROOT / "contracts/operations/rate-limit-operations-contract.v1.json"
+STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+
+OLD_GAP = (
+    "production emergency control plane with automatic expiry and append-only operation evidence ledger"
+)
+NEW_EXISTING = (
+    "append-only rate-limit emergency-operation evidence contract with closed modes, proxy modes, activation reasons and verification checks",
+    "exclusive-create writer that rejects duplicate operation IDs before any overwrite",
+    "privacy validator forbidding raw IP, network identity, tokens, account/session identifiers, URLs, credentials and free-form evidence text",
+)
+NEW_GAP = "production emergency control plane with automatic expiry"
+NEW_REFS = (
+    "contracts/operations/rate-limit-operation-evidence-contract.v1.json",
+    "docs/evidence/rate-limit-operations/README.md",
+    "docs/fixtures/memory-os-operability/rate-limit-operation-record.template.v1.json",
+    "scripts/create-memory-os-rate-limit-operation-evidence.py",
+    "scripts/validate-memory-os-rate-limit-operation-evidence.py",
+    "scripts/reconcile-memory-os-rate-limit-operation-evidence.py",
+)
+
+
+class ReconcileFailure(RuntimeError):
+    pass
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ReconcileFailure(message)
+
+
+def load(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise ReconcileFailure(f"missing file: {path.relative_to(ROOT)}") from exc
+    except json.JSONDecodeError as exc:
+        raise ReconcileFailure(f"invalid JSON in {path.relative_to(ROOT)}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be an object: {path.relative_to(ROOT)}")
+    return value
+
+
+def append_once(items: list[Any], value: str) -> bool:
+    if value in items:
+        return False
+    items.append(value)
+    return True
+
+
+def main() -> int:
+    evidence = load(EVIDENCE_PATH)
+    evidence_readiness = evidence.get("readiness")
+    require(isinstance(evidence_readiness, dict), "evidence readiness must be an object")
+    for foundation in (
+        "recordContractDefined", "exclusiveWriterImplemented",
+        "ledgerValidatorImplemented", "duplicateOperationIdRejected",
+        "privacyValidationImplemented",
+    ):
+        require(evidence_readiness.get(foundation) is True,
+                f"evidence foundation not validated: {foundation}")
+    for unproven in (
+        "productionControlPlaneImplemented", "automaticModeExpiryImplemented",
+        "productionEvidenceRecorded", "productionReady",
+    ):
+        require(evidence_readiness.get(unproven) is False,
+                f"unproven evidence readiness cannot be true: {unproven}")
+
+    operations = load(OPERATIONS_PATH)
+    readiness = operations.get("readiness")
+    require(isinstance(readiness, dict), "operations readiness must be an object")
+    require(readiness.get("productionControlPlaneImplemented") is False,
+            "production control plane remains unimplemented")
+    require(readiness.get("automaticExpiryImplemented") is False,
+            "automatic expiry remains unimplemented")
+    require(readiness.get("sharedStoreImplemented") is False,
+            "shared store remains unimplemented")
+    changed = False
+    if readiness.get("evidenceLedgerImplemented") is not True:
+        readiness["evidenceLedgerImplemented"] = True
+        changed = True
+    refs = operations.get("evidenceRefs")
+    require(isinstance(refs, list), "operations evidenceRefs must be a list")
+    for ref in NEW_REFS:
+        require((ROOT / ref).is_file(), f"operation ledger evidence missing: {ref}")
+        changed = append_once(refs, ref) or changed
+
+    status = load(STATUS_PATH)
+    require(status.get("productionDecision") == "NO_GO",
+            "ledger reconcile cannot change productionDecision")
+    areas = status.get("areas")
+    require(isinstance(areas, list), "status areas must be a list")
+    matches = [item for item in areas if isinstance(item, dict) and item.get("id") == "OPS-P0-005"]
+    require(len(matches) == 1, "OPS-P0-005 must exist exactly once")
+    gate = matches[0]
+    require(gate.get("status") == "PARTIAL",
+            "ledger reconcile cannot alter a non-PARTIAL gate")
+    existing = gate.get("existingEvidence")
+    missing = gate.get("missingEvidence")
+    status_refs = gate.get("evidenceRefs")
+    require(isinstance(existing, list), "OPS-P0-005 existingEvidence must be a list")
+    require(isinstance(missing, list), "OPS-P0-005 missingEvidence must be a list")
+    require(isinstance(status_refs, list), "OPS-P0-005 evidenceRefs must be a list")
+
+    for item in NEW_EXISTING:
+        changed = append_once(existing, item) or changed
+    if OLD_GAP in missing:
+        missing.remove(OLD_GAP)
+        changed = True
+    changed = append_once(missing, NEW_GAP) or changed
+    for ref in NEW_REFS:
+        changed = append_once(status_refs, ref) or changed
+
+    for required_gap in (
+        "production-equivalent distributed enforcement",
+        "trusted-proxy configuration owned per deployment",
+        "load-calibrated limits",
+        "production emergency control plane with automatic expiry",
+        "completed emergency-mode",
+    ):
+        require(any(required_gap in item for item in missing),
+                f"required OPS-P0-005 gap disappeared: {required_gap}")
+    require(gate.get("status") == "PARTIAL", "OPS-P0-005 readiness changed unexpectedly")
+    require(status.get("productionDecision") == "NO_GO",
+            "production decision changed unexpectedly")
+
+    if not changed:
+        print("Rate-limit operation evidence authority already reconciled")
+        return 0
+
+    status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
+    OPERATIONS_PATH.write_text(
+        json.dumps(operations, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    STATUS_PATH.write_text(
+        json.dumps(status, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    print("Registered append-only operation ledger; control plane and automatic expiry remain unimplemented")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except ReconcileFailure as exc:
+        print(f"RATE-LIMIT OPERATION EVIDENCE RECONCILE FAILED: {exc}",
+              file=sys.stderr)
+        raise SystemExit(1)
