@@ -1,0 +1,330 @@
+{
+  "contractId": "memory-os.operability.backup-restore.v1",
+  "schemaVersion": "memory-os-backup-restore.v1",
+  "description": "Binding backup, PITR, object retention and isolated restore policy for Memory OS. Object versioning is not backup completion, backup creation is not restore proof, and a healthy restored service is not safe until deletion and expired-session non-resurrection are verified.",
+  "canonicalRunbook": "docs/runbooks/memory-os-backup-restore.md",
+  "validator": "scripts/validate-memory-os-backup-restore.py",
+  "productionDecision": "NO_GO",
+  "principles": [
+    "backup creation and restore verification are separate evidence",
+    "object versioning is not an independent backup",
+    "recovery point and recovery time objectives must be explicitly approved before production",
+    "restores occur in an isolated environment with normal user traffic disabled",
+    "deleted accounts, memories, Previews, objects and expired or revoked sessions must not silently reappear",
+    "tenant isolation, FORCE RLS and authority boundaries are reverified after restore",
+    "database and object recovery points must be correlated or inconsistency must fail closed",
+    "backup credentials and restore authority are narrower and independently owned",
+    "backup evidence excludes secrets and unnecessary personal content",
+    "promotion of a restored environment is an incident-command decision, not an automatic health-check action"
+  ],
+  "recoveryObjectives": {
+    "rpo": {
+      "status": "NOT_DEFINED",
+      "approvedValue": null,
+      "measurementMethod": null,
+      "owner": "UNASSIGNED"
+    },
+    "rto": {
+      "status": "NOT_DEFINED",
+      "approvedValue": null,
+      "measurementMethod": null,
+      "owner": "UNASSIGNED"
+    },
+    "maximumAcceptableObjectDatabaseSkew": {
+      "status": "NOT_DEFINED",
+      "approvedValue": null,
+      "owner": "UNASSIGNED"
+    }
+  },
+  "protectedDomains": [
+    {
+      "id": "POSTGRESQL_CANONICAL_STATE",
+      "includes": [
+        "account control and epoch fencing",
+        "sessions and replay state",
+        "import jobs and upload authorizations",
+        "Preview ready/candidate/rejection state",
+        "Apply confirmations and memory items",
+        "deletion work and audit-relevant metadata"
+      ],
+      "requiredMechanism": "ENCRYPTED_BACKUP_PLUS_PITR",
+      "configured": false,
+      "independentRetention": false,
+      "restoreTested": false
+    },
+    {
+      "id": "OBJECT_VERSIONS",
+      "includes": [
+        "quarantine source objects",
+        "exact object version IDs and authoritative metadata",
+        "checksums and lifecycle state",
+        "objects retained for retry, deletion or incident evidence"
+      ],
+      "requiredMechanism": "VERSIONED_STORE_PLUS_INDEPENDENT_RETENTION_OR_COPY",
+      "configured": false,
+      "localVersioningEvidence": true,
+      "independentRetention": false,
+      "restoreTested": false
+    },
+    {
+      "id": "MIGRATION_AND_RELEASE_METADATA",
+      "includes": [
+        "canonical migration sequence and checksums",
+        "source commit and deployment generation",
+        "parser adapter versions and artifact digests",
+        "configuration generation excluding secret values"
+      ],
+      "requiredMechanism": "IMMUTABLE_RELEASE_AND_EVIDENCE_RECORD",
+      "configured": false,
+      "independentRetention": false,
+      "restoreTested": false
+    },
+    {
+      "id": "INCIDENT_AND_DELETION_EVIDENCE",
+      "includes": [
+        "append-only incident decisions and evidence references",
+        "deletion completion and non-resurrection evidence",
+        "restore drill results"
+      ],
+      "requiredMechanism": "APPEND_ONLY_INDEPENDENT_EVIDENCE_RETENTION",
+      "configured": false,
+      "independentRetention": false,
+      "restoreTested": false
+    }
+  ],
+  "backupControls": {
+    "encryptionAtRestRequired": true,
+    "encryptionInTransitRequired": true,
+    "backupCredentialsSeparateFromRuntimeRequired": true,
+    "leastPrivilegeRequired": true,
+    "crossEnvironmentRestoreAuthoritySeparated": true,
+    "retentionAndExpiryPolicyRequired": true,
+    "immutabilityOrDeletionProtectionRequired": true,
+    "backupJobMonitoringRequired": true,
+    "backupFreshnessAlertRequired": true,
+    "periodicRestoreRequired": true,
+    "secretValuesInEvidenceForbidden": true,
+    "productionConfigurationComplete": false
+  },
+  "restoreLifecycle": [
+    {
+      "phase": "DECLARE_AND_PLAN",
+      "requiredActions": [
+        "create restore run or incident id",
+        "record reason, target time, source backups and owners",
+        "identify affected tenants and deletion/session risk",
+        "define promotion prohibition and verification plan"
+      ],
+      "exitCriteria": "restore target, authority, evidence sources and safety constraints are explicit"
+    },
+    {
+      "phase": "SELECT_RECOVERY_POINT",
+      "requiredActions": [
+        "identify PostgreSQL base backup and WAL/PITR target",
+        "identify matching or safely bounded object versions",
+        "record migration/release/parser generations",
+        "record expected data loss and object/database skew"
+      ],
+      "exitCriteria": "selected recovery point is internally coherent or known inconsistency is classified fail-closed"
+    },
+    {
+      "phase": "RESTORE_ISOLATED",
+      "requiredActions": [
+        "restore into a network- and identity-isolated environment",
+        "disable normal user traffic, outbound side effects and production credentials",
+        "apply no destructive cleanup before evidence capture",
+        "record exact restore commands and results without secrets"
+      ],
+      "exitCriteria": "restored environment is available only to the approved verification team"
+    },
+    {
+      "phase": "VERIFY_STRUCTURE_AND_AUTHORITY",
+      "requiredActions": [
+        "verify migration sequence and schema checksums",
+        "verify runtime roles, NOBYPASSRLS, NOINHERIT and FORCE RLS",
+        "run cross-tenant negative tests",
+        "verify parser artifact and object-version bindings"
+      ],
+      "exitCriteria": "schema, authority and exact-version invariants pass independent verification"
+    },
+    {
+      "phase": "VERIFY_DATA_AND_IDEMPOTENCY",
+      "requiredActions": [
+        "verify Preview candidate/rejection/accounting consistency",
+        "verify Apply confirmations and memory item accounting",
+        "verify exact idempotent replay behavior",
+        "verify database/object metadata coherence"
+      ],
+      "exitCriteria": "restored canonical state is internally accounted and repeatable"
+    },
+    {
+      "phase": "VERIFY_NON_RESURRECTION",
+      "requiredActions": [
+        "verify deleted accounts remain fenced or deleted",
+        "verify deleted memories, Previews and objects do not reappear",
+        "verify expired and revoked sessions remain unusable",
+        "verify replay-protection and account-epoch semantics",
+        "record any intentionally retained backup-only data and its access restrictions"
+      ],
+      "exitCriteria": "deletion and session non-resurrection checks pass or restore remains isolated"
+    },
+    {
+      "phase": "MEASURE_RECOVERY_OBJECTIVES",
+      "requiredActions": [
+        "measure actual recoverable point against the incident target",
+        "measure elapsed restore and verification time",
+        "compare measured values to approved RPO and RTO",
+        "record backlog and catch-up behavior"
+      ],
+      "exitCriteria": "RPO/RTO result is measured and classified without inventing a target"
+    },
+    {
+      "phase": "PROMOTION_DECISION",
+      "requiredActions": [
+        "obtain incident commander, system owner and security/privacy approval",
+        "record residual data loss, skew and open risks",
+        "define cutover, rollback and user communication plan",
+        "keep promotion blocked when any critical verification is incomplete"
+      ],
+      "exitCriteria": "promotion is explicitly approved or explicitly refused with evidence"
+    },
+    {
+      "phase": "CLOSE_AND_REMEDIATE",
+      "requiredActions": [
+        "preserve append-only restore evidence",
+        "record failed checks and remediation owners",
+        "update retention, monitoring and runbooks",
+        "schedule the next independent restore rehearsal"
+      ],
+      "exitCriteria": "restore evidence is retained and all gaps have owners"
+    }
+  ],
+  "mandatoryVerification": {
+    "schemaAndMigration": [
+      "canonical migration sequence",
+      "schema/function/policy checksums or reviewed fingerprints",
+      "application release compatibility"
+    ],
+    "tenantAndAuthority": [
+      "cross-tenant reads and writes denied",
+      "runtime role remains NOBYPASSRLS and NOINHERIT",
+      "FORCE RLS remains enabled",
+      "account epoch and authority boundaries hold"
+    ],
+    "previewApply": [
+      "Preview row and rejection accounting",
+      "exact Preview hash binding",
+      "Apply confirmation and memory-item accounting",
+      "idempotent replay returns the original result"
+    ],
+    "sessionsAndReplay": [
+      "expired session rejected",
+      "revoked session rejected",
+      "authorization-code and nonce replay remains rejected",
+      "raw bearer tokens absent from evidence"
+    ],
+    "deletion": [
+      "deleted account remains fenced",
+      "deleted memory and Preview rows do not become user-visible",
+      "deleted or expired object versions follow the approved retention/deletion policy",
+      "deletion worker state does not repeat unsafe side effects"
+    ],
+    "objectsAndParser": [
+      "exact object key, version, length, checksum and metadata",
+      "no latest-version substitution",
+      "required parser artifact digest is available",
+      "unknown artifact or persisted version fails closed"
+    ]
+  },
+  "promotionGuards": [
+    "restored environment has not passed cross-tenant negative tests",
+    "deleted data or expired/revoked session non-resurrection is unverified",
+    "database and object recovery points are inconsistent beyond an approved bound",
+    "required object version or parser artifact is missing",
+    "migration sequence or release compatibility is unknown",
+    "RPO or RTO target is undefined for a production promotion decision",
+    "restore used production credentials or emitted external side effects",
+    "incident commander, system owner or security/privacy approval is missing",
+    "critical verification result is FAIL, PARTIAL or NOT_RUN"
+  ],
+  "evidenceRecord": {
+    "appendOnly": true,
+    "privacyClass": "operational_sensitive_no_secrets",
+    "requiredFields": [
+      "restoreRunId",
+      "reason",
+      "environment",
+      "sourceCommitSha",
+      "databaseIdentityDigest",
+      "databaseRecoveryPoint",
+      "objectRecoveryPoint",
+      "migrationSequence",
+      "startedAt",
+      "restoredAt",
+      "verificationCompletedAt",
+      "operator",
+      "reviewers",
+      "measuredRpo",
+      "measuredRto",
+      "verificationResults",
+      "nonResurrectionResults",
+      "promotionDecision",
+      "openRisks",
+      "evidenceRefs"
+    ]
+  },
+  "requiredDrills": [
+    {
+      "id": "RESTORE-DRILL-001",
+      "scenario": "clean isolated restore of current PostgreSQL and correlated object state",
+      "completed": false
+    },
+    {
+      "id": "RESTORE-DRILL-002",
+      "scenario": "point-in-time restore across an in-flight Preview and Apply boundary",
+      "completed": false
+    },
+    {
+      "id": "RESTORE-DRILL-003",
+      "scenario": "restore after account deletion and session expiry/revocation",
+      "completed": false
+    },
+    {
+      "id": "RESTORE-DRILL-004",
+      "scenario": "restore where database and object recovery points are intentionally skewed",
+      "completed": false
+    },
+    {
+      "id": "RESTORE-DRILL-005",
+      "scenario": "restore while a required old parser artifact or object version is unavailable",
+      "completed": false
+    }
+  ],
+  "readiness": {
+    "policyDefined": true,
+    "protectedDomainsDefined": true,
+    "restoreLifecycleDefined": true,
+    "mandatoryVerificationDefined": true,
+    "promotionGuardsDefined": true,
+    "evidenceRecordDefined": true,
+    "runbookDefined": true,
+    "rpoDefined": false,
+    "rtoDefined": false,
+    "postgresBackupConfigured": false,
+    "postgresPitrConfigured": false,
+    "objectIndependentRetentionConfigured": false,
+    "backupMonitoringConfigured": false,
+    "isolatedRestoreEnvironmentImplemented": false,
+    "nonResurrectionAutomationImplemented": false,
+    "restoreDrillCompleted": false,
+    "productionPromotionRehearsed": false,
+    "independentReviewCompleted": false,
+    "ready": false,
+    "note": "Backup/restore policy, verification and promotion guards are defined. No production PostgreSQL backup/PITR, independent object retention, RPO/RTO, isolated restore environment or completed restore drill is claimed, so OPS-P0-007 remains PARTIAL_FOUNDATIONS_ONLY."
+  },
+  "evidenceRefs": [
+    "contracts/operations/backup-restore-contract.v1.json",
+    "docs/runbooks/memory-os-backup-restore.md",
+    "scripts/validate-memory-os-backup-restore.py"
+  ]
+}
