@@ -1,12 +1,12 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "mixed-version-candidate",
-  "sourceCommitSha": "e2b96dac184080d4ddb57881bd03a7c86cae5b1e",
+  "sourceCommitSha": "5e834c2c076e91c3b815f31d3e47f132abcd2f8d",
   "result": "FAIL",
   "exitCode": 1,
-  "generatedAt": "2026-08-06T09:55:19.189286Z",
-  "output": "MIXED-VERSION STAGE: checkout-pinned-baseline\nPreparing worktree (detached HEAD a1f3956)\nMIXED-VERSION STAGE: create-ephemeral-databases\n pg_terminate_backend \n----------------------\n(0 rows)\n\nMIXED-VERSION STAGE: apply-current-migrations-to-both-databases\nMIXED-VERSION STAGE: capture-pre-baseline-schema-fingerprint\nMIXED-VERSION STAGE: run-baseline-sql-tests\nMIXED-VERSION STAGE: run-baseline-go-tests\n?   \tgithub.com/m-shogo/memories-project/services/import-api/internal/authstore\t[no test files]\n--- FAIL: TestUploadLifecycleOverHTTP (0.06s)\n    server_live_test.go:424: completion failed: 404\n--- FAIL: TestAccountDeletionFencesAndErasesOverHTTP (0.16s)\n    server_live_test.go:1038: POST /v1/import-jobs/job_bbrkzfq4ybz6l5ggvibymdtcdgljsrku/uploads after deletion returned 404 404 page not found\nFAIL\nFAIL\tgithub.com/m-shogo/memories-project/services/import-api/internal/httpserver\t2.950s\n--- FAIL: TestCommitPersistsCompletePreviewAtomically (1.22s)\n    committer_db_test.go:169: insert ready Preview: ERROR: deadlock detected (SQLSTATE 40P01)\nFAIL\nFAIL\tgithub.com/m-shogo/memories-project/services/import-api/internal/previewcommit\t1.695s\nok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/importflow\t7.116s\nFAIL\n",
-  "outputBytesBeforeTruncation": 1241,
+  "generatedAt": "2026-08-06T10:06:49.204787Z",
+  "output": "MIXED-VERSION STAGE: checkout-pinned-baseline\nPreparing worktree (detached HEAD 2af6e8e)\nMIXED-VERSION STAGE: create-ephemeral-databases\n pg_terminate_backend \n----------------------\n(0 rows)\n\nMIXED-VERSION STAGE: apply-current-migrations-to-both-databases\nMIXED-VERSION STAGE: capture-pre-baseline-schema-fingerprint\nMIXED-VERSION STAGE: run-baseline-sql-tests\nMIXED-VERSION STAGE: run-baseline-go-tests\n?   \tgithub.com/m-shogo/memories-project/services/import-api/internal/authstore\t[no test files]\nok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/httpserver\t2.848s\n--- FAIL: TestCommitPersistsCompletePreviewAtomically (1.22s)\n    committer_db_test.go:169: insert ready Preview: ERROR: deadlock detected (SQLSTATE 40P01)\nFAIL\nFAIL\tgithub.com/m-shogo/memories-project/services/import-api/internal/previewcommit\t1.690s\nok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/importflow\t7.123s\nFAIL\n",
+  "outputBytesBeforeTruncation": 934,
   "containsSecrets": false,
   "productionEvidence": false
 }
