@@ -1,0 +1,127 @@
+{
+  "contractId": "memory-os.operability.chaos-failure-drills.v2",
+  "schemaVersion": "memory-os-chaos-failure-drills.v2",
+  "resultsSchemaVersion": "memory-os-chaos-failure-drill-results.v2",
+  "supersedes": "contracts/operations/chaos-failure-drill-contract.v1.json",
+  "description": "Current failure-drill authority. Exact-source CI executes graceful API interruption, parser restart after failed output, and import-flow object-store outage/recovery against PostgreSQL 16 plus MinIO. Database loss/failover and mixed-version failure remain unexecuted. CI system-boundary evidence is not production chaos evidence.",
+  "validator": "scripts/validate-memory-os-chaos-failure-drills-v2.py",
+  "resultPath": "docs/fixtures/memory-os-operability/chaos-failure-drill-results.v2.sample.json",
+  "globalGuards": {
+    "productionEvidence": false,
+    "syntheticDataOnly": true,
+    "exactSourceCommitRequired": true,
+    "secretsInEvidenceForbidden": true,
+    "automaticDestructiveRecoveryForbidden": true,
+    "componentEvidenceCannotSatisfyProductionDrill": true,
+    "localDependencyEvidenceCannotSatisfyProductionDrill": true
+  },
+  "scenarios": [
+    {
+      "scenarioId": "api-graceful-interruption-drain",
+      "domain": "HTTP_API",
+      "executionStatus": "IMPLEMENTED_CI",
+      "evidenceClass": "CI_SYSTEM_BOUNDARY",
+      "command": "go test ./internal/httpserver -run ^TestHTTPServerGracefulInterruptionDrainsInFlightRequest$ -count=1",
+      "workingDirectory": "services/import-api",
+      "evidenceRefs": [
+        "services/import-api/internal/httpserver/interruption_drill_test.go",
+        "services/import-api/internal/httpserver/server.go"
+      ],
+      "limitations": [
+        "single-process loopback listener",
+        "not a multi-instance load-balancer drain",
+        "not production traffic"
+      ]
+    },
+    {
+      "scenarioId": "parser-restart-after-protocol-failure",
+      "domain": "PARSER_WORKER",
+      "executionStatus": "IMPLEMENTED_CI",
+      "evidenceClass": "CI_SYSTEM_BOUNDARY",
+      "command": "go test ./internal/parsersup -run ^TestSupervisorRestartsSameSpoolAfterFailedAttempt$ -count=1",
+      "workingDirectory": "services/import-api",
+      "evidenceRefs": [
+        "services/import-api/internal/parsersup/restart_drill_linux_test.go",
+        "services/import-api/internal/parsersup/supervisor_linux.go"
+      ],
+      "limitations": [
+        "single truncated-frame failure path",
+        "Linux CI test worker artifact",
+        "host restart matrix remains incomplete"
+      ]
+    },
+    {
+      "scenarioId": "object-store-outage-and-recovery",
+      "domain": "OBJECT_STORAGE_IMPORT_FLOW",
+      "executionStatus": "IMPLEMENTED_CI",
+      "evidenceClass": "CI_SYSTEM_BOUNDARY_LOCAL_DEPENDENCIES",
+      "command": "go test ./internal/importflow -run ^TestFlowRecoversAfterObjectStoreOutage$ -count=1",
+      "workingDirectory": "services/import-api",
+      "evidenceRefs": [
+        "services/import-api/internal/importflow/object_outage_drill_linux_test.go",
+        "services/import-api/internal/importflow/flow.go",
+        "services/import-api/internal/importflow/flow_linux_test.go",
+        "services/import-api/internal/objectstore/client.go"
+      ],
+      "requiredAssertions": [
+        "unreachable object-store endpoint fails before parsing",
+        "outage leaves no Preview or job-state mutation",
+        "outage leaves no spool residue",
+        "the exact same request succeeds after connectivity restoration",
+        "recovery commits exactly one Preview with verified accepted/rejected counts"
+      ],
+      "limitations": [
+        "network-unreachable client boundary rather than killing the MinIO process",
+        "ephemeral PostgreSQL 16 and MinIO",
+        "not production TLS, credentials, lifecycle or retention evidence",
+        "not a multi-region or provider failover"
+      ]
+    },
+    {
+      "scenarioId": "database-loss-or-failover",
+      "domain": "POSTGRESQL",
+      "executionStatus": "NOT_IMPLEMENTED",
+      "evidenceClass": "PRODUCTION_SHAPED_DRILL",
+      "command": null,
+      "workingDirectory": null,
+      "evidenceRefs": [],
+      "limitations": [
+        "no database loss or failover drill exists"
+      ]
+    },
+    {
+      "scenarioId": "mixed-version-failure-and-rollback",
+      "domain": "VERSION_COMPATIBILITY",
+      "executionStatus": "NOT_IMPLEMENTED",
+      "evidenceClass": "PRODUCTION_SHAPED_DRILL",
+      "command": null,
+      "workingDirectory": null,
+      "evidenceRefs": [],
+      "limitations": [
+        "no executable old/current mixed-version failure drill exists"
+      ]
+    }
+  ],
+  "readiness": {
+    "contractDefined": true,
+    "validatorImplemented": true,
+    "automaticCiWorkflowImplemented": true,
+    "exactSourceResultCommitted": false,
+    "apiInterruptionExecuted": false,
+    "parserRestartExecuted": false,
+    "objectStoreOutageExecuted": false,
+    "databaseFailoverExecuted": false,
+    "mixedVersionFailureExecuted": false,
+    "productionChaosCompleted": false,
+    "productionReady": false
+  },
+  "evidenceRefs": [
+    "contracts/operations/chaos-failure-drill-contract.v2.json",
+    "services/import-api/internal/httpserver/interruption_drill_test.go",
+    "services/import-api/internal/parsersup/restart_drill_linux_test.go",
+    "services/import-api/internal/importflow/object_outage_drill_linux_test.go",
+    "scripts/validate-memory-os-chaos-failure-drills-v2.py",
+    "scripts/reconcile-memory-os-chaos-failure-drills-v2.py",
+    ".github/workflows/chaos-failure-drills-v2.yml"
+  ]
+}
