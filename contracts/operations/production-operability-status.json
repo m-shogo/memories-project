@@ -427,10 +427,13 @@
         "simultaneous historical-candidate and current Apply requests using one Preview and idempotency key converge on one Apply ID with exactly one new application and one replay",
         "concurrent old/current idempotency claim race leaves one durable claim, one materialized memory item and zero in-progress residue for the raced Preview",
         "historical-candidate process is SIGKILLed while its Apply transaction is blocked before memory materialization; PostgreSQL rolls back the uncommitted claim and memory mutation completely",
-        "current process safely retries the same Preview and idempotency key after historical-process death, creates exactly one durable claim and memory item, and leaves zero in-progress residue"
+        "current process safely retries the same Preview and idempotency key after historical-process death, creates exactly one durable claim and memory item, and leaves zero in-progress residue",
+        "append-only reviewed parser artifact registry separating repository test harnesses, source, build outputs, digest strings and CI results from approved artifact bytes",
+        "artifact writer recomputes exact SHA-256 and byte length, requires three distinct review roles, approved release bindings, replay evidence and independent retention evidence",
+        "test harness worker and Go test binary are explicitly forbidden from being treated as approved production parser artifacts",
+        "empty registry records zero reviewed, replay-proven or rollback-retained parser artifacts and BLOCKED_NO_REVIEWED_PARSER_ARTIFACT"
       ],
       "missingEvidence": [
-        "reviewed parser artifact registry and old parser artifact replay tests",
         "implemented client support windows and client/server skew tests",
         "PostgreSQL minor/major upgrade policy and rehearsal",
         "production rolling deployment and downgrade rehearsal",
@@ -451,7 +454,11 @@
         "executed rollback rehearsal proving startup, session, tenant, deletion, idempotency, parser artifact and exact object-version invariants",
         "traffic-drain and rollback timing evidence with monitored stop conditions and independent review",
         "simultaneous approved-release old/current mutation traffic and concurrent idempotency-claim race coverage on one production-shaped database",
-        "approved-release process termination during in-progress Apply with production-shaped connection-pool cleanup and deterministic recovery evidence"
+        "approved-release process termination during in-progress Apply with production-shaped connection-pool cleanup and deterministic recovery evidence",
+        "reviewed production parser artifact record with exact bytes, build provenance, Security, Runtime and Release Owner approvals",
+        "exact registered old parser artifact replay test with deterministic accepted/rejected accounting and protocol binding",
+        "independent immutable retention evidence for every parser artifact required by a rollback-eligible approved release",
+        "approved release artifact-set digest binding and retirement proof that no rollback release depends on a deleted artifact"
       ],
       "evidenceRefs": [
         ".github/workflows/security-contracts.yml",
@@ -492,7 +499,15 @@
         "scripts/request-memory-os-rollback-rehearsal.py",
         "scripts/validate-memory-os-rollback-rehearsal-gate.py",
         "scripts/reconcile-memory-os-rollback-rehearsal-gate.py",
-        ".github/workflows/rollback-rehearsal-gate.yml"
+        ".github/workflows/rollback-rehearsal-gate.yml",
+        "contracts/operations/parser-artifact-registry-contract.v1.json",
+        "contracts/operations/parser-artifact-registry.v1.json",
+        "docs/runbooks/memory-os-parser-artifact-registry.md",
+        "scripts/register-memory-os-parser-artifact.py",
+        "scripts/validate-memory-os-parser-artifact-registry.py",
+        "scripts/reconcile-memory-os-parser-artifact-registry.py",
+        ".github/workflows/parser-artifact-registry.yml",
+        "services/import-api/internal/parsersup/worker.go"
       ]
     }
   ]
