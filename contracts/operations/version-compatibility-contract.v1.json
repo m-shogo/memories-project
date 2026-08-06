@@ -158,13 +158,21 @@
       "target": "CURRENT_AND_IMMEDIATELY_PREVIOUS_RELEASE",
       "currentAndPreviousTested": false,
       "rollbackTargetValidatedBeforeRollout": false,
-      "mixedVersionObservationRequired": true
+      "mixedVersionObservationRequired": true,
+      "historicalCandidateAndCurrentTested": true,
+      "approvedCurrentAndPreviousReleaseTested": false,
+      "candidateOnlyEvidenceRef": "docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json"
     },
     "database": {
       "supportedMajor": "16",
       "minorUpgradePolicyDefined": false,
       "majorUpgradeRehearsalCompleted": false,
-      "migrationLifecycleRef": "contracts/operations/migration-lifecycle-contract.v1.json"
+      "migrationLifecycleRef": "contracts/operations/migration-lifecycle-contract.v1.json",
+      "postgresql17LogicalForwardUpgradeRehearsed": true,
+      "postgresql17InPlaceOrBlueGreenCutoverRehearsed": false,
+      "postgresql17PhysicalReplicationOrFailoverRehearsed": false,
+      "postgresql17ProductionSupported": false,
+      "logicalUpgradeEvidenceRef": "docs/fixtures/memory-os-operability/postgresql-major-upgrade-results.sample.v1.json"
     },
     "clients": {
       "iOSSupportWindowDefined": false,
@@ -175,7 +183,12 @@
     "parserArtifacts": {
       "reviewedRegistryImplemented": false,
       "retentionWindowDefined": false,
-      "oldArtifactReplayTested": false
+      "oldArtifactReplayTested": false,
+      "reviewedRegistryAuthorityImplemented": true,
+      "reviewedArtifactCount": 0,
+      "rollbackRetainedArtifactCount": 0,
+      "testHarnessApproved": false,
+      "registryRef": "contracts/operations/parser-artifact-registry.v1.json"
     }
   },
   "compatibilityMatrix": [
@@ -289,7 +302,17 @@
     "productionRolloutRehearsalCompleted": false,
     "independentReviewCompleted": false,
     "ready": false,
-    "note": "Compatibility directions and release gates are now explicit. Only the current backend against a clean current PostgreSQL 16 schema is proven in CI. Mixed backend, persisted-state, parser-artifact, client/server and upgrade paths remain unproven, so OPS-P0-008 stays PARTIAL."
+    "note": "Current same-version evidence is supplemented by historical-candidate mixed-process, persisted Apply race and in-flight termination recovery, an isolated PostgreSQL 16 to 17 logical forward rehearsal, and empty fail-closed release/rollback/parser authorities. No approved release pair, reviewed parser artifact, production rollout, client skew or production database cutover is proven; OPS-P0-008 remains PARTIAL.",
+    "historicalCandidateNewSchemaProven": true,
+    "historicalCandidateMixedProcessProven": true,
+    "historicalCandidatePersistedApplyProven": true,
+    "historicalCandidateConcurrentApplyRaceProven": true,
+    "historicalCandidateInFlightTerminationRecoveryProven": true,
+    "postgresql17LogicalForwardUpgradeProven": true,
+    "parserArtifactRegistryAuthorityDefined": true,
+    "reviewedParserArtifactAvailable": false,
+    "rollbackRehearsalAdmissionGateDefined": true,
+    "approvedRollbackPairAvailable": false
   },
   "evidenceRefs": [
     ".github/workflows/security-contracts.yml",
@@ -297,5 +320,125 @@
     "contracts/operations/version-compatibility-contract.v1.json",
     "docs/runbooks/memory-os-version-compatibility.md",
     "scripts/validate-memory-os-version-compatibility.py"
+  ],
+  "supplementalCompatibilityEvidence": [
+    {
+      "id": "FOUNDATION-001",
+      "direction": "HISTORICAL_CANDIDATE_BACKEND_CURRENT_EXPANDED_SCHEMA",
+      "status": "PASS_CANDIDATE_ONLY",
+      "proven": [
+        "pinned historical candidate remains an ancestor of current source",
+        "candidate SQL and reviewed common Go integration surfaces pass on the current expanded PostgreSQL schema",
+        "candidate execution preserves the normalized memory_os schema fingerprint"
+      ],
+      "notProven": [
+        "approved immediately previous release",
+        "production traffic or production dependencies",
+        "rolling deployment or rollback eligibility"
+      ],
+      "evidenceRefs": [
+        "contracts/operations/mixed-version-candidate-contract.v1.json",
+        "docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json"
+      ]
+    },
+    {
+      "id": "FOUNDATION-002",
+      "direction": "HISTORICAL_CANDIDATE_CURRENT_SHARED_SCHEMA_SESSIONS_AND_APPLY",
+      "status": "PASS_CANDIDATE_ONLY",
+      "proven": [
+        "sessions issued by either process resolve through the other process",
+        "old and current processes replay each other's persisted Apply idempotency claims",
+        "simultaneous old/current Apply contention converges on one Apply ID with no duplicate materialization",
+        "SIGKILL of the historical process inside an uncommitted Apply transaction leaves no durable residue and current safely retries the exact request"
+      ],
+      "notProven": [
+        "approved current and previous release pair",
+        "production-shaped connection pools, host loss or network partition",
+        "traffic drain, rollout percentages or application rollback"
+      ],
+      "evidenceRefs": [
+        "contracts/operations/mixed-version-session-contract.v1.json",
+        "docs/fixtures/memory-os-operability/mixed-version-session-results.sample.v1.json",
+        "contracts/operations/mixed-version-apply-contract.v1.json",
+        "docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json"
+      ]
+    },
+    {
+      "id": "FOUNDATION-003",
+      "direction": "POSTGRESQL_16_TO_17_LOGICAL_FORWARD_RESTORE",
+      "status": "PASS_LOCAL_CI_ONLY",
+      "proven": [
+        "fresh PostgreSQL 17 target receives the exact current expand-only migration sequence",
+        "PostgreSQL 17 client creates a data-only dump from PostgreSQL 16 and restores it into the fresh target",
+        "schema authority, NOBYPASSRLS roles, FORCE RLS, active session authority and deletion non-resurrection checks pass",
+        "the complete canonical SQL integration suite passes on PostgreSQL 17"
+      ],
+      "notProven": [
+        "in-place pg_upgrade or production blue-green cutover",
+        "physical replication, WAL continuity, replication slots or failover",
+        "PostgreSQL 17 production support or target-to-source downgrade"
+      ],
+      "evidenceRefs": [
+        "contracts/operations/postgresql-major-upgrade-contract.v1.json",
+        "docs/fixtures/memory-os-operability/postgresql-major-upgrade-results.sample.v1.json"
+      ]
+    },
+    {
+      "id": "FOUNDATION-004",
+      "direction": "REVIEWED_PARSER_ARTIFACT_AUTHORITY",
+      "status": "FOUNDATION_ONLY_EMPTY",
+      "proven": [
+        "append-only parser artifact registration authority exists",
+        "test harness, source, build success, digest strings and unapproved releases cannot imply reviewed artifact authority",
+        "writer verifies exact external artifact bytes, digest, size, approvals, retention and replay evidence before atomic registration"
+      ],
+      "notProven": [
+        "any reviewed production parser artifact",
+        "old registered artifact replay through the current supervisor",
+        "immutable rollback retention for an approved release"
+      ],
+      "evidenceRefs": [
+        "contracts/operations/parser-artifact-registry-contract.v1.json",
+        "contracts/operations/parser-artifact-registry.v1.json"
+      ]
+    },
+    {
+      "id": "FOUNDATION-005",
+      "direction": "APPROVED_RELEASE_AND_ROLLBACK_ADMISSION",
+      "status": "BLOCKED_NO_APPROVED_PAIR",
+      "proven": [
+        "append-only release and rollback-rehearsal admission authorities exist",
+        "candidate, CI PASS, branch head, unbound tag and unapproved release IDs cannot manufacture approval",
+        "zero approved releases yields zero admissible rollback pairs"
+      ],
+      "notProven": [
+        "approved predecessor and successor releases",
+        "rollback-eligible retained binaries and parser artifacts",
+        "executed isolated rollback rehearsal or production rollout"
+      ],
+      "evidenceRefs": [
+        "contracts/operations/release-baseline-registry-contract.v1.json",
+        "contracts/operations/release-baseline-registry.v1.json",
+        "contracts/operations/rollback-rehearsal-gate-contract.v1.json",
+        "contracts/operations/rollback-rehearsal-registry.v1.json"
+      ]
+    }
+  ],
+  "foundationEvidenceRefs": [
+    "contracts/operations/mixed-version-session-contract.v1.json",
+    "docs/fixtures/memory-os-operability/mixed-version-session-results.sample.v1.json",
+    "contracts/operations/mixed-version-candidate-contract.v1.json",
+    "docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json",
+    "contracts/operations/mixed-version-apply-contract.v1.json",
+    "docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json",
+    "contracts/operations/release-baseline-registry-contract.v1.json",
+    "contracts/operations/release-baseline-registry.v1.json",
+    "contracts/operations/rollback-rehearsal-gate-contract.v1.json",
+    "contracts/operations/rollback-rehearsal-registry.v1.json",
+    "contracts/operations/parser-artifact-registry-contract.v1.json",
+    "contracts/operations/parser-artifact-registry.v1.json",
+    "contracts/operations/postgresql-major-upgrade-contract.v1.json",
+    "docs/fixtures/memory-os-operability/postgresql-major-upgrade-results.sample.v1.json",
+    "scripts/validate-memory-os-version-compatibility-foundations.py"
   ]
 }

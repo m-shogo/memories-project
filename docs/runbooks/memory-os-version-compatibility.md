@@ -38,7 +38,9 @@ A PASS in one direction does not imply the reverse direction.
 
 ## Current proven baseline
 
-The repository currently proves only:
+The repository now proves several **bounded, directional foundations**. They are not interchangeable and none is an approved production release pair.
+
+### Same-version current stack
 
 ```text
 current Go 1.23.x backend
@@ -47,15 +49,42 @@ current Go 1.23.x backend
 → current SQL and Go integration suites
 ```
 
-This is same-version evidence. The following remain unproven:
+### Historical-candidate compatibility foundation
 
-- immediately previous backend against expanded current schema;
-- mixed old/new backend instances;
-- old persisted jobs/Previews consumed by a later release beyond current fixture coverage;
-- retained old parser artifact replay;
+A pinned historical candidate—not an approved immediately previous release—has passed exact-source CI against the current expanded schema. Old/current processes also share session authority and persisted Apply idempotency correctly, including:
+
+- bidirectional session resolution;
+- old Apply → current replay and current Apply → old replay;
+- simultaneous old/current contention on one Preview and idempotency key;
+- one first application plus one replay with one Apply ID;
+- SIGKILL of the historical process while its PostgreSQL Apply transaction is observably blocked before materialization;
+- complete rollback of the killed transaction and safe current-process retry of the exact request.
+
+This remains `PASS_CANDIDATE_ONLY`. It does not prove an approved release pair, production rolling traffic, traffic drain or rollback eligibility.
+
+### PostgreSQL 16 → 17 logical forward foundation
+
+An isolated exact-source rehearsal applies the current expand-only schema independently to PostgreSQL 16 and 17, dumps PostgreSQL 16 with PostgreSQL 17 client tools, restores data-only into the fresh PostgreSQL 17 target, and verifies schema authority, RLS, session authority, deletion non-resurrection and all canonical SQL integration tests.
+
+This is `PASS_LOCAL_CI_ONLY`. It is not in-place `pg_upgrade`, physical replication, production blue-green cutover, failover, downgrade or PostgreSQL 17 production support.
+
+### Approval and artifact foundations
+
+The repository has append-only authorities for approved releases, rollback-rehearsal admission and reviewed parser artifacts. All are deliberately empty:
+
+- approved releases: `0`;
+- admissible rollback pairs: `0`;
+- reviewed parser artifacts: `0`;
+- retained rollback parser artifacts: `0`.
+
+Therefore the following remain unproven:
+
+- an approved immediately previous/current release pair;
+- production rolling deployment and rollback rehearsal;
+- reviewed old parser artifact replay and immutable retention;
 - old/new iOS client and server skew;
-- PostgreSQL minor/major upgrade behavior;
-- production rolling deployment and downgrade rehearsal.
+- PostgreSQL minor-version policy, production cutover, replication and failover;
+- independent review.
 
 ## Required release record
 
@@ -260,19 +289,39 @@ A mobile client cannot be rolled back instantly after broad distribution. Server
 
 ## Step 6 — PostgreSQL upgrades
 
-Current baseline is PostgreSQL 16, not every PostgreSQL 16 minor and not a future major.
+Current production baseline remains PostgreSQL 16. The repository has an isolated PostgreSQL 16 → 17 **logical forward restore** foundation, but this does not automatically support PostgreSQL 17 in production.
 
-Before an upgrade:
+The bounded rehearsal proves:
+
+- the exact current expand-only migration sequence applies independently to PostgreSQL 16 and 17;
+- PostgreSQL 17 client tools can create a data-only dump from PostgreSQL 16;
+- data restores into a fresh migrated PostgreSQL 17 target;
+- bounded schema authority fingerprints match;
+- runtime roles remain `NOBYPASSRLS` and protected tables remain `FORCE RLS`;
+- active session authority survives and deleted authority does not resurrect;
+- all canonical SQL integration tests pass on PostgreSQL 17.
+
+It does **not** prove:
+
+- supported PostgreSQL 16 or 17 minor-version windows;
+- in-place `pg_upgrade`;
+- production blue-green cutover or connection-pool drain;
+- physical replication, WAL continuity, replication slots or failover;
+- target-to-source downgrade;
+- approved RPO/RTO or operator promotion.
+
+Before a production upgrade:
 
 - define supported minor versions;
-- test current/previous backend against source and target database versions;
+- test approved current/previous releases against source and target database versions;
 - verify extensions, roles, functions, RLS policies and SQL behavior;
 - rehearse backup/restore/PITR with the target version;
-- verify migration lock/runtime behavior;
-- verify rollback/forward migration plan;
-- update the matrix and evidence.
+- verify migration lock/runtime behavior and connection-pool drain;
+- verify forward-fix and irreversible rollback boundaries;
+- obtain database recovery and independent review approval;
+- update the matrix and release evidence.
 
-A successful schema migration on PostgreSQL 16 does not prove PostgreSQL 17 compatibility.
+A successful schema migration on PostgreSQL 16 does not prove PostgreSQL 17 compatibility. The isolated logical rehearsal is useful evidence, but it does not prove every production upgrade mode.
 
 ## Step 7 — Observe mixed versions
 
@@ -341,13 +390,15 @@ Treat as an incident. Decide forward-fix or isolated restore using the migration
 
 The repository still lacks:
 
-- old/current backend mixed-version executable tests;
-- persisted-state compatibility fixtures across releases;
-- reviewed parser artifact registry and old-artifact replay;
-- iOS/portal implementation and client support window;
+- an approved immediately previous/current release pair despite strong historical-candidate compatibility evidence;
+- production rolling traffic, connection drain and application rollback rehearsal;
+- a reviewed production parser artifact, old-artifact replay and immutable rollback retention;
+- iOS/portal implementation and client support windows;
 - client/server skew tests;
-- PostgreSQL minor/major upgrade policy and rehearsal;
-- production rolling deployment/downgrade rehearsal;
+- PostgreSQL minor-version policy, in-place or production blue-green cutover, replication and failover evidence;
+- approved RPO/RTO and production recovery promotion;
 - independent review.
+
+The existing candidate-only, empty-registry and logical-upgrade foundations must not be relabeled as production or release compatibility evidence.
 
 Therefore `OPS-P0-008` remains `PARTIAL` and production remains `NO_GO`.
