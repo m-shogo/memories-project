@@ -55,6 +55,13 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def has_gap(missing: list[Any], aliases: tuple[str, ...]) -> bool:
+    return any(
+        isinstance(item, str) and any(alias in item for alias in aliases)
+        for item in missing
+    )
+
+
 def main() -> int:
     contract = load(CONTRACT_PATH)
     readiness = contract.get("readiness")
@@ -107,15 +114,19 @@ def main() -> int:
             refs.append(ref)
             changed = True
 
-    for required_gap in (
-        "production metrics scrape secret provisioning",
-        "external Prometheus/OTel scraper integration",
-        "dashboards and load-calibrated",
-        "alert routing",
-        "metrics retention policy",
-    ):
-        require(any(required_gap in item for item in missing),
-                f"required OPS-P0-004 gap disappeared: {required_gap}")
+    # Later independent reconciles refine the coarse dashboard, retention and
+    # alert gaps. Accept either wording while requiring each production concern
+    # to remain open. This makes repeated self-healing runs order-independent.
+    required_gap_groups = (
+        ("production metrics scrape secret provisioning",),
+        ("external Prometheus/OTel scraper integration",),
+        ("dashboards and load-calibrated", "provider dashboard generation/deployment"),
+        ("alert routing", "production alert routing"),
+        ("metrics retention policy", "metrics backend retention tiers"),
+    )
+    for aliases in required_gap_groups:
+        require(has_gap(missing, aliases),
+                f"required OPS-P0-004 gap disappeared: {aliases[0]}")
 
     require(gate.get("status") == "PARTIAL", "metrics readiness changed unexpectedly")
     require(status.get("productionDecision") == "NO_GO",
