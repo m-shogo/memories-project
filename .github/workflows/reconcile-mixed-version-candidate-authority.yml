@@ -1,0 +1,73 @@
+name: Reconcile Mixed-Version Candidate Authority
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/reconcile-mixed-version-candidate-authority.yml"
+      - "contracts/operations/mixed-version-candidate-contract.v1.json"
+      - "docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json"
+      - "docs/fixtures/memory-os-operability/mixed-version-candidate-rejections.v1.json"
+      - "scripts/validate-memory-os-mixed-version-candidate.py"
+      - "scripts/reconcile-memory-os-mixed-version-candidate.py"
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reconcile-mixed-version-candidate-authority-so
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    if: >-
+      github.event_name != 'push' ||
+      !contains(github.event.head_commit.message, 'docs(version): reconcile candidate baseline evidence')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout latest so
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm exact clean authority source
+        run: |
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          python -m py_compile \
+            scripts/validate-memory-os-mixed-version-candidate.py \
+            scripts/reconcile-memory-os-mixed-version-candidate.py
+
+      - name: Reconcile then validate candidate authority
+        run: |
+          python scripts/reconcile-memory-os-mixed-version-candidate.py
+          python scripts/validate-memory-os-mixed-version-candidate.py
+          python scripts/validate-memory-os-version-compatibility.py
+          python scripts/validate-memory-os-operability.py
+
+      - name: Commit candidate contract and status together
+        run: |
+          git add \
+            contracts/operations/mixed-version-candidate-contract.v1.json \
+            contracts/operations/production-operability-status.json
+          if git diff --cached --quiet; then
+            echo "Mixed-version candidate authority is already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs(version): reconcile candidate baseline evidence"
+          git pull --rebase origin so
+          git push origin HEAD:so
