@@ -1,0 +1,99 @@
+{
+  "contractId": "memory-os.operability.rate-limit-operation-evidence.v1",
+  "schemaVersion": "memory-os-rate-limit-operation-evidence.v1",
+  "recordSchemaVersion": "memory-os-rate-limit-operation-record.v1",
+  "description": "Append-only evidence format for rate-limit emergency-mode activation, recovery and drills. Records contain only operational identifiers, closed enums, exact source authority and privacy-safe verification results. They are not a production control plane and cannot activate or restore a mode by themselves.",
+  "sourceOperationsContract": "contracts/operations/rate-limit-operations-contract.v1.json",
+  "sourcePolicyContract": "contracts/operations/rate-limit-policy-contract.v1.json",
+  "ledgerDirectory": "docs/evidence/rate-limit-operations",
+  "template": "docs/fixtures/memory-os-operability/rate-limit-operation-record.template.v1.json",
+  "writer": "scripts/create-memory-os-rate-limit-operation-evidence.py",
+  "validator": "scripts/validate-memory-os-rate-limit-operation-evidence.py",
+  "record": {
+    "operationIdPattern": "^RLOP-[0-9]{8}T[0-9]{6}Z-[a-z0-9]{6,24}$",
+    "incidentReferencePattern": "^(INC|DRILL)-[A-Z0-9][A-Z0-9_-]{2,63}$",
+    "actorPattern": "^[a-z][a-z0-9_-]{2,63}$",
+    "environmentValues": [
+      "LOCAL",
+      "CI",
+      "STAGING",
+      "PRODUCTION"
+    ],
+    "modeValues": [
+      "NORMAL_CONFIGURED",
+      "STRICT_LOCAL_EMERGENCY",
+      "ROUTE_FAIL_CLOSED"
+    ],
+    "proxyModeValues": [
+      "TRUSTED_PROXY_CONFIGURED",
+      "TRUSTED_PROXY_DISABLED"
+    ],
+    "activationReasonValues": [
+      "SHARED_STORE_FAILURE",
+      "POLICY_UNCERTAINTY",
+      "PROXY_BOUNDARY_UNCERTAINTY",
+      "CARDINALITY_PRESSURE",
+      "BOUNDED_RECOVERY_CANARY",
+      "DRILL"
+    ],
+    "lifecycleValues": [
+      "PLANNED",
+      "ACTIVE",
+      "RESTORED",
+      "FAILED"
+    ],
+    "verificationResultValues": [
+      "PASS",
+      "FAIL",
+      "NOT_RUN"
+    ],
+    "requiredVerificationChecks": [
+      "shared_store_atomicity",
+      "policy_generation_exact_source",
+      "trusted_proxy_boundary",
+      "rejected_requests_no_account_session_replay_mutation",
+      "rejected_requests_no_upload_apply_memory_mutation",
+      "metrics_and_events_present",
+      "bounded_canary",
+      "temporary_mode_expired"
+    ],
+    "maximumEmergencyDurationMinutes": 60,
+    "fullSourceCommitShaRequired": true,
+    "operatorReviewerMustDiffer": true,
+    "productionRequiresConfirmation": true,
+    "restoredRequiresAllChecksPass": true,
+    "failedRequiresOpenRisk": true,
+    "appendOnly": true
+  },
+  "privacy": {
+    "classification": "operational_sensitive_no_secrets",
+    "rawIpForbidden": true,
+    "networkDigestForbidden": true,
+    "tokenForbidden": true,
+    "accountOrSessionIdentifierForbidden": true,
+    "requestContentForbidden": true,
+    "rawUrlForbidden": true,
+    "databaseOrStoreCredentialForbidden": true,
+    "freeFormEvidenceTextForbidden": true,
+    "evidenceRefsMustBeRepositoryRelative": true
+  },
+  "readiness": {
+    "recordContractDefined": true,
+    "exclusiveWriterImplemented": true,
+    "ledgerValidatorImplemented": true,
+    "duplicateOperationIdRejected": true,
+    "privacyValidationImplemented": true,
+    "productionControlPlaneImplemented": false,
+    "automaticModeExpiryImplemented": false,
+    "productionEvidenceRecorded": false,
+    "operatorReviewCompleted": false,
+    "productionReady": false
+  },
+  "evidenceRefs": [
+    "contracts/operations/rate-limit-operation-evidence-contract.v1.json",
+    "docs/evidence/rate-limit-operations/README.md",
+    "docs/fixtures/memory-os-operability/rate-limit-operation-record.template.v1.json",
+    "scripts/create-memory-os-rate-limit-operation-evidence.py",
+    "scripts/validate-memory-os-rate-limit-operation-evidence.py"
+  ]
+}
