@@ -1,0 +1,65 @@
+name: Object Restore Contracts
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/object-restore-contracts.yml"
+      - ".github/workflows/local-object-version-restore.yml"
+      - "contracts/operations/local-object-version-restore-contract.v1.json"
+      - "contracts/operations/backup-restore-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "scripts/run-memory-os-local-object-version-restore.py"
+      - "scripts/validate-memory-os-local-object-version-restore.py"
+      - "scripts/reconcile-memory-os-local-object-version-restore.py"
+      - "scripts/validate-memory-os-backup-restore.py"
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/object-restore-contracts.yml"
+      - ".github/workflows/local-object-version-restore.yml"
+      - "contracts/operations/local-object-version-restore-contract.v1.json"
+      - "contracts/operations/backup-restore-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "scripts/run-memory-os-local-object-version-restore.py"
+      - "scripts/validate-memory-os-local-object-version-restore.py"
+      - "scripts/reconcile-memory-os-local-object-version-restore.py"
+      - "scripts/validate-memory-os-backup-restore.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: object-restore-contracts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile validators and runner
+        run: |
+          python -m py_compile \
+            scripts/run-memory-os-local-object-version-restore.py \
+            scripts/validate-memory-os-local-object-version-restore.py \
+            scripts/reconcile-memory-os-local-object-version-restore.py \
+            scripts/validate-memory-os-backup-restore.py
+
+      - name: Validate local object-version restore boundary
+        run: python scripts/validate-memory-os-local-object-version-restore.py
+
+      - name: Validate broader backup and restore policy
+        run: python scripts/validate-memory-os-backup-restore.py
+
+      - name: Validate production authority remains fail-closed
+        run: python scripts/validate-memory-os-operability.py
