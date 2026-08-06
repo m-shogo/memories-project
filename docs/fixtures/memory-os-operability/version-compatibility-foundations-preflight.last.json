@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "diagnose-version-compatibility-foundations",
+  "sourceCommitSha": "1a3ee53c73cd5d73b10e39069a3da7ebb1a86cf0",
+  "result": "PASS",
+  "exitCode": 0,
+  "output": "STAGE: compile-foundation-tools\nSTAGE: patch-canonical-validator\ncanonical validator patch preflight PASS\nSTAGE: reconcile-contract-and-runbook\nReconciled candidate-only compatibility foundations; production remains NO_GO\nSTAGE: compile-resulting-files\n",
+  "containsSecrets": false,
+  "productionEvidence": false,
+  "releaseCompatibilityEvidence": false
+}
