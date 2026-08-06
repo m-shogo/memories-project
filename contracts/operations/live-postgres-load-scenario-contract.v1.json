@@ -1,0 +1,53 @@
+{
+  "contractId": "memory-os.operability.live-postgres-load-scenario-contract.v1",
+  "schemaVersion": "memory-os-live-load-scenario.v1",
+  "resultsSchemaVersion": "memory-os-live-load-results.v1",
+  "description": "Machine-readable checkpoint for live HTTP load over the deployment PostgreSQL principal and FORCE RLS. The environment is an ephemeral PostgreSQL 16 and MinIO harness in GitHub Actions. These figures are not production capacity evidence and cannot make OPS-P0-006 READY.",
+  "sourceWorkflow": ".github/workflows/regenerate-live-postgres-load-results.yml",
+  "resultPath": "docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json",
+  "dependencyMode": "LOCAL_POSTGRES",
+  "productionEvidence": false,
+  "scenarios": [
+    {
+      "scenarioId": "authenticated-preview-local-postgres",
+      "route": "GET /v1/import-jobs/{jobId}/preview",
+      "workloadType": "STEADY",
+      "requests": 500,
+      "concurrency": 24,
+      "expectedStatusClasses": ["2xx"],
+      "successCriteria": "all requests return 2xx with no transport or 5xx failures through bearer session resolution, deployment-principal transaction scope and FORCE RLS",
+      "integrityCriteria": "the prepared Preview remains one ready Preview with its original candidate/rejection evidence",
+      "privacyClass": "operational_nonpersonal",
+      "evidenceRefs": [
+        "services/import-api/internal/httpserver/live_load_test.go",
+        "services/import-api/internal/httpserver/server_live_test.go"
+      ]
+    },
+    {
+      "scenarioId": "concurrent-idempotent-apply-local-postgres",
+      "route": "POST /v1/previews/{previewId}/apply",
+      "workloadType": "BURST",
+      "requests": 96,
+      "concurrency": 24,
+      "expectedStatusClasses": ["2xx", "4xx"],
+      "successCriteria": "at least one transaction completes, concurrent in-progress requests may be rejected, no request produces a transport or 5xx failure, and an exact replay succeeds after the burst",
+      "integrityCriteria": "exactly two memory_item rows and exactly one apply_confirmation row exist for the shared Preview and idempotency key",
+      "privacyClass": "operational_nonpersonal",
+      "evidenceRefs": [
+        "services/import-api/internal/httpserver/live_load_test.go",
+        "services/import-api/internal/apply/service.go",
+        "services/import-api/internal/pgrepo/apply.go"
+      ]
+    }
+  ],
+  "readiness": {
+    "livePostgresHTTPBoundary": true,
+    "forceRLSDeploymentPrincipal": true,
+    "idempotencyIntegrityAssertion": true,
+    "objectStoreMeasured": false,
+    "sustainedSoakEvidence": false,
+    "capacityBoundaryEstablished": false,
+    "productionEquivalentDependencies": false,
+    "note": "This checkpoint closes only the MOCK-only blind spot for Preview read and concurrent idempotent Apply. Object-store load, sustained soak, saturation/capacity boundaries and production-equivalent behavior remain missing."
+  }
+}
