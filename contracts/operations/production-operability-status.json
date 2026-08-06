@@ -1,6 +1,6 @@
 {
   "schemaVersion": "memory-os-operability-status.0.1",
-  "asOf": "2026-07-28",
+  "asOf": "2026-08-06",
   "productionDecision": "NO_GO",
   "authority": "docs/memory-os-production-operability-audit-2026-07-24.md",
   "rules": {
@@ -155,15 +155,20 @@
         "deterministic in-process load harness (concurrency, p50/p95/p99 latency, max in-flight, status-class counts, goroutine and heap-alloc deltas, total metric-series count)",
         "mock Apple sign-in load path through the real measurement decorators (apple exchange, session issuance, replay, three database seams) over in-memory stores",
         "authenticated preview-read and apply request boundaries instrumented (preview_read, apply_transaction db operations) and driven under mock-session load",
-        "steady, burst, rate-limit-store-failure, cardinality-attack, authenticated-preview and concurrent-apply scenarios with data-integrity assertions (accounts/sessions/replay state, sessions equal admitted 2xx, db op count equals request count, no state mutation on fail-closed)",
-        "failure-injection proof (rate-limit store outage fails closed with no business-state mutation) and a bounded-cardinality proof under a 5000-request hostile stream",
-        "machine-readable scenario contract and results document with environment metadata, plus a fail-closed load validator with an 11-case negative fixture"
+        "steady, burst, rate-limit-store-failure, cardinality-attack, authenticated-preview and concurrent-apply scenarios with data-integrity assertions",
+        "failure-injection proof and bounded-cardinality proof under a 5000-request hostile stream",
+        "machine-readable mock scenario contract and committed results with fail-closed validation",
+        "executable live PostgreSQL HTTP checkpoint for Preview read and concurrent idempotent Apply through bearer sessions, deployment principal and FORCE RLS",
+        "executable live MinIO signed-upload lifecycle checkpoint covering authorization, presigned PUT, exact-version completion and scan enqueue",
+        "machine-readable live PostgreSQL and live object-storage contracts with independent fail-closed validators",
+        "automatic push-triggered and daily self-healing GitHub Actions workflow for PostgreSQL 16 and MinIO evidence regeneration"
       ],
       "missingEvidence": [
-        "production-shaped workload against live PostgreSQL and object storage (preview/apply are load-measured only under MOCK; object-store/import paths are not yet load-measured)",
+        "exact-HEAD committed PASS results from the live PostgreSQL and MinIO checkpoint (automatic generation pending)",
         "capacity boundary, saturation report and load-calibrated operational thresholds",
         "sustained soak with RSS/heap/goroutine-slope evidence (SOAK PROOF INSUFFICIENT)",
-        "production-equivalent dependency behavior and real-Apple load evidence"
+        "production-equivalent dependency behavior and real-Apple load evidence",
+        "production object-store TLS, scoped credentials, retention and lifecycle evidence"
       ],
       "evidenceRefs": [
         "services/import-api/internal/loadtest/harness.go",
@@ -172,11 +177,18 @@
         "services/import-api/internal/loadtest/scenarios_test.go",
         "services/import-api/internal/loadtest/authenticated_test.go",
         "services/import-api/internal/servicemetrics/servicemetrics.go",
+        "services/import-api/internal/httpserver/live_load_test.go",
+        "services/import-api/internal/httpserver/live_object_load_test.go",
         "contracts/operations/load-test-scenario-contract.v1.json",
+        "contracts/operations/live-postgres-load-scenario-contract.v1.json",
+        "contracts/operations/live-object-load-scenario-contract.v1.json",
         "docs/fixtures/memory-os-operability/load-results.sample.v1.json",
         "docs/fixtures/memory-os-operability/load-results.negative.v1.json",
         "docs/memory-os-load-measurement-inventory.md",
-        "scripts/validate-memory-os-load.py"
+        "scripts/validate-memory-os-load.py",
+        "scripts/validate-memory-os-live-load.py",
+        "scripts/validate-memory-os-live-object-load.py",
+        ".github/workflows/regenerate-live-postgres-load-results.yml"
       ]
     },
     {
