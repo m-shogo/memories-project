@@ -112,6 +112,11 @@
   "evidenceRefs": [
     "contracts/operations/parser-artifact-registry-contract.v1.json",
     "contracts/operations/parser-artifact-registry.v1.json",
+    "docs/runbooks/memory-os-parser-artifact-registry.md",
+    "scripts/register-memory-os-parser-artifact.py",
+    "scripts/validate-memory-os-parser-artifact-registry.py",
+    "scripts/reconcile-memory-os-parser-artifact-registry.py",
+    ".github/workflows/parser-artifact-registry.yml",
     "services/import-api/internal/parsersup/worker.go"
   ]
 }
