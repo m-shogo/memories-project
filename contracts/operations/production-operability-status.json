@@ -82,11 +82,16 @@
         "request/correlation IDs with inbound validation and context propagation",
         "HTTP request/panic/lifecycle events with low-cardinality route templates",
         "redaction canary tests over log output, HTTP error and panic recovery",
-        "machine-readable event contract with drift and negative-case validator"
+        "machine-readable event contract with drift and negative-case validator",
+        "binding privacy-first observability retention tiers for 14-day hot, 90-day warm and 365-day reviewed incident evidence",
+        "least-privilege log access roles with separation between on-call, incident command, security review and observability administration",
+        "default-denied 60-minute break-glass and reviewed export policies with append-only access audit requirements",
+        "canonical access, export, retention-expiry and sink-health response runbook"
       ],
       "missingEvidence": [
-        "log retention and access policy configured",
-        "real alert routing (paging/dashboards) wired to the structured events"
+        "real alert routing (paging/dashboards) wired to the structured events",
+        "production log backend retention enforcement, expiry verification and ingestion-freshness monitoring",
+        "production identity-group assignment, append-only access-audit sink, periodic access review and tested break-glass/export workflows"
       ],
       "evidenceRefs": [
         "contracts/operations/observability-event-contract.v1.json",
@@ -96,7 +101,11 @@
         "services/import-api/internal/obslog/event.go",
         "services/import-api/internal/reqid/reqid.go",
         "services/import-api/internal/httpserver/observability.go",
-        "services/import-api/internal/httpserver/observability_test.go"
+        "services/import-api/internal/httpserver/observability_test.go",
+        "contracts/operations/observability-retention-access-contract.v1.json",
+        "docs/runbooks/memory-os-observability-access.md",
+        "scripts/validate-memory-os-observability-access.py",
+        "scripts/reconcile-memory-os-observability-access.py"
       ]
     },
     {

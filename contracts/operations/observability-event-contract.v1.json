@@ -160,11 +160,22 @@
     "accountOrAppleSubjectNotUsedAsCorrelation": true
   },
   "retention": {
-    "policyDefined": false,
-    "note": "Log retention and access policy is deployment configuration and is NOT yet configured. This is one of the reasons OPS-P0-003 is not READY."
+    "policyDefined": true,
+    "note": "Retention and access policy is defined in the dedicated privacy-first contract, but no production log backend, identity groups, access-audit sink, break-glass workflow or expiry verification is configured. OPS-P0-003 remains PARTIAL.",
+    "policyContract": "contracts/operations/observability-retention-access-contract.v1.json",
+    "backendConfigured": false,
+    "enforcementVerified": false
   },
   "alertRouting": {
     "routingConfigured": false,
     "note": "Real alert routing (paging/dashboards) is deployment configuration and is NOT yet configured. The deletion backlog event is emitted structured, but nothing routes it to an operator alerting system yet. This is the other reason OPS-P0-003 is not READY."
+  },
+  "accessPolicy": {
+    "policyDefined": true,
+    "policyContract": "contracts/operations/observability-retention-access-contract.v1.json",
+    "identityGroupsConfigured": false,
+    "accessAuditConfigured": false,
+    "breakGlassTested": false,
+    "exportTested": false
   }
 }
