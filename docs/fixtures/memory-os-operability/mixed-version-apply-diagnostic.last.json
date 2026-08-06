@@ -1,12 +1,12 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "mixed-version-apply",
-  "sourceCommitSha": "ea76de9bcc8be259e344d7adb115aae15ba44e17",
+  "sourceCommitSha": "2ed5e44a21184a464378e3c4f11e5ac999766b87",
   "result": "PASS",
   "exitCode": 0,
   "validationResult": "PASS",
   "validationExitCode": 0,
-  "output": "MIXED-VERSION APPLY STAGE: apply-current-migrations\nMIXED-VERSION APPLY STAGE: build-old-current-and-fixture\nPreparing worktree (detached HEAD 2af6e8e)\nMIXED-VERSION APPLY STAGE: commit-three-synthetic-previews\nMIXED-VERSION APPLY STAGE: start-two-processes\nMIXED-VERSION APPLY STAGE: execute-bidirectional-apply-replay\nMIXED-VERSION APPLY STAGE: verify-sequential-accounting\nMIXED-VERSION APPLY STAGE: execute-concurrent-old-current-claim-race\nMIXED-VERSION APPLY STAGE: verify-final-race-accounting\nMixed-version Apply drill PASS: old=2af6e8e10755cc707c6bdd958a049a0f4afb3d70 current=ea76de9bcc8be259e344d7adb115aae15ba44e17 concurrent-race=true\n\n--- validator ---\nMemory OS mixed-version Apply validation PASS\nold backend: 2af6e8e10755\ncurrent source: ea76de9bcc8b\nreconciled: True\nconcurrent race: True\nproduction decision: NO_GO\n",
+  "output": "MIXED-VERSION APPLY STAGE: apply-current-migrations\nMIXED-VERSION APPLY STAGE: build-old-current-and-fixture\nPreparing worktree (detached HEAD 2af6e8e)\nMIXED-VERSION APPLY STAGE: commit-three-synthetic-previews\nMIXED-VERSION APPLY STAGE: start-two-processes\nMIXED-VERSION APPLY STAGE: execute-bidirectional-apply-replay\nMIXED-VERSION APPLY STAGE: verify-sequential-accounting\nMIXED-VERSION APPLY STAGE: execute-concurrent-old-current-claim-race\nMIXED-VERSION APPLY STAGE: verify-final-race-accounting\nMixed-version Apply drill PASS: old=2af6e8e10755cc707c6bdd958a049a0f4afb3d70 current=2ed5e44a21184a464378e3c4f11e5ac999766b87 concurrent-race=true\n\n--- validator ---\nMemory OS mixed-version Apply validation PASS\nold backend: 2af6e8e10755\ncurrent source: 2ed5e44a2118\nreconciled: True\nconcurrent race: True\nproduction decision: NO_GO\n",
   "containsSecrets": false,
   "productionEvidence": false,
   "releaseCompatibilityEvidence": false
