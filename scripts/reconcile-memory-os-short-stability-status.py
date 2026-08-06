@@ -137,7 +137,7 @@ def main() -> int:
     if load_readiness.get("shortCIStabilitySampleExecuted") is not True:
         load_readiness["shortCIStabilitySampleExecuted"] = True
         changed_load = True
-    for field in ("sustainedSoak", "operationalThresholds", "capacityBoundaryEstablished"):
+    for field in ("sustainedSoakEvidence", "operationalThresholds", "capacityBoundaryEstablished"):
         require(load_readiness.get(field) is False,
                 f"short sample cannot promote load readiness: {field}")
     note = (
