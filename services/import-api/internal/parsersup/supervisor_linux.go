@@ -218,6 +218,15 @@ func (s *Supervisor) runWorker(ctx context.Context, request ParseRequest, writer
 	if err := outputRead.SetReadDeadline(deadline); err != nil {
 		return previewspool.SealEvidence{}, fmt.Errorf("bind parser wall clock: %w", err)
 	}
+	stopCancellationWatch := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = outputRead.SetReadDeadline(time.Now())
+		case <-stopCancellationWatch:
+		}
+	}()
+	defer close(stopCancellationWatch)
 
 	var outputBytes int64
 	payload := make([]byte, 0, 64*1024)
@@ -226,6 +235,9 @@ func (s *Supervisor) runWorker(ctx context.Context, request ParseRequest, writer
 			return previewspool.SealEvidence{}, err
 		}
 		tag, record, err := readFrame(outputRead, payload)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return previewspool.SealEvidence{}, ctxErr
+		}
 		if errors.Is(err, io.EOF) {
 			break
 		}
