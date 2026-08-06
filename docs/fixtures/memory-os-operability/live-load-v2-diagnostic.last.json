@@ -1,10 +1,10 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "regenerate-live-dependency-load-v2",
-  "sourceCommitSha": "c047747b383f6e085713d32667d72c4646a41ed2",
+  "sourceCommitSha": "86fdaf51ec1191eb1c6b49600ac3ba25afd3f3a1",
   "result": "FAIL",
   "exitCode": 1,
-  "output": "STAGE: compile-and-format\n",
+  "output": "STAGE: compile-and-format\nSTAGE: live-postgresql-and-minio-tests\n# github.com/m-shogo/memories-project/services/import-api/internal/httpserver [github.com/m-shogo/memories-project/services/import-api/internal/httpserver.test]\ninternal/httpserver/capacity_ramp_test.go:78:71: undefined: http\ninternal/httpserver/capacity_ramp_test.go:79:23: undefined: http\nFAIL\tgithub.com/m-shogo/memories-project/services/import-api/internal/httpserver [build failed]\nFAIL\n",
   "containsSecrets": false,
   "productionEvidence": false
 }
