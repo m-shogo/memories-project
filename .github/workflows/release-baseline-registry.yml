@@ -7,6 +7,7 @@ on:
       - "contracts/operations/release-baseline-registry-contract.v1.json"
       - "contracts/operations/release-baseline-registry.v1.json"
       - "docs/evidence/releases/README.md"
+      - "scripts/register-memory-os-release-baseline.py"
       - "scripts/validate-memory-os-release-baseline-registry.py"
       - "scripts/reconcile-memory-os-release-baseline-registry.py"
   push:
@@ -17,6 +18,7 @@ on:
       - "contracts/operations/release-baseline-registry-contract.v1.json"
       - "contracts/operations/release-baseline-registry.v1.json"
       - "docs/evidence/releases/README.md"
+      - "scripts/register-memory-os-release-baseline.py"
       - "scripts/validate-memory-os-release-baseline-registry.py"
       - "scripts/reconcile-memory-os-release-baseline-registry.py"
   schedule:
@@ -46,17 +48,43 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Confirm clean source
+      - name: Confirm clean source and compile tools
         run: |
           test -z "$(git status --porcelain)"
           python -m py_compile \
+            scripts/register-memory-os-release-baseline.py \
             scripts/validate-memory-os-release-baseline-registry.py \
             scripts/reconcile-memory-os-release-baseline-registry.py
 
       - name: Validate approved release authority
         run: python scripts/validate-memory-os-release-baseline-registry.py
 
-      - name: Reconcile empty registry foundation
+      - name: Prove incomplete registration cannot mutate authority
+        run: |
+          registry="contracts/operations/release-baseline-registry.v1.json"
+          lock="contracts/operations/.release-baseline-registry.lock"
+          before="$(sha256sum "$registry" | awk '{print $1}')"
+          record="$RUNNER_TEMP/incomplete-release-record.json"
+          printf '{}\n' > "$record"
+
+          if python scripts/register-memory-os-release-baseline.py \
+              --record "$record" --confirm "WRONG CONFIRMATION"; then
+            echo "writer accepted an incorrect confirmation" >&2
+            exit 1
+          fi
+          test "$(sha256sum "$registry" | awk '{print $1}')" = "$before"
+          test ! -e "$lock"
+
+          if python scripts/register-memory-os-release-baseline.py \
+              --record "$record" --confirm "REGISTER APPROVED RELEASE BASELINE"; then
+            echo "writer accepted an incomplete record" >&2
+            exit 1
+          fi
+          test "$(sha256sum "$registry" | awk '{print $1}')" = "$before"
+          test ! -e "$lock"
+          test -z "$(git status --porcelain)"
+
+      - name: Reconcile release registry foundation
         if: github.event_name != 'pull_request'
         run: |
           python scripts/reconcile-memory-os-release-baseline-registry.py
@@ -74,6 +102,6 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "docs(version): register empty release baseline authority"
+          git commit -m "docs(version): register release baseline authority"
           git pull --rebase origin so
           git push origin HEAD:so
