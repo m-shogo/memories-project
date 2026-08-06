@@ -285,19 +285,19 @@
         "v2 machine-readable failure-drill authority superseding the two-scenario v1 inventory while preserving CI-vs-production evidence separation",
         "five-class parser restart recovery matrix covering protocol truncation, wall-clock timeout, CPU limit kill, memory limit kill and pre-start cancellation; each failure leaves no residue and permits independently verified same-spool recovery",
         "local PostgreSQL commit-outage recovery drill proving a failed atomic Preview commit leaves zero durable rows, preserves sealed spool evidence, and a new attempt for the same source/Preview ID commits exactly once after connectivity returns",
-        "started-worker parser cancellation drill proving a completed frame reaches spool storage before cancellation, the blocked pipe read returns context.Canceled in under one second, cleanup removes the partial attempt and the same spool ID recovers with independent verification"
+        "started-worker parser cancellation drill proving a completed frame reaches spool storage before cancellation, the blocked pipe read returns context.Canceled in under one second, cleanup removes the partial attempt and the same spool ID recovers with independent verification",
+        "local PostgreSQL commit-outage recovery drill proving a failed atomic Preview commit leaves zero durable rows, preserves sealed spool evidence, and ResumeCommit commits from the exact same spool/request after connectivity returns without object-store or parser access"
       ],
       "missingEvidence": [
         "mixed-version failure drill",
         "production multi-instance interruption, dependency and recovery drills with independent review",
         "production-shaped object-store process outage or network-partition drill with TLS, scoped credentials, lifecycle controls and recovery verification",
         "production-shaped PostgreSQL process loss, connection-pool disruption and replication failover drill",
-        "direct commit resume from the preserved sealed spool without re-fetching and re-parsing the source",
         "database recovery verification for expired sessions, deleted accounts, leases and duplicate effects under failover",
         "independent child-process orphan/reaping scan after parser process-group termination",
         "parser host or container restart recovery using a reviewed production artifact",
-        "database loss or failover drill",
-        "object-store outage drill"
+        "object-store outage drill",
+        "host or container restart between spool seal and ResumeCommit with durable spool remount verification"
       ],
       "evidenceRefs": [
         "contracts/operations/chaos-failure-drill-contract.v1.json",
