@@ -9,6 +9,9 @@ on:
       - "contracts/operations/metrics-scrape-contract.v1.json"
       - "contracts/operations/metrics-dashboard-contract.v1.json"
       - "contracts/operations/metrics-retention-error-budget-contract.v1.json"
+      - "contracts/operations/metrics-alerting-contract.v1.json"
+      - "infra/observability/prometheus/memory-os-alerts.yml"
+      - "docs/runbooks/memory-os-metrics-alerts.md"
       - "services/import-api/internal/metrics/prometheus.go"
       - "services/import-api/internal/metrics/scrape.go"
       - "services/import-api/internal/metrics/prometheus_test.go"
@@ -17,9 +20,11 @@ on:
       - "services/import-api/internal/httpserver/metrics_scrape_test.go"
       - "scripts/validate-memory-os-metrics-scrape.py"
       - "scripts/validate-memory-os-metrics-operations.py"
+      - "scripts/validate-memory-os-metrics-alerting.py"
       - "scripts/reconcile-memory-os-metrics-contract.py"
       - "scripts/reconcile-memory-os-metrics-scrape-status.py"
       - "scripts/reconcile-memory-os-metrics-operations.py"
+      - "scripts/reconcile-memory-os-metrics-alerting.py"
   workflow_dispatch:
 
 permissions:
@@ -74,20 +79,25 @@ jobs:
           python -m py_compile \
             scripts/validate-memory-os-metrics-scrape.py \
             scripts/validate-memory-os-metrics-operations.py \
+            scripts/validate-memory-os-metrics-alerting.py \
             scripts/reconcile-memory-os-metrics-contract.py \
             scripts/reconcile-memory-os-metrics-scrape-status.py \
-            scripts/reconcile-memory-os-metrics-operations.py
+            scripts/reconcile-memory-os-metrics-operations.py \
+            scripts/reconcile-memory-os-metrics-alerting.py
           python scripts/validate-memory-os-metrics-scrape.py
           python scripts/validate-memory-os-metrics-operations.py
+          python scripts/validate-memory-os-metrics-alerting.py
 
       - name: Reconcile primary contract and status
         run: |
           python scripts/reconcile-memory-os-metrics-contract.py
           python scripts/reconcile-memory-os-metrics-scrape-status.py
           python scripts/reconcile-memory-os-metrics-operations.py
+          python scripts/reconcile-memory-os-metrics-alerting.py
           python scripts/validate-memory-os-metrics.py
           python scripts/validate-memory-os-metrics-scrape.py
           python scripts/validate-memory-os-metrics-operations.py
+          python scripts/validate-memory-os-metrics-alerting.py
           python scripts/validate-memory-os-operability.py
           python scripts/validate-memory-os-entry-docs.py
 
@@ -102,6 +112,6 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "docs(metrics): reconcile operations authority"
+          git commit -m "docs(metrics): reconcile alerting authority"
           git pull --rebase origin so
           git push origin HEAD:so
