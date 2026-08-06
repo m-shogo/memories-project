@@ -11,7 +11,8 @@ may not be a PASS; a production-equivalent/real-Apple run may not be claimed as
 PASS evidence; series counts stay bounded; a run labelled SOAK must actually be
 long; and OPS-P0-006 may not be READY without a production-shaped workload,
 capacity boundary, soak and operational thresholds. Every negative fixture case
-must be rejected by the same results checker.
+must be rejected by the same field-level checker without relying on unrelated
+scenario-coverage failures.
 """
 from __future__ import annotations
 
@@ -56,7 +57,13 @@ def load(path: Path) -> dict:
         raise Fail(f"invalid JSON: {path}: {exc}") from exc
 
 
-def check_results(doc: dict, contract: dict, exempt_ids: set[str]) -> list[str]:
+def check_results(
+    doc: dict,
+    contract: dict,
+    exempt_ids: set[str],
+    *,
+    require_coverage: bool = True,
+) -> list[str]:
     """Return reasons a results document is invalid (empty = clean)."""
     reasons: list[str] = []
     if doc.get("schemaVersion") != contract["resultsSchemaVersion"]:
@@ -153,10 +160,11 @@ def check_results(doc: dict, contract: dict, exempt_ids: set[str]) -> list[str]:
             if not isinstance(dur, (int, float)) or dur < SOAK_MIN_SECONDS:
                 reasons.append(f"{sid}: labelled SOAK but only {dur}s (SOAK PROOF INSUFFICIENT)")
 
-    required = set(scenario_by_id) - exempt_ids
-    missing = sorted(required - seen)
-    if missing:
-        reasons.append(f"required executed scenarios missing persisted results: {missing}")
+    if require_coverage:
+        required = set(scenario_by_id) - exempt_ids
+        missing = sorted(required - seen)
+        if missing:
+            reasons.append(f"required executed scenarios missing persisted results: {missing}")
     return reasons
 
 
@@ -204,7 +212,9 @@ def main() -> int:
 
         negative = load(NEGATIVE)
         for case in negative["cases"]:
-            if not check_results(case["doc"], contract, exempt_ids):
+            if not check_results(
+                case["doc"], contract, exempt_ids, require_coverage=False
+            ):
                 raise Fail(f"negative case was not rejected: {case['reason']}")
 
         # Self-prove the two contract gaps this revision closes. These are
