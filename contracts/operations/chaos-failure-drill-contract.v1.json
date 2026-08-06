@@ -1,0 +1,153 @@
+{
+  "contractId": "memory-os.operability.chaos-failure-drills.v1",
+  "schemaVersion": "memory-os-chaos-failure-drills.v1",
+  "resultsSchemaVersion": "memory-os-chaos-failure-drill-results.v1",
+  "description": "Fail-closed inventory for failure drills. Component fault injection, local CI system-boundary drills and production chaos are different evidence classes and may not be relabeled. Exact-source CI currently executes API graceful interruption and parser restart-after-failure. Database failover, object-store outage and mixed-version failure remain unexecuted production-blocking gaps.",
+  "validator": "scripts/validate-memory-os-chaos-failure-drills.py",
+  "resultPath": "docs/fixtures/memory-os-operability/chaos-failure-drill-results.sample.v1.json",
+  "evidenceClasses": [
+    "COMPONENT_FAULT_INJECTION",
+    "CI_SYSTEM_BOUNDARY",
+    "PRODUCTION_SHAPED_DRILL",
+    "PRODUCTION_DRILL"
+  ],
+  "globalGuards": {
+    "productionEvidence": false,
+    "syntheticDataOnly": true,
+    "exactSourceCommitRequired": true,
+    "secretsInEvidenceForbidden": true,
+    "userContentInEvidenceForbidden": true,
+    "automaticDestructiveRecoveryForbidden": true,
+    "componentEvidenceCannotSatisfyProductionDrill": true,
+    "failedOrPartialDrillCannotBePromoted": true
+  },
+  "scenarios": [
+    {
+      "scenarioId": "api-graceful-interruption-drain",
+      "domain": "HTTP_API",
+      "executionStatus": "IMPLEMENTED_CI",
+      "evidenceClass": "CI_SYSTEM_BOUNDARY",
+      "command": "go test ./internal/httpserver -run ^TestHTTPServerGracefulInterruptionDrainsInFlightRequest$ -count=1",
+      "workingDirectory": "services/import-api",
+      "requiredAssertions": [
+        "real loopback TCP listener accepts an in-flight request",
+        "Shutdown does not return before the active request completes",
+        "the active request preserves its successful response",
+        "Serve exits with http.ErrServerClosed",
+        "new requests are rejected after shutdown"
+      ],
+      "evidenceRefs": [
+        "services/import-api/internal/httpserver/interruption_drill_test.go",
+        "services/import-api/internal/httpserver/server.go"
+      ],
+      "limitations": [
+        "single-process loopback CI only",
+        "not a load-balancer or multi-instance drain",
+        "not a production deployment interruption",
+        "does not prove client retry behavior"
+      ]
+    },
+    {
+      "scenarioId": "parser-restart-after-protocol-failure",
+      "domain": "PARSER_WORKER",
+      "executionStatus": "IMPLEMENTED_CI",
+      "evidenceClass": "CI_SYSTEM_BOUNDARY",
+      "command": "go test ./internal/parsersup -run ^TestSupervisorRestartsSameSpoolAfterFailedAttempt$ -count=1",
+      "workingDirectory": "services/import-api",
+      "requiredAssertions": [
+        "truncated worker output is rejected",
+        "the failed attempt leaves no spool residue",
+        "the same manager and spool ID can be reused",
+        "the replacement worker seals a valid result",
+        "independent verification matches recovered evidence"
+      ],
+      "evidenceRefs": [
+        "services/import-api/internal/parsersup/restart_drill_linux_test.go",
+        "services/import-api/internal/parsersup/supervisor_linux_test.go",
+        "services/import-api/internal/parsersup/supervisor_linux.go"
+      ],
+      "limitations": [
+        "Linux CI with the test worker artifact",
+        "single protocol-failure restart path",
+        "not a production parser deployment restart",
+        "does not yet cover timeout, CPU, memory and host-restart combinations as a matrix"
+      ]
+    },
+    {
+      "scenarioId": "database-loss-or-failover",
+      "domain": "POSTGRESQL",
+      "executionStatus": "NOT_IMPLEMENTED",
+      "evidenceClass": "PRODUCTION_SHAPED_DRILL",
+      "command": null,
+      "workingDirectory": null,
+      "requiredAssertions": [
+        "requests fail closed during database unavailability",
+        "no cross-tenant or partial mutation occurs",
+        "recovery does not revive expired sessions or deleted accounts",
+        "lease and retry state resumes without duplicate effects",
+        "recovery-point and role/RLS invariants are independently verified"
+      ],
+      "evidenceRefs": [],
+      "limitations": [
+        "no failover or loss drill exists"
+      ]
+    },
+    {
+      "scenarioId": "object-store-outage-and-recovery",
+      "domain": "OBJECT_STORAGE",
+      "executionStatus": "NOT_IMPLEMENTED",
+      "evidenceClass": "PRODUCTION_SHAPED_DRILL",
+      "command": null,
+      "workingDirectory": null,
+      "requiredAssertions": [
+        "authorization and completion fail closed during outage",
+        "no object version is silently substituted",
+        "queued work resumes idempotently",
+        "checksum and metadata binding survive recovery",
+        "ambiguous object state is quarantined rather than deleted"
+      ],
+      "evidenceRefs": [],
+      "limitations": [
+        "local exact-version restore is not an outage drill"
+      ]
+    },
+    {
+      "scenarioId": "mixed-version-failure-and-rollback",
+      "domain": "VERSION_COMPATIBILITY",
+      "executionStatus": "NOT_IMPLEMENTED",
+      "evidenceClass": "PRODUCTION_SHAPED_DRILL",
+      "command": null,
+      "workingDirectory": null,
+      "requiredAssertions": [
+        "old and current backends coexist against expanded schema",
+        "persisted jobs and previews remain readable by supported versions",
+        "unsupported release order fails before mutation",
+        "rollback target remains deployable",
+        "contract migration is blocked until old-version drain is proven"
+      ],
+      "evidenceRefs": [],
+      "limitations": [
+        "compatibility policy exists but no executable mixed-version failure drill exists"
+      ]
+    }
+  ],
+  "readiness": {
+    "contractDefined": true,
+    "validatorImplemented": true,
+    "automaticCiWorkflowImplemented": false,
+    "exactSourceResultCommitted": false,
+    "apiInterruptionExecuted": false,
+    "parserRestartExecuted": false,
+    "databaseFailoverExecuted": false,
+    "objectStoreOutageExecuted": false,
+    "mixedVersionFailureExecuted": false,
+    "productionChaosCompleted": false,
+    "productionReady": false
+  },
+  "evidenceRefs": [
+    "contracts/operations/chaos-failure-drill-contract.v1.json",
+    "services/import-api/internal/httpserver/interruption_drill_test.go",
+    "services/import-api/internal/parsersup/restart_drill_linux_test.go",
+    "scripts/validate-memory-os-chaos-failure-drills.py"
+  ]
+}
