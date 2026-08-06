@@ -8,7 +8,7 @@ on:
       - ".github/workflows/capacity-ramp.yml"
       - "services/import-api/internal/httpserver/capacity_ramp_test.go"
       - "services/import-api/internal/httpserver/live_load_test.go"
-      - "services/import-api/internal/httpserver/live_test_helpers_test.go"
+      - "services/import-api/internal/httpserver/server_live_test.go"
       - "infra/postgresql/security/**"
       - "contracts/operations/capacity-ramp-contract.v1.json"
       - "scripts/validate-memory-os-capacity-ramp.py"
@@ -142,7 +142,7 @@ jobs:
             if ! git diff --quiet "${SOURCE_SHA}" origin/so -- \
               services/import-api/internal/httpserver/capacity_ramp_test.go \
               services/import-api/internal/httpserver/live_load_test.go \
-              services/import-api/internal/httpserver/live_test_helpers_test.go \
+              services/import-api/internal/httpserver/server_live_test.go \
               infra/postgresql/security \
               contracts/operations/capacity-ramp-contract.v1.json \
               scripts/validate-memory-os-capacity-ramp.py; then
