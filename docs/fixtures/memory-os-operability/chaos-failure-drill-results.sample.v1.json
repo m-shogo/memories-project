@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "memory-os-chaos-failure-drill-results.v1",
+  "commitSha": "1b14b1579a297e29ba6fe1a07fe791486f4c51ab",
+  "generatedAt": "2026-08-06T08:22:15.551197Z",
+  "environment": {
+    "mode": "GITHUB_ACTIONS_UBUNTU_LINUX",
+    "productionEvidence": false,
+    "containsSecrets": false,
+    "syntheticDataOnly": true
+  },
+  "scenarios": [
+    {
+      "scenarioId": "api-graceful-interruption-drain",
+      "result": "PASS",
+      "integrityResult": "PASS",
+      "exitCode": 0,
+      "durationSeconds": 1.629551
+    },
+    {
+      "scenarioId": "parser-restart-after-protocol-failure",
+      "result": "PASS",
+      "integrityResult": "PASS",
+      "exitCode": 0,
+      "durationSeconds": 0.235497
+    },
+    {
+      "scenarioId": "database-loss-or-failover",
+      "result": "NOT_RUN",
+      "integrityResult": "NOT_RUN",
+      "exitCode": null,
+      "durationSeconds": 0
+    },
+    {
+      "scenarioId": "object-store-outage-and-recovery",
+      "result": "NOT_RUN",
+      "integrityResult": "NOT_RUN",
+      "exitCode": null,
+      "durationSeconds": 0
+    },
+    {
+      "scenarioId": "mixed-version-failure-and-rollback",
+      "result": "NOT_RUN",
+      "integrityResult": "NOT_RUN",
+      "exitCode": null,
+      "durationSeconds": 0
+    }
+  ],
+  "overallResult": "PARTIAL_PASS",
+  "limitations": [
+    "not production chaos",
+    "database failover not executed",
+    "object-store outage not executed",
+    "mixed-version failure not executed",
+    "parser restart matrix incomplete",
+    "single-process and Linux CI boundaries only"
+  ]
+}
