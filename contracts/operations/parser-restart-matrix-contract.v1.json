@@ -1,0 +1,84 @@
+{
+  "contractId": "memory-os.operability.parser-restart-matrix.v1",
+  "schemaVersion": "memory-os-parser-restart-matrix.v1",
+  "resultsSchemaVersion": "memory-os-parser-restart-matrix-results.v1",
+  "description": "Exact-source Linux CI recovery matrix for the digest-pinned parser supervisor. Each failure class must leave no spool residue and the same manager/spool ID must accept a replacement worker whose sealed output is independently verified. This is not production parser restart or host-restart evidence.",
+  "runnerCommand": "go test ./internal/parsersup -run ^TestSupervisorRestartRecoveryMatrix$ -count=1",
+  "workingDirectory": "services/import-api",
+  "validator": "scripts/validate-memory-os-parser-restart-matrix.py",
+  "resultPath": "docs/fixtures/memory-os-operability/parser-restart-matrix-results.sample.v1.json",
+  "failureClasses": [
+    {
+      "id": "protocol_truncation",
+      "expectedErrorClass": "ErrFrameProtocolViolation",
+      "workerStarted": true,
+      "kernelLimitDriven": false
+    },
+    {
+      "id": "wall_clock_timeout",
+      "expectedErrorClass": "ErrParseTimeout",
+      "workerStarted": true,
+      "kernelLimitDriven": false
+    },
+    {
+      "id": "cpu_limit_kill",
+      "expectedErrorClass": "ErrWorkerFailed",
+      "workerStarted": true,
+      "kernelLimitDriven": true
+    },
+    {
+      "id": "memory_limit_kill",
+      "expectedErrorClass": "ErrWorkerFailed",
+      "workerStarted": true,
+      "kernelLimitDriven": true
+    },
+    {
+      "id": "pre_start_cancellation",
+      "expectedErrorClass": "context.Canceled",
+      "workerStarted": false,
+      "kernelLimitDriven": false
+    }
+  ],
+  "requiredRecoveryAssertions": [
+    "failure matches its expected error class",
+    "failed attempt leaves the spool root empty",
+    "same manager and same spool ID remain reusable",
+    "replacement worker seals exactly one accepted and zero rejected records",
+    "independent verifier evidence equals replacement write evidence"
+  ],
+  "privacy": {
+    "syntheticDataOnly": true,
+    "productionEvidence": false,
+    "secretsInEvidenceForbidden": true,
+    "workerPathInEvidenceForbidden": true,
+    "rawSpoolPathInEvidenceForbidden": true,
+    "userContentInEvidenceForbidden": true
+  },
+  "limitations": [
+    "Linux GitHub Actions CI only",
+    "test worker artifact rather than reviewed production artifact",
+    "pre-start cancellation only; in-flight cancellation latency is not proven",
+    "child-process tree escape and orphan scan are not independently measured",
+    "host or container restart is not executed",
+    "not production chaos evidence"
+  ],
+  "readiness": {
+    "contractDefined": true,
+    "testImplemented": true,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": false,
+    "exactSourcePassResultCommitted": false,
+    "inFlightCancellationProven": false,
+    "childProcessReapingProven": false,
+    "hostRestartProven": false,
+    "productionArtifactRestartProven": false,
+    "productionReady": false
+  },
+  "evidenceRefs": [
+    "contracts/operations/parser-restart-matrix-contract.v1.json",
+    "services/import-api/internal/parsersup/restart_matrix_drill_linux_test.go",
+    "services/import-api/internal/parsersup/supervisor_linux.go",
+    "services/import-api/internal/parsersup/worker.go",
+    "scripts/validate-memory-os-parser-restart-matrix.py"
+  ]
+}
