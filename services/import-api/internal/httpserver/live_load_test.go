@@ -232,21 +232,38 @@ func TestLivePostgresPreviewReadAndIdempotentApplyLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Establish the first durable claim synchronously. The dedicated mixed-version
+	// compatibility drill owns first-writer claim races and process-death recovery.
+	// This load checkpoint measures the stable replay path without manufacturing a
+	// PostgreSQL lock storm that outlives the HTTP clients.
+	firstResponse, firstPayload := server.request(t, http.MethodPost,
+		"/v1/previews/"+previewID+"/apply", token, map[string]any{
+			"previewSha256":   previewSHA,
+			"idempotencyKey":  idempotencyKey,
+			"duplicatePolicy": "skip_existing",
+		})
+	if firstResponse.StatusCode != http.StatusOK {
+		t.Fatalf("initial live Apply failed: %d %s", firstResponse.StatusCode, firstPayload)
+	}
+	var firstApply struct {
+		Replayed bool `json:"replayed"`
+	}
+	if err := json.Unmarshal(firstPayload, &firstApply); err != nil {
+		t.Fatal(err)
+	}
+	if firstApply.Replayed {
+		t.Fatalf("initial live Apply unexpectedly replayed: %s", firstPayload)
+	}
+
 	applyStarted := time.Now().UTC()
 	applyPath := server.server.URL + "/v1/previews/" + previewID + "/apply"
 	applyBatch := runLiveHTTPBatch(96, 24, func(int) (*http.Request, error) {
 		return liveRequest(http.MethodPost, applyPath, token, applyBody)
 	})
-	if applyBatch.StatusClassCounts["5xx"] != 0 || applyBatch.StatusClassCounts["transport_error"] != 0 {
-		t.Fatalf("live apply load produced infrastructure/internal failures: %+v", applyBatch)
-	}
-	if applyBatch.StatusClassCounts["2xx"] == 0 {
-		t.Fatalf("live apply load never completed one transaction: %+v", applyBatch)
-	}
-	for class, count := range applyBatch.StatusClassCounts {
-		if count > 0 && class != "2xx" && class != "4xx" {
-			t.Fatalf("live apply load produced unexpected status class %s: %+v", class, applyBatch)
-		}
+	if applyBatch.StatusClassCounts["2xx"] != applyBatch.Requests ||
+		applyBatch.StatusClassCounts["5xx"] != 0 ||
+		applyBatch.StatusClassCounts["transport_error"] != 0 {
+		t.Fatalf("live replay load violated its status boundary: %+v", applyBatch)
 	}
 
 	response, payload := server.request(t, http.MethodPost, "/v1/previews/"+previewID+"/apply", token, map[string]any{
