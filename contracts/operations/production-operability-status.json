@@ -419,7 +419,11 @@
         "pinned historical-candidate and current Import API processes mutate and replay persisted Apply idempotency claims on one current expanded PostgreSQL schema",
         "historical-candidate Apply followed by current replay returns the original Apply ID without duplicate materialization",
         "current Apply followed by historical-candidate replay returns the original Apply ID without duplicate materialization",
-        "cross-Preview idempotency-key reuse is rejected while exactly two applied claims and two memory items remain with zero in-progress claims"
+        "cross-Preview idempotency-key reuse is rejected while exactly two applied claims and two memory items remain with zero in-progress claims",
+        "fail-closed rollback rehearsal admission authority requiring distinct approved source and rollback-target releases before any isolated rehearsal request can be recorded",
+        "rollback target must already be verified ELIGIBLE or CONDITIONALLY_ELIGIBLE and every target condition is retained as a rehearsal stop condition",
+        "exclusive-lock atomic request writer forbids production traffic, production credentials, automatic promotion and destructive down migration",
+        "empty approved release registry produces zero admissible pairs and BLOCKED_NO_APPROVED_ROLLBACK_PAIR without treating candidate or CI evidence as release authority"
       ],
       "missingEvidence": [
         "reviewed parser artifact registry and old parser artifact replay tests",
@@ -439,7 +443,11 @@
         "persisted Preview and Apply compatibility fixtures across an approved predecessor and successor release pair",
         "simultaneous old/current mutation traffic and concurrent idempotency-claim race coverage on one production-shaped database",
         "process termination during in-progress Apply with deterministic recovery or safe blocking evidence",
-        "rolling deployment, traffic drain and application rollback rehearsal using rollback-eligible approved release artifacts"
+        "rolling deployment, traffic drain and application rollback rehearsal using rollback-eligible approved release artifacts",
+        "approved source and rollback-target release pair with verified rollback eligibility and retained exact artifacts",
+        "admitted isolated rollback rehearsal request with distinct Release Owner and Database Recovery Owner approvals",
+        "executed rollback rehearsal proving startup, session, tenant, deletion, idempotency, parser artifact and exact object-version invariants",
+        "traffic-drain and rollback timing evidence with monitored stop conditions and independent review"
       ],
       "evidenceRefs": [
         ".github/workflows/security-contracts.yml",
@@ -473,7 +481,14 @@
         "scripts/validate-memory-os-mixed-version-apply.py",
         "scripts/reconcile-memory-os-mixed-version-apply.py",
         "docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json",
-        ".github/workflows/mixed-version-apply.yml"
+        ".github/workflows/mixed-version-apply.yml",
+        "contracts/operations/rollback-rehearsal-gate-contract.v1.json",
+        "contracts/operations/rollback-rehearsal-registry.v1.json",
+        "docs/runbooks/memory-os-rollback-rehearsal.md",
+        "scripts/request-memory-os-rollback-rehearsal.py",
+        "scripts/validate-memory-os-rollback-rehearsal-gate.py",
+        "scripts/reconcile-memory-os-rollback-rehearsal-gate.py",
+        ".github/workflows/rollback-rehearsal-gate.yml"
       ]
     }
   ]
