@@ -410,7 +410,12 @@
         "pinned old/current Import API two-process compatibility drill proving sessions issued by either version are resolved by the other against the complete current PostgreSQL schema while account-epoch fencing remains enforced",
         "historical candidate-baseline compatibility drill applying the current expanded PostgreSQL schema before executing baseline-owned SQL and reviewed common Go integration surfaces sequentially",
         "candidate execution preserves the current memory_os schema fingerprint and current SQL/Go verification passes independently on a separate database",
-        "exact active baseline/current SHAs are recorded while rejected historical candidates remain preserved in a separate machine-readable registry"
+        "exact active baseline/current SHAs are recorded while rejected historical candidates remain preserved in a separate machine-readable registry",
+        "append-only approved release baseline registry authority separating historical candidates, CI results, tags and branch heads from multi-role production release approval",
+        "empty release registry explicitly records that no approved predecessor or rollback-eligible release exists",
+        "release records require distinct Security, Operability and Release Owner approvals plus immutable API, migration, parser artifact and runtime configuration digests",
+        "fail-closed release registry validator prevents active or rejected historical candidates from being relabeled as approved releases",
+        "exclusive-lock and atomic-replacement release writer verifies exact clean HEAD, exact tag binding, external input record, three-role approval, complete evidence and unique release ID, tag and commit without manufacturing any authority"
       ],
       "missingEvidence": [
         "persisted-state compatibility fixtures across releases",
@@ -424,7 +429,10 @@
         "simultaneous old/current application traffic against the same production-shaped database",
         "rolling deployment order, connection drain, failure injection and application rollback rehearsal",
         "destructive contract-migration and downgrade compatibility proof",
-        "production-shaped mixed-version review with zero unresolved Critical or High findings"
+        "production-shaped mixed-version review with zero unresolved Critical or High findings",
+        "approved predecessor release record with three distinct required approvers and complete compatibility, restore, security, migration, parser and load evidence",
+        "rollback-eligible approved release whose binary and retained artifacts are verified against the expanded target schema",
+        "independent review of the first release registration and writer execution evidence"
       ],
       "evidenceRefs": [
         ".github/workflows/security-contracts.yml",
@@ -444,7 +452,14 @@
         "scripts/run-memory-os-mixed-version-candidate.sh",
         "scripts/validate-memory-os-mixed-version-candidate.py",
         "scripts/reconcile-memory-os-mixed-version-candidate.py",
-        ".github/workflows/mixed-version-candidate.yml"
+        ".github/workflows/mixed-version-candidate.yml",
+        "contracts/operations/release-baseline-registry-contract.v1.json",
+        "contracts/operations/release-baseline-registry.v1.json",
+        "docs/evidence/releases/README.md",
+        "scripts/register-memory-os-release-baseline.py",
+        "scripts/validate-memory-os-release-baseline-registry.py",
+        "scripts/reconcile-memory-os-release-baseline-registry.py",
+        ".github/workflows/release-baseline-registry.yml"
       ]
     }
   ]
