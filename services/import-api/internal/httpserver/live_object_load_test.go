@@ -20,15 +20,15 @@ import (
 const liveObjectScenarioID = "signed-upload-lifecycle-local-minio-postgres"
 
 type liveObjectScenarioResult struct {
-	ScenarioID            string            `json:"scenarioId"`
-	WorkloadType          string            `json:"workloadType"`
-	DependencyMode        string            `json:"dependencyMode"`
-	StartedAt             string            `json:"startedAt"`
-	Batch                 liveBatchResult   `json:"batch"`
-	IntegrityResult       string            `json:"integrityResult"`
-	DatabaseAssertions    map[string]int    `json:"databaseAssertions"`
-	ObjectStoreAssertions map[string]int    `json:"objectStoreAssertions"`
-	Result                string            `json:"result"`
+	ScenarioID            string          `json:"scenarioId"`
+	WorkloadType          string          `json:"workloadType"`
+	DependencyMode        string          `json:"dependencyMode"`
+	StartedAt             string          `json:"startedAt"`
+	Batch                 liveBatchResult `json:"batch"`
+	IntegrityResult       string          `json:"integrityResult"`
+	DatabaseAssertions    map[string]int  `json:"databaseAssertions"`
+	ObjectStoreAssertions map[string]int  `json:"objectStoreAssertions"`
+	Result                string          `json:"result"`
 }
 
 type liveObjectLoadResultsDocument struct {
