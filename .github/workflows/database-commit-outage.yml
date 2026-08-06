@@ -8,6 +8,7 @@ on:
       - ".github/workflows/database-commit-outage.yml"
       - "contracts/operations/database-commit-outage-contract.v1.json"
       - "services/import-api/internal/importflow/database_outage_drill_linux_test.go"
+      - "services/import-api/internal/importflow/resume.go"
       - "services/import-api/internal/importflow/flow.go"
       - "services/import-api/internal/previewcommit/committer.go"
       - "scripts/validate-memory-os-database-commit-outage.py"
@@ -81,7 +82,9 @@ jobs:
           python -m py_compile \
             scripts/validate-memory-os-database-commit-outage.py \
             scripts/reconcile-memory-os-database-commit-outage.py
-          test -z "$(gofmt -l services/import-api/internal/importflow/database_outage_drill_linux_test.go)"
+          test -z "$(gofmt -l \
+            services/import-api/internal/importflow/database_outage_drill_linux_test.go \
+            services/import-api/internal/importflow/resume.go)"
           python scripts/validate-memory-os-database-commit-outage.py
 
       - name: Execute exact-source database outage drill
@@ -159,15 +162,17 @@ jobs:
                       "candidateRowsAfterRecovery": 2,
                       "rejectionRowsAfterRecovery": 1,
                       "sameSourceAndPreviewIdReused": True,
-                      "newSpoolAttemptUsed": True,
+                      "sameSpoolIdReused": True,
+                      "resumeWithoutObjectStore": True,
+                      "resumeWithoutParser": True,
                       "recoveryMarkedAsReplay": False,
                   },
                   "limitations": [
                       "not PostgreSQL process loss",
                       "not replication failover",
-                      "recovery uses a new spool attempt",
+                      "recovery commits from the same sealed spool",
                       "ephemeral PostgreSQL 16 and MinIO only",
-                      "source fetch and parser remain healthy",
+                      "host restart not executed between seal and resume",
                       "not production chaos evidence",
                   ],
               }
