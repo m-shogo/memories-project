@@ -1,0 +1,65 @@
+name: Reconcile Live Object Stage Diagnostics
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/reconcile-live-object-stage-diagnostics.yml"
+      - "scripts/reconcile-memory-os-live-object-stage-diagnostics.py"
+      - "services/import-api/internal/httpserver/live_object_load_test.go"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reconcile-live-object-stage-diagnostics-so
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    if: >-
+      github.event_name != 'push' ||
+      !contains(github.event.head_commit.message, 'test(load): classify MinIO lifecycle failures')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout latest so
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache: false
+
+      - name: Reconcile stage diagnostics
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/reconcile-memory-os-live-object-stage-diagnostics.py
+          python scripts/reconcile-memory-os-live-object-stage-diagnostics.py
+          gofmt -w services/import-api/internal/httpserver/live_object_load_test.go
+          test -z "$(gofmt -l services/import-api/internal/httpserver/live_object_load_test.go)"
+
+      - name: Commit diagnostic authority
+        run: |
+          set -euo pipefail
+          git add services/import-api/internal/httpserver/live_object_load_test.go
+          if git diff --cached --quiet; then
+            echo "Live object stage diagnostics are already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "test(load): classify MinIO lifecycle failures"
+          git pull --rebase origin so
+          git push origin HEAD:so
