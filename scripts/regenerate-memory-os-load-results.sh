@@ -30,11 +30,20 @@ if [[ -n "$origin_sha" && "$source_sha" != "$origin_sha" ]]; then
 fi
 
 result_path="docs/fixtures/memory-os-operability/load-results.sample.v1.json"
+result_abs="$repo_root/$result_path"
+result_dir="$(dirname "$result_abs")"
+if [[ ! -d "$result_dir" ]]; then
+  echo "ERROR: load-results directory is missing: $result_dir" >&2
+  exit 1
+fi
 
 echo "Generating load results from source commit: $source_sha"
 (
   cd services/import-api
-  MEMORY_OS_LOAD_RESULTS_PATH="../../$result_path" \
+  # go test executes the package binary from internal/loadtest, so a path
+  # relative to services/import-api is not stable. Always pass the absolute
+  # repository-root destination.
+  MEMORY_OS_LOAD_RESULTS_PATH="$result_abs" \
   MEMORY_OS_COMMIT_SHA="$source_sha" \
     go test ./internal/loadtest -run '^TestWriteLoadResultsFixture$' -count=1
 )
