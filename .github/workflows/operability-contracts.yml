@@ -15,6 +15,10 @@ on:
       - "scripts/validate-memory-os-rate-limit.py"
       - "scripts/validate-memory-os-metrics.py"
       - "scripts/validate-memory-os-load.py"
+      - "scripts/validate-memory-os-load-evidence-index.py"
+      - "scripts/validate-memory-os-live-load.py"
+      - "scripts/validate-memory-os-live-object-load.py"
+      - "scripts/reconcile-memory-os-live-load-status.py"
       - "scripts/validate-memory-os-entry-docs.py"
       - "scripts/regenerate-memory-os-load-results.sh"
       - "docs/fixtures/memory-os-operability/**"
@@ -41,6 +45,10 @@ on:
       - "scripts/validate-memory-os-rate-limit.py"
       - "scripts/validate-memory-os-metrics.py"
       - "scripts/validate-memory-os-load.py"
+      - "scripts/validate-memory-os-load-evidence-index.py"
+      - "scripts/validate-memory-os-live-load.py"
+      - "scripts/validate-memory-os-live-object-load.py"
+      - "scripts/reconcile-memory-os-live-load-status.py"
       - "scripts/validate-memory-os-entry-docs.py"
       - "scripts/regenerate-memory-os-load-results.sh"
       - "docs/fixtures/memory-os-operability/**"
@@ -80,6 +88,10 @@ jobs:
           python -m py_compile scripts/validate-memory-os-rate-limit.py
           python -m py_compile scripts/validate-memory-os-metrics.py
           python -m py_compile scripts/validate-memory-os-load.py
+          python -m py_compile scripts/validate-memory-os-load-evidence-index.py
+          python -m py_compile scripts/validate-memory-os-live-load.py
+          python -m py_compile scripts/validate-memory-os-live-object-load.py
+          python -m py_compile scripts/reconcile-memory-os-live-load-status.py
           python -m py_compile scripts/validate-memory-os-entry-docs.py
           bash -n scripts/regenerate-memory-os-load-results.sh
 
@@ -97,6 +109,9 @@ jobs:
 
       - name: Validate load-test scenario contract and results
         run: python scripts/validate-memory-os-load.py
+
+      - name: Validate mock/live/deferred load evidence partition
+        run: python scripts/validate-memory-os-load-evidence-index.py
 
       - name: Validate current entrypoint documents
         run: python scripts/validate-memory-os-entry-docs.py
