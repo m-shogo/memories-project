@@ -30,8 +30,7 @@
         "services/import-api/internal/httpserver/server.go",
         "services/import-api/internal/httpserver/observability.go",
         "services/import-api/internal/httpapi/upload_handler.go",
-        "services/import-api/internal/httpserver/server_live_test.go",
-        "docs/fixtures/memory-os-operability/mixed-version-candidate-diagnostic.last.json"
+        "services/import-api/internal/httpserver/server_live_test.go"
       ],
       "limitations": [
         "historical candidate only",
