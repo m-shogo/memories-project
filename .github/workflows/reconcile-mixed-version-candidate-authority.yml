@@ -50,12 +50,10 @@ jobs:
             scripts/validate-memory-os-mixed-version-candidate.py \
             scripts/reconcile-memory-os-mixed-version-candidate.py
 
-      - name: Reconcile then validate candidate authority
+      - name: Reconcile and validate candidate-specific authority
         run: |
           python scripts/reconcile-memory-os-mixed-version-candidate.py
           python scripts/validate-memory-os-mixed-version-candidate.py
-          python scripts/validate-memory-os-version-compatibility.py
-          python scripts/validate-memory-os-operability.py
 
       - name: Commit candidate contract and status together
         run: |
@@ -64,10 +62,18 @@ jobs:
             contracts/operations/production-operability-status.json
           if git diff --cached --quiet; then
             echo "Mixed-version candidate authority is already current."
-            exit 0
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(version): reconcile candidate baseline evidence"
+            git pull --rebase origin so
+            git push origin HEAD:so
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "docs(version): reconcile candidate baseline evidence"
-          git pull --rebase origin so
-          git push origin HEAD:so
+
+      - name: Re-read committed authority and run aggregate checks
+        run: |
+          git fetch origin so
+          git reset --hard origin/so
+          python scripts/validate-memory-os-mixed-version-candidate.py
+          python scripts/validate-memory-os-version-compatibility.py
+          python scripts/validate-memory-os-operability.py
