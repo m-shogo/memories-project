@@ -1,11 +1,14 @@
 {
   "contractId": "memory-os.operability.metrics-scrape.v1",
   "schemaVersion": "memory-os-metrics-scrape.v1",
-  "description": "Fail-closed contract for the Prometheus text exporter and authenticated scrape handler. This proves the reusable exporter boundary only; it does not claim that a production listener, network policy, secret provisioner, scraper, dashboard, retention policy or alert route is configured.",
+  "description": "Fail-closed contract for the Prometheus text exporter, authenticated scrape handler and explicit HTTP server mount seam. This proves the reusable operational boundary only; it does not claim that a production listener, network policy, secret provisioner, scraper, dashboard, retention policy or alert route is configured.",
   "implementation": {
     "prometheusExporter": "services/import-api/internal/metrics/prometheus.go",
     "scrapeHandler": "services/import-api/internal/metrics/scrape.go",
-    "tests": "services/import-api/internal/metrics/prometheus_test.go",
+    "metricsTests": "services/import-api/internal/metrics/prometheus_test.go",
+    "serverMount": "services/import-api/internal/httpserver/server.go",
+    "serverObservability": "services/import-api/internal/httpserver/observability.go",
+    "serverTests": "services/import-api/internal/httpserver/metrics_scrape_test.go",
     "validator": "scripts/validate-memory-os-metrics-scrape.py"
   },
   "format": {
@@ -19,12 +22,16 @@
     "concurrentSnapshotRequired": true
   },
   "accessBoundary": {
+    "runtimeMountSupported": true,
     "runtimeMounted": false,
     "defaultDisabled": true,
     "authentication": "BEARER_TOKEN",
     "minimumTokenLength": 32,
     "maximumTokenLength": 256,
     "constantTimeDigestComparisonRequired": true,
+    "publicRateLimitIsolationRequired": true,
+    "observabilityRequired": true,
+    "observabilityRouteClass": "INTERNAL",
     "allowedMethods": [
       "GET"
     ],
@@ -53,6 +60,7 @@
   "readiness": {
     "prometheusExporterImplemented": true,
     "authenticatedHandlerImplemented": true,
+    "serverMountSupported": true,
     "runtimeMounted": false,
     "productionSecretProvisioned": false,
     "privateNetworkPolicyDefined": false,
@@ -61,12 +69,15 @@
     "retentionConfigured": false,
     "alertRoutingConfigured": false,
     "productionReady": false,
-    "note": "The reusable Prometheus exporter and authenticated handler are implemented and tested. They remain deliberately unmounted until deployment secret handling and a private operational network boundary are defined. OPS-P0-004 remains PARTIAL."
+    "note": "The Prometheus exporter, authenticated handler and explicit server mount seam are implemented and tested. Production remains deliberately unmounted until deployment secret handling and a private operational network boundary are defined. OPS-P0-004 remains PARTIAL."
   },
   "evidenceRefs": [
     "services/import-api/internal/metrics/prometheus.go",
     "services/import-api/internal/metrics/scrape.go",
     "services/import-api/internal/metrics/prometheus_test.go",
+    "services/import-api/internal/httpserver/server.go",
+    "services/import-api/internal/httpserver/observability.go",
+    "services/import-api/internal/httpserver/metrics_scrape_test.go",
     "scripts/validate-memory-os-metrics-scrape.py"
   ]
 }
