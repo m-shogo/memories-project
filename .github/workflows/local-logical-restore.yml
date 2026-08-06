@@ -1,0 +1,162 @@
+name: Local PostgreSQL Logical Restore Drill
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/local-logical-restore.yml"
+      - "contracts/operations/local-logical-restore-contract.v1.json"
+      - "contracts/operations/migration-lifecycle-contract.v1.json"
+      - "infra/postgresql/security/**"
+      - "scripts/run-memory-os-local-logical-restore.sh"
+      - "scripts/validate-memory-os-local-logical-restore.py"
+      - "scripts/reconcile-memory-os-local-logical-restore.py"
+  schedule:
+    - cron: "41 18 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: local-logical-restore-so
+  cancel-in-progress: false
+
+jobs:
+  restore-drill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      MEMORY_OS_ALLOW_EPHEMERAL_DATABASE_DROP: "1"
+      MEMORY_OS_LOCAL_LOGICAL_RESTORE_RESULTS_PATH: ${{ github.workspace }}/docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json
+    steps:
+      - name: Checkout latest so
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+
+      - name: Capture exact source state
+        run: |
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Validate static restore contract
+        run: |
+          bash -n scripts/run-memory-os-local-logical-restore.sh
+          python -m py_compile \
+            scripts/validate-memory-os-local-logical-restore.py \
+            scripts/reconcile-memory-os-local-logical-restore.py
+          python scripts/validate-memory-os-local-logical-restore.py
+
+      - name: Execute restore drill and write bounded diagnostic
+        id: drill
+        env:
+          MEMORY_OS_COMMIT_SHA: ${{ env.SOURCE_SHA }}
+        run: |
+          set +e
+          bash scripts/run-memory-os-local-logical-restore.sh > /tmp/local-logical-restore.log 2>&1
+          code=$?
+          set -e
+          DRILL_EXIT_CODE="$code" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          output = Path('/tmp/local-logical-restore.log').read_text(
+              encoding='utf-8', errors='replace'
+          )[-4000:]
+          diagnostic = {
+              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'workflow': 'local-postgresql-logical-restore-drill',
+              'sourceCommitSha': os.environ['SOURCE_SHA'],
+              'result': 'PASS' if os.environ['DRILL_EXIT_CODE'] == '0' else 'FAIL',
+              'exitCode': int(os.environ['DRILL_EXIT_CODE']),
+              'output': output,
+              'containsSecrets': False,
+              'productionEvidence': False,
+          }
+          path = Path('docs/fixtures/memory-os-operability/local-logical-restore-diagnostic.last.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(diagnostic, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+          PY
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+
+      - name: Validate exact-source PASS result
+        if: steps.drill.outputs.exit_code == '0'
+        env:
+          EXPECTED_COMMIT_SHA: ${{ env.SOURCE_SHA }}
+        run: python scripts/validate-memory-os-local-logical-restore.py
+
+      - name: Commit result or failure diagnostic
+        run: |
+          git add docs/fixtures/memory-os-operability/local-logical-restore-diagnostic.last.json
+          if [ "${{ steps.drill.outputs.exit_code }}" = "0" ]; then
+            git add docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json
+          fi
+          if git diff --cached --quiet; then
+            echo "Logical restore evidence is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            if [ "${{ steps.drill.outputs.exit_code }}" = "0" ]; then
+              git commit -m "test(backup): record local logical restore evidence"
+            else
+              git commit -m "test(backup): record logical restore failure diagnostic"
+            fi
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+
+      - name: Reconcile exact-source PASS into status
+        if: steps.drill.outputs.exit_code == '0'
+        env:
+          EXPECTED_COMMIT_SHA: ${{ env.SOURCE_SHA }}
+        run: |
+          git pull --rebase origin so
+          python scripts/reconcile-memory-os-local-logical-restore.py
+          python scripts/validate-memory-os-local-logical-restore.py
+          python scripts/validate-memory-os-operability.py
+          git add contracts/operations/production-operability-status.json
+          if git diff --cached --quiet; then
+            echo "Logical restore status is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(backup): register local logical restore evidence"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+
+      - name: Fail workflow after preserving diagnostic
+        if: steps.drill.outputs.exit_code != '0'
+        run: exit 1
