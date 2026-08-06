@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"runtime"
 	"strconv"
@@ -15,13 +16,13 @@ import (
 const shortStabilityScenarioID = "authenticated-preview-short-ci-stability-local-postgres"
 
 type shortStabilityObservation struct {
-	Window          int             `json:"window"`
-	ObservedAt      string          `json:"observedAt"`
-	Batch           liveBatchResult `json:"batch"`
-	HeapAllocBytes  uint64          `json:"heapAllocBytes"`
-	HeapInuseBytes  uint64          `json:"heapInuseBytes"`
-	RSSBytes        int64           `json:"rssBytes"`
-	Goroutines      int             `json:"goroutines"`
+	Window         int             `json:"window"`
+	ObservedAt     string          `json:"observedAt"`
+	Batch          liveBatchResult `json:"batch"`
+	HeapAllocBytes uint64          `json:"heapAllocBytes"`
+	HeapInuseBytes uint64          `json:"heapInuseBytes"`
+	RSSBytes       int64           `json:"rssBytes"`
+	Goroutines     int             `json:"goroutines"`
 }
 
 type shortStabilityResultsDocument struct {
@@ -43,29 +44,29 @@ type shortStabilityResultsDocument struct {
 		ContainsSecrets                  bool   `json:"containsSecrets"`
 	} `json:"environment"`
 	Scenario struct {
-		ScenarioID                    string                      `json:"scenarioId"`
-		StartedAt                     string                      `json:"startedAt"`
-		CompletedAt                   string                      `json:"completedAt"`
-		WindowCount                   int                         `json:"windowCount"`
-		RequestsPerWindow             int                         `json:"requestsPerWindow"`
-		Concurrency                   int                         `json:"concurrency"`
-		BaselineHeapAllocBytes        uint64                      `json:"baselineHeapAllocBytes"`
-		BaselineHeapInuseBytes        uint64                      `json:"baselineHeapInuseBytes"`
-		BaselineRSSBytes              int64                       `json:"baselineRssBytes"`
-		BaselineGoroutines            int                         `json:"baselineGoroutines"`
-		Observations                  []shortStabilityObservation `json:"observations"`
-		FinalMinusBaselineHeapAlloc   int64                       `json:"finalMinusBaselineHeapAllocBytes"`
-		FinalMinusBaselineHeapInuse   int64                       `json:"finalMinusBaselineHeapInuseBytes"`
-		FinalMinusBaselineRSS         int64                       `json:"finalMinusBaselineRssBytes"`
-		FinalMinusBaselineGoroutines  int                         `json:"finalMinusBaselineGoroutines"`
-		HeapAllocSlopeBytesPerWindow  float64                     `json:"heapAllocSlopeBytesPerWindow"`
-		HeapInuseSlopeBytesPerWindow  float64                     `json:"heapInuseSlopeBytesPerWindow"`
-		RSSSlopeBytesPerWindow        float64                     `json:"rssSlopeBytesPerWindow"`
-		GoroutineSlopePerWindow       float64                     `json:"goroutineSlopePerWindow"`
-		Decision                      string                      `json:"decision"`
-		Assertions                    map[string]any              `json:"assertions"`
-		Result                        string                      `json:"result"`
-		IntegrityResult               string                      `json:"integrityResult"`
+		ScenarioID                   string                      `json:"scenarioId"`
+		StartedAt                    string                      `json:"startedAt"`
+		CompletedAt                  string                      `json:"completedAt"`
+		WindowCount                  int                         `json:"windowCount"`
+		RequestsPerWindow            int                         `json:"requestsPerWindow"`
+		Concurrency                  int                         `json:"concurrency"`
+		BaselineHeapAllocBytes       uint64                      `json:"baselineHeapAllocBytes"`
+		BaselineHeapInuseBytes       uint64                      `json:"baselineHeapInuseBytes"`
+		BaselineRSSBytes             int64                       `json:"baselineRssBytes"`
+		BaselineGoroutines           int                         `json:"baselineGoroutines"`
+		Observations                 []shortStabilityObservation `json:"observations"`
+		FinalMinusBaselineHeapAlloc  int64                       `json:"finalMinusBaselineHeapAllocBytes"`
+		FinalMinusBaselineHeapInuse  int64                       `json:"finalMinusBaselineHeapInuseBytes"`
+		FinalMinusBaselineRSS        int64                       `json:"finalMinusBaselineRssBytes"`
+		FinalMinusBaselineGoroutines int                         `json:"finalMinusBaselineGoroutines"`
+		HeapAllocSlopeBytesPerWindow float64                     `json:"heapAllocSlopeBytesPerWindow"`
+		HeapInuseSlopeBytesPerWindow float64                     `json:"heapInuseSlopeBytesPerWindow"`
+		RSSSlopeBytesPerWindow       float64                     `json:"rssSlopeBytesPerWindow"`
+		GoroutineSlopePerWindow      float64                     `json:"goroutineSlopePerWindow"`
+		Decision                     string                      `json:"decision"`
+		Assertions                   map[string]any              `json:"assertions"`
+		Result                       string                      `json:"result"`
+		IntegrityResult              string                      `json:"integrityResult"`
 	} `json:"scenario"`
 	Limitations []string `json:"limitations"`
 }
@@ -264,19 +265,19 @@ func TestAuthenticatedPreviewShortCIStabilityLocalPostgres(t *testing.T) {
 	document.Scenario.GoroutineSlopePerWindow = shortStabilitySlope(goroutineValues)
 	document.Scenario.Decision = "SHORT_SAMPLE_ONLY"
 	document.Scenario.Assertions = map[string]any{
-		"allWindowsExecuted":               len(observations) == windowCount,
-		"allWindowsAll2xx":                 all2xx,
-		"allWindowsNo5xx":                  allNo5xx,
-		"allWindowsNoTransportErrors":      allNoTransport,
-		"rssAvailable":                     baselineRSS > 0,
-		"previewReadyRowsAfterSample":      counts["previewReadyRowsAfterSample"],
-		"previewCandidateRowsAfterSample":  counts["previewCandidateRowsAfterSample"],
-		"previewRejectionRowsAfterSample":  counts["previewRejectionRowsAfterSample"],
-		"sustainedSoakEvidence":            false,
-		"leakProof":                        false,
-		"capacityBoundaryEstablished":      false,
-		"operationalThresholdApproved":     false,
-		"productionEvidence":               false,
+		"allWindowsExecuted":              len(observations) == windowCount,
+		"allWindowsAll2xx":                all2xx,
+		"allWindowsNo5xx":                 allNo5xx,
+		"allWindowsNoTransportErrors":     allNoTransport,
+		"rssAvailable":                    baselineRSS > 0,
+		"previewReadyRowsAfterSample":     counts["previewReadyRowsAfterSample"],
+		"previewCandidateRowsAfterSample": counts["previewCandidateRowsAfterSample"],
+		"previewRejectionRowsAfterSample": counts["previewRejectionRowsAfterSample"],
+		"sustainedSoakEvidence":           false,
+		"leakProof":                       false,
+		"capacityBoundaryEstablished":     false,
+		"operationalThresholdApproved":    false,
+		"productionEvidence":              false,
 	}
 	document.Scenario.Result = "PASS"
 	document.Scenario.IntegrityResult = "PASS"
