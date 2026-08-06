@@ -40,6 +40,7 @@ REQUIRED_RUNBOOK_PHRASES = [
     "Production decision remains: **NO_GO**",
 ]
 REQUIRED_STATUS_REFS = {
+    ".github/workflows/security-contracts.yml",
     "contracts/operations/migration-lifecycle-contract.v1.json",
     "docs/runbooks/memory-os-migration-recovery.md",
     "scripts/validate-memory-os-migration-lifecycle.py",
@@ -89,12 +90,23 @@ def main() -> int:
     require(validator_ref == "scripts/validate-memory-os-migration-lifecycle.py",
             "validator path drift")
 
+    contract_refs = unique_strings(contract.get("evidenceRefs"), "evidenceRefs")
+    missing_contract_refs = REQUIRED_STATUS_REFS - set(contract_refs)
+    require(not missing_contract_refs,
+            f"migration contract omits evidence: {sorted(missing_contract_refs)}")
+    for ref in contract_refs:
+        require((ROOT / ref).is_file(), f"migration contract evidence path missing: {ref}")
+
     migration_dir = ROOT / directory_ref
     require(migration_dir.is_dir(), "canonical migration directory is missing")
     sequence = unique_strings(contract.get("migrationSequence"), "migrationSequence")
     require(all(SHA_FILE_RE.fullmatch(name) for name in sequence),
             "migrationSequence contains a non-canonical filename")
-    actual = sorted(path.name for path in migration_dir.glob("*.sql") if path.is_file())
+    actual = sorted(
+        path.name
+        for path in migration_dir.glob("*.sql")
+        if path.is_file() and not path.name.startswith("test_")
+    )
     require(actual == sequence,
             f"canonical migration registry mismatch: expected={sequence}, actual={actual}")
 
@@ -175,10 +187,14 @@ def main() -> int:
 
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "readiness must be an object")
-    for foundation in ("policyDefined", "runbookDefined", "migrationRegistryComplete"):
+    for foundation in (
+        "policyDefined",
+        "runbookDefined",
+        "migrationRegistryComplete",
+        "ciDryRunAgainstCleanDatabase",
+    ):
         require(readiness.get(foundation) is True, f"readiness.{foundation} must be true")
     for unproven in (
-        "ciDryRunAgainstCleanDatabase",
         "mixedVersionCompatibilityProven",
         "productionShapedRehearsalCompleted",
         "isolatedRestoreLinked",
@@ -234,6 +250,7 @@ def main() -> int:
 
     print("Memory OS migration lifecycle validation PASS")
     print(f"canonical migrations: {len(sequence)}")
+    print("clean PostgreSQL CI dry-run: configured")
     print(f"OPS-P0-001 status: {area.get('status')}")
     print("production decision: NO_GO")
     return 0
