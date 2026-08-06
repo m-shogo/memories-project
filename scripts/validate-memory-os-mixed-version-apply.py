@@ -55,7 +55,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--expected-commit-sha", default=os.getenv("EXPECTED_COMMIT_SHA", ""))
     parser.add_argument("--require-reconciled", action="store_true")
+    parser.add_argument("--allow-stale-result", action="store_true")
     arguments = parser.parse_args()
+    require(not (arguments.allow_stale_result and
+                 (arguments.expected_commit_sha or arguments.require_reconciled)),
+            "stale-result mode cannot be combined with exact or reconciled validation")
 
     contract = load(CONTRACT_PATH)
     require(contract.get("schemaVersion") == "memory-os-mixed-version-apply.v1",
@@ -76,8 +80,8 @@ def main() -> int:
     for field in ("requiredScenarios", "abortCriteria", "limitations", "evidenceRefs"):
         value = contract.get(field)
         require(isinstance(value, list) and value, f"{field} must be a non-empty list")
-    require(len(contract["requiredScenarios"]) == 6,
-            "mixed-version Apply scenario count drift")
+    require(len(contract["requiredScenarios"]) >= 6,
+            "mixed-version Apply scenario coverage is too small")
     for ref in contract["evidenceRefs"]:
         require(isinstance(ref, str) and not ref.startswith("/") and
                 ".." not in Path(ref).parts,
@@ -88,12 +92,13 @@ def main() -> int:
     require(isinstance(boundary, dict), "evidenceBoundary missing")
     for field in (
         "productionEvidence", "releaseCompatibilityEvidence", "approvedReleasePair",
-        "rollingDeploymentEvidence", "rollbackEvidence", "concurrentClaimRaceEvidence",
-        "productionReady",
+        "rollingDeploymentEvidence", "rollbackEvidence", "productionReady",
     ):
         require(boundary.get(field) is False, f"evidence boundary overclaim: {field}")
     require(boundary.get("historicalCandidateOnly") is True,
             "historical candidate boundary missing")
+    require(boundary.get("concurrentClaimRaceEvidence") in (False, True),
+            "concurrent claim race boundary must be boolean")
 
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "readiness missing")
@@ -103,10 +108,19 @@ def main() -> int:
     ):
         require(readiness.get(field) is True, f"implementation readiness missing: {field}")
     for field in (
-        "approvedReleasePairAvailable", "concurrentClaimRaceExecuted",
-        "rollbackRehearsalExecuted", "productionReady",
+        "approvedReleasePairAvailable", "rollbackRehearsalExecuted", "productionReady",
     ):
         require(readiness.get(field) is False, f"unproven readiness cannot be true: {field}")
+    require(readiness.get("concurrentClaimRaceExecuted") in (False, True),
+            "concurrentClaimRaceExecuted must be boolean")
+
+    if arguments.allow_stale_result and
+            readiness.get("exactSourcePassResultCommitted") is False:
+        print("Memory OS mixed-version Apply static validation PASS")
+        print(f"scenario count: {len(contract['requiredScenarios'])}")
+        print("stale result intentionally ignored pending exact-source regeneration")
+        print("production decision: NO_GO")
+        return 0
 
     if not RESULT_PATH.is_file():
         require(readiness.get("exactSourcePassResultCommitted") is False,
@@ -176,6 +190,9 @@ def main() -> int:
     if arguments.require_reconciled:
         require(readiness.get("exactSourcePassResultCommitted") is True,
                 "result exists but contract readiness is not reconciled")
+        if assertions.get("concurrentOldCurrentClaimRacePassed") is True:
+            require(readiness.get("concurrentClaimRaceExecuted") is True,
+                    "concurrent claim race result is not reconciled")
     else:
         require(readiness.get("exactSourcePassResultCommitted") in (False, True),
                 "exactSourcePassResultCommitted must be boolean")
@@ -184,6 +201,7 @@ def main() -> int:
     print(f"old backend: {old_sha[:12]}")
     print(f"current source: {current_sha[:12]}")
     print(f"reconciled: {readiness.get('exactSourcePassResultCommitted') is True}")
+    print(f"concurrent race: {assertions.get('concurrentOldCurrentClaimRacePassed', False)}")
     print("production decision: NO_GO")
     return 0
 
