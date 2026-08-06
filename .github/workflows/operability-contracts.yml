@@ -22,8 +22,7 @@ on:
       - "services/import-api/internal/ratelimit/**"
       - "services/import-api/internal/metrics/**"
       - "services/import-api/internal/loadtest/**"
-      - "services/import-api/internal/httpserver/observability.go"
-      - "services/import-api/internal/httpserver/ratelimit.go"
+      - "services/import-api/internal/httpserver/**"
       - ".github/workflows/operability-contracts.yml"
   push:
     branches:
@@ -48,8 +47,7 @@ on:
       - "services/import-api/internal/ratelimit/**"
       - "services/import-api/internal/metrics/**"
       - "services/import-api/internal/loadtest/**"
-      - "services/import-api/internal/httpserver/observability.go"
-      - "services/import-api/internal/httpserver/ratelimit.go"
+      - "services/import-api/internal/httpserver/**"
       - ".github/workflows/operability-contracts.yml"
   workflow_dispatch:
 
