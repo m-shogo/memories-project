@@ -1,10 +1,12 @@
 {
-  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "schemaVersion": "memory-os-validator-diagnostic.v2",
   "workflow": "local-object-version-restore-drill",
-  "sourceCommitSha": "64cee3bf3a300705a65dacafadff1916744b1ebb",
-  "result": "PASS",
-  "exitCode": 0,
-  "output": "Memory OS local exact object-version restore PASS\nsource versions: 3  source remaining: 0  restored checksum: PASS\nresult: /home/runner/work/memories-project/memories-project/docs/fixtures/memory-os-operability/local-object-version-restore-results.sample.v1.json\n",
+  "sourceCommitSha": "dc887f6e10e68817a93167907370be0e84b3595d",
+  "drillResult": "PASS",
+  "drillExitCode": 0,
+  "validationResult": "PASS",
+  "validationExitCode": 0,
+  "output": "Memory OS local exact object-version restore PASS\nsource versions: 3  source remaining: 0  restored checksum: PASS\nresult: /home/runner/work/memories-project/memories-project/docs/fixtures/memory-os-operability/local-object-version-restore-results.sample.v1.json\n\n--- validator ---\nMemory OS local object-version restore validation PASS\nresult present: True\nOPS-P0-007 status: PARTIAL_FOUNDATIONS_ONLY\nproduction decision: NO_GO\n",
   "containsSecrets": false,
   "productionEvidence": false
 }
