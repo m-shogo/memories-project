@@ -431,11 +431,14 @@
         "append-only reviewed parser artifact registry separating repository test harnesses, source, build outputs, digest strings and CI results from approved artifact bytes",
         "artifact writer recomputes exact SHA-256 and byte length, requires three distinct review roles, approved release bindings, replay evidence and independent retention evidence",
         "test harness worker and Go test binary are explicitly forbidden from being treated as approved production parser artifacts",
-        "empty registry records zero reviewed, replay-proven or rollback-retained parser artifacts and BLOCKED_NO_REVIEWED_PARSER_ARTIFACT"
+        "empty registry records zero reviewed, replay-proven or rollback-retained parser artifacts and BLOCKED_NO_REVIEWED_PARSER_ARTIFACT",
+        "exact-source isolated PostgreSQL 16 to PostgreSQL 17 logical forward-upgrade rehearsal using fresh expand-migrated target schema and PostgreSQL 17 dump tooling",
+        "cross-major data-only restore preserves active account/session authority while deleted account and session authority remain absent and unresolvable",
+        "bounded schema-authority fingerprints match across PostgreSQL 16 and 17, runtime roles remain NOBYPASSRLS, FORCE RLS remains enabled and the complete canonical SQL integration suite passes on PostgreSQL 17",
+        "upgrade policy forbids automatic in-place upgrade, down migration, target-to-source downgrade, source deletion and traffic promotion"
       ],
       "missingEvidence": [
         "implemented client support windows and client/server skew tests",
-        "PostgreSQL minor/major upgrade policy and rehearsal",
         "production rolling deployment and downgrade rehearsal",
         "independent review of compatibility controls",
         "full old/current backend mixed-version route, mutation, persisted-state and rollback coverage beyond the proven session/authentication slice",
@@ -458,7 +461,11 @@
         "reviewed production parser artifact record with exact bytes, build provenance, Security, Runtime and Release Owner approvals",
         "exact registered old parser artifact replay test with deterministic accepted/rejected accounting and protocol binding",
         "independent immutable retention evidence for every parser artifact required by a rollback-eligible approved release",
-        "approved release artifact-set digest binding and retirement proof that no rollback release depends on a deleted artifact"
+        "approved release artifact-set digest binding and retirement proof that no rollback release depends on a deleted artifact",
+        "reviewed PostgreSQL minor-version support window and patch-upgrade rehearsal",
+        "production-shaped in-place pg_upgrade or approved blue-green database cutover rehearsal with connection-pool drain and rollback decision evidence",
+        "physical replication, WAL continuity, replication-slot and failover verification across the approved PostgreSQL upgrade path",
+        "approved rollback boundary for irreversible database-format changes and independent database recovery review"
       ],
       "evidenceRefs": [
         ".github/workflows/security-contracts.yml",
@@ -507,7 +514,13 @@
         "scripts/validate-memory-os-parser-artifact-registry.py",
         "scripts/reconcile-memory-os-parser-artifact-registry.py",
         ".github/workflows/parser-artifact-registry.yml",
-        "services/import-api/internal/parsersup/worker.go"
+        "services/import-api/internal/parsersup/worker.go",
+        "contracts/operations/postgresql-major-upgrade-contract.v1.json",
+        "scripts/run-memory-os-postgresql-major-upgrade.sh",
+        "scripts/validate-memory-os-postgresql-major-upgrade.py",
+        "scripts/reconcile-memory-os-postgresql-major-upgrade.py",
+        "docs/fixtures/memory-os-operability/postgresql-major-upgrade-results.sample.v1.json",
+        ".github/workflows/postgresql-major-upgrade.yml"
       ]
     }
   ]
