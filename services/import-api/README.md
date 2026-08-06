@@ -37,7 +37,10 @@ Implemented foundations include:
 - idempotent exact-hash Apply into minimal `memory_item` persistence;
 - Preview read API;
 - account epoch fencing, stored-object erasure and resumable deletion worker;
-- provenance and interpretation invariants with destructive update paths closed fail-closed.
+- provenance and interpretation invariants with destructive update paths closed fail-closed;
+- deterministic Prometheus text exposition with mandatory histogram `+Inf` buckets;
+- a fail-closed bearer-authenticated metrics scrape handler with bounded response size;
+- an explicit, default-disabled HTTP server mount seam that keeps metrics outside public API rate-limit buckets while retaining privacy-safe request observability.
 
 ## Critical boundaries
 
@@ -76,6 +79,14 @@ Implemented foundations include:
 - Leased deletion work resumes after interruption.
 - Backup/restore non-resurrection has not yet been proven and remains a P0 gate.
 
+### Metrics scrape
+
+- The Prometheus exporter reads only the closed, bounded-cardinality registry.
+- Scrape authentication uses a deployment bearer token hashed before constant-time comparison; the raw token is not logged or labeled.
+- The handler is not mounted by default.
+- A deployment must explicitly construct and pass the handler, provision its secret, and place the listener behind a private operational network boundary.
+- No production listener, network policy, external scraper, dashboard, retention rule or alert route is configured yet.
+
 ## Development-only components
 
 - `cmd/importctl` and `scripts/dev-import.sh` are local development harnesses.
@@ -90,13 +101,13 @@ Implemented foundations include:
 - production object-storage TLS/scoped credentials/lifecycle evidence;
 - parser network namespace/seccomp/container evidence;
 - privacy-safe structured observability and real alert routing (structured event contract, correlation IDs and redaction tests now exist under `internal/obslog` and `internal/reqid`; retention and real alert routing remain, so OPS-P0-003 stays PARTIAL, not READY);
-- bounded-cardinality runtime metrics with SLIs, SLOs, dashboards, thresholds and an error-budget policy (a typed, privacy-preserving metrics registry and recorder now exist under `internal/metrics`, wired at the HTTP, rate-limit and deletion-worker boundaries, with a machine-readable contract, PROPOSED SLOs, NOT_CONFIGURED alert candidates and a fail-closed validator; no exporter, scrape endpoint, dashboard, alert routing, retention or load-calibrated buckets exist yet, so OPS-P0-004 stays PARTIAL, not READY);
+- production metrics operations (the typed bounded-cardinality registry, deterministic Prometheus exporter, authenticated scrape handler and explicit default-disabled server mount seam exist with machine-readable contracts and fail-closed tests; production secret provisioning, private network policy, runtime mounting, external scraping, dashboards, alert routing, retention and load-calibrated buckets/SLOs remain, so OPS-P0-004 stays PARTIAL, not READY);
 - endpoint-specific distributed rate limiting (a fail-closed token-bucket limiter with route-global and keyed per-network guards, explicit trusted-proxy boundary and a stable 429 now exists under `internal/ratelimit`; a distributed shared store, trusted-proxy configuration and load-calibrated limits remain, so OPS-P0-005 stays PARTIAL, not READY);
-- production-shaped load/capacity evidence (the committed mock harness and results cover deterministic steady, burst, failure and cardinality scenarios; executable live checkpoints now drive Preview read and concurrent idempotent Apply through bearer sessions, the deployment PostgreSQL principal and `FORCE RLS`, and drive signed authorization, presigned PUT, exact object-version verification and scan enqueue through PostgreSQL 16 plus MinIO. Both live checkpoints have machine-readable contracts, independent fail-closed validators and an automatic push-triggered/daily regeneration workflow. Exact-HEAD committed live results are still pending, and local PostgreSQL/MinIO evidence does not establish a production capacity boundary, sustained soak, production-equivalent dependencies or production object-storage controls, so OPS-P0-006 stays PARTIAL, not READY);
+- production-shaped load/capacity evidence (the committed mock harness and results cover deterministic steady, burst, failure and cardinality scenarios; executable live checkpoints now drive Preview read and concurrent idempotent Apply through bearer sessions, the deployment PostgreSQL principal and `FORCE RLS`, and drive signed authorization, presigned PUT, exact object-version verification and scan enqueue through PostgreSQL 16 plus MinIO. Both live checkpoints have machine-readable contracts, independent fail-closed validators and an automatic push-triggered/daily regeneration workflow. Local PostgreSQL/MinIO evidence does not establish a production capacity boundary, sustained soak, production-equivalent dependencies or production object-storage controls, so OPS-P0-006 stays PARTIAL, not READY);
 - PostgreSQL PITR and isolated restore rehearsal;
-- migration lifecycle and operator incident runbooks;
-- mixed-version compatibility tests;
-- critical system-level failure drills;
+- production-shaped migration recovery and mixed-version proof;
+- incident paging and completed recovery drills;
+- critical production system-level failure drills;
 - independent review with zero unresolved Critical/High.
 
 ## Validation
@@ -113,6 +124,8 @@ python scripts/validate-memory-os-parser-security.py
 python scripts/validate-memory-os-preview-spool.py
 python scripts/validate-memory-os-canonical-records.py
 python scripts/validate-memory-os-memory-provenance.py
+python scripts/validate-memory-os-metrics.py
+python scripts/validate-memory-os-metrics-scrape.py
 python scripts/validate-memory-os-load.py
 python scripts/validate-memory-os-live-load.py
 python scripts/validate-memory-os-live-object-load.py
@@ -120,7 +133,7 @@ python scripts/validate-memory-os-operability.py
 python scripts/validate-memory-os-entry-docs.py
 ```
 
-The two live validators require their generated result documents. The automatic workflow creates those documents from the exact source SHA before running the validators. Their absence is a missing-evidence signal, not a reason to fabricate a PASS fixture.
+The live validators require their generated result documents. Automatic workflows create those documents from the exact source SHA before running the validators. Their absence is a missing-evidence signal, not a reason to fabricate a PASS fixture.
 
 From `services/import-api`:
 
