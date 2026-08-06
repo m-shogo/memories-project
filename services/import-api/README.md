@@ -40,7 +40,11 @@ Implemented foundations include:
 - provenance and interpretation invariants with destructive update paths closed fail-closed;
 - deterministic Prometheus text exposition with mandatory histogram `+Inf` buckets;
 - a fail-closed bearer-authenticated metrics scrape handler with bounded response size;
-- an explicit, default-disabled HTTP server mount seam that keeps metrics outside public API rate-limit buckets while retaining privacy-safe request observability.
+- an explicit, default-disabled HTTP server mount seam that keeps metrics outside public API rate-limit buckets while retaining privacy-safe request observability;
+- four provider-neutral dashboard specifications and privacy-safe retention/error-budget policies;
+- seven provider-neutral alert rules with canonical response runbooks while routing remains unconfigured;
+- privacy-first observability retention/access, break-glass and export policies;
+- rate-limit emergency modes and recovery procedures that forbid unlimited or fail-open public traffic.
 
 ## Critical boundaries
 
@@ -79,13 +83,29 @@ Implemented foundations include:
 - Leased deletion work resumes after interruption.
 - Backup/restore non-resurrection has not yet been proven and remains a P0 gate.
 
-### Metrics scrape
+### Metrics and alerting
 
 - The Prometheus exporter reads only the closed, bounded-cardinality registry.
 - Scrape authentication uses a deployment bearer token hashed before constant-time comparison; the raw token is not logged or labeled.
 - The handler is not mounted by default.
 - A deployment must explicitly construct and pass the handler, provision its secret, and place the listener behind a private operational network boundary.
-- No production listener, network policy, external scraper, dashboard, retention rule or alert route is configured yet.
+- Dashboard, retention, error-budget and alert-rule intent is defined in provider-neutral contracts.
+- Alert routing, paging, on-call ownership, delivery verification and production-pinned `promtool` evidence are not configured.
+- No production listener, network policy, external scraper, dashboard data source, retention backend or alert route is configured yet.
+
+### Observability access
+
+- Structured events contain bounded closed fields and exclude user content, secrets, raw errors, SQL parameters, object keys and account/Apple identity.
+- Policy tiers are defined for 14-day hot, 90-day warm and 365-day reviewed incident evidence.
+- Production log backend enforcement, identity groups, append-only access-audit sink, break-glass testing and export testing are not configured.
+- A missing log signal is unknown state, not proof that an operation did not happen.
+
+### Rate limiting
+
+- Public traffic remains bounded or fails closed; `UNLIMITED_OR_FAIL_OPEN` is forbidden.
+- Strict local emergency mode is allowed only for a policy that explicitly declares `fail_closed_emergency_local`.
+- Uncertain proxy ownership requires forwarded-header trust to be disabled.
+- The production shared atomic store, emergency control plane, automatic expiry, operation ledger, deployment proxy configuration and completed drills remain missing.
 
 ## Development-only components
 
@@ -100,10 +120,10 @@ Implemented foundations include:
 - real-Apple credential/key-rotation evidence;
 - production object-storage TLS/scoped credentials/lifecycle evidence;
 - parser network namespace/seccomp/container evidence;
-- privacy-safe structured observability and real alert routing (structured event contract, correlation IDs and redaction tests now exist under `internal/obslog` and `internal/reqid`; retention and real alert routing remain, so OPS-P0-003 stays PARTIAL, not READY);
-- production metrics operations (the typed bounded-cardinality registry, deterministic Prometheus exporter, authenticated scrape handler and explicit default-disabled server mount seam exist with machine-readable contracts and fail-closed tests; production secret provisioning, private network policy, runtime mounting, external scraping, dashboards, alert routing, retention and load-calibrated buckets/SLOs remain, so OPS-P0-004 stays PARTIAL, not READY);
-- endpoint-specific distributed rate limiting (a fail-closed token-bucket limiter with route-global and keyed per-network guards, explicit trusted-proxy boundary and a stable 429 now exists under `internal/ratelimit`; a distributed shared store, trusted-proxy configuration and load-calibrated limits remain, so OPS-P0-005 stays PARTIAL, not READY);
-- production-shaped load/capacity evidence (the committed mock harness and results cover deterministic steady, burst, failure and cardinality scenarios; executable live checkpoints now drive Preview read and concurrent idempotent Apply through bearer sessions, the deployment PostgreSQL principal and `FORCE RLS`, and drive signed authorization, presigned PUT, exact object-version verification and scan enqueue through PostgreSQL 16 plus MinIO. Both live checkpoints have machine-readable contracts, independent fail-closed validators and an automatic push-triggered/daily regeneration workflow. Local PostgreSQL/MinIO evidence does not establish a production capacity boundary, sustained soak, production-equivalent dependencies or production object-storage controls, so OPS-P0-006 stays PARTIAL, not READY);
+- production observability operations (the structured event contract, correlation IDs, redaction tests, retention/access policy and canonical access runbook exist; production log backend enforcement, identity groups, access audit, break-glass/export drills and real log-derived alert routing remain, so OPS-P0-003 stays PARTIAL, not READY);
+- production metrics operations (the typed bounded-cardinality registry, deterministic Prometheus exporter, authenticated scrape handler, default-disabled server mount seam, four dashboard specifications, retention/error-budget policy and seven alert rules/runbooks exist; production secret/network provisioning, runtime mounting, external scraping, dashboard/data-source deployment, retention enforcement, paging/on-call ownership, delivery verification and load-calibrated buckets/SLOs remain, so OPS-P0-004 stays PARTIAL, not READY);
+- production distributed rate limiting (the fail-closed limiter, emergency-mode policy and recovery runbook exist; a distributed shared store, deployment-owned proxy configuration, production emergency control plane, automatic expiry, append-only operations ledger, load-calibrated limits and completed drills remain, so OPS-P0-005 stays PARTIAL, not READY);
+- production-shaped load/capacity evidence (the committed mock harness and results cover deterministic steady, burst, failure and cardinality scenarios; executable live checkpoints drive Preview read and concurrent idempotent Apply through bearer sessions, the deployment PostgreSQL principal and `FORCE RLS`, and drive signed authorization, presigned PUT, exact object-version verification and scan enqueue through PostgreSQL 16 plus MinIO. Local PostgreSQL/MinIO evidence does not establish a production capacity boundary, sustained soak, production-equivalent dependencies or production object-storage controls, so OPS-P0-006 stays PARTIAL, not READY);
 - PostgreSQL PITR and isolated restore rehearsal;
 - production-shaped migration recovery and mixed-version proof;
 - incident paging and completed recovery drills;
@@ -124,8 +144,14 @@ python scripts/validate-memory-os-parser-security.py
 python scripts/validate-memory-os-preview-spool.py
 python scripts/validate-memory-os-canonical-records.py
 python scripts/validate-memory-os-memory-provenance.py
+python scripts/validate-memory-os-observability.py
+python scripts/validate-memory-os-observability-access.py
+python scripts/validate-memory-os-rate-limit.py
+python scripts/validate-memory-os-rate-limit-operations.py
 python scripts/validate-memory-os-metrics.py
 python scripts/validate-memory-os-metrics-scrape.py
+python scripts/validate-memory-os-metrics-operations.py
+python scripts/validate-memory-os-metrics-alerting.py
 python scripts/validate-memory-os-load.py
 python scripts/validate-memory-os-live-load.py
 python scripts/validate-memory-os-live-object-load.py
