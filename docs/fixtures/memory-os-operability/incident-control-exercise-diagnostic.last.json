@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "incident-control-exercise",
-  "sourceCommitSha": "94d4b9c1a7aa6ff530a495df490910160e5c6622",
+  "sourceCommitSha": "adec55e235853f795bab730ea8c8f33cd0ad5a2b",
   "result": "FAIL",
   "exitCode": 1,
   "validationResult": "NOT_RUN",
