@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Register exact-source candidate baseline compatibility evidence conservatively."""
+"""Register exact-source candidate compatibility evidence conservatively."""
 
 from __future__ import annotations
 
@@ -14,15 +14,16 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/mixed-version-candidate-contract.v1.json"
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json"
+REJECTION_PATH = ROOT / "docs/fixtures/memory-os-operability/mixed-version-candidate-rejections.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
-BASELINE_SHA = "a1f39560468ebd5d39c4dd7a336140cb455cf2e8"
+ACTIVE_BASELINE_SHA = "2af6e8e10755cc707c6bdd958a049a0f4afb3d70"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 RESULT_REF = "docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json"
 
 NEW_EXISTING = (
-    "historical candidate-baseline compatibility drill applying the current expanded PostgreSQL schema before executing the candidate baseline SQL and selected Go integration surfaces",
+    "historical candidate-baseline compatibility drill applying the current expanded PostgreSQL schema before executing baseline-owned SQL and reviewed common Go integration surfaces sequentially",
     "candidate execution preserves the current memory_os schema fingerprint and current SQL/Go verification passes independently on a separate database",
-    "exact baseline/current SHAs are recorded while explicitly classifying the baseline as historical candidate, not approved release evidence",
+    "exact active baseline/current SHAs are recorded while rejected historical candidates remain preserved in a separate machine-readable registry",
 )
 NEW_MISSING = (
     "approved predecessor release artifact and successor release pair for binding compatibility evidence",
@@ -33,6 +34,7 @@ NEW_MISSING = (
 )
 NEW_REFS = (
     "contracts/operations/mixed-version-candidate-contract.v1.json",
+    "docs/fixtures/memory-os-operability/mixed-version-candidate-rejections.v1.json",
     RESULT_REF,
     "scripts/run-memory-os-mixed-version-candidate.sh",
     "scripts/validate-memory-os-mixed-version-candidate.py",
@@ -82,53 +84,54 @@ def main() -> int:
     result = load(RESULT_PATH)
     require(result.get("schemaVersion") ==
             "memory-os-mixed-version-candidate-results.v1",
-            "mixed-version result schema drift")
+            "candidate result schema drift")
     current_sha = result.get("currentCommitSha")
     require(isinstance(current_sha, str) and SHA_RE.fullmatch(current_sha) is not None,
-            "mixed-version current SHA invalid")
-    require(result.get("candidateBaselineCommitSha") == BASELINE_SHA,
-            "mixed-version baseline SHA drift")
-    require(is_ancestor(BASELINE_SHA, current_sha) and is_ancestor(current_sha, "HEAD"),
-            "mixed-version source lineage is invalid")
+            "candidate current SHA invalid")
+    require(result.get("candidateBaselineCommitSha") == ACTIVE_BASELINE_SHA,
+            "candidate result baseline SHA drift")
+    require(is_ancestor(ACTIVE_BASELINE_SHA, current_sha) and
+            is_ancestor(current_sha, "HEAD"),
+            "candidate source lineage is invalid")
     environment = result.get("environment")
-    require(isinstance(environment, dict), "mixed-version environment missing")
-    require(environment.get("productionEvidence") is False and
+    require(isinstance(environment, dict) and
+            environment.get("productionEvidence") is False and
             environment.get("releaseCompatibilityEvidence") is False and
             environment.get("candidateBaselineOnly") is True and
             environment.get("containsSecrets") is False and
             environment.get("syntheticDataOnly") is True,
-            "mixed-version evidence boundary drift")
+            "candidate evidence boundary drift")
     scenario = result.get("scenario")
-    require(isinstance(scenario, dict), "mixed-version scenario missing")
-    require(scenario.get("result") == "PASS" and
+    require(isinstance(scenario, dict) and
+            scenario.get("result") == "PASS" and
             scenario.get("integrityResult") == "PASS",
-            "mixed-version candidate result is not PASS")
+            "candidate compatibility result is not PASS")
     assertions = scenario.get("assertions")
-    require(isinstance(assertions, dict) and assertions and
-            all(value is True for value in assertions.values()),
-            "mixed-version result contains a failed assertion")
+    require(isinstance(assertions, dict) and assertions and all(assertions.values()),
+            "candidate result contains a failed assertion")
 
     contract = load(CONTRACT_PATH)
-    require(contract.get("candidateBaseline", {}).get("commitSha") == BASELINE_SHA,
+    require(contract.get("candidateBaseline", {}).get("commitSha") == ACTIVE_BASELINE_SHA,
             "candidate contract baseline drift")
+    require(contract.get("rejectedCandidateRegistry") ==
+            str(REJECTION_PATH.relative_to(ROOT)) and REJECTION_PATH.is_file(),
+            "candidate rejection registry is missing")
     require(contract.get("evidenceBoundary", {}).get("productionReady") is False,
             "candidate contract cannot claim production readiness")
     readiness = contract.get("readiness")
     refs = contract.get("evidenceRefs")
-    require(isinstance(readiness, dict), "candidate contract readiness missing")
-    require(isinstance(refs, list), "candidate contract evidenceRefs must be a list")
+    require(isinstance(readiness, dict), "candidate readiness missing")
+    require(isinstance(refs, list), "candidate evidenceRefs must be a list")
 
     contract_changed = False
     for field in (
         "contractDefined", "runnerImplemented",
         "validatorImplemented", "automaticWorkflowImplemented",
+        "exactSourcePassResultCommitted",
     ):
         if readiness.get(field) is not True:
             readiness[field] = True
             contract_changed = True
-    if readiness.get("exactSourcePassResultCommitted") is not True:
-        readiness["exactSourcePassResultCommitted"] = True
-        contract_changed = True
     for field in (
         "approvedReleaseBaselineAvailable", "simultaneousMixedTrafficExecuted",
         "rollingDeploymentFailureExecuted", "productionReady",
@@ -136,7 +139,7 @@ def main() -> int:
         require(readiness.get(field) is False,
                 f"candidate evidence cannot promote readiness.{field}")
     for ref in NEW_REFS:
-        require((ROOT / ref).is_file(), f"mixed-version evidence path missing: {ref}")
+        require((ROOT / ref).is_file(), f"candidate evidence path missing: {ref}")
         if ref not in refs:
             refs.append(ref)
             contract_changed = True
@@ -146,16 +149,13 @@ def main() -> int:
             "candidate evidence cannot change production decision")
     gate = next((item for item in status.get("areas", [])
                  if isinstance(item, dict) and item.get("id") == "OPS-P0-008"), None)
-    require(isinstance(gate, dict), "OPS-P0-008 missing")
-    require(gate.get("status") == "PARTIAL", "OPS-P0-008 must remain PARTIAL")
+    require(isinstance(gate, dict) and gate.get("status") == "PARTIAL",
+            "OPS-P0-008 must remain PARTIAL")
     existing = gate.get("existingEvidence")
     missing = gate.get("missingEvidence")
     status_refs = gate.get("evidenceRefs")
     require(isinstance(existing, list), "OPS-P0-008 existingEvidence must be a list")
     require(isinstance(missing, list), "OPS-P0-008 missingEvidence must be a list")
-    if status_refs is None:
-        status_refs = []
-        gate["evidenceRefs"] = status_refs
     require(isinstance(status_refs, list), "OPS-P0-008 evidenceRefs must be a list")
 
     status_changed = False
@@ -172,7 +172,7 @@ def main() -> int:
             status_refs.append(ref)
             status_changed = True
 
-    lowered = [item.lower() for item in missing]
+    lowered = [str(item).lower() for item in missing]
     for label, terms in {
         "approved predecessor release": ("approved", "predecessor", "release"),
         "simultaneous mixed traffic": ("simultaneous", "old/current", "traffic"),
@@ -181,10 +181,7 @@ def main() -> int:
         "independent review": ("critical", "high"),
     }.items():
         require(any(all(term in item for term in terms) for item in lowered),
-                f"required mixed-version gap disappeared: {label}")
-    require(gate.get("status") == "PARTIAL", "candidate evidence changed readiness")
-    require(status.get("productionDecision") == "NO_GO",
-            "production decision changed unexpectedly")
+                f"required compatibility gap disappeared: {label}")
 
     if contract_changed:
         write(CONTRACT_PATH, contract)
@@ -194,7 +191,7 @@ def main() -> int:
     if not contract_changed and not status_changed:
         print("Mixed-version candidate authority already reconciled")
         return 0
-    print("Registered historical candidate compatibility; OPS-P0-008 remains PARTIAL")
+    print("Registered active historical candidate compatibility; OPS-P0-008 remains PARTIAL")
     return 0
 
 
