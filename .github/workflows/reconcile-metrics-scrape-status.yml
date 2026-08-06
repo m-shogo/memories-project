@@ -25,6 +25,8 @@ on:
       - "scripts/reconcile-memory-os-metrics-scrape-status.py"
       - "scripts/reconcile-memory-os-metrics-operations.py"
       - "scripts/reconcile-memory-os-metrics-alerting.py"
+  schedule:
+    - cron: "23 18 * * *"
   workflow_dispatch:
 
 permissions:
@@ -32,7 +34,7 @@ permissions:
 
 concurrency:
   group: reconcile-metrics-authority-so
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   reconcile:
