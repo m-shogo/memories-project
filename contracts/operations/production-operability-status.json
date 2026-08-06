@@ -53,7 +53,8 @@
         "mandatory stop conditions for ambiguous targets, destructive recovery, uncertain tenant authority and evidence loss",
         "append-only privacy-safe incident record that separates confirmed facts, known prior conditions, hypotheses and opinion",
         "six required tabletop scenarios covering tenant isolation, PostgreSQL, object storage, migration compatibility, restore non-resurrection and parser compromise",
-        "fail-closed validator preventing READY claims without paging, contacts, completed tabletop, production recovery drill and independent review"
+        "machine-readable PLANNED tabletop records for all six scenarios with injects, expected decisions and safety constraints",
+        "fail-closed validators preventing READY claims without paging, contacts, completed tabletop, production recovery drill and independent review"
       ],
       "missingEvidence": [
         "configured paging and alert routing with owned acknowledgement path",
@@ -64,8 +65,11 @@
       ],
       "evidenceRefs": [
         "contracts/operations/incident-response-contract.v1.json",
+        "contracts/operations/incident-tabletop-record-contract.v1.json",
         "docs/runbooks/memory-os-incident-response.md",
-        "scripts/validate-memory-os-incident-response.py"
+        "docs/fixtures/memory-os-operability/incident-tabletop-plan.v1.json",
+        "scripts/validate-memory-os-incident-response.py",
+        "scripts/validate-memory-os-incident-tabletop.py"
       ]
     },
     {
