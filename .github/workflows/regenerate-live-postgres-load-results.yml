@@ -10,8 +10,11 @@ on:
       - "infra/postgresql/security/**"
       - "contracts/operations/live-postgres-load-scenario-contract.v1.json"
       - "contracts/operations/live-object-load-scenario-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "scripts/validate-memory-os-live-load.py"
       - "scripts/validate-memory-os-live-object-load.py"
+      - "scripts/reconcile-memory-os-live-load-status.py"
+      - "scripts/validate-memory-os-operability.py"
   schedule:
     # Daily self-heal at 03:17 JST. Scheduled runs use the default branch (so).
     - cron: "17 18 * * *"
@@ -89,7 +92,9 @@ jobs:
           test -z "$(gofmt -l internal/httpserver/live_load_test.go internal/httpserver/live_object_load_test.go)"
           python -m py_compile \
             ../../scripts/validate-memory-os-live-load.py \
-            ../../scripts/validate-memory-os-live-object-load.py
+            ../../scripts/validate-memory-os-live-object-load.py \
+            ../../scripts/reconcile-memory-os-live-load-status.py \
+            ../../scripts/validate-memory-os-operability.py
 
       - name: Run live PostgreSQL and MinIO HTTP checkpoints
         env:
@@ -108,25 +113,28 @@ jobs:
             -run '^(TestPreviewReadAndApplyOverHTTP|TestLivePostgresPreviewReadAndIdempotentApplyLoad|TestLiveMinIOSignedUploadLifecycleLoad)$' \
             -count=1 -timeout=15m
 
-      - name: Validate live dependency evidence
+      - name: Validate and register live dependency evidence
         env:
           EXPECTED_COMMIT_SHA: ${{ env.SOURCE_SHA }}
         run: |
           python scripts/validate-memory-os-live-load.py
           python scripts/validate-memory-os-live-object-load.py
+          python scripts/reconcile-memory-os-live-load-status.py
+          python scripts/validate-memory-os-operability.py
 
-      - name: Commit regenerated evidence
+      - name: Commit regenerated evidence and reconciled status
         run: |
           git add \
             docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json \
-            docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json
+            docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json \
+            contracts/operations/production-operability-status.json
           if git diff --cached --quiet; then
-            echo "Live dependency load evidence is already current."
+            echo "Live dependency evidence and status are already current."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "test(load): record live PostgreSQL and MinIO checkpoints"
+          git commit -m "test(load): record live dependency checkpoints"
           git fetch origin so
           git rebase origin/so
           git push origin HEAD:so
