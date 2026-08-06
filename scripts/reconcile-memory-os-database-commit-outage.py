@@ -17,18 +17,20 @@ STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 OLD_MISSING = "database loss or failover drill"
+OBSOLETE_MISSING = "direct commit resume from the preserved sealed spool without re-fetching and re-parsing the source"
 NEW_EXISTING = (
-    "local PostgreSQL commit-outage recovery drill proving a failed atomic Preview commit leaves zero durable rows, preserves sealed spool evidence, and a new attempt for the same source/Preview ID commits exactly once after connectivity returns",
+    "local PostgreSQL commit-outage recovery drill proving a failed atomic Preview commit leaves zero durable rows, preserves sealed spool evidence, and ResumeCommit commits from the exact same spool/request after connectivity returns without object-store or parser access",
 )
 NEW_MISSING = (
     "production-shaped PostgreSQL process loss, connection-pool disruption and replication failover drill",
-    "direct commit resume from the preserved sealed spool without re-fetching and re-parsing the source",
+    "host or container restart between spool seal and ResumeCommit with durable spool remount verification",
     "database recovery verification for expired sessions, deleted accounts, leases and duplicate effects under failover",
 )
 NEW_REFS = (
     "contracts/operations/database-commit-outage-contract.v1.json",
     "docs/fixtures/memory-os-operability/database-commit-outage-results.sample.v1.json",
     "services/import-api/internal/importflow/database_outage_drill_linux_test.go",
+    "services/import-api/internal/importflow/resume.go",
     "scripts/validate-memory-os-database-commit-outage.py",
     "scripts/reconcile-memory-os-database-commit-outage.py",
     ".github/workflows/database-commit-outage.yml",
@@ -99,8 +101,11 @@ def main() -> int:
             assertions.get("rejectionRowsAfterRecovery") == 1,
             "recovery row accounting mismatch")
     require(assertions.get("sameSourceAndPreviewIdReused") is True and
-            assertions.get("newSpoolAttemptUsed") is True,
-            "recovery attempt binding mismatch")
+            assertions.get("sameSpoolIdReused") is True,
+            "recovery did not use the exact same request/spool binding")
+    require(assertions.get("resumeWithoutObjectStore") is True and
+            assertions.get("resumeWithoutParser") is True,
+            "ResumeCommit still depends on object storage or parser execution")
 
     status = load(STATUS_PATH)
     require(status.get("productionDecision") == "NO_GO",
@@ -117,9 +122,10 @@ def main() -> int:
     require(isinstance(refs, list), "OPS-P0-009 evidenceRefs must be a list")
 
     changed = False
-    if OLD_MISSING in missing:
-        missing.remove(OLD_MISSING)
-        changed = True
+    for old in (OLD_MISSING, OBSOLETE_MISSING):
+        if old in missing:
+            missing.remove(old)
+            changed = True
     for item in NEW_EXISTING:
         if item not in existing:
             existing.append(item)
@@ -139,7 +145,7 @@ def main() -> int:
         "production multi-instance",
         "production-shaped object-store",
         "production-shaped PostgreSQL",
-        "direct commit resume",
+        "host or container restart",
         "expired sessions",
     ):
         require(any(phrase in item for item in missing),
@@ -156,7 +162,7 @@ def main() -> int:
         json.dumps(status, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
-    print("Registered exact-source database commit outage recovery; OPS-P0-009 remains PARTIAL")
+    print("Registered exact-source same-spool database commit recovery; OPS-P0-009 remains PARTIAL")
     return 0
 
 
