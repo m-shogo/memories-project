@@ -1,0 +1,98 @@
+{
+  "contractId": "memory-os.operability.local-object-version-restore.v1",
+  "schemaVersion": "memory-os-local-object-version-restore.v1",
+  "resultsSchemaVersion": "memory-os-local-object-version-restore-results.v1",
+  "description": "Executable local MinIO drill proving that one explicitly selected source object version can be copied into a separate versioned backup bucket, survive complete source-version removal and be restored into a third bucket with checksum and source-version binding intact. It is not production independent retention, TLS, credential separation, lifecycle, provider durability or coherent PostgreSQL/object recovery evidence.",
+  "runner": "scripts/run-memory-os-local-object-version-restore.py",
+  "validator": "scripts/validate-memory-os-local-object-version-restore.py",
+  "workflow": ".github/workflows/local-object-version-restore.yml",
+  "reconcile": "scripts/reconcile-memory-os-local-object-version-restore.py",
+  "resultPath": "docs/fixtures/memory-os-operability/local-object-version-restore-results.sample.v1.json",
+  "diagnosticPath": "docs/fixtures/memory-os-operability/local-object-version-restore-diagnostic.last.json",
+  "dependencyMode": "LOCAL_MINIO_VERSIONED_THREE_BUCKET_RECOVERY",
+  "scenario": {
+    "scenarioId": "exact-object-version-independent-bucket-restore-smoke",
+    "workloadType": "RECOVERY_DRILL",
+    "requiredSteps": [
+      "create separate source backup and restore buckets",
+      "enable versioning on all buckets",
+      "write multiple synthetic source versions",
+      "select one non-latest source version explicitly",
+      "read the selected source version by VersionId",
+      "copy bytes and authoritative checksum binding into the backup bucket",
+      "record source-version digest in backup metadata",
+      "remove every source object version and delete marker",
+      "verify the source object is unavailable",
+      "read the exact backup version by VersionId",
+      "restore into the third bucket",
+      "verify restored bytes checksum length metadata and independent version identifiers",
+      "write exact-source machine-readable evidence without credentials or raw provider identifiers"
+    ],
+    "successCriteria": [
+      "source has at least three distinct versions before loss",
+      "backup and restore buckets are versioned",
+      "selected source version is read explicitly rather than by latest",
+      "backup copy checksum equals selected source checksum",
+      "backup metadata binds the digest of the selected source version",
+      "all source versions and delete markers are removed before restore",
+      "source get fails after removal",
+      "restore reads an explicit backup VersionId",
+      "restored checksum and content length equal the selected source version",
+      "source backup and restore version identifiers are distinct",
+      "result integrity is PASS"
+    ],
+    "abortCriteria": [
+      "endpoint is not local",
+      "ephemeral object deletion permission is absent",
+      "versioning is not enabled",
+      "latest-object substitution occurs",
+      "source purge is incomplete",
+      "backup source-version binding is missing or mismatched",
+      "checksum length or content differs",
+      "credential endpoint raw version identifier object key or payload would enter evidence"
+    ]
+  },
+  "evidenceBoundary": {
+    "productionEvidence": false,
+    "independentProviderRetentionEvidence": false,
+    "tlsEvidence": false,
+    "credentialSeparationEvidence": false,
+    "immutabilityEvidence": false,
+    "lifecycleEvidence": false,
+    "postgresObjectCoherenceEvidence": false,
+    "rpoMeasured": false,
+    "rtoMeasured": false,
+    "note": "A PASS proves only local version-addressed copy and restore across three MinIO buckets. It does not establish production object backup or satisfy OPS-P0-007 by itself."
+  },
+  "privacy": {
+    "syntheticDataOnly": true,
+    "rawEndpointInEvidenceForbidden": true,
+    "credentialInEvidenceForbidden": true,
+    "rawBucketNameInEvidenceForbidden": true,
+    "rawObjectKeyInEvidenceForbidden": true,
+    "rawVersionIdInEvidenceForbidden": true,
+    "payloadInEvidenceForbidden": true,
+    "providerIdentifiersStoredAsSha256DigestOnly": true
+  },
+  "readiness": {
+    "contractDefined": true,
+    "runnerImplemented": true,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": true,
+    "exactSourcePassResultTrackedInStatus": true,
+    "productionIndependentRetentionConfigured": false,
+    "productionTlsConfigured": false,
+    "productionCredentialSeparationConfigured": false,
+    "productionLifecycleVerified": false,
+    "coherentDatabaseObjectRestoreCompleted": false,
+    "rpoRtoApprovedAndMeasured": false,
+    "productionReady": false
+  },
+  "evidenceRefs": [
+    "contracts/operations/local-object-version-restore-contract.v1.json",
+    "scripts/run-memory-os-local-object-version-restore.py",
+    "scripts/validate-memory-os-local-object-version-restore.py",
+    "scripts/reconcile-memory-os-local-object-version-restore.py",
+    ".github/workflows/local-object-version-restore.yml"
+  ]
+}
