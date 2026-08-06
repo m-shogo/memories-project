@@ -271,20 +271,32 @@
     {
       "id": "OPS-P0-009",
       "area": "chaos_and_failure_drills",
-      "status": "COMPONENT_FAULT_INJECTION_ONLY",
+      "status": "PARTIAL",
       "blocking": true,
       "existingEvidence": [
         "crash and cancellation tests",
         "checksum and drift rejection",
         "short-write and ENOSPC tests",
-        "retry and idempotency tests"
+        "retry and idempotency tests",
+        "real-loopback TCP API interruption drill proving graceful shutdown waits for an in-flight request, preserves its response and rejects new work after drain",
+        "parser-worker restart drill proving truncated output leaves no spool residue and the same manager/spool ID can be safely reused and independently verified",
+        "machine-readable failure-drill inventory with exact-source CI result separation from production-shaped and production chaos evidence"
       ],
       "missingEvidence": [
-        "API interruption drill",
         "database loss or failover drill",
         "object-store outage drill",
-        "parser restart matrix",
-        "mixed-version failure drill"
+        "mixed-version failure drill",
+        "expanded parser restart matrix across timeout, CPU, memory, cancellation, process-group and host-restart failures",
+        "production multi-instance interruption, dependency and recovery drills with independent review"
+      ],
+      "evidenceRefs": [
+        "contracts/operations/chaos-failure-drill-contract.v1.json",
+        "docs/fixtures/memory-os-operability/chaos-failure-drill-results.sample.v1.json",
+        "services/import-api/internal/httpserver/interruption_drill_test.go",
+        "services/import-api/internal/parsersup/restart_drill_linux_test.go",
+        "scripts/validate-memory-os-chaos-failure-drills.py",
+        "scripts/reconcile-memory-os-chaos-failure-drills.py",
+        ".github/workflows/chaos-failure-drills.yml"
       ]
     },
     {
