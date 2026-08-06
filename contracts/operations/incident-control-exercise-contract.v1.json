@@ -179,10 +179,10 @@
   ],
   "readiness": {
     "contractDefined": true,
-    "runnerImplemented": false,
-    "validatorImplemented": false,
-    "automaticWorkflowImplemented": false,
-    "exactSourcePassResultCommitted": false,
+    "runnerImplemented": true,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": true,
+    "exactSourcePassResultCommitted": true,
     "humanTabletopCompleted": false,
     "pagingAndAcknowledgementExercised": false,
     "externalContactTreeExercised": false,
@@ -191,6 +191,11 @@
     "productionReady": false
   },
   "evidenceRefs": [
-    "contracts/operations/incident-control-exercise-contract.v1.json"
+    "contracts/operations/incident-control-exercise-contract.v1.json",
+    "docs/fixtures/memory-os-operability/incident-control-exercise-results.sample.v1.json",
+    "scripts/run-memory-os-incident-control-exercise.py",
+    "scripts/validate-memory-os-incident-control-exercise.py",
+    "scripts/reconcile-memory-os-incident-control-exercise.py",
+    ".github/workflows/incident-control-exercise.yml"
   ]
 }

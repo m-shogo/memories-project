@@ -54,14 +54,18 @@
         "append-only privacy-safe incident record that separates confirmed facts, known prior conditions, hypotheses and opinion",
         "six required tabletop scenarios covering tenant isolation, PostgreSQL, object storage, migration compatibility, restore non-resurrection and parser compromise",
         "machine-readable PLANNED tabletop records for all six scenarios with injects, expected decisions and safety constraints",
-        "fail-closed validators preventing READY claims without paging, contacts, completed tabletop, production recovery drill and independent review"
+        "fail-closed validators preventing READY claims without paging, contacts, completed tabletop, production recovery drill and independent review",
+        "exact-source automated incident control exercise covering tenant isolation, PostgreSQL commit outage, object-store outage, migration/version incompatibility, restore non-resurrection and parser compromise/stall scenarios",
+        "all scenario-specific repository validators pass with output stored only as SHA-256 digests and bounded byte counts rather than raw logs",
+        "severity, declaration, containment, stop conditions, evidence preservation, recovery verification, promotion block and closure block are retained for all six scenarios",
+        "automated exercise explicitly leaves human tabletop, paging, external communications, production recovery drill and independent approval incomplete"
       ],
       "missingEvidence": [
         "configured paging and alert routing with owned acknowledgement path",
         "owned external legal/privacy/user communication contact tree",
-        "completed tabletop evidence for the required scenarios",
         "production-shaped recovery drill evidence",
-        "independent review of incident controls"
+        "independent review of incident controls",
+        "human-led completed tabletop evidence for all required scenarios with named command roles, attendance, timed inject responses, decisions, action owners and closure approvals"
       ],
       "evidenceRefs": [
         "contracts/operations/incident-response-contract.v1.json",
@@ -69,7 +73,13 @@
         "docs/runbooks/memory-os-incident-response.md",
         "docs/fixtures/memory-os-operability/incident-tabletop-plan.v1.json",
         "scripts/validate-memory-os-incident-response.py",
-        "scripts/validate-memory-os-incident-tabletop.py"
+        "scripts/validate-memory-os-incident-tabletop.py",
+        "contracts/operations/incident-control-exercise-contract.v1.json",
+        "docs/fixtures/memory-os-operability/incident-control-exercise-results.sample.v1.json",
+        "scripts/run-memory-os-incident-control-exercise.py",
+        "scripts/validate-memory-os-incident-control-exercise.py",
+        "scripts/reconcile-memory-os-incident-control-exercise.py",
+        ".github/workflows/incident-control-exercise.yml"
       ]
     },
     {
