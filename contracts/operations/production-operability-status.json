@@ -113,14 +113,19 @@
         "privacy, cardinality-flood and panic-isolation tests over the registry and the HTTP export",
         "deterministic concurrency-safe Prometheus text exporter with TYPE directives and mandatory histogram +Inf buckets",
         "fail-closed bearer-authenticated metrics scrape handler with constant-time digest comparison, no-store/nosniff responses and a bounded snapshot size",
-        "explicit default-disabled HTTP server metrics mount seam isolated from public API rate-limit buckets while remaining inside privacy-safe request observability"
+        "explicit default-disabled HTTP server metrics mount seam isolated from public API rate-limit buckets while remaining inside privacy-safe request observability",
+        "four provider-neutral operational dashboard specifications covering service overview, authentication/abuse, dependencies/import and deletion safety",
+        "binding privacy-safe metrics retention tiers (30-day native, 180-day five-minute and 730-day daily rollups) with change-control requirements",
+        "error-budget policy with approved-SLO activation gates, data-gap safety and non-budgetable security, integrity, deletion-resurrection and data-loss events"
       ],
       "missingEvidence": [
-        "dashboards and load-calibrated histogram buckets and SLO targets (depends on OPS-P0-006)",
         "alert routing, on-call and runbooks",
-        "metrics retention policy and an error-budget policy",
         "production metrics scrape secret provisioning, private operational network policy and deliberate runtime mount",
-        "external Prometheus/OTel scraper integration and scrape availability monitoring"
+        "external Prometheus/OTel scraper integration and scrape availability monitoring",
+        "provider dashboard generation/deployment, metrics data-source wiring and operator review",
+        "load-calibrated histogram buckets and approved SLO targets (depends on OPS-P0-006)",
+        "metrics backend retention tiers, recording rules, ingestion freshness monitoring and retention-deletion verification",
+        "error-budget burn-rate automation remains inactive until SLO approval, owner assignment and validated production data"
       ],
       "evidenceRefs": [
         "services/import-api/internal/metrics/labels.go",
@@ -141,7 +146,11 @@
         "services/import-api/internal/httpserver/server.go",
         "services/import-api/internal/httpserver/metrics_scrape_test.go",
         "scripts/validate-memory-os-metrics-scrape.py",
-        "scripts/reconcile-memory-os-metrics-scrape-status.py"
+        "scripts/reconcile-memory-os-metrics-scrape-status.py",
+        "contracts/operations/metrics-dashboard-contract.v1.json",
+        "contracts/operations/metrics-retention-error-budget-contract.v1.json",
+        "scripts/validate-memory-os-metrics-operations.py",
+        "scripts/reconcile-memory-os-metrics-operations.py"
       ]
     },
     {

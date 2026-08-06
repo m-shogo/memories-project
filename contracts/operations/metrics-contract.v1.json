@@ -939,11 +939,11 @@
   "readiness": {
     "exporterImplemented": true,
     "scrapeEndpointExposed": false,
-    "dashboardsDefined": false,
+    "dashboardsDefined": true,
     "alertRoutingConfigured": false,
-    "retentionDefined": false,
+    "retentionDefined": true,
     "loadCalibrated": false,
-    "note": "The typed registry and recorder are wired at the HTTP, rate-limit and deletion-worker boundaries. A deterministic Prometheus exporter, authenticated scrape handler and explicit default-disabled server mount seam are implemented and tested. Production runtime mounting, secret provisioning, private network policy, external scraping, dashboards, alert routing, retention and load-calibrated buckets/SLO targets remain missing. OPS-P0-004 is PARTIAL, not READY."
+    "note": "The typed registry, deterministic Prometheus exporter, authenticated default-disabled scrape mount seam, four provider-neutral dashboard specifications, retention tiers and error-budget policy are defined. Production mounting, secret/network provisioning, external scraping, dashboard/data-source deployment, retention backend configuration, alert routing, approved SLOs and load-calibrated thresholds remain missing. OPS-P0-004 is PARTIAL, not READY."
   },
   "evidenceRefs": [
     "services/import-api/internal/metrics/labels.go",
@@ -960,6 +960,10 @@
     "services/import-api/internal/metrics/prometheus_test.go",
     "services/import-api/internal/httpserver/metrics_scrape_test.go",
     "scripts/validate-memory-os-metrics-scrape.py",
-    "scripts/reconcile-memory-os-metrics-contract.py"
+    "scripts/reconcile-memory-os-metrics-contract.py",
+    "contracts/operations/metrics-dashboard-contract.v1.json",
+    "contracts/operations/metrics-retention-error-budget-contract.v1.json",
+    "scripts/validate-memory-os-metrics-operations.py",
+    "scripts/reconcile-memory-os-metrics-operations.py"
   ]
 }
