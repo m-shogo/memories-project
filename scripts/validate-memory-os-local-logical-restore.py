@@ -19,9 +19,12 @@ EXPECTED_EVIDENCE = {
     "contracts/operations/local-logical-restore-contract.v1.json",
     "scripts/run-memory-os-local-logical-restore.sh",
     "scripts/validate-memory-os-local-logical-restore.py",
+    "scripts/reconcile-memory-os-local-logical-restore.py",
+    ".github/workflows/local-logical-restore.yml",
 }
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
+MIGRATION_PREFIX_RE = re.compile(r"^[0-9]+_")
 
 
 class ValidationFailure(RuntimeError):
@@ -79,7 +82,7 @@ def validate_result(result: dict[str, Any], expected_sha: str | None,
     require(scenario.get("migrationFilesApplied") == migration_count,
             "not every canonical migration was applied")
     require(scenario.get("sqlIntegrationTestsExecuted") == sql_test_count,
-            "not every SQL integration test was executed")
+            "not every canonical SQL integration test was executed")
     require(isinstance(scenario.get("durationSeconds"), int) and
             scenario["durationSeconds"] >= 0,
             "result duration is invalid")
@@ -141,9 +144,17 @@ def main() -> int:
     require(contract.get("validator") ==
             "scripts/validate-memory-os-local-logical-restore.py",
             "validator path drift")
+    require(contract.get("workflow") == ".github/workflows/local-logical-restore.yml",
+            "workflow path drift")
+    require(contract.get("reconcile") ==
+            "scripts/reconcile-memory-os-local-logical-restore.py",
+            "reconcile path drift")
     require(contract.get("resultPath") ==
             "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json",
             "result path drift")
+    require(contract.get("diagnosticPath") ==
+            "docs/fixtures/memory-os-operability/local-logical-restore-diagnostic.last.json",
+            "diagnostic path drift")
     require(contract.get("dependencyMode") ==
             "EPHEMERAL_POSTGRESQL_16_SAME_CLUSTER_LOGICAL_RESTORE",
             "dependency mode drift")
@@ -181,6 +192,24 @@ def main() -> int:
     ):
         require(privacy.get(flag) is True, f"privacy.{flag} must be true")
 
+    migration_sequence = migration.get("migrationSequence")
+    require(isinstance(migration_sequence, list) and migration_sequence,
+            "canonical migration sequence is invalid")
+    migration_count = len(migration_sequence)
+    sql_tests: list[Path] = []
+    for filename in migration_sequence:
+        migration_file = ROOT / "infra/postgresql/security" / filename
+        require(migration_file.is_file(), f"canonical migration missing: {filename}")
+        test_filename = "test_" + MIGRATION_PREFIX_RE.sub("", filename)
+        test_file = ROOT / "infra/postgresql/security" / test_filename
+        require(test_file.is_file(),
+                f"canonical SQL test missing for migration {filename}: {test_filename}")
+        sql_tests.append(test_file)
+    require(len(sql_tests) == migration_count,
+            "canonical SQL test count must match migration count")
+    require(sql_tests[0].name == "test_memory_os_import_rls.sql",
+            "test helper bootstrap must execute first")
+
     runner_path = ROOT / contract["runner"]
     require(runner_path.is_file(), "logical restore runner missing")
     runner = runner_path.read_text(encoding="utf-8")
@@ -191,31 +220,27 @@ def main() -> int:
         "pg_restore --exit-on-error",
         "relation.relforcerowsecurity = true",
         "SET ROLE memory_auth_runtime",
-        "test_memory_os_*.sql",
+        'test_name="test_${migration#*_}"',
+        "SQL integration test count does not match migration count",
         "synthetic deletion did not complete before dump",
         "deleted synthetic account resurrected",
         "deleted synthetic session digest resurrected",
         "MEMORY_OS_COMMIT_SHA must be a full commit SHA",
     ):
         require(snippet in runner, f"runner missing safety/evidence boundary: {snippet}")
+    require("find \"$MIGRATION_DIR\"" not in runner,
+            "runner must not derive SQL test order from filename sorting")
     for dangerous in (
         "--clean --create", "DROP DATABASE postgres", "PGPASSWORD=postgres://",
     ):
         require(dangerous not in runner, f"runner contains dangerous pattern: {dangerous}")
 
-    migration_sequence = migration.get("migrationSequence")
-    require(isinstance(migration_sequence, list) and migration_sequence,
-            "canonical migration sequence is invalid")
-    migration_count = len(migration_sequence)
-    for filename in migration_sequence:
-        require((ROOT / "infra/postgresql/security" / filename).is_file(),
-                f"canonical migration missing: {filename}")
-    sql_tests = sorted((ROOT / "infra/postgresql/security").glob("test_memory_os_*.sql"))
-    require(sql_tests, "no SQL integration tests found")
-
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "readiness must be an object")
-    for foundation in ("contractDefined", "runnerImplemented", "validatorImplemented"):
+    for foundation in (
+        "contractDefined", "runnerImplemented", "validatorImplemented",
+        "automaticWorkflowImplemented", "exactSourcePassResultTrackedInStatus",
+    ):
         require(readiness.get(foundation) is True,
                 f"readiness.{foundation} must be true")
     for unproven in (
