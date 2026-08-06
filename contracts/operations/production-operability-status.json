@@ -282,15 +282,18 @@
         "parser-worker restart drill proving truncated output leaves no spool residue and the same manager/spool ID can be safely reused and independently verified",
         "machine-readable failure-drill inventory with exact-source CI result separation from production-shaped and production chaos evidence",
         "local PostgreSQL 16 plus MinIO import-flow outage drill proving an unreachable object-store endpoint fails before parse/commit, leaves no Preview or spool residue and the exact same request succeeds once connectivity returns",
-        "v2 machine-readable failure-drill authority superseding the two-scenario v1 inventory while preserving CI-vs-production evidence separation"
+        "v2 machine-readable failure-drill authority superseding the two-scenario v1 inventory while preserving CI-vs-production evidence separation",
+        "local PostgreSQL commit-outage recovery drill proving a failed atomic Preview commit leaves zero durable rows, preserves sealed spool evidence, and a new attempt for the same source/Preview ID commits exactly once after connectivity returns"
       ],
       "missingEvidence": [
-        "database loss or failover drill",
         "mixed-version failure drill",
         "expanded parser restart matrix across timeout, CPU, memory, cancellation, process-group and host-restart failures",
         "production multi-instance interruption, dependency and recovery drills with independent review",
         "production-shaped object-store process outage or network-partition drill with TLS, scoped credentials, lifecycle controls and recovery verification",
-        "object-store outage drill"
+        "object-store outage drill",
+        "production-shaped PostgreSQL process loss, connection-pool disruption and replication failover drill",
+        "direct commit resume from the preserved sealed spool without re-fetching and re-parsing the source",
+        "database recovery verification for expired sessions, deleted accounts, leases and duplicate effects under failover"
       ],
       "evidenceRefs": [
         "contracts/operations/chaos-failure-drill-contract.v1.json",
@@ -305,7 +308,13 @@
         "services/import-api/internal/importflow/object_outage_drill_linux_test.go",
         "scripts/validate-memory-os-chaos-failure-drills-v2.py",
         "scripts/reconcile-memory-os-chaos-failure-drills-v2.py",
-        ".github/workflows/chaos-failure-drills-v2.yml"
+        ".github/workflows/chaos-failure-drills-v2.yml",
+        "contracts/operations/database-commit-outage-contract.v1.json",
+        "docs/fixtures/memory-os-operability/database-commit-outage-results.sample.v1.json",
+        "services/import-api/internal/importflow/database_outage_drill_linux_test.go",
+        "scripts/validate-memory-os-database-commit-outage.py",
+        "scripts/reconcile-memory-os-database-commit-outage.py",
+        ".github/workflows/database-commit-outage.yml"
       ]
     },
     {
