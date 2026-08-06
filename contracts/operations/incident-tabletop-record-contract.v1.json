@@ -1,0 +1,109 @@
+{
+  "contractId": "memory-os.operability.incident-tabletop-record.v1",
+  "schemaVersion": "memory-os-incident-tabletop-record-contract.v1",
+  "description": "Contract for tabletop exercise plans and completed evidence. A planned record is not drill evidence. COMPLETED requires timestamps, participants, inject-by-inject decisions, response milestones, independent verification, gaps and owned remediation.",
+  "incidentPolicyRef": "contracts/operations/incident-response-contract.v1.json",
+  "planPath": "docs/fixtures/memory-os-operability/incident-tabletop-plan.v1.json",
+  "validator": "scripts/validate-memory-os-incident-tabletop.py",
+  "allowedStatuses": [
+    "PLANNED",
+    "IN_PROGRESS",
+    "COMPLETED",
+    "ABORTED"
+  ],
+  "allowedResults": [
+    "NOT_RUN",
+    "PASS",
+    "FAIL",
+    "PARTIAL",
+    "ABORTED"
+  ],
+  "requiredScenarioIds": [
+    "IR-DRILL-001",
+    "IR-DRILL-002",
+    "IR-DRILL-003",
+    "IR-DRILL-004",
+    "IR-DRILL-005",
+    "IR-DRILL-006"
+  ],
+  "recordFields": {
+    "alwaysRequired": [
+      "exerciseId",
+      "scenarioId",
+      "status",
+      "result",
+      "plannedSeverity",
+      "objective",
+      "scope",
+      "facilitator",
+      "participants",
+      "plannedInjects",
+      "assumptions",
+      "safetyConstraints",
+      "startedAt",
+      "completedAt",
+      "timeline",
+      "decisions",
+      "verificationResults",
+      "observedGaps",
+      "remediationItems",
+      "openRisks",
+      "evidenceRefs",
+      "reviewers"
+    ],
+    "completedNonEmpty": [
+      "participants",
+      "timeline",
+      "decisions",
+      "verificationResults",
+      "observedGaps",
+      "remediationItems",
+      "evidenceRefs",
+      "reviewers"
+    ]
+  },
+  "completionRules": {
+    "startedAtAndCompletedAtRequired": true,
+    "completedAtMustNotPrecedeStartedAt": true,
+    "resultCannotBeNotRun": true,
+    "everyInjectRequiresObservedResponse": true,
+    "severityDecisionRequired": true,
+    "containmentDecisionRequired": true,
+    "recoveryDecisionRequired": true,
+    "independentVerificationRequired": true,
+    "eachGapRequiresOwnedRemediation": true,
+    "secretsAndPersonalContentForbidden": true,
+    "appendOnlyEvidenceRequired": true
+  },
+  "milestoneTargetsMinutes": {
+    "SEV0": {
+      "acknowledged": 5,
+      "incidentCommanderAssigned": 5,
+      "initialContainmentDecision": 15,
+      "firstFactOnlyUpdate": 30
+    },
+    "SEV1": {
+      "acknowledged": 15,
+      "incidentCommanderAssigned": 15,
+      "initialContainmentDecision": 30,
+      "firstFactOnlyUpdate": 60
+    }
+  },
+  "privacyRules": {
+    "privacyClass": "operational_sensitive_no_secrets",
+    "rawTokensForbidden": true,
+    "passwordsAndPrivateKeysForbidden": true,
+    "rawDatabaseURLsForbidden": true,
+    "unnecessaryPersonalContentForbidden": true,
+    "factsHypothesesOpinionsSeparated": true
+  },
+  "readiness": {
+    "recordContractDefined": true,
+    "allRequiredScenariosPlanned": true,
+    "completedScenarioCount": 0,
+    "allRequiredScenariosCompleted": false,
+    "productionRecoveryDrillCompleted": false,
+    "ready": false,
+    "note": "All required tabletop scenarios have machine-readable plans, but none is marked COMPLETED. This is preparation, not drill evidence."
+  }
+}
