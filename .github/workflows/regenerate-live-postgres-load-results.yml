@@ -13,6 +13,7 @@ on:
       - "scripts/validate-memory-os-live-load.py"
       - "scripts/validate-memory-os-live-object-load.py"
       - "scripts/reconcile-memory-os-live-load-status.py"
+      - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-operability.py"
   schedule:
     # Daily self-heal at 03:17 JST. Scheduled runs use the default branch (so).
@@ -93,6 +94,7 @@ jobs:
             ../../scripts/validate-memory-os-live-load.py \
             ../../scripts/validate-memory-os-live-object-load.py \
             ../../scripts/reconcile-memory-os-live-load-status.py \
+            ../../scripts/validate-memory-os-load.py \
             ../../scripts/validate-memory-os-operability.py
 
       - name: Run live PostgreSQL and MinIO HTTP checkpoints
@@ -112,13 +114,14 @@ jobs:
             -run '^(TestPreviewReadAndApplyOverHTTP|TestLivePostgresPreviewReadAndIdempotentApplyLoad|TestLiveMinIOSignedUploadLifecycleLoad)$' \
             -count=1 -timeout=15m
 
-      - name: Validate and register live dependency evidence
+      - name: Validate and register dependency evidence
         env:
           EXPECTED_COMMIT_SHA: ${{ env.SOURCE_SHA }}
         run: |
           python scripts/validate-memory-os-live-load.py
           python scripts/validate-memory-os-live-object-load.py
           python scripts/reconcile-memory-os-live-load-status.py
+          python scripts/validate-memory-os-load.py
           python scripts/validate-memory-os-operability.py
 
       - name: Commit regenerated evidence and reconciled status
@@ -126,6 +129,7 @@ jobs:
           git add \
             docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json \
             docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json \
+            contracts/operations/load-test-scenario-contract.v1.json \
             contracts/operations/production-operability-status.json
           if git diff --cached --quiet; then
             echo "Live dependency evidence and status are already current."
