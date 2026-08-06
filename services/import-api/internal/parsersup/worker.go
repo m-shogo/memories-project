@@ -58,6 +58,12 @@ func RunWorker(mode string, input io.Reader, output io.Writer) int {
 	case "sleep":
 		time.Sleep(time.Hour)
 		return 0
+	case "frame_then_sleep":
+		if err := writeFrame(output, frameTagAccepted, []byte(`{"title":"started"}`)); err != nil {
+			return 4
+		}
+		time.Sleep(time.Hour)
+		return 0
 	case "garbage":
 		junk := make([]byte, 1<<20)
 		for i := range junk {
