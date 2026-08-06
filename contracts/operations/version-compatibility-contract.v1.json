@@ -1,0 +1,301 @@
+{
+  "contractId": "memory-os.operability.version-compatibility.v1",
+  "schemaVersion": "memory-os-version-compatibility.v1",
+  "description": "Binding compatibility policy for API clients, rolling backend deployments, PostgreSQL schema phases, persisted jobs/Previews, parser artifacts and object versions. A pinned dependency or same-version test does not prove mixed-version compatibility.",
+  "canonicalRunbook": "docs/runbooks/memory-os-version-compatibility.md",
+  "validator": "scripts/validate-memory-os-version-compatibility.py",
+  "productionDecision": "NO_GO",
+  "currentBaselines": {
+    "go": "1.23.x",
+    "postgresql": "16",
+    "httpApiMajor": "v1",
+    "signedUploadOpenAPI": "memory-os-signed-upload.v1",
+    "genericCsvAdapter": "1.0.0",
+    "parserArtifactPolicy": "DIGEST_PINNED",
+    "databaseMigrationPolicy": "EXPAND_MIGRATE_CONTRACT",
+    "canonicalClient": "IOS_NOT_IMPLEMENTED",
+    "desktopPortal": "LIMITED_NOT_IMPLEMENTED"
+  },
+  "compatibilityDimensions": [
+    {
+      "id": "HTTP_CLIENT_SERVER",
+      "producer": "iOS or limited portal client",
+      "consumer": "Go Import API",
+      "versionSignal": "URL major plus machine-readable request/response contracts",
+      "compatibleChanges": [
+        "add optional response fields that clients must ignore when unknown",
+        "add a new endpoint or optional capability without changing existing semantics",
+        "add a new closed-enum value only after older clients have an explicit unknown-value behavior",
+        "tighten server-side internal implementation without changing public status/error semantics"
+      ],
+      "breakingChanges": [
+        "remove or rename a request or response field",
+        "change field meaning, units, authority or nullability",
+        "change an existing success or error condition incompatibly",
+        "make an optional request field required",
+        "reuse an enum token with new meaning",
+        "move an existing v1 route without a compatibility bridge"
+      ],
+      "breakingChangeAction": "NEW_API_MAJOR_OR_EXPLICIT_COMPATIBILITY_BRIDGE",
+      "unknownRequestFieldPolicy": "FOLLOW_ENDPOINT_CONTRACT_FAIL_CLOSED",
+      "unknownResponseFieldPolicy": "CLIENT_MUST_IGNORE",
+      "currentEvidence": "SAME_VERSION_SERVER_TESTS_ONLY",
+      "ready": false
+    },
+    {
+      "id": "BACKEND_DATABASE",
+      "producer": "Go backend release",
+      "consumer": "PostgreSQL schema",
+      "versionSignal": "canonical migration sequence and application source SHA",
+      "compatibleChanges": [
+        "expand schema before application dependence",
+        "keep old and new application access paths during the mixed-version window",
+        "run bounded idempotent backfills separately",
+        "contract only after old-version drain and verification"
+      ],
+      "breakingChanges": [
+        "deploy new code before required expansion exists",
+        "drop a surface still used by a deployable old version",
+        "change RLS or authority semantics without old/new negative tests",
+        "couple destructive contraction to the same release that introduces the replacement"
+      ],
+      "breakingChangeAction": "STOP_RELEASE_AND_FOLLOW_MIGRATION_RECOVERY_RUNBOOK",
+      "currentEvidence": "CLEAN_DATABASE_CURRENT_VERSION_ONLY",
+      "ready": false
+    },
+    {
+      "id": "ROLLING_BACKEND",
+      "producer": "new backend instance",
+      "consumer": "old backend instance and shared dependencies",
+      "versionSignal": "source commit SHA and deployment generation",
+      "compatibleChanges": [
+        "both versions operate against the expanded schema",
+        "both versions preserve the same tenant, idempotency and object-binding invariants",
+        "new writes remain readable or safely ignorable by the old version during the observation window"
+      ],
+      "breakingChanges": [
+        "new persisted state crashes or is misinterpreted by the old version",
+        "old workers consume a new job/spool format without version gating",
+        "one version weakens a security or deletion invariant",
+        "rollback target cannot start against the expanded schema"
+      ],
+      "breakingChangeAction": "BLOCK_ROLLOUT_OR_FORWARD_FIX",
+      "currentEvidence": "NOT_PROVEN",
+      "ready": false
+    },
+    {
+      "id": "PERSISTED_JOB_PREVIEW",
+      "producer": "Import pipeline or parser worker",
+      "consumer": "later backend or worker version",
+      "versionSignal": "explicit schema/adapter/options/artifact/source version bindings and hashes",
+      "compatibleChanges": [
+        "read a known older version through a tested adapter",
+        "introduce a new version without reinterpreting existing bytes",
+        "fail closed on unknown or conflicting version/hash bindings",
+        "preserve exact Preview and object version identity across retries"
+      ],
+      "breakingChanges": [
+        "reinterpret existing persisted bytes under a new implicit schema",
+        "accept unknown versions as latest",
+        "change canonical record meaning in place",
+        "drop a version reader while persisted work can still reference it"
+      ],
+      "breakingChangeAction": "QUARANTINE_OR_EXPLICIT_MIGRATION",
+      "currentEvidence": "PARTIAL_VERSION_AND_HASH_BINDINGS",
+      "ready": false
+    },
+    {
+      "id": "PARSER_ARTIFACT",
+      "producer": "digest-pinned parser worker",
+      "consumer": "supervisor and canonical adapter pipeline",
+      "versionSignal": "adapter id, adapter version and artifact SHA-256",
+      "compatibleChanges": [
+        "new artifact under a new reviewed digest with unchanged declared output contract",
+        "explicit adapter-version upgrade with fixture and canonical-record verification",
+        "continued availability of an older artifact while persisted work remains bound to it"
+      ],
+      "breakingChanges": [
+        "replace bytes behind an existing digest/version claim",
+        "allow operator-supplied unreviewed digest in production",
+        "change canonical output meaning without a version change",
+        "delete an artifact required for retry/reconciliation before retention review"
+      ],
+      "breakingChangeAction": "REJECT_ARTIFACT_OR_HOLD_BOUND_WORK",
+      "currentEvidence": "DIGEST_PINNING_AND_CURRENT_ARTIFACT_TESTS",
+      "ready": false
+    },
+    {
+      "id": "OBJECT_VERSION",
+      "producer": "signed upload client and object store",
+      "consumer": "completion, scanner and parser",
+      "versionSignal": "bucket, object key, exact object version id, length, checksum and metadata",
+      "compatibleChanges": [
+        "read the exact bound object version",
+        "retain older versions according to reviewed lifecycle requirements",
+        "reject latest-version substitution or metadata drift"
+      ],
+      "breakingChanges": [
+        "read an unbound latest version",
+        "expire a version still referenced by a job, Preview, retry or incident record",
+        "change object metadata authority or checksum semantics"
+      ],
+      "breakingChangeAction": "FAIL_CLOSED_AND_PRESERVE_AMBIGUOUS_STATE",
+      "currentEvidence": "LOCAL_MINIO_VERSION_BINDING_ONLY",
+      "ready": false
+    }
+  ],
+  "supportPolicy": {
+    "apiMajor": {
+      "supportedMajors": [
+        "v1"
+      ],
+      "breakingChangeRequiresNewMajor": true,
+      "parallelMajorSupportPolicyDefined": false,
+      "deprecationNoticeWindowDefined": false,
+      "clientMinimumVersionEnforcementImplemented": false
+    },
+    "backendRollingWindow": {
+      "target": "CURRENT_AND_IMMEDIATELY_PREVIOUS_RELEASE",
+      "currentAndPreviousTested": false,
+      "rollbackTargetValidatedBeforeRollout": false,
+      "mixedVersionObservationRequired": true
+    },
+    "database": {
+      "supportedMajor": "16",
+      "minorUpgradePolicyDefined": false,
+      "majorUpgradeRehearsalCompleted": false,
+      "migrationLifecycleRef": "contracts/operations/migration-lifecycle-contract.v1.json"
+    },
+    "clients": {
+      "iOSSupportWindowDefined": false,
+      "limitedPortalSupportWindowDefined": false,
+      "offlineQueueSkewPolicyDefined": false,
+      "forcedUpgradePolicyDefined": false
+    },
+    "parserArtifacts": {
+      "reviewedRegistryImplemented": false,
+      "retentionWindowDefined": false,
+      "oldArtifactReplayTested": false
+    }
+  },
+  "compatibilityMatrix": [
+    {
+      "id": "COMPAT-001",
+      "oldComponent": "current Go backend",
+      "newComponent": "clean current PostgreSQL 16 schema",
+      "direction": "CURRENT_BACKEND_CURRENT_SCHEMA",
+      "status": "PROVEN_IN_CI",
+      "evidenceRefs": [
+        ".github/workflows/security-contracts.yml"
+      ]
+    },
+    {
+      "id": "COMPAT-002",
+      "oldComponent": "immediately previous Go backend release",
+      "newComponent": "expanded current PostgreSQL schema",
+      "direction": "OLD_BACKEND_NEW_SCHEMA",
+      "status": "NOT_PROVEN",
+      "evidenceRefs": []
+    },
+    {
+      "id": "COMPAT-003",
+      "oldComponent": "current PostgreSQL schema before required expansion",
+      "newComponent": "new Go backend requiring expansion",
+      "direction": "NEW_BACKEND_OLD_SCHEMA",
+      "status": "FORBIDDEN_RELEASE_ORDER",
+      "evidenceRefs": [
+        "contracts/operations/migration-lifecycle-contract.v1.json"
+      ]
+    },
+    {
+      "id": "COMPAT-004",
+      "oldComponent": "immediately previous Go backend instance",
+      "newComponent": "current Go backend instance",
+      "direction": "ROLLING_BACKEND_MIX",
+      "status": "NOT_PROVEN",
+      "evidenceRefs": []
+    },
+    {
+      "id": "COMPAT-005",
+      "oldComponent": "older persisted job/Preview binding",
+      "newComponent": "current backend/worker",
+      "direction": "OLD_PERSISTED_STATE_NEW_CONSUMER",
+      "status": "PARTIAL",
+      "evidenceRefs": [
+        "services/import-api/internal/previewspool",
+        "services/import-api/internal/previewcommit"
+      ]
+    },
+    {
+      "id": "COMPAT-006",
+      "oldComponent": "older parser artifact/version",
+      "newComponent": "current supervisor/backend",
+      "direction": "OLD_ARTIFACT_NEW_SUPERVISOR",
+      "status": "NOT_PROVEN",
+      "evidenceRefs": []
+    },
+    {
+      "id": "COMPAT-007",
+      "oldComponent": "older iOS client",
+      "newComponent": "current v1 API",
+      "direction": "OLD_CLIENT_NEW_SERVER",
+      "status": "NOT_IMPLEMENTED_OR_PROVEN",
+      "evidenceRefs": []
+    },
+    {
+      "id": "COMPAT-008",
+      "oldComponent": "current iOS client",
+      "newComponent": "older v1 server",
+      "direction": "NEW_CLIENT_OLD_SERVER",
+      "status": "NOT_IMPLEMENTED_OR_PROVEN",
+      "evidenceRefs": []
+    },
+    {
+      "id": "COMPAT-009",
+      "oldComponent": "bound older object version",
+      "newComponent": "current completion/parser path",
+      "direction": "OLD_OBJECT_VERSION_NEW_CONSUMER",
+      "status": "LOCAL_PROOF_ONLY",
+      "evidenceRefs": [
+        "services/import-api/internal/objectstore",
+        "services/import-api/internal/httpserver/live_object_load_test.go"
+      ]
+    }
+  ],
+  "releaseGates": [
+    "record exact old and new source/deployment/schema versions",
+    "classify every changed public or persisted contract as compatible or breaking",
+    "run old/new mixed-version tests for changed shared state",
+    "prove rollback target starts and preserves security/deletion invariants",
+    "verify unknown version and enum behavior fails closed or is explicitly ignored as designed",
+    "keep schema contraction separate until old-version drain",
+    "retain required parser artifacts and object versions for in-flight and retry windows",
+    "update the compatibility matrix and evidence references before rollout",
+    "block release when a required direction is NOT_PROVEN or FORBIDDEN"
+  ],
+  "readiness": {
+    "policyDefined": true,
+    "dimensionsDefined": true,
+    "matrixDefined": true,
+    "releaseGatesDefined": true,
+    "sameVersionCurrentStackProven": true,
+    "oldBackendNewSchemaProven": false,
+    "rollingBackendMixProven": false,
+    "oldPersistedStateNewConsumerProven": false,
+    "oldArtifactNewSupervisorProven": false,
+    "clientServerSkewPolicyImplemented": false,
+    "clientServerSkewProven": false,
+    "databaseUpgradePolicyDefined": false,
+    "productionRolloutRehearsalCompleted": false,
+    "independentReviewCompleted": false,
+    "ready": false,
+    "note": "Compatibility directions and release gates are now explicit. Only the current backend against a clean current PostgreSQL 16 schema is proven in CI. Mixed backend, persisted-state, parser-artifact, client/server and upgrade paths remain unproven, so OPS-P0-008 stays PARTIAL."
+  },
+  "evidenceRefs": [
+    ".github/workflows/security-contracts.yml",
+    "contracts/operations/migration-lifecycle-contract.v1.json",
+    "contracts/operations/version-compatibility-contract.v1.json",
+    "docs/runbooks/memory-os-version-compatibility.md",
+    "scripts/validate-memory-os-version-compatibility.py"
+  ]
+}
