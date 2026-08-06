@@ -16,11 +16,11 @@ import (
 // followed by an exact same-spool recovery attempt and independent verification.
 func TestSupervisorRestartRecoveryMatrix(t *testing.T) {
 	tests := []struct {
-		name       string
-		mode       string
-		mutate     func(*Config)
-		context    func() context.Context
-		expected   error
+		name     string
+		mode     string
+		mutate   func(*Config)
+		context  func() context.Context
+		expected error
 	}{
 		{
 			name:     "protocol_truncation",
