@@ -42,6 +42,7 @@ OLD_LOG="$TMP_DIR/old-server.log"
 CURRENT_LOG="$TMP_DIR/current-server.log"
 FIXTURE_A="$TMP_DIR/preview-a.json"
 FIXTURE_B="$TMP_DIR/preview-b.json"
+FIXTURE_C="$TMP_DIR/preview-c.json"
 HTTP_SUMMARY="$TMP_DIR/http-summary.json"
 IDENTITY_ENV="$TMP_DIR/identity.env"
 OLD_PID=""
@@ -94,17 +95,25 @@ values = {
     "ACCOUNT_ID": "acct_" + seed[0:24],
     "JOB_A": "job_" + seed[0:24],
     "JOB_B": "job_" + seed[24:48],
+    "JOB_C": "job_" + seed[8:32],
     "PREVIEW_A": "prv_" + seed[0:24],
     "PREVIEW_B": "prv_" + seed[24:48],
+    "PREVIEW_C": "prv_" + seed[8:32],
     "SPOOL_A": "spl_" + seed[0:24],
     "SPOOL_B": "spl_" + seed[24:48],
+    "SPOOL_C": "spl_" + seed[8:32],
     "UPLOAD_A": "upl_" + seed[0:24],
     "UPLOAD_B": "upl_" + seed[24:48],
+    "UPLOAD_C": "upl_" + seed[8:32],
     "FINGERPRINT_A": "fp-mixed-" + seed[0:24],
     "FINGERPRINT_B": "fp-mixed-" + seed[24:48],
+    "FINGERPRINT_C": "fp-mixed-" + seed[8:32],
     "IDEMPOTENCY_A": "idem-mixed-" + seed[0:24],
     "IDEMPOTENCY_B": "idem-mixed-" + seed[24:48],
+    "IDEMPOTENCY_C": "idem-mixed-" + seed[8:32],
 }
+if len(set(values.values())) != len(values):
+    raise SystemExit("synthetic fixture identifiers are not unique")
 Path(os.environ["OUTPUT"]).write_text(
     "".join(f"{name}={value}\n" for name, value in values.items()),
     encoding="utf-8",
@@ -150,7 +159,7 @@ git worktree add --detach "$OLD_TREE" "$OLD_SHA" >/dev/null
   go build -trimpath -o "$FIXTURE_BIN" ./cmd/memory-os-mixed-version-fixture
 )
 
-printf 'MIXED-VERSION APPLY STAGE: commit-two-synthetic-previews\n'
+printf 'MIXED-VERSION APPLY STAGE: commit-three-synthetic-previews\n'
 "$FIXTURE_BIN" \
   -database-url "$MEMORY_OS_TEST_DATABASE_URL" \
   -account-id "$ACCOUNT_ID" -job-id "$JOB_A" -preview-id "$PREVIEW_A" \
@@ -161,6 +170,11 @@ printf 'MIXED-VERSION APPLY STAGE: commit-two-synthetic-previews\n'
   -account-id "$ACCOUNT_ID" -job-id "$JOB_B" -preview-id "$PREVIEW_B" \
   -spool-id "$SPOOL_B" -upload-id "$UPLOAD_B" -fingerprint "$FINGERPRINT_B" \
   >"$FIXTURE_B"
+"$FIXTURE_BIN" \
+  -database-url "$MEMORY_OS_TEST_DATABASE_URL" \
+  -account-id "$ACCOUNT_ID" -job-id "$JOB_C" -preview-id "$PREVIEW_C" \
+  -spool-id "$SPOOL_C" -upload-id "$UPLOAD_C" -fingerprint "$FINGERPRINT_C" \
+  >"$FIXTURE_C"
 
 "$OLD_BIN" -database-url "$MEMORY_OS_TEST_DATABASE_URL" \
   -dev-issue-session "$ACCOUNT_ID" >"$OLD_TOKEN_FILE"
@@ -301,7 +315,7 @@ summary = {
 Path(os.environ["HTTP_SUMMARY"]).write_text(json.dumps(summary, indent=2) + "\n")
 PY
 
-printf 'MIXED-VERSION APPLY STAGE: verify-durable-accounting\n'
+printf 'MIXED-VERSION APPLY STAGE: verify-sequential-accounting\n'
 APPLY_ROWS="$(psql "$MEMORY_OS_TEST_DATABASE_URL" --tuples-only --no-align --set=ON_ERROR_STOP=1 \
   --command "SELECT count(*) FROM memory_os.apply_confirmation WHERE owner_account_id = '$ACCOUNT_ID';")"
 MEMORY_ROWS="$(psql "$MEMORY_OS_TEST_DATABASE_URL" --tuples-only --no-align --set=ON_ERROR_STOP=1 \
@@ -312,14 +326,115 @@ IN_PROGRESS_ROWS="$(psql "$MEMORY_OS_TEST_DATABASE_URL" --tuples-only --no-align
   --command "SELECT count(*) FROM memory_os.apply_confirmation WHERE owner_account_id = '$ACCOUNT_ID' AND state = 'in_progress';")"
 
 [[ "$APPLY_ROWS" == "2" && "$MEMORY_ROWS" == "2" && "$DISTINCT_PREVIEWS" == "2" && "$IN_PROGRESS_ROWS" == "0" ]] || {
-  echo "mixed-version accounting mismatch: applies=$APPLY_ROWS memories=$MEMORY_ROWS previews=$DISTINCT_PREVIEWS in_progress=$IN_PROGRESS_ROWS" >&2
+  echo "sequential accounting mismatch: applies=$APPLY_ROWS memories=$MEMORY_ROWS previews=$DISTINCT_PREVIEWS in_progress=$IN_PROGRESS_ROWS" >&2
+  exit 1
+}
+
+printf 'MIXED-VERSION APPLY STAGE: execute-concurrent-old-current-claim-race\n'
+OLD_TOKEN="$OLD_TOKEN" CURRENT_TOKEN="$CURRENT_TOKEN" \
+OLD_URL="http://127.0.0.1:$OLD_PORT" CURRENT_URL="http://127.0.0.1:$CURRENT_PORT" \
+FIXTURE_C="$FIXTURE_C" IDEMPOTENCY_C="$IDEMPOTENCY_C" \
+HTTP_SUMMARY="$HTTP_SUMMARY" python - <<'PY'
+import concurrent.futures
+import json
+import os
+import threading
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+old_url = os.environ["OLD_URL"]
+current_url = os.environ["CURRENT_URL"]
+old_token = os.environ["OLD_TOKEN"]
+current_token = os.environ["CURRENT_TOKEN"]
+fixture = json.loads(Path(os.environ["FIXTURE_C"]).read_text())
+key = os.environ["IDEMPOTENCY_C"]
+barrier = threading.Barrier(3)
+
+
+def apply(base, token):
+    barrier.wait(timeout=10)
+    payload = json.dumps({
+        "previewSha256": fixture["previewSha256"],
+        "idempotencyKey": key,
+        "duplicatePolicy": "skip_existing",
+    }).encode()
+    request = urllib.request.Request(
+        base + f"/v1/previews/{fixture['previewId']}/apply",
+        data=payload,
+        method="POST",
+    )
+    request.add_header("Authorization", "Bearer " + token)
+    request.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            raw = response.read(1 << 20)
+            return response.status, json.loads(raw or b"{}")
+    except urllib.error.HTTPError as exc:
+        raw = exc.read(1 << 20)
+        try:
+            decoded = json.loads(raw or b"{}")
+        except json.JSONDecodeError:
+            decoded = {}
+        return exc.code, decoded
+
+
+with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+    old_future = executor.submit(apply, old_url, current_token)
+    current_future = executor.submit(apply, current_url, old_token)
+    barrier.wait(timeout=10)
+    results = [old_future.result(timeout=30), current_future.result(timeout=30)]
+
+statuses = sorted(status for status, _ in results)
+responses = [body for _, body in results]
+replayed = sorted(body.get("replayed") for body in responses)
+apply_ids = {body.get("applyId") for body in responses}
+if statuses != [200, 200]:
+    raise SystemExit(f"concurrent old/current Apply statuses were {statuses}")
+if replayed != [False, True]:
+    raise SystemExit(f"concurrent old/current replay split was {replayed}")
+if len(apply_ids) != 1 or None in apply_ids:
+    raise SystemExit("concurrent old/current requests did not converge on one Apply ID")
+
+summary_path = Path(os.environ["HTTP_SUMMARY"])
+summary = json.loads(summary_path.read_text())
+summary.update({
+    "concurrentOldCurrentClaimRaceStatuses": statuses,
+    "concurrentOldCurrentClaimRaceReplaySplit": True,
+    "concurrentOldCurrentClaimRaceApplyIdStable": True,
+    "concurrentOldCurrentClaimRacePassed": True,
+})
+summary_path.write_text(json.dumps(summary, indent=2) + "\n")
+PY
+
+printf 'MIXED-VERSION APPLY STAGE: verify-final-race-accounting\n'
+FINAL_APPLY_ROWS="$(psql "$MEMORY_OS_TEST_DATABASE_URL" --tuples-only --no-align --set=ON_ERROR_STOP=1 \
+  --command "SELECT count(*) FROM memory_os.apply_confirmation WHERE owner_account_id = '$ACCOUNT_ID';")"
+FINAL_MEMORY_ROWS="$(psql "$MEMORY_OS_TEST_DATABASE_URL" --tuples-only --no-align --set=ON_ERROR_STOP=1 \
+  --command "SELECT count(*) FROM memory_os.memory_item WHERE owner_account_id = '$ACCOUNT_ID';")"
+FINAL_DISTINCT_PREVIEWS="$(psql "$MEMORY_OS_TEST_DATABASE_URL" --tuples-only --no-align --set=ON_ERROR_STOP=1 \
+  --command "SELECT count(DISTINCT source_preview_id) FROM memory_os.memory_item WHERE owner_account_id = '$ACCOUNT_ID';")"
+FINAL_IN_PROGRESS_ROWS="$(psql "$MEMORY_OS_TEST_DATABASE_URL" --tuples-only --no-align --set=ON_ERROR_STOP=1 \
+  --command "SELECT count(*) FROM memory_os.apply_confirmation WHERE owner_account_id = '$ACCOUNT_ID' AND state = 'in_progress';")"
+RACE_APPLY_ROWS="$(psql "$MEMORY_OS_TEST_DATABASE_URL" --tuples-only --no-align --set=ON_ERROR_STOP=1 \
+  --command "SELECT count(*) FROM memory_os.apply_confirmation WHERE owner_account_id = '$ACCOUNT_ID' AND preview_id = '$PREVIEW_C';")"
+RACE_MEMORY_ROWS="$(psql "$MEMORY_OS_TEST_DATABASE_URL" --tuples-only --no-align --set=ON_ERROR_STOP=1 \
+  --command "SELECT count(*) FROM memory_os.memory_item WHERE owner_account_id = '$ACCOUNT_ID' AND source_preview_id = '$PREVIEW_C';")"
+
+[[ "$FINAL_APPLY_ROWS" == "3" && "$FINAL_MEMORY_ROWS" == "3" && \
+   "$FINAL_DISTINCT_PREVIEWS" == "3" && "$FINAL_IN_PROGRESS_ROWS" == "0" && \
+   "$RACE_APPLY_ROWS" == "1" && "$RACE_MEMORY_ROWS" == "1" ]] || {
+  echo "race accounting mismatch: applies=$FINAL_APPLY_ROWS memories=$FINAL_MEMORY_ROWS previews=$FINAL_DISTINCT_PREVIEWS in_progress=$FINAL_IN_PROGRESS_ROWS race_applies=$RACE_APPLY_ROWS race_memories=$RACE_MEMORY_ROWS" >&2
   exit 1
 }
 
 mkdir -p "$(dirname "$RESULT_PATH")"
 SOURCE_SHA="$SOURCE_SHA" OLD_SHA="$OLD_SHA" HTTP_SUMMARY="$HTTP_SUMMARY" \
 APPLY_ROWS="$APPLY_ROWS" MEMORY_ROWS="$MEMORY_ROWS" DISTINCT_PREVIEWS="$DISTINCT_PREVIEWS" \
-IN_PROGRESS_ROWS="$IN_PROGRESS_ROWS" RESULT_PATH="$RESULT_PATH" python - <<'PY'
+IN_PROGRESS_ROWS="$IN_PROGRESS_ROWS" FINAL_APPLY_ROWS="$FINAL_APPLY_ROWS" \
+FINAL_MEMORY_ROWS="$FINAL_MEMORY_ROWS" FINAL_DISTINCT_PREVIEWS="$FINAL_DISTINCT_PREVIEWS" \
+FINAL_IN_PROGRESS_ROWS="$FINAL_IN_PROGRESS_ROWS" RACE_APPLY_ROWS="$RACE_APPLY_ROWS" \
+RACE_MEMORY_ROWS="$RACE_MEMORY_ROWS" RESULT_PATH="$RESULT_PATH" python - <<'PY'
 import datetime as dt
 import json
 import os
@@ -347,6 +462,12 @@ result = {
         "memoryItemRows": int(os.environ["MEMORY_ROWS"]),
         "distinctSourcePreviews": int(os.environ["DISTINCT_PREVIEWS"]),
         "inProgressApplyRows": int(os.environ["IN_PROGRESS_ROWS"]),
+        "finalApplyConfirmationRows": int(os.environ["FINAL_APPLY_ROWS"]),
+        "finalMemoryItemRows": int(os.environ["FINAL_MEMORY_ROWS"]),
+        "finalDistinctSourcePreviews": int(os.environ["FINAL_DISTINCT_PREVIEWS"]),
+        "finalInProgressApplyRows": int(os.environ["FINAL_IN_PROGRESS_ROWS"]),
+        "racedPreviewApplyConfirmationRows": int(os.environ["RACE_APPLY_ROWS"]),
+        "racedPreviewMemoryItemRows": int(os.environ["RACE_MEMORY_ROWS"]),
         "sharedCurrentSchema": True,
         "oldAndCurrentProcessesConcurrent": True,
         "sameRequestHashStableAcrossVersions": True,
@@ -354,9 +475,9 @@ result = {
     },
     "limitations": [
         "historical candidate rather than an approved predecessor release",
-        "two synthetic ready Previews with one candidate each",
-        "sequential mutation and replay rather than concurrent claim racing",
-        "no process termination during an in-progress transaction",
+        "three synthetic ready Previews with one candidate each",
+        "one simultaneous old/current claim race without process termination",
+        "no host or process failure during an in-progress transaction",
         "no rolling traffic drain, rollback or destructive contract migration",
         "ephemeral PostgreSQL 16 and MinIO only",
         "not production compatibility evidence",
@@ -369,4 +490,4 @@ for forbidden in ("postgres://", "postgresql://", "Bearer ", "acct_", "job_", "p
 Path(os.environ["RESULT_PATH"]).write_text(serialized, encoding="utf-8")
 PY
 
-printf 'Mixed-version Apply drill PASS: old=%s current=%s\n' "$OLD_SHA" "$SOURCE_SHA"
+printf 'Mixed-version Apply drill PASS: old=%s current=%s concurrent-race=true\n' "$OLD_SHA" "$SOURCE_SHA"
