@@ -26,6 +26,8 @@ on:
       - "scripts/validate-memory-os-metrics-scrape.py"
       - "scripts/validate-memory-os-metrics-operations.py"
       - "scripts/validate-memory-os-metrics-alerting.py"
+      - "scripts/validate-memory-os-local-logical-restore.py"
+      - "scripts/run-memory-os-local-logical-restore.sh"
       - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-load-evidence-index.py"
       - "scripts/validate-memory-os-live-load.py"
@@ -46,6 +48,7 @@ on:
       - "services/import-api/internal/loadtest/**"
       - "services/import-api/internal/httpserver/**"
       - ".github/workflows/operability-contracts.yml"
+      - ".github/workflows/local-logical-restore.yml"
   push:
     branches:
       - so
@@ -73,6 +76,8 @@ on:
       - "scripts/validate-memory-os-metrics-scrape.py"
       - "scripts/validate-memory-os-metrics-operations.py"
       - "scripts/validate-memory-os-metrics-alerting.py"
+      - "scripts/validate-memory-os-local-logical-restore.py"
+      - "scripts/run-memory-os-local-logical-restore.sh"
       - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-load-evidence-index.py"
       - "scripts/validate-memory-os-live-load.py"
@@ -93,6 +98,7 @@ on:
       - "services/import-api/internal/loadtest/**"
       - "services/import-api/internal/httpserver/**"
       - ".github/workflows/operability-contracts.yml"
+      - ".github/workflows/local-logical-restore.yml"
   workflow_dispatch:
 
 permissions:
@@ -126,6 +132,7 @@ jobs:
           python -m py_compile scripts/validate-memory-os-metrics-scrape.py
           python -m py_compile scripts/validate-memory-os-metrics-operations.py
           python -m py_compile scripts/validate-memory-os-metrics-alerting.py
+          python -m py_compile scripts/validate-memory-os-local-logical-restore.py
           python -m py_compile scripts/validate-memory-os-load.py
           python -m py_compile scripts/validate-memory-os-load-evidence-index.py
           python -m py_compile scripts/validate-memory-os-live-load.py
@@ -137,6 +144,7 @@ jobs:
           python -m py_compile scripts/validate-memory-os-version-compatibility.py
           python -m py_compile scripts/validate-memory-os-entry-docs.py
           bash -n scripts/regenerate-memory-os-load-results.sh
+          bash -n scripts/run-memory-os-local-logical-restore.sh
 
       - name: Validate production operability authority
         run: python scripts/validate-memory-os-operability.py
@@ -176,6 +184,9 @@ jobs:
 
       - name: Validate metrics alert rules and runbooks
         run: python scripts/validate-memory-os-metrics-alerting.py
+
+      - name: Validate local PostgreSQL logical restore foundation
+        run: python scripts/validate-memory-os-local-logical-restore.py
 
       - name: Validate load-test scenario contract and results
         run: python scripts/validate-memory-os-load.py
