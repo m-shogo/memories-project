@@ -21,12 +21,14 @@ NEW_EXISTING = (
     "canonical backup/restore runbook and fail-closed policy validator",
 )
 PRECISE_GAPS = (
-    "production PostgreSQL backup schedule, independent retention and PITR configuration",
-    "cross-cluster isolated restore rehearsal with approved recovery owner and promotion decision",
-    "coherent PostgreSQL and object-version recovery-point selection",
-    "approved and measured RPO/RTO",
+    "production PostgreSQL backup and PITR configuration with independent retention",
+    "independent object-version retention and exact-version recovery validation",
+    "approved and measured RPO and RTO under production-shaped recovery",
+    "cross-cluster isolated restore drill with approved recovery owner and promotion decision",
     "production deletion and expired-session non-resurrection verification after restore",
-    "production backup freshness monitoring, paging and independent review",
+    "production restore drill completion across coherent PostgreSQL and object recovery points",
+    "production backup monitoring, freshness enforcement and paging",
+    "independent review of recovery evidence and promotion decision",
 )
 NEW_REFS = (
     "contracts/operations/backup-restore-contract.v1.json",
@@ -130,12 +132,14 @@ def main() -> int:
         changed = append_once(refs, ref) or changed
 
     for required_gap in (
-        "production PostgreSQL backup schedule",
-        "cross-cluster isolated restore",
-        "PostgreSQL and object-version recovery-point",
-        "approved and measured RPO/RTO",
-        "production deletion and expired-session",
-        "backup freshness monitoring",
+        "PostgreSQL backup and PITR",
+        "independent object",
+        "RPO and RTO",
+        "isolated restore",
+        "non-resurrection",
+        "restore drill",
+        "backup monitoring",
+        "independent review",
     ):
         require(any(required_gap in item for item in missing),
                 f"required OPS-P0-007 gap disappeared: {required_gap}")
