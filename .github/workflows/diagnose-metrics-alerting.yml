@@ -10,6 +10,10 @@ on:
       - "infra/observability/prometheus/memory-os-alerts.yml"
       - "docs/runbooks/memory-os-metrics-alerts.md"
       - "scripts/validate-memory-os-metrics-alerting.py"
+      - "scripts/reconcile-memory-os-metrics-contract.py"
+      - "scripts/reconcile-memory-os-metrics-scrape-status.py"
+      - "scripts/reconcile-memory-os-metrics-operations.py"
+      - "scripts/reconcile-memory-os-metrics-alerting.py"
   workflow_dispatch:
 
 permissions:
@@ -17,7 +21,7 @@ permissions:
 
 concurrency:
   group: diagnose-metrics-alerting-so
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   diagnose:
@@ -35,36 +39,69 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Run validator and write bounded diagnostic
-        id: validate
-        shell: bash
+      - name: Run full reconcile sequence and write bounded diagnostic
+        id: diagnose
+        env:
+          SOURCE_SHA: ${{ github.sha }}
         run: |
-          set +e
-          python scripts/validate-memory-os-metrics-alerting.py > /tmp/metrics-alerting.log 2>&1
-          code=$?
-          set -e
-          VALIDATION_EXIT_CODE="$code" python - <<'PY'
+          python - <<'PY'
           import json
           import os
+          import subprocess
           from pathlib import Path
 
-          output = Path('/tmp/metrics-alerting.log').read_text(encoding='utf-8', errors='replace')
-          output = output[:4000]
+          commands = [
+              ["python", "scripts/validate-memory-os-metrics-alerting.py"],
+              ["python", "scripts/reconcile-memory-os-metrics-contract.py"],
+              ["python", "scripts/reconcile-memory-os-metrics-scrape-status.py"],
+              ["python", "scripts/reconcile-memory-os-metrics-operations.py"],
+              ["python", "scripts/reconcile-memory-os-metrics-alerting.py"],
+              ["python", "scripts/validate-memory-os-metrics.py"],
+              ["python", "scripts/validate-memory-os-metrics-scrape.py"],
+              ["python", "scripts/validate-memory-os-metrics-operations.py"],
+              ["python", "scripts/validate-memory-os-metrics-alerting.py"],
+              ["python", "scripts/validate-memory-os-operability.py"],
+              ["python", "scripts/validate-memory-os-entry-docs.py"],
+          ]
+          steps = []
+          overall = 0
+          for command in commands:
+              completed = subprocess.run(
+                  command,
+                  text=True,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.STDOUT,
+                  check=False,
+              )
+              output = completed.stdout[:3000]
+              steps.append({
+                  "command": " ".join(command),
+                  "exitCode": completed.returncode,
+                  "output": output,
+              })
+              if completed.returncode != 0:
+                  overall = completed.returncode
+                  break
+
           result = {
-              'schemaVersion': 'memory-os-validator-diagnostic.v1',
-              'validator': 'scripts/validate-memory-os-metrics-alerting.py',
-              'sourceCommitSha': os.environ['GITHUB_SHA'],
-              'result': 'PASS' if os.environ['VALIDATION_EXIT_CODE'] == '0' else 'FAIL',
-              'exitCode': int(os.environ['VALIDATION_EXIT_CODE']),
-              'output': output,
-              'containsSecrets': False,
-              'productionEvidence': False,
+              "schemaVersion": "memory-os-validator-diagnostic.v2",
+              "workflow": "reconcile-metrics-authority",
+              "sourceCommitSha": os.environ["SOURCE_SHA"],
+              "result": "PASS" if overall == 0 else "FAIL",
+              "exitCode": overall,
+              "steps": steps,
+              "containsSecrets": False,
+              "productionEvidence": False,
           }
-          path = Path('docs/fixtures/memory-os-operability/metrics-alerting-validation.last.json')
+          path = Path("docs/fixtures/memory-os-operability/metrics-alerting-validation.last.json")
           path.parent.mkdir(parents=True, exist_ok=True)
-          path.write_text(json.dumps(result, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+          path.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+          Path("/tmp/metrics-alerting-exit-code").write_text(str(overall), encoding="utf-8")
           PY
-          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          git checkout -- \
+            contracts/operations/metrics-contract.v1.json \
+            contracts/operations/production-operability-status.json
+          echo "exit_code=$(cat /tmp/metrics-alerting-exit-code)" >> "$GITHUB_OUTPUT"
 
       - name: Commit diagnostic
         run: |
@@ -74,11 +111,11 @@ jobs:
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "test(metrics): record alerting validator diagnostic"
+            git commit -m "test(metrics): record full alerting reconcile diagnostic"
             git pull --rebase origin so
             git push origin HEAD:so
           fi
 
-      - name: Fail when validator failed
-        if: steps.validate.outputs.exit_code != '0'
+      - name: Fail when reconcile sequence failed
+        if: steps.diagnose.outputs.exit_code != '0'
         run: exit 1
