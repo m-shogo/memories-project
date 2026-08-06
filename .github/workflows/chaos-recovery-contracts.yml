@@ -1,0 +1,114 @@
+name: Chaos Recovery Contracts
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/chaos-recovery-contracts.yml"
+      - ".github/workflows/chaos-failure-drills-v2.yml"
+      - ".github/workflows/parser-restart-matrix.yml"
+      - ".github/workflows/database-commit-outage.yml"
+      - "contracts/operations/chaos-failure-drill-contract.v2.json"
+      - "contracts/operations/parser-restart-matrix-contract.v1.json"
+      - "contracts/operations/database-commit-outage-contract.v1.json"
+      - "services/import-api/internal/httpserver/interruption_drill_test.go"
+      - "services/import-api/internal/parsersup/restart_matrix_drill_linux_test.go"
+      - "services/import-api/internal/importflow/object_outage_drill_linux_test.go"
+      - "services/import-api/internal/importflow/database_outage_drill_linux_test.go"
+      - "scripts/validate-memory-os-chaos-failure-drills-v2.py"
+      - "scripts/validate-memory-os-parser-restart-matrix.py"
+      - "scripts/validate-memory-os-database-commit-outage.py"
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/chaos-recovery-contracts.yml"
+      - ".github/workflows/chaos-failure-drills-v2.yml"
+      - ".github/workflows/parser-restart-matrix.yml"
+      - ".github/workflows/database-commit-outage.yml"
+      - "contracts/operations/chaos-failure-drill-contract.v2.json"
+      - "contracts/operations/parser-restart-matrix-contract.v1.json"
+      - "contracts/operations/database-commit-outage-contract.v1.json"
+      - "services/import-api/internal/httpserver/interruption_drill_test.go"
+      - "services/import-api/internal/parsersup/restart_matrix_drill_linux_test.go"
+      - "services/import-api/internal/importflow/object_outage_drill_linux_test.go"
+      - "services/import-api/internal/importflow/database_outage_drill_linux_test.go"
+      - "scripts/validate-memory-os-chaos-failure-drills-v2.py"
+      - "scripts/validate-memory-os-parser-restart-matrix.py"
+      - "scripts/validate-memory-os-database-commit-outage.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chaos-recovery-contracts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: memory_os_security
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d memory_os_security"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      MEMORY_OS_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/memory_os_security
+      MEMORY_OS_TEST_S3_ENDPOINT: http://127.0.0.1:9000
+      MEMORY_OS_TEST_S3_ACCESS_KEY: minioadmin
+      MEMORY_OS_TEST_S3_SECRET_KEY: minioadmin
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start MinIO
+        run: >-
+          docker run -d --name minio -p 9000:9000
+          -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin
+          minio/minio server /data
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: services/import-api/go.sum
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate contracts and formatting
+        run: |
+          python -m py_compile \
+            scripts/validate-memory-os-chaos-failure-drills-v2.py \
+            scripts/validate-memory-os-parser-restart-matrix.py \
+            scripts/validate-memory-os-database-commit-outage.py
+          test -z "$(gofmt -l \
+            services/import-api/internal/httpserver/interruption_drill_test.go \
+            services/import-api/internal/parsersup/restart_matrix_drill_linux_test.go \
+            services/import-api/internal/importflow/object_outage_drill_linux_test.go \
+            services/import-api/internal/importflow/database_outage_drill_linux_test.go)"
+          python scripts/validate-memory-os-chaos-failure-drills-v2.py
+          python scripts/validate-memory-os-parser-restart-matrix.py
+          python scripts/validate-memory-os-database-commit-outage.py
+
+      - name: Execute current recovery drills
+        working-directory: services/import-api
+        run: |
+          go test ./internal/httpserver \
+            -run '^TestHTTPServerGracefulInterruptionDrainsInFlightRequest$' -count=1
+          go test ./internal/parsersup \
+            -run '^TestSupervisorRestartRecoveryMatrix$' -count=1
+          go test ./internal/importflow \
+            -run '^(TestFlowRecoversAfterObjectStoreOutage|TestFlowRecoversAfterDatabaseCommitOutage)$' -count=1
