@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"sort"
 	"strconv"
 	"sync"
 	"testing"
@@ -27,6 +28,39 @@ type deletionWorkerResult struct {
 	Receipts []accountdelete.Receipt
 	Err      error
 	Duration time.Duration
+}
+
+func summarizeDeletionHTTPSamples(samples []liveHTTPSample, concurrency int, elapsed time.Duration) liveBatchResult {
+	result := liveBatchResult{
+		Requests:          len(samples),
+		Concurrency:       concurrency,
+		StatusClassCounts: map[string]int{},
+		DurationSeconds:   elapsed.Seconds(),
+	}
+	if elapsed > 0 {
+		result.Throughput = float64(len(samples)) / elapsed.Seconds()
+	}
+	latencies := make([]time.Duration, 0, len(samples))
+	for _, sample := range samples {
+		if sample.Err != nil {
+			result.Failures++
+			result.StatusClassCounts["transport_error"]++
+			continue
+		}
+		class := fmt.Sprintf("%dxx", sample.Status/100)
+		result.StatusClassCounts[class]++
+		if sample.Status >= 200 && sample.Status < 300 {
+			result.Successes++
+		} else {
+			result.Failures++
+		}
+		latencies = append(latencies, sample.Duration)
+	}
+	sort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
+	result.LatencyP50Ms = livePercentileMillis(latencies, 0.50)
+	result.LatencyP95Ms = livePercentileMillis(latencies, 0.95)
+	result.LatencyP99Ms = livePercentileMillis(latencies, 0.99)
+	return result
 }
 
 type deletionUnderLoadResultsDocument struct {
@@ -67,7 +101,7 @@ type deletionUnderLoadResultsDocument struct {
 }
 
 func runDeletionExactHTTPBatch(requests, concurrency int, factory func(int) (*http.Request, error)) deletionExactBatch {
-	client := liveHTTPClient()
+	client := &http.Client{Timeout: 15 * time.Second}
 	samples := make([]liveHTTPSample, requests)
 	jobs := make(chan int)
 	var workers sync.WaitGroup
@@ -117,7 +151,7 @@ func runDeletionExactHTTPBatch(requests, concurrency int, factory func(int) (*ht
 		exact[strconv.Itoa(sample.Status)]++
 	}
 	return deletionExactBatch{
-		Summary:          summarizeLiveHTTPSamples(samples, concurrency, time.Since(started)),
+		Summary:          summarizeDeletionHTTPSamples(samples, concurrency, time.Since(started)),
 		StatusCodeCounts: exact,
 	}
 }
