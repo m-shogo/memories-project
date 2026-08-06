@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "memory-os-mixed-version-candidate-results.v1",
+  "currentCommitSha": "b22a2e9b3a880c98e6b4e063abc91531bc463b19",
+  "candidateBaselineCommitSha": "2af6e8e10755cc707c6bdd958a049a0f4afb3d70",
+  "generatedAt": "2026-08-06T10:29:13.169916Z",
+  "environment": {
+    "mode": "EPHEMERAL_POSTGRESQL_16_MINIO_TWO_DATABASE_CANDIDATE_BASELINE",
+    "productionEvidence": false,
+    "releaseCompatibilityEvidence": false,
+    "candidateBaselineOnly": true,
+    "containsSecrets": false,
+    "syntheticDataOnly": true,
+    "databaseIdentityDigest": "4151242ac0634794b4ddc6f5d3920670dff1e20be60f44b13b3ab94f6892ddee"
+  },
+  "scenario": {
+    "scenarioId": "historical-candidate-on-current-expanded-schema",
+    "startedAt": "2026-08-06T10:28:51Z",
+    "completedAt": "2026-08-06T10:29:13Z",
+    "durationSeconds": 22,
+    "currentMigrationsAppliedPerDatabase": 11,
+    "candidateBaselineSqlTestsExecuted": 11,
+    "currentSqlTestsExecuted": 11,
+    "candidateBaselineGoPackagesExecuted": 4,
+    "currentGoPackagesExecuted": 4,
+    "baselineSqlOrderSource": "BASELINE_SECURITY_CONTRACTS_WORKFLOW",
+    "memoryOsSchemaFingerprintSha256": "71d7bdebb6123bc19606f6069554876bdb64ebfbaaae214cd4d58ce082be72f0",
+    "assertions": {
+      "baselineIsAncestorOfCurrent": true,
+      "currentExpandedSchemaAppliedToBothDatabases": true,
+      "candidateBaselineSqlTestsPassed": true,
+      "candidateBaselineGoTestsPassed": true,
+      "candidateExecutionPreservedSchemaFingerprint": true,
+      "currentSqlTestsPassed": true,
+      "currentGoTestsPassed": true
+    },
+    "result": "PASS",
+    "integrityResult": "PASS"
+  },
+  "limitations": [
+    "candidate baseline is not an approved release",
+    "single PostgreSQL 16 major version",
+    "separate databases rather than simultaneous old/current traffic",
+    "local MinIO rather than production object storage",
+    "no rolling deployment order or connection-drain failure injection",
+    "no downgrade or destructive contract migration",
+    "not production mixed-version evidence"
+  ]
+}
