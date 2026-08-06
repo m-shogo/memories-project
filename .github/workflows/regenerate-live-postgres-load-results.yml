@@ -1,0 +1,142 @@
+name: Regenerate Live PostgreSQL Load Results
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: regenerate-live-postgres-load-results-so
+  cancel-in-progress: false
+
+jobs:
+  live-postgres-load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: memory_os_security
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d memory_os_security"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    steps:
+      - name: Checkout exact source commit
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: services/import-api/go.sum
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify exact source state
+        run: |
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+
+      - name: Start local MinIO harness
+        run: |
+          docker run -d --name memory-os-live-load-minio \
+            -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio server /data
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --show-error http://127.0.0.1:9000/minio/health/live >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs memory-os-live-load-minio
+          exit 1
+
+      - name: Check Go formatting
+        working-directory: services/import-api
+        run: test -z "$(gofmt -l internal/httpserver/live_load_test.go)"
+
+      - name: Run live PostgreSQL HTTP baseline and load checkpoint
+        env:
+          MEMORY_OS_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/memory_os_security?sslmode=disable
+          MEMORY_OS_TEST_S3_ENDPOINT: http://127.0.0.1:9000
+          MEMORY_OS_TEST_S3_ACCESS_KEY: minioadmin
+          MEMORY_OS_TEST_S3_SECRET_KEY: minioadmin
+          MEMORY_OS_RUN_LIVE_LOAD: "1"
+          MEMORY_OS_LIVE_LOAD_RESULTS_PATH: ${{ github.workspace }}/docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json
+          MEMORY_OS_COMMIT_SHA: ${{ github.sha }}
+        working-directory: services/import-api
+        run: |
+          go test ./internal/httpserver \
+            -run '^(TestPreviewReadAndApplyOverHTTP|TestLivePostgresPreviewReadAndIdempotentApplyLoad)$' \
+            -count=1 -timeout=12m
+
+      - name: Validate live-load result contract
+        env:
+          EXPECTED_COMMIT_SHA: ${{ github.sha }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          contract_path = Path("contracts/operations/live-postgres-load-scenario-contract.v1.json")
+          result_path = Path("docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json")
+          contract = json.loads(contract_path.read_text(encoding="utf-8"))
+          result = json.loads(result_path.read_text(encoding="utf-8"))
+
+          assert result["schemaVersion"] == contract["resultsSchemaVersion"]
+          assert result["commitSha"] == os.environ["EXPECTED_COMMIT_SHA"]
+          assert result["environment"]["databaseMode"] == "LOCAL_POSTGRES"
+          assert result["environment"]["productionEvidence"] is False
+
+          expected = {item["scenarioId"]: item for item in contract["scenarios"]}
+          observed = {item["scenarioId"]: item for item in result["scenarios"]}
+          assert set(observed) == set(expected)
+
+          preview = observed["authenticated-preview-local-postgres"]
+          assert preview["result"] == "PASS"
+          assert preview["integrityResult"] == "PASS"
+          assert preview["batch"]["requests"] == 500
+          assert preview["batch"]["statusClassCounts"] == {"2xx": 500}
+
+          apply_result = observed["concurrent-idempotent-apply-local-postgres"]
+          assert apply_result["result"] == "PASS"
+          assert apply_result["integrityResult"] == "PASS"
+          assert apply_result["batch"]["requests"] == 96
+          assert apply_result["batch"]["statusClassCounts"].get("2xx", 0) > 0
+          assert apply_result["batch"]["statusClassCounts"].get("5xx", 0) == 0
+          assert apply_result["batch"]["statusClassCounts"].get("transport_error", 0) == 0
+          assert apply_result["databaseAssertions"]["memory_item_rows"] == 2
+          assert apply_result["databaseAssertions"]["apply_confirmation_rows"] == 1
+          print("Live PostgreSQL load result validation PASS")
+          PY
+
+      - name: Commit regenerated evidence
+        run: |
+          git add docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json
+          if git diff --cached --quiet; then
+            echo "Live PostgreSQL load evidence is already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "test(load): record live PostgreSQL load checkpoint"
+          git push origin HEAD:so
