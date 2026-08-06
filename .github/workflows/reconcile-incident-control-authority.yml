@@ -1,0 +1,72 @@
+name: Reconcile Incident Control Authority
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/reconcile-incident-control-authority.yml"
+      - "contracts/operations/incident-control-exercise-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "docs/fixtures/memory-os-operability/incident-control-exercise-results.sample.v1.json"
+      - "scripts/reconcile-memory-os-incident-control-authority.py"
+      - "scripts/validate-memory-os-incident-control-exercise.py"
+  schedule:
+    - cron: "37 22 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reconcile-incident-control-authority-so
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout latest so
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm exact clean authority source
+        run: |
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+
+      - name: Normalize exercise contract and status
+        run: |
+          python -m py_compile \
+            scripts/reconcile-memory-os-incident-control-authority.py \
+            scripts/validate-memory-os-incident-control-exercise.py
+          python scripts/reconcile-memory-os-incident-control-authority.py
+          python scripts/reconcile-memory-os-incident-control-authority.py --check
+          python scripts/validate-memory-os-incident-control-exercise.py
+          python scripts/validate-memory-os-incident-response.py
+          python scripts/validate-memory-os-incident-tabletop.py
+          python scripts/validate-memory-os-operability.py
+
+      - name: Commit normalized incident authority
+        run: |
+          git add \
+            contracts/operations/incident-control-exercise-contract.v1.json \
+            contracts/operations/production-operability-status.json
+          if git diff --cached --quiet; then
+            echo "Incident control authority is already normalized."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs(incident): normalize automated control exercise"
+          git pull --rebase origin so
+          git push origin HEAD:so
