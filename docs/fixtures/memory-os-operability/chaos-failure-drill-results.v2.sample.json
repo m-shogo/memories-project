@@ -1,0 +1,65 @@
+{
+  "schemaVersion": "memory-os-chaos-failure-drill-results.v2",
+  "commitSha": "d084690a7269688962b85f66c0a43b4c27a88542",
+  "generatedAt": "2026-08-06T08:30:08.427204Z",
+  "environment": {
+    "mode": "GITHUB_ACTIONS_UBUNTU_LINUX_POSTGRES16_MINIO",
+    "productionEvidence": false,
+    "containsSecrets": false,
+    "syntheticDataOnly": true
+  },
+  "scenarios": [
+    {
+      "scenarioId": "api-graceful-interruption-drain",
+      "result": "PASS",
+      "integrityResult": "PASS",
+      "exitCode": 0,
+      "durationSeconds": 1.767746
+    },
+    {
+      "scenarioId": "parser-restart-after-protocol-failure",
+      "result": "PASS",
+      "integrityResult": "PASS",
+      "exitCode": 0,
+      "durationSeconds": 0.237261
+    },
+    {
+      "scenarioId": "object-store-outage-and-recovery",
+      "result": "PASS",
+      "integrityResult": "PASS",
+      "exitCode": 0,
+      "durationSeconds": 0.948188,
+      "assertions": {
+        "durablePreviewRowsDuringOutage": 0,
+        "spoolEntriesDuringOutage": 0,
+        "durablePreviewRowsAfterRecovery": 1,
+        "acceptedRecordsAfterRecovery": 2,
+        "rejectedRecordsAfterRecovery": 1
+      }
+    },
+    {
+      "scenarioId": "database-loss-or-failover",
+      "result": "NOT_RUN",
+      "integrityResult": "NOT_RUN",
+      "exitCode": null,
+      "durationSeconds": 0
+    },
+    {
+      "scenarioId": "mixed-version-failure-and-rollback",
+      "result": "NOT_RUN",
+      "integrityResult": "NOT_RUN",
+      "exitCode": null,
+      "durationSeconds": 0
+    }
+  ],
+  "overallResult": "PARTIAL_PASS",
+  "limitations": [
+    "not production chaos",
+    "database failover not executed",
+    "mixed-version failure not executed",
+    "object outage uses an unreachable client endpoint rather than killing the MinIO process",
+    "parser restart matrix incomplete",
+    "multi-instance API interruption not executed",
+    "ephemeral PostgreSQL 16 and MinIO only"
+  ]
+}
