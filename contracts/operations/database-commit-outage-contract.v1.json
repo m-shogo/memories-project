@@ -1,0 +1,55 @@
+{
+  "contractId": "memory-os.operability.database-commit-outage.v1",
+  "schemaVersion": "memory-os-database-commit-outage.v1",
+  "resultsSchemaVersion": "memory-os-database-commit-outage-results.v1",
+  "description": "Local PostgreSQL 16 plus MinIO import-flow drill for a database connection outage after exact-version fetch, parse, seal and independent verification but before atomic Preview commit. The failed commit must leave no durable Preview rows, preserve sealed spool evidence, and a new spool attempt for the same source and Preview ID must commit exactly once after connectivity returns. This is not database process loss, replication failover, PITR or production evidence.",
+  "runnerCommand": "go test ./internal/importflow -run ^TestFlowRecoversAfterDatabaseCommitOutage$ -count=1",
+  "workingDirectory": "services/import-api",
+  "validator": "scripts/validate-memory-os-database-commit-outage.py",
+  "resultPath": "docs/fixtures/memory-os-operability/database-commit-outage-results.sample.v1.json",
+  "dependencyMode": "EPHEMERAL_POSTGRESQL_16_MINIO_WITH_UNREACHABLE_COMMIT_POOL",
+  "requiredAssertions": [
+    "source object is uploaded and bound before the database outage is injected",
+    "parse, seal and independent verification complete before the unreachable commit pool fails",
+    "failed commit leaves zero preview_ready rows and keeps the import job in preview_building",
+    "failed commit preserves one sealed spool attempt for investigation or later processing",
+    "recovery uses the same source and Preview ID with a new spool attempt",
+    "recovery commits exactly one Preview, two candidates and one rejection",
+    "first successful recovery is not mislabeled as an idempotent replay"
+  ],
+  "privacy": {
+    "syntheticDataOnly": true,
+    "productionEvidence": false,
+    "databaseUrlInEvidenceForbidden": true,
+    "credentialsInEvidenceForbidden": true,
+    "objectKeyOrVersionInEvidenceForbidden": true,
+    "spoolPathInEvidenceForbidden": true,
+    "userContentInEvidenceForbidden": true
+  },
+  "limitations": [
+    "unreachable commit pool rather than stopping the PostgreSQL process",
+    "not replication failover, leader promotion or connection-pool failover",
+    "ephemeral PostgreSQL 16 and MinIO only",
+    "source fetch and parse dependencies remain healthy",
+    "recovery uses a new spool attempt rather than resuming commit directly from the preserved sealed spool",
+    "not PITR, cross-cluster or production chaos evidence"
+  ],
+  "readiness": {
+    "contractDefined": true,
+    "testImplemented": true,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": false,
+    "exactSourcePassResultCommitted": false,
+    "databaseProcessLossExecuted": false,
+    "replicationFailoverExecuted": false,
+    "sameSealedSpoolCommitResumeImplemented": false,
+    "productionReady": false
+  },
+  "evidenceRefs": [
+    "contracts/operations/database-commit-outage-contract.v1.json",
+    "services/import-api/internal/importflow/database_outage_drill_linux_test.go",
+    "services/import-api/internal/importflow/flow.go",
+    "services/import-api/internal/previewcommit/committer.go",
+    "scripts/validate-memory-os-database-commit-outage.py"
+  ]
+}
