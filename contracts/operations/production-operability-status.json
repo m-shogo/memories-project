@@ -42,17 +42,30 @@
     {
       "id": "OPS-P0-002",
       "area": "incident_recovery",
-      "status": "PARTIAL_FOUNDATIONS_ONLY",
+      "status": "PARTIAL",
       "blocking": true,
       "existingEvidence": [
         "startup reconciliation",
         "TTL cleanup",
-        "leased deletion worker resume"
+        "leased deletion worker resume",
+        "binding SEV0-SEV3 incident severity model with acknowledgement targets, required command roles and closure approvals",
+        "operator runbook covering declaration, scoping, containment, evidence preservation, recovery, independent verification and closure",
+        "mandatory stop conditions for ambiguous targets, destructive recovery, uncertain tenant authority and evidence loss",
+        "append-only privacy-safe incident record that separates confirmed facts, known prior conditions, hypotheses and opinion",
+        "six required tabletop scenarios covering tenant isolation, PostgreSQL, object storage, migration compatibility, restore non-resurrection and parser compromise",
+        "fail-closed validator preventing READY claims without paging, contacts, completed tabletop, production recovery drill and independent review"
       ],
       "missingEvidence": [
-        "operator runbooks",
-        "severity and escalation model",
-        "tabletop or recovery drill evidence"
+        "configured paging and alert routing with owned acknowledgement path",
+        "owned external legal/privacy/user communication contact tree",
+        "completed tabletop evidence for the required scenarios",
+        "production-shaped recovery drill evidence",
+        "independent review of incident controls"
+      ],
+      "evidenceRefs": [
+        "contracts/operations/incident-response-contract.v1.json",
+        "docs/runbooks/memory-os-incident-response.md",
+        "scripts/validate-memory-os-incident-response.py"
       ]
     },
     {
