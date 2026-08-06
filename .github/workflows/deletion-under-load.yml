@@ -1,0 +1,239 @@
+name: Deletion Under Load
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/deletion-under-load.yml"
+      - "services/import-api/internal/httpserver/deletion_under_load_test.go"
+      - "services/import-api/internal/httpserver/live_load_test.go"
+      - "services/import-api/internal/httpserver/server_live_test.go"
+      - "services/import-api/internal/accountdelete/**"
+      - "infra/postgresql/security/**"
+      - "contracts/operations/deletion-under-load-contract.v1.json"
+      - "scripts/validate-memory-os-deletion-under-load.py"
+      - "scripts/reconcile-memory-os-deletion-under-load-status.py"
+  schedule:
+    - cron: "17 19 * * 3,6"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deletion-under-load-so
+  cancel-in-progress: true
+
+jobs:
+  deletion-load:
+    if: >-
+      github.event_name != 'push' ||
+      (!contains(github.event.head_commit.message, 'test(load): record deletion-under-load result') &&
+       !contains(github.event.head_commit.message, 'docs(ops): register deletion-under-load evidence') &&
+       !contains(github.event.head_commit.message, 'test(load): record deletion-under-load diagnostic'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: memory_os_security
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d memory_os_security"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    steps:
+      - name: Checkout exact so source
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: services/import-api/go.sum
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Capture exact source
+        run: |
+          set -euo pipefail
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Start local MinIO
+        run: |
+          set -euo pipefail
+          docker run -d --name memory-os-deletion-load-minio \
+            -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio server /data
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:9000/minio/health/live >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs memory-os-deletion-load-minio
+          exit 1
+
+      - name: Execute and validate deletion load
+        env:
+          MEMORY_OS_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/memory_os_security?sslmode=disable
+          MEMORY_OS_TEST_S3_ENDPOINT: http://127.0.0.1:9000
+          MEMORY_OS_TEST_S3_ACCESS_KEY: minioadmin
+          MEMORY_OS_TEST_S3_SECRET_KEY: minioadmin
+          MEMORY_OS_RUN_DELETION_UNDER_LOAD: "1"
+          MEMORY_OS_DELETION_UNDER_LOAD_RESULTS_PATH: ${{ github.workspace }}/docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json
+          MEMORY_OS_COMMIT_SHA: ${{ env.SOURCE_SHA }}
+          EXPECTED_COMMIT_SHA: ${{ env.SOURCE_SHA }}
+        run: |
+          set +e
+          log=/tmp/memory-os-deletion-under-load.log
+          : > "$log"
+          code=0
+          echo "STAGE: format-and-compile" >> "$log"
+          test -z "$(gofmt -l services/import-api/internal/httpserver/deletion_under_load_test.go)" \
+            >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: execute-post-fence-load" >> "$log"
+            (
+              cd services/import-api
+              go test ./internal/httpserver \
+                -run '^TestAccountDeletionPostFenceLoadLocalDependencies$' \
+                -count=1 -timeout=12m
+            ) >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: validate-result" >> "$log"
+            python scripts/validate-memory-os-deletion-under-load.py \
+              --expected-commit-sha "$SOURCE_SHA" >> "$log" 2>&1 || code=$?
+          fi
+          echo "DELETION_LOAD_EXIT_CODE=$code" >> "$GITHUB_ENV"
+          if [[ "$code" == "0" ]]; then
+            mkdir -p /tmp/memory-os-deletion-under-load
+            cp docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json \
+              /tmp/memory-os-deletion-under-load/result.json
+          fi
+          exit 0
+
+      - name: Publish exact-source result
+        if: env.DELETION_LOAD_EXIT_CODE == '0'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          published=false
+          for attempt in 1 2 3; do
+            git fetch origin so
+            if ! git diff --quiet "${SOURCE_SHA}" origin/so -- \
+              services/import-api/internal/httpserver/deletion_under_load_test.go \
+              services/import-api/internal/httpserver/live_load_test.go \
+              services/import-api/internal/httpserver/server_live_test.go \
+              services/import-api/internal/accountdelete \
+              infra/postgresql/security \
+              contracts/operations/deletion-under-load-contract.v1.json \
+              scripts/validate-memory-os-deletion-under-load.py; then
+              echo "Newer deletion-load-critical source exists; its own run must publish evidence."
+              exit 75
+            fi
+            git reset --hard origin/so
+            cp /tmp/memory-os-deletion-under-load/result.json \
+              docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json
+            git add docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json
+            if git diff --cached --quiet; then
+              published=true
+              break
+            fi
+            git commit -m "test(load): record deletion-under-load result"
+            if git push origin HEAD:so; then
+              published=true
+              break
+            fi
+          done
+          test "$published" = true
+
+      - name: Reconcile deletion-load authority
+        if: env.DELETION_LOAD_EXIT_CODE == '0'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          reconciled=false
+          for attempt in 1 2 3; do
+            git fetch origin so
+            git reset --hard origin/so
+            EXPECTED_COMMIT_SHA="${SOURCE_SHA}" python scripts/validate-memory-os-deletion-under-load.py
+            EXPECTED_COMMIT_SHA="${SOURCE_SHA}" python scripts/reconcile-memory-os-deletion-under-load-status.py
+            python scripts/validate-memory-os-deletion-under-load.py --require-reconciled
+            python scripts/validate-memory-os-load.py
+            python scripts/validate-memory-os-operability.py
+            git add \
+              contracts/operations/deletion-under-load-contract.v1.json \
+              contracts/operations/load-test-scenario-contract.v1.json \
+              contracts/operations/production-operability-status.json
+            if git diff --cached --quiet; then
+              reconciled=true
+              break
+            fi
+            git commit -m "docs(ops): register deletion-under-load evidence"
+            if git push origin HEAD:so; then
+              reconciled=true
+              break
+            fi
+          done
+          test "$reconciled" = true
+
+      - name: Record privacy-safe diagnostic
+        if: env.DELETION_LOAD_EXIT_CODE != '0'
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          git reset --hard origin/so
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+          text = Path("/tmp/memory-os-deletion-under-load.log").read_text(encoding="utf-8", errors="replace")
+          text = re.sub(r"postgres(?:ql)?://[^\s]+", "<redacted-database-url>", text)
+          text = text.replace("minioadmin", "<redacted-local-credential>")
+          text = re.sub(r"Bearer\s+\S+", "Bearer <redacted>", text, flags=re.I)
+          value = {
+              "schemaVersion": "memory-os-validator-diagnostic.v1",
+              "workflow": "deletion-under-load",
+              "sourceCommitSha": os.environ["SOURCE_SHA"],
+              "result": "FAIL",
+              "exitCode": int(os.environ["DELETION_LOAD_EXIT_CODE"]),
+              "output": text[-12000:],
+              "containsSecrets": False,
+              "productionEvidence": False,
+              "requestsStartedBeforeFenceCovered": False,
+          }
+          path = Path("docs/fixtures/memory-os-operability/deletion-under-load-diagnostic.last.json")
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+          PY
+          git add docs/fixtures/memory-os-operability/deletion-under-load-diagnostic.last.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "test(load): record deletion-under-load diagnostic"
+          git pull --rebase origin so
+          git push origin HEAD:so
+
+      - name: Enforce checkpoint success
+        run: test "${DELETION_LOAD_EXIT_CODE}" = "0"
