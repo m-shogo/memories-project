@@ -443,13 +443,13 @@
         "rollback-eligible approved release whose binary and retained artifacts are verified against the expanded target schema",
         "independent review of the first release registration and writer execution evidence",
         "persisted Preview and Apply compatibility fixtures across an approved predecessor and successor release pair",
-        "process termination during in-progress Apply with deterministic recovery or safe blocking evidence",
         "rolling deployment, traffic drain and application rollback rehearsal using rollback-eligible approved release artifacts",
         "approved source and rollback-target release pair with verified rollback eligibility and retained exact artifacts",
         "admitted isolated rollback rehearsal request with distinct Release Owner and Database Recovery Owner approvals",
         "executed rollback rehearsal proving startup, session, tenant, deletion, idempotency, parser artifact and exact object-version invariants",
         "traffic-drain and rollback timing evidence with monitored stop conditions and independent review",
-        "simultaneous approved-release old/current mutation traffic and concurrent idempotency-claim race coverage on one production-shaped database"
+        "simultaneous approved-release old/current mutation traffic and concurrent idempotency-claim race coverage on one production-shaped database",
+        "approved-release process termination during in-progress Apply with production-shaped connection-pool cleanup and deterministic recovery evidence"
       ],
       "evidenceRefs": [
         ".github/workflows/security-contracts.yml",
