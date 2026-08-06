@@ -1,10 +1,26 @@
 {
-  "schemaVersion": "memory-os-validator-diagnostic.v1",
-  "validator": "scripts/validate-memory-os-metrics-alerting.py",
-  "sourceCommitSha": "50e9fc6c7bcd9bf92fe14f5ec3e1d98aa544efbd",
-  "result": "PASS",
-  "exitCode": 0,
-  "output": "Memory OS metrics alerting validation PASS\nalert rules: 7\nrouting: NOT_CONFIGURED\nproduction decision: NO_GO\n",
+  "schemaVersion": "memory-os-validator-diagnostic.v2",
+  "workflow": "reconcile-metrics-authority",
+  "sourceCommitSha": "bd1d6610623dd53d8fe833098bab18b9e10eb6cc",
+  "result": "FAIL",
+  "exitCode": 1,
+  "steps": [
+    {
+      "command": "python scripts/validate-memory-os-metrics-alerting.py",
+      "exitCode": 0,
+      "output": "Memory OS metrics alerting validation PASS\nalert rules: 7\nrouting: NOT_CONFIGURED\nproduction decision: NO_GO\n"
+    },
+    {
+      "command": "python scripts/reconcile-memory-os-metrics-contract.py",
+      "exitCode": 0,
+      "output": "Registered exporter foundation in primary metrics contract\n"
+    },
+    {
+      "command": "python scripts/reconcile-memory-os-metrics-scrape-status.py",
+      "exitCode": 1,
+      "output": "METRICS SCRAPE RECONCILE FAILED: required OPS-P0-004 gap disappeared: dashboards and load-calibrated\n"
+    }
+  ],
   "containsSecrets": false,
   "productionEvidence": false
 }
