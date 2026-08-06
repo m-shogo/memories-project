@@ -103,7 +103,8 @@
     "approvedReleasePairAvailable": false,
     "concurrentClaimRaceExecuted": true,
     "rollbackRehearsalExecuted": false,
-    "productionReady": false
+    "productionReady": false,
+    "inProgressProcessTerminationExecuted": true
   },
   "evidenceRefs": [
     "contracts/operations/mixed-version-apply-contract.v1.json",

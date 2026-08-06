@@ -425,7 +425,9 @@
         "exclusive-lock atomic request writer forbids production traffic, production credentials, automatic promotion and destructive down migration",
         "empty approved release registry produces zero admissible pairs and BLOCKED_NO_APPROVED_ROLLBACK_PAIR without treating candidate or CI evidence as release authority",
         "simultaneous historical-candidate and current Apply requests using one Preview and idempotency key converge on one Apply ID with exactly one new application and one replay",
-        "concurrent old/current idempotency claim race leaves one durable claim, one materialized memory item and zero in-progress residue for the raced Preview"
+        "concurrent old/current idempotency claim race leaves one durable claim, one materialized memory item and zero in-progress residue for the raced Preview",
+        "historical-candidate process is SIGKILLed while its Apply transaction is blocked before memory materialization; PostgreSQL rolls back the uncommitted claim and memory mutation completely",
+        "current process safely retries the same Preview and idempotency key after historical-process death, creates exactly one durable claim and memory item, and leaves zero in-progress residue"
       ],
       "missingEvidence": [
         "reviewed parser artifact registry and old parser artifact replay tests",
