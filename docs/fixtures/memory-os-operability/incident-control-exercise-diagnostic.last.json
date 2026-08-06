@@ -1,12 +1,12 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "incident-control-exercise",
-  "sourceCommitSha": "d84874fd2aec261f9d293bc3a939c6e00cbc655a",
-  "result": "FAIL",
-  "exitCode": 1,
-  "validationResult": "NOT_RUN",
-  "validationExitCode": null,
-  "output": "INCIDENT CONTROL EXERCISE FAILED: failed repository validators: python scripts/validate-memory-os-mixed-version-candidate.py => MIXED-VERSION CANDIDATE VALIDATION FAILED: rejection evidence missing: docs/fixtures/memory-os-operability/mixed-version-candidate-diagnostic.last.json\n",
+  "sourceCommitSha": "b45854c27e71dce03f4a2be0980d68d1047ff0f0",
+  "result": "PASS",
+  "exitCode": 0,
+  "validationResult": "PASS",
+  "validationExitCode": 0,
+  "output": "Memory OS automated incident control exercise PASS\nscenarios: 6\nresult: docs/fixtures/memory-os-operability/incident-control-exercise-results.sample.v1.json\n\n--- validator ---\nMemory OS incident control exercise validation PASS\nscenarios: 6\nresult present: True\nproduction decision: NO_GO\n",
   "containsSecrets": false,
   "productionEvidence": false,
   "humanTabletopCompleted": false

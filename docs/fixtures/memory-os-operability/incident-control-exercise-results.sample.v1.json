@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-incident-control-exercise-results.v1",
-  "commitSha": "09fc0d66eff6f0d13b84a55c66847da3fdabec3f",
-  "generatedAt": "2026-08-06T10:25:29.120738Z",
+  "commitSha": "b45854c27e71dce03f4a2be0980d68d1047ff0f0",
+  "generatedAt": "2026-08-06T14:07:54.353208Z",
   "environment": {
     "mode": "GITHUB_ACTIONS_REPOSITORY_CONTROL_EXERCISE",
     "productionEvidence": false,
@@ -12,9 +12,9 @@
   },
   "exercise": {
     "exerciseClass": "AUTOMATED_CONTROL_EXERCISE_NOT_HUMAN_TABLETOP",
-    "startedAt": "2026-08-06T10:25:27.798286Z",
-    "completedAt": "2026-08-06T10:25:29.120738Z",
-    "durationSeconds": 1.322452,
+    "startedAt": "2026-08-06T14:07:53.123932Z",
+    "completedAt": "2026-08-06T14:07:54.353208Z",
+    "durationSeconds": 1.229276,
     "scenarios": [
       {
         "scenarioId": "tenant-isolation-breach",
@@ -23,7 +23,7 @@
           {
             "command": "python scripts/validate-memory-os-authorization.py",
             "exitCode": 0,
-            "durationSeconds": 0.441914,
+            "durationSeconds": 0.372471,
             "outputSha256": "6870a79459c18c1b27a99962cc3c60a03eb6c7e747e33d8251e99ea944d2325c",
             "outputBytes": 148,
             "result": "PASS"
@@ -31,7 +31,7 @@
           {
             "command": "python scripts/validate-memory-os-postgresql-rls.py",
             "exitCode": 0,
-            "durationSeconds": 0.039334,
+            "durationSeconds": 0.043533,
             "outputSha256": "4ce1c68fd7da99eb8e7a1d37a2a2aa0765dd3de7587b219c77a183ca9443e2e3",
             "outputBytes": 187,
             "result": "PASS"
@@ -72,7 +72,7 @@
           {
             "command": "python scripts/validate-memory-os-database-commit-outage.py",
             "exitCode": 0,
-            "durationSeconds": 0.033209,
+            "durationSeconds": 0.037414,
             "outputSha256": "a8ee7d6d1b39ba74cc678546272cead624a1c3cde8cafd8dba2bc9debb3691e2",
             "outputBytes": 141,
             "result": "PASS"
@@ -80,7 +80,7 @@
           {
             "command": "python scripts/validate-memory-os-local-logical-restore.py",
             "exitCode": 0,
-            "durationSeconds": 0.03424,
+            "durationSeconds": 0.039279,
             "outputSha256": "848c53df1427da9f283fe28ebb085971c73348e4c280862c807e0da0e1b775ac",
             "outputBytes": 192,
             "result": "PASS"
@@ -121,7 +121,7 @@
           {
             "command": "python scripts/validate-memory-os-chaos-failure-drills-v2.py",
             "exitCode": 0,
-            "durationSeconds": 0.033639,
+            "durationSeconds": 0.038699,
             "outputSha256": "0ef2c5f64a5d5d61dc055513f42a9357f0bfbd84e578e03b3771769c860b9287",
             "outputBytes": 167,
             "result": "PASS"
@@ -129,7 +129,7 @@
           {
             "command": "python scripts/validate-memory-os-local-object-version-restore.py",
             "exitCode": 0,
-            "durationSeconds": 0.033224,
+            "durationSeconds": 0.037736,
             "outputSha256": "aa520964acc31409be48bb142f0876faa041a18fffe58f5778193a3b5eea8808",
             "outputBytes": 147,
             "result": "PASS"
@@ -170,7 +170,7 @@
           {
             "command": "python scripts/validate-memory-os-migration-lifecycle.py",
             "exitCode": 0,
-            "durationSeconds": 0.033509,
+            "durationSeconds": 0.037714,
             "outputSha256": "0d66eb05a26595975bb5c9bd0dbfa0d8e945d4fb5be10a820180fba5a7051683",
             "outputBytes": 186,
             "result": "PASS"
@@ -178,7 +178,7 @@
           {
             "command": "python scripts/validate-memory-os-version-compatibility.py",
             "exitCode": 0,
-            "durationSeconds": 0.033764,
+            "durationSeconds": 0.038697,
             "outputSha256": "cd7655b7b50a7d3ba1e2636e9050b57c157e437773f62fa08f13a06f8dbe7132",
             "outputBytes": 148,
             "result": "PASS"
@@ -186,9 +186,9 @@
           {
             "command": "python scripts/validate-memory-os-mixed-version-candidate.py",
             "exitCode": 0,
-            "durationSeconds": 0.041823,
-            "outputSha256": "0efdb2bc5ea741b7b9826f7e63b05134fa8e7b23037a0f995ec881a0f02d15b5",
-            "outputBytes": 179,
+            "durationSeconds": 0.05511,
+            "outputSha256": "4495e91695fb7b0f7b240cac7b15bea5d16f9d637e93762c3e3708fca5393b18",
+            "outputBytes": 178,
             "result": "PASS"
           }
         ],
@@ -227,7 +227,7 @@
           {
             "command": "python scripts/validate-memory-os-backup-local-foundations.py",
             "exitCode": 0,
-            "durationSeconds": 0.045392,
+            "durationSeconds": 0.048948,
             "outputSha256": "32fdab9bde486d24b4b4c6632238167d7740d4dd6a8d2943046c2cb032f6198f",
             "outputBytes": 154,
             "result": "PASS"
@@ -235,7 +235,7 @@
           {
             "command": "python scripts/validate-memory-os-backup-restore.py",
             "exitCode": 0,
-            "durationSeconds": 0.037059,
+            "durationSeconds": 0.038544,
             "outputSha256": "d908d4246794113a56c798986b33ed4a10df5f86d41a9f38195de3c2651bbdf4",
             "outputBytes": 160,
             "result": "PASS"
@@ -276,7 +276,7 @@
           {
             "command": "python scripts/validate-memory-os-parser-security.py",
             "exitCode": 0,
-            "durationSeconds": 0.446955,
+            "durationSeconds": 0.365189,
             "outputSha256": "e9ff563a958279ef0324a8ef8b68c3113aaab048c2c7d5c02ffb90b1c6bb9847",
             "outputBytes": 208,
             "result": "PASS"
@@ -284,7 +284,7 @@
           {
             "command": "python scripts/validate-memory-os-parser-restart-matrix.py",
             "exitCode": 0,
-            "durationSeconds": 0.034117,
+            "durationSeconds": 0.036372,
             "outputSha256": "e9fdc45597b14b338bd9e9c4abdc4cc06f610b999d44b7031a9b9a9eed3e0403",
             "outputBytes": 115,
             "result": "PASS"
@@ -292,7 +292,7 @@
           {
             "command": "python scripts/validate-memory-os-parser-inflight-cancellation.py",
             "exitCode": 0,
-            "durationSeconds": 0.033105,
+            "durationSeconds": 0.038242,
             "outputSha256": "d95d97ed719397153055a16b10b72915aab3bec89d0bf5b4547e74ff192d11c7",
             "outputBytes": 104,
             "result": "PASS"
