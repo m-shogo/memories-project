@@ -8,6 +8,7 @@ on:
       - ".github/workflows/reconcile-backup-restore.yml"
       - "contracts/operations/backup-restore-contract.v1.json"
       - "contracts/operations/local-logical-restore-contract.v1.json"
+      - "contracts/operations/local-object-version-restore-contract.v1.json"
       - "docs/runbooks/memory-os-backup-restore.md"
       - "scripts/validate-memory-os-backup-restore.py"
       - "scripts/reconcile-memory-os-backup-restore.py"
@@ -42,18 +43,18 @@ jobs:
           test -z "$(git status --porcelain)"
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
 
-      - name: Compile and validate backup policy
+      - name: Compile backup authority tools
         run: |
           python -m py_compile \
             scripts/validate-memory-os-backup-restore.py \
             scripts/reconcile-memory-os-backup-restore.py
-          python scripts/validate-memory-os-backup-restore.py
 
-      - name: Reconcile status
+      - name: Reconcile then validate status authority
         run: |
           python scripts/reconcile-memory-os-backup-restore.py
           python scripts/validate-memory-os-backup-restore.py
           python scripts/validate-memory-os-local-logical-restore.py
+          python scripts/validate-memory-os-local-object-version-restore.py
           python scripts/validate-memory-os-operability.py
           python scripts/validate-memory-os-entry-docs.py
 
