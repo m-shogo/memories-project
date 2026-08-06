@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+CONTRACT_PATH = ROOT / "contracts/operations/incident-control-exercise-contract.v1.json"
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/incident-control-exercise-results.sample.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -32,6 +33,21 @@ NEW_REFS = (
     "scripts/validate-memory-os-incident-control-exercise.py",
     "scripts/reconcile-memory-os-incident-control-exercise.py",
     ".github/workflows/incident-control-exercise.yml",
+)
+IMPLEMENTED_READINESS = (
+    "contractDefined",
+    "runnerImplemented",
+    "validatorImplemented",
+    "automaticWorkflowImplemented",
+    "exactSourcePassResultCommitted",
+)
+UNPROVEN_READINESS = (
+    "humanTabletopCompleted",
+    "pagingAndAcknowledgementExercised",
+    "externalContactTreeExercised",
+    "productionRecoveryDrillCompleted",
+    "independentReviewCompleted",
+    "productionReady",
 )
 
 
@@ -55,6 +71,10 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def write(path: Path, value: dict[str, Any]) -> None:
+    path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
 def source_is_ancestor(value: Any) -> bool:
     if not isinstance(value, str) or SHA_RE.fullmatch(value) is None:
         return False
@@ -68,6 +88,13 @@ def source_is_ancestor(value: Any) -> bool:
         ).returncode == 0
     except OSError:
         return False
+
+
+def append_once(items: list[Any], value: str) -> bool:
+    if value in items:
+        return False
+    items.append(value)
+    return True
 
 
 def main() -> int:
@@ -99,6 +126,25 @@ def main() -> int:
                 for item in scenarios),
             "incident exercise contains a failed control path")
 
+    contract = load(CONTRACT_PATH)
+    require(contract.get("schemaVersion") == "memory-os-incident-control-exercise.v1",
+            "incident exercise contract schema drift")
+    readiness = contract.get("readiness")
+    refs = contract.get("evidenceRefs")
+    require(isinstance(readiness, dict), "incident exercise readiness missing")
+    require(isinstance(refs, list), "incident exercise evidenceRefs must be a list")
+    contract_changed = False
+    for field in IMPLEMENTED_READINESS:
+        if readiness.get(field) is not True:
+            readiness[field] = True
+            contract_changed = True
+    for field in UNPROVEN_READINESS:
+        require(readiness.get(field) is False,
+                f"automated exercise cannot promote readiness.{field}")
+    for ref in NEW_REFS:
+        require((ROOT / ref).is_file(), f"incident exercise evidence missing: {ref}")
+        contract_changed = append_once(refs, ref) or contract_changed
+
     status = load(STATUS_PATH)
     require(status.get("productionDecision") == "NO_GO",
             "automated exercise cannot change production decision")
@@ -108,32 +154,25 @@ def main() -> int:
     require(gate.get("status") == "PARTIAL", "OPS-P0-002 must remain PARTIAL")
     existing = gate.get("existingEvidence")
     missing = gate.get("missingEvidence")
-    refs = gate.get("evidenceRefs")
+    status_refs = gate.get("evidenceRefs")
     require(isinstance(existing, list), "OPS-P0-002 existingEvidence must be a list")
     require(isinstance(missing, list), "OPS-P0-002 missingEvidence must be a list")
-    require(isinstance(refs, list), "OPS-P0-002 evidenceRefs must be a list")
+    require(isinstance(status_refs, list), "OPS-P0-002 evidenceRefs must be a list")
 
-    changed = False
+    status_changed = False
     for item in NEW_EXISTING:
-        if item not in existing:
-            existing.append(item)
-            changed = True
+        status_changed = append_once(existing, item) or status_changed
     coarse = [item for item in missing
               if isinstance(item, str) and
               "completed tabletop evidence" in item.lower() and
               "human-led" not in item.lower()]
     for item in coarse:
         missing.remove(item)
-        changed = True
+        status_changed = True
     for item in NEW_HUMAN_GAP:
-        if item not in missing:
-            missing.append(item)
-            changed = True
+        status_changed = append_once(missing, item) or status_changed
     for ref in NEW_REFS:
-        require((ROOT / ref).is_file(), f"incident exercise evidence missing: {ref}")
-        if ref not in refs:
-            refs.append(ref)
-            changed = True
+        status_changed = append_once(status_refs, ref) or status_changed
 
     lowered = [str(item).lower() for item in missing]
     for label, terms in {
@@ -149,14 +188,14 @@ def main() -> int:
     require(status.get("productionDecision") == "NO_GO",
             "production decision changed unexpectedly")
 
-    if not changed:
+    if contract_changed:
+        write(CONTRACT_PATH, contract)
+    if status_changed:
+        status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
+        write(STATUS_PATH, status)
+    if not contract_changed and not status_changed:
         print("Incident control exercise authority already reconciled")
         return 0
-    status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
-    STATUS_PATH.write_text(
-        json.dumps(status, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
     print("Registered automated incident control exercise; OPS-P0-002 remains PARTIAL")
     return 0
 
