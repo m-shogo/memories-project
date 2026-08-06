@@ -1,0 +1,93 @@
+name: Reconcile Metrics Scrape Status
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/reconcile-metrics-scrape-status.yml"
+      - "contracts/operations/metrics-scrape-contract.v1.json"
+      - "services/import-api/internal/metrics/prometheus.go"
+      - "services/import-api/internal/metrics/scrape.go"
+      - "services/import-api/internal/metrics/prometheus_test.go"
+      - "services/import-api/internal/httpserver/server.go"
+      - "services/import-api/internal/httpserver/observability.go"
+      - "services/import-api/internal/httpserver/metrics_scrape_test.go"
+      - "scripts/validate-memory-os-metrics-scrape.py"
+      - "scripts/reconcile-memory-os-metrics-scrape-status.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reconcile-metrics-scrape-status-so
+  cancel-in-progress: true
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout latest so
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: services/import-api/go.sum
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm exact source state
+        run: |
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+
+      - name: Validate Go scrape implementation
+        working-directory: services/import-api
+        run: |
+          test -z "$(gofmt -l \
+            internal/metrics/prometheus.go \
+            internal/metrics/scrape.go \
+            internal/metrics/prometheus_test.go \
+            internal/httpserver/server.go \
+            internal/httpserver/observability.go \
+            internal/httpserver/metrics_scrape_test.go)"
+          go test ./internal/metrics ./internal/httpserver -count=1
+
+      - name: Validate scrape contracts
+        run: |
+          python -m py_compile \
+            scripts/validate-memory-os-metrics-scrape.py \
+            scripts/reconcile-memory-os-metrics-scrape-status.py
+          python scripts/validate-memory-os-metrics-scrape.py
+
+      - name: Reconcile current status
+        run: |
+          python scripts/reconcile-memory-os-metrics-scrape-status.py
+          python scripts/validate-memory-os-metrics.py
+          python scripts/validate-memory-os-metrics-scrape.py
+          python scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-entry-docs.py
+
+      - name: Commit reconciled status
+        run: |
+          git add contracts/operations/production-operability-status.json
+          if git diff --cached --quiet; then
+            echo "Metrics scrape status is already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs(metrics): register scrape foundations in operability status"
+          git pull --rebase origin so
+          git push origin HEAD:so
