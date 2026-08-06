@@ -423,7 +423,9 @@
         "fail-closed rollback rehearsal admission authority requiring distinct approved source and rollback-target releases before any isolated rehearsal request can be recorded",
         "rollback target must already be verified ELIGIBLE or CONDITIONALLY_ELIGIBLE and every target condition is retained as a rehearsal stop condition",
         "exclusive-lock atomic request writer forbids production traffic, production credentials, automatic promotion and destructive down migration",
-        "empty approved release registry produces zero admissible pairs and BLOCKED_NO_APPROVED_ROLLBACK_PAIR without treating candidate or CI evidence as release authority"
+        "empty approved release registry produces zero admissible pairs and BLOCKED_NO_APPROVED_ROLLBACK_PAIR without treating candidate or CI evidence as release authority",
+        "simultaneous historical-candidate and current Apply requests using one Preview and idempotency key converge on one Apply ID with exactly one new application and one replay",
+        "concurrent old/current idempotency claim race leaves one durable claim, one materialized memory item and zero in-progress residue for the raced Preview"
       ],
       "missingEvidence": [
         "reviewed parser artifact registry and old parser artifact replay tests",

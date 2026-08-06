@@ -82,7 +82,7 @@
     "automaticWorkflowImplemented": true,
     "exactSourcePassResultCommitted": true,
     "approvedReleasePairAvailable": false,
-    "concurrentClaimRaceExecuted": false,
+    "concurrentClaimRaceExecuted": true,
     "rollbackRehearsalExecuted": false,
     "productionReady": false
   },
