@@ -1,0 +1,94 @@
+{
+  "contractId": "memory-os.operability.mixed-version-apply.v1",
+  "schemaVersion": "memory-os-mixed-version-apply.v1",
+  "resultsSchemaVersion": "memory-os-mixed-version-apply-results.v1",
+  "description": "Exact-source two-process compatibility drill proving that a pinned historical candidate and current Import API can mutate and replay the same persisted Apply idempotency claims on one current expanded PostgreSQL schema. The candidate remains explicitly non-release evidence.",
+  "oldBackendCommitSha": "2af6e8e10755cc707c6bdd958a049a0f4afb3d70",
+  "oldBackendClassification": "HISTORICAL_CANDIDATE_NOT_APPROVED_RELEASE",
+  "fixtureGenerator": "services/import-api/cmd/memory-os-mixed-version-fixture/main.go",
+  "runner": "scripts/run-memory-os-mixed-version-apply-drill.sh",
+  "validator": "scripts/validate-memory-os-mixed-version-apply.py",
+  "reconcile": "scripts/reconcile-memory-os-mixed-version-apply.py",
+  "workflow": ".github/workflows/mixed-version-apply.yml",
+  "resultPath": "docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json",
+  "dependencyMode": "EPHEMERAL_POSTGRESQL_16_MINIO_TWO_PROCESSES_SHARED_CURRENT_SCHEMA",
+  "requiredScenarios": [
+    "current-issued session invokes historical candidate Apply for Preview A",
+    "current process replays the exact historical-candidate idempotency claim for Preview A",
+    "historical-candidate-issued session invokes current Apply for Preview B",
+    "historical candidate replays the exact current idempotency claim for Preview B",
+    "reusing Preview A idempotency key for Preview B is rejected as conflict",
+    "exactly two applied claims and two memory items remain with no in-progress claim"
+  ],
+  "successCriteria": {
+    "oldFirstApplyStatus": 200,
+    "currentReplayStatus": 200,
+    "currentFirstApplyStatus": 200,
+    "oldReplayStatus": 200,
+    "crossPreviewIdempotencyConflictStatus": 409,
+    "oldToCurrentApplyIdStable": true,
+    "currentToOldApplyIdStable": true,
+    "oldToCurrentReplayMarked": true,
+    "currentToOldReplayMarked": true,
+    "applyConfirmationRows": 2,
+    "memoryItemRows": 2,
+    "distinctSourcePreviews": 2,
+    "inProgressApplyRows": 0,
+    "sameRequestHashStableAcrossVersions": true,
+    "noDuplicateMaterialization": true
+  },
+  "abortCriteria": [
+    "old backend is not the pinned full SHA or is not an ancestor of current source",
+    "either process fails to build or become healthy",
+    "current migration sequence cannot apply cleanly",
+    "synthetic Preview cannot be committed through the current Preview committer",
+    "either first Apply fails to create exactly one memory item",
+    "either opposite process cannot replay the original Apply ID",
+    "same idempotency key can be reused for another Preview",
+    "any Apply claim remains in progress",
+    "result would contain a token, database URL, account, job, Preview or idempotency identifier"
+  ],
+  "evidenceBoundary": {
+    "productionEvidence": false,
+    "releaseCompatibilityEvidence": false,
+    "approvedReleasePair": false,
+    "historicalCandidateOnly": true,
+    "rollingDeploymentEvidence": false,
+    "rollbackEvidence": false,
+    "concurrentClaimRaceEvidence": false,
+    "productionReady": false
+  },
+  "privacy": {
+    "syntheticDataOnly": true,
+    "rawTokensPersisted": false,
+    "databaseUrlPersisted": false,
+    "rawSyntheticIdentifiersPersisted": false,
+    "userContentPersisted": false
+  },
+  "limitations": [
+    "historical candidate is not an approved predecessor release",
+    "sequential mutation and replay rather than concurrent claim racing",
+    "no process death during in-progress Apply",
+    "no rolling traffic drain or application rollback",
+    "no destructive contract migration or downgrade",
+    "ephemeral PostgreSQL 16 and MinIO only",
+    "not production compatibility evidence"
+  ],
+  "readiness": {
+    "contractDefined": true,
+    "fixtureGeneratorImplemented": true,
+    "runnerImplemented": true,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": true,
+    "exactSourcePassResultCommitted": false,
+    "approvedReleasePairAvailable": false,
+    "concurrentClaimRaceExecuted": false,
+    "rollbackRehearsalExecuted": false,
+    "productionReady": false
+  },
+  "evidenceRefs": [
+    "contracts/operations/mixed-version-apply-contract.v1.json",
+    "services/import-api/cmd/memory-os-mixed-version-fixture/main.go",
+    "scripts/run-memory-os-mixed-version-apply-drill.sh"
+  ]
+}
