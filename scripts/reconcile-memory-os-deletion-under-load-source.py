@@ -40,6 +40,14 @@ def main() -> int:
 
     text, replaced = replace_once(
         text,
+        '\t"runtime"\n\t"strconv"',
+        '\t"runtime"\n\t"sort"\n\t"strconv"',
+        "sort import",
+    )
+    changed = changed or replaced
+
+    text, replaced = replace_once(
+        text,
         '''\t\t\t\t_ = response.Body.Close()
 \t\t\t\tsamples[index] = liveHTTPSample{Status: response.StatusCode, Duration: time.Since(started)}
 ''',
@@ -59,11 +67,70 @@ def main() -> int:
     )
     changed = changed or replaced
 
+    text, replaced = replace_once(
+        text,
+        'client := liveHTTPClient()',
+        'client := &http.Client{Timeout: 15 * time.Second}',
+        "HTTP client",
+    )
+    changed = changed or replaced
+
+    helper_anchor = '''type deletionWorkerResult struct {
+\tReceipts []accountdelete.Receipt
+\tErr      error
+\tDuration time.Duration
+}
+'''
+    helper = helper_anchor + '''
+func summarizeDeletionHTTPSamples(samples []liveHTTPSample, concurrency int, elapsed time.Duration) liveBatchResult {
+\tresult := liveBatchResult{
+\t\tRequests:          len(samples),
+\t\tConcurrency:       concurrency,
+\t\tStatusClassCounts: map[string]int{},
+\t\tDurationSeconds:   elapsed.Seconds(),
+\t}
+\tif elapsed > 0 {
+\t\tresult.Throughput = float64(len(samples)) / elapsed.Seconds()
+\t}
+\tlatencies := make([]time.Duration, 0, len(samples))
+\tfor _, sample := range samples {
+\t\tif sample.Err != nil {
+\t\t\tresult.Failures++
+\t\t\tresult.StatusClassCounts["transport_error"]++
+\t\t\tcontinue
+\t\t}
+\t\tclass := fmt.Sprintf("%dxx", sample.Status/100)
+\t\tresult.StatusClassCounts[class]++
+\t\tif sample.Status >= 200 && sample.Status < 300 {
+\t\t\tresult.Successes++
+\t\t} else {
+\t\t\tresult.Failures++
+\t\t}
+\t\tlatencies = append(latencies, sample.Duration)
+\t}
+\tsort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
+\tresult.LatencyP50Ms = livePercentileMillis(latencies, 0.50)
+\tresult.LatencyP95Ms = livePercentileMillis(latencies, 0.95)
+\tresult.LatencyP99Ms = livePercentileMillis(latencies, 0.99)
+\treturn result
+}
+'''
+    text, replaced = replace_once(text, helper_anchor, helper, "summary helper")
+    changed = changed or replaced
+
+    text, replaced = replace_once(
+        text,
+        'Summary:          summarizeLiveHTTPSamples(samples, concurrency, time.Since(started)),',
+        'Summary:          summarizeDeletionHTTPSamples(samples, concurrency, time.Since(started)),',
+        "summary call",
+    )
+    changed = changed or replaced
+
     if not changed:
         print("Deletion-under-load source already reconciled")
         return 0
     PATH.write_text(text, encoding="utf-8")
-    print("Reconciled deletion-under-load source and HTTP connection reuse")
+    print("Reconciled deletion-under-load source, HTTP reuse and local aggregation")
     return 0
 
 
