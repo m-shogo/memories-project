@@ -1,0 +1,81 @@
+name: Regenerate Load Results
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/regenerate-load-results.yml"
+      - "services/import-api/internal/loadtest/**"
+      - "services/import-api/internal/httpserver/**"
+      - "scripts/regenerate-memory-os-load-results.sh"
+      - "scripts/validate-memory-os-load.py"
+      - "contracts/operations/load-test-scenario-contract.v1.json"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: regenerate-load-results-so
+  cancel-in-progress: false
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact source commit
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: services/import-api/go.sum
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify clean source state
+        run: |
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          bash -n scripts/regenerate-memory-os-load-results.sh
+
+      - name: Run load regression tests
+        working-directory: services/import-api
+        run: go test ./internal/loadtest -count=1
+
+      - name: Regenerate exact-source load evidence
+        env:
+          MEMORY_OS_LOAD_RESULTS_PATH: ../../docs/fixtures/memory-os-operability/load-results.sample.v1.json
+          MEMORY_OS_COMMIT_SHA: ${{ github.sha }}
+        working-directory: services/import-api
+        run: go test ./internal/loadtest -run '^TestWriteLoadResultsFixture$' -count=1
+
+      - name: Validate regenerated evidence
+        run: |
+          python scripts/validate-memory-os-load.py
+          python scripts/validate-memory-os-metrics.py
+          python scripts/validate-memory-os-rate-limit.py
+          python scripts/validate-memory-os-observability.py
+          python scripts/validate-memory-os-operability.py
+
+      - name: Commit regenerated evidence
+        run: |
+          git add docs/fixtures/memory-os-operability/load-results.sample.v1.json
+          if git diff --cached --quiet; then
+            echo "Load evidence is already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "test(load): regenerate results after contract hardening"
+          git push origin HEAD:so
