@@ -13,6 +13,7 @@ on:
       - "docs/runbooks/memory-os-version-compatibility.md"
       - "docs/runbooks/memory-os-metrics-alerts.md"
       - "docs/runbooks/memory-os-observability-access.md"
+      - "docs/runbooks/memory-os-rate-limit-operations.md"
       - "docs/memory-os-current-authority-order-round-10-operability.md"
       - "docs/memory-os-current-authority-order-round-9-security.md"
       - "docs/memory-os-production-operability-audit-2026-07-24.md"
@@ -20,6 +21,7 @@ on:
       - "scripts/validate-memory-os-observability.py"
       - "scripts/validate-memory-os-observability-access.py"
       - "scripts/validate-memory-os-rate-limit.py"
+      - "scripts/validate-memory-os-rate-limit-operations.py"
       - "scripts/validate-memory-os-metrics.py"
       - "scripts/validate-memory-os-metrics-scrape.py"
       - "scripts/validate-memory-os-metrics-operations.py"
@@ -58,6 +60,7 @@ on:
       - "docs/runbooks/memory-os-version-compatibility.md"
       - "docs/runbooks/memory-os-metrics-alerts.md"
       - "docs/runbooks/memory-os-observability-access.md"
+      - "docs/runbooks/memory-os-rate-limit-operations.md"
       - "docs/memory-os-current-authority-order-round-10-operability.md"
       - "docs/memory-os-current-authority-order-round-9-security.md"
       - "docs/memory-os-production-operability-audit-2026-07-24.md"
@@ -65,6 +68,7 @@ on:
       - "scripts/validate-memory-os-observability.py"
       - "scripts/validate-memory-os-observability-access.py"
       - "scripts/validate-memory-os-rate-limit.py"
+      - "scripts/validate-memory-os-rate-limit-operations.py"
       - "scripts/validate-memory-os-metrics.py"
       - "scripts/validate-memory-os-metrics-scrape.py"
       - "scripts/validate-memory-os-metrics-operations.py"
@@ -117,6 +121,7 @@ jobs:
           python -m py_compile scripts/validate-memory-os-observability.py
           python -m py_compile scripts/validate-memory-os-observability-access.py
           python -m py_compile scripts/validate-memory-os-rate-limit.py
+          python -m py_compile scripts/validate-memory-os-rate-limit-operations.py
           python -m py_compile scripts/validate-memory-os-metrics.py
           python -m py_compile scripts/validate-memory-os-metrics-scrape.py
           python -m py_compile scripts/validate-memory-os-metrics-operations.py
@@ -156,6 +161,9 @@ jobs:
 
       - name: Validate rate-limit policy contract
         run: python scripts/validate-memory-os-rate-limit.py
+
+      - name: Validate rate-limit emergency operations policy
+        run: python scripts/validate-memory-os-rate-limit-operations.py
 
       - name: Validate metrics contract
         run: python scripts/validate-memory-os-metrics.py
