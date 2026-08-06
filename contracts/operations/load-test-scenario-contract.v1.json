@@ -245,12 +245,20 @@
       "validatorRef": "scripts/validate-memory-os-live-object-load.py",
       "dependencyMode": "LOCAL_POSTGRES_MINIO",
       "productionEvidence": false
+    },
+    {
+      "scenarioId": "authenticated-preview-capacity-ramp-local-postgres",
+      "contractRef": "contracts/operations/capacity-ramp-contract.v1.json",
+      "validatorRef": "scripts/validate-memory-os-capacity-ramp.py",
+      "dependencyMode": "LOCAL_POSTGRES",
+      "productionEvidence": false,
+      "capacityBoundaryEstablished": false
     }
   ],
   "deferredScenarios": [
     {
       "scenarioId": "capacity-ramp-local-postgres-minio",
-      "reason": "the live dependency checkpoints use fixed request counts and concurrency; no controlled ramp has identified first saturation, queue growth or a safe operating boundary",
+      "reason": "a bounded authenticated Preview ramp now executes against local PostgreSQL, but it observed no saturation transition and does not exercise MinIO; deliberate overload, queue/backlog observation and reviewed safe operating thresholds remain deferred",
       "requiredDependencyMode": "LOCAL_POSTGRES_MINIO"
     },
     {
@@ -281,7 +289,8 @@
     "cardinalityProof": true,
     "operationalThresholds": false,
     "productionEquivalentDependencies": false,
-    "note": "Mock evidence is committed and validated. Separate executable local PostgreSQL and MinIO checkpoints close the MOCK-only implementation blind spot, but exact-HEAD live results, capacity boundary, soak, operational thresholds and production-equivalent dependencies remain open. OPS-P0-006 is PARTIAL, not READY."
+    "note": "Mock and local dependency checkpoints are supplemented by a bounded authenticated Preview concurrency ramp. The ramp records a local candidate-safe step but observed no saturation transition, does not measure MinIO on the ramped path and cannot establish capacity or operational thresholds. OPS-P0-006 remains PARTIAL.",
+    "boundedLocalCapacityRampExecuted": true
   },
   "evidenceRefs": [
     "services/import-api/internal/loadtest/harness.go",
@@ -295,6 +304,10 @@
     "scripts/validate-memory-os-live-load.py",
     "scripts/validate-memory-os-live-object-load.py",
     "docs/fixtures/memory-os-operability/load-results.sample.v1.json",
-    "docs/memory-os-load-measurement-inventory.md"
+    "docs/memory-os-load-measurement-inventory.md",
+    "services/import-api/internal/httpserver/capacity_ramp_test.go",
+    "contracts/operations/capacity-ramp-contract.v1.json",
+    "scripts/validate-memory-os-capacity-ramp.py",
+    "docs/fixtures/memory-os-operability/capacity-ramp-results.sample.v1.json"
   ]
 }
