@@ -1,0 +1,72 @@
+{
+  "contractId": "memory-os.operability.metrics-scrape.v1",
+  "schemaVersion": "memory-os-metrics-scrape.v1",
+  "description": "Fail-closed contract for the Prometheus text exporter and authenticated scrape handler. This proves the reusable exporter boundary only; it does not claim that a production listener, network policy, secret provisioner, scraper, dashboard, retention policy or alert route is configured.",
+  "implementation": {
+    "prometheusExporter": "services/import-api/internal/metrics/prometheus.go",
+    "scrapeHandler": "services/import-api/internal/metrics/scrape.go",
+    "tests": "services/import-api/internal/metrics/prometheus_test.go",
+    "validator": "scripts/validate-memory-os-metrics-scrape.py"
+  },
+  "format": {
+    "protocol": "PROMETHEUS_TEXT",
+    "version": "0.0.4",
+    "contentType": "text/plain; version=0.0.4; charset=utf-8",
+    "typeDirectivesRequired": true,
+    "histogramPositiveInfinityBucketRequired": true,
+    "deterministicMetricOrderingRequired": true,
+    "deterministicSeriesOrderingRequired": true,
+    "concurrentSnapshotRequired": true
+  },
+  "accessBoundary": {
+    "runtimeMounted": false,
+    "defaultDisabled": true,
+    "authentication": "BEARER_TOKEN",
+    "minimumTokenLength": 32,
+    "maximumTokenLength": 256,
+    "constantTimeDigestComparisonRequired": true,
+    "allowedMethods": [
+      "GET"
+    ],
+    "cacheControl": "no-store",
+    "contentTypeOptions": "nosniff",
+    "maximumResponseBytesDefault": 4194304,
+    "maximumResponseBytesCeiling": 16777216,
+    "unauthenticatedStatus": 401,
+    "wrongMethodStatus": 405,
+    "oversizedSnapshotStatus": 503
+  },
+  "privacy": {
+    "classification": "operational_nonpersonal",
+    "rawRequestValuesForbidden": true,
+    "requestIdForbidden": true,
+    "accountIdForbidden": true,
+    "jobIdForbidden": true,
+    "sessionIdForbidden": true,
+    "rawPathForbidden": true,
+    "rawUrlForbidden": true,
+    "ipForbidden": true,
+    "authorizationHeaderForbidden": true,
+    "scrapeTokenLoggingForbidden": true,
+    "scrapeTokenMetricLabelForbidden": true
+  },
+  "readiness": {
+    "prometheusExporterImplemented": true,
+    "authenticatedHandlerImplemented": true,
+    "runtimeMounted": false,
+    "productionSecretProvisioned": false,
+    "privateNetworkPolicyDefined": false,
+    "externalScraperConfigured": false,
+    "dashboardConfigured": false,
+    "retentionConfigured": false,
+    "alertRoutingConfigured": false,
+    "productionReady": false,
+    "note": "The reusable Prometheus exporter and authenticated handler are implemented and tested. They remain deliberately unmounted until deployment secret handling and a private operational network boundary are defined. OPS-P0-004 remains PARTIAL."
+  },
+  "evidenceRefs": [
+    "services/import-api/internal/metrics/prometheus.go",
+    "services/import-api/internal/metrics/scrape.go",
+    "services/import-api/internal/metrics/prometheus_test.go",
+    "scripts/validate-memory-os-metrics-scrape.py"
+  ]
+}
