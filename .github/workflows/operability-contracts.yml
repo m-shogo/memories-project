@@ -17,6 +17,7 @@ on:
       - "scripts/validate-memory-os-observability.py"
       - "scripts/validate-memory-os-rate-limit.py"
       - "scripts/validate-memory-os-metrics.py"
+      - "scripts/validate-memory-os-metrics-scrape.py"
       - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-load-evidence-index.py"
       - "scripts/validate-memory-os-live-load.py"
@@ -55,6 +56,7 @@ on:
       - "scripts/validate-memory-os-observability.py"
       - "scripts/validate-memory-os-rate-limit.py"
       - "scripts/validate-memory-os-metrics.py"
+      - "scripts/validate-memory-os-metrics-scrape.py"
       - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-load-evidence-index.py"
       - "scripts/validate-memory-os-live-load.py"
@@ -103,6 +105,7 @@ jobs:
           python -m py_compile scripts/validate-memory-os-observability.py
           python -m py_compile scripts/validate-memory-os-rate-limit.py
           python -m py_compile scripts/validate-memory-os-metrics.py
+          python -m py_compile scripts/validate-memory-os-metrics-scrape.py
           python -m py_compile scripts/validate-memory-os-load.py
           python -m py_compile scripts/validate-memory-os-load-evidence-index.py
           python -m py_compile scripts/validate-memory-os-live-load.py
@@ -138,6 +141,9 @@ jobs:
 
       - name: Validate metrics contract
         run: python scripts/validate-memory-os-metrics.py
+
+      - name: Validate authenticated Prometheus scrape foundation
+        run: python scripts/validate-memory-os-metrics-scrape.py
 
       - name: Validate load-test scenario contract and results
         run: python scripts/validate-memory-os-load.py
