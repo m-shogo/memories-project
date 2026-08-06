@@ -7,9 +7,11 @@ on:
     paths:
       - ".github/workflows/incident-control-exercise.yml"
       - "contracts/operations/incident-control-exercise-contract.v1.json"
+      - "contracts/operations/backup-restore-contract.v1.json"
       - "scripts/run-memory-os-incident-control-exercise.py"
       - "scripts/validate-memory-os-incident-control-exercise.py"
       - "scripts/reconcile-memory-os-incident-control-exercise.py"
+      - "scripts/reconcile-memory-os-backup-restore.py"
       - "scripts/validate-memory-os-authorization.py"
       - "scripts/validate-memory-os-postgresql-rls.py"
       - "scripts/validate-memory-os-database-commit-outage.py"
