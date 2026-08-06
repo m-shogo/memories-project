@@ -38,6 +38,12 @@ type Config struct {
 	// Metrics records bounded runtime metrics. A nil recorder becomes a no-op,
 	// so metrics never block or fail the request path.
 	Metrics metrics.Recorder
+	// MetricsScrape is an optional, already-authenticated operational handler.
+	// It is deliberately unmounted when nil. When configured, it is kept out of
+	// the public API rate-limit chain but remains inside privacy-safe request
+	// observability. Deployments must construct it with metrics.NewScrapeHandler
+	// and expose the server only behind their private operational boundary.
+	MetricsScrape http.Handler
 }
 
 // New builds the routing tree: an unauthenticated health probe plus the
@@ -71,16 +77,23 @@ func New(config Config) http.Handler {
 		}
 		protected.ServeHTTP(writer, request)
 	}))
-	// Order: observability (request ID + panic + request event) wraps rate
-	// limiting, which wraps routing. So a 429 carries a request ID and is
-	// logged, and the rate-limit decision precedes body decode and the Apple
-	// exchange — a rejected request never reaches a handler.
+	// Order: observability (request ID + panic + request event) wraps the
+	// optional operational scrape route and the public API rate limiter. A
+	// scrape request is authenticated by its own handler and never consumes or
+	// mutates a public rate-limit bucket.
 	recorder := config.Metrics
 	if recorder == nil {
 		recorder = metrics.Nop{}
 	}
 	limited := rateLimitMiddleware(config.RateLimit, config.Logger, recorder, root)
-	return observabilityMiddleware(config.Logger, recorder, limited)
+	served := http.Handler(limited)
+	if config.MetricsScrape != nil {
+		operational := http.NewServeMux()
+		operational.Handle("/metrics", config.MetricsScrape)
+		operational.Handle("/", limited)
+		served = operational
+	}
+	return observabilityMiddleware(config.Logger, recorder, served)
 }
 
 // sessionMiddleware authenticates every request under it. The raw token is
