@@ -7,6 +7,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -53,6 +54,40 @@ def source_sha() -> str:
     return actual
 
 
+def sanitize_failure_tail(value: str) -> str:
+    """Return one bounded, low-information validator failure summary.
+
+    The full validator output is hashed for the formal result but is never
+    serialized. On failure only, this summary is allowed to reach the workflow
+    diagnostic so the failing contract can be repaired without exposing URLs,
+    credentials, temporary paths, identifiers or user content.
+    """
+    redacted = re.sub(
+        r"(?:postgres|postgresql)://\S+",
+        "[REDACTED_DATABASE_URL]",
+        value,
+        flags=re.IGNORECASE,
+    )
+    redacted = re.sub(
+        r"(?i)(password|secret|access[_-]?key|authorization)\s*[=:]\s*\S+",
+        r"\1=[REDACTED]",
+        redacted,
+    )
+    redacted = redacted.replace("minioadmin", "[REDACTED_CREDENTIAL]")
+    redacted = re.sub(
+        r"/(?:tmp|home/runner/work)/[^\s:]+",
+        "[REDACTED_PATH]",
+        redacted,
+    )
+    lines = [line.strip() for line in redacted.splitlines() if line.strip()]
+    if not lines:
+        return "validator failed without text output"
+    # Validator failures consistently print the binding failure last. Retain a
+    # maximum of two final lines and 700 characters; formal evidence still
+    # contains only the output digest and byte count.
+    return " | ".join(lines[-2:])[-700:]
+
+
 def command_result(command_text: str) -> dict[str, Any]:
     arguments = shlex.split(command_text)
     require(arguments and arguments[0] == "python",
@@ -68,8 +103,9 @@ def command_result(command_text: str) -> dict[str, Any]:
         timeout=180,
     )
     duration = round(time.monotonic() - started, 6)
-    output = completed.stdout.encode("utf-8", errors="replace")
-    return {
+    output_text = completed.stdout
+    output = output_text.encode("utf-8", errors="replace")
+    result: dict[str, Any] = {
         "command": command_text,
         "exitCode": completed.returncode,
         "durationSeconds": duration,
@@ -77,6 +113,13 @@ def command_result(command_text: str) -> dict[str, Any]:
         "outputBytes": len(output),
         "result": "PASS" if completed.returncode == 0 else "FAIL",
     }
+    if completed.returncode != 0:
+        result["_failureTail"] = sanitize_failure_tail(output_text)
+    return result
+
+
+def public_control(value: dict[str, Any]) -> dict[str, Any]:
+    return {key: item for key, item in value.items() if not key.startswith("_")}
 
 
 def main() -> int:
@@ -92,6 +135,7 @@ def main() -> int:
 
     started_at = dt.datetime.now(dt.timezone.utc)
     scenarios_out: list[dict[str, Any]] = []
+    failed_details: list[str] = []
 
     scenarios = contract.get("scenarios")
     require(isinstance(scenarios, list) and len(scenarios) == 6,
@@ -101,12 +145,17 @@ def main() -> int:
         commands = scenario.get("validatorCommands")
         require(isinstance(commands, list) and commands,
                 f"scenario validatorCommands missing: {scenario.get('scenarioId')}")
-        command_results = [command_result(command) for command in commands]
-        controls_passed = all(item["result"] == "PASS" for item in command_results)
+        private_results = [command_result(command) for command in commands]
+        controls_passed = all(item["result"] == "PASS" for item in private_results)
+        for control in private_results:
+            if control["result"] != "PASS":
+                failed_details.append(
+                    f"{control['command']} => {control.get('_failureTail', 'validator failed')}"
+                )
         scenarios_out.append({
             "scenarioId": scenario["scenarioId"],
             "severity": scenario["severity"],
-            "controls": command_results,
+            "controls": [public_control(item) for item in private_results],
             "decisions": {
                 "severity": scenario["severity"],
                 "declarationDecision": "DECLARE_INCIDENT",
@@ -131,15 +180,9 @@ def main() -> int:
             "controlResult": "CONTROL_PATH_PASS" if controls_passed else "CONTROL_PATH_FAIL",
         })
 
-    failed_commands = [
-        control["command"]
-        for scenario in scenarios_out
-        for control in scenario["controls"]
-        if control["result"] != "PASS"
-    ]
     require(
-        not failed_commands,
-        "failed repository validators: " + ", ".join(failed_commands),
+        not failed_details,
+        "failed repository validators: " + "; ".join(failed_details),
     )
 
     completed_at = dt.datetime.now(dt.timezone.utc)
@@ -168,6 +211,9 @@ def main() -> int:
         },
         "limitations": contract["limitations"],
     }
+    serialized = json.dumps(result, ensure_ascii=False).lower()
+    require("_failuretail" not in serialized and '"output"' not in serialized,
+            "formal incident result contains private validator output")
     result_path.parent.mkdir(parents=True, exist_ok=True)
     result_path.write_text(
         json.dumps(result, indent=2, ensure_ascii=False) + "\n",
