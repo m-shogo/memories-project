@@ -2,7 +2,7 @@
   "contractId": "memory-os.operability.mixed-version-candidate.v1",
   "schemaVersion": "memory-os-mixed-version-candidate.v1",
   "resultsSchemaVersion": "memory-os-mixed-version-candidate-results.v1",
-  "description": "Exact-source CI compatibility drill between a pinned historical candidate baseline and current so. The baseline is explicitly not a release artifact. Current expanded PostgreSQL migrations are applied first; the baseline SQL and reviewed Go integration surfaces must pass sequentially without changing the current memory_os schema fingerprint, then current tests must pass independently. Rejected candidate SHAs remain in an immutable machine-readable rejection registry rather than being silently replaced. This is a pre-release compatibility foundation, not rolling deployment, downgrade or production mixed-version evidence.",
+  "description": "Exact-source CI compatibility drill between a pinned historical candidate baseline and current so. The baseline is explicitly not a release artifact. Current expanded PostgreSQL migrations and the registered HTTP route authority are verified first; the baseline SQL and reviewed Go integration surfaces must pass sequentially without changing the current memory_os schema fingerprint, then current tests must pass independently. Rejected candidate SHAs remain in an immutable machine-readable rejection registry rather than being silently replaced. This is a pre-release compatibility foundation, not rolling deployment, downgrade or production mixed-version evidence.",
   "candidateBaseline": {
     "commitSha": "2af6e8e10755cc707c6bdd958a049a0f4afb3d70",
     "classification": "HISTORICAL_CANDIDATE_NOT_RELEASE",
@@ -20,6 +20,7 @@
   "dependencyMode": "EPHEMERAL_POSTGRESQL_16_MINIO_TWO_DATABASE_CANDIDATE_BASELINE",
   "requiredSteps": [
     "verify candidate baseline is an ancestor of current exact source SHA and is absent from the rejected candidate registry",
+    "verify the current registered HTTP upload routes, pre-auth route-shape filter, metrics labels and rate-limit policy share one machine-readable authority",
     "create a detached read-only worktree at the pinned candidate baseline",
     "create separate baseline-compatibility and current-verification PostgreSQL databases",
     "apply the current canonical migration sequence to both databases",
@@ -32,10 +33,11 @@
   ],
   "successCriteria": [
     "candidate baseline is an ancestor of current source and is not rejected",
+    "the current direct upload completion route reaches its registered handler while unknown high-cardinality routes remain pre-auth 404",
     "both databases receive all current canonical migrations",
     "all candidate baseline canonical SQL tests pass on current expanded schema",
     "candidate baseline selected Go packages compile and pass sequentially",
-    "baseline execution does not change the current memory_os schema fingerprint",
+    "baseline execution does not change the normalized current memory_os schema fingerprint",
     "all current canonical SQL tests pass",
     "current selected Go packages compile and pass sequentially",
     "no secret, database URL, object key, token or user content enters evidence",
@@ -43,12 +45,13 @@
   ],
   "abortCriteria": [
     "baseline SHA is missing, rejected, not an ancestor or differs from the contract",
+    "current registered route, route-shape filter, metrics or rate-limit authority diverges",
     "source or target database identity is ambiguous",
     "current migration sequence cannot apply cleanly",
     "baseline worktree has local modifications",
     "baseline has neither a migration registry nor an ordered Security Contracts workflow",
     "any baseline SQL or sequential common Go test fails",
-    "memory_os schema fingerprint changes after baseline execution",
+    "normalized memory_os schema fingerprint changes after baseline execution",
     "any current SQL or sequential common Go test fails",
     "evidence would include credentials, connection URLs or user content"
   ],
@@ -93,6 +96,10 @@
   "evidenceRefs": [
     "contracts/operations/mixed-version-candidate-contract.v1.json",
     "docs/fixtures/memory-os-operability/mixed-version-candidate-rejections.v1.json",
+    "services/import-api/internal/httpserver/route_authority_test.go",
+    "contracts/operations/metrics-contract.v1.json",
+    "contracts/operations/rate-limit-policy-contract.v1.json",
+    "scripts/reconcile-memory-os-upload-route-authority.py",
     "scripts/run-memory-os-mixed-version-candidate.sh",
     "scripts/validate-memory-os-mixed-version-candidate.py",
     "scripts/reconcile-memory-os-mixed-version-candidate.py",
