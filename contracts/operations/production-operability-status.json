@@ -293,7 +293,8 @@
         "object-store outage drill",
         "production-shaped PostgreSQL process loss, connection-pool disruption and replication failover drill",
         "direct commit resume from the preserved sealed spool without re-fetching and re-parsing the source",
-        "database recovery verification for expired sessions, deleted accounts, leases and duplicate effects under failover"
+        "database recovery verification for expired sessions, deleted accounts, leases and duplicate effects under failover",
+        "database loss or failover drill"
       ],
       "evidenceRefs": [
         "contracts/operations/chaos-failure-drill-contract.v1.json",
