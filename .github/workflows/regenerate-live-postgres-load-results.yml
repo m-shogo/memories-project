@@ -17,7 +17,7 @@ on:
       - "scripts/validate-memory-os-load-evidence-index.py"
       - "scripts/validate-memory-os-operability.py"
   schedule:
-    # Daily self-heal at 03:17 JST. Scheduled runs use the default branch (so).
+    # Daily verification at 03:17 JST. Unchanged source is tested but not recommitted.
     - cron: "17 18 * * *"
   workflow_dispatch:
 
@@ -64,15 +64,42 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Capture exact source state
+      - name: Capture exact source and previous evidence state
         run: |
+          set -euo pipefail
           test "$(git branch --show-current)" = "so"
           test -z "$(git status --porcelain)"
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
-          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          source_sha="$(git rev-parse HEAD)"
+          echo "SOURCE_SHA=$source_sha" >> "$GITHUB_ENV"
+          python - <<'PY' >> "$GITHUB_ENV"
+          import json
+          from pathlib import Path
+
+          paths = {
+              "PREVIOUS_POSTGRES_SOURCE_SHA": Path(
+                  "docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json"
+              ),
+              "PREVIOUS_OBJECT_SOURCE_SHA": Path(
+                  "docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json"
+              ),
+          }
+          for name, path in paths.items():
+              value = ""
+              if path.is_file():
+                  try:
+                      document = json.loads(path.read_text(encoding="utf-8"))
+                      candidate = document.get("commitSha", "")
+                      if isinstance(candidate, str):
+                          value = candidate
+                  except (json.JSONDecodeError, OSError):
+                      pass
+              print(f"{name}={value}")
+          PY
 
       - name: Start local MinIO harness
         run: |
+          set -euo pipefail
           docker run -d --name memory-os-live-load-minio \
             -p 9000:9000 \
             -e MINIO_ROOT_USER=minioadmin \
@@ -90,6 +117,7 @@ jobs:
       - name: Check load checkpoint sources
         working-directory: services/import-api
         run: |
+          set -euo pipefail
           test -z "$(gofmt -l internal/httpserver/live_load_test.go internal/httpserver/live_object_load_test.go)"
           python -m py_compile \
             ../../scripts/validate-memory-os-live-load.py \
@@ -116,31 +144,126 @@ jobs:
             -run '^(TestPreviewReadAndApplyOverHTTP|TestLivePostgresPreviewReadAndIdempotentApplyLoad|TestLiveMinIOSignedUploadLifecycleLoad)$' \
             -count=1 -timeout=15m
 
-      - name: Validate and register dependency evidence
+      - name: Validate generated live dependency evidence
         env:
           EXPECTED_COMMIT_SHA: ${{ env.SOURCE_SHA }}
         run: |
+          set -euo pipefail
           python scripts/validate-memory-os-live-load.py
           python scripts/validate-memory-os-live-object-load.py
-          python scripts/reconcile-memory-os-live-load-status.py
-          python scripts/validate-memory-os-load.py
-          python scripts/validate-memory-os-load-evidence-index.py
-          python scripts/validate-memory-os-operability.py
+          mkdir -p /tmp/memory-os-live-evidence
+          cp docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json \
+            /tmp/memory-os-live-evidence/live-postgres-load-results.sample.v1.json
+          cp docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json \
+            /tmp/memory-os-live-evidence/live-object-load-results.sample.v1.json
 
-      - name: Commit regenerated evidence and reconciled status
+      - name: Decide whether source evidence needs publication
         run: |
-          git add \
-            docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json \
-            docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json \
-            contracts/operations/load-test-scenario-contract.v1.json \
-            contracts/operations/production-operability-status.json
-          if git diff --cached --quiet; then
-            echo "Live dependency evidence and status are already current."
-            exit 0
+          set -euo pipefail
+          publish=true
+          if [[ "${GITHUB_EVENT_NAME}" == "schedule" && \
+                "${PREVIOUS_POSTGRES_SOURCE_SHA}" == "${SOURCE_SHA}" && \
+                "${PREVIOUS_OBJECT_SOURCE_SHA}" == "${SOURCE_SHA}" ]]; then
+            publish=false
           fi
+          echo "PUBLISH_RESULTS=$publish" >> "$GITHUB_ENV"
+          echo "publish live evidence: $publish"
+
+      - name: Publish exact-source result documents
+        if: env.PUBLISH_RESULTS == 'true'
+        run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "test(load): record live dependency checkpoints"
+
+          published=false
+          for attempt in 1 2 3; do
+            git fetch origin so
+
+            # A newer load-critical source change gets its own push-triggered run.
+            # Do not attach stale results to it. Documentation/status-only movement
+            # is safe because the fixture records the exact tested source SHA.
+            if ! git diff --quiet "${SOURCE_SHA}" origin/so -- \
+              .github/workflows/regenerate-live-postgres-load-results.yml \
+              services/import-api \
+              infra/postgresql/security \
+              contracts/operations/live-postgres-load-scenario-contract.v1.json \
+              contracts/operations/live-object-load-scenario-contract.v1.json \
+              scripts/validate-memory-os-live-load.py \
+              scripts/validate-memory-os-live-object-load.py \
+              scripts/reconcile-memory-os-live-load-status.py \
+              scripts/validate-memory-os-load.py \
+              scripts/validate-memory-os-load-evidence-index.py \
+              scripts/validate-memory-os-operability.py; then
+              echo "A newer load-critical source exists; a newer workflow run must publish its evidence."
+              exit 75
+            fi
+
+            git reset --hard origin/so
+            cp /tmp/memory-os-live-evidence/live-postgres-load-results.sample.v1.json \
+              docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json
+            cp /tmp/memory-os-live-evidence/live-object-load-results.sample.v1.json \
+              docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json
+            git add \
+              docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json \
+              docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json
+
+            if git diff --cached --quiet; then
+              echo "Exact-source live result documents are already published."
+              published=true
+              break
+            fi
+
+            git commit -m "test(load): record live dependency result documents"
+            if git push origin HEAD:so; then
+              published=true
+              break
+            fi
+            echo "Result publication raced with another push; retrying ($attempt/3)."
+          done
+          test "$published" = true
+
+      - name: Reconcile published evidence into current status
+        if: env.PUBLISH_RESULTS == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          reconciled=false
+          for attempt in 1 2 3; do
+            git fetch origin so
+            git reset --hard origin/so
+
+            EXPECTED_COMMIT_SHA="${SOURCE_SHA}" python scripts/validate-memory-os-live-load.py
+            EXPECTED_COMMIT_SHA="${SOURCE_SHA}" python scripts/validate-memory-os-live-object-load.py
+            EXPECTED_COMMIT_SHA="${SOURCE_SHA}" python scripts/reconcile-memory-os-live-load-status.py
+            python scripts/validate-memory-os-load.py
+            python scripts/validate-memory-os-load-evidence-index.py
+            python scripts/validate-memory-os-operability.py
+
+            git add \
+              contracts/operations/load-test-scenario-contract.v1.json \
+              contracts/operations/production-operability-status.json
+            if git diff --cached --quiet; then
+              echo "Live dependency status is already reconciled."
+              reconciled=true
+              break
+            fi
+
+            git commit -m "docs(ops): register live dependency load evidence"
+            if git push origin HEAD:so; then
+              reconciled=true
+              break
+            fi
+            echo "Status reconciliation raced with another push; retrying ($attempt/3)."
+          done
+          test "$reconciled" = true
+
+      - name: Restore committed evidence after unchanged scheduled verification
+        if: env.PUBLISH_RESULTS == 'false'
+        run: |
+          set -euo pipefail
           git fetch origin so
-          git rebase origin/so
-          git push origin HEAD:so
+          git reset --hard origin/so
+          echo "Scheduled live verification passed for unchanged source ${SOURCE_SHA}; no evidence commit created."
