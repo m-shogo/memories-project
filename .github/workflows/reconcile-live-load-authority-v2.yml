@@ -1,0 +1,140 @@
+name: Reconcile Live Load Authority V2
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/reconcile-live-load-authority-v2.yml"
+      - "contracts/operations/live-postgres-load-scenario-contract.v1.json"
+      - "contracts/operations/live-object-load-scenario-contract.v1.json"
+      - "docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json"
+      - "docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json"
+      - "scripts/validate-memory-os-live-load.py"
+      - "scripts/validate-memory-os-live-object-load.py"
+      - "scripts/reconcile-memory-os-live-load-status.py"
+  schedule:
+    - cron: "7 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reconcile-live-load-authority-v2-so
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    if: >-
+      github.event_name != 'push' ||
+      !contains(github.event.head_commit.message, 'docs(load): reconcile live dependency evidence')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout latest so
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile authority tools
+        run: |
+          test -z "$(git status --porcelain)"
+          python -m py_compile \
+            scripts/validate-memory-os-live-load.py \
+            scripts/validate-memory-os-live-object-load.py \
+            scripts/reconcile-memory-os-live-load-status.py
+
+      - name: Validate committed live evidence
+        id: validation
+        run: |
+          set +e
+          {
+            echo 'STAGE: validate-live-postgresql-load'
+            python scripts/validate-memory-os-live-load.py
+            echo 'STAGE: validate-live-object-load'
+            python scripts/validate-memory-os-live-object-load.py
+          } > /tmp/live-load-authority.log 2>&1
+          code=$?
+          set -e
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          VALIDATION_EXIT_CODE="$code" python - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+
+          output = Path('/tmp/live-load-authority.log').read_text(
+              encoding='utf-8', errors='replace'
+          )[-10000:]
+          for pattern, replacement in (
+              (r'postgres(?:ql)?://[^\s]+', '<redacted-database-url>'),
+              (r'Bearer\s+[^\s]+', 'Bearer <redacted>'),
+              (r'password=[^\s]+', 'password=<redacted>'),
+              (r'minioadmin', '<redacted-local-credential>'),
+              (r'(?:acct|job|prv|spl|upl)_[A-Za-z0-9._:-]+', '<redacted-synthetic-id>'),
+          ):
+              output = re.sub(pattern, replacement, output, flags=re.IGNORECASE)
+          diagnostic = {
+              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'workflow': 'reconcile-live-load-authority-v2',
+              'sourceCommitSha': subprocess.check_output(
+                  ['git', 'rev-parse', 'HEAD'], text=True
+              ).strip(),
+              'result': 'PASS' if os.environ['VALIDATION_EXIT_CODE'] == '0' else 'FAIL',
+              'exitCode': int(os.environ['VALIDATION_EXIT_CODE']),
+              'output': output,
+              'containsSecrets': False,
+              'productionEvidence': False,
+          }
+          path = Path('docs/fixtures/memory-os-operability/live-load-authority-diagnostic.last.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(diagnostic, indent=2) + '\n', encoding='utf-8')
+          PY
+
+      - name: Reconcile validated evidence into status
+        if: steps.validation.outputs.exit_code == '0'
+        run: |
+          python scripts/reconcile-memory-os-live-load-status.py
+          python scripts/validate-memory-os-live-load.py
+          python scripts/validate-memory-os-live-object-load.py
+          git add contracts/operations/production-operability-status.json
+          if git diff --cached --quiet; then
+            echo "Live dependency load authority is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(load): reconcile live dependency evidence"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+
+      - name: Commit bounded diagnostic
+        run: |
+          git fetch origin so
+          git rebase origin/so
+          git add docs/fixtures/memory-os-operability/live-load-authority-diagnostic.last.json
+          if git diff --cached --quiet; then
+            echo "Live load diagnostic is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            if [ "${{ steps.validation.outputs.exit_code }}" = "0" ]; then
+              git commit -m "test(load): record live authority validation"
+            else
+              git commit -m "test(load): record live authority diagnostic"
+            fi
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+
+      - name: Fail after preserving diagnostic
+        if: steps.validation.outputs.exit_code != '0'
+        run: exit 1
