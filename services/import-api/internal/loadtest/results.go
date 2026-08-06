@@ -22,8 +22,9 @@ type Environment struct {
 	Note           string `json:"note"`
 }
 
-// CurrentEnvironment reads the runtime environment. DependencyMode is always
-// MOCK here: this harness never drives production-equivalent dependencies.
+// CurrentEnvironment reads the runtime environment. The overall harness is
+// local and mock-backed; individual scenarios may still be explicitly marked
+// FAILURE_INJECTED where a dependency is deliberately forced unavailable.
 func CurrentEnvironment() Environment {
 	return Environment{
 		OS:             runtime.GOOS,
@@ -74,6 +75,17 @@ type ResultsDocument struct {
 	Scenarios     []ScenarioResult `json:"scenarios"`
 }
 
+// dependencyModeForScenario is deliberately closed. The only current scenario
+// that injects a dependency failure is the rate-limit store outage; every other
+// in-process scenario uses MOCK dependencies. Unknown future scenarios stay
+// MOCK until their contract and this mapping are changed together.
+func dependencyModeForScenario(scenarioID string) string {
+	if scenarioID == "ratelimit-store-failure-mock" {
+		return "FAILURE_INJECTED"
+	}
+	return "MOCK"
+}
+
 // Summarize turns a harness Result plus registry-derived counters into a
 // ScenarioResult. seriesBefore is captured by the caller before the run.
 func Summarize(scenarioID, workloadType string, res Result, reg *metrics.Registry, seriesBefore int, integrity, result string) ScenarioResult {
@@ -86,10 +98,10 @@ func Summarize(scenarioID, workloadType string, res Result, reg *metrics.Registr
 	return ScenarioResult{
 		ScenarioID:           scenarioID,
 		WorkloadType:         workloadType,
-		DependencyMode:       "MOCK",
+		DependencyMode:       dependencyModeForScenario(scenarioID),
 		StartedAt:            time.Now().UTC().Format(time.RFC3339),
 		DurationSeconds:      res.DurationSeconds,
-		Concurrency:          0, // set by caller when known
+		Concurrency:          0,
 		Requests:             res.Requests,
 		Successes:            res.Successes,
 		Failures:             res.Failures,
