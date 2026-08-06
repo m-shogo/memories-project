@@ -114,8 +114,8 @@ def main() -> int:
     require(readiness.get("concurrentClaimRaceExecuted") in (False, True),
             "concurrentClaimRaceExecuted must be boolean")
 
-    if arguments.allow_stale_result and
-            readiness.get("exactSourcePassResultCommitted") is False:
+    if (arguments.allow_stale_result and
+            readiness.get("exactSourcePassResultCommitted") is False):
         print("Memory OS mixed-version Apply static validation PASS")
         print(f"scenario count: {len(contract['requiredScenarios'])}")
         print("stale result intentionally ignored pending exact-source regeneration")
