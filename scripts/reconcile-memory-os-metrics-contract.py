@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+"""Synchronize validated scrape foundations into the primary metrics contract."""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+METRICS_PATH = ROOT / "contracts/operations/metrics-contract.v1.json"
+SCRAPE_PATH = ROOT / "contracts/operations/metrics-scrape-contract.v1.json"
+
+NEW_DESCRIPTION = (
+    "Machine-readable runtime metrics contract for the import-api boundary. "
+    "The validator checks this against the Go registry (metric names, types, "
+    "required labels, histogram buckets, schema version and per-metric cardinality "
+    "budgets), forbids personal or high-cardinality labels, and validates the "
+    "SLI/SLO/alert graph. A deterministic Prometheus exporter, authenticated "
+    "default-disabled scrape handler and explicit server mount seam now exist "
+    "under a separate scrape contract. Production scraping, dashboards, alert "
+    "routing, retention and load-calibrated thresholds remain unconfigured, so "
+    "OPS-P0-004 remains PARTIAL."
+)
+NEW_NOTE = (
+    "The typed registry and recorder are wired at the HTTP, rate-limit and "
+    "deletion-worker boundaries. A deterministic Prometheus exporter, "
+    "authenticated scrape handler and explicit default-disabled server mount "
+    "seam are implemented and tested. Production runtime mounting, secret "
+    "provisioning, private network policy, external scraping, dashboards, alert "
+    "routing, retention and load-calibrated buckets/SLO targets remain missing. "
+    "OPS-P0-004 is PARTIAL, not READY."
+)
+NEW_REFS = (
+    "contracts/operations/metrics-scrape-contract.v1.json",
+    "services/import-api/internal/metrics/prometheus.go",
+    "services/import-api/internal/metrics/scrape.go",
+    "services/import-api/internal/metrics/prometheus_test.go",
+    "services/import-api/internal/httpserver/metrics_scrape_test.go",
+    "scripts/validate-memory-os-metrics-scrape.py",
+    "scripts/reconcile-memory-os-metrics-contract.py",
+)
+
+
+class ReconcileFailure(RuntimeError):
+    pass
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ReconcileFailure(message)
+
+
+def load(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise ReconcileFailure(f"missing file: {path.relative_to(ROOT)}") from exc
+    except json.JSONDecodeError as exc:
+        raise ReconcileFailure(f"invalid JSON in {path.relative_to(ROOT)}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be an object: {path.relative_to(ROOT)}")
+    return value
+
+
+def main() -> int:
+    metrics = load(METRICS_PATH)
+    scrape = load(SCRAPE_PATH)
+    require(metrics.get("schemaVersion") == "memory-os-metrics.v1",
+            "primary metrics schema drift")
+    require(scrape.get("schemaVersion") == "memory-os-metrics-scrape.v1",
+            "scrape contract schema drift")
+
+    scrape_readiness = scrape.get("readiness")
+    require(isinstance(scrape_readiness, dict), "scrape readiness must be an object")
+    for field in (
+        "prometheusExporterImplemented",
+        "authenticatedHandlerImplemented",
+        "serverMountSupported",
+    ):
+        require(scrape_readiness.get(field) is True,
+                f"scrape foundation not validated: {field}")
+    require(scrape_readiness.get("runtimeMounted") is False,
+            "primary contract reconcile cannot claim production runtime mounting")
+    require(scrape_readiness.get("productionReady") is False,
+            "primary contract reconcile cannot claim production readiness")
+
+    readiness = metrics.get("readiness")
+    require(isinstance(readiness, dict), "primary metrics readiness must be an object")
+    changed = False
+    if metrics.get("description") != NEW_DESCRIPTION:
+        metrics["description"] = NEW_DESCRIPTION
+        changed = True
+    if readiness.get("exporterImplemented") is not True:
+        readiness["exporterImplemented"] = True
+        changed = True
+    # This field means a deliberately deployed production scrape endpoint, not
+    # merely a reusable handler/mount seam.
+    require(readiness.get("scrapeEndpointExposed") is False,
+            "production scrape endpoint must remain unexposed")
+    if readiness.get("note") != NEW_NOTE:
+        readiness["note"] = NEW_NOTE
+        changed = True
+
+    refs = metrics.get("evidenceRefs")
+    require(isinstance(refs, list), "primary metrics evidenceRefs must be a list")
+    for ref in NEW_REFS:
+        require((ROOT / ref).is_file(), f"metrics evidence path missing: {ref}")
+        if ref not in refs:
+            refs.append(ref)
+            changed = True
+
+    for field in (
+        "scrapeEndpointExposed",
+        "dashboardsDefined",
+        "alertRoutingConfigured",
+        "retentionDefined",
+        "loadCalibrated",
+    ):
+        require(readiness.get(field) is False,
+                f"unproven metrics readiness cannot be true: {field}")
+
+    if not changed:
+        print("Primary metrics contract already reconciled")
+        return 0
+
+    METRICS_PATH.write_text(
+        json.dumps(metrics, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    print("Registered exporter foundation in primary metrics contract")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except ReconcileFailure as exc:
+        print(f"METRICS CONTRACT RECONCILE FAILED: {exc}", file=sys.stderr)
+        raise SystemExit(1)
