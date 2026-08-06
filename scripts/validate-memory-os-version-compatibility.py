@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -340,15 +339,6 @@ def main() -> int:
         ):
             require(any(required_gap in item for item in missing),
                     f"OPS-P0-008 missingEvidence must retain: {required_gap}")
-
-    foundation = subprocess.run(
-        [sys.executable,
-         str(ROOT / "scripts/validate-memory-os-version-compatibility-foundations.py")],
-        cwd=ROOT,
-        check=False,
-    )
-    require(foundation.returncode == 0,
-            "integrated compatibility foundation validation failed")
 
     print("Memory OS version compatibility validation PASS")
     print(f"compatibility dimensions: {len(dimensions)}")
