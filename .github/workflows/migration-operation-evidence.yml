@@ -1,0 +1,100 @@
+name: Migration Operation Evidence
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/migration-operation-evidence.yml"
+      - "contracts/operations/migration-operation-evidence-contract.v1.json"
+      - "contracts/operations/migration-lifecycle-contract.v1.json"
+      - "scripts/migration_operation_evidence_lib.py"
+      - "scripts/create-memory-os-migration-operation-evidence.py"
+      - "scripts/validate-memory-os-migration-operation-evidence.py"
+      - "scripts/reconcile-memory-os-migration-operation-evidence.py"
+      - "docs/evidence/migration-operations/**"
+      - "docs/fixtures/memory-os-operability/migration-operation-record.template.v1.json"
+  pull_request:
+    paths:
+      - ".github/workflows/migration-operation-evidence.yml"
+      - "contracts/operations/migration-operation-evidence-contract.v1.json"
+      - "contracts/operations/migration-lifecycle-contract.v1.json"
+      - "scripts/migration_operation_evidence_lib.py"
+      - "scripts/create-memory-os-migration-operation-evidence.py"
+      - "scripts/validate-memory-os-migration-operation-evidence.py"
+      - "scripts/reconcile-memory-os-migration-operation-evidence.py"
+      - "docs/evidence/migration-operations/**"
+      - "docs/fixtures/memory-os-operability/migration-operation-record.template.v1.json"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: migration-operation-evidence-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile evidence tooling
+        run: |
+          python -m py_compile \
+            scripts/migration_operation_evidence_lib.py \
+            scripts/create-memory-os-migration-operation-evidence.py \
+            scripts/validate-memory-os-migration-operation-evidence.py \
+            scripts/reconcile-memory-os-migration-operation-evidence.py
+
+      - name: Reconcile authority in working tree
+        run: |
+          python scripts/reconcile-memory-os-migration-operation-evidence.py
+          python scripts/reconcile-memory-os-migration-operation-evidence.py --check
+
+      - name: Prove exclusive-create append-only behavior
+        run: |
+          ledger="$(mktemp -d)"
+          record="docs/fixtures/memory-os-operability/migration-operation-record.template.v1.json"
+          python scripts/create-memory-os-migration-operation-evidence.py \
+            "$record" --ledger-dir "$ledger"
+          test "$(find "$ledger" -type f -name 'mgr_*.json' | wc -l | tr -d ' ')" = "1"
+          if python scripts/create-memory-os-migration-operation-evidence.py \
+            "$record" --ledger-dir "$ledger"; then
+            echo "duplicate migrationRunId unexpectedly overwrote evidence" >&2
+            exit 1
+          fi
+          test "$(find "$ledger" -type f -name 'mgr_*.json' | wc -l | tr -d ' ')" = "1"
+
+      - name: Validate ledger and authority
+        run: |
+          python scripts/validate-memory-os-migration-operation-evidence.py
+          python scripts/validate-memory-os-migration-lifecycle.py
+          python scripts/validate-memory-os-operability.py
+
+      - name: Commit reconciled authority on so
+        if: github.event_name != 'pull_request'
+        run: |
+          git add \
+            contracts/operations/migration-operation-evidence-contract.v1.json \
+            contracts/operations/migration-lifecycle-contract.v1.json \
+            contracts/operations/production-operability-status.json
+          if git diff --cached --quiet; then
+            echo "Migration operation evidence authority is already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs(migration): register append-only operation evidence"
+          git pull --rebase origin so
+          git push origin HEAD:so
