@@ -9,6 +9,7 @@ on:
       - "contracts/operations/**"
       - "docs/runbooks/memory-os-migration-recovery.md"
       - "docs/runbooks/memory-os-incident-response.md"
+      - "docs/runbooks/memory-os-version-compatibility.md"
       - "docs/memory-os-current-authority-order-round-10-operability.md"
       - "docs/memory-os-current-authority-order-round-9-security.md"
       - "docs/memory-os-production-operability-audit-2026-07-24.md"
@@ -24,6 +25,7 @@ on:
       - "scripts/validate-memory-os-migration-lifecycle.py"
       - "scripts/validate-memory-os-incident-response.py"
       - "scripts/validate-memory-os-incident-tabletop.py"
+      - "scripts/validate-memory-os-version-compatibility.py"
       - "scripts/validate-memory-os-entry-docs.py"
       - "scripts/regenerate-memory-os-load-results.sh"
       - "docs/fixtures/memory-os-operability/**"
@@ -45,6 +47,7 @@ on:
       - "contracts/operations/**"
       - "docs/runbooks/memory-os-migration-recovery.md"
       - "docs/runbooks/memory-os-incident-response.md"
+      - "docs/runbooks/memory-os-version-compatibility.md"
       - "docs/memory-os-current-authority-order-round-10-operability.md"
       - "docs/memory-os-current-authority-order-round-9-security.md"
       - "docs/memory-os-production-operability-audit-2026-07-24.md"
@@ -60,6 +63,7 @@ on:
       - "scripts/validate-memory-os-migration-lifecycle.py"
       - "scripts/validate-memory-os-incident-response.py"
       - "scripts/validate-memory-os-incident-tabletop.py"
+      - "scripts/validate-memory-os-version-compatibility.py"
       - "scripts/validate-memory-os-entry-docs.py"
       - "scripts/regenerate-memory-os-load-results.sh"
       - "docs/fixtures/memory-os-operability/**"
@@ -107,6 +111,7 @@ jobs:
           python -m py_compile scripts/validate-memory-os-migration-lifecycle.py
           python -m py_compile scripts/validate-memory-os-incident-response.py
           python -m py_compile scripts/validate-memory-os-incident-tabletop.py
+          python -m py_compile scripts/validate-memory-os-version-compatibility.py
           python -m py_compile scripts/validate-memory-os-entry-docs.py
           bash -n scripts/regenerate-memory-os-load-results.sh
 
@@ -121,6 +126,9 @@ jobs:
 
       - name: Validate incident tabletop plan and evidence
         run: python scripts/validate-memory-os-incident-tabletop.py
+
+      - name: Validate version compatibility policy and matrix
+        run: python scripts/validate-memory-os-version-compatibility.py
 
       - name: Validate observability event contract
         run: python scripts/validate-memory-os-observability.py
