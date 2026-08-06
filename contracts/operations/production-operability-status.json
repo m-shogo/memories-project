@@ -280,14 +280,16 @@
         "retry and idempotency tests",
         "real-loopback TCP API interruption drill proving graceful shutdown waits for an in-flight request, preserves its response and rejects new work after drain",
         "parser-worker restart drill proving truncated output leaves no spool residue and the same manager/spool ID can be safely reused and independently verified",
-        "machine-readable failure-drill inventory with exact-source CI result separation from production-shaped and production chaos evidence"
+        "machine-readable failure-drill inventory with exact-source CI result separation from production-shaped and production chaos evidence",
+        "local PostgreSQL 16 plus MinIO import-flow outage drill proving an unreachable object-store endpoint fails before parse/commit, leaves no Preview or spool residue and the exact same request succeeds once connectivity returns",
+        "v2 machine-readable failure-drill authority superseding the two-scenario v1 inventory while preserving CI-vs-production evidence separation"
       ],
       "missingEvidence": [
         "database loss or failover drill",
-        "object-store outage drill",
         "mixed-version failure drill",
         "expanded parser restart matrix across timeout, CPU, memory, cancellation, process-group and host-restart failures",
-        "production multi-instance interruption, dependency and recovery drills with independent review"
+        "production multi-instance interruption, dependency and recovery drills with independent review",
+        "production-shaped object-store process outage or network-partition drill with TLS, scoped credentials, lifecycle controls and recovery verification"
       ],
       "evidenceRefs": [
         "contracts/operations/chaos-failure-drill-contract.v1.json",
@@ -296,7 +298,13 @@
         "services/import-api/internal/parsersup/restart_drill_linux_test.go",
         "scripts/validate-memory-os-chaos-failure-drills.py",
         "scripts/reconcile-memory-os-chaos-failure-drills.py",
-        ".github/workflows/chaos-failure-drills.yml"
+        ".github/workflows/chaos-failure-drills.yml",
+        "contracts/operations/chaos-failure-drill-contract.v2.json",
+        "docs/fixtures/memory-os-operability/chaos-failure-drill-results.v2.sample.json",
+        "services/import-api/internal/importflow/object_outage_drill_linux_test.go",
+        "scripts/validate-memory-os-chaos-failure-drills-v2.py",
+        "scripts/reconcile-memory-os-chaos-failure-drills-v2.py",
+        ".github/workflows/chaos-failure-drills-v2.yml"
       ]
     },
     {
