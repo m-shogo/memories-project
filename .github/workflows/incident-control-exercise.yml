@@ -1,0 +1,182 @@
+name: Incident Control Exercise
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/incident-control-exercise.yml"
+      - "contracts/operations/incident-control-exercise-contract.v1.json"
+      - "scripts/run-memory-os-incident-control-exercise.py"
+      - "scripts/validate-memory-os-incident-control-exercise.py"
+      - "scripts/reconcile-memory-os-incident-control-exercise.py"
+      - "scripts/validate-memory-os-authorization.py"
+      - "scripts/validate-memory-os-postgresql-rls.py"
+      - "scripts/validate-memory-os-database-commit-outage.py"
+      - "scripts/validate-memory-os-local-logical-restore.py"
+      - "scripts/validate-memory-os-chaos-failure-drills-v2.py"
+      - "scripts/validate-memory-os-local-object-version-restore.py"
+      - "scripts/validate-memory-os-migration-lifecycle.py"
+      - "scripts/validate-memory-os-version-compatibility.py"
+      - "scripts/validate-memory-os-mixed-version-candidate.py"
+      - "scripts/validate-memory-os-backup-local-foundations.py"
+      - "scripts/validate-memory-os-backup-restore.py"
+      - "scripts/validate-memory-os-parser-security.py"
+      - "scripts/validate-memory-os-parser-restart-matrix.py"
+      - "scripts/validate-memory-os-parser-inflight-cancellation.py"
+      - "docs/fixtures/memory-os-operability/**"
+  schedule:
+    - cron: "11 22 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: incident-control-exercise-so
+  cancel-in-progress: false
+
+jobs:
+  exercise:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout latest so
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm exact clean source
+        run: |
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Validate static exercise definition
+        run: |
+          python -m py_compile \
+            scripts/run-memory-os-incident-control-exercise.py \
+            scripts/validate-memory-os-incident-control-exercise.py \
+            scripts/reconcile-memory-os-incident-control-exercise.py
+          python scripts/validate-memory-os-incident-control-exercise.py
+
+      - name: Execute six-scenario control exercise
+        id: exercise
+        env:
+          MEMORY_OS_COMMIT_SHA: ${{ env.SOURCE_SHA }}
+          MEMORY_OS_INCIDENT_CONTROL_RESULTS_PATH: ${{ github.workspace }}/docs/fixtures/memory-os-operability/incident-control-exercise-results.sample.v1.json
+        run: |
+          set +e
+          python scripts/run-memory-os-incident-control-exercise.py > /tmp/incident-control-exercise.log 2>&1
+          code=$?
+          set -e
+          EXERCISE_EXIT_CODE="$code" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          output = Path('/tmp/incident-control-exercise.log').read_text(
+              encoding='utf-8', errors='replace'
+          )[-6000:]
+          diagnostic = {
+              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'workflow': 'incident-control-exercise',
+              'sourceCommitSha': os.environ['SOURCE_SHA'],
+              'result': 'PASS' if os.environ['EXERCISE_EXIT_CODE'] == '0' else 'FAIL',
+              'exitCode': int(os.environ['EXERCISE_EXIT_CODE']),
+              'validationResult': 'NOT_RUN',
+              'validationExitCode': None,
+              'output': output,
+              'containsSecrets': False,
+              'productionEvidence': False,
+              'humanTabletopCompleted': False,
+          }
+          path = Path('docs/fixtures/memory-os-operability/incident-control-exercise-diagnostic.last.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(diagnostic, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+          PY
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+
+      - name: Validate exact-source exercise result
+        id: validation
+        if: steps.exercise.outputs.exit_code == '0'
+        env:
+          EXPECTED_COMMIT_SHA: ${{ env.SOURCE_SHA }}
+        run: |
+          set +e
+          python scripts/validate-memory-os-incident-control-exercise.py > /tmp/incident-control-validation.log 2>&1
+          code=$?
+          set -e
+          VALIDATION_EXIT_CODE="$code" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path('docs/fixtures/memory-os-operability/incident-control-exercise-diagnostic.last.json')
+          diagnostic = json.loads(path.read_text(encoding='utf-8'))
+          output = Path('/tmp/incident-control-validation.log').read_text(
+              encoding='utf-8', errors='replace'
+          )[-4000:]
+          diagnostic['validationResult'] = (
+              'PASS' if os.environ['VALIDATION_EXIT_CODE'] == '0' else 'FAIL'
+          )
+          diagnostic['validationExitCode'] = int(os.environ['VALIDATION_EXIT_CODE'])
+          diagnostic['output'] = (
+              str(diagnostic.get('output', '')) + '\n--- validator ---\n' + output
+          )[-6000:]
+          path.write_text(json.dumps(diagnostic, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+          PY
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+
+      - name: Commit result or bounded diagnostic
+        run: |
+          git add docs/fixtures/memory-os-operability/incident-control-exercise-diagnostic.last.json
+          if [ "${{ steps.exercise.outputs.exit_code }}" = "0" ] && \
+             [ "${{ steps.validation.outputs.exit_code }}" = "0" ]; then
+            git add docs/fixtures/memory-os-operability/incident-control-exercise-results.sample.v1.json
+          fi
+          if git diff --cached --quiet; then
+            echo "Incident control exercise evidence is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            if [ "${{ steps.exercise.outputs.exit_code }}" = "0" ] && \
+               [ "${{ steps.validation.outputs.exit_code }}" = "0" ]; then
+              git commit -m "test(incident): record automated control exercise"
+            else
+              git commit -m "test(incident): record control exercise diagnostic"
+            fi
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+
+      - name: Reconcile exercise evidence into status
+        if: steps.exercise.outputs.exit_code == '0' && steps.validation.outputs.exit_code == '0'
+        run: |
+          git pull --rebase origin so
+          python scripts/reconcile-memory-os-incident-control-exercise.py
+          python scripts/validate-memory-os-incident-control-exercise.py
+          python scripts/validate-memory-os-incident-response.py
+          python scripts/validate-memory-os-incident-tabletop.py
+          python scripts/validate-memory-os-operability.py
+          git add contracts/operations/production-operability-status.json
+          if git diff --cached --quiet; then
+            echo "Incident control authority is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(incident): register automated control exercise"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+
+      - name: Fail after preserving diagnostic
+        if: steps.exercise.outputs.exit_code != '0' || steps.validation.outputs.exit_code != '0'
+        run: exit 1
