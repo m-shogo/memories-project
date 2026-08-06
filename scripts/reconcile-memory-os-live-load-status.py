@@ -18,6 +18,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+LOAD_CONTRACT_PATH = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
 POSTGRES_RESULT = (
     ROOT
     / "docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json"
@@ -87,6 +88,7 @@ def main() -> int:
     require(result_is_pass(object_result, expected_sha), "MinIO result is not an exact-source PASS")
 
     status = load(STATUS_PATH)
+    load_contract = load(LOAD_CONTRACT_PATH)
     require(status.get("productionDecision") == "NO_GO", "reconcile requires productionDecision NO_GO")
     areas = status.get("areas")
     require(isinstance(areas, list), "status areas must be a list")
@@ -115,9 +117,15 @@ def main() -> int:
         missing.remove(PENDING_TEXT)
         changed = True
 
+    readiness = load_contract.get("readiness")
+    require(isinstance(readiness, dict), "load contract readiness must be an object")
+    if readiness.get("exactHeadLiveResultsCommitted") is not True:
+        readiness["exactHeadLiveResultsCommitted"] = True
+        changed = True
+
     # The local results close only the "not yet executed" blind spot. These
-    # production gaps must remain open and are guarded again by the operability
-    # validator after this script runs.
+    # production gaps must remain open and are guarded again by both load and
+    # operability validators after this script runs.
     required_open_phrases = (
         "capacity boundary",
         "sustained soak",
@@ -127,15 +135,28 @@ def main() -> int:
     for phrase in required_open_phrases:
         require(any(phrase in item for item in missing), f"required open gap disappeared: {phrase}")
 
+    for readiness_key in (
+        "productionShapedWorkload",
+        "capacityBoundaryEstablished",
+        "sustainedSoakEvidence",
+        "operationalThresholds",
+        "productionEquivalentDependencies",
+    ):
+        require(readiness.get(readiness_key) is False, f"local results cannot enable {readiness_key}")
+
     require(area.get("status") == "PARTIAL", "OPS-P0-006 readiness changed unexpectedly")
     require(status.get("productionDecision") == "NO_GO", "production decision changed unexpectedly")
 
     if not changed:
-        print("Live load status already reconciled")
+        print("Live load evidence metadata already reconciled")
         return 0
 
     status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
     STATUS_PATH.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    LOAD_CONTRACT_PATH.write_text(
+        json.dumps(load_contract, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
     print("Registered exact-source live PostgreSQL and MinIO PASS results; OPS-P0-006 remains PARTIAL")
     return 0
 
