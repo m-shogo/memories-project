@@ -112,6 +112,7 @@
     "scripts/validate-memory-os-mixed-version-apply.py",
     "scripts/reconcile-memory-os-mixed-version-apply.py",
     "docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json",
-    ".github/workflows/mixed-version-apply.yml"
+    ".github/workflows/mixed-version-apply.yml",
+    ".github/workflows/reconcile-mixed-version-apply-harness.yml"
   ]
 }
