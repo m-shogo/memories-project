@@ -200,7 +200,8 @@ def main() -> int:
         "TestMetricsScrapeIsUnmountedByDefault",
         "TestMetricsScrapeMountIsAuthenticatedAndOutsidePublicRateLimit",
         "registry.SumCounter(metrics.MetricRateLimitDecisions, nil)",
-        'route_class=\\"INTERNAL\\"',
+        "expectedInternal :=",
+        "INTERNAL",
     ), "server scrape tests")
 
     readiness = contract.get("readiness")
