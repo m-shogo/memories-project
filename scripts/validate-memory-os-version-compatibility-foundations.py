@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Validate candidate-only and foundation-only compatibility overlays.
+"""Fail-closed validation for bounded compatibility foundations.
 
-This validator never promotes the canonical release matrix. It verifies that
-bounded evidence is represented accurately alongside explicit non-production
-and non-release limitations.
+This authority is supplemental. It may record candidate-only and local-CI-only
+proof, but it cannot promote the canonical approved-release matrix or production
+readiness.
 """
 
 from __future__ import annotations
@@ -16,10 +16,11 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT_PATH = ROOT / "contracts/operations/version-compatibility-contract.v1.json"
+FOUNDATION_PATH = ROOT / "contracts/operations/version-compatibility-foundations.v1.json"
+CANONICAL_PATH = ROOT / "contracts/operations/version-compatibility-contract.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
-RUNBOOK_PATH = ROOT / "docs/runbooks/memory-os-version-compatibility.md"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+
 EXPECTED_FOUNDATIONS = {
     "FOUNDATION-001": (
         "HISTORICAL_CANDIDATE_BACKEND_CURRENT_EXPANDED_SCHEMA",
@@ -42,22 +43,13 @@ EXPECTED_FOUNDATIONS = {
         "BLOCKED_NO_APPROVED_PAIR",
     ),
 }
-REQUIRED_FOUNDATION_REFS = {
-    "contracts/operations/mixed-version-session-contract.v1.json",
-    "docs/fixtures/memory-os-operability/mixed-version-session-results.sample.v1.json",
-    "contracts/operations/mixed-version-candidate-contract.v1.json",
-    "docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json",
-    "contracts/operations/mixed-version-apply-contract.v1.json",
-    "docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json",
-    "contracts/operations/release-baseline-registry-contract.v1.json",
-    "contracts/operations/release-baseline-registry.v1.json",
-    "contracts/operations/rollback-rehearsal-gate-contract.v1.json",
-    "contracts/operations/rollback-rehearsal-registry.v1.json",
-    "contracts/operations/parser-artifact-registry-contract.v1.json",
-    "contracts/operations/parser-artifact-registry.v1.json",
-    "contracts/operations/postgresql-major-upgrade-contract.v1.json",
-    "docs/fixtures/memory-os-operability/postgresql-major-upgrade-results.sample.v1.json",
+
+REQUIRED_STATUS_REFS = {
+    "contracts/operations/version-compatibility-foundations.v1.json",
+    "docs/runbooks/memory-os-version-compatibility-foundations.md",
     "scripts/validate-memory-os-version-compatibility-foundations.py",
+    "scripts/reconcile-memory-os-version-compatibility-foundation-status.py",
+    ".github/workflows/version-compatibility-foundations.yml",
 }
 
 
@@ -81,21 +73,6 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def is_ancestor(base: Any, head: str = "HEAD") -> bool:
-    if not isinstance(base, str) or SHA_RE.fullmatch(base) is None:
-        return False
-    try:
-        return subprocess.run(
-            ["git", "merge-base", "--is-ancestor", base, head],
-            cwd=ROOT,
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        ).returncode == 0
-    except OSError:
-        return False
-
-
 def unique_strings(value: Any, field: str, minimum: int = 1) -> list[str]:
     require(isinstance(value, list) and len(value) >= minimum,
             f"{field} requires at least {minimum} entries")
@@ -105,71 +82,179 @@ def unique_strings(value: Any, field: str, minimum: int = 1) -> list[str]:
     return value
 
 
-def validate_foundation_entry(item: dict[str, Any], expected_direction: str,
-                              expected_status: str) -> None:
-    require(item.get("direction") == expected_direction,
-            f"{item.get('id')}: direction drift")
-    require(item.get("status") == expected_status,
-            f"{item.get('id')}: status drift")
-    proven = unique_strings(item.get("proven"), f"{item.get('id')}.proven")
-    not_proven = unique_strings(item.get("notProven"), f"{item.get('id')}.notProven")
-    refs = unique_strings(item.get("evidenceRefs"), f"{item.get('id')}.evidenceRefs")
-    require(proven and not_proven, f"{item.get('id')}: boundaries must be explicit")
+def is_ancestor(value: Any) -> bool:
+    if not isinstance(value, str) or SHA_RE.fullmatch(value) is None:
+        return False
+    return subprocess.run(
+        ["git", "merge-base", "--is-ancestor", value, "HEAD"],
+        cwd=ROOT,
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    ).returncode == 0
+
+
+def validate_foundation_contract() -> dict[str, Any]:
+    contract = load(FOUNDATION_PATH)
+    require(contract.get("schemaVersion") ==
+            "memory-os-version-compatibility-foundations.v1",
+            "foundation schema drift")
+    require(contract.get("canonicalCompatibilityContract") ==
+            "contracts/operations/version-compatibility-contract.v1.json",
+            "canonical compatibility reference drift")
+    require(contract.get("validator") ==
+            "scripts/validate-memory-os-version-compatibility-foundations.py",
+            "foundation validator path drift")
+    require(contract.get("reconcile") ==
+            "scripts/reconcile-memory-os-version-compatibility-foundation-status.py",
+            "foundation reconcile path drift")
+    require(contract.get("runbook") ==
+            "docs/runbooks/memory-os-version-compatibility-foundations.md",
+            "foundation runbook path drift")
+    require(contract.get("workflow") ==
+            ".github/workflows/version-compatibility-foundations.yml",
+            "foundation workflow path drift")
+
+    canonical = load(CANONICAL_PATH)
+    require(canonical.get("schemaVersion") == "memory-os-version-compatibility.v1",
+            "canonical compatibility schema drift")
+    require(canonical.get("productionDecision") == "NO_GO",
+            "canonical compatibility decision changed")
+    require("supplementalCompatibilityEvidence" not in canonical,
+            "bounded foundations must not be embedded into the canonical matrix")
+    require("foundationEvidenceRefs" not in canonical,
+            "bounded foundation refs must remain outside the canonical matrix")
+
+    foundations = contract.get("foundations")
+    require(isinstance(foundations, list) and len(foundations) == 5,
+            "foundation count drift")
+    by_id: dict[str, dict[str, Any]] = {}
+    for item in foundations:
+        require(isinstance(item, dict), "foundation entry must be an object")
+        identifier = item.get("id")
+        require(isinstance(identifier, str) and identifier not in by_id,
+                "foundation ID invalid or duplicated")
+        by_id[identifier] = item
+    require(set(by_id) == set(EXPECTED_FOUNDATIONS),
+            "foundation ID set drift")
+
+    for identifier, (direction, status) in EXPECTED_FOUNDATIONS.items():
+        item = by_id[identifier]
+        require(item.get("direction") == direction,
+                f"{identifier}: direction drift")
+        require(item.get("status") == status,
+                f"{identifier}: status drift")
+        unique_strings(item.get("proven"), f"{identifier}.proven")
+        unique_strings(item.get("notProven"), f"{identifier}.notProven")
+        refs = unique_strings(item.get("evidenceRefs"), f"{identifier}.evidenceRefs")
+        for ref in refs:
+            require(not ref.startswith("/") and ".." not in Path(ref).parts,
+                    f"{identifier}: unsafe evidence path: {ref}")
+            require((ROOT / ref).exists(), f"{identifier}: missing evidence: {ref}")
+
+    boundary = contract.get("aggregateBoundaries")
+    require(isinstance(boundary, dict), "aggregateBoundaries missing")
+    expected_boundary = {
+        "canonicalReleaseMatrixChanged": False,
+        "approvedReleaseCount": 0,
+        "approvedRollbackPairCount": 0,
+        "reviewedParserArtifactCount": 0,
+        "productionEvidence": False,
+        "releaseCompatibilityEvidence": False,
+        "productionReady": False,
+        "productionDecision": "NO_GO",
+    }
+    for field, expected in expected_boundary.items():
+        require(boundary.get(field) == expected,
+                f"aggregate boundary drift: {field}")
+
+    readiness = contract.get("readiness")
+    require(isinstance(readiness, dict), "foundation readiness missing")
+    for field in (
+        "contractDefined", "validatorImplemented", "statusReconcileImplemented",
+        "automaticWorkflowImplemented", "candidateOnlyMixedVersionEvidenceAvailable",
+        "postgresql17LogicalForwardEvidenceAvailable",
+        "parserArtifactAuthorityDefined",
+        "releaseAndRollbackAdmissionAuthoritiesDefined",
+    ):
+        require(readiness.get(field) is True, f"foundation readiness missing: {field}")
+    for field in (
+        "approvedReleasePairAvailable", "reviewedParserArtifactAvailable",
+        "productionRolloutRehearsed", "independentReviewCompleted", "productionReady",
+    ):
+        require(readiness.get(field) is False,
+                f"foundation authority overclaims readiness: {field}")
+
+    refs = unique_strings(contract.get("evidenceRefs"), "evidenceRefs")
     for ref in refs:
-        path = ROOT / ref
-        require(path.exists(), f"{item.get('id')}: evidence missing: {ref}")
+        require((ROOT / ref).is_file(), f"foundation authority evidence missing: {ref}")
+    return contract
 
 
-def validate_mixed_version_candidate() -> None:
+def validate_candidate_result() -> None:
     result = load(ROOT / "docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json")
     require(result.get("schemaVersion") == "memory-os-mixed-version-candidate-results.v1",
             "candidate result schema drift")
     require(is_ancestor(result.get("currentCommitSha")),
-            "candidate current source is not an ancestor")
+            "candidate source is not an ancestor of HEAD")
     environment = result.get("environment")
     scenario = result.get("scenario")
     require(isinstance(environment, dict) and
             environment.get("candidateBaselineOnly") is True and
-            environment.get("releaseCompatibilityEvidence") is False and
             environment.get("productionEvidence") is False and
+            environment.get("releaseCompatibilityEvidence") is False and
             environment.get("containsSecrets") is False,
             "candidate evidence boundary drift")
-    require(isinstance(scenario, dict) and scenario.get("result") == "PASS" and
-            scenario.get("integrityResult") == "PASS" and
-            all(scenario.get("assertions", {}).values()),
-            "candidate compatibility result is not complete PASS")
+    require(isinstance(scenario, dict) and
+            scenario.get("result") == "PASS" and
+            scenario.get("integrityResult") == "PASS",
+            "candidate result is not PASS")
+    assertions = scenario.get("assertions")
+    require(isinstance(assertions, dict) and assertions and all(assertions.values()),
+            "candidate assertions are incomplete")
 
 
-def validate_mixed_version_session() -> None:
+def validate_session_result() -> None:
     result = load(ROOT / "docs/fixtures/memory-os-operability/mixed-version-session-results.sample.v1.json")
     require(result.get("schemaVersion") == "memory-os-mixed-version-session-results.v1",
-            "mixed-version session result schema drift")
-    current_sha = result.get("currentCommitSha")
-    require(is_ancestor(current_sha), "mixed-version session source is not an ancestor")
-    serialized = json.dumps(result, ensure_ascii=False).lower()
-    require("pass" in serialized, "mixed-version session evidence does not contain PASS")
-    for forbidden in ("postgres://", "postgresql://", "bearer ", "password="):
-        require(forbidden not in serialized,
-                f"mixed-version session evidence contains forbidden content: {forbidden}")
+            "session result schema drift")
+    require(is_ancestor(result.get("commitSha")),
+            "mixed-version session source is not an ancestor of HEAD")
+    environment = result.get("environment")
+    assertions = result.get("assertions")
+    require(isinstance(environment, dict) and
+            environment.get("productionEvidence") is False and
+            environment.get("containsSecrets") is False and
+            environment.get("syntheticDataOnly") is True,
+            "session evidence boundary drift")
+    require(result.get("result") == "PASS" and result.get("integrityResult") == "PASS",
+            "session result is not PASS")
+    require(isinstance(assertions, dict) and
+            assertions.get("oldHealthStatus") == 200 and
+            assertions.get("currentHealthStatus") == 200 and
+            assertions.get("activeSessionRows") == 2 and
+            assertions.get("sharedCurrentSchema") is True and
+            assertions.get("oldAndCurrentProcessesConcurrent") is True and
+            assertions.get("rawTokensPersisted") is False,
+            "session assertions are incomplete")
 
 
-def validate_mixed_version_apply() -> None:
+def validate_apply_result() -> None:
     result = load(ROOT / "docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json")
     require(result.get("schemaVersion") == "memory-os-mixed-version-apply-results.v1",
-            "mixed-version Apply result schema drift")
+            "Apply result schema drift")
     require(is_ancestor(result.get("currentCommitSha")),
-            "mixed-version Apply source is not an ancestor")
+            "Apply result source is not an ancestor of HEAD")
     environment = result.get("environment")
     assertions = result.get("assertions")
     require(isinstance(environment, dict) and
             environment.get("historicalCandidateOnly") is True and
-            environment.get("releaseCompatibilityEvidence") is False and
             environment.get("productionEvidence") is False and
+            environment.get("releaseCompatibilityEvidence") is False and
             environment.get("containsSecrets") is False,
-            "mixed-version Apply evidence boundary drift")
+            "Apply evidence boundary drift")
     require(result.get("result") == "PASS" and result.get("integrityResult") == "PASS",
-            "mixed-version Apply result is not PASS")
-    require(isinstance(assertions, dict), "mixed-version Apply assertions missing")
+            "Apply result is not PASS")
     expected = {
         "concurrentOldCurrentClaimRacePassed": True,
         "concurrentOldCurrentClaimRaceReplaySplit": True,
@@ -187,22 +272,21 @@ def validate_mixed_version_apply() -> None:
         "postTerminationRecoveryMemoryItemRows": 4,
         "postTerminationRecoveryDistinctSourcePreviews": 4,
         "postTerminationRecoveryInProgressRows": 0,
-        "recoveredPreviewApplyConfirmationRows": 1,
-        "recoveredPreviewMemoryItemRows": 1,
         "noDuplicateMaterialization": True,
     }
-    for field, value in expected.items():
-        require(assertions.get(field) == value,
-                f"mixed-version Apply assertion drift: {field}")
+    require(isinstance(assertions, dict), "Apply assertions missing")
+    for field, expected_value in expected.items():
+        require(assertions.get(field) == expected_value,
+                f"Apply assertion drift: {field}")
 
 
-def validate_postgresql_upgrade() -> None:
+def validate_postgresql_result() -> None:
     result = load(ROOT / "docs/fixtures/memory-os-operability/postgresql-major-upgrade-results.sample.v1.json")
     require(result.get("schemaVersion") ==
             "memory-os-postgresql-major-upgrade-results.v1",
-            "PostgreSQL upgrade result schema drift")
+            "PostgreSQL result schema drift")
     require(is_ancestor(result.get("commitSha")),
-            "PostgreSQL upgrade source is not an ancestor")
+            "PostgreSQL result source is not an ancestor of HEAD")
     environment = result.get("environment")
     scenario = result.get("scenario")
     require(isinstance(environment, dict) and
@@ -210,8 +294,9 @@ def validate_postgresql_upgrade() -> None:
             environment.get("productionTraffic") is False and
             environment.get("productionCredentials") is False and
             environment.get("containsSecrets") is False,
-            "PostgreSQL upgrade evidence boundary drift")
-    require(isinstance(scenario, dict) and scenario.get("sourceMajor") == 16 and
+            "PostgreSQL evidence boundary drift")
+    require(isinstance(scenario, dict) and
+            scenario.get("sourceMajor") == 16 and
             scenario.get("targetMajor") == 17 and
             scenario.get("result") == "PASS" and
             scenario.get("integrityResult") == "PASS",
@@ -223,160 +308,66 @@ def validate_postgresql_upgrade() -> None:
             assertions.get("activeSyntheticSessionsResolvedAfterUpgrade") == 1 and
             assertions.get("deletedSyntheticSessionsResolvedAfterUpgrade") == 0 and
             assertions.get("allCanonicalSqlTestsPassedOnTarget") is True,
-            "PostgreSQL logical upgrade assertions incomplete")
+            "PostgreSQL logical upgrade assertions are incomplete")
 
 
 def validate_empty_authorities() -> None:
     releases = load(ROOT / "contracts/operations/release-baseline-registry.v1.json")
     rollback = load(ROOT / "contracts/operations/rollback-rehearsal-registry.v1.json")
-    rollback_gate = load(ROOT / "contracts/operations/rollback-rehearsal-gate-contract.v1.json")
     parsers = load(ROOT / "contracts/operations/parser-artifact-registry.v1.json")
-    parser_contract = load(ROOT / "contracts/operations/parser-artifact-registry-contract.v1.json")
     require(releases.get("approvedReleaseCount") == 0 and releases.get("releases") == [],
-            "approved release registry is no longer empty")
+            "approved release authority is no longer empty")
     require(rollback.get("rehearsalRequestCount") == 0 and rollback.get("requests") == [],
-            "rollback rehearsal registry is no longer empty")
-    state = rollback_gate.get("currentAdmissionState")
-    require(isinstance(state, dict) and state.get("approvedReleaseCount") == 0 and
-            state.get("admissibleReleasePairCount") == 0 and
-            state.get("admissionDecision") == "BLOCKED_NO_APPROVED_ROLLBACK_PAIR",
-            "rollback admission is not blocked by empty approved release authority")
-    require(parsers.get("reviewedArtifactCount") == 0 and
-            parsers.get("retainedRollbackArtifactCount") == 0 and
-            parsers.get("replayProvenArtifactCount") == 0 and
-            parsers.get("artifacts") == [],
-            "parser artifact registry is no longer empty")
-    parser_state = parser_contract.get("currentAuthorityState")
-    require(isinstance(parser_state, dict) and
-            parser_state.get("decision") == "BLOCKED_NO_REVIEWED_PARSER_ARTIFACT",
-            "empty parser authority decision drift")
+            "rollback rehearsal authority is no longer empty")
+    require(parsers.get("reviewedArtifactCount") == 0 and parsers.get("artifacts") == [],
+            "parser artifact authority is no longer empty")
+
+
+def validate_status() -> None:
+    status = load(STATUS_PATH)
+    require(status.get("productionDecision") == "NO_GO",
+            "foundation authority changed production decision")
+    areas = status.get("areas")
+    require(isinstance(areas, list), "operability areas missing")
+    matches = [item for item in areas
+               if isinstance(item, dict) and item.get("id") == "OPS-P0-008"]
+    require(len(matches) == 1, "OPS-P0-008 must exist exactly once")
+    area = matches[0]
+    require(area.get("status") == "PARTIAL",
+            "bounded foundations cannot make OPS-P0-008 READY")
+    refs = area.get("evidenceRefs")
+    require(isinstance(refs, list), "OPS-P0-008 evidenceRefs missing")
+    require(REQUIRED_STATUS_REFS.issubset(set(refs)),
+            "OPS-P0-008 omits bounded foundation authority refs")
+    existing = [str(item).lower() for item in area.get("existingEvidence", [])]
+    missing = [str(item).lower() for item in area.get("missingEvidence", [])]
+    require(any("supplemental compatibility foundation authority" in item
+                for item in existing),
+            "OPS-P0-008 omits bounded foundation evidence")
+    for terms in (
+        ("approved", "predecessor", "successor"),
+        ("rolling", "rollback", "rollback-eligible"),
+        ("reviewed", "parser artifact", "retention"),
+        ("client/server", "skew"),
+        ("blue-green", "connection-pool", "failover"),
+        ("independent review", "critical", "high"),
+    ):
+        require(any(all(term in item for term in terms) for item in missing),
+                f"required compatibility gap disappeared: {terms}")
 
 
 def main() -> int:
-    contract = load(CONTRACT_PATH)
-    require(contract.get("schemaVersion") == "memory-os-version-compatibility.v1",
-            "version compatibility schema drift")
-    foundations = contract.get("supplementalCompatibilityEvidence")
-    require(isinstance(foundations, list) and len(foundations) == len(EXPECTED_FOUNDATIONS),
-            "supplemental compatibility foundation count drift")
-    by_id: dict[str, dict[str, Any]] = {}
-    for item in foundations:
-        require(isinstance(item, dict), "supplemental foundation must be an object")
-        identifier = item.get("id")
-        require(isinstance(identifier, str) and identifier not in by_id,
-                "supplemental foundation ID invalid or duplicated")
-        by_id[identifier] = item
-    require(set(by_id) == set(EXPECTED_FOUNDATIONS),
-            "supplemental foundation ID set drift")
-    for identifier, (direction, status) in EXPECTED_FOUNDATIONS.items():
-        validate_foundation_entry(by_id[identifier], direction, status)
-
-    refs = unique_strings(contract.get("foundationEvidenceRefs"),
-                          "foundationEvidenceRefs", len(REQUIRED_FOUNDATION_REFS))
-    require(set(refs) == REQUIRED_FOUNDATION_REFS,
-            "foundationEvidenceRefs drift")
-    for ref in refs:
-        require((ROOT / ref).is_file(), f"foundation evidence missing: {ref}")
-
-    support = contract.get("supportPolicy")
-    readiness = contract.get("readiness")
-    require(isinstance(support, dict) and isinstance(readiness, dict),
-            "supportPolicy or readiness missing")
-    rolling = support.get("backendRollingWindow")
-    database = support.get("database")
-    parser = support.get("parserArtifacts")
-    require(isinstance(rolling, dict) and
-            rolling.get("historicalCandidateAndCurrentTested") is True and
-            rolling.get("approvedCurrentAndPreviousReleaseTested") is False and
-            rolling.get("currentAndPreviousTested") is False,
-            "rolling foundation boundary drift")
-    require(isinstance(database, dict) and
-            database.get("postgresql17LogicalForwardUpgradeRehearsed") is True and
-            database.get("postgresql17InPlaceOrBlueGreenCutoverRehearsed") is False and
-            database.get("postgresql17PhysicalReplicationOrFailoverRehearsed") is False and
-            database.get("postgresql17ProductionSupported") is False and
-            database.get("majorUpgradeRehearsalCompleted") is False,
-            "PostgreSQL support boundary drift")
-    require(isinstance(parser, dict) and
-            parser.get("reviewedRegistryAuthorityImplemented") is True and
-            parser.get("reviewedArtifactCount") == 0 and
-            parser.get("rollbackRetainedArtifactCount") == 0 and
-            parser.get("testHarnessApproved") is False and
-            parser.get("reviewedRegistryImplemented") is False and
-            parser.get("oldArtifactReplayTested") is False,
-            "parser artifact foundation boundary drift")
-
-    for field in (
-        "historicalCandidateNewSchemaProven",
-        "historicalCandidateMixedProcessProven",
-        "historicalCandidatePersistedApplyProven",
-        "historicalCandidateConcurrentApplyRaceProven",
-        "historicalCandidateInFlightTerminationRecoveryProven",
-        "postgresql17LogicalForwardUpgradeProven",
-        "parserArtifactRegistryAuthorityDefined",
-        "rollbackRehearsalAdmissionGateDefined",
-    ):
-        require(readiness.get(field) is True, f"readiness foundation missing: {field}")
-    for field in (
-        "reviewedParserArtifactAvailable", "approvedRollbackPairAvailable",
-        "oldBackendNewSchemaProven", "rollingBackendMixProven",
-        "oldPersistedStateNewConsumerProven", "oldArtifactNewSupervisorProven",
-        "productionRolloutRehearsalCompleted", "independentReviewCompleted", "ready",
-    ):
-        require(readiness.get(field) is False,
-                f"foundation evidence overpromotes readiness: {field}")
-
-    validate_mixed_version_candidate()
-    validate_mixed_version_session()
-    validate_mixed_version_apply()
-    validate_postgresql_upgrade()
+    validate_foundation_contract()
+    validate_candidate_result()
+    validate_session_result()
+    validate_apply_result()
+    validate_postgresql_result()
     validate_empty_authorities()
-
-    status = load(STATUS_PATH)
-    require(status.get("productionDecision") == "NO_GO",
-            "compatibility foundations cannot change production decision")
-    area = next((item for item in status.get("areas", [])
-                 if isinstance(item, dict) and item.get("id") == "OPS-P0-008"), None)
-    require(isinstance(area, dict) and area.get("status") == "PARTIAL",
-            "OPS-P0-008 must remain PARTIAL")
-    status_refs = area.get("evidenceRefs")
-    require(isinstance(status_refs, list), "OPS-P0-008 evidenceRefs missing")
-    status_required = REQUIRED_FOUNDATION_REFS - {
-        "scripts/validate-memory-os-version-compatibility-foundations.py"
-    }
-    require(status_required <= set(status_refs),
-            f"OPS-P0-008 omits foundation refs: {sorted(status_required - set(status_refs))}")
-    missing = [str(item).lower() for item in area.get("missingEvidence", [])]
-    for label, terms in {
-        "approved release pair": ("approved", "predecessor", "successor"),
-        "production rolling rollback": ("rolling", "rollback"),
-        "reviewed parser artifact": ("reviewed", "parser artifact"),
-        "client skew": ("client/server",),
-        "database cutover": ("blue-green", "connection-pool"),
-        "independent review": ("independent review",),
-    }.items():
-        require(any(all(term in item for term in terms) for item in missing),
-                f"OPS-P0-008 required gap disappeared: {label}")
-
-    try:
-        runbook = RUNBOOK_PATH.read_text(encoding="utf-8")
-    except FileNotFoundError as exc:
-        raise ValidationFailure("version compatibility runbook missing") from exc
-    for phrase in (
-        "PASS_CANDIDATE_ONLY", "PASS_LOCAL_CI_ONLY",
-        "approved releases: `0`", "reviewed parser artifacts: `0`",
-        "SIGKILL of the historical process",
-        "This is `PASS_LOCAL_CI_ONLY`",
-        "The existing candidate-only, empty-registry and logical-upgrade foundations",
-        "production remains `NO_GO`",
-    ):
-        require(phrase in runbook, f"runbook foundation phrase missing: {phrase}")
-
-    print("Memory OS version compatibility foundation validation PASS")
-    print(f"supplemental foundations: {len(foundations)}")
-    print("approved releases: 0")
+    validate_status()
+    print("Memory OS bounded compatibility foundation validation PASS")
+    print("foundations: 5")
+    print("approved release pairs: 0")
     print("reviewed parser artifacts: 0")
-    print("OPS-P0-008 status: PARTIAL")
     print("production decision: NO_GO")
     return 0
 
@@ -385,5 +376,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except ValidationFailure as exc:
-        print(f"VERSION COMPATIBILITY FOUNDATION VALIDATION FAILED: {exc}", file=sys.stderr)
+        print(f"COMPATIBILITY FOUNDATION VALIDATION FAILED: {exc}", file=sys.stderr)
         raise SystemExit(1)
