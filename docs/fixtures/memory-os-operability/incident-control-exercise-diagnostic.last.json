@@ -1,12 +1,12 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "incident-control-exercise",
-  "sourceCommitSha": "f63de25d1d9528b730c44978b25d10a42ba07bd0",
+  "sourceCommitSha": "6862d358016af727315357ee9fe089c95cac1778",
   "result": "FAIL",
   "exitCode": 1,
   "validationResult": "NOT_RUN",
   "validationExitCode": null,
-  "output": "INCIDENT CONTROL EXERCISE FAILED: one or more incident control scenarios failed\n",
+  "output": "INCIDENT CONTROL EXERCISE FAILED: failed repository validators: python scripts/validate-memory-os-authorization.py, python scripts/validate-memory-os-backup-restore.py, python scripts/validate-memory-os-parser-security.py\n",
   "containsSecrets": false,
   "productionEvidence": false,
   "humanTabletopCompleted": false
