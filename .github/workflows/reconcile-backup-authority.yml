@@ -1,0 +1,82 @@
+name: Reconcile Backup Authority
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/reconcile-backup-authority.yml"
+      - "contracts/operations/backup-local-foundation-evidence.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json"
+      - "docs/fixtures/memory-os-operability/local-object-version-restore-results.sample.v1.json"
+      - "scripts/validate-memory-os-backup-local-foundations.py"
+      - "scripts/reconcile-memory-os-backup-authority.py"
+      - "scripts/reconcile-memory-os-backup-semantic-overlay.py"
+  schedule:
+    - cron: "17 21 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reconcile-backup-authority-so
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout latest so
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm exact clean authority source
+        run: |
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+
+      - name: Validate exact-source local foundations
+        run: |
+          python -m py_compile \
+            scripts/validate-memory-os-local-logical-restore.py \
+            scripts/validate-memory-os-local-object-version-restore.py \
+            scripts/validate-memory-os-backup-local-foundations.py \
+            scripts/reconcile-memory-os-backup-authority.py \
+            scripts/reconcile-memory-os-backup-semantic-overlay.py
+          python scripts/validate-memory-os-local-logical-restore.py
+          python scripts/validate-memory-os-local-object-version-restore.py
+          python scripts/validate-memory-os-backup-local-foundations.py
+
+      - name: Normalize policy and local restore authority
+        run: |
+          python scripts/reconcile-memory-os-backup-authority.py
+          python scripts/reconcile-memory-os-backup-authority.py --check
+          python scripts/reconcile-memory-os-backup-semantic-overlay.py
+          python scripts/reconcile-memory-os-backup-semantic-overlay.py --check
+          python scripts/validate-memory-os-backup-restore.py
+          python scripts/validate-memory-os-backup-local-foundations.py
+          python scripts/validate-memory-os-operability.py
+
+      - name: Commit normalized backup authority
+        run: |
+          git add contracts/operations/production-operability-status.json
+          if git diff --cached --quiet; then
+            echo "Backup authority is already normalized."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs(backup): normalize local restore foundations"
+          git pull --rebase origin so
+          git push origin HEAD:so
