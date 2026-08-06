@@ -1,0 +1,61 @@
+{
+  "contractId": "memory-os.operability.parser-inflight-cancellation.v1",
+  "schemaVersion": "memory-os-parser-inflight-cancellation.v1",
+  "resultsSchemaVersion": "memory-os-parser-inflight-cancellation-results.v1",
+  "description": "Linux CI drill proving context cancellation after a supervised worker has emitted a complete frame interrupts the blocked pipe read promptly, returns context.Canceled instead of waiting for wall-clock timeout, reaps the process group before return, removes partial spool state and allows independently verified same-spool recovery. This is not host restart or production artifact evidence.",
+  "runnerCommand": "go test ./internal/parsersup -run ^TestSupervisorCancelsStartedWorkerPromptly$ -count=1",
+  "workingDirectory": "services/import-api",
+  "validator": "scripts/validate-memory-os-parser-inflight-cancellation.py",
+  "resultPath": "docs/fixtures/memory-os-operability/parser-inflight-cancellation-results.sample.v1.json",
+  "requiredAssertions": [
+    "worker emits a complete accepted frame before cancellation",
+    "supervisor has written non-empty spool data before cancellation",
+    "cancellation returns context.Canceled within one second",
+    "cancellation does not wait for the ten-second wall-clock limit",
+    "partial spool attempt is removed before Parse returns",
+    "same manager and spool ID accept a replacement worker",
+    "replacement output passes independent spool verification"
+  ],
+  "implementationGuards": [
+    "context cancellation advances the output pipe read deadline",
+    "context error is checked immediately after readFrame returns",
+    "deferred process-group SIGKILL and command.Wait remain active",
+    "worker harness emits one complete frame before sleeping"
+  ],
+  "privacy": {
+    "syntheticDataOnly": true,
+    "productionEvidence": false,
+    "processIdInEvidenceForbidden": true,
+    "workerPathInEvidenceForbidden": true,
+    "spoolPathInEvidenceForbidden": true,
+    "secretsInEvidenceForbidden": true,
+    "userContentInEvidenceForbidden": true
+  },
+  "limitations": [
+    "Linux GitHub Actions CI only",
+    "one worker process in one process group",
+    "child-process orphan scan is not independently measured",
+    "host or container restart is not executed",
+    "test worker artifact rather than reviewed production artifact",
+    "not production chaos evidence"
+  ],
+  "readiness": {
+    "contractDefined": true,
+    "implementationUpdated": true,
+    "testImplemented": true,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": false,
+    "exactSourcePassResultCommitted": false,
+    "childProcessOrphanScanCompleted": false,
+    "hostRestartExecuted": false,
+    "productionArtifactExecuted": false,
+    "productionReady": false
+  },
+  "evidenceRefs": [
+    "contracts/operations/parser-inflight-cancellation-contract.v1.json",
+    "services/import-api/internal/parsersup/supervisor_linux.go",
+    "services/import-api/internal/parsersup/worker.go",
+    "services/import-api/internal/parsersup/inflight_cancellation_drill_linux_test.go",
+    "scripts/validate-memory-os-parser-inflight-cancellation.py"
+  ]
+}
