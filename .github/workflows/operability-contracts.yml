@@ -23,6 +23,7 @@ on:
       - "scripts/reconcile-memory-os-live-load-status.py"
       - "scripts/validate-memory-os-migration-lifecycle.py"
       - "scripts/validate-memory-os-incident-response.py"
+      - "scripts/validate-memory-os-incident-tabletop.py"
       - "scripts/validate-memory-os-entry-docs.py"
       - "scripts/regenerate-memory-os-load-results.sh"
       - "docs/fixtures/memory-os-operability/**"
@@ -58,6 +59,7 @@ on:
       - "scripts/reconcile-memory-os-live-load-status.py"
       - "scripts/validate-memory-os-migration-lifecycle.py"
       - "scripts/validate-memory-os-incident-response.py"
+      - "scripts/validate-memory-os-incident-tabletop.py"
       - "scripts/validate-memory-os-entry-docs.py"
       - "scripts/regenerate-memory-os-load-results.sh"
       - "docs/fixtures/memory-os-operability/**"
@@ -104,6 +106,7 @@ jobs:
           python -m py_compile scripts/reconcile-memory-os-live-load-status.py
           python -m py_compile scripts/validate-memory-os-migration-lifecycle.py
           python -m py_compile scripts/validate-memory-os-incident-response.py
+          python -m py_compile scripts/validate-memory-os-incident-tabletop.py
           python -m py_compile scripts/validate-memory-os-entry-docs.py
           bash -n scripts/regenerate-memory-os-load-results.sh
 
@@ -115,6 +118,9 @@ jobs:
 
       - name: Validate incident response contract and runbook
         run: python scripts/validate-memory-os-incident-response.py
+
+      - name: Validate incident tabletop plan and evidence
+        run: python scripts/validate-memory-os-incident-tabletop.py
 
       - name: Validate observability event contract
         run: python scripts/validate-memory-os-observability.py
