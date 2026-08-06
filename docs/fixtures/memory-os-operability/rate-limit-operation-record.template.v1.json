@@ -1,0 +1,67 @@
+{
+  "schemaVersion": "memory-os-rate-limit-operation-record.v1",
+  "operationId": "RLOP-YYYYMMDDTHHMMSSZ-replace",
+  "incidentReference": "DRILL-REPLACE",
+  "sourceCommitSha": "0000000000000000000000000000000000000000",
+  "environment": "LOCAL",
+  "operator": "replace_operator",
+  "reviewer": "replace_reviewer",
+  "previousMode": "NORMAL_CONFIGURED",
+  "newMode": "ROUTE_FAIL_CLOSED",
+  "proxyMode": "TRUSTED_PROXY_DISABLED",
+  "affectedPolicyIds": [
+    "replace_policy"
+  ],
+  "startedAt": "1970-01-01T00:00:00Z",
+  "expiresAt": "1970-01-01T00:30:00Z",
+  "activationReason": "DRILL",
+  "lifecycle": "PLANNED",
+  "productionConfirmation": null,
+  "verificationResults": [
+    {
+      "checkId": "shared_store_atomicity",
+      "result": "NOT_RUN",
+      "evidenceRefs": []
+    },
+    {
+      "checkId": "policy_generation_exact_source",
+      "result": "NOT_RUN",
+      "evidenceRefs": []
+    },
+    {
+      "checkId": "trusted_proxy_boundary",
+      "result": "NOT_RUN",
+      "evidenceRefs": []
+    },
+    {
+      "checkId": "rejected_requests_no_account_session_replay_mutation",
+      "result": "NOT_RUN",
+      "evidenceRefs": []
+    },
+    {
+      "checkId": "rejected_requests_no_upload_apply_memory_mutation",
+      "result": "NOT_RUN",
+      "evidenceRefs": []
+    },
+    {
+      "checkId": "metrics_and_events_present",
+      "result": "NOT_RUN",
+      "evidenceRefs": []
+    },
+    {
+      "checkId": "bounded_canary",
+      "result": "NOT_RUN",
+      "evidenceRefs": []
+    },
+    {
+      "checkId": "temporary_mode_expired",
+      "result": "NOT_RUN",
+      "evidenceRefs": []
+    }
+  ],
+  "restoredAt": null,
+  "openRisks": [
+    "replace_risk_identifier"
+  ],
+  "evidenceRefs": []
+}
