@@ -1,12 +1,12 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "parser-inflight-cancellation",
-  "sourceCommitSha": "d4f5bead8c006c770d1e6f1f193cd6131d7ec8d2",
+  "sourceCommitSha": "fd75f025d8a4f20aea47208a3394a8f329b94942",
   "result": "PASS",
   "exitCode": 0,
-  "durationSeconds": 0.55887,
+  "durationSeconds": 0.522659,
   "cancellationLatencyMilliseconds": 0,
-  "output": "=== RUN   TestSupervisorCancelsStartedWorkerPromptly\n    inflight_cancellation_drill_linux_test.go:63: MEMORY_OS_CANCELLATION_LATENCY_MS=0\n--- PASS: TestSupervisorCancelsStartedWorkerPromptly (0.03s)\nPASS\nok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/parsersup\t0.035s\n",
+  "output": "=== RUN   TestSupervisorCancelsStartedWorkerPromptly\n    inflight_cancellation_drill_linux_test.go:63: MEMORY_OS_CANCELLATION_LATENCY_MS=0\n--- PASS: TestSupervisorCancelsStartedWorkerPromptly (0.07s)\nPASS\nok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/parsersup\t0.071s\n",
   "containsSecrets": false,
   "productionEvidence": false
 }
