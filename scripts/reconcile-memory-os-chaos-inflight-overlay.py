@@ -1,0 +1,194 @@
+#!/usr/bin/env python3
+"""Converge the in-flight cancellation slice of OPS-P0-009.
+
+The base chaos normalizer deliberately supports older evidence generations and
+therefore keeps the in-flight gap. This overlay runs after it: before an exact-
+source result exists the gap is retained; after PASS it is removed and the
+precise remaining child-process/host-restart gaps stay open.
+"""
+
+from __future__ import annotations
+
+import argparse
+import copy
+import datetime as dt
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/parser-inflight-cancellation-results.sample.v1.json"
+SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+GAP = "in-flight parser cancellation latency and process-group termination proof while the worker is blocked"
+EVIDENCE = "started-worker parser cancellation drill proving a completed frame reaches spool storage before cancellation, the blocked pipe read returns context.Canceled in under one second, cleanup removes the partial attempt and the same spool ID recovers with independent verification"
+REMAINING_GAPS = (
+    "independent child-process orphan/reaping scan after parser process-group termination",
+    "parser host or container restart recovery using a reviewed production artifact",
+)
+REFS = (
+    "contracts/operations/parser-inflight-cancellation-contract.v1.json",
+    "docs/fixtures/memory-os-operability/parser-inflight-cancellation-results.sample.v1.json",
+    "services/import-api/internal/parsersup/supervisor_linux.go",
+    "services/import-api/internal/parsersup/worker.go",
+    "services/import-api/internal/parsersup/inflight_cancellation_drill_linux_test.go",
+    "scripts/validate-memory-os-parser-inflight-cancellation.py",
+    "scripts/reconcile-memory-os-parser-inflight-cancellation.py",
+    "scripts/reconcile-memory-os-chaos-inflight-overlay.py",
+    ".github/workflows/parser-inflight-cancellation.yml",
+)
+
+
+class ReconcileFailure(RuntimeError):
+    pass
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ReconcileFailure(message)
+
+
+def load(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise ReconcileFailure(f"missing file: {path.relative_to(ROOT)}") from exc
+    except json.JSONDecodeError as exc:
+        raise ReconcileFailure(f"invalid JSON in {path.relative_to(ROOT)}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be an object: {path.relative_to(ROOT)}")
+    return value
+
+
+def source_is_ancestor(source_sha: Any) -> bool:
+    if not isinstance(source_sha, str) or SHA_RE.fullmatch(source_sha) is None:
+        return False
+    try:
+        return subprocess.run(
+            ["git", "merge-base", "--is-ancestor", source_sha, "HEAD"],
+            cwd=ROOT,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ).returncode == 0
+    except OSError:
+        return False
+
+
+def unique(values: list[Any]) -> list[Any]:
+    result: list[Any] = []
+    for value in values:
+        if value not in result:
+            result.append(value)
+    return result
+
+
+def validate_result(result: dict[str, Any]) -> None:
+    require(result.get("schemaVersion") ==
+            "memory-os-parser-inflight-cancellation-results.v1",
+            "in-flight result schemaVersion drift")
+    require(source_is_ancestor(result.get("commitSha")),
+            "in-flight result source SHA is not an ancestor")
+    require(result.get("result") == "PASS" and result.get("integrityResult") == "PASS" and
+            result.get("exitCode") == 0,
+            "in-flight result is not PASS")
+    environment = result.get("environment")
+    require(isinstance(environment, dict) and
+            environment.get("productionEvidence") is False and
+            environment.get("containsSecrets") is False,
+            "in-flight result evidence boundary drift")
+    assertions = result.get("assertions")
+    require(isinstance(assertions, dict), "in-flight result assertions missing")
+    for flag in (
+        "workerFrameObservedBeforeCancel", "spoolDataObservedBeforeCancel",
+        "returnedContextCanceled", "spoolResidueAbsent", "sameSpoolReusable",
+        "replacementSealValid", "independentVerificationMatched",
+    ):
+        require(assertions.get(flag) is True, f"in-flight assertion failed: {flag}")
+    latency = assertions.get("cancellationLatencyMilliseconds")
+    require(isinstance(latency, (int, float)) and 0 <= latency < 1000,
+            "in-flight cancellation latency is not below one second")
+
+
+def normalize(status: dict[str, Any]) -> dict[str, Any]:
+    require(status.get("productionDecision") == "NO_GO",
+            "in-flight overlay requires productionDecision NO_GO")
+    gate = next((item for item in status.get("areas", [])
+                 if isinstance(item, dict) and item.get("id") == "OPS-P0-009"), None)
+    require(isinstance(gate, dict), "OPS-P0-009 missing")
+    require(gate.get("status") == "PARTIAL", "OPS-P0-009 must remain PARTIAL")
+    existing = gate.get("existingEvidence")
+    missing = gate.get("missingEvidence")
+    refs = gate.get("evidenceRefs")
+    require(isinstance(existing, list), "OPS-P0-009 existingEvidence must be a list")
+    require(isinstance(missing, list), "OPS-P0-009 missingEvidence must be a list")
+    require(isinstance(refs, list), "OPS-P0-009 evidenceRefs must be a list")
+
+    if RESULT_PATH.is_file():
+        validate_result(load(RESULT_PATH))
+        while GAP in missing:
+            missing.remove(GAP)
+        if EVIDENCE not in existing:
+            existing.append(EVIDENCE)
+        for gap in REMAINING_GAPS:
+            if gap not in missing:
+                missing.append(gap)
+        for ref in REFS:
+            require((ROOT / ref).is_file(), f"in-flight evidence path missing: {ref}")
+            if ref not in refs:
+                refs.append(ref)
+    else:
+        while EVIDENCE in existing:
+            existing.remove(EVIDENCE)
+        if GAP not in missing:
+            missing.append(GAP)
+        for ref in REFS:
+            while ref in refs:
+                refs.remove(ref)
+
+    gate["existingEvidence"] = unique(existing)
+    gate["missingEvidence"] = unique(missing)
+    gate["evidenceRefs"] = unique(refs)
+    require(gate.get("status") == "PARTIAL", "OPS-P0-009 readiness changed unexpectedly")
+    require(status.get("productionDecision") == "NO_GO",
+            "production decision changed unexpectedly")
+    return status
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--check", action="store_true")
+    args = parser.parse_args()
+
+    current = load(STATUS_PATH)
+    candidate = normalize(copy.deepcopy(current))
+    candidate["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
+    left = copy.deepcopy(current)
+    right = copy.deepcopy(candidate)
+    left.pop("asOf", None)
+    right.pop("asOf", None)
+    changed = left != right
+
+    if args.check:
+        require(not changed, "in-flight chaos authority overlay is not normalized")
+        print("Memory OS in-flight chaos authority overlay check PASS")
+        return 0
+    if not changed:
+        print("Memory OS in-flight chaos authority overlay already normalized")
+        return 0
+    STATUS_PATH.write_text(
+        json.dumps(candidate, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    print("Normalized in-flight cancellation evidence within OPS-P0-009")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except ReconcileFailure as exc:
+        print(f"CHAOS IN-FLIGHT OVERLAY FAILED: {exc}", file=sys.stderr)
+        raise SystemExit(1)
