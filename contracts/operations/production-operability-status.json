@@ -295,7 +295,10 @@
         "database recovery verification for expired sessions, deleted accounts, leases and duplicate effects under failover",
         "in-flight parser cancellation latency and process-group termination proof while the worker is blocked",
         "independent child-process orphan/reaping scan after parser process-group termination",
-        "parser host or container restart recovery using a reviewed production artifact"
+        "parser host or container restart recovery using a reviewed production artifact",
+        "database loss or failover drill",
+        "object-store outage drill",
+        "expanded parser restart matrix across timeout, CPU, memory, cancellation, process-group and host-restart failures"
       ],
       "evidenceRefs": [
         "contracts/operations/chaos-failure-drill-contract.v1.json",
