@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+"""Register the approved-release registry foundation without approving a release."""
+
+from __future__ import annotations
+
+import datetime as dt
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+CONTRACT_PATH = ROOT / "contracts/operations/release-baseline-registry-contract.v1.json"
+REGISTRY_PATH = ROOT / "contracts/operations/release-baseline-registry.v1.json"
+STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+
+EXISTING = (
+    "append-only approved release baseline registry authority separating historical candidates, CI results, tags and branch heads from multi-role production release approval",
+    "empty release registry explicitly records that no approved predecessor or rollback-eligible release exists",
+    "release records require distinct Security, Operability and Release Owner approvals plus immutable API, migration, parser artifact and runtime configuration digests",
+    "fail-closed release registry validator prevents active or rejected historical candidates from being relabeled as approved releases",
+)
+MISSING = (
+    "implemented append-only release registration writer with exclusive release ID, tag and commit uniqueness enforcement",
+    "approved predecessor release record with three distinct required approvers and complete compatibility, restore, security, migration, parser and load evidence",
+    "rollback-eligible approved release whose binary and retained artifacts are verified against the expanded target schema",
+)
+REFS = (
+    "contracts/operations/release-baseline-registry-contract.v1.json",
+    "contracts/operations/release-baseline-registry.v1.json",
+    "docs/evidence/releases/README.md",
+    "scripts/validate-memory-os-release-baseline-registry.py",
+    "scripts/reconcile-memory-os-release-baseline-registry.py",
+)
+
+
+class ReconcileFailure(RuntimeError):
+    pass
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ReconcileFailure(message)
+
+
+def load(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise ReconcileFailure(f"missing file: {path.relative_to(ROOT)}") from exc
+    except json.JSONDecodeError as exc:
+        raise ReconcileFailure(f"invalid JSON: {path.relative_to(ROOT)}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be an object: {path.relative_to(ROOT)}")
+    return value
+
+
+def append_once(items: list[Any], value: str) -> bool:
+    if value in items:
+        return False
+    items.append(value)
+    return True
+
+
+def main() -> int:
+    contract = load(CONTRACT_PATH)
+    registry = load(REGISTRY_PATH)
+    readiness = contract.get("readiness")
+    require(isinstance(readiness, dict), "release registry readiness missing")
+    require(readiness.get("contractDefined") is True and
+            readiness.get("registryImplemented") is True and
+            readiness.get("validatorImplemented") is True,
+            "release registry foundations are incomplete")
+    require(readiness.get("writerImplemented") is False,
+            "release writer has not been reviewed or implemented")
+    require(registry.get("approvedReleaseCount") == 0 and
+            registry.get("releases") == [],
+            "foundation reconcile cannot run after a release is registered")
+    require(readiness.get("approvedReleaseCount") == 0 and
+            readiness.get("approvedPredecessorAvailable") is False and
+            readiness.get("rollbackEligibleReleaseAvailable") is False and
+            readiness.get("productionReady") is False,
+            "empty release registry readiness drift")
+
+    status = load(STATUS_PATH)
+    require(status.get("productionDecision") == "NO_GO",
+            "release registry foundation cannot change production decision")
+    gate = next((item for item in status.get("areas", [])
+                 if isinstance(item, dict) and item.get("id") == "OPS-P0-008"), None)
+    require(isinstance(gate, dict) and gate.get("status") == "PARTIAL",
+            "OPS-P0-008 must remain PARTIAL")
+    existing = gate.get("existingEvidence")
+    missing = gate.get("missingEvidence")
+    refs = gate.get("evidenceRefs")
+    require(isinstance(existing, list), "OPS-P0-008 existingEvidence must be a list")
+    require(isinstance(missing, list), "OPS-P0-008 missingEvidence must be a list")
+    require(isinstance(refs, list), "OPS-P0-008 evidenceRefs must be a list")
+
+    changed = False
+    for item in EXISTING:
+        changed = append_once(existing, item) or changed
+    for item in MISSING:
+        changed = append_once(missing, item) or changed
+    for ref in REFS:
+        require((ROOT / ref).is_file(), f"release registry evidence missing: {ref}")
+        changed = append_once(refs, ref) or changed
+
+    lowered = [str(item).lower() for item in missing]
+    require(any("approved" in item and "predecessor" in item and "release" in item
+                for item in lowered),
+            "approved predecessor release gap disappeared")
+    require(any("rollback-eligible" in item for item in lowered),
+            "rollback-eligible release gap disappeared")
+    require(gate.get("status") == "PARTIAL" and
+            status.get("productionDecision") == "NO_GO",
+            "release foundation changed readiness")
+
+    if not changed:
+        print("Release baseline registry foundation already reconciled")
+        return 0
+    status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
+    STATUS_PATH.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n",
+                           encoding="utf-8")
+    print("Registered empty release baseline registry; OPS-P0-008 remains PARTIAL")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except ReconcileFailure as exc:
+        print(f"RELEASE BASELINE REGISTRY RECONCILE FAILED: {exc}", file=sys.stderr)
+        raise SystemExit(1)
