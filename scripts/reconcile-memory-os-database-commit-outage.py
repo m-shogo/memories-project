@@ -1,0 +1,168 @@
+#!/usr/bin/env python3
+"""Register exact-source local database commit outage evidence conservatively."""
+
+from __future__ import annotations
+
+import datetime as dt
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/database-commit-outage-results.sample.v1.json"
+STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+
+OLD_MISSING = "database loss or failover drill"
+NEW_EXISTING = (
+    "local PostgreSQL commit-outage recovery drill proving a failed atomic Preview commit leaves zero durable rows, preserves sealed spool evidence, and a new attempt for the same source/Preview ID commits exactly once after connectivity returns",
+)
+NEW_MISSING = (
+    "production-shaped PostgreSQL process loss, connection-pool disruption and replication failover drill",
+    "direct commit resume from the preserved sealed spool without re-fetching and re-parsing the source",
+    "database recovery verification for expired sessions, deleted accounts, leases and duplicate effects under failover",
+)
+NEW_REFS = (
+    "contracts/operations/database-commit-outage-contract.v1.json",
+    "docs/fixtures/memory-os-operability/database-commit-outage-results.sample.v1.json",
+    "services/import-api/internal/importflow/database_outage_drill_linux_test.go",
+    "scripts/validate-memory-os-database-commit-outage.py",
+    "scripts/reconcile-memory-os-database-commit-outage.py",
+    ".github/workflows/database-commit-outage.yml",
+)
+
+
+class ReconcileFailure(RuntimeError):
+    pass
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ReconcileFailure(message)
+
+
+def load(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise ReconcileFailure(f"missing file: {path.relative_to(ROOT)}") from exc
+    except json.JSONDecodeError as exc:
+        raise ReconcileFailure(f"invalid JSON in {path.relative_to(ROOT)}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be an object: {path.relative_to(ROOT)}")
+    return value
+
+
+def source_is_ancestor(source_sha: str) -> bool:
+    try:
+        return subprocess.run(
+            ["git", "merge-base", "--is-ancestor", source_sha, "HEAD"],
+            cwd=ROOT,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ).returncode == 0
+    except OSError:
+        return False
+
+
+def main() -> int:
+    result = load(RESULT_PATH)
+    require(result.get("schemaVersion") == "memory-os-database-commit-outage-results.v1",
+            "database outage result schemaVersion drift")
+    source_sha = result.get("commitSha")
+    require(isinstance(source_sha, str) and SHA_RE.fullmatch(source_sha) is not None,
+            "database outage result source SHA is invalid")
+    require(source_is_ancestor(source_sha),
+            "database outage source SHA is not an ancestor of current HEAD")
+    require(result.get("result") == "PASS" and result.get("integrityResult") == "PASS",
+            "database outage result is not PASS")
+    environment = result.get("environment")
+    require(isinstance(environment, dict), "database outage environment missing")
+    require(environment.get("productionEvidence") is False,
+            "database outage result cannot be production evidence")
+    require(environment.get("containsSecrets") is False,
+            "database outage result must contain no secrets")
+    assertions = result.get("assertions")
+    require(isinstance(assertions, dict), "database outage assertions missing")
+    require(assertions.get("previewRowsDuringOutage") == 0,
+            "outage created durable Preview rows")
+    require(assertions.get("jobStateDuringOutage") == "preview_building",
+            "outage changed the import job state")
+    require(assertions.get("sealedSpoolEntriesAfterFailure") == 1,
+            "outage did not preserve sealed spool evidence")
+    require(assertions.get("previewRowsAfterRecovery") == 1,
+            "recovery did not commit exactly one Preview")
+    require(assertions.get("candidateRowsAfterRecovery") == 2 and
+            assertions.get("rejectionRowsAfterRecovery") == 1,
+            "recovery row accounting mismatch")
+    require(assertions.get("sameSourceAndPreviewIdReused") is True and
+            assertions.get("newSpoolAttemptUsed") is True,
+            "recovery attempt binding mismatch")
+
+    status = load(STATUS_PATH)
+    require(status.get("productionDecision") == "NO_GO",
+            "database outage evidence cannot change production decision")
+    gate = next((item for item in status.get("areas", [])
+                 if isinstance(item, dict) and item.get("id") == "OPS-P0-009"), None)
+    require(isinstance(gate, dict), "OPS-P0-009 missing")
+    require(gate.get("status") == "PARTIAL", "OPS-P0-009 must remain PARTIAL")
+    existing = gate.get("existingEvidence")
+    missing = gate.get("missingEvidence")
+    refs = gate.get("evidenceRefs")
+    require(isinstance(existing, list), "OPS-P0-009 existingEvidence must be a list")
+    require(isinstance(missing, list), "OPS-P0-009 missingEvidence must be a list")
+    require(isinstance(refs, list), "OPS-P0-009 evidenceRefs must be a list")
+
+    changed = False
+    if OLD_MISSING in missing:
+        missing.remove(OLD_MISSING)
+        changed = True
+    for item in NEW_EXISTING:
+        if item not in existing:
+            existing.append(item)
+            changed = True
+    for item in NEW_MISSING:
+        if item not in missing:
+            missing.append(item)
+            changed = True
+    for ref in NEW_REFS:
+        require((ROOT / ref).is_file(), f"database outage evidence path missing: {ref}")
+        if ref not in refs:
+            refs.append(ref)
+            changed = True
+
+    for phrase in (
+        "mixed-version failure",
+        "production multi-instance",
+        "production-shaped object-store",
+        "production-shaped PostgreSQL",
+        "direct commit resume",
+        "expired sessions",
+    ):
+        require(any(phrase in item for item in missing),
+                f"required OPS-P0-009 gap disappeared: {phrase}")
+    require(status.get("productionDecision") == "NO_GO",
+            "production decision changed unexpectedly")
+
+    if not changed:
+        print("Database commit outage authority already reconciled")
+        return 0
+
+    status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
+    STATUS_PATH.write_text(
+        json.dumps(status, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    print("Registered exact-source database commit outage recovery; OPS-P0-009 remains PARTIAL")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except ReconcileFailure as exc:
+        print(f"DATABASE COMMIT OUTAGE RECONCILE FAILED: {exc}", file=sys.stderr)
+        raise SystemExit(1)
