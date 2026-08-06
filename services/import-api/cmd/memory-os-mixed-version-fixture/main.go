@@ -19,9 +19,9 @@ import (
 )
 
 type output struct {
-	PreviewID     string `json:"previewId"`
-	PreviewSHA256 string `json:"previewSha256"`
-	CandidateCount int   `json:"candidateCount"`
+	PreviewID      string `json:"previewId"`
+	PreviewSHA256  string `json:"previewSha256"`
+	CandidateCount int    `json:"candidateCount"`
 }
 
 func fail(format string, arguments ...any) {
@@ -152,8 +152,8 @@ func main() {
 	}
 
 	if err := json.NewEncoder(os.Stdout).Encode(output{
-		PreviewID: result.PreviewID,
-		PreviewSHA256: result.PreviewHash,
+		PreviewID:      result.PreviewID,
+		PreviewSHA256:  result.PreviewHash,
 		CandidateCount: 1,
 	}); err != nil {
 		fail("encode fixture output: %v", err)
