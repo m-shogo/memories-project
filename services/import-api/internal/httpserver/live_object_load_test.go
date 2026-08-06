@@ -12,6 +12,7 @@ import (
 	"os"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -54,6 +55,13 @@ type issuedUpload struct {
 	RequiredHeaders map[string]string `json:"requiredHeaders"`
 }
 
+func liveObjectStageError(stage string, err error) error {
+	if err == nil {
+		err = fmt.Errorf("unspecified failure")
+	}
+	return fmt.Errorf("%s: %w", stage, err)
+}
+
 func runUploadLifecycle(
 	client *http.Client,
 	baseURL string,
@@ -86,15 +94,15 @@ func runUploadLifecycle(
 	}
 	issueResponse, err := client.Do(issueRequest)
 	if err != nil {
-		return liveHTTPSample{Duration: time.Since(started), Err: err}
+		return liveHTTPSample{Duration: time.Since(started), Err: liveObjectStageError("issue", err)}
 	}
 	issuePayload, readErr := io.ReadAll(io.LimitReader(issueResponse.Body, 1<<20))
 	closeErr := issueResponse.Body.Close()
 	if readErr != nil {
-		return liveHTTPSample{Duration: time.Since(started), Err: readErr}
+		return liveHTTPSample{Duration: time.Since(started), Err: liveObjectStageError("issue_read", readErr)}
 	}
 	if closeErr != nil {
-		return liveHTTPSample{Duration: time.Since(started), Err: closeErr}
+		return liveHTTPSample{Duration: time.Since(started), Err: liveObjectStageError("issue_close", closeErr)}
 	}
 	if issueResponse.StatusCode != http.StatusCreated {
 		return liveHTTPSample{Status: issueResponse.StatusCode, Duration: time.Since(started)}
@@ -102,10 +110,10 @@ func runUploadLifecycle(
 
 	var issued issuedUpload
 	if err := json.Unmarshal(issuePayload, &issued); err != nil {
-		return liveHTTPSample{Duration: time.Since(started), Err: err}
+		return liveHTTPSample{Duration: time.Since(started), Err: liveObjectStageError("issue_decode", err)}
 	}
 	if issued.AuthorizationID == "" || issued.UploadURL == "" || len(issued.RequiredHeaders) == 0 {
-		return liveHTTPSample{Duration: time.Since(started), Err: fmt.Errorf("incomplete upload authorization")}
+		return liveHTTPSample{Duration: time.Since(started), Err: liveObjectStageError("issue_contract", fmt.Errorf("incomplete upload authorization"))}
 	}
 
 	putRequest, err := http.NewRequest(http.MethodPut, issued.UploadURL, bytes.NewReader(payload))
@@ -120,15 +128,15 @@ func runUploadLifecycle(
 	}
 	putResponse, err := client.Do(putRequest)
 	if err != nil {
-		return liveHTTPSample{Duration: time.Since(started), Err: err}
+		return liveHTTPSample{Duration: time.Since(started), Err: liveObjectStageError("put", err)}
 	}
 	_, readErr = io.Copy(io.Discard, io.LimitReader(putResponse.Body, 1<<20))
 	closeErr = putResponse.Body.Close()
 	if readErr != nil {
-		return liveHTTPSample{Duration: time.Since(started), Err: readErr}
+		return liveHTTPSample{Duration: time.Since(started), Err: liveObjectStageError("put_read", readErr)}
 	}
 	if closeErr != nil {
-		return liveHTTPSample{Duration: time.Since(started), Err: closeErr}
+		return liveHTTPSample{Duration: time.Since(started), Err: liveObjectStageError("put_close", closeErr)}
 	}
 	if putResponse.StatusCode != http.StatusOK {
 		return liveHTTPSample{Status: putResponse.StatusCode, Duration: time.Since(started)}
@@ -145,15 +153,15 @@ func runUploadLifecycle(
 	}
 	completeResponse, err := client.Do(completeRequest)
 	if err != nil {
-		return liveHTTPSample{Duration: time.Since(started), Err: err}
+		return liveHTTPSample{Duration: time.Since(started), Err: liveObjectStageError("complete", err)}
 	}
 	_, readErr = io.Copy(io.Discard, io.LimitReader(completeResponse.Body, 1<<20))
 	closeErr = completeResponse.Body.Close()
 	if readErr != nil {
-		return liveHTTPSample{Duration: time.Since(started), Err: readErr}
+		return liveHTTPSample{Duration: time.Since(started), Err: liveObjectStageError("complete_read", readErr)}
 	}
 	if closeErr != nil {
-		return liveHTTPSample{Duration: time.Since(started), Err: closeErr}
+		return liveHTTPSample{Duration: time.Since(started), Err: liveObjectStageError("complete_close", closeErr)}
 	}
 	return liveHTTPSample{Status: completeResponse.StatusCode, Duration: time.Since(started)}
 }
@@ -202,6 +210,13 @@ func runLiveObjectBatch(
 		if sample.Err != nil {
 			result.Failures++
 			result.StatusClassCounts["transport_error"]++
+			stage := "unknown"
+			if value := sample.Err.Error(); value != "" {
+				if prefix, _, found := strings.Cut(value, ":"); found && prefix != "" {
+					stage = prefix
+				}
+			}
+			result.StatusClassCounts["transport_error_"+stage]++
 			continue
 		}
 		class := fmt.Sprintf("%dxx", sample.Status/100)
