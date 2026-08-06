@@ -40,14 +40,14 @@ type liveBatchResult struct {
 }
 
 type liveScenarioResult struct {
-	ScenarioID        string          `json:"scenarioId"`
-	WorkloadType      string          `json:"workloadType"`
-	DependencyMode    string          `json:"dependencyMode"`
-	StartedAt         string          `json:"startedAt"`
-	Batch             liveBatchResult `json:"batch"`
-	IntegrityResult   string          `json:"integrityResult"`
-	DatabaseAssertions map[string]int `json:"databaseAssertions"`
-	Result            string          `json:"result"`
+	ScenarioID         string          `json:"scenarioId"`
+	WorkloadType       string          `json:"workloadType"`
+	DependencyMode     string          `json:"dependencyMode"`
+	StartedAt          string          `json:"startedAt"`
+	Batch              liveBatchResult `json:"batch"`
+	IntegrityResult    string          `json:"integrityResult"`
+	DatabaseAssertions map[string]int  `json:"databaseAssertions"`
+	Result             string          `json:"result"`
 }
 
 type liveLoadResultsDocument struct {
@@ -55,14 +55,14 @@ type liveLoadResultsDocument struct {
 	CommitSHA     string `json:"commitSha"`
 	GeneratedAt   string `json:"generatedAt"`
 	Environment   struct {
-		OS                string `json:"os"`
-		Arch              string `json:"arch"`
-		NumCPU            int    `json:"numCpu"`
-		GoVersion         string `json:"goVersion"`
-		DatabaseMode      string `json:"databaseMode"`
-		ObjectStoreMode   string `json:"objectStoreMode"`
-		ProductionEvidence bool  `json:"productionEvidence"`
-		Note              string `json:"note"`
+		OS                 string `json:"os"`
+		Arch               string `json:"arch"`
+		NumCPU             int    `json:"numCpu"`
+		GoVersion          string `json:"goVersion"`
+		DatabaseMode       string `json:"databaseMode"`
+		ObjectStoreMode    string `json:"objectStoreMode"`
+		ProductionEvidence bool   `json:"productionEvidence"`
+		Note               string `json:"note"`
 	} `json:"environment"`
 	Scenarios []liveScenarioResult `json:"scenarios"`
 }
@@ -163,7 +163,7 @@ func liveRequest(method, url, token string, body []byte) (*http.Request, error) 
 	return request, nil
 }
 
-func writeLiveLoadResults(t *testing.T, sourceCommit string, preview liveScenarioResult, applyResult liveScenarioResult) {
+func writeLiveLoadResults(t *testing.T, sourceCommit string, preview, applyResult liveScenarioResult) {
 	t.Helper()
 	path := os.Getenv("MEMORY_OS_LIVE_LOAD_RESULTS_PATH")
 	if path == "" {
@@ -196,11 +196,10 @@ func writeLiveLoadResults(t *testing.T, sourceCommit string, preview liveScenari
 	}
 }
 
-// TestLivePostgresPreviewReadAndIdempotentApplyLoad is an explicitly gated
-// production-shaped checkpoint. It drives the real HTTP handlers, bearer
-// session store, deployment PostgreSQL principal, FORCE RLS transaction scope,
-// Preview repository and Apply repository. It is not production capacity
-// evidence: the database and object-store harness are local CI services.
+// TestLivePostgresPreviewReadAndIdempotentApplyLoad drives the real HTTP
+// handlers, bearer-session store, deployment PostgreSQL principal, FORCE RLS
+// transaction scope, Preview repository and Apply repository. It is a local
+// dependency checkpoint, not production capacity evidence.
 func TestLivePostgresPreviewReadAndIdempotentApplyLoad(t *testing.T) {
 	if os.Getenv("MEMORY_OS_RUN_LIVE_LOAD") != "1" {
 		t.Skip("set MEMORY_OS_RUN_LIVE_LOAD=1 to run the live PostgreSQL load checkpoint")
@@ -218,7 +217,9 @@ func TestLivePostgresPreviewReadAndIdempotentApplyLoad(t *testing.T) {
 	previewBatch := runLiveHTTPBatch(500, 24, func(int) (*http.Request, error) {
 		return liveRequest(http.MethodGet, previewPath, token, nil)
 	})
-	if previewBatch.StatusClassCounts["2xx"] != previewBatch.Requests || previewBatch.StatusClassCounts["5xx"] != 0 || previewBatch.StatusClassCounts["transport_error"] != 0 {
+	if previewBatch.StatusClassCounts["2xx"] != previewBatch.Requests ||
+		previewBatch.StatusClassCounts["5xx"] != 0 ||
+		previewBatch.StatusClassCounts["transport_error"] != 0 {
 		t.Fatalf("live preview load violated its status boundary: %+v", previewBatch)
 	}
 
@@ -248,7 +249,6 @@ func TestLivePostgresPreviewReadAndIdempotentApplyLoad(t *testing.T) {
 		}
 	}
 
-	// After the burst has drained, the exact request must replay successfully.
 	response, payload := server.request(t, http.MethodPost, "/v1/previews/"+previewID+"/apply", token, map[string]any{
 		"previewSha256":   previewSHA,
 		"idempotencyKey":  idempotencyKey,
@@ -267,22 +267,47 @@ func TestLivePostgresPreviewReadAndIdempotentApplyLoad(t *testing.T) {
 		t.Fatalf("post-load request was not an exact replay: %s", payload)
 	}
 
-	var memoryItems int
-	if err := server.pool.QueryRow(context.Background(),
-		`SELECT count(*) FROM memory_os.memory_item
-		 WHERE owner_account_id = $1 AND source_preview_id = $2`, owner, previewID,
-	).Scan(&memoryItems); err != nil {
-		t.Fatal(err)
+	assertionCounts := map[string]int{}
+	queries := map[string]struct {
+		SQL  string
+		Args []any
+	}{
+		"preview_ready_rows": {
+			SQL:  `SELECT count(*) FROM memory_os.preview_ready WHERE id = $1`,
+			Args: []any{previewID},
+		},
+		"preview_candidate_rows": {
+			SQL:  `SELECT count(*) FROM memory_os.preview_candidate WHERE preview_id = $1`,
+			Args: []any{previewID},
+		},
+		"preview_rejection_rows": {
+			SQL:  `SELECT count(*) FROM memory_os.preview_rejection WHERE preview_id = $1`,
+			Args: []any{previewID},
+		},
+		"memory_item_rows": {
+			SQL: `SELECT count(*) FROM memory_os.memory_item
+			      WHERE owner_account_id = $1 AND source_preview_id = $2`,
+			Args: []any{owner, previewID},
+		},
+		"apply_confirmation_rows": {
+			SQL: `SELECT count(*) FROM memory_os.apply_confirmation
+			      WHERE owner_account_id = $1 AND idempotency_key = $2`,
+			Args: []any{owner, idempotencyKey},
+		},
 	}
-	var confirmations int
-	if err := server.pool.QueryRow(context.Background(),
-		`SELECT count(*) FROM memory_os.apply_confirmation
-		 WHERE owner_account_id = $1 AND idempotency_key = $2`, owner, idempotencyKey,
-	).Scan(&confirmations); err != nil {
-		t.Fatal(err)
+	for name, query := range queries {
+		var count int
+		if err := server.pool.QueryRow(context.Background(), query.SQL, query.Args...).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		assertionCounts[name] = count
 	}
-	if memoryItems != 2 || confirmations != 1 {
-		t.Fatalf("post-load database integrity mismatch: memory_items=%d confirmations=%d", memoryItems, confirmations)
+	if assertionCounts["preview_ready_rows"] != 1 ||
+		assertionCounts["preview_candidate_rows"] != 2 ||
+		assertionCounts["preview_rejection_rows"] != 1 ||
+		assertionCounts["memory_item_rows"] != 2 ||
+		assertionCounts["apply_confirmation_rows"] != 1 {
+		t.Fatalf("post-load database integrity mismatch: %+v", assertionCounts)
 	}
 
 	previewResult := liveScenarioResult{
@@ -293,8 +318,9 @@ func TestLivePostgresPreviewReadAndIdempotentApplyLoad(t *testing.T) {
 		Batch:           previewBatch,
 		IntegrityResult: "PASS",
 		DatabaseAssertions: map[string]int{
-			"preview_ready_rows": 1,
-			"memory_item_rows":   0,
+			"preview_ready_rows":     assertionCounts["preview_ready_rows"],
+			"preview_candidate_rows": assertionCounts["preview_candidate_rows"],
+			"preview_rejection_rows": assertionCounts["preview_rejection_rows"],
 		},
 		Result: "PASS",
 	}
@@ -306,8 +332,8 @@ func TestLivePostgresPreviewReadAndIdempotentApplyLoad(t *testing.T) {
 		Batch:           applyBatch,
 		IntegrityResult: "PASS",
 		DatabaseAssertions: map[string]int{
-			"memory_item_rows":      memoryItems,
-			"apply_confirmation_rows": confirmations,
+			"memory_item_rows":        assertionCounts["memory_item_rows"],
+			"apply_confirmation_rows": assertionCounts["apply_confirmation_rows"],
 		},
 		Result: "PASS",
 	}
