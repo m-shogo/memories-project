@@ -1,0 +1,270 @@
+name: Chaos and Failure Drills v2
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/chaos-failure-drills-v2.yml"
+      - "contracts/operations/chaos-failure-drill-contract.v2.json"
+      - "services/import-api/internal/httpserver/interruption_drill_test.go"
+      - "services/import-api/internal/parsersup/restart_drill_linux_test.go"
+      - "services/import-api/internal/importflow/object_outage_drill_linux_test.go"
+      - "services/import-api/internal/importflow/flow.go"
+      - "services/import-api/internal/objectstore/client.go"
+      - "scripts/validate-memory-os-chaos-failure-drills-v2.py"
+      - "scripts/reconcile-memory-os-chaos-failure-drills-v2.py"
+  schedule:
+    - cron: "19 19 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: chaos-failure-drills-v2-so
+  cancel-in-progress: false
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: memory_os_security
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d memory_os_security"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      MEMORY_OS_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/memory_os_security
+      MEMORY_OS_TEST_S3_ENDPOINT: http://127.0.0.1:9000
+      MEMORY_OS_TEST_S3_ACCESS_KEY: minioadmin
+      MEMORY_OS_TEST_S3_SECRET_KEY: minioadmin
+
+    steps:
+      - name: Checkout latest so
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Start MinIO
+        run: >-
+          docker run -d --name minio -p 9000:9000
+          -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin
+          minio/minio server /data
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: services/import-api/go.sum
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm exact clean source
+        run: |
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+
+      - name: Compile validators and check formatting
+        run: |
+          python -m py_compile \
+            scripts/validate-memory-os-chaos-failure-drills-v2.py \
+            scripts/reconcile-memory-os-chaos-failure-drills-v2.py
+          test -z "$(gofmt -l \
+            services/import-api/internal/httpserver/interruption_drill_test.go \
+            services/import-api/internal/parsersup/restart_drill_linux_test.go \
+            services/import-api/internal/importflow/object_outage_drill_linux_test.go)"
+          python scripts/validate-memory-os-chaos-failure-drills-v2.py
+
+      - name: Execute exact-source v2 drills
+        id: drills
+        run: |
+          python - <<'PY'
+          import datetime as dt
+          import json
+          import os
+          import subprocess
+          import time
+          from pathlib import Path
+
+          root = Path.cwd()
+          workdir = root / "services/import-api"
+          source_sha = subprocess.check_output(
+              ["git", "rev-parse", "HEAD"], cwd=root, text=True
+          ).strip()
+          definitions = [
+              (
+                  "api-graceful-interruption-drain",
+                  ["go", "test", "./internal/httpserver", "-run", "^TestHTTPServerGracefulInterruptionDrainsInFlightRequest$", "-count=1"],
+              ),
+              (
+                  "parser-restart-after-protocol-failure",
+                  ["go", "test", "./internal/parsersup", "-run", "^TestSupervisorRestartsSameSpoolAfterFailedAttempt$", "-count=1"],
+              ),
+              (
+                  "object-store-outage-and-recovery",
+                  ["go", "test", "./internal/importflow", "-run", "^TestFlowRecoversAfterObjectStoreOutage$", "-count=1"],
+              ),
+          ]
+          scenarios = []
+          diagnostics = []
+          success = True
+          for scenario_id, command in definitions:
+              started = time.monotonic()
+              completed = subprocess.run(
+                  command,
+                  cwd=workdir,
+                  env=os.environ.copy(),
+                  text=True,
+                  stdout=subprocess.PIPE,
+                  stderr=subprocess.STDOUT,
+                  check=False,
+              )
+              duration = round(time.monotonic() - started, 6)
+              passed = completed.returncode == 0
+              success = success and passed
+              scenario = {
+                  "scenarioId": scenario_id,
+                  "result": "PASS" if passed else "FAIL",
+                  "integrityResult": "PASS" if passed else "FAIL",
+                  "exitCode": completed.returncode,
+                  "durationSeconds": duration,
+              }
+              if scenario_id == "object-store-outage-and-recovery" and passed:
+                  scenario["assertions"] = {
+                      "durablePreviewRowsDuringOutage": 0,
+                      "spoolEntriesDuringOutage": 0,
+                      "durablePreviewRowsAfterRecovery": 1,
+                      "acceptedRecordsAfterRecovery": 2,
+                      "rejectedRecordsAfterRecovery": 1,
+                  }
+              scenarios.append(scenario)
+              diagnostics.append({
+                  "scenarioId": scenario_id,
+                  "exitCode": completed.returncode,
+                  "output": completed.stdout[-4000:],
+              })
+
+          for scenario_id in (
+              "database-loss-or-failover",
+              "mixed-version-failure-and-rollback",
+          ):
+              scenarios.append({
+                  "scenarioId": scenario_id,
+                  "result": "NOT_RUN",
+                  "integrityResult": "NOT_RUN",
+                  "exitCode": None,
+                  "durationSeconds": 0,
+              })
+
+          generated_at = dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z")
+          diagnostic = {
+              "schemaVersion": "memory-os-validator-diagnostic.v1",
+              "workflow": "chaos-and-failure-drills-v2",
+              "sourceCommitSha": source_sha,
+              "result": "PASS" if success else "FAIL",
+              "generatedAt": generated_at,
+              "scenarios": diagnostics,
+              "containsSecrets": False,
+              "productionEvidence": False,
+          }
+          diagnostic_path = root / "docs/fixtures/memory-os-operability/chaos-failure-drill-v2-diagnostic.last.json"
+          diagnostic_path.parent.mkdir(parents=True, exist_ok=True)
+          diagnostic_path.write_text(
+              json.dumps(diagnostic, indent=2, ensure_ascii=False) + "\n",
+              encoding="utf-8",
+          )
+
+          if success:
+              result = {
+                  "schemaVersion": "memory-os-chaos-failure-drill-results.v2",
+                  "commitSha": source_sha,
+                  "generatedAt": generated_at,
+                  "environment": {
+                      "mode": "GITHUB_ACTIONS_UBUNTU_LINUX_POSTGRES16_MINIO",
+                      "productionEvidence": False,
+                      "containsSecrets": False,
+                      "syntheticDataOnly": True,
+                  },
+                  "scenarios": scenarios,
+                  "overallResult": "PARTIAL_PASS",
+                  "limitations": [
+                      "not production chaos",
+                      "database failover not executed",
+                      "mixed-version failure not executed",
+                      "object outage uses an unreachable client endpoint rather than killing the MinIO process",
+                      "parser restart matrix incomplete",
+                      "multi-instance API interruption not executed",
+                      "ephemeral PostgreSQL 16 and MinIO only",
+                  ],
+              }
+              result_path = root / "docs/fixtures/memory-os-operability/chaos-failure-drill-results.v2.sample.json"
+              result_path.write_text(
+                  json.dumps(result, indent=2, ensure_ascii=False) + "\n",
+                  encoding="utf-8",
+              )
+
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"source_sha={source_sha}\n")
+              output.write(f"success={'true' if success else 'false'}\n")
+          PY
+
+      - name: Validate generated exact-source v2 evidence
+        if: steps.drills.outputs.success == 'true'
+        env:
+          EXPECTED_COMMIT_SHA: ${{ steps.drills.outputs.source_sha }}
+        run: python scripts/validate-memory-os-chaos-failure-drills-v2.py
+
+      - name: Commit v2 result or bounded failure diagnostic
+        run: |
+          git add docs/fixtures/memory-os-operability/chaos-failure-drill-v2-diagnostic.last.json
+          if [ "${{ steps.drills.outputs.success }}" = "true" ]; then
+            git add docs/fixtures/memory-os-operability/chaos-failure-drill-results.v2.sample.json
+          fi
+          if git diff --cached --quiet; then
+            echo "v2 failure-drill evidence is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            if [ "${{ steps.drills.outputs.success }}" = "true" ]; then
+              git commit -m "test(chaos): record exact-source object outage recovery"
+            else
+              git commit -m "test(chaos): record v2 failure-drill diagnostic"
+            fi
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+
+      - name: Reconcile v2 operability authority
+        if: steps.drills.outputs.success == 'true'
+        run: |
+          python scripts/reconcile-memory-os-chaos-failure-drills-v2.py
+          python scripts/validate-memory-os-chaos-failure-drills-v2.py
+          python scripts/validate-memory-os-operability.py
+          git add contracts/operations/production-operability-status.json
+          if git diff --cached --quiet; then
+            echo "Chaos/failure-drill v2 authority is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(chaos): reconcile object outage recovery evidence"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+
+      - name: Fail when a v2 drill failed
+        if: steps.drills.outputs.success != 'true'
+        run: exit 1
