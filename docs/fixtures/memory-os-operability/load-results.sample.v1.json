@@ -75,7 +75,7 @@
     {
       "scenarioId": "ratelimit-store-failure-mock",
       "workloadType": "DEPENDENCY_DEGRADED",
-      "dependencyMode": "MOCK",
+      "dependencyMode": "FAILURE_INJECTED",
       "startedAt": "2026-07-29T00:44:41Z",
       "durationSeconds": 0.060775083,
       "concurrency": 16,
