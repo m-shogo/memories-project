@@ -1,4 +1,4 @@
-name: Reconcile Metrics Scrape Status
+name: Reconcile Metrics Authority
 
 on:
   push:
@@ -7,6 +7,8 @@ on:
     paths:
       - ".github/workflows/reconcile-metrics-scrape-status.yml"
       - "contracts/operations/metrics-scrape-contract.v1.json"
+      - "contracts/operations/metrics-dashboard-contract.v1.json"
+      - "contracts/operations/metrics-retention-error-budget-contract.v1.json"
       - "services/import-api/internal/metrics/prometheus.go"
       - "services/import-api/internal/metrics/scrape.go"
       - "services/import-api/internal/metrics/prometheus_test.go"
@@ -14,15 +16,17 @@ on:
       - "services/import-api/internal/httpserver/observability.go"
       - "services/import-api/internal/httpserver/metrics_scrape_test.go"
       - "scripts/validate-memory-os-metrics-scrape.py"
+      - "scripts/validate-memory-os-metrics-operations.py"
       - "scripts/reconcile-memory-os-metrics-contract.py"
       - "scripts/reconcile-memory-os-metrics-scrape-status.py"
+      - "scripts/reconcile-memory-os-metrics-operations.py"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: reconcile-metrics-scrape-status-so
+  group: reconcile-metrics-authority-so
   cancel-in-progress: true
 
 jobs:
@@ -65,20 +69,25 @@ jobs:
             internal/httpserver/metrics_scrape_test.go)"
           go test ./internal/metrics ./internal/httpserver -count=1
 
-      - name: Validate scrape contracts
+      - name: Compile and validate metrics definitions
         run: |
           python -m py_compile \
             scripts/validate-memory-os-metrics-scrape.py \
+            scripts/validate-memory-os-metrics-operations.py \
             scripts/reconcile-memory-os-metrics-contract.py \
-            scripts/reconcile-memory-os-metrics-scrape-status.py
+            scripts/reconcile-memory-os-metrics-scrape-status.py \
+            scripts/reconcile-memory-os-metrics-operations.py
           python scripts/validate-memory-os-metrics-scrape.py
+          python scripts/validate-memory-os-metrics-operations.py
 
       - name: Reconcile primary contract and status
         run: |
           python scripts/reconcile-memory-os-metrics-contract.py
           python scripts/reconcile-memory-os-metrics-scrape-status.py
+          python scripts/reconcile-memory-os-metrics-operations.py
           python scripts/validate-memory-os-metrics.py
           python scripts/validate-memory-os-metrics-scrape.py
+          python scripts/validate-memory-os-metrics-operations.py
           python scripts/validate-memory-os-operability.py
           python scripts/validate-memory-os-entry-docs.py
 
@@ -88,11 +97,11 @@ jobs:
             contracts/operations/metrics-contract.v1.json \
             contracts/operations/production-operability-status.json
           if git diff --cached --quiet; then
-            echo "Metrics scrape authority is already current."
+            echo "Metrics authority is already current."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "docs(metrics): reconcile scrape authority"
+          git commit -m "docs(metrics): reconcile operations authority"
           git pull --rebase origin so
           git push origin HEAD:so
