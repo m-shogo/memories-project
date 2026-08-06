@@ -32,9 +32,16 @@ func TestPrometheusExpositionIsDeterministicAndPrivate(t *testing.T) {
 		`memory_os_http_request_duration_seconds_bucket{route_template="other",route_class="PUBLIC_AUTHENTICATED",le="+Inf"} 1`,
 		`memory_os_http_request_duration_seconds_count{route_template="other",route_class="PUBLIC_AUTHENTICATED"} 1`,
 	} {
+		// The raw literals above intentionally contain quotes exactly as the
+		// Prometheus text format emits them; normalize the source-only escaping
+		// so this assertion cannot pass on a backslash-containing output.
+		required = strings.ReplaceAll(required, `\"`, `"`)
 		if !strings.Contains(first, required) {
 			t.Fatalf("Prometheus exposition missing %q:\n%s", required, first)
 		}
+	}
+	if strings.Contains(first, `\"`) {
+		t.Fatalf("Prometheus exposition contains escaped source literals:\n%s", first)
 	}
 	for _, forbidden := range []string{
 		"CANARY_JOB_123",
