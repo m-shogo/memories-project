@@ -283,18 +283,19 @@
         "machine-readable failure-drill inventory with exact-source CI result separation from production-shaped and production chaos evidence",
         "local PostgreSQL 16 plus MinIO import-flow outage drill proving an unreachable object-store endpoint fails before parse/commit, leaves no Preview or spool residue and the exact same request succeeds once connectivity returns",
         "v2 machine-readable failure-drill authority superseding the two-scenario v1 inventory while preserving CI-vs-production evidence separation",
+        "five-class parser restart recovery matrix covering protocol truncation, wall-clock timeout, CPU limit kill, memory limit kill and pre-start cancellation; each failure leaves no residue and permits independently verified same-spool recovery",
         "local PostgreSQL commit-outage recovery drill proving a failed atomic Preview commit leaves zero durable rows, preserves sealed spool evidence, and a new attempt for the same source/Preview ID commits exactly once after connectivity returns"
       ],
       "missingEvidence": [
         "mixed-version failure drill",
-        "expanded parser restart matrix across timeout, CPU, memory, cancellation, process-group and host-restart failures",
         "production multi-instance interruption, dependency and recovery drills with independent review",
         "production-shaped object-store process outage or network-partition drill with TLS, scoped credentials, lifecycle controls and recovery verification",
-        "object-store outage drill",
         "production-shaped PostgreSQL process loss, connection-pool disruption and replication failover drill",
         "direct commit resume from the preserved sealed spool without re-fetching and re-parsing the source",
         "database recovery verification for expired sessions, deleted accounts, leases and duplicate effects under failover",
-        "database loss or failover drill"
+        "in-flight parser cancellation latency and process-group termination proof while the worker is blocked",
+        "independent child-process orphan/reaping scan after parser process-group termination",
+        "parser host or container restart recovery using a reviewed production artifact"
       ],
       "evidenceRefs": [
         "contracts/operations/chaos-failure-drill-contract.v1.json",
@@ -315,7 +316,16 @@
         "services/import-api/internal/importflow/database_outage_drill_linux_test.go",
         "scripts/validate-memory-os-database-commit-outage.py",
         "scripts/reconcile-memory-os-database-commit-outage.py",
-        ".github/workflows/database-commit-outage.yml"
+        ".github/workflows/database-commit-outage.yml",
+        "contracts/operations/parser-restart-matrix-contract.v1.json",
+        "docs/fixtures/memory-os-operability/parser-restart-matrix-results.sample.v1.json",
+        "services/import-api/internal/parsersup/restart_matrix_drill_linux_test.go",
+        "scripts/validate-memory-os-parser-restart-matrix.py",
+        "scripts/reconcile-memory-os-parser-restart-matrix.py",
+        ".github/workflows/parser-restart-matrix.yml",
+        "services/import-api/internal/importflow/resume.go",
+        "scripts/reconcile-memory-os-chaos-authority.py",
+        ".github/workflows/reconcile-chaos-authority.yml"
       ]
     },
     {
