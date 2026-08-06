@@ -1,0 +1,355 @@
+{
+  "contractId": "memory-os.operability.incident-response.v1",
+  "schemaVersion": "memory-os-incident-response.v1",
+  "description": "Binding incident-management policy for Memory OS. It defines severity, command roles, containment boundaries, evidence preservation, recovery verification and closure criteria without claiming that paging, external contacts or production drills are configured.",
+  "canonicalRunbook": "docs/runbooks/memory-os-incident-response.md",
+  "validator": "scripts/validate-memory-os-incident-response.py",
+  "productionDecision": "NO_GO",
+  "principles": [
+    "protect user data and tenant isolation before availability or cosmetic recovery",
+    "stop destructive or ambiguous automation before attempting cleanup",
+    "preserve evidence without copying secrets or personal content into incident notes",
+    "distinguish confirmed fact, known prior condition, hypothesis and opinion",
+    "do not describe a component retry, transaction rollback or process restart as full recovery",
+    "recovery is complete only after independent integrity and non-resurrection verification",
+    "unknown state remains quarantined or read-only until classified",
+    "incident command owns tradeoffs; individual operators do not improvise destructive recovery"
+  ],
+  "severityLevels": [
+    {
+      "id": "SEV0",
+      "name": "CRITICAL_SECURITY_OR_INTEGRITY",
+      "examples": [
+        "confirmed or credible cross-tenant data visibility",
+        "unauthorized account or session authority",
+        "destructive memory mutation or deletion resurrection",
+        "credential, signing-key or database-superuser compromise",
+        "evidence that production data cannot be trusted"
+      ],
+      "acknowledgementTargetMinutes": 5,
+      "incidentCommanderRequired": true,
+      "securityPrivacyLeadRequired": true,
+      "changeFreezeRequired": true,
+      "defaultContainment": "FAIL_CLOSED_AND_ISOLATE",
+      "userCommunicationAssessmentRequired": true,
+      "closureApproval": [
+        "INCIDENT_COMMANDER",
+        "SECURITY_PRIVACY_LEAD",
+        "SYSTEM_OWNER"
+      ]
+    },
+    {
+      "id": "SEV1",
+      "name": "MAJOR_AVAILABILITY_OR_DATA_RISK",
+      "examples": [
+        "widespread Import API, PostgreSQL or object-store outage",
+        "migration or backfill failure with possible data-integrity impact",
+        "unbounded queue, resource exhaustion or repeated internal failures",
+        "account deletion or export unavailable for a material user segment"
+      ],
+      "acknowledgementTargetMinutes": 15,
+      "incidentCommanderRequired": true,
+      "securityPrivacyLeadRequired": false,
+      "changeFreezeRequired": true,
+      "defaultContainment": "STOP_AFFECTED_WRITES_PRESERVE_READS_WHEN_SAFE",
+      "userCommunicationAssessmentRequired": true,
+      "closureApproval": [
+        "INCIDENT_COMMANDER",
+        "SYSTEM_OWNER"
+      ]
+    },
+    {
+      "id": "SEV2",
+      "name": "DEGRADED_OR_LIMITED_SCOPE",
+      "examples": [
+        "partial feature degradation with bounded impact",
+        "elevated latency or retries below a confirmed integrity boundary",
+        "single dependency path degraded with safe fallback or fail-closed behavior",
+        "operational backlog growing but within a reviewed safety envelope"
+      ],
+      "acknowledgementTargetMinutes": 60,
+      "incidentCommanderRequired": false,
+      "securityPrivacyLeadRequired": false,
+      "changeFreezeRequired": false,
+      "defaultContainment": "LIMIT_SCOPE_AND_MONITOR",
+      "userCommunicationAssessmentRequired": false,
+      "closureApproval": [
+        "SYSTEM_OWNER"
+      ]
+    },
+    {
+      "id": "SEV3",
+      "name": "MINOR_OR_INTERNAL_ONLY",
+      "examples": [
+        "non-user-facing operational defect",
+        "documentation, dashboard or test-only issue without production impact",
+        "isolated transient failure with no integrity or security concern"
+      ],
+      "acknowledgementTargetMinutes": 240,
+      "incidentCommanderRequired": false,
+      "securityPrivacyLeadRequired": false,
+      "changeFreezeRequired": false,
+      "defaultContainment": "TRACK_AND_REPAIR",
+      "userCommunicationAssessmentRequired": false,
+      "closureApproval": [
+        "SYSTEM_OWNER"
+      ]
+    }
+  ],
+  "roles": [
+    {
+      "id": "INCIDENT_COMMANDER",
+      "responsibilities": [
+        "declare severity and incident scope",
+        "assign roles and approve containment or recovery transitions",
+        "maintain a single decision log",
+        "escalate when integrity, security or recovery assumptions are uncertain",
+        "approve closure only after verification criteria are met"
+      ]
+    },
+    {
+      "id": "OPERATIONS_LEAD",
+      "responsibilities": [
+        "execute approved containment and recovery actions",
+        "record exact commands, source SHA and target environment without secrets",
+        "report observed outcomes and stop on unclassified state"
+      ]
+    },
+    {
+      "id": "SECURITY_PRIVACY_LEAD",
+      "responsibilities": [
+        "assess data exposure, unauthorized authority and evidence-preservation needs",
+        "own credential rotation and access-restriction decisions",
+        "engage legal or privacy review when required by the confirmed facts"
+      ]
+    },
+    {
+      "id": "SYSTEM_OWNER",
+      "responsibilities": [
+        "explain expected system invariants and dependency boundaries",
+        "define integrity verification and safe rollback or forward-fix options",
+        "own follow-up remediation acceptance"
+      ]
+    },
+    {
+      "id": "COMMUNICATIONS_LEAD",
+      "responsibilities": [
+        "prepare fact-only internal and user-facing updates",
+        "avoid unsupported root-cause, scope or recovery claims",
+        "record update timestamps and next review point"
+      ]
+    },
+    {
+      "id": "SCRIBE",
+      "responsibilities": [
+        "maintain the append-only timeline, decisions, evidence references and open hypotheses",
+        "separate fact, prior-known condition, inference and opinion",
+        "exclude secrets, raw tokens and unnecessary personal content"
+      ]
+    }
+  ],
+  "lifecycle": [
+    {
+      "phase": "DETECT_AND_DECLARE",
+      "requiredActions": [
+        "create incident id and append-only record",
+        "record detection source and first confirmed symptom",
+        "assign provisional severity and owner",
+        "freeze destructive automation for credible integrity or security events"
+      ],
+      "exitCriteria": "incident owner, provisional severity and immediate safety posture are explicit"
+    },
+    {
+      "phase": "TRIAGE_AND_SCOPE",
+      "requiredActions": [
+        "identify affected surfaces, tenants, time window and dependency state",
+        "separate confirmed facts from hypotheses",
+        "check whether confidentiality, integrity, availability, deletion or authentication invariants are affected",
+        "identify evidence that must be preserved before mutation"
+      ],
+      "exitCriteria": "current impact and uncertainty are documented well enough to choose containment"
+    },
+    {
+      "phase": "CONTAIN",
+      "requiredActions": [
+        "prefer fail-closed or read-only behavior when authority or integrity is uncertain",
+        "stop affected writes, workers, migrations or credentials only through approved bounded actions",
+        "preserve ambiguous object, spool and database state",
+        "verify containment did not widen impact or bypass RLS"
+      ],
+      "exitCriteria": "active impact is stopped or bounded and containment side effects are understood"
+    },
+    {
+      "phase": "PRESERVE_AND_DIAGNOSE",
+      "requiredActions": [
+        "capture exact commit, deployment, migration and dependency identifiers",
+        "record privacy-safe logs, metrics and database/object metadata references",
+        "protect evidence from modification",
+        "test hypotheses against independent evidence"
+      ],
+      "exitCriteria": "a supported cause or bounded recovery hypothesis exists without destroying evidence"
+    },
+    {
+      "phase": "RECOVER",
+      "requiredActions": [
+        "choose application rollback, forward-fix, replay, restore or compensating action explicitly",
+        "apply the smallest reversible recovery step",
+        "keep destructive cleanup separate from service restoration",
+        "record all external side effects that database rollback cannot reverse"
+      ],
+      "exitCriteria": "service is restored to a defined state and all recovery mutations are recorded"
+    },
+    {
+      "phase": "VERIFY",
+      "requiredActions": [
+        "verify tenant isolation, authentication authority and RLS",
+        "verify Preview and Apply accounting and idempotency",
+        "verify deletion and expired-session non-resurrection",
+        "verify object-version and checksum bindings",
+        "verify error rate, latency, backlog and resource trends",
+        "run an independent negative test for the initiating failure"
+      ],
+      "exitCriteria": "availability and data/security invariants pass independent verification"
+    },
+    {
+      "phase": "CLOSE_AND_FOLLOW_UP",
+      "requiredActions": [
+        "record final severity, impact and supported root cause",
+        "record what remains unknown",
+        "assign remediation owners and dates",
+        "preserve the timeline and evidence index",
+        "schedule or complete a blameless review for SEV0 and SEV1"
+      ],
+      "exitCriteria": "required approvals exist and no unresolved critical safety condition remains"
+    }
+  ],
+  "mandatoryStopConditions": [
+    "target environment or database identity is ambiguous",
+    "a recovery step requires an unreviewed destructive mutation",
+    "cross-tenant visibility or authentication authority is uncertain",
+    "the proposed action would delete or overwrite incident evidence",
+    "the operator cannot state the exact source commit or deployed version",
+    "a restore or rollback would violate deletion or expired-session semantics",
+    "required incident command or security/privacy role is unassigned",
+    "a command would expose a secret or unrestricted personal content in the incident record"
+  ],
+  "communicationRules": {
+    "factInferenceOpinionSeparated": true,
+    "timestampsRequired": true,
+    "nextUpdatePointRequiredForSEV0AndSEV1": true,
+    "unsupportedRootCauseForbidden": true,
+    "unsupportedRecoveryClaimForbidden": true,
+    "userCommunicationRequiresScopeAndPrivacyAssessment": true,
+    "advertisingOrMarketingLanguageForbidden": true,
+    "externalChannelsConfigured": false,
+    "note": "No pager, status-page, legal/privacy contact tree or user-notification channel is configured by this contract. Those remain deployment work."
+  },
+  "evidenceRecord": {
+    "appendOnly": true,
+    "privacyClass": "operational_sensitive_no_secrets",
+    "requiredFields": [
+      "incidentId",
+      "declaredAt",
+      "detectedBy",
+      "severity",
+      "incidentCommander",
+      "affectedSurfaces",
+      "confirmedFacts",
+      "knownPriorConditions",
+      "hypotheses",
+      "containmentActions",
+      "evidenceRefs",
+      "recoveryDecision",
+      "verificationResults",
+      "communications",
+      "openRisks",
+      "closedAt",
+      "closureApprovals"
+    ]
+  },
+  "requiredDrillScenarios": [
+    {
+      "id": "IR-DRILL-001",
+      "scenario": "cross-tenant Preview visibility or forged authority",
+      "expectedSeverity": "SEV0",
+      "requiredVerification": [
+        "RLS and principal boundary",
+        "session revocation",
+        "scope assessment",
+        "privacy-safe evidence preservation"
+      ]
+    },
+    {
+      "id": "IR-DRILL-002",
+      "scenario": "PostgreSQL unavailable during Preview or Apply",
+      "expectedSeverity": "SEV1",
+      "requiredVerification": [
+        "no partial Apply accounting",
+        "idempotent retry behavior",
+        "backlog and recovery verification"
+      ]
+    },
+    {
+      "id": "IR-DRILL-003",
+      "scenario": "object-store outage or exact-version mismatch",
+      "expectedSeverity": "SEV1",
+      "requiredVerification": [
+        "no unverified object enters parsing",
+        "authorization state remains recoverable",
+        "ambiguous object state is preserved"
+      ]
+    },
+    {
+      "id": "IR-DRILL-004",
+      "scenario": "bad migration or mixed-version incompatibility",
+      "expectedSeverity": "SEV1",
+      "requiredVerification": [
+        "migration lifecycle decision tree",
+        "application rollback compatibility",
+        "forward-fix and restore decision evidence"
+      ]
+    },
+    {
+      "id": "IR-DRILL-005",
+      "scenario": "restore causes deleted data or expired session to reappear",
+      "expectedSeverity": "SEV0",
+      "requiredVerification": [
+        "deletion non-resurrection",
+        "session expiry and revocation",
+        "isolated restore containment"
+      ]
+    },
+    {
+      "id": "IR-DRILL-006",
+      "scenario": "parser resource escape or untrusted payload compromise",
+      "expectedSeverity": "SEV0",
+      "requiredVerification": [
+        "worker isolation",
+        "credential absence",
+        "object and spool quarantine",
+        "host impact assessment"
+      ]
+    }
+  ],
+  "readiness": {
+    "severityModelDefined": true,
+    "rolesDefined": true,
+    "lifecycleDefined": true,
+    "containmentAndRecoveryRulesDefined": true,
+    "evidenceRecordDefined": true,
+    "runbookDefined": true,
+    "tabletopPlanDefined": true,
+    "pagingAndAlertRoutingConfigured": false,
+    "externalContactTreeConfigured": false,
+    "tabletopCompleted": false,
+    "productionRecoveryDrillCompleted": false,
+    "independentReviewCompleted": false,
+    "ready": false,
+    "note": "Policy, roles and runbook foundations are defined. Paging, contact ownership, completed tabletop evidence, production-shaped recovery drills and independent review remain missing, so OPS-P0-002 stays PARTIAL."
+  },
+  "evidenceRefs": [
+    "contracts/operations/incident-response-contract.v1.json",
+    "docs/runbooks/memory-os-incident-response.md",
+    "scripts/validate-memory-os-incident-response.py"
+  ]
+}
