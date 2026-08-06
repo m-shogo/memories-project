@@ -8,6 +8,7 @@ on:
       - "services/import-api/README.md"
       - "contracts/operations/**"
       - "docs/runbooks/memory-os-migration-recovery.md"
+      - "docs/runbooks/memory-os-incident-response.md"
       - "docs/memory-os-current-authority-order-round-10-operability.md"
       - "docs/memory-os-current-authority-order-round-9-security.md"
       - "docs/memory-os-production-operability-audit-2026-07-24.md"
@@ -21,6 +22,7 @@ on:
       - "scripts/validate-memory-os-live-object-load.py"
       - "scripts/reconcile-memory-os-live-load-status.py"
       - "scripts/validate-memory-os-migration-lifecycle.py"
+      - "scripts/validate-memory-os-incident-response.py"
       - "scripts/validate-memory-os-entry-docs.py"
       - "scripts/regenerate-memory-os-load-results.sh"
       - "docs/fixtures/memory-os-operability/**"
@@ -41,6 +43,7 @@ on:
       - "services/import-api/README.md"
       - "contracts/operations/**"
       - "docs/runbooks/memory-os-migration-recovery.md"
+      - "docs/runbooks/memory-os-incident-response.md"
       - "docs/memory-os-current-authority-order-round-10-operability.md"
       - "docs/memory-os-current-authority-order-round-9-security.md"
       - "docs/memory-os-production-operability-audit-2026-07-24.md"
@@ -54,6 +57,7 @@ on:
       - "scripts/validate-memory-os-live-object-load.py"
       - "scripts/reconcile-memory-os-live-load-status.py"
       - "scripts/validate-memory-os-migration-lifecycle.py"
+      - "scripts/validate-memory-os-incident-response.py"
       - "scripts/validate-memory-os-entry-docs.py"
       - "scripts/regenerate-memory-os-load-results.sh"
       - "docs/fixtures/memory-os-operability/**"
@@ -99,6 +103,7 @@ jobs:
           python -m py_compile scripts/validate-memory-os-live-object-load.py
           python -m py_compile scripts/reconcile-memory-os-live-load-status.py
           python -m py_compile scripts/validate-memory-os-migration-lifecycle.py
+          python -m py_compile scripts/validate-memory-os-incident-response.py
           python -m py_compile scripts/validate-memory-os-entry-docs.py
           bash -n scripts/regenerate-memory-os-load-results.sh
 
@@ -107,6 +112,9 @@ jobs:
 
       - name: Validate migration lifecycle contract and runbook
         run: python scripts/validate-memory-os-migration-lifecycle.py
+
+      - name: Validate incident response contract and runbook
+        run: python scripts/validate-memory-os-incident-response.py
 
       - name: Validate observability event contract
         run: python scripts/validate-memory-os-observability.py
