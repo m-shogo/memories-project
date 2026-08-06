@@ -23,10 +23,10 @@
     "create separate baseline-compatibility and current-verification PostgreSQL databases",
     "apply the current canonical migration sequence to both databases",
     "capture the production memory_os schema fingerprint before baseline execution",
-    "execute the candidate baseline canonical SQL integration tests in its own migration order against the current expanded schema",
-    "execute candidate baseline Go tests for authorization, HTTP, Preview commit and import flow against the expanded schema and local MinIO",
+    "execute candidate SQL integration tests in the exact order recorded by the baseline migration registry or its own Security Contracts workflow",
+    "execute reviewed Go package surfaces that exist in both exact source trees against the expanded schema and local MinIO",
     "capture the production memory_os schema fingerprint after baseline execution and require equality",
-    "execute current canonical SQL and Go integration tests against the separate current database",
+    "execute current canonical SQL and common Go integration tests against the separate current database",
     "write exact baseline/current SHAs and bounded counts without credentials or database URLs"
   ],
   "successCriteria": [
@@ -45,9 +45,10 @@
     "source or target database identity is ambiguous",
     "current migration sequence cannot apply cleanly",
     "baseline worktree has local modifications",
-    "any baseline SQL or Go test fails",
+    "baseline has neither a migration registry nor an ordered Security Contracts workflow",
+    "any baseline SQL or common Go test fails",
     "memory_os schema fingerprint changes after baseline execution",
-    "any current SQL or Go test fails",
+    "any current SQL or common Go test fails",
     "evidence would include credentials, connection URLs or user content"
   ],
   "evidenceBoundary": {
@@ -79,9 +80,9 @@
   ],
   "readiness": {
     "contractDefined": true,
-    "runnerImplemented": false,
-    "validatorImplemented": false,
-    "automaticWorkflowImplemented": false,
+    "runnerImplemented": true,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": true,
     "exactSourcePassResultCommitted": false,
     "approvedReleaseBaselineAvailable": false,
     "simultaneousMixedTrafficExecuted": false,
@@ -89,6 +90,10 @@
     "productionReady": false
   },
   "evidenceRefs": [
-    "contracts/operations/mixed-version-candidate-contract.v1.json"
+    "contracts/operations/mixed-version-candidate-contract.v1.json",
+    "scripts/run-memory-os-mixed-version-candidate.sh",
+    "scripts/validate-memory-os-mixed-version-candidate.py",
+    "scripts/reconcile-memory-os-mixed-version-candidate.py",
+    ".github/workflows/mixed-version-candidate.yml"
   ]
 }
