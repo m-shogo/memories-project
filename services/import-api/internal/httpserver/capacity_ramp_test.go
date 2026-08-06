@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"runtime"
 	"testing"
@@ -35,18 +36,18 @@ type capacityRampResultsDocument struct {
 		ContainsSecrets                  bool   `json:"containsSecrets"`
 	} `json:"environment"`
 	Scenario struct {
-		ScenarioID              string             `json:"scenarioId"`
-		WorkloadType            string             `json:"workloadType"`
-		StartedAt               string             `json:"startedAt"`
-		CompletedAt             string             `json:"completedAt"`
-		RequestsPerStep         int                `json:"requestsPerStep"`
-		Steps                   []capacityRampStep `json:"steps"`
-		CandidateSafeConcurrency int               `json:"candidateSafeConcurrency"`
-		FirstSaturationSignal   *int               `json:"firstSaturationSignal"`
-		Decision                string             `json:"decision"`
-		Assertions              map[string]any     `json:"assertions"`
-		Result                  string             `json:"result"`
-		IntegrityResult         string             `json:"integrityResult"`
+		ScenarioID               string             `json:"scenarioId"`
+		WorkloadType             string             `json:"workloadType"`
+		StartedAt                string             `json:"startedAt"`
+		CompletedAt              string             `json:"completedAt"`
+		RequestsPerStep          int                `json:"requestsPerStep"`
+		Steps                    []capacityRampStep `json:"steps"`
+		CandidateSafeConcurrency int                `json:"candidateSafeConcurrency"`
+		FirstSaturationSignal    *int               `json:"firstSaturationSignal"`
+		Decision                 string             `json:"decision"`
+		Assertions               map[string]any     `json:"assertions"`
+		Result                   string             `json:"result"`
+		IntegrityResult          string             `json:"integrityResult"`
 	} `json:"scenario"`
 	Limitations []string `json:"limitations"`
 }
@@ -160,17 +161,17 @@ func TestAuthenticatedPreviewCapacityRampLocalPostgres(t *testing.T) {
 	document.Scenario.FirstSaturationSignal = firstSaturationSignal
 	document.Scenario.Decision = "BOUNDARY_NOT_ESTABLISHED"
 	document.Scenario.Assertions = map[string]any{
-		"allStepsExecuted":                 len(steps) == len(concurrencySteps),
-		"allStepsNo5xx":                    allNo5xx,
-		"allStepsNoTransportErrors":        allNoTransport,
-		"allStepsAll2xx":                   all2xx,
-		"previewReadyRowsAfterRamp":        counts["previewReadyRowsAfterRamp"],
-		"previewCandidateRowsAfterRamp":    counts["previewCandidateRowsAfterRamp"],
-		"previewRejectionRowsAfterRamp":    counts["previewRejectionRowsAfterRamp"],
-		"productionEvidence":               false,
+		"allStepsExecuted":                  len(steps) == len(concurrencySteps),
+		"allStepsNo5xx":                     allNo5xx,
+		"allStepsNoTransportErrors":         allNoTransport,
+		"allStepsAll2xx":                    all2xx,
+		"previewReadyRowsAfterRamp":         counts["previewReadyRowsAfterRamp"],
+		"previewCandidateRowsAfterRamp":     counts["previewCandidateRowsAfterRamp"],
+		"previewRejectionRowsAfterRamp":     counts["previewRejectionRowsAfterRamp"],
+		"productionEvidence":                false,
 		"productionEquivalentDependencies": false,
-		"capacityBoundaryEstablished":      false,
-		"operationalThresholdApproved":     false,
+		"capacityBoundaryEstablished":       false,
+		"operationalThresholdApproved":      false,
 	}
 	document.Scenario.Result = "PASS"
 	document.Scenario.IntegrityResult = "PASS"
