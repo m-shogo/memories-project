@@ -19,13 +19,23 @@
       "existingEvidence": [
         "atomic transaction rollback",
         "conflicting retry rollback tests",
-        "spool publication rollback boundary"
+        "spool publication rollback boundary",
+        "binding EXPAND_MIGRATE_CONTRACT lifecycle with forward-fix as the default recovery after committed additive changes",
+        "canonical full-filename migration registry covering the current PostgreSQL security sequence",
+        "operator runbook for preflight, expand, bounded backfill, mixed-version observation, contract and failure decisions",
+        "fail-closed validator for migration registry, policy, runbook and READY claims"
       ],
       "missingEvidence": [
-        "expand-contract migration policy",
-        "production-shaped rehearsal",
-        "rollback-or-forward-fix runbook",
-        "mixed-version deployment proof"
+        "clean-database CI dry run of the complete canonical migration sequence",
+        "production-shaped rehearsal with lock and runtime budgets",
+        "automated recovery-point verification and append-only operator evidence record",
+        "mixed-version deployment proof",
+        "isolated restore linkage for destructive contract decisions"
+      ],
+      "evidenceRefs": [
+        "contracts/operations/migration-lifecycle-contract.v1.json",
+        "docs/runbooks/memory-os-migration-recovery.md",
+        "scripts/validate-memory-os-migration-lifecycle.py"
       ]
     },
     {
@@ -161,7 +171,8 @@
         "executable live PostgreSQL HTTP checkpoint for Preview read and concurrent idempotent Apply through bearer sessions, deployment principal and FORCE RLS",
         "executable live MinIO signed-upload lifecycle checkpoint covering authorization, presigned PUT, exact-version completion and scan enqueue",
         "machine-readable live PostgreSQL and live object-storage contracts with independent fail-closed validators",
-        "automatic push-triggered and daily self-healing GitHub Actions workflow for PostgreSQL 16 and MinIO evidence regeneration"
+        "automatic push-triggered and daily self-healing GitHub Actions workflow for PostgreSQL 16 and MinIO evidence regeneration",
+        "machine-readable partition between mock executed, external live executed and genuinely deferred scenarios"
       ],
       "missingEvidence": [
         "exact-HEAD committed PASS results from the live PostgreSQL and MinIO checkpoint (automatic generation pending)",
@@ -186,8 +197,10 @@
         "docs/fixtures/memory-os-operability/load-results.negative.v1.json",
         "docs/memory-os-load-measurement-inventory.md",
         "scripts/validate-memory-os-load.py",
+        "scripts/validate-memory-os-load-evidence-index.py",
         "scripts/validate-memory-os-live-load.py",
         "scripts/validate-memory-os-live-object-load.py",
+        "scripts/reconcile-memory-os-live-load-status.py",
         ".github/workflows/regenerate-live-postgres-load-results.yml"
       ]
     },
