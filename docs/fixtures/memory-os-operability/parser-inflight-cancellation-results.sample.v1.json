@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "memory-os-parser-inflight-cancellation-results.v1",
+  "commitSha": "d4f5bead8c006c770d1e6f1f193cd6131d7ec8d2",
+  "generatedAt": "2026-08-06T09:01:47.479174Z",
+  "environment": {
+    "mode": "GITHUB_ACTIONS_UBUNTU_LINUX",
+    "productionEvidence": false,
+    "syntheticDataOnly": true,
+    "containsSecrets": false
+  },
+  "result": "PASS",
+  "integrityResult": "PASS",
+  "exitCode": 0,
+  "durationSeconds": 0.55887,
+  "assertions": {
+    "workerFrameObservedBeforeCancel": true,
+    "spoolDataObservedBeforeCancel": true,
+    "returnedContextCanceled": true,
+    "cancellationLatencyMilliseconds": 0,
+    "configuredWallClockMilliseconds": 10000,
+    "spoolResidueAbsent": true,
+    "sameSpoolReusable": true,
+    "replacementSealValid": true,
+    "independentVerificationMatched": true
+  },
+  "limitations": [
+    "child-process orphan scan not measured",
+    "host restart not executed",
+    "production artifact not exercised",
+    "not production chaos evidence",
+    "one worker process in one process group",
+    "Linux GitHub Actions CI only"
+  ]
+}
