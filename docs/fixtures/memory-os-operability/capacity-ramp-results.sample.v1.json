@@ -1,0 +1,154 @@
+{
+  "schemaVersion": "memory-os-capacity-ramp-results.v1",
+  "commitSha": "219128571eaa8b9e25f63f4fe3dffeb4a554e197",
+  "generatedAt": "2026-08-06T14:40:30Z",
+  "environment": {
+    "os": "linux",
+    "arch": "amd64",
+    "numCpu": 4,
+    "goVersion": "go1.23.12",
+    "dependencyMode": "LOCAL_POSTGRES",
+    "syntheticDataOnly": true,
+    "productionTraffic": false,
+    "productionCredentials": false,
+    "productionEvidence": false,
+    "productionEquivalentDependencies": false,
+    "containsSecrets": false
+  },
+  "scenario": {
+    "scenarioId": "authenticated-preview-capacity-ramp-local-postgres",
+    "workloadType": "RAMP",
+    "startedAt": "2026-08-06T14:40:27Z",
+    "completedAt": "2026-08-06T14:40:30Z",
+    "requestsPerStep": 240,
+    "steps": [
+      {
+        "concurrency": 4,
+        "batch": {
+          "requests": 240,
+          "concurrency": 4,
+          "successes": 240,
+          "failures": 0,
+          "statusClassCounts": {
+            "2xx": 240
+          },
+          "durationSeconds": 0.529051179,
+          "throughput": 453.64231198509435,
+          "latencyP50Ms": 8.357,
+          "latencyP95Ms": 10.412,
+          "latencyP99Ms": 16.606
+        }
+      },
+      {
+        "concurrency": 8,
+        "batch": {
+          "requests": 240,
+          "concurrency": 8,
+          "successes": 240,
+          "failures": 0,
+          "statusClassCounts": {
+            "2xx": 240
+          },
+          "durationSeconds": 0.494339978,
+          "throughput": 485.4958342050175,
+          "latencyP50Ms": 16.33,
+          "latencyP95Ms": 18.609,
+          "latencyP99Ms": 19.657
+        }
+      },
+      {
+        "concurrency": 16,
+        "batch": {
+          "requests": 240,
+          "concurrency": 16,
+          "successes": 240,
+          "failures": 0,
+          "statusClassCounts": {
+            "2xx": 240
+          },
+          "durationSeconds": 0.494383567,
+          "throughput": 485.4530288220522,
+          "latencyP50Ms": 31.843,
+          "latencyP95Ms": 39.894,
+          "latencyP99Ms": 43.695
+        }
+      },
+      {
+        "concurrency": 24,
+        "batch": {
+          "requests": 240,
+          "concurrency": 24,
+          "successes": 240,
+          "failures": 0,
+          "statusClassCounts": {
+            "2xx": 240
+          },
+          "durationSeconds": 0.484201908,
+          "throughput": 495.6609960322585,
+          "latencyP50Ms": 48.056,
+          "latencyP95Ms": 50.923,
+          "latencyP99Ms": 52.063
+        }
+      },
+      {
+        "concurrency": 32,
+        "batch": {
+          "requests": 240,
+          "concurrency": 32,
+          "successes": 240,
+          "failures": 0,
+          "statusClassCounts": {
+            "2xx": 240
+          },
+          "durationSeconds": 0.47726133,
+          "throughput": 502.86915137247763,
+          "latencyP50Ms": 62.584,
+          "latencyP95Ms": 65.95,
+          "latencyP99Ms": 66.848
+        }
+      },
+      {
+        "concurrency": 48,
+        "batch": {
+          "requests": 240,
+          "concurrency": 48,
+          "successes": 240,
+          "failures": 0,
+          "statusClassCounts": {
+            "2xx": 240
+          },
+          "durationSeconds": 0.475040133,
+          "throughput": 505.22047155119,
+          "latencyP50Ms": 93.721,
+          "latencyP95Ms": 96.971,
+          "latencyP99Ms": 98.37
+        }
+      }
+    ],
+    "candidateSafeConcurrency": 48,
+    "firstSaturationSignal": null,
+    "decision": "BOUNDARY_NOT_ESTABLISHED",
+    "assertions": {
+      "allStepsAll2xx": true,
+      "allStepsExecuted": true,
+      "allStepsNo5xx": true,
+      "allStepsNoTransportErrors": true,
+      "capacityBoundaryEstablished": false,
+      "operationalThresholdApproved": false,
+      "previewCandidateRowsAfterRamp": 2,
+      "previewReadyRowsAfterRamp": 1,
+      "previewRejectionRowsAfterRamp": 1,
+      "productionEquivalentDependencies": false,
+      "productionEvidence": false
+    },
+    "result": "PASS",
+    "integrityResult": "PASS"
+  },
+  "limitations": [
+    "single authenticated Preview read route only",
+    "ephemeral GitHub-hosted runner and local PostgreSQL 16",
+    "fixed request counts rather than sustained arrival rate",
+    "no deliberate overload beyond the bounded concurrency steps",
+    "not production capacity evidence"
+  ]
+}
