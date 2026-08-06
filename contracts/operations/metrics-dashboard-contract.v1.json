@@ -1,0 +1,214 @@
+{
+  "contractId": "memory-os.operability.metrics-dashboards.v1",
+  "schemaVersion": "memory-os-metrics-dashboards.v1",
+  "description": "Provider-neutral dashboard specifications for Memory OS operational metrics. These definitions are binding panel/query intent but are not a deployed Grafana, CloudWatch, Datadog or other dashboard installation.",
+  "sourceMetricsContract": "contracts/operations/metrics-contract.v1.json",
+  "status": "DEFINED_NOT_CONFIGURED",
+  "rules": {
+    "providerNeutral": true,
+    "personalDataForbidden": true,
+    "rawIdentifierVariablesForbidden": true,
+    "defaultWindow": "6h",
+    "minimumRefreshSeconds": 30,
+    "maximumPanelsPerDashboard": 12,
+    "loadCalibratedThresholdsRequiredBeforeAlerting": true,
+    "dashboardGreenDoesNotImplyProductionReady": true
+  },
+  "dashboards": [
+    {
+      "id": "memory-os-overview",
+      "title": "Memory OS Service Overview",
+      "purpose": "First-response view for traffic, availability, latency and saturation.",
+      "panels": [
+        {
+          "id": "http-request-rate",
+          "title": "HTTP request rate",
+          "visualization": "time_series",
+          "query": "sum by (route_class) (rate(memory_os_http_requests_total[5m]))",
+          "metrics": ["memory_os_http_requests_total"]
+        },
+        {
+          "id": "http-5xx-ratio",
+          "title": "HTTP 5xx ratio",
+          "visualization": "time_series",
+          "query": "sum(rate(memory_os_http_requests_total{status_class=\"5xx\"}[5m])) / clamp_min(sum(rate(memory_os_http_requests_total[5m])), 1)",
+          "metrics": ["memory_os_http_requests_total"]
+        },
+        {
+          "id": "http-p95-latency",
+          "title": "HTTP p95 latency",
+          "visualization": "time_series",
+          "query": "histogram_quantile(0.95, sum by (le, route_class) (rate(memory_os_http_request_duration_seconds_bucket[5m])))",
+          "metrics": ["memory_os_http_request_duration_seconds"]
+        },
+        {
+          "id": "http-in-flight",
+          "title": "HTTP in flight",
+          "visualization": "time_series",
+          "query": "memory_os_http_in_flight",
+          "metrics": ["memory_os_http_in_flight"]
+        },
+        {
+          "id": "panic-rate",
+          "title": "Recovered panics",
+          "visualization": "time_series",
+          "query": "sum(rate(memory_os_http_panics_total[5m]))",
+          "metrics": ["memory_os_http_panics_total"]
+        }
+      ]
+    },
+    {
+      "id": "memory-os-auth-and-abuse",
+      "title": "Authentication and Abuse Controls",
+      "purpose": "Observe Apple exchange, replay rejection, session issuance and rate-limit health without raw identity or network labels.",
+      "panels": [
+        {
+          "id": "apple-exchange-outcomes",
+          "title": "Apple exchange outcomes",
+          "visualization": "time_series",
+          "query": "sum by (outcome, failure_class) (rate(memory_os_apple_exchange_total[5m]))",
+          "metrics": ["memory_os_apple_exchange_total"]
+        },
+        {
+          "id": "apple-p95-latency",
+          "title": "Apple exchange p95 latency",
+          "visualization": "time_series",
+          "query": "histogram_quantile(0.95, sum by (le) (rate(memory_os_apple_exchange_duration_seconds_bucket[5m])))",
+          "metrics": ["memory_os_apple_exchange_duration_seconds"]
+        },
+        {
+          "id": "replay-rejections",
+          "title": "Replay rejections",
+          "visualization": "time_series",
+          "query": "rate(memory_os_apple_replay_rejections_total[5m])",
+          "metrics": ["memory_os_apple_replay_rejections_total"]
+        },
+        {
+          "id": "session-issuance",
+          "title": "Session issuance",
+          "visualization": "time_series",
+          "query": "sum by (outcome) (rate(memory_os_session_issuance_total[5m]))",
+          "metrics": ["memory_os_session_issuance_total"]
+        },
+        {
+          "id": "rate-limit-decisions",
+          "title": "Rate-limit decisions",
+          "visualization": "time_series",
+          "query": "sum by (route_class, outcome, failure_class) (rate(memory_os_rate_limit_decisions_total[5m]))",
+          "metrics": ["memory_os_rate_limit_decisions_total"]
+        },
+        {
+          "id": "rate-limit-store-failures",
+          "title": "Rate-limit store failures",
+          "visualization": "time_series",
+          "query": "sum(rate(memory_os_rate_limit_store_failures_total[5m]))",
+          "metrics": ["memory_os_rate_limit_store_failures_total"]
+        }
+      ]
+    },
+    {
+      "id": "memory-os-dependencies-and-import",
+      "title": "Dependencies and Import Pipeline",
+      "purpose": "Observe database, object-store and import boundaries with bounded operation labels.",
+      "panels": [
+        {
+          "id": "database-failure-rate",
+          "title": "Database failure rate",
+          "visualization": "time_series",
+          "query": "sum by (operation, failure_class) (rate(memory_os_db_failures_total[5m]))",
+          "metrics": ["memory_os_db_failures_total"]
+        },
+        {
+          "id": "database-p95-latency",
+          "title": "Database p95 latency",
+          "visualization": "time_series",
+          "query": "histogram_quantile(0.95, sum by (le, operation) (rate(memory_os_db_operation_duration_seconds_bucket[5m])))",
+          "metrics": ["memory_os_db_operation_duration_seconds"]
+        },
+        {
+          "id": "object-store-failures",
+          "title": "Object-store failures",
+          "visualization": "time_series",
+          "query": "sum by (operation, failure_class) (rate(memory_os_object_store_failures_total[5m]))",
+          "metrics": ["memory_os_object_store_failures_total"]
+        },
+        {
+          "id": "object-store-p95-latency",
+          "title": "Object-store p95 latency",
+          "visualization": "time_series",
+          "query": "histogram_quantile(0.95, sum by (le, operation) (rate(memory_os_object_store_operation_duration_seconds_bucket[5m])))",
+          "metrics": ["memory_os_object_store_operation_duration_seconds"]
+        },
+        {
+          "id": "import-outcomes",
+          "title": "Import operation outcomes",
+          "visualization": "time_series",
+          "query": "sum by (operation, outcome, failure_class) (rate(memory_os_import_operations_total[5m]))",
+          "metrics": ["memory_os_import_operations_total"]
+        },
+        {
+          "id": "import-items",
+          "title": "Import items processed",
+          "visualization": "time_series",
+          "query": "sum by (operation) (rate(memory_os_import_items_total[5m]))",
+          "metrics": ["memory_os_import_items_total"]
+        }
+      ]
+    },
+    {
+      "id": "memory-os-deletion",
+      "title": "Deletion Safety and Progress",
+      "purpose": "Observe deletion progress, retry pressure and terminal failure without exposing account identifiers.",
+      "panels": [
+        {
+          "id": "deletion-outcomes",
+          "title": "Deletion job outcomes",
+          "visualization": "time_series",
+          "query": "sum by (outcome, failure_class) (rate(memory_os_deletion_jobs_total[5m]))",
+          "metrics": ["memory_os_deletion_jobs_total"]
+        },
+        {
+          "id": "deletion-p95-duration",
+          "title": "Deletion p95 duration",
+          "visualization": "time_series",
+          "query": "histogram_quantile(0.95, sum by (le) (rate(memory_os_deletion_job_duration_seconds_bucket[5m])))",
+          "metrics": ["memory_os_deletion_job_duration_seconds"]
+        },
+        {
+          "id": "deletion-backlog",
+          "title": "Deletion backlog",
+          "visualization": "time_series",
+          "query": "memory_os_deletion_backlog",
+          "metrics": ["memory_os_deletion_backlog"]
+        },
+        {
+          "id": "deletion-retries",
+          "title": "Deletion retries",
+          "visualization": "time_series",
+          "query": "rate(memory_os_deletion_retries_total[5m])",
+          "metrics": ["memory_os_deletion_retries_total"]
+        },
+        {
+          "id": "deletion-terminal-failures",
+          "title": "Deletion terminal failures",
+          "visualization": "time_series",
+          "query": "rate(memory_os_deletion_terminal_failures_total[5m])",
+          "metrics": ["memory_os_deletion_terminal_failures_total"]
+        }
+      ]
+    }
+  ],
+  "readiness": {
+    "dashboardSpecificationsDefined": true,
+    "providerConfigurationGenerated": false,
+    "dashboardDeployed": false,
+    "dataSourceConfigured": false,
+    "thresholdsLoadCalibrated": false,
+    "operatorReviewCompleted": false,
+    "productionReady": false
+  },
+  "evidenceRefs": [
+    "contracts/operations/metrics-dashboard-contract.v1.json",
+    "scripts/validate-memory-os-metrics-operations.py"
+  ]
+}
