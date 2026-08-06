@@ -7,9 +7,11 @@ on:
       - "SECURITY.md"
       - "services/import-api/README.md"
       - "contracts/operations/**"
+      - "infra/observability/**"
       - "docs/runbooks/memory-os-migration-recovery.md"
       - "docs/runbooks/memory-os-incident-response.md"
       - "docs/runbooks/memory-os-version-compatibility.md"
+      - "docs/runbooks/memory-os-metrics-alerts.md"
       - "docs/memory-os-current-authority-order-round-10-operability.md"
       - "docs/memory-os-current-authority-order-round-9-security.md"
       - "docs/memory-os-production-operability-audit-2026-07-24.md"
@@ -19,6 +21,7 @@ on:
       - "scripts/validate-memory-os-metrics.py"
       - "scripts/validate-memory-os-metrics-scrape.py"
       - "scripts/validate-memory-os-metrics-operations.py"
+      - "scripts/validate-memory-os-metrics-alerting.py"
       - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-load-evidence-index.py"
       - "scripts/validate-memory-os-live-load.py"
@@ -47,9 +50,11 @@ on:
       - "SECURITY.md"
       - "services/import-api/README.md"
       - "contracts/operations/**"
+      - "infra/observability/**"
       - "docs/runbooks/memory-os-migration-recovery.md"
       - "docs/runbooks/memory-os-incident-response.md"
       - "docs/runbooks/memory-os-version-compatibility.md"
+      - "docs/runbooks/memory-os-metrics-alerts.md"
       - "docs/memory-os-current-authority-order-round-10-operability.md"
       - "docs/memory-os-current-authority-order-round-9-security.md"
       - "docs/memory-os-production-operability-audit-2026-07-24.md"
@@ -59,6 +64,7 @@ on:
       - "scripts/validate-memory-os-metrics.py"
       - "scripts/validate-memory-os-metrics-scrape.py"
       - "scripts/validate-memory-os-metrics-operations.py"
+      - "scripts/validate-memory-os-metrics-alerting.py"
       - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-load-evidence-index.py"
       - "scripts/validate-memory-os-live-load.py"
@@ -109,6 +115,7 @@ jobs:
           python -m py_compile scripts/validate-memory-os-metrics.py
           python -m py_compile scripts/validate-memory-os-metrics-scrape.py
           python -m py_compile scripts/validate-memory-os-metrics-operations.py
+          python -m py_compile scripts/validate-memory-os-metrics-alerting.py
           python -m py_compile scripts/validate-memory-os-load.py
           python -m py_compile scripts/validate-memory-os-load-evidence-index.py
           python -m py_compile scripts/validate-memory-os-live-load.py
@@ -150,6 +157,9 @@ jobs:
 
       - name: Validate metrics dashboards retention and error budget
         run: python scripts/validate-memory-os-metrics-operations.py
+
+      - name: Validate metrics alert rules and runbooks
+        run: python scripts/validate-memory-os-metrics-alerting.py
 
       - name: Validate load-test scenario contract and results
         run: python scripts/validate-memory-os-load.py
