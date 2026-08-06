@@ -6,7 +6,10 @@
   "sourceMigrationContract": "contracts/operations/migration-lifecycle-contract.v1.json",
   "runner": "scripts/run-memory-os-local-logical-restore.sh",
   "validator": "scripts/validate-memory-os-local-logical-restore.py",
+  "workflow": ".github/workflows/local-logical-restore.yml",
+  "reconcile": "scripts/reconcile-memory-os-local-logical-restore.py",
   "resultPath": "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json",
+  "diagnosticPath": "docs/fixtures/memory-os-operability/local-logical-restore-diagnostic.last.json",
   "dependencyMode": "EPHEMERAL_POSTGRESQL_16_SAME_CLUSTER_LOGICAL_RESTORE",
   "scenario": {
     "scenarioId": "postgresql-logical-dump-isolated-restore-smoke",
@@ -65,8 +68,8 @@
     "contractDefined": true,
     "runnerImplemented": true,
     "validatorImplemented": true,
-    "automaticWorkflowImplemented": false,
-    "exactSourcePassResultCommitted": false,
+    "automaticWorkflowImplemented": true,
+    "exactSourcePassResultTrackedInStatus": true,
     "productionBackupConfigured": false,
     "pitrConfigured": false,
     "independentObjectRetentionConfigured": false,
@@ -77,6 +80,8 @@
   "evidenceRefs": [
     "contracts/operations/local-logical-restore-contract.v1.json",
     "scripts/run-memory-os-local-logical-restore.sh",
-    "scripts/validate-memory-os-local-logical-restore.py"
+    "scripts/validate-memory-os-local-logical-restore.py",
+    "scripts/reconcile-memory-os-local-logical-restore.py",
+    ".github/workflows/local-logical-restore.yml"
   ]
 }
