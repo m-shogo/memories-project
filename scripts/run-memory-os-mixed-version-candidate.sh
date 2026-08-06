@@ -17,6 +17,10 @@ fail() {
   exit 1
 }
 
+stage() {
+  printf 'MIXED-VERSION STAGE: %s\n' "$1" >&2
+}
+
 for command in git psql pg_dump python sha256sum; do
   command -v "$command" >/dev/null 2>&1 || fail "$command is required"
 done
@@ -79,6 +83,7 @@ SQL
 }
 trap cleanup EXIT
 
+stage "checkout-pinned-baseline"
 git -C "$ROOT" worktree add --detach "$BASELINE_WORKTREE" "$BASELINE_SHA" >/dev/null
 [[ -z "$(git -C "$BASELINE_WORKTREE" status --porcelain)" ]] || \
   fail "baseline worktree is not clean"
@@ -106,10 +111,6 @@ for migration in "${CURRENT_MIGRATIONS[@]}"; do
   CURRENT_SQL_TESTS+=("$test_path")
 done
 
-# Prefer a baseline-owned migration registry when one exists. Older authority
-# points predate that registry, so their own Security Contracts workflow is the
-# canonical ordered record of SQL integration tests. Never infer the order from
-# directory sorting.
 BASELINE_MIGRATION_CONTRACT="$BASELINE_WORKTREE/contracts/operations/migration-lifecycle-contract.v1.json"
 BASELINE_SQL_ORDER_SOURCE=""
 BASELINE_SQL_TESTS=()
@@ -159,9 +160,6 @@ PY
   BASELINE_SQL_ORDER_SOURCE="BASELINE_SECURITY_CONTRACTS_WORKFLOW"
 fi
 
-# Only execute packages that exist in both exact source trees. The allowlist is
-# reviewed and intentionally small; a missing critical package fails rather
-# than silently reducing coverage.
 GO_PACKAGE_CANDIDATES=(
   ./internal/authstore
   ./internal/httpserver
@@ -185,6 +183,7 @@ for required in ./internal/httpserver ./internal/previewcommit ./internal/import
   [[ "$found" == "1" ]] || fail "required common Go package is missing: $required"
 done
 
+stage "create-ephemeral-databases"
 psql --dbname postgres --set=ON_ERROR_STOP=1 --quiet <<SQL
 SELECT pg_terminate_backend(pid)
 FROM pg_stat_activity
@@ -195,6 +194,7 @@ CREATE DATABASE "$BASELINE_DB";
 CREATE DATABASE "$CURRENT_DB";
 SQL
 
+stage "apply-current-migrations-to-both-databases"
 for database in "$BASELINE_DB" "$CURRENT_DB"; do
   for migration in "${CURRENT_MIGRATIONS[@]}"; do
     psql --dbname "$database" --set=ON_ERROR_STOP=1 \
@@ -202,38 +202,44 @@ for database in "$BASELINE_DB" "$CURRENT_DB"; do
   done
 done
 
+stage "capture-pre-baseline-schema-fingerprint"
 pg_dump --dbname "$BASELINE_DB" --schema-only --no-owner --no-privileges \
   --schema memory_os > "$CURRENT_SCHEMA_BEFORE"
 SCHEMA_BEFORE_SHA="$(sha256sum "$CURRENT_SCHEMA_BEFORE" | awk '{print $1}')"
 
+stage "run-baseline-sql-tests"
 for test_file in "${BASELINE_SQL_TESTS[@]}"; do
   psql --dbname "$BASELINE_DB" --set=ON_ERROR_STOP=1 --file "$test_file" >/dev/null
 done
 
 BASELINE_DATABASE_URL="postgres://$PGUSER:${PGPASSWORD:-}@${PGHOST}:$PGPORT/$BASELINE_DB?sslmode=disable"
 CURRENT_DATABASE_URL="postgres://$PGUSER:${PGPASSWORD:-}@${PGHOST}:$PGPORT/$CURRENT_DB?sslmode=disable"
+stage "run-baseline-go-tests"
 (
   cd "$BASELINE_WORKTREE/services/import-api"
   MEMORY_OS_TEST_DATABASE_URL="$BASELINE_DATABASE_URL" \
   MEMORY_OS_TEST_S3_ENDPOINT="${MEMORY_OS_TEST_S3_ENDPOINT:-http://127.0.0.1:9000}" \
   go test "${GO_PACKAGES[@]}" -count=1
-) >/dev/null
+)
 
+stage "verify-baseline-did-not-change-schema"
 pg_dump --dbname "$BASELINE_DB" --schema-only --no-owner --no-privileges \
   --schema memory_os > "$CURRENT_SCHEMA_AFTER"
 SCHEMA_AFTER_SHA="$(sha256sum "$CURRENT_SCHEMA_AFTER" | awk '{print $1}')"
 [[ "$SCHEMA_BEFORE_SHA" == "$SCHEMA_AFTER_SHA" ]] || \
   fail "baseline execution changed the current memory_os schema fingerprint"
 
+stage "run-current-sql-tests"
 for test_file in "${CURRENT_SQL_TESTS[@]}"; do
   psql --dbname "$CURRENT_DB" --set=ON_ERROR_STOP=1 --file "$test_file" >/dev/null
 done
+stage "run-current-go-tests"
 (
   cd "$ROOT/services/import-api"
   MEMORY_OS_TEST_DATABASE_URL="$CURRENT_DATABASE_URL" \
   MEMORY_OS_TEST_S3_ENDPOINT="${MEMORY_OS_TEST_S3_ENDPOINT:-http://127.0.0.1:9000}" \
   go test "${GO_PACKAGES[@]}" -count=1
-) >/dev/null
+)
 
 END_EPOCH="$(date +%s)"
 DURATION_SECONDS="$((END_EPOCH - START_EPOCH))"
