@@ -379,23 +379,30 @@
         "machine-readable nine-entry compatibility matrix that distinguishes PROVEN_IN_CI, PARTIAL, LOCAL_PROOF_ONLY, NOT_PROVEN, NOT_IMPLEMENTED_OR_PROVEN and FORBIDDEN_RELEASE_ORDER",
         "release runbook for contract classification, old/new matrix, rollback-target verification, rollout order, observation and later contraction",
         "clean current backend against current PostgreSQL 16 schema proven by Security Contracts",
-        "fail-closed validator preventing unsupported promotion of mixed backend, parser, persisted-state, client/server and database-upgrade claims"
+        "fail-closed validator preventing unsupported promotion of mixed backend, parser, persisted-state, client/server and database-upgrade claims",
+        "pinned old/current Import API two-process compatibility drill proving sessions issued by either version are resolved by the other against the complete current PostgreSQL schema while account-epoch fencing remains enforced"
       ],
       "missingEvidence": [
-        "old/current backend mixed-version executable tests against an expanded schema",
         "persisted-state compatibility fixtures across releases",
         "reviewed parser artifact registry and old parser artifact replay tests",
         "implemented client support windows and client/server skew tests",
         "PostgreSQL minor/major upgrade policy and rehearsal",
         "production rolling deployment and downgrade rehearsal",
-        "independent review of compatibility controls"
+        "independent review of compatibility controls",
+        "full old/current backend mixed-version route, mutation, persisted-state and rollback coverage beyond the proven session/authentication slice"
       ],
       "evidenceRefs": [
         ".github/workflows/security-contracts.yml",
         "contracts/operations/migration-lifecycle-contract.v1.json",
         "contracts/operations/version-compatibility-contract.v1.json",
         "docs/runbooks/memory-os-version-compatibility.md",
-        "scripts/validate-memory-os-version-compatibility.py"
+        "scripts/validate-memory-os-version-compatibility.py",
+        "contracts/operations/mixed-version-session-contract.v1.json",
+        "scripts/run-memory-os-mixed-version-session-drill.sh",
+        "scripts/validate-memory-os-mixed-version-session.py",
+        "scripts/reconcile-memory-os-mixed-version-session.py",
+        "docs/fixtures/memory-os-operability/mixed-version-session-results.sample.v1.json",
+        ".github/workflows/mixed-version-session.yml"
       ]
     }
   ]
