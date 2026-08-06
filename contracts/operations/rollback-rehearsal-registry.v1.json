@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "memory-os-rollback-rehearsal-registry.v1",
+  "registryClass": "APPROVED_ROLLBACK_REHEARSAL_REQUESTS",
+  "appendOnly": true,
+  "planningAuthorityOnly": true,
+  "productionEvidence": false,
+  "rehearsalRequestCount": 0,
+  "latestRehearsalId": null,
+  "requests": [],
+  "limitations": [
+    "no approved release baseline exists",
+    "no rollback-eligible approved target exists",
+    "no admissible source-target release pair exists",
+    "no rollback rehearsal has been requested or executed",
+    "historical candidate and CI evidence cannot enter this registry"
+  ]
+}
