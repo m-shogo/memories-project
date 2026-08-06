@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "memory-os-mixed-version-candidate-rejections.v1",
+  "productionEvidence": false,
+  "releaseCompatibilityEvidence": false,
+  "containsSecrets": false,
+  "candidates": [
+    {
+      "commitSha": "a1f39560468ebd5d39c4dd7a336140cb455cf2e8",
+      "classification": "REJECTED_HISTORICAL_CANDIDATE_NOT_RELEASE",
+      "evaluatedBySourceCommitSha": "e2b96dac184080d4ddb57881bd03a7c86cae5b1e",
+      "result": "REJECTED",
+      "decisiveFailures": [
+        {
+          "surface": "HTTP_UPLOAD_COMPLETION_ROUTE",
+          "expected": "POST /v1/upload-authorizations/{authorizationID}/complete reaches the registered handler",
+          "observed": "the candidate route prefilter classified the registered handler path as other and returned 404"
+        },
+        {
+          "surface": "HTTP_ACCOUNT_DELETION_FENCE_ROUTE",
+          "expected": "the candidate test reaches its registered upload route after account deletion and observes the deletion fence",
+          "observed": "the candidate route prefilter returned 404 before the deletion-fence behavior could be evaluated"
+        }
+      ],
+      "nonDecisiveRunnerFinding": {
+        "surface": "PREVIEW_COMMIT_DATABASE_TEST",
+        "observed": "a deadlock occurred while multiple package test suites shared one database concurrently",
+        "disposition": "runner concurrency artifact; package execution was changed to sequential and this finding is not used as the rejection basis"
+      },
+      "evidenceRefs": [
+        "services/import-api/internal/httpserver/server.go",
+        "services/import-api/internal/httpserver/observability.go",
+        "services/import-api/internal/httpapi/upload_handler.go",
+        "services/import-api/internal/httpserver/server_live_test.go",
+        "docs/fixtures/memory-os-operability/mixed-version-candidate-diagnostic.last.json"
+      ],
+      "limitations": [
+        "historical candidate only",
+        "not an approved release",
+        "not production traffic",
+        "not a downgrade or rolling deployment result"
+      ]
+    }
+  ]
+}
