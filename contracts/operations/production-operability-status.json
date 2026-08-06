@@ -284,7 +284,8 @@
         "local PostgreSQL 16 plus MinIO import-flow outage drill proving an unreachable object-store endpoint fails before parse/commit, leaves no Preview or spool residue and the exact same request succeeds once connectivity returns",
         "v2 machine-readable failure-drill authority superseding the two-scenario v1 inventory while preserving CI-vs-production evidence separation",
         "five-class parser restart recovery matrix covering protocol truncation, wall-clock timeout, CPU limit kill, memory limit kill and pre-start cancellation; each failure leaves no residue and permits independently verified same-spool recovery",
-        "local PostgreSQL commit-outage recovery drill proving a failed atomic Preview commit leaves zero durable rows, preserves sealed spool evidence, and a new attempt for the same source/Preview ID commits exactly once after connectivity returns"
+        "local PostgreSQL commit-outage recovery drill proving a failed atomic Preview commit leaves zero durable rows, preserves sealed spool evidence, and a new attempt for the same source/Preview ID commits exactly once after connectivity returns",
+        "started-worker parser cancellation drill proving a completed frame reaches spool storage before cancellation, the blocked pipe read returns context.Canceled in under one second, cleanup removes the partial attempt and the same spool ID recovers with independent verification"
       ],
       "missingEvidence": [
         "mixed-version failure drill",
@@ -293,7 +294,6 @@
         "production-shaped PostgreSQL process loss, connection-pool disruption and replication failover drill",
         "direct commit resume from the preserved sealed spool without re-fetching and re-parsing the source",
         "database recovery verification for expired sessions, deleted accounts, leases and duplicate effects under failover",
-        "in-flight parser cancellation latency and process-group termination proof while the worker is blocked",
         "independent child-process orphan/reaping scan after parser process-group termination",
         "parser host or container restart recovery using a reviewed production artifact",
         "database loss or failover drill",
@@ -327,7 +327,15 @@
         ".github/workflows/parser-restart-matrix.yml",
         "services/import-api/internal/importflow/resume.go",
         "scripts/reconcile-memory-os-chaos-authority.py",
-        ".github/workflows/reconcile-chaos-authority.yml"
+        ".github/workflows/reconcile-chaos-authority.yml",
+        "contracts/operations/parser-inflight-cancellation-contract.v1.json",
+        "docs/fixtures/memory-os-operability/parser-inflight-cancellation-results.sample.v1.json",
+        "services/import-api/internal/parsersup/supervisor_linux.go",
+        "services/import-api/internal/parsersup/worker.go",
+        "services/import-api/internal/parsersup/inflight_cancellation_drill_linux_test.go",
+        "scripts/validate-memory-os-parser-inflight-cancellation.py",
+        "scripts/reconcile-memory-os-parser-inflight-cancellation.py",
+        ".github/workflows/parser-inflight-cancellation.yml"
       ]
     },
     {
