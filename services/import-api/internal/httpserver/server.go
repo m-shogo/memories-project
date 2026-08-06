@@ -59,7 +59,18 @@ func New(config Config) http.Handler {
 	// unauthenticated ahead of the session middleware. Its own verifier is the
 	// authentication.
 	httpapi.AppleHandler{Service: config.AppleLogin}.Register(root)
-	root.Handle("/v1/", sessionMiddleware(config.Sessions, api))
+	protected := sessionMiddleware(config.Sessions, api)
+	root.Handle("/v1/", http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		// Reject an unknown API shape before touching the session backend. This
+		// keeps hostile high-cardinality paths a stable 404 rather than turning
+		// an unconfigured or unavailable resolver into a misleading 503, while
+		// known route shapes still pass through authentication and preserve 405.
+		if strings.HasSuffix(routeTemplate(request.Method, request.URL.Path), " other") {
+			http.NotFound(writer, request)
+			return
+		}
+		protected.ServeHTTP(writer, request)
+	}))
 	// Order: observability (request ID + panic + request event) wraps rate
 	// limiting, which wraps routing. So a 429 carries a request ID and is
 	// logged, and the rate-limit decision precedes body decode and the Apple
