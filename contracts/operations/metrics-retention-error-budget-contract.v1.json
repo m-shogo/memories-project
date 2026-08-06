@@ -1,0 +1,126 @@
+{
+  "contractId": "memory-os.operability.metrics-retention-error-budget.v1",
+  "schemaVersion": "memory-os-metrics-retention-error-budget.v1",
+  "description": "Binding provider-neutral retention and error-budget policy for operational metrics. The policy is defined, but no metrics backend, retention job, recording rule or error-budget automation is configured.",
+  "sourceMetricsContract": "contracts/operations/metrics-contract.v1.json",
+  "status": "POLICY_DEFINED_NOT_CONFIGURED",
+  "privacy": {
+    "classification": "operational_nonpersonal",
+    "personalDataForbidden": true,
+    "rawIdentifiersForbidden": true,
+    "secretValuesForbidden": true,
+    "incidentExportsMustUseDigestsAndClosedEnums": true
+  },
+  "retention": {
+    "timezone": "UTC",
+    "tiers": [
+      {
+        "id": "raw-high-resolution",
+        "resolution": "native_scrape_interval",
+        "retentionDays": 30,
+        "purpose": "Recent diagnosis, latency distributions and short-window incident analysis.",
+        "required": true
+      },
+      {
+        "id": "five-minute-rollup",
+        "resolution": "5m",
+        "retentionDays": 180,
+        "purpose": "Seasonality, regression comparison and medium-term reliability analysis.",
+        "required": true
+      },
+      {
+        "id": "daily-rollup",
+        "resolution": "1d",
+        "retentionDays": 730,
+        "purpose": "Long-term trend and capacity planning without preserving high-resolution samples.",
+        "required": true
+      }
+    ],
+    "minimumFreshnessCheckMinutes": 5,
+    "maximumAllowedIngestionLagMinutes": 10,
+    "retentionDeletionVerificationRequired": true,
+    "backendConfigurationCommittedAsCodeRequired": true,
+    "silentRetentionExtensionForbidden": true,
+    "silentRetentionReductionForbidden": true,
+    "configured": false,
+    "verified": false
+  },
+  "errorBudget": {
+    "window": "30d_rolling",
+    "activationStatus": "INACTIVE_UNTIL_SLO_APPROVED_AND_DATA_VALIDATED",
+    "calculation": "allowed_bad_events = total_eligible_events * (1 - approved_slo_target)",
+    "eligibleSLIs": [
+      "sli_http_availability",
+      "sli_http_latency",
+      "sli_apple_exchange_success",
+      "sli_db_availability",
+      "sli_deletion_success",
+      "sli_deletion_freshness"
+    ],
+    "notBudgetable": [
+      "cross-tenant data visibility",
+      "authorization bypass",
+      "deleted data or expired session resurrection",
+      "integrity verification bypass",
+      "secret or personal-data disclosure",
+      "unreviewed destructive migration",
+      "silent loss of accepted memory data"
+    ],
+    "consumptionBands": [
+      {
+        "id": "healthy",
+        "consumedPercentUpperExclusive": 50,
+        "releasePolicy": "normal_reviewed_changes"
+      },
+      {
+        "id": "watch",
+        "consumedPercentLowerInclusive": 50,
+        "consumedPercentUpperExclusive": 75,
+        "releasePolicy": "reliability_risk_review_required"
+      },
+      {
+        "id": "restricted",
+        "consumedPercentLowerInclusive": 75,
+        "consumedPercentUpperExclusive": 100,
+        "releasePolicy": "feature_changes_require_incident_commander_approval"
+      },
+      {
+        "id": "exhausted",
+        "consumedPercentLowerInclusive": 100,
+        "releasePolicy": "feature_freeze_only_security_integrity_and_reliability_fixes"
+      }
+    ],
+    "multiWindowBurnAlertsRequired": true,
+    "dataGapPausesBudgetEvaluation": true,
+    "dataGapNeverResetsConsumedBudget": true,
+    "manualBudgetResetForbidden": true,
+    "approvedSloRequired": true,
+    "ownerRequired": true,
+    "configured": false,
+    "verified": false
+  },
+  "changeControl": {
+    "retentionChangeRequiresReview": true,
+    "errorBudgetRuleChangeRequiresReview": true,
+    "exactSourceCommitRequired": true,
+    "rollbackPlanRequired": true,
+    "historicalDataRewriteForbidden": true,
+    "productionDecisionCannotChangeAutomatically": true
+  },
+  "readiness": {
+    "retentionPolicyDefined": true,
+    "errorBudgetPolicyDefined": true,
+    "backendRetentionConfigured": false,
+    "recordingRulesConfigured": false,
+    "approvedSloTargetsExist": false,
+    "burnRateAlertsConfigured": false,
+    "dataFreshnessAlertConfigured": false,
+    "retentionDeletionVerified": false,
+    "operatorReviewCompleted": false,
+    "productionReady": false
+  },
+  "evidenceRefs": [
+    "contracts/operations/metrics-retention-error-budget-contract.v1.json",
+    "scripts/validate-memory-os-metrics-operations.py"
+  ]
+}
