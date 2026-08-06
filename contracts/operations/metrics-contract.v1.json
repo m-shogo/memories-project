@@ -1,7 +1,7 @@
 {
   "contractId": "memory-os.operability.metrics-contract.v1",
   "schemaVersion": "memory-os-metrics.v1",
-  "description": "Machine-readable runtime metrics contract for the import-api boundary. The validator checks this against the Go registry (metric names, types, required labels, histogram buckets, schema version and per-metric cardinality budgets), forbids any personal or high-cardinality label, requires a privacy classification and cardinality budget on every metric, requires each referenced SLI/SLO/alert to resolve, holds every SLO to PROPOSED-with-no-owner honesty and every alert to NOT_CONFIGURED until routing evidence exists, and forbids OPS-P0-004 READY until an exporter, scrape endpoint, dashboards, alert routing, retention and load evidence all exist. This contract defines the SLI base; it is not a running metrics stack.",
+  "description": "Machine-readable runtime metrics contract for the import-api boundary. The validator checks this against the Go registry (metric names, types, required labels, histogram buckets, schema version and per-metric cardinality budgets), forbids personal or high-cardinality labels, and validates the SLI/SLO/alert graph. A deterministic Prometheus exporter, authenticated default-disabled scrape handler and explicit server mount seam now exist under a separate scrape contract. Production scraping, dashboards, alert routing, retention and load-calibrated thresholds remain unconfigured, so OPS-P0-004 remains PARTIAL.",
   "goImplementation": "services/import-api/internal/metrics",
   "goRecorderFile": "services/import-api/internal/metrics/recorder.go",
   "goLabelsFile": "services/import-api/internal/metrics/labels.go",
@@ -937,13 +937,13 @@
     }
   ],
   "readiness": {
-    "exporterImplemented": false,
+    "exporterImplemented": true,
     "scrapeEndpointExposed": false,
     "dashboardsDefined": false,
     "alertRoutingConfigured": false,
     "retentionDefined": false,
     "loadCalibrated": false,
-    "note": "The typed registry and recorder exist and are wired at the HTTP, rate-limit and deletion-worker boundaries, but there is no Prometheus/OTel exporter, no scrape endpoint, no dashboard, no alert routing, no retention policy and no load-calibrated buckets or SLO targets. OPS-P0-004 is PARTIAL, not READY."
+    "note": "The typed registry and recorder are wired at the HTTP, rate-limit and deletion-worker boundaries. A deterministic Prometheus exporter, authenticated scrape handler and explicit default-disabled server mount seam are implemented and tested. Production runtime mounting, secret provisioning, private network policy, external scraping, dashboards, alert routing, retention and load-calibrated buckets/SLO targets remain missing. OPS-P0-004 is PARTIAL, not READY."
   },
   "evidenceRefs": [
     "services/import-api/internal/metrics/labels.go",
@@ -953,6 +953,13 @@
     "services/import-api/internal/metrics/metrics_test.go",
     "services/import-api/internal/httpserver/observability.go",
     "services/import-api/internal/httpserver/ratelimit.go",
-    "services/import-api/internal/httpserver/metrics_test.go"
+    "services/import-api/internal/httpserver/metrics_test.go",
+    "contracts/operations/metrics-scrape-contract.v1.json",
+    "services/import-api/internal/metrics/prometheus.go",
+    "services/import-api/internal/metrics/scrape.go",
+    "services/import-api/internal/metrics/prometheus_test.go",
+    "services/import-api/internal/httpserver/metrics_scrape_test.go",
+    "scripts/validate-memory-os-metrics-scrape.py",
+    "scripts/reconcile-memory-os-metrics-contract.py"
   ]
 }
