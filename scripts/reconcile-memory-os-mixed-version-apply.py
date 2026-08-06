@@ -23,12 +23,17 @@ EXISTING = (
     "current Apply followed by historical-candidate replay returns the original Apply ID without duplicate materialization",
     "cross-Preview idempotency-key reuse is rejected while exactly two applied claims and two memory items remain with zero in-progress claims",
 )
+RACE_EXISTING = (
+    "simultaneous historical-candidate and current Apply requests using one Preview and idempotency key converge on one Apply ID with exactly one new application and one replay",
+    "concurrent old/current idempotency claim race leaves one durable claim, one materialized memory item and zero in-progress residue for the raced Preview",
+)
 OBSOLETE_GAPS = (
     "persisted-state compatibility fixtures across releases",
+    "simultaneous old/current mutation traffic and concurrent idempotency-claim race coverage on one production-shaped database",
 )
 PRECISE_GAPS = (
     "persisted Preview and Apply compatibility fixtures across an approved predecessor and successor release pair",
-    "simultaneous old/current mutation traffic and concurrent idempotency-claim race coverage on one production-shaped database",
+    "simultaneous approved-release old/current mutation traffic and concurrent idempotency-claim race coverage on one production-shaped database",
     "process termination during in-progress Apply with deterministic recovery or safe blocking evidence",
     "rolling deployment, traffic drain and application rollback rehearsal using rollback-eligible approved release artifacts",
 )
@@ -108,6 +113,9 @@ def main() -> int:
             environment.get("releaseCompatibilityEvidence") is False and
             environment.get("containsSecrets") is False,
             "mixed-version Apply evidence boundary drift")
+    assertions = result.get("assertions")
+    require(isinstance(assertions, dict), "mixed-version Apply assertions missing")
+    race_passed = assertions.get("concurrentOldCurrentClaimRacePassed") is True
 
     contract = load(CONTRACT_PATH)
     require(contract.get("oldBackendCommitSha") == old_sha,
@@ -117,8 +125,7 @@ def main() -> int:
     require(isinstance(readiness, dict), "contract readiness missing")
     require(isinstance(refs, list), "contract evidenceRefs must be a list")
     for field in (
-        "approvedReleasePairAvailable", "concurrentClaimRaceExecuted",
-        "rollbackRehearsalExecuted", "productionReady",
+        "approvedReleasePairAvailable", "rollbackRehearsalExecuted", "productionReady",
     ):
         require(readiness.get(field) is False,
                 f"historical-candidate evidence cannot promote {field}")
@@ -127,6 +134,12 @@ def main() -> int:
     if readiness.get("exactSourcePassResultCommitted") is not True:
         readiness["exactSourcePassResultCommitted"] = True
         contract_changed = True
+    if race_passed and readiness.get("concurrentClaimRaceExecuted") is not True:
+        readiness["concurrentClaimRaceExecuted"] = True
+        contract_changed = True
+    if not race_passed:
+        require(readiness.get("concurrentClaimRaceExecuted") is False,
+                "contract claims concurrent race evidence absent from result")
     for ref in REFS:
         require((ROOT / ref).is_file(), f"mixed-version Apply evidence missing: {ref}")
         contract_changed = append_once(refs, ref) or contract_changed
@@ -148,6 +161,9 @@ def main() -> int:
     status_changed = False
     for item in EXISTING:
         status_changed = append_once(existing, item) or status_changed
+    if race_passed:
+        for item in RACE_EXISTING:
+            status_changed = append_once(existing, item) or status_changed
     for item in OBSOLETE_GAPS:
         if item in missing:
             missing.remove(item)
@@ -160,7 +176,7 @@ def main() -> int:
     lowered = [str(item).lower() for item in missing]
     for label, terms in {
         "approved release pair": ("approved", "predecessor", "successor"),
-        "concurrent mixed mutation": ("simultaneous", "concurrent", "idempotency"),
+        "approved concurrent mixed mutation": ("approved-release", "concurrent", "idempotency"),
         "in-progress termination": ("termination", "in-progress"),
         "rolling rollback": ("rolling", "rollback", "rollback-eligible"),
     }.items():
