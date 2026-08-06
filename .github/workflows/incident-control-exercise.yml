@@ -24,7 +24,6 @@ on:
       - "scripts/validate-memory-os-parser-security.py"
       - "scripts/validate-memory-os-parser-restart-matrix.py"
       - "scripts/validate-memory-os-parser-inflight-cancellation.py"
-      - "docs/fixtures/memory-os-operability/**"
   schedule:
     - cron: "11 22 * * *"
   workflow_dispatch:
@@ -34,7 +33,7 @@ permissions:
 
 concurrency:
   group: incident-control-exercise-so
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   exercise:
