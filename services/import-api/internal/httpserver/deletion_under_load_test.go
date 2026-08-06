@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"memory-os-import-api/internal/accountdelete"
+	"github.com/m-shogo/memories-project/services/import-api/internal/accountdelete"
 )
 
 const deletionUnderLoadScenarioID = "account-deletion-post-fence-load-local-dependencies"
@@ -256,19 +256,19 @@ func TestAccountDeletionPostFenceLoadLocalDependencies(t *testing.T) {
 	document.Scenario.FinalAccountState = state
 	document.Scenario.FinalAccountEpoch = epoch
 	document.Scenario.Assertions = map[string]any{
-		"preFenceAll2xx":              preFence.StatusCodeCounts["200"] == 120,
-		"deletionRequestStatus":       response.StatusCode,
-		"deletionEpoch":               receipt.DeletionEpoch,
-		"postFenceAllUnauthorized":    postFence.StatusCodeCounts["401"] == 400,
-		"postFenceUnauthorizedCount":  postFence.StatusCodeCounts["401"],
-		"postFenceNo5xx":              postFence.Summary.StatusClassCounts["5xx"] == 0,
-		"postFenceNoTransportErrors":  postFence.Summary.StatusClassCounts["transport_error"] == 0,
-		"workerCompleted":             workerResult.Err == nil,
-		"workerReceiptCount":          len(workerResult.Receipts),
-		"finalOwnedRowCount":          finalOwnedRows,
-		"finalAccountState":           state,
-		"finalAccountEpoch":           epoch,
-		"productionEvidence":          false,
+		"preFenceAll2xx":             preFence.StatusCodeCounts["200"] == 120,
+		"deletionRequestStatus":      response.StatusCode,
+		"deletionEpoch":              receipt.DeletionEpoch,
+		"postFenceAllUnauthorized":   postFence.StatusCodeCounts["401"] == 400,
+		"postFenceUnauthorizedCount": postFence.StatusCodeCounts["401"],
+		"postFenceNo5xx":             postFence.Summary.StatusClassCounts["5xx"] == 0,
+		"postFenceNoTransportErrors": postFence.Summary.StatusClassCounts["transport_error"] == 0,
+		"workerCompleted":            workerResult.Err == nil,
+		"workerReceiptCount":         len(workerResult.Receipts),
+		"finalOwnedRowCount":         finalOwnedRows,
+		"finalAccountState":          state,
+		"finalAccountEpoch":          epoch,
+		"productionEvidence":         false,
 	}
 	document.Scenario.Result = "PASS"
 	document.Scenario.IntegrityResult = "PASS"
