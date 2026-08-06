@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "local-object-version-restore-drill",
+  "sourceCommitSha": "64cee3bf3a300705a65dacafadff1916744b1ebb",
+  "result": "PASS",
+  "exitCode": 0,
+  "output": "Memory OS local exact object-version restore PASS\nsource versions: 3  source remaining: 0  restored checksum: PASS\nresult: /home/runner/work/memories-project/memories-project/docs/fixtures/memory-os-operability/local-object-version-restore-results.sample.v1.json\n",
+  "containsSecrets": false,
+  "productionEvidence": false
+}
