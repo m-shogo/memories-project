@@ -46,7 +46,7 @@ def strings(value: Any, field: str, minimum: int = 0) -> list[str]:
     return value
 
 
-def validate_result(result: dict[str, Any], expected_sha: str | None) -> None:
+def validate_result(result: dict[str, Any], expected_sha: str | None) -> str:
     require(result.get("schemaVersion") == "memory-os-database-commit-outage-results.v1",
             "database outage result schemaVersion drift")
     commit_sha = result.get("commitSha")
@@ -75,7 +75,8 @@ def validate_result(result: dict[str, Any], expected_sha: str | None) -> None:
             "database outage duration is invalid")
     assertions = result.get("assertions")
     require(isinstance(assertions, dict), "database outage assertions missing")
-    expected = {
+
+    common = {
         "previewRowsDuringOutage": 0,
         "jobStateDuringOutage": "preview_building",
         "sealedSpoolEntriesAfterFailure": 1,
@@ -83,25 +84,45 @@ def validate_result(result: dict[str, Any], expected_sha: str | None) -> None:
         "candidateRowsAfterRecovery": 2,
         "rejectionRowsAfterRecovery": 1,
         "sameSourceAndPreviewIdReused": True,
-        "sameSpoolIdReused": True,
-        "resumeWithoutObjectStore": True,
-        "resumeWithoutParser": True,
         "recoveryMarkedAsReplay": False,
     }
-    for field, value in expected.items():
+    for field, value in common.items():
         require(assertions.get(field) == value,
                 f"database outage assertion failed: {field}")
+
+    modern = (
+        assertions.get("sameSpoolIdReused") is True and
+        assertions.get("resumeWithoutObjectStore") is True and
+        assertions.get("resumeWithoutParser") is True
+    )
     limitations = strings(result.get("limitations"), "result.limitations", 6)
     joined = "\n".join(limitations)
-    for phrase in (
-        "not PostgreSQL process loss",
-        "not replication failover",
-        "same sealed spool",
-        "ephemeral PostgreSQL 16 and MinIO",
-        "host restart not executed",
-        "not production chaos evidence",
-    ):
-        require(phrase in joined, f"database outage limitation omitted: {phrase}")
+    if modern:
+        for phrase in (
+            "not PostgreSQL process loss",
+            "not replication failover",
+            "same sealed spool",
+            "ephemeral PostgreSQL 16 and MinIO",
+            "host restart not executed",
+            "not production chaos evidence",
+        ):
+            require(phrase in joined, f"database outage limitation omitted: {phrase}")
+        generation = "SAME_SEALED_SPOOL_RESUME"
+    else:
+        require(expected_sha is None,
+                "legacy new-spool result cannot satisfy an exact-source same-spool validation")
+        require(assertions.get("newSpoolAttemptUsed") is True,
+                "database outage result is neither legacy nor same-spool format")
+        for phrase in (
+            "not PostgreSQL process loss",
+            "not replication failover",
+            "new spool attempt",
+            "ephemeral PostgreSQL 16 and MinIO",
+            "not production chaos evidence",
+        ):
+            require(phrase in joined, f"legacy database outage limitation omitted: {phrase}")
+        generation = "LEGACY_NEW_SPOOL_ATTEMPT"
+
     serialized = json.dumps(result, ensure_ascii=False).lower()
     for forbidden in (
         "postgres://", "postgresql://", "password=", "minio_root_password",
@@ -109,6 +130,7 @@ def validate_result(result: dict[str, Any], expected_sha: str | None) -> None:
     ):
         require(forbidden not in serialized,
                 f"database outage result contains forbidden value: {forbidden}")
+    return generation
 
 
 def main() -> int:
@@ -185,8 +207,9 @@ def main() -> int:
         require(SHA_RE.fullmatch(expected_sha) is not None,
                 "EXPECTED_COMMIT_SHA must be a full SHA")
         require(RESULT_PATH.is_file(), "exact-source database outage result is missing")
+    generation = "ABSENT"
     if RESULT_PATH.is_file():
-        validate_result(load(RESULT_PATH), expected_sha)
+        generation = validate_result(load(RESULT_PATH), expected_sha)
     status = load(STATUS_PATH)
     require(status.get("productionDecision") == "NO_GO",
             "database outage CI evidence cannot change production decision")
@@ -197,6 +220,7 @@ def main() -> int:
             "local database outage drill cannot make OPS-P0-009 READY")
     print("Memory OS database commit outage validation PASS")
     print(f"result present: {RESULT_PATH.is_file()}")
+    print(f"result generation: {generation}")
     print("production decision: NO_GO")
     return 0
 
