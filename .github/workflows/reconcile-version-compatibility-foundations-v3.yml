@@ -1,0 +1,81 @@
+name: Reconcile Version Compatibility Foundations V3
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/reconcile-version-compatibility-foundations-v3.yml"
+      - "scripts/patch-memory-os-version-compatibility-validator.py"
+      - "scripts/reconcile-memory-os-version-compatibility-foundations.py"
+      - "scripts/validate-memory-os-version-compatibility-foundations.py"
+      - "scripts/validate-memory-os-version-compatibility.py"
+      - "contracts/operations/version-compatibility-contract.v1.json"
+      - "docs/runbooks/memory-os-version-compatibility.md"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reconcile-version-compatibility-foundations-v3-so
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    if: >-
+      github.event_name != 'push' ||
+      !contains(github.event.head_commit.message, 'docs(version): reconcile integrated compatibility authority')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout latest so
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile deterministic tools
+        run: |
+          test -z "$(git status --porcelain)"
+          python -m py_compile \
+            scripts/patch-memory-os-version-compatibility-validator.py \
+            scripts/reconcile-memory-os-version-compatibility-foundations.py \
+            scripts/validate-memory-os-version-compatibility-foundations.py
+
+      - name: Reconcile integrated compatibility authority
+        run: |
+          python scripts/patch-memory-os-version-compatibility-validator.py
+          python scripts/reconcile-memory-os-version-compatibility-foundations.py
+          python -m py_compile scripts/validate-memory-os-version-compatibility.py
+
+      - name: Commit canonical authority
+        run: |
+          git add \
+            contracts/operations/version-compatibility-contract.v1.json \
+            docs/runbooks/memory-os-version-compatibility.md \
+            scripts/validate-memory-os-version-compatibility.py
+          if git diff --cached --quiet; then
+            echo "Integrated compatibility authority is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(version): reconcile integrated compatibility authority"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+
+      - name: Re-read committed authority
+        run: |
+          git fetch origin so
+          git reset --hard origin/so
+
+      - name: Validate canonical and aggregate authority
+        run: |
+          python scripts/validate-memory-os-version-compatibility.py
+          python scripts/validate-memory-os-operability.py
