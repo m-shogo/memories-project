@@ -8,6 +8,7 @@ on:
       - "contracts/operations/version-compatibility-contract.v1.json"
       - "contracts/operations/production-operability-status.json"
       - "docs/runbooks/memory-os-version-compatibility-foundations.md"
+      - "scripts/reconcile-memory-os-version-compatibility-canonical.py"
       - "scripts/validate-memory-os-version-compatibility-foundations.py"
       - "scripts/reconcile-memory-os-version-compatibility-foundation-status.py"
       - "docs/fixtures/memory-os-operability/mixed-version-session-results.sample.v1.json"
@@ -26,6 +27,7 @@ on:
       - "contracts/operations/version-compatibility-contract.v1.json"
       - "contracts/operations/production-operability-status.json"
       - "docs/runbooks/memory-os-version-compatibility-foundations.md"
+      - "scripts/reconcile-memory-os-version-compatibility-canonical.py"
       - "scripts/validate-memory-os-version-compatibility-foundations.py"
       - "scripts/reconcile-memory-os-version-compatibility-foundation-status.py"
       - "docs/fixtures/memory-os-operability/mixed-version-session-results.sample.v1.json"
@@ -65,12 +67,16 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Compile foundation authority tools
+      - name: Compile compatibility authority tools
         run: |
           test -z "$(git status --porcelain)"
           python -m py_compile \
+            scripts/reconcile-memory-os-version-compatibility-canonical.py \
             scripts/validate-memory-os-version-compatibility-foundations.py \
             scripts/reconcile-memory-os-version-compatibility-foundation-status.py
+
+      - name: Restore conservative canonical authority
+        run: python scripts/reconcile-memory-os-version-compatibility-canonical.py
 
       - name: Validate canonical matrix remains conservative
         run: python scripts/validate-memory-os-version-compatibility.py
@@ -80,12 +86,14 @@ jobs:
           python scripts/reconcile-memory-os-version-compatibility-foundation-status.py
           python scripts/validate-memory-os-version-compatibility-foundations.py
 
-      - name: Commit foundation status authority
+      - name: Commit compatibility authorities
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         run: |
-          git add contracts/operations/production-operability-status.json
+          git add \
+            contracts/operations/version-compatibility-contract.v1.json \
+            contracts/operations/production-operability-status.json
           if git diff --cached --quiet; then
-            echo "Bounded compatibility foundation status is already current."
+            echo "Compatibility authorities are already current."
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
