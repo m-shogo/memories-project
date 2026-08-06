@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "reconcile-compatibility-authority-diagnostic",
+  "sourceCommitSha": "831a3a5be42bc2bcca887fdb7e35f6363baa8a58",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "STAGE: compile\nSTAGE: canonical-validator\nCOMPATIBILITY FOUNDATION VALIDATION FAILED: OPS-P0-008 omits bounded foundation authority refs\nVERSION COMPATIBILITY VALIDATION FAILED: integrated compatibility foundation validation failed\n",
+  "containsSecrets": false,
+  "productionEvidence": false,
+  "releaseCompatibilityEvidence": false
+}
