@@ -31,7 +31,7 @@ REQUIRED_RUNBOOK_HEADINGS = [
     "## Current limitations",
 ]
 REQUIRED_RUNBOOK_PHRASES = [
-    "Transaction rollback is not treated as migration rollback completion",
+    "A PostgreSQL transaction rollback does **not** prove",
     "forward-fix",
     "old-version drain",
     "isolated restore",
