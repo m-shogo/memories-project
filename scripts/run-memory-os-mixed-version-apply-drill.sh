@@ -114,6 +114,7 @@ PY
 # shellcheck disable=SC1090
 source "$IDENTITY_ENV"
 
+printf 'MIXED-VERSION APPLY STAGE: apply-current-migrations\n'
 mapfile -t MIGRATIONS < <(python - <<'PY'
 import json
 from pathlib import Path
@@ -124,7 +125,8 @@ PY
 )
 [[ "${#MIGRATIONS[@]}" -gt 0 ]] || { echo "migration registry is empty" >&2; exit 1; }
 for migration in "${MIGRATIONS[@]}"; do
-  psql "$MEMORY_OS_TEST_DATABASE_URL" --set=ON_ERROR_STOP=1 \
+  PGOPTIONS='-c client_min_messages=warning' \
+    psql "$MEMORY_OS_TEST_DATABASE_URL" --set=ON_ERROR_STOP=1 \
     --file "$REPO_ROOT/infra/postgresql/security/$migration" >/dev/null
 done
 
@@ -136,6 +138,7 @@ for _ in $(seq 1 60); do
 done
 curl --fail --silent --show-error "$MEMORY_OS_TEST_S3_ENDPOINT/minio/health/live" >/dev/null
 
+printf 'MIXED-VERSION APPLY STAGE: build-old-current-and-fixture\n'
 git worktree add --detach "$OLD_TREE" "$OLD_SHA" >/dev/null
 (
   cd "$OLD_TREE/services/import-api"
@@ -147,6 +150,7 @@ git worktree add --detach "$OLD_TREE" "$OLD_SHA" >/dev/null
   go build -trimpath -o "$FIXTURE_BIN" ./cmd/memory-os-mixed-version-fixture
 )
 
+printf 'MIXED-VERSION APPLY STAGE: commit-two-synthetic-previews\n'
 "$FIXTURE_BIN" \
   -database-url "$MEMORY_OS_TEST_DATABASE_URL" \
   -account-id "$ACCOUNT_ID" -job-id "$JOB_A" -preview-id "$PREVIEW_A" \
@@ -166,6 +170,7 @@ OLD_TOKEN="$(extract_token "$OLD_TOKEN_FILE")"
 CURRENT_TOKEN="$(extract_token "$CURRENT_TOKEN_FILE")"
 rm -f "$OLD_TOKEN_FILE" "$CURRENT_TOKEN_FILE"
 
+printf 'MIXED-VERSION APPLY STAGE: start-two-processes\n'
 "$CURRENT_BIN" \
   -listen "127.0.0.1:$CURRENT_PORT" \
   -database-url "$MEMORY_OS_TEST_DATABASE_URL" \
@@ -186,6 +191,7 @@ wait_http "http://127.0.0.1:$CURRENT_PORT/healthz" "$CURRENT_LOG"
 OLD_PID="$!"
 wait_http "http://127.0.0.1:$OLD_PORT/healthz" "$OLD_LOG"
 
+printf 'MIXED-VERSION APPLY STAGE: execute-bidirectional-apply-replay\n'
 OLD_TOKEN="$OLD_TOKEN" CURRENT_TOKEN="$CURRENT_TOKEN" \
 OLD_URL="http://127.0.0.1:$OLD_PORT" CURRENT_URL="http://127.0.0.1:$CURRENT_PORT" \
 FIXTURE_A="$FIXTURE_A" FIXTURE_B="$FIXTURE_B" \
@@ -237,11 +243,12 @@ def apply(base, token, fixture, key):
         },
     )
 
-old_read_status, _ = request(
-    old_url, "GET", "/v1/import-jobs/" + os.environ.get("JOB_A", "") + "/preview", current_token
-) if os.environ.get("JOB_A") else (0, {})
-# The Apply paths below are the binding proof; explicit Preview reads use the
-# IDs returned by the fixture through their job-independent Apply surface.
+
+def created_count(response):
+    counts = response.get("counts", {})
+    return counts.get("created", counts.get("Created"))
+
+
 old_first_status, old_first = apply(
     old_url, current_token, fixture_a, os.environ["IDEMPOTENCY_A"]
 )
@@ -269,9 +276,9 @@ for label, status in {
 if conflict_status != 409:
     raise SystemExit(f"cross-preview idempotency reuse returned HTTP {conflict_status}")
 
-if old_first.get("replayed") is not False or old_first.get("counts", {}).get("created") != 1:
+if old_first.get("replayed") is not False or created_count(old_first) != 1:
     raise SystemExit("old first apply did not create exactly one item")
-if current_first.get("replayed") is not False or current_first.get("counts", {}).get("created") != 1:
+if current_first.get("replayed") is not False or created_count(current_first) != 1:
     raise SystemExit("current first apply did not create exactly one item")
 if current_replay.get("replayed") is not True or current_replay.get("applyId") != old_first.get("applyId"):
     raise SystemExit("current process did not replay the old-created claim")
@@ -294,6 +301,7 @@ summary = {
 Path(os.environ["HTTP_SUMMARY"]).write_text(json.dumps(summary, indent=2) + "\n")
 PY
 
+printf 'MIXED-VERSION APPLY STAGE: verify-durable-accounting\n'
 APPLY_ROWS="$(psql "$MEMORY_OS_TEST_DATABASE_URL" --tuples-only --no-align --set=ON_ERROR_STOP=1 \
   --command "SELECT count(*) FROM memory_os.apply_confirmation WHERE owner_account_id = '$ACCOUNT_ID';")"
 MEMORY_ROWS="$(psql "$MEMORY_OS_TEST_DATABASE_URL" --tuples-only --no-align --set=ON_ERROR_STOP=1 \
