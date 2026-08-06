@@ -10,6 +10,7 @@ and the registry validator remain mandatory after execution.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import os
 import re
@@ -72,6 +73,17 @@ def strings(value: Any, field: str, minimum: int = 1) -> list[str]:
     return value
 
 
+def require_utc_timestamp(value: Any, field: str) -> None:
+    require(isinstance(value, str) and value.endswith("Z"),
+            f"{field} must be an RFC3339 UTC timestamp")
+    try:
+        parsed = dt.datetime.fromisoformat(value.removesuffix("Z") + "+00:00")
+    except ValueError as exc:
+        raise RegistrationFailure(f"{field} is not a valid timestamp") from exc
+    require(parsed.tzinfo is not None and parsed.utcoffset() == dt.timedelta(0),
+            f"{field} must be UTC")
+
+
 def validate_record(record: dict[str, Any], required_fields: set[str]) -> None:
     require(set(record) >= required_fields,
             f"record missing fields: {sorted(required_fields - set(record))}")
@@ -86,6 +98,7 @@ def validate_record(record: dict[str, Any], required_fields: set[str]) -> None:
     require(isinstance(record.get("commitSha"), str) and
             SHA_RE.fullmatch(record["commitSha"]) is not None,
             "commitSha format invalid")
+    require_utc_timestamp(record.get("approvedAt"), "approvedAt")
     require(record.get("approvalClass") == "PRODUCTION_RELEASE_BASELINE",
             "approvalClass must be PRODUCTION_RELEASE_BASELINE")
     require(record.get("evidenceComplete") is True,
@@ -208,7 +221,7 @@ def main() -> int:
             "working tree must be clean before release registration")
     head = git("rev-parse", "HEAD")
     contract = load(CONTRACT_PATH)
-    required_fields = set(strings(contract.get("requiredFields"), "requiredFields", 17))
+    required_fields = set(strings(contract.get("requiredFields"), "requiredFields", 18))
     record = load(record_path)
     validate_record(record, required_fields)
     require(record["commitSha"] == head,
