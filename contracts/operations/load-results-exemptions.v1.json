@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "memory-os-load-result-exemptions.v1",
+  "exemptions": [
+    {
+      "scenarioId": "health-baseline-mock",
+      "reason": "Health is a deterministic CI harness smoke and is not used as API capacity evidence; it must execute in Go tests but need not be persisted in the capacity-results fixture."
+    }
+  ]
+}
