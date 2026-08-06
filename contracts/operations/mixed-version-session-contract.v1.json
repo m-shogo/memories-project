@@ -42,7 +42,7 @@
     "contractDefined": true,
     "runnerImplemented": true,
     "validatorImplemented": true,
-    "automaticWorkflowImplemented": false,
+    "automaticWorkflowImplemented": true,
     "exactSourceResultCommitted": false,
     "oldBackendNewSchemaFullyProven": false,
     "rollingBackendMixFullyProven": false,
@@ -51,6 +51,8 @@
   "evidenceRefs": [
     "contracts/operations/mixed-version-session-contract.v1.json",
     "scripts/run-memory-os-mixed-version-session-drill.sh",
-    "scripts/validate-memory-os-mixed-version-session.py"
+    "scripts/validate-memory-os-mixed-version-session.py",
+    "scripts/reconcile-memory-os-mixed-version-session.py",
+    ".github/workflows/mixed-version-session.yml"
   ]
 }
