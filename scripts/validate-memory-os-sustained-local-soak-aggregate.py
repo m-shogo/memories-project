@@ -15,7 +15,9 @@ CONTRACT_PATH = ROOT / "contracts/operations/sustained-local-soak-contract.v1.js
 RESULT_GLOB = "sustained-local-soak-results.run-*.v1.json"
 RESULT_DIR = ROOT / "docs/fixtures/memory-os-operability"
 AGGREGATE_PATH = RESULT_DIR / "sustained-local-soak-results.aggregate.v1.json"
+REVIEW_PATH = RESULT_DIR / "sustained-local-soak-trend-review.v1.json"
 RESULT_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak-result.py"
+REVIEW_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak-trend-review.py"
 
 
 class Fail(RuntimeError):
@@ -38,9 +40,9 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def validate_run(path: Path) -> tuple[str, str]:
+def run_validator(command: list[str], label: str) -> None:
     completed = subprocess.run(
-        [sys.executable, str(RESULT_VALIDATOR), str(path)],
+        command,
         cwd=ROOT,
         text=True,
         capture_output=True,
@@ -48,9 +50,14 @@ def validate_run(path: Path) -> tuple[str, str]:
     )
     if completed.returncode != 0:
         raise Fail(
-            f"single-run validator rejected {path.relative_to(ROOT)}:\n"
+            f"{label} failed:\n"
             f"{completed.stdout[-4000:]}{completed.stderr[-4000:]}"
         )
+
+
+def validate_run(path: Path) -> tuple[str, str]:
+    run_validator([sys.executable, str(RESULT_VALIDATOR), str(path)],
+                  f"single-run validator for {path.relative_to(ROOT)}")
     value = load(path)
     run_id = value.get("runId")
     commit_sha = value.get("commitSha")
@@ -68,6 +75,7 @@ def main() -> int:
     paths = sorted(RESULT_DIR.glob(RESULT_GLOB))
     if not paths:
         require(not AGGREGATE_PATH.exists(), "aggregate cannot exist without run documents")
+        require(not REVIEW_PATH.exists(), "trend review cannot exist without run documents")
         require(not args.require_local_evidence, "no LOCAL_LONG_SOAK result documents have been committed")
         print("Memory OS sustained local soak aggregate validation PASS (foundation only)")
         print("committed long runs: 0")
@@ -106,9 +114,38 @@ def main() -> int:
     trend_review_completed = aggregate.get("trendReviewCompleted")
     require(isinstance(local_evidence, bool), "localSustainedSoakEvidence must be boolean")
     require(isinstance(trend_review_completed, bool), "trendReviewCompleted must be boolean")
+
+    review_ref = review.get("reviewEvidenceRef")
+    if trend_review_completed:
+        require(enough_runs, "trend review cannot complete before repeated runs")
+        require(review.get("status") == "COMPLETED_DESCRIPTIVE_LOCAL_ONLY",
+                "completed review status drift")
+        require(review_ref == str(REVIEW_PATH.relative_to(ROOT)),
+                "completed aggregate must reference canonical trend-review evidence")
+        require(REVIEW_PATH.is_file(), "completed trend review evidence file missing")
+        run_validator([sys.executable, str(REVIEW_VALIDATOR)], "trend-review validator")
+        review_doc = load(REVIEW_PATH)
+        require(review_doc.get("reviewedRunIds") == sorted(run_ids),
+                "trend-review evidence run set drift")
+        require(review_doc.get("reviewedSourceCommitShas") == sorted(commits),
+                "trend-review evidence source set drift")
+        require(review_doc.get("localSustainedSoakEvidenceEligible") is True,
+                "completed trend review does not permit local-only evidence")
+        require(review_doc.get("automaticLeakConclusionMade") is False and
+                review_doc.get("leakProof") is False,
+                "trend review cannot conclude leak/no-leak proof")
+        require(review_doc.get("productionEvidence") is False and
+                review_doc.get("productionReady") is False,
+                "trend review cannot be production evidence")
+    else:
+        require(review_ref is None, "pending aggregate cannot reference completed trend review")
+        require(review.get("status") in {"PENDING", "WAITING_FOR_REPEATED_RUNS"},
+                "pending trend review status drift")
+
     if local_evidence:
         require(enough_runs, "local sustained-soak evidence requires at least two independent runs")
         require(trend_review_completed is True, "local sustained-soak evidence requires completed trend review")
+        require(REVIEW_PATH.is_file(), "local sustained-soak evidence requires trend-review evidence")
     if not enough_runs:
         require(local_evidence is False, "one run can never become local sustained-soak evidence")
         require(trend_review_completed is False, "trend review cannot complete before repeated runs")
