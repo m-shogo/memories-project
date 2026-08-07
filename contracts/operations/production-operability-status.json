@@ -259,7 +259,8 @@
         "exact-source local PostgreSQL plus MinIO pre-fence linearization proof pauses 32 Preview requests after successful epoch-1 session resolution, durably advances deletion to epoch 2, then proves all 32 resumed requests return 401 with zero transport errors before worker erasure converges to zero owned rows",
         "bounded local multi-account deletion saturation fences 24 accounts, drains them with four concurrent leased workers into 24 unique receipts with zero duplicates/errors, keeps an unrelated authenticated Preview workload at 400/400 2xx, and converges deletion pending/stuck and owned-row counts to zero",
         "fail-closed LOCAL_LONG_SOAK foundation requires a long-lived API process plus PostgreSQL, MinIO, parser recovery, scan-queue observation and deletion-worker convergence across 12 windows, and physically refuses to publish result evidence for runs configured below 3600 seconds",
-        "exact-source local pre-fence mutation proof pauses 16 Apply and 16 upload-authorization requests after epoch-1 session resolution, durably advances account deletion to epoch 2, then proves all 32 resume as 401 with zero transport errors and zero apply_confirmation, memory_item, upload_authorization or quarantine_object mutations before worker erasure"
+        "exact-source local pre-fence mutation proof pauses 16 Apply and 16 upload-authorization requests after epoch-1 session resolution, durably advances account deletion to epoch 2, then proves all 32 resume as 401 with zero transport errors and zero apply_confirmation, memory_item, upload_authorization or quarantine_object mutations before worker erasure",
+        "exact-source local pre-fence upload-completion proof issues and uploads 16 real versioned MinIO objects, lets all 16 completion requests pass authentication, the outer epoch guard, the initial authorization snapshot and real MinIO HEAD, durably advances account deletion to epoch 2, then proves every resumed completion returns 401 with zero consumed authorizations or quarantine rows before worker erasure; the worker subsequently removes all 16 object versions and all owned database rows"
       ],
       "missingEvidence": [
         "capacity boundary, saturation report and load-calibrated operational thresholds",
@@ -267,10 +268,10 @@
         "production-equivalent dependency behavior and real-Apple load evidence",
         "production object-store TLS, scoped credentials, retention and lifecycle evidence",
         "60-minute-or-longer repeated soak over PostgreSQL, object storage, parser, queue, deletion and authentication paths with RSS/heap/goroutine slope review and independently approved leak/stability criteria",
-        "pre-fence in-flight linearization for upload-completion requests, host/process failure behavior, production topology and independently reviewed deletion-load thresholds",
+        "host/process failure behavior during deletion-worker execution, production topology and independently reviewed deletion-load thresholds",
         "repeatable local PostgreSQL plus MinIO saturation runs that actually observe a first failure/degradation transition, plus queue/backlog interpretation and independently reviewed safe operating thresholds",
         "two independent 60-minute-or-longer LOCAL_LONG_SOAK runs plus cross-run RSS/heap/goroutine/latency/error/DB/queue/deletion trend review",
-        "request-linearization proof for operations already in flight before the deletion fence plus multi-account worker saturation, production topology and independently reviewed deletion-load thresholds"
+        "deletion-worker process/host interruption recovery, production topology and independently reviewed deletion-load thresholds"
       ],
       "evidenceRefs": [
         "services/import-api/internal/loadtest/harness.go",
@@ -348,7 +349,13 @@
         "scripts/validate-memory-os-deletion-prefence-mutation-linearization.py",
         "scripts/reconcile-memory-os-deletion-prefence-mutation-linearization.py",
         ".github/workflows/deletion-prefence-mutation-linearization.yml",
-        "docs/fixtures/memory-os-operability/deletion-prefence-mutation-linearization-results.sample.v1.json"
+        "docs/fixtures/memory-os-operability/deletion-prefence-mutation-linearization-results.sample.v1.json",
+        "contracts/operations/deletion-prefence-upload-completion-contract.v1.json",
+        "services/import-api/internal/httpserver/deletion_prefence_upload_completion_test.go",
+        "scripts/validate-memory-os-deletion-prefence-upload-completion.py",
+        "scripts/reconcile-memory-os-deletion-prefence-upload-completion.py",
+        ".github/workflows/deletion-prefence-upload-completion.yml",
+        "docs/fixtures/memory-os-operability/deletion-prefence-upload-completion-results.sample.v1.json"
       ]
     },
     {
