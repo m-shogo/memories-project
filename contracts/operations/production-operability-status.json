@@ -270,11 +270,9 @@
         "production-equivalent dependency behavior and real-Apple load evidence",
         "production object-store TLS, scoped credentials, retention and lifecycle evidence",
         "60-minute-or-longer repeated soak over PostgreSQL, object storage, parser, queue, deletion and authentication paths with RSS/heap/goroutine slope review and independently approved leak/stability criteria",
-        "actual deletion-worker host/container failure behavior, production topology and independently reviewed deletion-load thresholds",
+        "actual deletion-worker container/host interruption recovery, production topology and independently reviewed deletion-load thresholds",
         "repeatable local PostgreSQL plus MinIO saturation runs that actually observe a first failure/degradation transition, plus queue/backlog interpretation and independently reviewed safe operating thresholds",
-        "two independent 60-minute-or-longer LOCAL_LONG_SOAK runs plus cross-run RSS/heap/goroutine/latency/error/DB/queue/deletion trend review",
-        "actual deletion-worker host/container interruption recovery, production topology and independently reviewed deletion-load thresholds",
-        "request-linearization proof for operations already in flight before the deletion fence plus multi-account worker saturation, production topology and independently reviewed deletion-load thresholds"
+        "two independent 60-minute-or-longer LOCAL_LONG_SOAK runs plus cross-run RSS/heap/goroutine/latency/error/DB/queue/deletion trend review"
       ],
       "evidenceRefs": [
         "services/import-api/internal/loadtest/harness.go",
