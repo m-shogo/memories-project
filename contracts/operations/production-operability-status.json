@@ -566,24 +566,16 @@
         "privacy-safe exact-source restore result with database identity stored only as a SHA-256 digest",
         "executable local three-bucket MinIO exact-version recovery drill using explicit source and backup VersionIds",
         "complete simulated source-version loss before restore with backup checksum and source-version metadata binding preserved",
-        "privacy-safe exact-source object recovery result storing only SHA-256 digests of bucket, key and provider version identifiers"
+        "privacy-safe exact-source object recovery result storing only SHA-256 digests of bucket, key and provider version identifiers",
+        "future production-equivalent restore promotion is generation-bound: backup artifact/manifest hashes, source environment generation/manifest, source commit, restore target generation/manifest and restore evidence bundle must match append-only registered generations; legacy local restore evidence cannot be relabeled and cross-generation restores require material-delta review"
       ],
       "missingEvidence": [
-        "production PostgreSQL backup and PITR configuration with independent retention",
-        "independent object-version retention and exact-version recovery validation",
-        "approved and measured RPO and RTO under production-shaped recovery",
-        "cross-cluster isolated restore drill with approved recovery owner and promotion decision",
-        "production restore drill completion across coherent PostgreSQL and object recovery points",
-        "production backup monitoring, freshness enforcement and paging",
-        "independent review of recovery evidence and promotion decision",
-        "production PostgreSQL backup schedule, encrypted independent retention and WAL/PITR configuration",
-        "production object-store TLS, restore-only credential separation and provider durability evidence",
-        "coherent PostgreSQL and exact object-version recovery-point selection with measured skew",
-        "approved and measured RPO/RTO and backup freshness monitoring",
-        "production deletion, expired/revoked-session, replay and lease non-resurrection verification after restore",
-        "restore promotion rehearsal and independent security/privacy review",
-        "production independent object backup retention, deletion protection, immutability and lifecycle verification",
-        "production-shaped cross-cluster isolated restore drill with approved recovery owner and promotion decision"
+        "production PostgreSQL backup and PITR schedule with encrypted independent retention, WAL continuity and tested point-in-time recovery selection",
+        "production independent object backup retention with TLS, restore-only credential separation, deletion protection, immutability, lifecycle controls and provider durability evidence",
+        "approved and measured RPO and RTO under production-shaped recovery, with coherent PostgreSQL/object recovery-point skew measurement plus backup monitoring, freshness enforcement and paging",
+        "production-shaped cross-cluster isolated restore drill with an approved recovery owner, coherent PostgreSQL and exact object-version recovery points, and an explicit promotion decision",
+        "production deletion, expired/revoked-session, replay, idempotency and lease non-resurrection verification after restore",
+        "independent review of generation-bound recovery evidence, security/privacy invariants, measured objectives and the restore promotion decision"
       ],
       "evidenceRefs": [
         "contracts/operations/local-logical-restore-contract.v1.json",
@@ -603,7 +595,12 @@
         "scripts/validate-memory-os-local-object-version-restore.py",
         "scripts/reconcile-memory-os-backup-authority.py",
         ".github/workflows/local-object-version-restore.yml",
-        ".github/workflows/reconcile-backup-authority.yml"
+        ".github/workflows/reconcile-backup-authority.yml",
+        "contracts/operations/backup-restore-generation-binding-contract.v1.json",
+        "scripts/validate-memory-os-backup-restore-generation-binding.py",
+        ".github/workflows/backup-restore-generation-binding.yml",
+        "contracts/operations/production-equivalent-environment-generation-contract.v1.json",
+        "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       ]
     },
     {
