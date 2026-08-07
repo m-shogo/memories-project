@@ -1,6 +1,6 @@
 {
   "schemaVersion": "memory-os-operation-request.v1",
-  "requestId": "rate-limit-emergency-authority-cleanup-20260807-v2",
+  "requestId": "rate-limit-emergency-authority-cleanup-20260807-v3",
   "operation": "CONSOLIDATE_RATE_LIMIT_EMERGENCY_EVIDENCE_AUTHORITY",
   "canonicalAuthority": "contracts/operations/rate-limit-operation-evidence-contract.v1.json",
   "retainEvaluator": "scripts/evaluate-memory-os-rate-limit-emergency-state.py",
@@ -12,6 +12,7 @@
     "runtimeMutationForbidden": true,
     "automaticRuntimeExpiryClaimForbidden": true,
     "productionReadyPromotionForbidden": true,
+    "canonicalOperationEvidenceLedgerMustAlreadyBeRegistered": true,
     "retryPushConflicts": true,
     "failureDiagnosticRequired": true
   }
