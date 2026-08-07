@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "memory-os-observability-stack-deployment-registry.v1",
+  "appendOnly": true,
+  "admittedStackCount": 0,
+  "productionEquivalentStackCount": 0,
+  "productionStackCount": 0,
+  "stacks": [],
+  "productionReady": false
+}
