@@ -332,7 +332,9 @@
     "boundedLocalCapacityRampExecuted": true,
     "shortCIStabilitySampleExecuted": true,
     "deletionPostFenceLoadExecuted": true,
-    "controlledLocalDependencySaturationRampExecuted": true
+    "controlledLocalDependencySaturationRampExecuted": true,
+    "productionEquivalentAdmissionContractDefined": true,
+    "productionEquivalentEnvironmentProvisioned": false
   },
   "evidenceRefs": [
     "services/import-api/internal/loadtest/harness.go",
@@ -364,6 +366,10 @@
     "scripts/validate-memory-os-controlled-saturation-ramp.py",
     "scripts/reconcile-memory-os-controlled-saturation-ramp-status.py",
     "docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.sample.v1.json",
-    ".github/workflows/controlled-saturation-ramp.yml"
+    ".github/workflows/controlled-saturation-ramp.yml",
+    "contracts/operations/production-equivalent-dependency-contract.v1.json",
+    "scripts/validate-memory-os-production-equivalent-dependencies.py",
+    "scripts/reconcile-memory-os-production-equivalent-foundation.py",
+    ".github/workflows/production-equivalent-dependency-contract.yml"
   ]
 }

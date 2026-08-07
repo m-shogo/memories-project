@@ -254,7 +254,8 @@
         "local PostgreSQL and MinIO deletion-under-load checkpoint proves that after a durable 202 epoch fence, 400 concurrent requests using the former session all return 401 while the leased deletion worker completes and leaves zero owned rows",
         "exact-HEAD committed PASS result from the local PostgreSQL Preview read and concurrent idempotent Apply checkpoint",
         "exact-HEAD committed PASS result from the local MinIO signed-upload, exact-version completion and scan-enqueue checkpoint",
-        "bounded local PostgreSQL plus MinIO signed-upload lifecycle ramp records throughput, latency and pgx pool contention through concurrency 48, preserves exact object/version accounting and proves post-ramp recovery without treating one run as a capacity boundary"
+        "bounded local PostgreSQL plus MinIO signed-upload lifecycle ramp records throughput, latency and pgx pool contention through concurrency 48, preserves exact object/version accounting and proves post-ramp recovery without treating one run as a capacity boundary",
+        "fail-closed production-equivalent dependency admission contract now requires TLS, scoped non-production credentials, PostgreSQL role/RLS and connection budgets, object lifecycle, queue/backpressure, failure behavior, restore linkage, a material-delta ledger and independent review before any environment can be called production-equivalent"
       ],
       "missingEvidence": [
         "capacity boundary, saturation report and load-calibrated operational thresholds",
@@ -311,7 +312,11 @@
         "scripts/validate-memory-os-controlled-saturation-ramp.py",
         "scripts/reconcile-memory-os-controlled-saturation-ramp-status.py",
         "docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.sample.v1.json",
-        ".github/workflows/controlled-saturation-ramp.yml"
+        ".github/workflows/controlled-saturation-ramp.yml",
+        "contracts/operations/production-equivalent-dependency-contract.v1.json",
+        "scripts/validate-memory-os-production-equivalent-dependencies.py",
+        "scripts/reconcile-memory-os-production-equivalent-foundation.py",
+        ".github/workflows/production-equivalent-dependency-contract.yml"
       ]
     },
     {
