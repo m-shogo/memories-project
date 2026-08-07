@@ -112,7 +112,8 @@
         "binding privacy-first observability retention tiers for 14-day hot, 90-day warm and 365-day reviewed incident evidence",
         "least-privilege log access roles with separation between on-call, incident command, security review and observability administration",
         "default-denied 60-minute break-glass and reviewed export policies with append-only access audit requirements",
-        "canonical access, export, retention-expiry and sink-health response runbook"
+        "canonical access, export, retention-expiry and sink-health response runbook",
+        "integrated observability-stack deployment admission is fail-closed: a future record must jointly prove structured-log backend health and retention deletion, identity-group/access-audit controls, metrics scrape/backend/dashboard wiring, paging ownership/delivery/response drills and independent security/operability review; the registry is currently empty and creates no deployment claim"
       ],
       "missingEvidence": [
         "real alert routing (paging/dashboards) wired to the structured events",
@@ -131,7 +132,13 @@
         "contracts/operations/observability-retention-access-contract.v1.json",
         "docs/runbooks/memory-os-observability-access.md",
         "scripts/validate-memory-os-observability-access.py",
-        "scripts/reconcile-memory-os-observability-access.py"
+        "scripts/reconcile-memory-os-observability-access.py",
+        "contracts/operations/observability-stack-deployment-contract.v1.json",
+        "contracts/operations/observability-stack-deployment-registry.v1.json",
+        "scripts/register-memory-os-observability-stack-deployment.py",
+        "scripts/validate-memory-os-observability-stack-deployment.py",
+        "scripts/reconcile-memory-os-observability-stack-deployment.py",
+        ".github/workflows/observability-stack-deployment.yml"
       ]
     },
     {
@@ -154,7 +161,8 @@
         "error-budget policy with approved-SLO activation gates, data-gap safety and non-budgetable security, integrity, deletion-resurrection and data-loss events",
         "seven provider-neutral Prometheus alert rules bound one-to-one to the primary metrics alert candidates",
         "canonical privacy-safe response runbook covering HTTP 5xx, panic, Apple exchange, rate-limit store, database and deletion alerts",
-        "generated Prometheus rule file with stable alert IDs and explicit provisional-threshold labels"
+        "generated Prometheus rule file with stable alert IDs and explicit provisional-threshold labels",
+        "integrated observability-stack deployment admission is fail-closed: a future record must jointly prove structured-log backend health and retention deletion, identity-group/access-audit controls, metrics scrape/backend/dashboard wiring, paging ownership/delivery/response drills and independent security/operability review; the registry is currently empty and creates no deployment claim"
       ],
       "missingEvidence": [
         "production metrics scrape secret provisioning, private operational network policy and deliberate runtime mount",
@@ -193,7 +201,13 @@
         "infra/observability/prometheus/memory-os-alerts.yml",
         "docs/runbooks/memory-os-metrics-alerts.md",
         "scripts/validate-memory-os-metrics-alerting.py",
-        "scripts/reconcile-memory-os-metrics-alerting.py"
+        "scripts/reconcile-memory-os-metrics-alerting.py",
+        "contracts/operations/observability-stack-deployment-contract.v1.json",
+        "contracts/operations/observability-stack-deployment-registry.v1.json",
+        "scripts/register-memory-os-observability-stack-deployment.py",
+        "scripts/validate-memory-os-observability-stack-deployment.py",
+        "scripts/reconcile-memory-os-observability-stack-deployment.py",
+        ".github/workflows/observability-stack-deployment.yml"
       ]
     },
     {
