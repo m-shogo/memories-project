@@ -11,7 +11,9 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 INDEX_PATH = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
 CONTROLLED_CONTRACT_PATH = ROOT / "contracts/operations/controlled-saturation-ramp-contract.v1.json"
+SOAK_CONTRACT_PATH = ROOT / "contracts/operations/sustained-local-soak-contract.v1.json"
 CONTROLLED_SCENARIO_ID = "signed-upload-controlled-saturation-ramp-local-dependencies"
+SOAK_SCENARIO_ID = "mixed-import-lifecycle-local-long-soak"
 BASE_EXPECTED_EXTERNAL = {
     "authenticated-preview-local-postgres": (
         "LOCAL_POSTGRES",
@@ -48,6 +50,11 @@ CONTROLLED_EXPECTED_EXTERNAL = (
     "LOCAL_POSTGRES_MINIO",
     "contracts/operations/controlled-saturation-ramp-contract.v1.json",
     "scripts/validate-memory-os-controlled-saturation-ramp.py",
+)
+SOAK_EXPECTED_EXTERNAL = (
+    "LOCAL_POSTGRES_MINIO",
+    "contracts/operations/sustained-local-soak-contract.v1.json",
+    "scripts/validate-memory-os-sustained-local-soak-aggregate.py",
 )
 EXPECTED_DEFERRED = {
     "capacity-ramp-local-postgres-minio",
@@ -103,9 +110,24 @@ def main() -> int:
     controlled_committed = controlled_readiness.get("exactSourceResultCommitted")
     require(isinstance(controlled_committed, bool), "controlled saturation exactSourceResultCommitted must be boolean")
 
+    soak_contract = load(SOAK_CONTRACT_PATH)
+    soak_readiness = soak_contract.get("readiness")
+    require(isinstance(soak_readiness, dict), "LOCAL_LONG_SOAK readiness must be object")
+    first_soak_run = soak_readiness.get("firstLongRunCommitted")
+    local_soak_evidence = soak_readiness.get("localSustainedSoakEvidence")
+    require(isinstance(first_soak_run, bool), "firstLongRunCommitted must be boolean")
+    require(isinstance(local_soak_evidence, bool), "localSustainedSoakEvidence must be boolean")
+    if local_soak_evidence:
+        require(first_soak_run is True and soak_readiness.get("secondIndependentLongRunCommitted") is True,
+                "local sustained-soak evidence requires repeated long runs")
+        require(soak_readiness.get("trendReviewCompleted") is True,
+                "local sustained-soak evidence requires trend review")
+
     expected_external = dict(BASE_EXPECTED_EXTERNAL)
     if controlled_committed:
         expected_external[CONTROLLED_SCENARIO_ID] = CONTROLLED_EXPECTED_EXTERNAL
+    if first_soak_run:
+        expected_external[SOAK_SCENARIO_ID] = SOAK_EXPECTED_EXTERNAL
 
     modes = contract.get("dependencyModes")
     require(isinstance(modes, list) and len(modes) == len(set(modes)),
@@ -115,10 +137,7 @@ def main() -> int:
             "dependencyModes must include LOCAL_POSTGRES_MINIO")
 
     executed = unique_scenario_map(contract.get("executedScenarios"), "executedScenarios")
-    external = unique_scenario_map(
-        contract.get("externalExecutedScenarios"),
-        "externalExecutedScenarios",
-    )
+    external = unique_scenario_map(contract.get("externalExecutedScenarios"), "externalExecutedScenarios")
     deferred = unique_scenario_map(contract.get("deferredScenarios"), "deferredScenarios")
 
     executed_ids = set(executed)
@@ -141,7 +160,7 @@ def main() -> int:
         require(item.get("dependencyMode") == mode,
                 f"{scenario_id}: dependencyMode drift")
         require(item.get("productionEvidence") is False,
-                f"{scenario_id}: local live scenario cannot claim production evidence")
+                f"{scenario_id}: local scenario cannot claim production evidence")
         require(item.get("contractRef") == contract_ref,
                 f"{scenario_id}: contractRef drift")
         require(item.get("validatorRef") == validator_ref,
@@ -169,16 +188,28 @@ def main() -> int:
         controlled = external[CONTROLLED_SCENARIO_ID]
         require(controlled.get("classification") == "BOUNDED_LOCAL_CAPACITY_RAMP",
                 "controlled saturation classification drift")
-        for key in (
-            "capacityBoundaryEstablished",
-            "operationalThresholdApproved",
-            "repeatabilityEstablished",
-        ):
+        for key in ("capacityBoundaryEstablished", "operationalThresholdApproved", "repeatabilityEstablished"):
             require(controlled.get(key) is False,
                     f"one controlled local ramp cannot enable {key}")
     else:
         require(CONTROLLED_SCENARIO_ID not in external,
                 "controlled saturation scenario cannot enter the load index before exact-source reconciliation")
+
+    if first_soak_run:
+        soak = external[SOAK_SCENARIO_ID]
+        require(soak.get("classification") == "LOCAL_LONG_SOAK", "LOCAL_LONG_SOAK classification drift")
+        require(soak.get("localSustainedSoakEvidence") is local_soak_evidence,
+                "LOCAL_LONG_SOAK local evidence flag drift")
+        for key in (
+            "productionSustainedSoakEvidence",
+            "leakProof",
+            "capacityBoundaryEstablished",
+            "operationalThresholdApproved",
+        ):
+            require(soak.get(key) is False, f"LOCAL_LONG_SOAK cannot enable {key}")
+    else:
+        require(SOAK_SCENARIO_ID not in external,
+                "LOCAL_LONG_SOAK cannot enter executed evidence before one exact-source 60-minute run")
 
     for scenario_id, item in deferred.items():
         reason = item.get("reason")
@@ -205,6 +236,14 @@ def main() -> int:
     if controlled_committed:
         require(readiness.get("controlledLocalDependencySaturationRampExecuted") is True,
                 "reconciled controlled saturation result must be reflected in load readiness")
+    if soak_readiness.get("runnerImplemented") is True:
+        require(readiness.get("localLongSoakFoundationImplemented") is True,
+                "implemented LOCAL_LONG_SOAK runner must be reflected in load readiness")
+    if first_soak_run:
+        require(readiness.get("localLongSoakRunCount", 0) >= 1,
+                "committed LOCAL_LONG_SOAK result must be reflected in load readiness")
+        require(readiness.get("localSustainedSoakEvidence") is local_soak_evidence,
+                "load readiness local soak evidence drift")
 
     results_committed = readiness.get("exactHeadLiveResultsCommitted")
     require(isinstance(results_committed, bool),
@@ -230,6 +269,8 @@ def main() -> int:
     print(f"deferred: {len(deferred)}")
     print(f"live results committed flag: {results_committed}")
     print(f"controlled saturation committed flag: {controlled_committed}")
+    print(f"LOCAL_LONG_SOAK first run committed: {first_soak_run}")
+    print(f"LOCAL_LONG_SOAK local sustained evidence: {local_soak_evidence}")
     return 0
 
 
