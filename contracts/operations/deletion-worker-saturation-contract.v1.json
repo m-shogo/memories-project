@@ -1,0 +1,73 @@
+{
+  "contractId": "memory-os.operability.deletion-worker-saturation.v1",
+  "schemaVersion": "memory-os-deletion-worker-saturation.v1",
+  "resultsSchemaVersion": "memory-os-deletion-worker-saturation-results.v1",
+  "description": "Bounded local checkpoint for concurrent deletion workers draining multiple fenced accounts while authenticated Preview traffic continues on an unrelated active account. It proves disjoint worker claims and bounded local coexistence, not a production capacity threshold.",
+  "scenarioId": "multi-account-deletion-worker-saturation-local-dependencies",
+  "dependencyMode": "LOCAL_POSTGRES_MINIO",
+  "deletingAccounts": 24,
+  "workerCount": 4,
+  "maxAccountsPerWorker": 6,
+  "controlPreviewRequests": 400,
+  "controlPreviewConcurrency": 16,
+  "resultPath": "docs/fixtures/memory-os-operability/deletion-worker-saturation-results.sample.v1.json",
+  "runner": "services/import-api/internal/httpserver/deletion_worker_saturation_test.go",
+  "validator": "scripts/validate-memory-os-deletion-worker-saturation.py",
+  "reconcile": "scripts/reconcile-memory-os-deletion-worker-saturation.py",
+  "workflow": ".github/workflows/deletion-worker-saturation.yml",
+  "successCriteria": {
+    "allDeletionRequestsAccepted": true,
+    "deletionEpoch": 2,
+    "workerErrors": 0,
+    "workerReceiptCount": 24,
+    "uniqueWorkerReceiptCount": 24,
+    "duplicateWorkerReceiptCount": 0,
+    "controlPreview2xx": 400,
+    "controlPreview5xx": 0,
+    "controlPreviewTransportErrors": 0,
+    "finalDeletionPending": 0,
+    "finalDeletionStuck": 0,
+    "finalOwnedRowCount": 0,
+    "allDeletionTombstonesEpoch2": true,
+    "productionEvidence": false
+  },
+  "abortCriteria": [
+    "any deletion request does not return 202 with epoch 2",
+    "any worker returns an erasure error",
+    "any account is claimed successfully more than once",
+    "fewer or more than 24 deletion receipts are produced",
+    "unrelated control Preview traffic sees any non-2xx, 5xx or transport error",
+    "deletion backlog does not converge to zero",
+    "any owned row survives worker completion",
+    "result contains bearer token, account id, job id, Preview id, object key, endpoint credential or database URL"
+  ],
+  "evidenceBoundary": {
+    "syntheticDataOnly": true,
+    "productionTraffic": false,
+    "productionCredentials": false,
+    "productionEvidence": false,
+    "productionEquivalentDependencies": false,
+    "capacityBoundaryEstablished": false,
+    "operationalThresholdApproved": false,
+    "hostFailureCovered": false,
+    "productionReady": false
+  },
+  "readiness": {
+    "contractDefined": true,
+    "runnerImplemented": true,
+    "validatorImplemented": false,
+    "automaticWorkflowImplemented": false,
+    "exactSourceResultCommitted": false,
+    "multiAccountWorkerSaturationProven": false,
+    "productionDependenciesTested": false,
+    "independentReviewCompleted": false,
+    "productionReady": false
+  },
+  "limitations": [
+    "24 accounts and four workers are a bounded local workload, not a discovered capacity limit",
+    "control traffic is authenticated Preview read only",
+    "local PostgreSQL 16 and MinIO on a GitHub-hosted runner",
+    "no production network, TLS, autoscaling or independent worker deployment",
+    "not production deletion-capacity evidence"
+  ]
+}
