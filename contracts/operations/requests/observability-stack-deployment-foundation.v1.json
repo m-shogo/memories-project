@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "memory-os-operation-request.v1",
+  "requestId": "observability-stack-deployment-foundation-20260807-v1",
+  "operation": "VALIDATE_OBSERVABILITY_STACK_DEPLOYMENT_ADMISSION",
+  "productionTraffic": false,
+  "productionCredentials": false,
+  "productionEvidence": false,
+  "constraints": {
+    "integratedLogsMetricsAccessAndPagingRequired": true,
+    "retentionDeletionVerificationRequired": true,
+    "independentSecurityAndOperabilityReviewRequired": true,
+    "emptyRegistryMustRemainNonProduction": true,
+    "applicationProductionReadyPromotionForbidden": true
+  }
+}
