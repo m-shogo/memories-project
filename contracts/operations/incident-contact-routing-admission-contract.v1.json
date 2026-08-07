@@ -1,0 +1,91 @@
+{
+  "contractId": "memory-os.operability.incident-contact-routing-admission.v1",
+  "schemaVersion": "memory-os-incident-contact-routing-admission.v1",
+  "description": "Fail-closed admission authority for operational incident contact ownership layered on top of an already-admitted observability routing stack. It stores only pseudonymous owners and destination digests, never phone numbers, email addresses, provider URLs or credentials.",
+  "sourceIncidentPolicy": "contracts/operations/incident-response-contract.v1.json",
+  "sourceObservabilityStackContract": "contracts/operations/observability-stack-deployment-contract.v1.json",
+  "sourceObservabilityStackRegistry": "contracts/operations/observability-stack-deployment-registry.v1.json",
+  "environmentGenerationRegistry": "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+  "registryPath": "contracts/operations/incident-contact-routing-admission-registry.v1.json",
+  "writer": "scripts/register-memory-os-incident-contact-routing.py",
+  "validator": "scripts/validate-memory-os-incident-contact-routing.py",
+  "reconcile": "scripts/reconcile-memory-os-incident-contact-routing.py",
+  "workflow": ".github/workflows/incident-contact-routing-admission.yml",
+  "recordSchemaVersion": "memory-os-incident-contact-routing-record.v1",
+  "allowedEnvironmentClasses": [
+    "PRODUCTION_EQUIVALENT",
+    "PRODUCTION"
+  ],
+  "requiredContactClasses": [
+    "INCIDENT_COMMAND",
+    "SECURITY_PRIVACY",
+    "SYSTEM_OWNER",
+    "EXTERNAL_PROVIDER_ESCALATION",
+    "USER_COMMUNICATION"
+  ],
+  "requiredRecordFields": [
+    "schemaVersion",
+    "contactRoutingId",
+    "environmentClass",
+    "sourceCommitSha",
+    "environmentIdentityDigest",
+    "environmentGenerationId",
+    "observabilityStackId",
+    "contactBindings",
+    "deliveryDrillEvidenceRefs",
+    "escalationDrillEvidenceRefs",
+    "userCommunicationExerciseRefs",
+    "providerContactReviewRefs",
+    "privacyReviewRef",
+    "operabilityReviewRef",
+    "unresolvedFindings",
+    "evidenceComplete",
+    "productionEvidence",
+    "productionReady"
+  ],
+  "bindingRules": {
+    "observabilityStackMustAlreadyBeAdmitted": true,
+    "environmentIdentityMustMatchObservabilityStack": true,
+    "environmentGenerationMustMatchForProductionEquivalent": true,
+    "everyRequiredContactClassMustHaveExactlyOneOwner": true,
+    "ownerRefsMustBeOperationalPseudonyms": true,
+    "destinationAndEscalationTargetsMustBeDigests": true,
+    "rawPhoneEmailUrlAndCredentialsForbidden": true,
+    "deliveryDrillRequired": true,
+    "escalationDrillRequired": true,
+    "userCommunicationExerciseRequired": true,
+    "providerContactReviewRequired": true,
+    "privacyAndOperabilityReviewsMustBeDistinct": true,
+    "unresolvedCriticalOrHighFindingsForbidden": true
+  },
+  "promotionRules": {
+    "policyRoleDefinitionCanPromoteContactOwnership": false,
+    "observabilityStackAloneCanPromoteExternalContacts": false,
+    "destinationDigestWithoutDeliveryDrillCanPromote": false,
+    "syntheticProductionEquivalentContactCanPromoteProduction": false,
+    "humanTabletopCanPromoteConfiguredContacts": false,
+    "automaticProductionReadyForbidden": true
+  },
+  "currentAuthority": {
+    "admittedRoutingCount": 0,
+    "productionEquivalentRoutingCount": 0,
+    "productionRoutingCount": 0,
+    "externalContactTreeOwned": false,
+    "pagingAndEscalationDeliveryProven": false,
+    "userCommunicationPathProven": false,
+    "independentReviewCompleted": false,
+    "productionEvidence": false,
+    "productionReady": false,
+    "productionDecision": "NO_GO"
+  },
+  "readiness": {
+    "contractDefined": true,
+    "registryImplemented": false,
+    "writerImplemented": false,
+    "validatorImplemented": false,
+    "automaticWorkflowImplemented": false,
+    "admittedRoutingCount": 0,
+    "productionRoutingAvailable": false,
+    "productionReady": false
+  }
+}
