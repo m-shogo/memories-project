@@ -1,4 +1,5 @@
 name: Reconcile Deletion Container Kill Authority
+# Explicitly re-triggered after the exact-result bot commit; GitHub Actions bot commits do not chain workflows.
 
 on:
   push:
