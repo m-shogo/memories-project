@@ -282,6 +282,30 @@
       "capacityBoundaryEstablished": false,
       "operationalThresholdApproved": false,
       "repeatabilityEstablished": false
+    },
+    {
+      "scenarioId": "account-deletion-prefence-inflight-linearization-local-dependencies",
+      "contractRef": "contracts/operations/deletion-prefence-linearization-contract.v1.json",
+      "validatorRef": "scripts/validate-memory-os-deletion-prefence-linearization.py",
+      "dependencyMode": "LOCAL_POSTGRES_MINIO",
+      "classification": "LOCAL_PREFENCE_LINEARIZATION",
+      "surfaceCoverage": "PREVIEW_READ_ONLY",
+      "productionEvidence": false,
+      "productionEquivalentDependencies": false,
+      "requestsStartedBeforeFenceCovered": true,
+      "preFenceInFlightLinearizationProven": true
+    },
+    {
+      "scenarioId": "multi-account-deletion-worker-saturation-local-dependencies",
+      "contractRef": "contracts/operations/deletion-worker-saturation-contract.v1.json",
+      "validatorRef": "scripts/validate-memory-os-deletion-worker-saturation.py",
+      "dependencyMode": "LOCAL_POSTGRES_MINIO",
+      "classification": "BOUNDED_LOCAL_WORKER_SATURATION",
+      "productionEvidence": false,
+      "productionEquivalentDependencies": false,
+      "multiAccountWorkerSaturationProven": true,
+      "capacityBoundaryEstablished": false,
+      "operationalThresholdApproved": false
     }
   ],
   "deferredScenarios": [
@@ -289,11 +313,6 @@
       "scenarioId": "capacity-ramp-local-postgres-minio",
       "reason": "a bounded local PostgreSQL plus MinIO lifecycle ramp now executes through concurrency 48 with pool telemetry, but no failure/degradation boundary was established; repeatable overload discovery and independently reviewed safe operating thresholds remain deferred",
       "requiredDependencyMode": "LOCAL_POSTGRES_MINIO"
-    },
-    {
-      "scenarioId": "deletion-worker-under-api-load",
-      "reason": "needs the deletion runtime and API load against a shared live database to observe contention and backlog",
-      "requiredDependencyMode": "LOCAL_POSTGRES"
     },
     {
       "scenarioId": "soak-memory-leak",
@@ -312,7 +331,7 @@
     },
     {
       "scenarioId": "deletion-under-load",
-      "reason": "post-fence former-session load and concurrent worker erasure now pass against local PostgreSQL and MinIO; request linearization for calls already in flight before the 202 fence, multiple-account worker saturation and production dependency behavior remain deferred",
+      "reason": "post-fence former-session load, Preview requests authenticated before the fence, and bounded 24-account/four-worker deletion saturation now pass against local PostgreSQL and MinIO; Apply and Upload authorization requests already in flight before the fence, host/process failure behavior, production dependency behavior and independently reviewed deletion-load thresholds remain deferred",
       "requiredDependencyMode": "PRODUCTION_EQUIVALENT"
     }
   ],
@@ -328,13 +347,15 @@
     "cardinalityProof": true,
     "operationalThresholds": false,
     "productionEquivalentDependencies": false,
-    "note": "Mock and local dependency checkpoints now include bounded ramp, short CI stability and post-fence deletion load. They establish neither production capacity nor pre-fence request linearization, sustained-soak/leak proof or production-equivalent behavior; OPS-P0-006 remains PARTIAL.",
+    "note": "Mock and local dependency checkpoints now include bounded ramp, short CI stability, post-fence deletion load, Preview-only pre-fence in-flight linearization and bounded multi-account deletion-worker saturation. Apply/Upload pre-fence linearization, sustained-soak/leak proof, production capacity and production-equivalent behavior remain unproven; OPS-P0-006 remains PARTIAL.",
     "boundedLocalCapacityRampExecuted": true,
     "shortCIStabilitySampleExecuted": true,
     "deletionPostFenceLoadExecuted": true,
     "controlledLocalDependencySaturationRampExecuted": true,
     "productionEquivalentAdmissionContractDefined": true,
-    "productionEquivalentEnvironmentProvisioned": false
+    "productionEquivalentEnvironmentProvisioned": false,
+    "previewPreFenceInFlightLinearizationProven": true,
+    "multiAccountDeletionWorkerSaturationProven": true
   },
   "evidenceRefs": [
     "services/import-api/internal/loadtest/harness.go",
@@ -370,6 +391,18 @@
     "contracts/operations/production-equivalent-dependency-contract.v1.json",
     "scripts/validate-memory-os-production-equivalent-dependencies.py",
     "scripts/reconcile-memory-os-production-equivalent-foundation.py",
-    ".github/workflows/production-equivalent-dependency-contract.yml"
+    ".github/workflows/production-equivalent-dependency-contract.yml",
+    "contracts/operations/deletion-prefence-linearization-contract.v1.json",
+    "services/import-api/internal/httpserver/deletion_prefence_linearization_test.go",
+    "scripts/validate-memory-os-deletion-prefence-linearization.py",
+    "scripts/reconcile-memory-os-deletion-prefence-linearization.py",
+    ".github/workflows/deletion-prefence-linearization.yml",
+    "docs/fixtures/memory-os-operability/deletion-prefence-linearization-results.sample.v1.json",
+    "contracts/operations/deletion-worker-saturation-contract.v1.json",
+    "services/import-api/internal/httpserver/deletion_worker_saturation_test.go",
+    "scripts/validate-memory-os-deletion-worker-saturation.py",
+    "scripts/reconcile-memory-os-deletion-worker-saturation.py",
+    ".github/workflows/deletion-worker-saturation.yml",
+    "docs/fixtures/memory-os-operability/deletion-worker-saturation-results.sample.v1.json"
   ]
 }

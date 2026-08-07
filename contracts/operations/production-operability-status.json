@@ -255,7 +255,9 @@
         "exact-HEAD committed PASS result from the local PostgreSQL Preview read and concurrent idempotent Apply checkpoint",
         "exact-HEAD committed PASS result from the local MinIO signed-upload, exact-version completion and scan-enqueue checkpoint",
         "bounded local PostgreSQL plus MinIO signed-upload lifecycle ramp records throughput, latency and pgx pool contention through concurrency 48, preserves exact object/version accounting and proves post-ramp recovery without treating one run as a capacity boundary",
-        "fail-closed production-equivalent dependency admission contract now requires TLS, scoped non-production credentials, PostgreSQL role/RLS and connection budgets, object lifecycle, queue/backpressure, failure behavior, restore linkage, a material-delta ledger and independent review before any environment can be called production-equivalent"
+        "fail-closed production-equivalent dependency admission contract now requires TLS, scoped non-production credentials, PostgreSQL role/RLS and connection budgets, object lifecycle, queue/backpressure, failure behavior, restore linkage, a material-delta ledger and independent review before any environment can be called production-equivalent",
+        "exact-source local PostgreSQL plus MinIO pre-fence linearization proof pauses 32 Preview requests after successful epoch-1 session resolution, durably advances deletion to epoch 2, then proves all 32 resumed requests return 401 with zero transport errors before worker erasure converges to zero owned rows",
+        "bounded local multi-account deletion saturation fences 24 accounts, drains them with four concurrent leased workers into 24 unique receipts with zero duplicates/errors, keeps an unrelated authenticated Preview workload at 400/400 2xx, and converges deletion pending/stuck and owned-row counts to zero"
       ],
       "missingEvidence": [
         "capacity boundary, saturation report and load-calibrated operational thresholds",
@@ -263,7 +265,7 @@
         "production-equivalent dependency behavior and real-Apple load evidence",
         "production object-store TLS, scoped credentials, retention and lifecycle evidence",
         "60-minute-or-longer repeated soak over PostgreSQL, object storage, parser, queue, deletion and authentication paths with RSS/heap/goroutine slope review and independently approved leak/stability criteria",
-        "request-linearization proof for operations already in flight before the deletion fence plus multi-account worker saturation, production topology and independently reviewed deletion-load thresholds",
+        "pre-fence in-flight linearization for Apply and Upload authorization surfaces, host/process failure behavior, production topology and independently reviewed deletion-load thresholds",
         "repeatable local PostgreSQL plus MinIO saturation runs that actually observe a first failure/degradation transition, plus queue/backlog interpretation and independently reviewed safe operating thresholds"
       ],
       "evidenceRefs": [
@@ -316,7 +318,19 @@
         "contracts/operations/production-equivalent-dependency-contract.v1.json",
         "scripts/validate-memory-os-production-equivalent-dependencies.py",
         "scripts/reconcile-memory-os-production-equivalent-foundation.py",
-        ".github/workflows/production-equivalent-dependency-contract.yml"
+        ".github/workflows/production-equivalent-dependency-contract.yml",
+        "contracts/operations/deletion-prefence-linearization-contract.v1.json",
+        "services/import-api/internal/httpserver/deletion_prefence_linearization_test.go",
+        "scripts/validate-memory-os-deletion-prefence-linearization.py",
+        "scripts/reconcile-memory-os-deletion-prefence-linearization.py",
+        ".github/workflows/deletion-prefence-linearization.yml",
+        "docs/fixtures/memory-os-operability/deletion-prefence-linearization-results.sample.v1.json",
+        "contracts/operations/deletion-worker-saturation-contract.v1.json",
+        "services/import-api/internal/httpserver/deletion_worker_saturation_test.go",
+        "scripts/validate-memory-os-deletion-worker-saturation.py",
+        "scripts/reconcile-memory-os-deletion-worker-saturation.py",
+        ".github/workflows/deletion-worker-saturation.yml",
+        "docs/fixtures/memory-os-operability/deletion-worker-saturation-results.sample.v1.json"
       ]
     },
     {
