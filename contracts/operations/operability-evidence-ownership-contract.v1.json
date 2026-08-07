@@ -8,53 +8,99 @@
   "ownership": [
     {
       "ref": "contracts/operations/migration-evidence-registry-contract.v1.json",
-      "allowedOwners": ["OPS-P0-001"],
-      "requiredOwners": ["OPS-P0-001"]
+      "allowedOwners": [
+        "OPS-P0-001"
+      ],
+      "requiredOwners": [
+        "OPS-P0-001"
+      ]
     },
     {
       "ref": "contracts/operations/incident-human-tabletop-evidence-contract.v1.json",
-      "allowedOwners": ["OPS-P0-002"],
-      "requiredOwners": ["OPS-P0-002"]
+      "allowedOwners": [
+        "OPS-P0-002"
+      ],
+      "requiredOwners": [
+        "OPS-P0-002"
+      ]
     },
     {
       "ref": "contracts/operations/observability-stack-deployment-contract.v1.json",
-      "allowedOwners": ["OPS-P0-003", "OPS-P0-004"],
-      "requiredOwners": ["OPS-P0-003", "OPS-P0-004"]
+      "allowedOwners": [
+        "OPS-P0-003",
+        "OPS-P0-004"
+      ],
+      "requiredOwners": [
+        "OPS-P0-003",
+        "OPS-P0-004"
+      ]
     },
     {
       "ref": "contracts/operations/rate-limit-operation-evidence-contract.v1.json",
-      "allowedOwners": ["OPS-P0-005"],
-      "requiredOwners": ["OPS-P0-005"]
+      "allowedOwners": [
+        "OPS-P0-005"
+      ],
+      "requiredOwners": [
+        "OPS-P0-005"
+      ]
     },
     {
       "ref": "contracts/operations/controlled-saturation-repeatability-contract.v1.json",
-      "allowedOwners": ["OPS-P0-006"],
-      "requiredOwners": ["OPS-P0-006"]
+      "allowedOwners": [
+        "OPS-P0-006"
+      ],
+      "requiredOwners": [
+        "OPS-P0-006"
+      ]
     },
     {
       "ref": "contracts/operations/deletion-worker-host-failure-contract.v1.json",
-      "allowedOwners": ["OPS-P0-006", "OPS-P0-009"],
-      "requiredOwners": ["OPS-P0-006", "OPS-P0-009"]
+      "allowedOwners": [
+        "OPS-P0-006",
+        "OPS-P0-009"
+      ],
+      "requiredOwners": [
+        "OPS-P0-006",
+        "OPS-P0-009"
+      ]
     },
     {
       "ref": "contracts/operations/backup-restore-generation-binding-contract.v1.json",
-      "allowedOwners": ["OPS-P0-007"],
-      "requiredOwners": ["OPS-P0-007"]
+      "allowedOwners": [
+        "OPS-P0-007"
+      ],
+      "requiredOwners": [
+        "OPS-P0-007"
+      ]
     },
     {
       "ref": "contracts/operations/client-baseline-registry-contract.v1.json",
-      "allowedOwners": ["OPS-P0-008"],
-      "requiredOwners": ["OPS-P0-008"]
+      "allowedOwners": [
+        "OPS-P0-008"
+      ],
+      "requiredOwners": [
+        "OPS-P0-008"
+      ]
     },
     {
       "ref": "contracts/operations/version-compatibility-execution-evidence.v1.json",
-      "allowedOwners": ["OPS-P0-008", "OPS-P0-009"],
-      "requiredOwners": ["OPS-P0-008", "OPS-P0-009"]
+      "allowedOwners": [
+        "OPS-P0-008",
+        "OPS-P0-009"
+      ],
+      "requiredOwners": [
+        "OPS-P0-008",
+        "OPS-P0-009"
+      ]
     },
     {
       "ref": "contracts/operations/production-shaped-failure-drill-contract.v1.json",
-      "allowedOwners": ["OPS-P0-009"],
-      "requiredOwners": ["OPS-P0-009"]
+      "allowedOwners": [
+        "OPS-P0-009"
+      ],
+      "requiredOwners": [
+        "OPS-P0-009"
+      ]
     }
   ],
   "rules": {
