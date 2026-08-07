@@ -12,6 +12,7 @@ on:
       - "scripts/create-memory-os-rate-limit-operation-evidence.py"
       - "scripts/validate-memory-os-rate-limit-operation-evidence.py"
       - "scripts/reconcile-memory-os-rate-limit-operation-evidence.py"
+      - "scripts/validate-memory-os-rate-limit-operations.py"
   push:
     branches:
       - so
@@ -25,6 +26,7 @@ on:
       - "scripts/create-memory-os-rate-limit-operation-evidence.py"
       - "scripts/validate-memory-os-rate-limit-operation-evidence.py"
       - "scripts/reconcile-memory-os-rate-limit-operation-evidence.py"
+      - "scripts/validate-memory-os-rate-limit-operations.py"
   workflow_dispatch:
 
 permissions:
@@ -32,7 +34,7 @@ permissions:
 
 concurrency:
   group: rate-limit-operation-evidence-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   validate-and-reconcile:
@@ -62,7 +64,8 @@ jobs:
           python -m py_compile \
             scripts/create-memory-os-rate-limit-operation-evidence.py \
             scripts/validate-memory-os-rate-limit-operation-evidence.py \
-            scripts/reconcile-memory-os-rate-limit-operation-evidence.py
+            scripts/reconcile-memory-os-rate-limit-operation-evidence.py \
+            scripts/validate-memory-os-rate-limit-operations.py
           python scripts/validate-memory-os-rate-limit-operation-evidence.py
 
       - name: Self-prove exclusive writer and duplicate rejection
