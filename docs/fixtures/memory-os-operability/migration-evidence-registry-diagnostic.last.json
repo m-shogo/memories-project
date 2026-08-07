@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "migration-evidence-registry",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "STAGE: typed-recovery-self-test\ntyped recovery evidence self-test PASS\nSTAGE: registry-validation\nMIGRATION EVIDENCE REGISTRY VALIDATION FAILED: unsafe migration readiness promotion: actualRecoveryArtifactRestoreLinked\n",
+  "containsSecrets": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
