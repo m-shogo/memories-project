@@ -626,7 +626,12 @@
         "persisted Preview and Apply compatibility fixtures across an approved predecessor and successor release pair",
         "simultaneous approved-release old/current mutation traffic and concurrent idempotency-claim race coverage on one production-shaped database",
         "approved-release process termination during in-progress Apply with production-shaped connection-pool cleanup and deterministic recovery evidence",
-        "rolling deployment, traffic drain and application rollback rehearsal using rollback-eligible approved release artifacts"
+        "rolling deployment, traffic drain and application rollback rehearsal using rollback-eligible approved release artifacts",
+        "approved predecessor and successor release pair despite candidate-only mixed-version evidence",
+        "production rolling traffic, connection drain and application rollback rehearsal using rollback-eligible approved releases",
+        "reviewed production parser artifact with exact-byte replay and immutable rollback retention evidence",
+        "implemented client/server support windows and client/server skew tests",
+        "production-shaped PostgreSQL blue-green cutover with connection-pool drain, replication, failover and irreversible rollback-boundary review"
       ],
       "evidenceRefs": [
         ".github/workflows/security-contracts.yml",

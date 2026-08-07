@@ -289,7 +289,7 @@
     "productionRolloutRehearsalCompleted": false,
     "independentReviewCompleted": false,
     "ready": false,
-    "note": "Compatibility directions and release gates are now explicit. Only the current backend against a clean current PostgreSQL 16 schema is proven in CI. Mixed backend, persisted-state, parser-artifact, client/server and upgrade paths remain unproven, so OPS-P0-008 stays PARTIAL."
+    "note": "Compatibility directions and release gates are explicit. Only the current backend against a clean current PostgreSQL 16 schema is proven in the canonical release matrix. Candidate-only, local-CI-only and empty-registry foundations are recorded separately and cannot promote release compatibility; OPS-P0-008 stays PARTIAL."
   },
   "evidenceRefs": [
     ".github/workflows/security-contracts.yml",
