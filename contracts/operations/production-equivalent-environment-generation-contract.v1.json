@@ -1,0 +1,69 @@
+{
+  "contractId": "memory-os.operability.production-equivalent-environment-generation.v1",
+  "schemaVersion": "memory-os-production-equivalent-environment-generation.v1",
+  "description": "Fail-closed generation-binding authority for future production-equivalent environments. An environment identifier may be reused across rebuilds, but every material rebuild must create a new immutable generation identifier and evidence generated for one generation may never be reused for another.",
+  "environmentRecordSchema": "contracts/operations/production-equivalent-environment-record.v1.schema.json",
+  "validator": "scripts/validate-memory-os-production-equivalent-environment-generation.py",
+  "workflow": ".github/workflows/production-equivalent-environment-generation.yml",
+  "bindingRules": {
+    "generationIdRequired": true,
+    "environmentManifestSha256Required": true,
+    "dependencyInventorySha256Required": true,
+    "evidenceBundleManifestSha256Required": true,
+    "sourceCommitShaRequired": true,
+    "materialDeltaLedgerSha256Required": true,
+    "restoreEvidenceGenerationMustMatch": true,
+    "loadEvidenceGenerationMustMatch": true,
+    "failureDrillGenerationMustMatch": true,
+    "reviewEvidenceGenerationMustMatch": true,
+    "crossGenerationEvidenceReuseForbidden": true,
+    "mutableLatestAliasForbiddenAsEvidenceKey": true,
+    "unknownGenerationFailsClosed": true
+  },
+  "materialChangeRules": {
+    "postgresqlVersionOrTopologyChangeCreatesNewGeneration": true,
+    "objectStoreEndpointOrLifecycleChangeCreatesNewGeneration": true,
+    "runtimeRoleOrCredentialScopeChangeCreatesNewGeneration": true,
+    "queueOrWorkerTopologyChangeCreatesNewGeneration": true,
+    "networkTlsOrRoutingChangeCreatesNewGeneration": true,
+    "backupRestoreTargetChangeCreatesNewGeneration": true,
+    "containerImageOrExecutableDigestChangeCreatesNewGeneration": true,
+    "configurationChangeAffectingCapacitySecurityOrRecoveryCreatesNewGeneration": true
+  },
+  "resultAdmissionRules": {
+    "resultMustCarryGenerationId": true,
+    "resultMustCarryEnvironmentManifestSha256": true,
+    "resultMustCarrySourceCommitSha": true,
+    "resultGenerationMustExistInRegistry": true,
+    "resultManifestHashMustEqualRegisteredGeneration": true,
+    "resultCreatedBeforeGenerationRegistrationRejected": true,
+    "supersededGenerationEvidenceMayRemainHistoricalButCannotPromoteCurrentGeneration": true
+  },
+  "currentBoundary": {
+    "registeredGenerationCount": 0,
+    "currentGenerationId": null,
+    "environmentProvisioned": false,
+    "environmentValidated": false,
+    "productionEquivalentDependencies": false,
+    "productionEvidence": false,
+    "productionReady": false,
+    "productionDecision": "NO_GO"
+  },
+  "readiness": {
+    "contractDefined": true,
+    "registryDefined": true,
+    "validatorImplemented": false,
+    "automaticWorkflowImplemented": false,
+    "generationRegistered": false,
+    "generationEvidenceBound": false,
+    "independentReviewCompleted": false,
+    "productionEquivalentDependencies": false,
+    "productionReady": false
+  },
+  "limitations": [
+    "no production-equivalent environment generation is registered",
+    "this contract prevents cross-generation evidence reuse but does not provision infrastructure",
+    "a hash match does not by itself prove environment equivalence or production readiness",
+    "production traffic and production credentials remain outside automatic evidence generation"
+  ]
+}
