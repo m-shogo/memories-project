@@ -9,9 +9,10 @@
       "admittedEvidenceCount": 0,
       "dependencyCounts": {
         "approvedReleases": 0,
+        "approvedReleasePairs": 0,
         "environmentGenerations": 0
       },
-      "nextGate": "registered production-equivalent generation plus approved predecessor/successor before production-shaped migration rehearsal admission",
+      "nextGate": "registered production-equivalent generation plus an approved predecessor/successor release pair before production-shaped migration rehearsal admission",
       "status": "PARTIAL",
       "blocking": true,
       "missingEvidenceCount": 4,
@@ -111,15 +112,17 @@
     },
     {
       "id": "OPS-P0-008",
-      "authority": "contracts/operations/compatibility-admission-gaps.v1.json",
+      "authority": "contracts/operations/release-compatibility-pair-contract.v1.json",
+      "secondaryAuthority": "contracts/operations/compatibility-admission-gaps.v1.json",
       "foundationImplemented": true,
       "admittedEvidenceCount": 0,
       "dependencyCounts": {
         "approvedReleases": 0,
+        "approvedRollbackPairs": 0,
         "approvedClients": 0,
         "reviewedParserArtifacts": 0
       },
-      "nextGate": "approved predecessor/successor, immutable client baseline and reviewed parser artifact before production release compatibility",
+      "nextGate": "approve two release baselines and their rolling/rollback compatibility pair, then admit an immutable client baseline and reviewed retained parser artifact before production release compatibility; candidate/local execution remains separate non-release evidence",
       "status": "PARTIAL",
       "blocking": true,
       "missingEvidenceCount": 10,
@@ -133,9 +136,10 @@
       "admittedEvidenceCount": 0,
       "requiredEvidenceCount": 4,
       "dependencyCounts": {
-        "environmentGenerations": 0
+        "environmentGenerations": 0,
+        "approvedReleasePairs": 0
       },
-      "nextGate": "generation-bound multi-instance, object-store, PostgreSQL failover and parser durable-spool restart drills",
+      "nextGate": "generation-bound multi-instance, object-store, PostgreSQL failover and parser durable-spool restart drills; mixed-version failure evidence additionally requires an approved release pair",
       "status": "PARTIAL",
       "blocking": true,
       "missingEvidenceCount": 8,
@@ -145,6 +149,7 @@
   ],
   "productionEquivalentEnvironmentGenerationCount": 0,
   "approvedRecoveryObjectiveCount": 0,
+  "approvedReleaseCompatibilityPairCount": 0,
   "productionEvidence": false,
   "productionReady": false,
   "productionDecision": "NO_GO",
@@ -153,6 +158,7 @@
     "admittedEvidenceCount is derived only from canonical append-only registries or accepted human tabletop ledger files",
     "candidate/local evidence is not counted as production admission unless its owning authority explicitly admits it",
     "local repeated soak evidence is tracked separately from independent leak proof and production-shaped soak evidence",
-    "recovery-objective values are never defaulted by this inventory; zero approved objectives means RPO/RTO/skew remain intentionally undefined"
+    "recovery-objective values are never defaulted by this inventory; zero approved objectives means RPO/RTO/skew remain intentionally undefined",
+    "candidate/local mixed-version execution remains separate from the approved release-pair registry and can never create an approved predecessor/successor pair"
   ]
 }
