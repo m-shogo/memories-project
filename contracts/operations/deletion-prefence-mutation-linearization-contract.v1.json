@@ -71,8 +71,8 @@
   "readiness": {
     "contractDefined": true,
     "runnerImplemented": true,
-    "validatorImplemented": false,
-    "automaticWorkflowImplemented": false,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": true,
     "exactSourceResultCommitted": false,
     "preFenceMutationLinearizationProven": false,
     "productionDependenciesTested": false,
