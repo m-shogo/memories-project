@@ -1,0 +1,345 @@
+name: Deletion Worker Container Kill Recovery
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/deletion-worker-container-kill-recovery.yml"
+      - "contracts/operations/deletion-worker-container-kill-recovery-contract.v1.json"
+      - "scripts/validate-memory-os-deletion-worker-container-kill-recovery.py"
+      - "scripts/reconcile-memory-os-deletion-worker-container-kill-recovery.py"
+      - "services/import-api/cmd/deletion-container-drill/**"
+      - "services/import-api/cmd/deletion-container-drill-helper/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deletion-worker-container-kill-recovery-so
+  cancel-in-progress: false
+
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: memory_os_security
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d memory_os_security"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: services/import-api/go.sum
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Capture exact source and validate contract
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          python -m py_compile \
+            scripts/validate-memory-os-deletion-worker-container-kill-recovery.py \
+            scripts/reconcile-memory-os-deletion-worker-container-kill-recovery.py
+          python scripts/validate-memory-os-deletion-worker-container-kill-recovery.py
+          test -z "$(gofmt -l services/import-api/cmd/deletion-container-drill/main.go services/import-api/cmd/deletion-container-drill-helper/main.go)"
+
+      - name: Apply canonical security migrations
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          for migration in \
+            001_memory_os_import_rls.sql \
+            002_memory_os_account_control.sql \
+            002_memory_os_upload_authorization.sql \
+            003_memory_os_preview_domain.sql \
+            004_memory_os_account_session.sql \
+            005_memory_os_apply_memory.sql \
+            006_memory_os_deletion_fencing.sql \
+            007_memory_os_app_login.sql \
+            008_memory_os_deletion_runtime.sql \
+            009_memory_os_deletion_visibility.sql \
+            010_memory_os_apple_identity.sql
+          do
+            psql \
+              --host=127.0.0.1 --port=5432 --username=postgres --dbname=memory_os_security \
+              --set=ON_ERROR_STOP=1 \
+              --file="infra/postgresql/security/${migration}"
+          done
+
+      - name: Start local versioned MinIO dependency
+        run: |
+          set -euo pipefail
+          docker run -d --name memory-os-container-drill-minio \
+            -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio server /data
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:9000/minio/health/live >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs memory-os-container-drill-minio
+          exit 1
+
+      - name: Build static controller and container worker
+        run: |
+          set -euo pipefail
+          (
+            cd services/import-api
+            CGO_ENABLED=0 go build -trimpath -o /tmp/deletion-container-drill ./cmd/deletion-container-drill
+            CGO_ENABLED=0 go build -trimpath -o /tmp/deletion-container-drill-helper ./cmd/deletion-container-drill-helper
+          )
+          test -x /tmp/deletion-container-drill
+          test -x /tmp/deletion-container-drill-helper
+
+      - name: Execute exact-source container kill and replacement proof
+        id: proof
+        env:
+          MEMORY_OS_ADMIN_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/memory_os_security?sslmode=disable
+          MEMORY_OS_TEST_S3_ENDPOINT: http://127.0.0.1:9000
+          MEMORY_OS_TEST_S3_ACCESS_KEY: minioadmin
+          MEMORY_OS_TEST_S3_SECRET_KEY: minioadmin
+          MEMORY_OS_CONTAINER_DRILL_STATE_PATH: /tmp/deletion-container-drill-state.json
+          MEMORY_OS_CONTAINER_DRILL_POST_KILL_PATH: /tmp/deletion-container-drill-post-kill.json
+          MEMORY_OS_CONTAINER_DRILL_RESULTS_PATH: docs/fixtures/memory-os-operability/deletion-worker-container-kill-recovery-results.sample.v1.json
+        run: |
+          set +e
+          export MEMORY_OS_COMMIT_SHA="$SOURCE_SHA"
+          log=/tmp/memory-os-container-kill-recovery.log
+          : > "$log"
+          rm -f \
+            "$MEMORY_OS_CONTAINER_DRILL_STATE_PATH" \
+            "$MEMORY_OS_CONTAINER_DRILL_POST_KILL_PATH" \
+            "$MEMORY_OS_CONTAINER_DRILL_RESULTS_PATH"
+          signal_dir=/tmp/deletion-container-drill-signals
+          rm -rf "$signal_dir"
+          mkdir -p "$signal_dir"
+          chmod 0777 "$signal_dir"
+          code=0
+
+          echo "STAGE: fixture-setup" >> "$log"
+          /tmp/deletion-container-drill setup >> "$log" 2>&1 || code=$?
+
+          app_url='postgres://memory_app_login:postgres@127.0.0.1:5432/memory_os_security?sslmode=disable'
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: killed-container-start" >> "$log"
+            docker run -d \
+              --name memory-os-deletion-worker-killed \
+              --network host \
+              -e MEMORY_OS_CONTAINER_DRILL_MODE=erase-block \
+              -e MEMORY_OS_CONTAINER_DRILL_DATABASE_URL="$app_url" \
+              -e MEMORY_OS_TEST_S3_ENDPOINT="$MEMORY_OS_TEST_S3_ENDPOINT" \
+              -e MEMORY_OS_TEST_S3_ACCESS_KEY="$MEMORY_OS_TEST_S3_ACCESS_KEY" \
+              -e MEMORY_OS_TEST_S3_SECRET_KEY="$MEMORY_OS_TEST_S3_SECRET_KEY" \
+              -e MEMORY_OS_CONTAINER_DRILL_SIGNAL_PATH=/signal/ready \
+              -v /tmp/deletion-container-drill-helper:/worker:ro \
+              -v "$signal_dir":/signal \
+              debian:bookworm-slim /worker >> "$log" 2>&1 || code=$?
+          fi
+
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: wait-interruption-point" >> "$log"
+            reached=0
+            for attempt in $(seq 1 150); do
+              if [[ -f "$signal_dir/ready" ]] && [[ "$(cat "$signal_dir/ready")" == "claimed-and-erased" ]]; then
+                reached=1
+                break
+              fi
+              if ! docker inspect memory-os-deletion-worker-killed >/dev/null 2>&1; then
+                break
+              fi
+              running=$(docker inspect -f '{{.State.Running}}' memory-os-deletion-worker-killed 2>/dev/null || echo false)
+              if [[ "$running" != "true" ]]; then
+                break
+              fi
+              sleep 0.1
+            done
+            if [[ "$reached" != "1" ]]; then
+              docker logs memory-os-deletion-worker-killed >> "$log" 2>&1 || true
+              code=1
+            fi
+          fi
+
+          killed_exit=-1
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: docker-sigkill" >> "$log"
+            docker kill --signal=KILL memory-os-deletion-worker-killed >> "$log" 2>&1 || code=$?
+            if [[ "$code" == "0" ]]; then
+              killed_exit=$(docker wait memory-os-deletion-worker-killed 2>>"$log")
+              if [[ "$killed_exit" != "137" ]]; then
+                echo "unexpected killed container exit=${killed_exit}" >> "$log"
+                code=1
+              fi
+            fi
+          fi
+
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: verify-kill-before-expiry" >> "$log"
+            /tmp/deletion-container-drill verify-kill >> "$log" 2>&1 || code=$?
+          fi
+
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: wait-lease-expiry" >> "$log"
+            sleep 6
+          fi
+
+          replacement_exit=-1
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: replacement-container" >> "$log"
+            docker run \
+              --name memory-os-deletion-worker-replacement \
+              --network host \
+              -e MEMORY_OS_CONTAINER_DRILL_MODE=recover \
+              -e MEMORY_OS_CONTAINER_DRILL_DATABASE_URL="$app_url" \
+              -e MEMORY_OS_TEST_S3_ENDPOINT="$MEMORY_OS_TEST_S3_ENDPOINT" \
+              -e MEMORY_OS_TEST_S3_ACCESS_KEY="$MEMORY_OS_TEST_S3_ACCESS_KEY" \
+              -e MEMORY_OS_TEST_S3_SECRET_KEY="$MEMORY_OS_TEST_S3_SECRET_KEY" \
+              -e MEMORY_OS_CONTAINER_DRILL_SIGNAL_PATH=/signal/recovered \
+              -v /tmp/deletion-container-drill-helper:/worker:ro \
+              -v "$signal_dir":/signal \
+              debian:bookworm-slim /worker >> "$log" 2>&1
+            replacement_exit=$?
+            if [[ "$replacement_exit" != "0" ]]; then
+              docker logs memory-os-deletion-worker-replacement >> "$log" 2>&1 || true
+              code=$replacement_exit
+            fi
+            if [[ "$code" == "0" ]] && { [[ ! -f "$signal_dir/recovered" ]] || [[ "$(cat "$signal_dir/recovered")" != "recovered-attempt-2" ]]; }; then
+              echo "replacement attempt-2 signal missing" >> "$log"
+              code=1
+            fi
+          fi
+
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: final-verification" >> "$log"
+            export MEMORY_OS_KILLED_CONTAINER_EXIT_CODE="$killed_exit"
+            export MEMORY_OS_REPLACEMENT_CONTAINER_EXIT_CODE="$replacement_exit"
+            export MEMORY_OS_CONTAINER_DRILL_RECOVERY_SIGNAL_PATH="$signal_dir/recovered"
+            /tmp/deletion-container-drill verify-final >> "$log" 2>&1 || code=$?
+          fi
+
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: result-validation" >> "$log"
+            python scripts/validate-memory-os-deletion-worker-container-kill-recovery.py \
+              --require-result --expected-commit-sha "$SOURCE_SHA" \
+              >> "$log" 2>&1 || code=$?
+          fi
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Commit exact-source result
+        if: steps.proof.outputs.exit_code == '0'
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          if ! git diff --quiet "$SOURCE_SHA" origin/so -- \
+            .github/workflows/deletion-worker-container-kill-recovery.yml \
+            contracts/operations/deletion-worker-container-kill-recovery-contract.v1.json \
+            scripts/validate-memory-os-deletion-worker-container-kill-recovery.py \
+            scripts/reconcile-memory-os-deletion-worker-container-kill-recovery.py \
+            services/import-api/cmd/deletion-container-drill \
+            services/import-api/cmd/deletion-container-drill-helper; then
+            echo "Container-drill source changed while proof ran; refusing stale evidence."
+            exit 75
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/fixtures/memory-os-operability/deletion-worker-container-kill-recovery-results.sample.v1.json
+          git commit -m "test(deletion): record container-kill recovery result"
+          git pull --rebase origin so
+          git push origin HEAD:so
+
+      - name: Reconcile local-only contract authority
+        if: steps.proof.outputs.exit_code == '0'
+        run: |
+          set -euo pipefail
+          export EXPECTED_COMMIT_SHA="$SOURCE_SHA"
+          python scripts/reconcile-memory-os-deletion-worker-container-kill-recovery.py
+          python scripts/validate-memory-os-deletion-worker-container-kill-recovery.py \
+            --require-result --expected-commit-sha "$SOURCE_SHA"
+          git rm -f docs/fixtures/memory-os-operability/deletion-worker-container-kill-recovery-diagnostic.last.json 2>/dev/null || true
+          git add contracts/operations/deletion-worker-container-kill-recovery-contract.v1.json
+          git add -u docs/fixtures/memory-os-operability/deletion-worker-container-kill-recovery-diagnostic.last.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(deletion): register container-kill recovery evidence"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+
+      - name: Record privacy-safe failure diagnostic
+        if: steps.proof.outputs.exit_code != '0'
+        env:
+          PROOF_EXIT_CODE: ${{ steps.proof.outputs.exit_code }}
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          git reset --hard origin/so
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+          text = Path('/tmp/memory-os-container-kill-recovery.log').read_text(encoding='utf-8', errors='replace')
+          patterns = (
+              (r'postgres(?:ql)?://[^\s]+', '<redacted-database-url>'),
+              (r'https?://[^\s]+', '<redacted-endpoint>'),
+              (r'acct_[A-Za-z0-9_-]+', '<redacted-synthetic-account>'),
+              (r'job_[A-Za-z0-9_-]+', '<redacted-job>'),
+              (r'upl_[A-Za-z0-9_-]+', '<redacted-authorization>'),
+              (r'quarantine/[A-Za-z0-9._:/-]+', '<redacted-object-key>'),
+          )
+          for pattern, replacement in patterns:
+              text = re.sub(pattern, replacement, text, flags=re.I)
+          text = text.replace('minioadmin', '<redacted-local-credential>')
+          value = {
+              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'workflow': 'deletion-worker-container-kill-recovery',
+              'sourceCommitSha': os.environ['SOURCE_SHA'],
+              'result': 'FAIL',
+              'exitCode': int(os.environ['PROOF_EXIT_CODE']),
+              'output': text[-12000:],
+              'containsSecrets': False,
+              'actualContainerKillCovered': False,
+              'actualHostFailureCovered': False,
+              'productionEvidence': False,
+              'productionEquivalentDependencies': False,
+          }
+          path = Path('docs/fixtures/memory-os-operability/deletion-worker-container-kill-recovery-diagnostic.last.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          PY
+          git add docs/fixtures/memory-os-operability/deletion-worker-container-kill-recovery-diagnostic.last.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --cached --quiet; then
+            git commit -m "test(deletion): record container-kill recovery diagnostic"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+
+      - name: Enforce proof result
+        run: test "${{ steps.proof.outputs.exit_code }}" = "0"
