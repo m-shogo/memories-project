@@ -84,7 +84,8 @@
         "all scenario-specific repository validators pass with output stored only as SHA-256 digests and bounded byte counts rather than raw logs",
         "severity, declaration, containment, stop conditions, evidence preservation, recovery verification, promotion block and closure block are retained for all six scenarios",
         "automated exercise explicitly leaves human tabletop, paging, external communications, production recovery drill and independent approval incomplete",
-        "human-led incident tabletop completion admission is append-only and fail-closed: accepted records must preserve the canonical plan, bind an exact source commit, record required command-role assignments and severity-specific closure approvals, and pass the canonical completed-tabletop validator; automated control exercises cannot manufacture human attendance"
+        "human-led incident tabletop completion admission is append-only and fail-closed: accepted records must preserve the canonical plan, bind an exact source commit, record required command-role assignments and severity-specific closure approvals, and pass the canonical completed-tabletop validator; automated control exercises cannot manufacture human attendance",
+        "incident contact-routing admission is fail-closed and composes with an already-admitted observability stack: future evidence must provide pseudonymous owners and destination digests for incident command, security/privacy, system ownership, provider escalation and user communication, plus delivery/escalation/user-communication drills and independent privacy/operability review; the registry is currently empty"
       ],
       "missingEvidence": [
         "configured paging and alert routing with owned acknowledgement path",
@@ -113,7 +114,13 @@
         "scripts/register-memory-os-incident-human-tabletop.py",
         "scripts/validate-memory-os-incident-human-tabletops.py",
         "scripts/reconcile-memory-os-incident-human-tabletops.py",
-        ".github/workflows/incident-human-tabletop-evidence.yml"
+        ".github/workflows/incident-human-tabletop-evidence.yml",
+        "contracts/operations/incident-contact-routing-admission-contract.v1.json",
+        "contracts/operations/incident-contact-routing-admission-registry.v1.json",
+        "scripts/register-memory-os-incident-contact-routing.py",
+        "scripts/validate-memory-os-incident-contact-routing.py",
+        "scripts/reconcile-memory-os-incident-contact-routing.py",
+        ".github/workflows/incident-contact-routing-admission.yml"
       ]
     },
     {

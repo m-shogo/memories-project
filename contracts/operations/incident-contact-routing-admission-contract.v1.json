@@ -80,10 +80,10 @@
   },
   "readiness": {
     "contractDefined": true,
-    "registryImplemented": false,
-    "writerImplemented": false,
-    "validatorImplemented": false,
-    "automaticWorkflowImplemented": false,
+    "registryImplemented": true,
+    "writerImplemented": true,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": true,
     "admittedRoutingCount": 0,
     "productionRoutingAvailable": false,
     "productionReady": false
