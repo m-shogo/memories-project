@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "controlled-saturation-ramp",
+  "sourceCommitSha": "3f8723460b3b13ae2f032b9d740d0d343a7640c2",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "STAGE: format-and-compile\nSTAGE: controlled-local-ramp\n# github.com/m-shogo/memories-project/services/import-api/internal/httpserver [github.com/m-shogo/memories-project/services/import-api/internal/httpserver.test]\ninternal/httpserver/sustained_local_soak_test.go:163:9: cannot use backlog.Pending (variable of type int64) as int value in return statement\ninternal/httpserver/sustained_local_soak_test.go:163:26: cannot use backlog.Stuck (variable of type int64) as int value in return statement\nFAIL\tgithub.com/m-shogo/memories-project/services/import-api/internal/httpserver [build failed]\nFAIL\n",
+  "containsSecrets": false,
+  "productionEvidence": false,
+  "productionEquivalentDependencies": false,
+  "capacityBoundaryEstablished": false,
+  "operationalThresholdApproved": false
+}
