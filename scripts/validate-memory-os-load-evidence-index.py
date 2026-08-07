@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the partition between mock, live and deferred load scenarios."""
+"""Validate the partition between mock, local-live and deferred load scenarios."""
 
 from __future__ import annotations
 
@@ -26,6 +26,16 @@ EXPECTED_EXTERNAL = {
         "contracts/operations/live-object-load-scenario-contract.v1.json",
         "scripts/validate-memory-os-live-object-load.py",
     ),
+    "authenticated-preview-capacity-ramp-local-postgres": (
+        "LOCAL_POSTGRES",
+        "contracts/operations/capacity-ramp-contract.v1.json",
+        "scripts/validate-memory-os-capacity-ramp.py",
+    ),
+    "authenticated-preview-short-ci-stability-local-postgres": (
+        "LOCAL_POSTGRES",
+        "contracts/operations/short-stability-sample-contract.v1.json",
+        "scripts/validate-memory-os-short-stability-sample.py",
+    ),
     "account-deletion-post-fence-load-local-dependencies": (
         "LOCAL_POSTGRES_MINIO",
         "contracts/operations/deletion-under-load-contract.v1.json",
@@ -37,6 +47,7 @@ EXPECTED_DEFERRED = {
     "deletion-worker-under-api-load",
     "soak-memory-leak",
     "production-equivalent",
+    "soak",
     "deletion-under-load",
 }
 LIVE_RESULT_REFS = {
@@ -121,6 +132,22 @@ def main() -> int:
         require((ROOT / contract_ref).is_file(), f"{scenario_id}: contractRef missing")
         require((ROOT / validator_ref).is_file(), f"{scenario_id}: validatorRef missing")
 
+    capacity = external["authenticated-preview-capacity-ramp-local-postgres"]
+    require(capacity.get("capacityBoundaryEstablished") is False,
+            "bounded local capacity ramp cannot establish the capacity boundary")
+
+    stability = external["authenticated-preview-short-ci-stability-local-postgres"]
+    require(stability.get("classification") == "SHORT_CI_STABILITY_SAMPLE",
+            "short stability sample classification drift")
+    require(stability.get("sustainedSoakEvidence") is False,
+            "short CI stability sample cannot claim sustained-soak evidence")
+    require(stability.get("leakProof") is False,
+            "short CI stability sample cannot claim leak proof")
+
+    deletion = external["account-deletion-post-fence-load-local-dependencies"]
+    require(deletion.get("requestsStartedBeforeFenceCovered") is False,
+            "post-fence deletion checkpoint cannot claim pre-fence request coverage")
+
     for scenario_id, item in deferred.items():
         reason = item.get("reason")
         mode = item.get("requiredDependencyMode")
@@ -167,7 +194,7 @@ def main() -> int:
 
     print("Memory OS load evidence index PASS")
     print(f"mock executed: {len(executed)}")
-    print(f"live external: {len(external)}")
+    print(f"local/live external: {len(external)}")
     print(f"deferred: {len(deferred)}")
     print(f"live results committed flag: {results_committed}")
     return 0
