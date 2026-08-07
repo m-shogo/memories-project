@@ -1,0 +1,99 @@
+{
+  "contractId": "memory-os.operability.client-baseline-registry.v1",
+  "schemaVersion": "memory-os-client-baseline-registry-contract.v1",
+  "description": "Binding append-only authority for reviewed immutable iOS and Portal client artifacts. A source commit, branch head, CI build, marketing version or artifact digest alone never creates an approved client baseline. The writer verifies external artifact bytes and reviewed metadata but never creates approvals or production readiness.",
+  "registryPath": "contracts/operations/client-baseline-registry.v1.json",
+  "writer": "scripts/register-memory-os-client-baseline.py",
+  "validator": "scripts/validate-memory-os-client-baseline-registry.py",
+  "recordSchemaVersion": "memory-os-client-baseline-record.v1",
+  "appendOnly": true,
+  "allowedClientClasses": [
+    "IOS_APP",
+    "PORTAL"
+  ],
+  "approvalPolicy": {
+    "approvalClass": "REVIEWED_CLIENT_BASELINE",
+    "minimumDistinctApprovers": 3,
+    "requiredRoles": [
+      "CLIENT_OWNER",
+      "SECURITY_REVIEWER",
+      "COMPATIBILITY_REVIEWER"
+    ],
+    "selfApprovalForbidden": true,
+    "sourceCommitIsInsufficient": true,
+    "ciPassIsInsufficient": true,
+    "marketingVersionIsInsufficient": true,
+    "artifactDigestWithoutBytesIsInsufficient": true,
+    "productionTrafficForbiddenForRegistration": true
+  },
+  "requiredRecordFields": [
+    "schemaVersion",
+    "clientBaselineId",
+    "clientClass",
+    "marketingVersion",
+    "buildNumber",
+    "sourceCommitSha",
+    "artifactKind",
+    "artifactSha256",
+    "artifactByteLength",
+    "approvedAt",
+    "approvalClass",
+    "approvers",
+    "apiMajor",
+    "apiContractSha256",
+    "signedUploadContract",
+    "clientBehaviorContractSha256",
+    "buildProvenanceEvidenceRefs",
+    "securityEvidenceRefs",
+    "compatibilityEvidenceRefs",
+    "artifactRetentionEvidenceRefs",
+    "evidenceComplete",
+    "approvedForPairing",
+    "productionEvidence",
+    "productionReady"
+  ],
+  "requiredEvidenceClasses": [
+    "exact external client artifact bytes and recomputed digest",
+    "build provenance linked to source commit and client class",
+    "client-side authentication/session and unknown-response behavior",
+    "deletion-fence and retry/idempotency behavior relevant to the client",
+    "API-major and signed-upload contract binding",
+    "security review",
+    "immutable artifact retention evidence"
+  ],
+  "registrationGuards": [
+    "input record and client artifact are outside the repository working tree",
+    "repository working tree is clean before mutation",
+    "artifact SHA-256 and byte length are recomputed from supplied bytes",
+    "client baseline id is unique",
+    "artifact digest is not already registered under another baseline",
+    "source commit exists in repository history",
+    "all evidence references are repository-relative existing files",
+    "three required approval roles use distinct operational pseudonyms",
+    "evidenceComplete and approvedForPairing are true",
+    "productionEvidence and productionReady remain false",
+    "registry update uses exclusive lock and atomic replacement",
+    "registry validator and Git review remain mandatory after mutation"
+  ],
+  "forbiddenRecordContent": [
+    "credentials, tokens or signing secrets",
+    "developer Apple account identifiers",
+    "database or object-store URLs",
+    "raw user content or account/session/job identifiers",
+    "claims that baseline approval proves client/server skew",
+    "claims that baseline approval proves production readiness"
+  ],
+  "readiness": {
+    "contractDefined": true,
+    "registryImplemented": true,
+    "writerImplemented": false,
+    "validatorImplemented": false,
+    "automaticWorkflowImplemented": false,
+    "approvedClientBaselineCount": 0,
+    "approvedIOSBaselineAvailable": false,
+    "approvedPortalBaselineAvailable": false,
+    "clientServerSkewEvidence": false,
+    "productionReady": false
+  },
+  "productionDecision": "NO_GO"
+}
