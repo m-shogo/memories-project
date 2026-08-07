@@ -82,7 +82,7 @@ jobs:
           docker logs memory-os-worker-saturation-minio
           exit 1
 
-      - name: Validate contract and execute exact-source proof
+      - name: Execute exact-source proof with bounded log
         env:
           MEMORY_OS_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/memory_os_security?sslmode=disable
           MEMORY_OS_TEST_S3_ENDPOINT: http://127.0.0.1:9000
@@ -91,24 +91,47 @@ jobs:
           MEMORY_OS_RUN_DELETION_WORKER_SATURATION: "1"
           MEMORY_OS_DELETION_WORKER_SATURATION_RESULTS_PATH: ../../docs/fixtures/memory-os-operability/deletion-worker-saturation-results.sample.v1.json
         run: |
-          set -euo pipefail
+          set +e
           export MEMORY_OS_COMMIT_SHA="$SOURCE_SHA"
+          log=/tmp/memory-os-deletion-worker-saturation.log
+          : > "$log"
+          result=docs/fixtures/memory-os-operability/deletion-worker-saturation-results.sample.v1.json
+          rm -f "$result"
+          code=0
+          echo "STAGE: python-and-contract" >> "$log"
           python -m py_compile \
             scripts/validate-memory-os-deletion-worker-saturation.py \
-            scripts/reconcile-memory-os-deletion-worker-saturation.py
-          python scripts/validate-memory-os-deletion-worker-saturation.py
-          test -z "$(gofmt -l services/import-api/internal/httpserver/deletion_worker_saturation_test.go)"
-          (
-            cd services/import-api
-            go test ./internal/httpserver \
-              -run '^TestMultiAccountDeletionWorkerSaturationLocalDependencies$' \
-              -count=1 -timeout=15m
-          )
-          python scripts/validate-memory-os-deletion-worker-saturation.py \
-            --require-result \
-            --expected-commit-sha "$SOURCE_SHA"
+            scripts/reconcile-memory-os-deletion-worker-saturation.py \
+            >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-deletion-worker-saturation.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: gofmt" >> "$log"
+            test -z "$(gofmt -l services/import-api/internal/httpserver/deletion_worker_saturation_test.go)" \
+              >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: live-proof" >> "$log"
+            (
+              cd services/import-api
+              go test ./internal/httpserver \
+                -run '^TestMultiAccountDeletionWorkerSaturationLocalDependencies$' \
+                -count=1 -timeout=15m
+            ) >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: exact-result-validation" >> "$log"
+            python scripts/validate-memory-os-deletion-worker-saturation.py \
+              --require-result \
+              --expected-commit-sha "$SOURCE_SHA" \
+              >> "$log" 2>&1 || code=$?
+          fi
+          echo "WORKER_SATURATION_EXIT_CODE=$code" >> "$GITHUB_ENV"
+          exit 0
 
       - name: Commit exact-source result
+        if: env.WORKER_SATURATION_EXIT_CODE == '0'
         run: |
           set -euo pipefail
           git fetch origin so
@@ -135,6 +158,7 @@ jobs:
           git push origin HEAD:so
 
       - name: Reconcile local-only authority
+        if: env.WORKER_SATURATION_EXIT_CODE == '0'
         run: |
           set -euo pipefail
           export EXPECTED_COMMIT_SHA="$SOURCE_SHA"
@@ -142,7 +166,9 @@ jobs:
           python scripts/validate-memory-os-deletion-worker-saturation.py \
             --require-result \
             --expected-commit-sha "$SOURCE_SHA"
+          git rm -f docs/fixtures/memory-os-operability/deletion-worker-saturation-diagnostic.last.json 2>/dev/null || true
           git add contracts/operations/deletion-worker-saturation-contract.v1.json
+          git add -u docs/fixtures/memory-os-operability/deletion-worker-saturation-diagnostic.last.json 2>/dev/null || true
           if ! git diff --cached --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -150,3 +176,56 @@ jobs:
             git pull --rebase origin so
             git push origin HEAD:so
           fi
+
+      - name: Record privacy-safe failure diagnostic
+        if: env.WORKER_SATURATION_EXIT_CODE != '0'
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          git reset --hard origin/so
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+          text = Path('/tmp/memory-os-deletion-worker-saturation.log').read_text(encoding='utf-8', errors='replace')
+          patterns = (
+              (r'postgres(?:ql)?://[^\s]+', '<redacted-database-url>'),
+              (r'https?://[^\s]+', '<redacted-endpoint>'),
+              (r'Bearer\s+\S+', 'Bearer <redacted>'),
+              (r'acct_[A-Za-z0-9_-]+', '<redacted-synthetic-account>'),
+              (r'job_[A-Za-z0-9_-]+', '<redacted-job>'),
+              (r'preview_[A-Za-z0-9_-]+', '<redacted-preview>'),
+              (r'quarantine/[A-Za-z0-9._:/-]+', '<redacted-object-key>'),
+          )
+          for pattern, replacement in patterns:
+              text = re.sub(pattern, replacement, text, flags=re.I)
+          text = text.replace('minioadmin', '<redacted-local-credential>')
+          value = {
+              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'workflow': 'deletion-worker-saturation',
+              'sourceCommitSha': os.environ['SOURCE_SHA'],
+              'result': 'FAIL',
+              'exitCode': int(os.environ['WORKER_SATURATION_EXIT_CODE']),
+              'output': text[-12000:],
+              'containsSecrets': False,
+              'productionEvidence': False,
+              'productionEquivalentDependencies': False,
+              'capacityBoundaryEstablished': False,
+              'operationalThresholdApproved': False,
+          }
+          path = Path('docs/fixtures/memory-os-operability/deletion-worker-saturation-diagnostic.last.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          PY
+          git add docs/fixtures/memory-os-operability/deletion-worker-saturation-diagnostic.last.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --cached --quiet; then
+            git commit -m "test(deletion): record worker saturation diagnostic"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+
+      - name: Enforce proof result
+        run: test "${WORKER_SATURATION_EXIT_CODE}" = "0"
