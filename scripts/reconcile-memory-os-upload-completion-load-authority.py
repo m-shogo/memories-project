@@ -93,7 +93,7 @@ def main() -> int:
         "production-equivalent behavior nor independently reviewed operating thresholds; OPS-P0-006 remains PARTIAL."
     )
 
-    for scenario_entry in load_contract.get("excludedScenarios", []):
+    for scenario_entry in load_contract.get("deferredScenarios", []):
         if scenario_entry.get("scenarioId") == "deletion-under-load":
             scenario_entry["reason"] = (
                 "post-fence former-session load, Preview requests authenticated before the fence, Apply and "
@@ -105,7 +105,7 @@ def main() -> int:
             )
             break
     else:
-        raise SystemExit("deletion-under-load excluded scenario missing")
+        raise SystemExit("deletion-under-load deferred scenario missing")
 
     load_refs = load_contract.setdefault("evidenceRefs", [])
     for ref in PROOF_REFS:
