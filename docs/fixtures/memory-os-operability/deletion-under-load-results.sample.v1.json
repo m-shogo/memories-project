@@ -1,0 +1,92 @@
+{
+  "schemaVersion": "memory-os-deletion-under-load-results.v1",
+  "commitSha": "ecf19350ee47b6a2da5f82a3e9f37b8db7d60080",
+  "generatedAt": "2026-08-07T00:52:09Z",
+  "environment": {
+    "os": "linux",
+    "arch": "amd64",
+    "numCpu": 4,
+    "goVersion": "go1.23.12",
+    "dependencyMode": "LOCAL_POSTGRES_MINIO",
+    "syntheticDataOnly": true,
+    "productionTraffic": false,
+    "productionCredentials": false,
+    "productionEvidence": false,
+    "productionEquivalentDependencies": false,
+    "containsSecrets": false
+  },
+  "scenario": {
+    "scenarioId": "account-deletion-post-fence-load-local-dependencies",
+    "startedAt": "2026-08-07T00:52:09Z",
+    "completedAt": "2026-08-07T00:52:09Z",
+    "preFence": {
+      "summary": {
+        "requests": 120,
+        "concurrency": 16,
+        "successes": 120,
+        "failures": 0,
+        "statusClassCounts": {
+          "2xx": 120
+        },
+        "durationSeconds": 0.24629715,
+        "throughput": 487.2163563402987,
+        "latencyP50Ms": 30.143,
+        "latencyP95Ms": 43.281,
+        "latencyP99Ms": 48.29
+      },
+      "statusCodeCounts": {
+        "200": 120
+      }
+    },
+    "deletionRequestStatus": 202,
+    "deletionEpoch": 2,
+    "postFence": {
+      "summary": {
+        "requests": 400,
+        "concurrency": 32,
+        "successes": 0,
+        "failures": 400,
+        "statusClassCounts": {
+          "4xx": 400
+        },
+        "durationSeconds": 0.159355943,
+        "throughput": 2510.1040630784632,
+        "latencyP50Ms": 10.213,
+        "latencyP95Ms": 25.617,
+        "latencyP99Ms": 26.888
+      },
+      "statusCodeCounts": {
+        "401": 400
+      }
+    },
+    "workerDurationSeconds": 0.052206168,
+    "workerReceiptCount": 1,
+    "finalOwnedRowCount": 0,
+    "finalAccountState": "deleted",
+    "finalAccountEpoch": 2,
+    "assertions": {
+      "deletionEpoch": 2,
+      "deletionRequestStatus": 202,
+      "finalAccountEpoch": 2,
+      "finalAccountState": "deleted",
+      "finalOwnedRowCount": 0,
+      "postFenceAllUnauthorized": true,
+      "postFenceNo5xx": true,
+      "postFenceNoTransportErrors": true,
+      "postFenceUnauthorizedCount": 400,
+      "preFenceAll2xx": true,
+      "productionEvidence": false,
+      "workerCompleted": true,
+      "workerReceiptCount": 1
+    },
+    "result": "PASS",
+    "integrityResult": "PASS"
+  },
+  "limitations": [
+    "only requests started after the durable 202 fence are asserted",
+    "one account and one deletion worker",
+    "authenticated Preview read path only",
+    "local PostgreSQL 16 and MinIO on a GitHub-hosted runner",
+    "not production deletion capacity evidence"
+  ]
+}
