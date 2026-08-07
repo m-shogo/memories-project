@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "memory-os-client-server-skew-registry.v1",
+  "registryClass": "ADMITTED_CLIENT_SERVER_SKEW_PAIRS",
+  "appendOnly": true,
+  "productionEvidence": false,
+  "admissibleSkewPairCount": 0,
+  "pairs": [],
+  "limitations": [
+    "no skew pair can exist while approved backend release count is zero",
+    "no skew pair can exist while approved client baseline count is zero",
+    "candidate-only backend mixed-version evidence is not client/server skew evidence",
+    "CI PASS alone never creates an admitted pair"
+  ]
+}
