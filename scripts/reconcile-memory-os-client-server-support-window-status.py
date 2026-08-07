@@ -75,7 +75,7 @@ def main() -> int:
         append_once(refs, ref)
 
     joined = "\n".join(str(item).lower() for item in missing)
-    for term in ("client support windows", "old-client/new-server", "new-client/old-server"):
+    for term in ("client/server support windows", "old-client/new-server", "new-client/old-server"):
         require(term in joined, f"runtime client-skew blocker must remain: {term}")
 
     STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
