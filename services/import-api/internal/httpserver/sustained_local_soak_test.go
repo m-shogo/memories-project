@@ -425,18 +425,29 @@ func TestMixedImportLifecycleLocalLongSoak(t *testing.T) {
 		t.Fatalf("long-soak evidence duration too short: %s", actualDuration)
 	}
 
-	// Recovery proves the same long-lived server and parser boundary still
-	// accept new work after the final observation window.
-	recoveryPreview := runLiveHTTPBatch(1, 1, func(int) (*http.Request, error) {
+	// The production session TTL is one hour, exactly the minimum evidence
+	// duration. Prove the original session expires normally, then re-authenticate
+	// the same still-active account and verify the long-lived server/parser can
+	// accept fresh work. Extending the original token would hide a real boundary.
+	expiredSession := runDeletionExactHTTPBatch(1, 1, func(int) (*http.Request, error) {
 		return liveRequest(http.MethodGet, previewPath, token, nil)
 	})
+	if expiredSession.StatusCodeCounts["401"] != 1 ||
+		expiredSession.Summary.StatusClassCounts["5xx"] != 0 ||
+		expiredSession.Summary.StatusClassCounts["transport_error"] != 0 {
+		t.Fatalf("long-soak original session did not expire cleanly: %+v", expiredSession)
+	}
+	recoveryToken := sustainedSoakRenewSession(t, server, owner)
+	recoveryPreview := runLiveHTTPBatch(1, 1, func(int) (*http.Request, error) {
+		return liveRequest(http.MethodGet, previewPath, recoveryToken, nil)
+	})
 	recoveryJob := server.createJob(t, owner)
-	recoveryUpload := runLiveObjectBatch(1, 1, server.server.URL, token, []string{recoveryJob})
+	recoveryUpload := runLiveObjectBatch(1, 1, server.server.URL, recoveryToken, []string{recoveryJob})
 	_, recoveryParserErr := sustainedSoakParserRecovery(context.Background())
 	recoveryPassed := recoveryPreview.Successes == 1 && recoveryPreview.Failures == 0 &&
 		recoveryUpload.Successes == 1 && recoveryUpload.Failures == 0 && recoveryParserErr == nil
 	if !recoveryPassed {
-		t.Fatalf("long-soak recovery probe failed: preview=%+v upload=%+v parser=%v", recoveryPreview, recoveryUpload, recoveryParserErr)
+		t.Fatalf("long-soak post-reauth recovery probe failed: preview=%+v upload=%+v parser=%v", recoveryPreview, recoveryUpload, recoveryParserErr)
 	}
 
 	finalQueuePending, _ := sustainedSoakQueueStats(t, server, owner)
