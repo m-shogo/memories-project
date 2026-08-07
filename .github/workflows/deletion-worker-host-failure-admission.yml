@@ -1,0 +1,108 @@
+name: Deletion Worker Host Failure Admission
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/deletion-worker-host-failure-admission.yml"
+      - "contracts/operations/deletion-worker-host-failure-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "scripts/validate-memory-os-deletion-worker-host-failure.py"
+      - "scripts/reconcile-memory-os-deletion-worker-host-failure.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deletion-worker-host-failure-admission-so
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate and reconcile physical host-failure boundary
+        id: admission
+        run: |
+          set +e
+          log=/tmp/deletion-host-failure-admission.log
+          code=0
+          python -m py_compile \
+            scripts/validate-memory-os-deletion-worker-host-failure.py \
+            scripts/reconcile-memory-os-deletion-worker-host-failure.py \
+            >"$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            python scripts/reconcile-memory-os-deletion-worker-host-failure.py >>"$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-deletion-worker-host-failure.py >>"$log" 2>&1 || code=$?
+            python scripts/validate-memory-os-operability.py >>"$log" 2>&1 || code=$?
+          fi
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          cat "$log"
+          exit 0
+      - name: Commit bounded foundation authority
+        if: steps.admission.outputs.exit_code == '0'
+        run: |
+          set -euo pipefail
+          git add \
+            contracts/operations/deletion-worker-host-failure-contract.v1.json \
+            contracts/operations/production-operability-status.json
+          if ! git diff --cached --quiet; then
+            git diff --cached --check
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(deletion): register host-failure admission foundation"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+      - name: Record privacy-safe diagnostic
+        if: steps.admission.outputs.exit_code != '0'
+        env:
+          ADMISSION_EXIT_CODE: ${{ steps.admission.outputs.exit_code }}
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          git reset --hard origin/so
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          text = Path('/tmp/deletion-host-failure-admission.log').read_text(encoding='utf-8', errors='replace')
+          value = {
+              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'workflow': 'deletion-worker-host-failure-admission',
+              'result': 'FAIL',
+              'exitCode': int(os.environ['ADMISSION_EXIT_CODE']),
+              'output': text[-12000:],
+              'containsSecrets': False,
+              'actualPhysicalHostOrVMNodeLossCovered': False,
+              'deletionHostFailureRecoveryProven': False,
+              'productionEquivalentEvidence': False,
+              'productionEvidence': False,
+              'productionReady': False,
+          }
+          path = Path('docs/fixtures/memory-os-operability/deletion-worker-host-failure-admission-diagnostic.last.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          PY
+          git add docs/fixtures/memory-os-operability/deletion-worker-host-failure-admission-diagnostic.last.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --cached --quiet; then
+            git commit -m "test(deletion): record host-failure admission diagnostic"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+      - name: Enforce admission result
+        run: test "${{ steps.admission.outputs.exit_code }}" = "0"
