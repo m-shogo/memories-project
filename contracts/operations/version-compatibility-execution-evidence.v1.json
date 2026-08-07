@@ -1,0 +1,77 @@
+{
+  "contractId": "memory-os.operability.version-compatibility-execution-evidence.v1",
+  "schemaVersion": "memory-os-version-compatibility-execution-evidence.v1",
+  "description": "Supplemental execution authority that classifies what historical-candidate/current and PostgreSQL-major compatibility drills have actually proven without changing the canonical approved-release compatibility matrix.",
+  "canonicalCompatibilityContract": "contracts/operations/version-compatibility-contract.v1.json",
+  "foundationContract": "contracts/operations/version-compatibility-foundations.v1.json",
+  "validator": "scripts/validate-memory-os-version-compatibility-execution-evidence.py",
+  "reconcile": "scripts/reconcile-memory-os-version-compatibility-execution-status.py",
+  "evidence": {
+    "historicalCandidateCurrentExpandedSchema": {
+      "proven": true,
+      "scope": "CANDIDATE_ONLY_LOCAL_CI",
+      "resultRef": "docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json"
+    },
+    "crossVersionSessionAuthority": {
+      "proven": true,
+      "scope": "CANDIDATE_ONLY_LOCAL_CI",
+      "resultRef": "docs/fixtures/memory-os-operability/mixed-version-session-results.sample.v1.json"
+    },
+    "crossVersionPersistedApplyReplay": {
+      "proven": true,
+      "scope": "CANDIDATE_ONLY_LOCAL_CI",
+      "resultRef": "docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json"
+    },
+    "simultaneousOldCurrentApplyClaimRace": {
+      "proven": true,
+      "scope": "CANDIDATE_ONLY_LOCAL_CI",
+      "resultRef": "docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json"
+    },
+    "historicalProcessSIGKILLApplyRollbackRecovery": {
+      "proven": true,
+      "scope": "CANDIDATE_ONLY_LOCAL_CI",
+      "resultRef": "docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json"
+    },
+    "postgresql16To17LogicalForwardRestore": {
+      "proven": true,
+      "scope": "LOCAL_CI_ONLY",
+      "resultRef": "docs/fixtures/memory-os-operability/postgresql-major-upgrade-results.sample.v1.json"
+    }
+  },
+  "notProven": {
+    "approvedPredecessorSuccessorReleasePair": true,
+    "approvedReleaseRollingTraffic": true,
+    "approvedReleaseApplicationRollback": true,
+    "productionConnectionPoolDrain": true,
+    "productionHostOrNetworkFailureDuringMixedVersion": true,
+    "remainingMixedVersionRoutesBeyondSessionAndApply": true,
+    "clientServerSupportWindowAndSkew": true,
+    "reviewedProductionParserArtifactReplay": true,
+    "physicalReplicationWalFailoverAcrossDatabaseUpgrade": true,
+    "productionBlueGreenDatabaseCutover": true,
+    "destructiveContractMigrationDowngrade": true,
+    "independentIntegratedCompatibilityReview": true
+  },
+  "releaseAuthorityBoundary": {
+    "approvedReleaseCount": 0,
+    "approvedRollbackPairCount": 0,
+    "reviewedParserArtifactCount": 0,
+    "canonicalReleaseMatrixChanged": false,
+    "releaseCompatibilityEvidence": false,
+    "productionEvidence": false,
+    "productionReady": false,
+    "productionDecision": "NO_GO"
+  },
+  "readiness": {
+    "executionEvidenceClassified": true,
+    "candidateOnlyMixedVersionExecutionProven": true,
+    "candidateApplyConcurrencyAndSIGKILLRecoveryProven": true,
+    "postgresql17LogicalForwardExecutionProven": true,
+    "approvedReleasePairAvailable": false,
+    "productionRollingDeploymentProven": false,
+    "clientServerSkewProven": false,
+    "reviewedParserArtifactAvailable": false,
+    "independentReviewCompleted": false,
+    "productionReady": false
+  }
+}
