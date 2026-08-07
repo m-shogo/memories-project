@@ -45,6 +45,8 @@ func (h PreviewHandler) get(writer http.ResponseWriter, request *http.Request) {
 	switch {
 	case err == nil:
 		writeJSON(writer, http.StatusOK, view)
+	case isFencedSessionError(err):
+		writeProblem(writer, http.StatusUnauthorized, "SEC_AUTHENTICATION_REQUIRED")
 	case errors.Is(err, previewread.ErrInvalidRequest):
 		writeProblem(writer, http.StatusBadRequest, "SEC_PREVIEW_REQUEST_INVALID")
 	case errors.Is(err, previewread.ErrNotFound):
