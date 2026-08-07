@@ -3,7 +3,7 @@
   "workflow": "migration-evidence-registry",
   "result": "FAIL",
   "exitCode": 1,
-  "output": "STAGE: typed-recovery-self-test\ntyped recovery evidence self-test PASS\nSTAGE: registry-validation\nMIGRATION EVIDENCE REGISTRY VALIDATION FAILED: unsafe migration readiness promotion: actualRecoveryArtifactRestoreLinked\n",
+  "output": "STAGE: typed-recovery-self-test\nTraceback (most recent call last):\n  File \"<stdin>\", line 17, in <module>\n  File \"/home/runner/work/memories-project/memories-project/scripts/memory_os_migration_recovery_point.py\", line 194, in validate_recovery_point\n    validate_actual_recovery_artifact_result(\n  File \"/home/runner/work/memories-project/memories-project/scripts/memory_os_migration_recovery_point.py\", line 66, in validate_actual_recovery_artifact_result\n    require(isinstance(run_id, str) and RUN_ID.fullmatch(run_id) is not None,\n  File \"/home/runner/work/memories-project/memories-project/scripts/memory_os_migration_recovery_point.py\", line 23, in require\n    raise RecoveryPointFailure(message)\nmemory_os_migration_recovery_point.RecoveryPointFailure: migrationRunId invalid for recovery artifact linkage\n",
   "containsSecrets": false,
   "productionEvidence": false,
   "productionReady": false
