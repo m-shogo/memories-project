@@ -1,0 +1,142 @@
+name: Reviewed Client Baseline Registry
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/client-baseline-registry.yml"
+      - "contracts/operations/client-baseline-registry-contract.v1.json"
+      - "contracts/operations/client-baseline-registry.v1.json"
+      - "contracts/operations/client-server-support-window-contract.v1.json"
+      - "contracts/operations/release-baseline-registry.v1.json"
+      - "scripts/register-memory-os-client-baseline.py"
+      - "scripts/validate-memory-os-client-baseline-registry.py"
+      - "scripts/reconcile-memory-os-client-baseline-registry.py"
+      - "scripts/update-memory-os-compatibility-admission-gaps.py"
+      - "docs/evidence/clients/README.md"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reviewed-client-baseline-registry-so
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Reconcile and validate client baseline authority
+        id: authority
+        run: |
+          set +e
+          log=/tmp/client-baseline-authority.log
+          : > "$log"
+          code=0
+          echo "STAGE: py_compile" >> "$log"
+          python -m py_compile \
+            scripts/register-memory-os-client-baseline.py \
+            scripts/validate-memory-os-client-baseline-registry.py \
+            scripts/reconcile-memory-os-client-baseline-registry.py \
+            scripts/update-memory-os-compatibility-admission-gaps.py \
+            >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: authority-reconcile" >> "$log"
+            python scripts/reconcile-memory-os-client-baseline-registry.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: client-registry-validator" >> "$log"
+            python scripts/validate-memory-os-client-baseline-registry.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: support-window-validator" >> "$log"
+            python scripts/validate-memory-os-client-server-support-window.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: compatibility-gaps" >> "$log"
+            python scripts/update-memory-os-compatibility-admission-gaps.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: operability-validator" >> "$log"
+            python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?
+          fi
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          cat "$log"
+          exit 0
+      - name: Commit bounded client authority
+        if: steps.authority.outputs.exit_code == '0'
+        run: |
+          set -euo pipefail
+          git rm -f docs/fixtures/memory-os-operability/client-baseline-registry-diagnostic.last.json 2>/dev/null || true
+          git add \
+            contracts/operations/client-baseline-registry-contract.v1.json \
+            contracts/operations/client-server-support-window-contract.v1.json \
+            contracts/operations/production-operability-status.json \
+            contracts/operations/compatibility-admission-gaps.v1.json
+          git add -u docs/fixtures/memory-os-operability/client-baseline-registry-diagnostic.last.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git diff --cached --check
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(compat): register reviewed client baseline authority"
+            for attempt in 1 2 3 4; do
+              git pull --rebase origin so
+              if git push origin HEAD:so; then exit 0; fi
+              sleep 2
+            done
+            exit 1
+          fi
+      - name: Record privacy-safe diagnostic
+        if: steps.authority.outputs.exit_code != '0'
+        env:
+          AUTHORITY_EXIT_CODE: ${{ steps.authority.outputs.exit_code }}
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          git reset --hard origin/so
+          python - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          text = Path('/tmp/client-baseline-authority.log').read_text(encoding='utf-8', errors='replace')
+          for pattern, replacement in (
+              (r'postgres(?:ql)?://[^\s]+', '<redacted-database-url>'),
+              (r'https?://[^\s]+', '<redacted-endpoint>'),
+              (r'Bearer\s+\S+', 'Bearer <redacted>'),
+          ):
+              text = re.sub(pattern, replacement, text, flags=re.I)
+          value = {
+              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'workflow': 'client-baseline-registry',
+              'result': 'FAIL',
+              'exitCode': int(os.environ['AUTHORITY_EXIT_CODE']),
+              'output': text[-12000:],
+              'containsSecrets': False,
+              'approvedClientBaselineCount': 0,
+              'clientServerSkewEvidence': False,
+              'productionEvidence': False,
+              'productionReady': False,
+          }
+          path = Path('docs/fixtures/memory-os-operability/client-baseline-registry-diagnostic.last.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          PY
+          git add docs/fixtures/memory-os-operability/client-baseline-registry-diagnostic.last.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --cached --quiet; then
+            git commit -m "test(compat): record client baseline authority diagnostic"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+      - name: Enforce authority result
+        run: test "${{ steps.authority.outputs.exit_code }}" = "0"
