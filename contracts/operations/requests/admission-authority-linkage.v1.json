@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "memory-os-operation-request.v1",
+  "requestId": "admission-authority-linkage-20260807-v1",
+  "operation": "VALIDATE_ADMISSION_AUTHORITY_LINKAGE",
+  "productionTraffic": false,
+  "productionCredentials": false,
+  "productionEvidence": false,
+  "constraints": {
+    "allAuthorityPathsMustExist": true,
+    "unsafeRelativePathsForbidden": true,
+    "staleOrRenamedContractReferencesMustFail": true,
+    "productionDecisionUnaffected": true
+  }
+}
