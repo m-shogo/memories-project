@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "memory-os-rate-limit-emergency-drill-results.v1",
+  "commitSha": "9d7c38d12828b8bf1365665becf7cc03365af686",
+  "generatedAt": "2026-08-07T07:52:47Z",
+  "classification": "LOCAL_CI_DECISION_MODEL",
+  "scenarioId": "apple-exchange-emergency-expiry-and-recovery-local-ci",
+  "policyId": "apple-exchange",
+  "timeline": {
+    "startedAt": "2026-08-07T07:52:47Z",
+    "expiresAt": "2026-08-07T08:52:47Z",
+    "preExpiryProbeAt": "2026-08-07T08:52:46Z",
+    "expiryProbeAt": "2026-08-07T08:52:48Z"
+  },
+  "modeSequence": [
+    "NORMAL_CONFIGURED",
+    "STRICT_LOCAL_EMERGENCY",
+    "ROUTE_FAIL_CLOSED",
+    "NORMAL_CONFIGURED"
+  ],
+  "canonicalEvaluatorStates": {
+    "beforeExpiry": "ACTIVE_EVIDENCE_WINDOW_RUNTIME_UNVERIFIED",
+    "afterExpiry": "EXPIRED_FAIL_CLOSED_RUNTIME_REQUIRES_VERIFICATION"
+  },
+  "recoveryChecks": {
+    "shared_store_atomicity": "PASS",
+    "policy_generation_exact_source": "PASS",
+    "trusted_proxy_boundary": "PASS",
+    "rejected_requests_no_account_session_replay_mutation": "PASS",
+    "rejected_requests_no_upload_apply_memory_mutation": "PASS",
+    "metrics_and_events_present": "PASS",
+    "bounded_canary": "PASS",
+    "temporary_mode_expired": "PASS"
+  },
+  "assertions": {
+    "policyExplicitlyPermitsEmergencyLocal": true,
+    "forbiddenFailOpenModeNeverSelected": true,
+    "expirySelectsRouteFailClosed": true,
+    "recoveryBeforeAllChecksPassRejected": true,
+    "recoveryAfterAllChecksPassReturnsNormal": true,
+    "appendOnlyWriterAcceptsValidLocalRecord": true,
+    "duplicateOperationIdRejected": true,
+    "exactSourceCommitBound": true,
+    "containsSecrets": false,
+    "runtimeTrafficChanged": false,
+    "productionTraffic": false,
+    "productionCredentials": false,
+    "productionEvidence": false,
+    "productionControlPlaneExercised": false
+  },
+  "result": "PASS",
+  "integrityResult": "PASS",
+  "limitations": [
+    "does not mutate a deployed rate-limit control plane",
+    "does not exercise a distributed shared atomic store",
+    "does not verify deployment-owned trusted-proxy configuration",
+    "uses simulated passage of the emergency expiry window rather than sleeping for 60 minutes",
+    "does not prove production alert routing, paging, operator acknowledgement or automatic deployment rollback",
+    "cannot make OPS-P0-005 READY"
+  ]
+}
