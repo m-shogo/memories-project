@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "mixed-version-candidate",
+  "sourceCommitSha": "13d9f847cbab287a5f54e8336057630ea11c4115",
+  "result": "FAIL",
+  "exitCode": 1,
+  "generatedAt": "2026-08-07T01:25:33.411436Z",
+  "output": "MIXED-VERSION STAGE: checkout-pinned-baseline\nPreparing worktree (detached HEAD 2af6e8e)\nMIXED-VERSION STAGE: create-ephemeral-databases\n pg_terminate_backend \n----------------------\n(0 rows)\n\nMIXED-VERSION STAGE: apply-current-migrations-to-both-databases\nMIXED-VERSION STAGE: capture-pre-baseline-schema-fingerprint\nMIXED-VERSION STAGE: run-baseline-sql-tests\nMIXED-VERSION STAGE: run-baseline-go-tests\n?   \tgithub.com/m-shogo/memories-project/services/import-api/internal/authstore\t[no test files]\nok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/httpserver\t1.622s\nok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/previewcommit\t0.524s\nok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/importflow\t5.698s\nMIXED-VERSION STAGE: verify-baseline-did-not-change-schema\nMIXED-VERSION STAGE: run-current-sql-tests\nMIXED-VERSION STAGE: run-current-go-tests\n?   \tgithub.com/m-shogo/memories-project/services/import-api/internal/authstore\t[no test files]\n# github.com/m-shogo/memories-project/services/import-api/internal/httpserver [github.com/m-shogo/memories-project/services/import-api/internal/httpserver.test]\ninternal/httpserver/sustained_local_soak_test.go:163:9: cannot use backlog.Pending (variable of type int64) as int value in return statement\ninternal/httpserver/sustained_local_soak_test.go:163:26: cannot use backlog.Stuck (variable of type int64) as int value in return statement\nFAIL\tgithub.com/m-shogo/memories-project/services/import-api/internal/httpserver [build failed]\nok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/previewcommit\t0.536s\nok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/importflow\t5.770s\nFAIL\n",
+  "outputBytesBeforeTruncation": 1730,
+  "containsSecrets": false,
+  "productionEvidence": false
+}
