@@ -79,8 +79,8 @@
     "runnerImplemented": true,
     "validatorImplemented": true,
     "automaticWorkflowImplemented": true,
-    "exactSourceResultCommitted": false,
-    "preFenceMutationLinearizationProven": false,
+    "exactSourceResultCommitted": true,
+    "preFenceMutationLinearizationProven": true,
     "productionDependenciesTested": false,
     "independentReviewCompleted": false,
     "productionReady": false
