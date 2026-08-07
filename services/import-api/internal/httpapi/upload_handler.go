@@ -132,6 +132,8 @@ func decodeStrictJSON(writer http.ResponseWriter, request *http.Request, limit i
 
 func writeUploadError(writer http.ResponseWriter, err error) {
 	switch {
+	case isFencedSessionError(err):
+		writeProblem(writer, http.StatusUnauthorized, "SEC_AUTHENTICATION_REQUIRED")
 	case errors.Is(err, upload.ErrInvalidUploadRequest):
 		writeProblem(writer, http.StatusBadRequest, "SEC_UPLOAD_REQUEST_INVALID")
 	case errors.Is(err, upload.ErrUploadAuthorizationExpired), errors.Is(err, upload.ErrUploadAuthorizationConsumed), errors.Is(err, upload.ErrObjectMetadataMismatch):
