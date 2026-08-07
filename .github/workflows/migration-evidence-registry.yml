@@ -10,6 +10,8 @@ on:
       - "contracts/operations/migration-evidence-registry.v1.json"
       - "contracts/operations/migration-lifecycle-contract.v1.json"
       - "contracts/operations/production-operability-status.json"
+      - "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json"
+      - "scripts/memory_os_migration_recovery_point.py"
       - "scripts/register-memory-os-migration-rehearsal-evidence.py"
       - "scripts/validate-memory-os-migration-evidence-registry.py"
       - "scripts/reconcile-memory-os-migration-evidence-registry.py"
@@ -21,7 +23,7 @@ permissions:
 
 concurrency:
   group: migration-evidence-registry-so
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   validate:
@@ -43,12 +45,57 @@ jobs:
           : > "$log"
           code=0
           python -m py_compile \
+            scripts/memory_os_migration_recovery_point.py \
             scripts/register-memory-os-migration-rehearsal-evidence.py \
             scripts/validate-memory-os-migration-evidence-registry.py \
             scripts/reconcile-memory-os-migration-evidence-registry.py \
             scripts/validate-memory-os-migration-lifecycle.py \
             >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then
+            echo "STAGE: typed-recovery-self-test" >> "$log"
+            PYTHONPATH=scripts python - <<'PY' >> "$log" 2>&1 || code=$?
+          import json
+          from pathlib import Path
+          from memory_os_migration_recovery_point import RecoveryPointFailure, validate_recovery_point
+
+          root = Path('.')
+          contract = json.loads((root / 'contracts/operations/migration-evidence-registry-contract.v1.json').read_text())
+          lifecycle = json.loads((root / 'contracts/operations/migration-lifecycle-contract.v1.json').read_text())
+          canonical = lifecycle['migrationSequence']
+          digest = 'a' * 64
+          base = {
+              'recoveryPointReference': 'sha256:' + digest,
+              'recoveryPointArtifactDigest': digest,
+              'recoveryPointVerified': True,
+              'restoreCapabilityEvidenceRef': 'docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json',
+              'restoreCapabilityVerified': True,
+          }
+          validate_recovery_point(base, 'LOCAL_POSTGRES_REHEARSAL', canonical, contract)
+
+          bad_ref = dict(base)
+          bad_ref['recoveryPointReference'] = 'README.md'
+          try:
+              validate_recovery_point(bad_ref, 'LOCAL_POSTGRES_REHEARSAL', canonical, contract)
+          except RecoveryPointFailure:
+              pass
+          else:
+              raise SystemExit('arbitrary repository file was accepted as recovery point')
+
+          try:
+              validate_recovery_point(base, 'PRODUCTION_EQUIVALENT_REHEARSAL', canonical, contract)
+          except RecoveryPointFailure:
+              pass
+          else:
+              raise SystemExit('production-equivalent rehearsal was accepted without restore capability authority')
+          print('typed recovery evidence self-test PASS')
+          PY
+          fi
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: registry-validation" >> "$log"
+            python scripts/validate-memory-os-migration-evidence-registry.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: authority-reconcile" >> "$log"
             python scripts/reconcile-memory-os-migration-evidence-registry.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
@@ -71,7 +118,7 @@ jobs:
             git diff --cached --check
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "docs(migration): register operator evidence authority"
+            git commit -m "docs(migration): register typed recovery evidence authority"
             git pull --rebase origin so
             git push origin HEAD:so
           fi
