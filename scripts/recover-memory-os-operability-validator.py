@@ -35,7 +35,12 @@ LONG_SOAK_REVIEW_PATH = Path(
 '''
 
 LOAD_BLOCK_OLD = '''    if area.get("status") != "READY":
-        for phrase in ("capacity boundary", "sustained soak", "production-equivalent"):
+        required_open_gaps = (
+            "capacity boundary",
+            "sustained soak",
+            "production-equivalent",
+        )
+        for phrase in required_open_gaps:
             if not any(phrase in item for item in missing):
                 raise ValidationFailure(
                     f"OPS-P0-006: missingEvidence must retain the open gap: {phrase}"
