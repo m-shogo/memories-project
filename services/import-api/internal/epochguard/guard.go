@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/m-shogo/memories-project/services/import-api/internal/dbscope"
 	"github.com/m-shogo/memories-project/services/import-api/internal/security"
 )
 
@@ -37,6 +38,15 @@ type Source interface {
 	Current(context.Context, string) (Snapshot, error)
 }
 
+// TransactionSource is the same authority read performed on an already-open
+// dbscope transaction. Write-boundary fence checks must use this path instead
+// of borrowing a second connection while the caller holds the first one.
+// Otherwise enough concurrent writes can exhaust the pool with every request
+// waiting for another connection it cannot obtain.
+type TransactionSource interface {
+	CurrentWithin(context.Context, dbscope.Transaction, string) (Snapshot, error)
+}
+
 type Guard struct {
 	Source Source
 }
@@ -55,6 +65,33 @@ func (g Guard) Check(ctx context.Context, principal security.Principal) error {
 	if err != nil {
 		return fmt.Errorf("read account security state: %w", ErrAccountUnavailable)
 	}
+	return validateSnapshot(principal, snapshot)
+}
+
+// CheckWithin performs the write-boundary checkpoint on the transaction the
+// caller already owns. PostgreSQL READ COMMITTED gives each statement a fresh
+// snapshot, and the subsequent RLS/write predicate remains the final authority
+// if deletion races the check. A source without this capability fails closed;
+// silently opening another transaction here can deadlock a bounded pool.
+func (g Guard) CheckWithin(ctx context.Context, principal security.Principal, tx dbscope.Transaction) error {
+	if err := principal.Validate(); err != nil {
+		return fmt.Errorf("invalid verified principal: %w", err)
+	}
+	if g.Source == nil || tx == nil {
+		return ErrAccountUnavailable
+	}
+	source, ok := g.Source.(TransactionSource)
+	if !ok {
+		return ErrAccountUnavailable
+	}
+	snapshot, err := source.CurrentWithin(ctx, tx, principal.AccountID())
+	if err != nil {
+		return fmt.Errorf("read account security state in transaction: %w", ErrAccountUnavailable)
+	}
+	return validateSnapshot(principal, snapshot)
+}
+
+func validateSnapshot(principal security.Principal, snapshot Snapshot) error {
 	if snapshot.AccountID != principal.AccountID() || snapshot.Epoch < 0 {
 		return ErrAccountUnavailable
 	}
