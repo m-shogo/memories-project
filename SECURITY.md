@@ -26,7 +26,7 @@ Production remains `NO_GO`.
 Implemented and tested foundations include:
 
 - server-verified Sign in with Apple identity semantics using issuer + subject;
-- Apple code exchange with single-use nonce/code replay protection, account binding and session issuance, live-proven against a fake Apple boundary;
+- Apple code exchange is implemented with single-use nonce/code replay protection, account binding and session issuance, live-proven against a fake Apple boundary;
 - bearer sessions stored as digests and resolved through restricted SECURITY DEFINER functions;
 - PostgreSQL runtime-role transactions with `FORCE RLS` and non-superuser deployment-principal tests;
 - exact owner/epoch/job/upload/object bindings;
