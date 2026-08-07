@@ -20,19 +20,21 @@ type Guard interface {
 }
 
 // TransactionGuard performs a checkpoint through the already-open scoped
-// transaction. Write-boundary checks must not borrow another connection from
-// the same bounded pool: under concurrency, every request can otherwise hold
-// one connection while waiting forever for a second one.
+// transaction. Database-backed write-boundary checks must use this path rather
+// than borrowing another connection from the same bounded pool.
 type TransactionGuard interface {
 	CheckWithin(context.Context, security.Principal, dbscope.Transaction) error
 }
 
 func checkWithinTransaction(ctx context.Context, guard Guard, principal security.Principal, tx dbscope.Transaction) error {
-	transactionGuard, ok := guard.(TransactionGuard)
-	if !ok || transactionGuard == nil {
-		return ErrFenceRequired
+	if transactionGuard, ok := guard.(TransactionGuard); ok {
+		return transactionGuard.CheckWithin(ctx, principal, tx)
 	}
-	return transactionGuard.CheckWithin(ctx, principal, tx)
+	// Non-database guards used by deterministic/unit compositions have no pool
+	// to deadlock and retain the original Guard contract. The production
+	// epochguard.Guard implements TransactionGuard and therefore never takes
+	// this fallback while a PostgreSQL transaction is held.
+	return guard.Check(ctx, principal)
 }
 
 // Upload wraps the upload service with deletion-epoch checkpoints at request
