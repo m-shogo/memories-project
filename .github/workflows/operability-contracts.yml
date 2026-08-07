@@ -28,6 +28,16 @@ on:
       - "scripts/validate-memory-os-metrics-operations.py"
       - "scripts/validate-memory-os-metrics-alerting.py"
       - "scripts/validate-memory-os-local-logical-restore.py"
+      - "scripts/validate-memory-os-local-object-version-restore.py"
+      - "scripts/validate-memory-os-backup-restore.py"
+      - "scripts/validate-memory-os-backup-local-foundations.py"
+      - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/reconcile-memory-os-production-equivalent-generation-status.py"
+      - "scripts/register-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-binding.py"
       - "scripts/run-memory-os-local-logical-restore.sh"
       - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-load-evidence-index.py"
@@ -55,6 +65,9 @@ on:
       - ".github/workflows/operability-contracts.yml"
       - ".github/workflows/local-logical-restore.yml"
       - ".github/workflows/local-migration-recovery-artifact.yml"
+      - ".github/workflows/production-equivalent-environment-generation.yml"
+      - ".github/workflows/backup-restore-generation-binding.yml"
+      - ".github/workflows/backup-restore-generation-evidence.yml"
   push:
     branches:
       - so
@@ -84,6 +97,16 @@ on:
       - "scripts/validate-memory-os-metrics-operations.py"
       - "scripts/validate-memory-os-metrics-alerting.py"
       - "scripts/validate-memory-os-local-logical-restore.py"
+      - "scripts/validate-memory-os-local-object-version-restore.py"
+      - "scripts/validate-memory-os-backup-restore.py"
+      - "scripts/validate-memory-os-backup-local-foundations.py"
+      - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/reconcile-memory-os-production-equivalent-generation-status.py"
+      - "scripts/register-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-binding.py"
       - "scripts/run-memory-os-local-logical-restore.sh"
       - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-load-evidence-index.py"
@@ -111,6 +134,9 @@ on:
       - ".github/workflows/operability-contracts.yml"
       - ".github/workflows/local-logical-restore.yml"
       - ".github/workflows/local-migration-recovery-artifact.yml"
+      - ".github/workflows/production-equivalent-environment-generation.yml"
+      - ".github/workflows/backup-restore-generation-binding.yml"
+      - ".github/workflows/backup-restore-generation-evidence.yml"
   workflow_dispatch:
 
 permissions:
@@ -123,7 +149,7 @@ concurrency:
 jobs:
   validate-operability-contracts:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 7
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -145,6 +171,16 @@ jobs:
           python -m py_compile scripts/validate-memory-os-metrics-operations.py
           python -m py_compile scripts/validate-memory-os-metrics-alerting.py
           python -m py_compile scripts/validate-memory-os-local-logical-restore.py
+          python -m py_compile scripts/validate-memory-os-local-object-version-restore.py
+          python -m py_compile scripts/validate-memory-os-backup-restore.py
+          python -m py_compile scripts/validate-memory-os-backup-local-foundations.py
+          python -m py_compile scripts/register-memory-os-production-equivalent-environment-generation.py
+          python -m py_compile scripts/validate-memory-os-production-equivalent-environment-generation.py
+          python -m py_compile scripts/reconcile-memory-os-production-equivalent-generation-status.py
+          python -m py_compile scripts/register-memory-os-backup-restore-generation-evidence.py
+          python -m py_compile scripts/validate-memory-os-backup-restore-generation-evidence.py
+          python -m py_compile scripts/reconcile-memory-os-backup-restore-generation-evidence.py
+          python -m py_compile scripts/validate-memory-os-backup-restore-generation-binding.py
           python -m py_compile scripts/validate-memory-os-load.py
           python -m py_compile scripts/validate-memory-os-load-evidence-index.py
           python -m py_compile scripts/validate-memory-os-live-load.py
@@ -209,6 +245,24 @@ jobs:
 
       - name: Validate local PostgreSQL logical restore foundation
         run: python scripts/validate-memory-os-local-logical-restore.py
+
+      - name: Validate local exact object-version restore foundation
+        run: python scripts/validate-memory-os-local-object-version-restore.py
+
+      - name: Validate canonical backup and restore policy
+        run: python scripts/validate-memory-os-backup-restore.py
+
+      - name: Validate completed local backup/restore foundations
+        run: python scripts/validate-memory-os-backup-local-foundations.py
+
+      - name: Validate immutable production-equivalent environment generations
+        run: python scripts/validate-memory-os-production-equivalent-environment-generation.py
+
+      - name: Validate generation-bound backup/restore binding
+        run: python scripts/validate-memory-os-backup-restore-generation-binding.py
+
+      - name: Validate generation-bound backup/restore evidence registry
+        run: python scripts/validate-memory-os-backup-restore-generation-evidence.py
 
       - name: Validate load-test scenario contract and results
         run: python scripts/validate-memory-os-load.py
