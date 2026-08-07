@@ -11,6 +11,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 POLICY_PATH = ROOT / "contracts/operations/rate-limit-policy-contract.v1.json"
 OPERATIONS_PATH = ROOT / "contracts/operations/rate-limit-operations-contract.v1.json"
+EVIDENCE_CONTRACT_PATH = ROOT / "contracts/operations/rate-limit-operation-evidence-contract.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 EXPECTED_MODES = {
     "NORMAL_CONFIGURED": True,
@@ -30,10 +31,18 @@ EXPECTED_TRANSITIONS = {
     ("STRICT_LOCAL_EMERGENCY", "NORMAL_CONFIGURED"),
     ("ROUTE_FAIL_CLOSED", "NORMAL_CONFIGURED"),
 }
-EXPECTED_EVIDENCE = {
+BASE_EVIDENCE = {
     "contracts/operations/rate-limit-operations-contract.v1.json",
     "docs/runbooks/memory-os-rate-limit-operations.md",
     "scripts/validate-memory-os-rate-limit-operations.py",
+}
+LEDGER_EVIDENCE = {
+    "contracts/operations/rate-limit-operation-evidence-contract.v1.json",
+    "docs/evidence/rate-limit-operations/README.md",
+    "docs/fixtures/memory-os-operability/rate-limit-operation-record.template.v1.json",
+    "scripts/create-memory-os-rate-limit-operation-evidence.py",
+    "scripts/validate-memory-os-rate-limit-operation-evidence.py",
+    "scripts/reconcile-memory-os-rate-limit-operation-evidence.py",
 }
 REQUIRED_RUNBOOK_HEADINGS = (
     "## Non-negotiable rules",
@@ -95,6 +104,7 @@ def unique_strings(items: Any, field: str, minimum: int = 1) -> list[str]:
 def main() -> int:
     policy = load(POLICY_PATH)
     operations = load(OPERATIONS_PATH)
+    evidence_contract = load(EVIDENCE_CONTRACT_PATH)
     require(operations.get("schemaVersion") == "memory-os-rate-limit-operations.v1",
             "operations schemaVersion drift")
     require(operations.get("sourcePolicyContract") ==
@@ -219,6 +229,22 @@ def main() -> int:
     require(evidence.get("privacyClass") == "operational_sensitive_no_secrets",
             "operation evidence privacy class drift")
 
+    ledger_readiness = evidence_contract.get("readiness")
+    require(isinstance(ledger_readiness, dict), "ledger readiness must be an object")
+    for flag in (
+        "recordContractDefined", "exclusiveWriterImplemented",
+        "ledgerValidatorImplemented", "duplicateOperationIdRejected",
+        "privacyValidationImplemented",
+    ):
+        require(ledger_readiness.get(flag) is True,
+                f"ledger foundation missing: {flag}")
+    for flag in (
+        "productionControlPlaneImplemented", "automaticModeExpiryImplemented",
+        "productionEvidenceRecorded", "productionReady",
+    ):
+        require(ledger_readiness.get(flag) is False,
+                f"ledger cannot claim unproven production capability: {flag}")
+
     readiness = operations.get("readiness")
     require(isinstance(readiness, dict), "readiness must be an object")
     for foundation in (
@@ -227,10 +253,11 @@ def main() -> int:
     ):
         require(readiness.get(foundation) is True,
                 f"readiness.{foundation} must be true")
+    require(readiness.get("evidenceLedgerImplemented") is True,
+            "implemented append-only operation ledger must be registered")
     for unproven in (
         "productionControlPlaneImplemented",
         "automaticExpiryImplemented",
-        "evidenceLedgerImplemented",
         "sharedStoreImplemented",
         "trustedProxyDeploymentConfigured",
         "drillCompleted",
@@ -258,7 +285,8 @@ def main() -> int:
     refs = operations.get("evidenceRefs")
     require(isinstance(refs, list) and len(refs) == len(set(refs)),
             "rate-limit operations evidenceRefs invalid")
-    require(set(refs) == EXPECTED_EVIDENCE, f"evidenceRefs drift: {refs}")
+    expected_evidence = BASE_EVIDENCE | LEDGER_EVIDENCE
+    require(set(refs) == expected_evidence, f"evidenceRefs drift: {refs}")
     for ref in refs:
         require((ROOT / ref).is_file(), f"evidence path missing: {ref}")
 
@@ -269,11 +297,18 @@ def main() -> int:
     require(isinstance(areas, list), "status areas must be a list")
     matches = [item for item in areas if isinstance(item, dict) and item.get("id") == "OPS-P0-005"]
     require(len(matches) == 1, "OPS-P0-005 must exist exactly once")
-    require(matches[0].get("status") != "READY",
-            "runbook without shared store/control plane cannot make OPS-P0-005 READY")
+    gate = matches[0]
+    require(gate.get("status") == "PARTIAL",
+            "operation evidence foundation cannot make OPS-P0-005 READY")
+    missing = gate.get("missingEvidence")
+    require(isinstance(missing, list), "OPS-P0-005 missingEvidence must be a list")
+    require(any("production emergency control plane with automatic expiry" in item
+                for item in missing),
+            "production control-plane/expiry gap must remain explicit")
 
     print("Memory OS rate-limit operations validation PASS")
     print(f"safe operational modes: {sum(1 for value in EXPECTED_MODES.values() if value)}")
+    print("append-only operation evidence ledger: IMPLEMENTED")
     print("production control plane: NOT_IMPLEMENTED")
     print("production decision: NO_GO")
     return 0
