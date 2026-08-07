@@ -15,10 +15,10 @@ import (
 )
 
 const (
-	deletionWorkerSaturationAccounts      = 24
-	deletionWorkerSaturationWorkers       = 4
-	deletionWorkerSaturationPerWorker     = 6
-	deletionWorkerControlPreviewRequests  = 400
+	deletionWorkerSaturationAccounts        = 24
+	deletionWorkerSaturationWorkers         = 4
+	deletionWorkerSaturationPerWorker       = 6
+	deletionWorkerControlPreviewRequests    = 400
 	deletionWorkerControlPreviewConcurrency = 16
 )
 
@@ -260,15 +260,15 @@ func TestMultiAccountDeletionWorkerSaturationLocalDependencies(t *testing.T) {
 	document.Scenario.FinalOwnedRowCount = finalOwnedRows
 	document.Scenario.AllDeletionTombstonesEpoch2 = allTombstonesEpoch2
 	document.Scenario.Assertions = map[string]any{
-		"allDeletionRequestsAccepted": allDeletionRequestsAccepted,
-		"workerReceiptsUnique": len(seen) == deletionWorkerSaturationAccounts && duplicateReceipts == 0,
-		"controlPreviewAll2xx": control.StatusClassCounts["2xx"] == deletionWorkerControlPreviewRequests,
-		"deletionBacklogConverged": backlog.Pending == 0 && backlog.Stuck == 0,
-		"finalOwnedRowsZero": finalOwnedRows == 0,
-		"allDeletionTombstonesEpoch2": allTombstonesEpoch2,
-		"capacityBoundaryEstablished": false,
+		"allDeletionRequestsAccepted":  allDeletionRequestsAccepted,
+		"workerReceiptsUnique":         len(seen) == deletionWorkerSaturationAccounts && duplicateReceipts == 0,
+		"controlPreviewAll2xx":         control.StatusClassCounts["2xx"] == deletionWorkerControlPreviewRequests,
+		"deletionBacklogConverged":     backlog.Pending == 0 && backlog.Stuck == 0,
+		"finalOwnedRowsZero":           finalOwnedRows == 0,
+		"allDeletionTombstonesEpoch2":  allTombstonesEpoch2,
+		"capacityBoundaryEstablished":  false,
 		"operationalThresholdApproved": false,
-		"productionEvidence": false,
+		"productionEvidence":           false,
 	}
 	document.Scenario.Result = "PASS"
 	document.Scenario.IntegrityResult = "PASS"

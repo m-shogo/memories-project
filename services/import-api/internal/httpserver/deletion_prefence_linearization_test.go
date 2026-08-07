@@ -117,22 +117,22 @@ type deletionPrefenceResultsDocument struct {
 		ContainsSecrets                  bool   `json:"containsSecrets"`
 	} `json:"environment"`
 	Scenario struct {
-		ScenarioID                string         `json:"scenarioId"`
-		InFlightRequests          int            `json:"inFlightRequests"`
-		AuthenticatedBeforeFence  int            `json:"authenticatedBeforeFence"`
-		DeletionRequestStatus     int            `json:"deletionRequestStatus"`
-		DeletionEpoch             int64          `json:"deletionEpoch"`
-		ReleasedAfterFence        int            `json:"releasedAfterFence"`
-		UnauthorizedAfterFence    int            `json:"unauthorizedAfterFence"`
-		UnexpectedStatusCount     int            `json:"unexpectedStatusCount"`
-		TransportErrors           int            `json:"transportErrors"`
-		WorkerReceiptCount        int            `json:"workerReceiptCount"`
-		FinalOwnedRowCount        int            `json:"finalOwnedRowCount"`
-		FinalAccountState         string         `json:"finalAccountState"`
-		FinalAccountEpoch         int64          `json:"finalAccountEpoch"`
-		Assertions                map[string]any `json:"assertions"`
-		Result                    string         `json:"result"`
-		IntegrityResult           string         `json:"integrityResult"`
+		ScenarioID               string         `json:"scenarioId"`
+		InFlightRequests         int            `json:"inFlightRequests"`
+		AuthenticatedBeforeFence int            `json:"authenticatedBeforeFence"`
+		DeletionRequestStatus    int            `json:"deletionRequestStatus"`
+		DeletionEpoch            int64          `json:"deletionEpoch"`
+		ReleasedAfterFence       int            `json:"releasedAfterFence"`
+		UnauthorizedAfterFence   int            `json:"unauthorizedAfterFence"`
+		UnexpectedStatusCount    int            `json:"unexpectedStatusCount"`
+		TransportErrors          int            `json:"transportErrors"`
+		WorkerReceiptCount       int            `json:"workerReceiptCount"`
+		FinalOwnedRowCount       int            `json:"finalOwnedRowCount"`
+		FinalAccountState        string         `json:"finalAccountState"`
+		FinalAccountEpoch        int64          `json:"finalAccountEpoch"`
+		Assertions               map[string]any `json:"assertions"`
+		Result                   string         `json:"result"`
+		IntegrityResult          string         `json:"integrityResult"`
 	} `json:"scenario"`
 	Limitations []string `json:"limitations"`
 }
@@ -310,13 +310,13 @@ func TestAccountDeletionPrefenceInFlightLinearizationLocalDependencies(t *testin
 	document.Scenario.FinalAccountState = finalState
 	document.Scenario.FinalAccountEpoch = finalEpoch
 	document.Scenario.Assertions = map[string]any{
-		"allAuthenticatedBeforeFence": resolver.resolvedCount() == deletionPrefenceLinearizationRequests,
+		"allAuthenticatedBeforeFence":       resolver.resolvedCount() == deletionPrefenceLinearizationRequests,
 		"allReleasedAfterFenceUnauthorized": unauthorized == deletionPrefenceLinearizationRequests,
-		"noUnexpectedStatuses": unexpected == 0,
-		"noTransportErrors": transportErrors == 0,
-		"deletionWorkerCompleted": len(receipts) == 1,
-		"finalOwnedRowCount": finalOwnedRows,
-		"productionEvidence": false,
+		"noUnexpectedStatuses":              unexpected == 0,
+		"noTransportErrors":                 transportErrors == 0,
+		"deletionWorkerCompleted":           len(receipts) == 1,
+		"finalOwnedRowCount":                finalOwnedRows,
+		"productionEvidence":                false,
 	}
 	document.Scenario.Result = "PASS"
 	document.Scenario.IntegrityResult = "PASS"
