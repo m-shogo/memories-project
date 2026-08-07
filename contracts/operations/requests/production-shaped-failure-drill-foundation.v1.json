@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "memory-os-operation-request.v1",
+  "requestId": "production-shaped-failure-drill-foundation-20260807-v1",
+  "operation": "VALIDATE_PRODUCTION_SHAPED_FAILURE_DRILL_ADMISSION",
+  "productionTraffic": false,
+  "productionCredentials": false,
+  "productionEvidence": false,
+  "constraints": {
+    "requiredScenarioClasses": 4,
+    "generationBindingRequiredForProductionEquivalent": true,
+    "localEvidenceRelabelingForbidden": true,
+    "independentSecurityAndOperabilityReviewRequired": true,
+    "applicationProductionReadyPromotionForbidden": true
+  }
+}
