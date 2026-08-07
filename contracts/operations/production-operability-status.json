@@ -344,7 +344,9 @@
         "exact-source Docker deletion-worker drill proves container A claims attempt 1 without host-supplied account/object identity, erases a real MinIO version, is killed with SIGKILL/exit 137 before DB sweep or lease release, preserves the canonical ledger and lease exclusion, then container B reclaims attempt 2 after expiry and converges to zero backlog, owned rows and object versions",
         "production-equivalent environment generation admission is machine-readable and append-only: load, restore, failure-drill and review evidence must bind an immutable generationId plus environment/dependency/evidence/material-delta hashes and source commit; cross-generation reuse, unknown generations and mutable latest aliases are forbidden, while the current registry remains empty and creates no production-equivalent claim",
         "physical host/node deletion-worker failure admission is now fail-closed: actual process SIGKILL and Docker container kill remain local evidence only; host/node proof requires a registered production-equivalent environment generation, an external failure controller outside the target node, a replacement worker on a distinct node, lease exclusion until expiry, attempt-2 reclaim, dependency reconnect, zero-row/object convergence and independent review",
-        "two-run local controlled-saturation repeatability authority classifies a throughput/latency degradation knee or actual failure signal on independent PostgreSQL+MinIO runners; even a repeatable local signal remains non-production and cannot itself establish a capacity boundary or approve an operating threshold"
+        "two-run local controlled-saturation repeatability authority classifies a throughput/latency degradation knee or actual failure signal on independent PostgreSQL+MinIO runners; even a repeatable local signal remains non-production and cannot itself establish a capacity boundary or approve an operating threshold",
+        "2 exact-source LOCAL_LONG_SOAK run document(s) satisfy the per-run validator; production evidence and leak proof remain false",
+        "repeated LOCAL_LONG_SOAK runs plus cross-run trend review are registered as local-only sustained-soak evidence; this is not leak proof or production-shaped evidence"
       ],
       "missingEvidence": [
         "capacity boundary, saturation report and load-calibrated operational thresholds",
@@ -352,8 +354,7 @@
         "production-equivalent dependency behavior and real-Apple load evidence",
         "production object-store TLS, scoped credentials, retention and lifecycle evidence",
         "60-minute-or-longer repeated soak over PostgreSQL, object storage, parser, queue, deletion and authentication paths with RSS/heap/goroutine slope review and independently approved leak/stability criteria",
-        "physical deletion-worker host/node/AZ interruption recovery in a registered production-equivalent generation, plus production topology and independently reviewed deletion-load thresholds",
-        "two independent 60-minute-or-longer LOCAL_LONG_SOAK runs plus cross-run RSS/heap/goroutine/latency/error/DB/queue/deletion trend review"
+        "physical deletion-worker host/node/AZ interruption recovery in a registered production-equivalent generation, plus production topology and independently reviewed deletion-load thresholds"
       ],
       "evidenceRefs": [
         "services/import-api/internal/loadtest/harness.go",
@@ -470,7 +471,10 @@
         "scripts/validate-memory-os-controlled-saturation-repeatability.py",
         "scripts/reconcile-memory-os-controlled-saturation-repeatability.py",
         ".github/workflows/controlled-saturation-repeatability.yml",
-        "docs/fixtures/memory-os-operability/controlled-saturation-repeatability-results.v1.json"
+        "docs/fixtures/memory-os-operability/controlled-saturation-repeatability-results.v1.json",
+        "docs/fixtures/memory-os-operability/sustained-local-soak-results.aggregate.v1.json",
+        "docs/fixtures/memory-os-operability/sustained-local-soak-results.run-31157909318-1-a.v1.json",
+        "docs/fixtures/memory-os-operability/sustained-local-soak-results.run-31157909318-1-b.v1.json"
       ]
     },
     {

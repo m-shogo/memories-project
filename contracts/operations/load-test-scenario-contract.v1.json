@@ -316,7 +316,7 @@
     },
     {
       "scenarioId": "soak-memory-leak",
-      "reason": "LOCAL_LONG_SOAK contract, multi-surface runner and fail-closed validators exist, but no 60-minute-or-longer exact-source run has been committed; production-shaped sustained soak and leak proof remain unexecuted",
+      "reason": "repeated LOCAL_LONG_SOAK execution and descriptive trend review exist, but this local evidence is not leak proof and is not production-shaped sustained-soak evidence",
       "requiredDependencyMode": "LOCAL_POSTGRES_MINIO"
     },
     {
@@ -326,7 +326,7 @@
     },
     {
       "scenarioId": "soak",
-      "reason": "LOCAL_LONG_SOAK contract, multi-surface runner and fail-closed validators exist, but no 60-minute-or-longer exact-source run has been committed; production-shaped sustained soak and leak proof remain unexecuted",
+      "reason": "repeated LOCAL_LONG_SOAK execution and descriptive trend review exist, but this local evidence is not leak proof and is not production-shaped sustained-soak evidence",
       "requiredDependencyMode": "LOCAL_POSTGRES_MINIO"
     },
     {
@@ -357,8 +357,8 @@
     "previewPreFenceInFlightLinearizationProven": true,
     "multiAccountDeletionWorkerSaturationProven": true,
     "localLongSoakFoundationImplemented": true,
-    "localLongSoakRunCount": 0,
-    "localSustainedSoakEvidence": false,
+    "localLongSoakRunCount": 2,
+    "localSustainedSoakEvidence": true,
     "applyPreFenceInFlightLinearizationProven": true,
     "uploadAuthorizationPreFenceInFlightLinearizationProven": true,
     "uploadCompletionPreFenceInFlightLinearizationProven": true,
@@ -462,6 +462,9 @@
     "scripts/validate-memory-os-controlled-saturation-repeatability.py",
     "scripts/reconcile-memory-os-controlled-saturation-repeatability.py",
     ".github/workflows/controlled-saturation-repeatability.yml",
-    "docs/fixtures/memory-os-operability/controlled-saturation-repeatability-results.v1.json"
+    "docs/fixtures/memory-os-operability/controlled-saturation-repeatability-results.v1.json",
+    "docs/fixtures/memory-os-operability/sustained-local-soak-results.aggregate.v1.json",
+    "docs/fixtures/memory-os-operability/sustained-local-soak-results.run-31157909318-1-a.v1.json",
+    "docs/fixtures/memory-os-operability/sustained-local-soak-results.run-31157909318-1-b.v1.json"
   ]
 }

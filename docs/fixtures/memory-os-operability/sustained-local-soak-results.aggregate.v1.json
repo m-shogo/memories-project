@@ -1,0 +1,125 @@
+{
+  "schemaVersion": "memory-os-sustained-local-soak-aggregate.v1",
+  "scenarioId": "mixed-import-lifecycle-local-long-soak",
+  "classification": "LOCAL_LONG_SOAK",
+  "runCount": 2,
+  "runIds": [
+    "gha-31157909318-1-a",
+    "gha-31157909318-1-b"
+  ],
+  "sourceCommitShas": [
+    "9dd97a9571e58a08a1d8ee43a9f378a505a09c15"
+  ],
+  "allRunsDurationAtLeast3600Seconds": true,
+  "allRunsRequiredCoverageComplete": true,
+  "minimumIndependentRunsSatisfied": true,
+  "trendReview": {
+    "status": "COMPLETED_DESCRIPTIVE_LOCAL_ONLY",
+    "reviewEvidenceRef": "docs/fixtures/memory-os-operability/sustained-local-soak-trend-review.v1.json",
+    "automaticLeakConclusionForbidden": true,
+    "automaticOperatingThresholdApprovalForbidden": true,
+    "runTrends": [
+      {
+        "runId": "gha-31157909318-1-a",
+        "sourceCommitSha": "9dd97a9571e58a08a1d8ee43a9f378a505a09c15",
+        "rssSlopeBytesPerMinute": 1942.019824824088,
+        "heapAllocSlopeBytesPerMinute": 1725.3260958674787,
+        "heapInuseSlopeBytesPerMinute": 5734.401320018021,
+        "goroutineSlopePerMinute": -1.6960285521248322e-16,
+        "latencyTrendBySurface": {
+          "deletionWorker": {
+            "p95MsPerMinute": 0.09407748021634472,
+            "p99MsPerMinute": 0.09407748021634472
+          },
+          "parserSupervisor": {
+            "p95MsPerMinute": -0.9484491312627794,
+            "p99MsPerMinute": -0.9484491312627794
+          },
+          "previewRead": {
+            "p95MsPerMinute": -0.14737058072603065,
+            "p99MsPerMinute": -0.1947363075885003
+          },
+          "signedUploadLifecycle": {
+            "p95MsPerMinute": -0.157097875237885,
+            "p99MsPerMinute": -0.157097875237885
+          }
+        },
+        "errorRateTrendBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 0,
+          "previewRead": 0,
+          "signedUploadLifecycle": 0
+        },
+        "dbConnectionTrend": {
+          "acquireDurationMsPerMinute": 97.26998193586488,
+          "acquiredConnsPerMinute": 0,
+          "emptyAcquireCountPerMinute": 37.46854400395153,
+          "totalConnsPerMinute": 0
+        },
+        "scanQueueTrend": {
+          "oldestPendingSecondsPerMinute": 60.000013033760354,
+          "pendingPerMinute": 1.6000005359490024
+        },
+        "deletionBacklogTrend": {
+          "pendingPerMinute": 0,
+          "stuckPerMinute": 0
+        }
+      },
+      {
+        "runId": "gha-31157909318-1-b",
+        "sourceCommitSha": "9dd97a9571e58a08a1d8ee43a9f378a505a09c15",
+        "rssSlopeBytesPerMinute": 10194.171860917668,
+        "heapAllocSlopeBytesPerMinute": 2095.994984326303,
+        "heapInuseSlopeBytesPerMinute": 6891.593945779835,
+        "goroutineSlopePerMinute": 8.480142948164237e-17,
+        "latencyTrendBySurface": {
+          "deletionWorker": {
+            "p95MsPerMinute": 0.06905127549461798,
+            "p99MsPerMinute": 0.06905127549461798
+          },
+          "parserSupervisor": {
+            "p95MsPerMinute": -0.4378116452686052,
+            "p99MsPerMinute": -0.4378116452686052
+          },
+          "previewRead": {
+            "p95MsPerMinute": -0.09361885989047686,
+            "p99MsPerMinute": -0.13074333209775735
+          },
+          "signedUploadLifecycle": {
+            "p95MsPerMinute": 1.2527012031157712,
+            "p99MsPerMinute": 1.2527012031157712
+          }
+        },
+        "errorRateTrendBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 0,
+          "previewRead": 0,
+          "signedUploadLifecycle": 0
+        },
+        "dbConnectionTrend": {
+          "acquireDurationMsPerMinute": 59.0638861356912,
+          "acquiredConnsPerMinute": 0,
+          "emptyAcquireCountPerMinute": 37.28183107897647,
+          "totalConnsPerMinute": 0
+        },
+        "scanQueueTrend": {
+          "oldestPendingSecondsPerMinute": 60.00001470771049,
+          "pendingPerMinute": 1.6000005536413187
+        },
+        "deletionBacklogTrend": {
+          "pendingPerMinute": 0,
+          "stuckPerMinute": 0
+        }
+      }
+    ]
+  },
+  "trendReviewCompleted": true,
+  "localSustainedSoakEvidence": true,
+  "productionSustainedSoakEvidence": false,
+  "leakProof": false,
+  "productionEvidence": false,
+  "productionEquivalentDependencies": false,
+  "capacityBoundaryEstablished": false,
+  "operationalThresholdApproved": false,
+  "productionReady": false
+}
