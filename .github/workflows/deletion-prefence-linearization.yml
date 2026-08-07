@@ -1,0 +1,161 @@
+name: Deletion Pre-Fence Linearization
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/deletion-prefence-linearization.yml"
+      - "contracts/operations/deletion-prefence-linearization-contract.v1.json"
+      - "scripts/validate-memory-os-deletion-prefence-linearization.py"
+      - "scripts/reconcile-memory-os-deletion-prefence-linearization.py"
+      - "services/import-api/internal/httpserver/deletion_prefence_linearization_test.go"
+      - "services/import-api/internal/httpserver/server_live_test.go"
+      - "services/import-api/internal/httpserver/server.go"
+      - "services/import-api/internal/fenced/**"
+      - "services/import-api/internal/epochguard/**"
+      - "services/import-api/internal/authstore/**"
+      - "services/import-api/internal/accountdelete/**"
+      - "services/import-api/internal/pgrepo/**"
+      - "services/import-api/internal/dbscope/**"
+      - "services/import-api/internal/pgscope/**"
+      - "infra/postgresql/security/**"
+      - "services/import-api/go.mod"
+      - "services/import-api/go.sum"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deletion-prefence-linearization-so
+  cancel-in-progress: true
+
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: memory_os_security
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d memory_os_security"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: services/import-api/go.sum
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Capture exact source
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Start local MinIO
+        run: |
+          set -euo pipefail
+          docker run -d --name memory-os-prefence-minio \
+            -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio server /data
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:9000/minio/health/live >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs memory-os-prefence-minio
+          exit 1
+
+      - name: Validate contract and execute exact-source proof
+        env:
+          MEMORY_OS_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/memory_os_security?sslmode=disable
+          MEMORY_OS_TEST_S3_ENDPOINT: http://127.0.0.1:9000
+          MEMORY_OS_TEST_S3_ACCESS_KEY: minioadmin
+          MEMORY_OS_TEST_S3_SECRET_KEY: minioadmin
+          MEMORY_OS_RUN_PREFENCE_LINEARIZATION: "1"
+          MEMORY_OS_PREFENCE_LINEARIZATION_RESULTS_PATH: ../../../docs/fixtures/memory-os-operability/deletion-prefence-linearization-results.sample.v1.json
+          MEMORY_OS_COMMIT_SHA: ${{ env.SOURCE_SHA }}
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/validate-memory-os-deletion-prefence-linearization.py \
+            scripts/reconcile-memory-os-deletion-prefence-linearization.py
+          python scripts/validate-memory-os-deletion-prefence-linearization.py
+          test -z "$(gofmt -l services/import-api/internal/httpserver/deletion_prefence_linearization_test.go)"
+          (
+            cd services/import-api
+            go test ./internal/httpserver \
+              -run '^TestAccountDeletionPrefenceInFlightLinearizationLocalDependencies$' \
+              -count=1 -timeout=12m
+          )
+          python scripts/validate-memory-os-deletion-prefence-linearization.py \
+            --require-result \
+            --expected-commit-sha "$SOURCE_SHA"
+
+      - name: Commit exact-source result
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          if ! git diff --quiet "$SOURCE_SHA" origin/so -- \
+            .github/workflows/deletion-prefence-linearization.yml \
+            contracts/operations/deletion-prefence-linearization-contract.v1.json \
+            scripts/validate-memory-os-deletion-prefence-linearization.py \
+            scripts/reconcile-memory-os-deletion-prefence-linearization.py \
+            services/import-api/internal/httpserver/deletion_prefence_linearization_test.go \
+            services/import-api/internal/httpserver/server_live_test.go \
+            services/import-api/internal/httpserver/server.go \
+            services/import-api/internal/fenced \
+            services/import-api/internal/epochguard \
+            services/import-api/internal/authstore \
+            services/import-api/internal/accountdelete \
+            services/import-api/internal/pgrepo \
+            services/import-api/internal/dbscope \
+            services/import-api/internal/pgscope \
+            infra/postgresql/security; then
+            echo "Relevant source changed while proof ran; refusing stale evidence."
+            exit 75
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/fixtures/memory-os-operability/deletion-prefence-linearization-results.sample.v1.json
+          git commit -m "test(deletion): record pre-fence linearization result"
+          git pull --rebase origin so
+          git push origin HEAD:so
+
+      - name: Reconcile local-only authority
+        env:
+          EXPECTED_COMMIT_SHA: ${{ env.SOURCE_SHA }}
+        run: |
+          set -euo pipefail
+          python scripts/reconcile-memory-os-deletion-prefence-linearization.py
+          python scripts/validate-memory-os-deletion-prefence-linearization.py \
+            --require-result \
+            --expected-commit-sha "$SOURCE_SHA"
+          git add contracts/operations/deletion-prefence-linearization-contract.v1.json
+          if ! git diff --cached --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(deletion): register pre-fence linearization evidence"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
