@@ -1,0 +1,253 @@
+#!/usr/bin/env python3
+"""Append one reviewed non-production migration rehearsal evidence record.
+
+The input JSON must live outside the repository. This writer verifies the
+canonical migration sequence, privacy boundary, budgets, recovery point and
+operator/reviewer separation, then performs one atomic append-only update. It
+cannot write production migration evidence.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+CONTRACT = ROOT / "contracts/operations/migration-evidence-registry-contract.v1.json"
+REGISTRY = ROOT / "contracts/operations/migration-evidence-registry.v1.json"
+LIFECYCLE = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
+GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+LOCK = ROOT / "contracts/operations/.migration-evidence-registry.lock"
+CONFIRMATION = "REGISTER NON-PRODUCTION MIGRATION REHEARSAL"
+RUN_ID = re.compile(r"^mig_[0-9]{8}_[a-z0-9][a-z0-9._-]{2,63}$")
+SHA40 = re.compile(r"^[0-9a-f]{40}$")
+SHA256 = re.compile(r"^[0-9a-f]{64}$")
+ACTOR = re.compile(r"^(?:opr|rev)_[a-z0-9][a-z0-9_-]{7,63}$")
+ENV_CLASSES = {"LOCAL_POSTGRES_REHEARSAL", "PRODUCTION_EQUIVALENT_REHEARSAL"}
+RESULTS = {"PASS", "FAIL", "NOT_RUN"}
+RECOVERY = {
+    "NO_RECOVERY_REQUIRED",
+    "STOP_AND_CORRECT",
+    "VERIFY_DATABASE_ROLLBACK_THEN_CORRECT",
+    "ROLL_BACK_APPLICATION_IF_SCHEMA_COMPATIBLE_OR_FORWARD_FIX",
+    "PAUSE_BACKFILL_PRESERVE_STATE_AND_FORWARD_FIX",
+    "INCIDENT_COMMAND_DECIDES_FORWARD_FIX_OR_ISOLATED_RESTORE",
+}
+
+
+class Failure(RuntimeError):
+    pass
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise Failure(message)
+
+
+def load(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError) as exc:
+        raise Failure(f"cannot load {path}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be object: {path}")
+    return value
+
+
+def git(*args: str) -> str:
+    completed = subprocess.run(["git", *args], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    require(completed.returncode == 0, f"git {' '.join(args)} failed")
+    return completed.stdout.strip()
+
+
+def timestamp(value: Any, field: str) -> dt.datetime:
+    require(isinstance(value, str) and value.endswith("Z"), f"{field} must be RFC3339 UTC")
+    try:
+        parsed = dt.datetime.fromisoformat(value.removesuffix("Z") + "+00:00")
+    except ValueError as exc:
+        raise Failure(f"{field} invalid timestamp") from exc
+    require(parsed.utcoffset() == dt.timedelta(0), f"{field} must be UTC")
+    return parsed
+
+
+def safe_ref(value: Any, field: str) -> str:
+    require(isinstance(value, str) and value.strip(), f"{field} required")
+    relative = Path(value)
+    require(not relative.is_absolute() and ".." not in relative.parts, f"{field} unsafe path")
+    require((ROOT / relative).is_file(), f"{field} missing: {value}")
+    return value
+
+
+def validate_risks(value: Any) -> None:
+    require(isinstance(value, list), "openRisks must be a list")
+    seen: set[str] = set()
+    for item in value:
+        require(isinstance(item, dict), "open risk must be object")
+        risk_id = item.get("riskId")
+        owner = item.get("ownerRef")
+        deadline = item.get("deadline")
+        status = item.get("status")
+        require(isinstance(risk_id, str) and risk_id.startswith("risk_"), "open risk riskId invalid")
+        require(risk_id not in seen, "duplicate open risk")
+        require(isinstance(owner, str) and owner.startswith("opr_"), "open risk ownerRef invalid")
+        require(isinstance(deadline, str) and re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", deadline) is not None, "open risk deadline invalid")
+        require(status in {"OPEN", "MITIGATED_PENDING_REVIEW"}, "open risk status invalid")
+        seen.add(risk_id)
+
+
+def validate_record(record: dict[str, Any], required_fields: set[str]) -> None:
+    require(set(record) >= required_fields, f"record missing fields: {sorted(required_fields - set(record))}")
+    require(record.get("schemaVersion") == "memory-os-migration-rehearsal-evidence.v1", "record schema drift")
+    run_id = record.get("migrationRunId")
+    require(isinstance(run_id, str) and RUN_ID.fullmatch(run_id) is not None, "migrationRunId invalid")
+    env_class = record.get("environmentClass")
+    require(env_class in ENV_CLASSES, "environmentClass invalid")
+    digest = record.get("databaseIdentityDigest")
+    require(isinstance(digest, str) and SHA256.fullmatch(digest) is not None, "databaseIdentityDigest invalid")
+    source = record.get("sourceCommitSha")
+    require(isinstance(source, str) and SHA40.fullmatch(source) is not None, "sourceCommitSha invalid")
+    git("cat-file", "-e", source + "^{commit}")
+
+    lifecycle = load(LIFECYCLE)
+    canonical = lifecycle.get("migrationSequence")
+    require(isinstance(canonical, list) and canonical, "canonical migration sequence missing")
+    before = record.get("migrationSequenceBefore")
+    after = record.get("migrationSequenceAfter")
+    require(isinstance(before, list) and all(isinstance(item, str) for item in before), "migrationSequenceBefore invalid")
+    require(isinstance(after, list) and all(isinstance(item, str) for item in after), "migrationSequenceAfter invalid")
+    require(before == canonical[:len(before)], "migrationSequenceBefore must be canonical prefix")
+    require(after == canonical, "migrationSequenceAfter must equal canonical sequence")
+
+    started = timestamp(record.get("startedAt"), "startedAt")
+    completed = timestamp(record.get("completedAt"), "completedAt")
+    require(completed >= started, "completedAt precedes startedAt")
+    operator = record.get("operatorRef")
+    reviewer = record.get("reviewerRef")
+    require(isinstance(operator, str) and ACTOR.fullmatch(operator) is not None and operator.startswith("opr_"), "operatorRef invalid")
+    require(isinstance(reviewer, str) and ACTOR.fullmatch(reviewer) is not None and reviewer.startswith("rev_"), "reviewerRef invalid")
+    require(operator != reviewer, "operator and reviewer must be distinct")
+    safe_ref(record.get("recoveryPointReference"), "recoveryPointReference")
+    require(record.get("recoveryPointVerified") is True, "recovery point must be verified")
+
+    for field in ("lockBudgetMs", "statementBudgetMs", "observedLockWaitMs", "observedRuntimeMs"):
+        require(isinstance(record.get(field), int) and record[field] >= 0, f"{field} invalid")
+    require(record["lockBudgetMs"] > 0 and record["statementBudgetMs"] > 0, "budgets must be positive")
+    for field in ("preflightResult", "applyResult", "verificationResult"):
+        require(record.get(field) in RESULTS, f"{field} invalid")
+    require(record.get("recoveryDecision") in RECOVERY, "recoveryDecision invalid")
+    validate_risks(record.get("openRisks"))
+    require(record.get("containsSecrets") is False, "record cannot contain secrets")
+    require(record.get("productionTraffic") is False, "production traffic is forbidden")
+    require(record.get("productionCredentials") is False, "production credentials are forbidden")
+    require(record.get("productionEvidence") is False, "non-production registry cannot contain production evidence")
+
+    passing = record.get("preflightResult") == "PASS" and record.get("applyResult") == "PASS" and record.get("verificationResult") == "PASS"
+    if passing:
+        require(record["observedLockWaitMs"] <= record["lockBudgetMs"], "passing rehearsal exceeded lock budget")
+        require(record["observedRuntimeMs"] <= record["statementBudgetMs"], "passing rehearsal exceeded runtime budget")
+        require(record.get("recoveryDecision") == "NO_RECOVERY_REQUIRED", "passing rehearsal must require no recovery")
+
+    gen_id = record.get("environmentGenerationId")
+    generations = load(GEN_REGISTRY)
+    rows = generations.get("generations")
+    require(isinstance(rows, list), "environment generation registry invalid")
+    if env_class == "LOCAL_POSTGRES_REHEARSAL":
+        require(gen_id is None, "local rehearsal must not claim environment generation")
+    else:
+        require(isinstance(gen_id, str) and gen_id, "production-equivalent rehearsal requires environmentGenerationId")
+        require(any(isinstance(row, dict) and row.get("generationId") == gen_id for row in rows), "unknown production-equivalent environment generation")
+
+    serialized = json.dumps(record, ensure_ascii=False).lower()
+    for forbidden in (
+        "postgres://", "postgresql://", "password=", "authorization: bearer", "minioadmin",
+        "secretaccesskey", "account_id", "session_id", "job_id", "preview_id", "object_key", "@",
+    ):
+        require(forbidden not in serialized, f"record contains forbidden content: {forbidden}")
+
+
+def acquire_lock() -> int:
+    try:
+        return os.open(LOCK, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError as exc:
+        raise Failure("migration evidence registry lock already exists") from exc
+
+
+def atomic_write(value: dict[str, Any]) -> None:
+    fd, name = tempfile.mkstemp(prefix=".migration-evidence-registry.", suffix=".tmp", dir=REGISTRY.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(value, handle, indent=2, ensure_ascii=False)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(name, REGISTRY)
+    finally:
+        try:
+            os.unlink(name)
+        except FileNotFoundError:
+            pass
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--record", required=True)
+    parser.add_argument("--confirm", required=True)
+    args = parser.parse_args()
+    require(args.confirm == CONFIRMATION, f"confirmation must equal: {CONFIRMATION}")
+    record_path = Path(args.record).resolve()
+    try:
+        record_path.relative_to(ROOT)
+    except ValueError:
+        pass
+    else:
+        raise Failure("input record must be outside repository")
+    require(git("status", "--porcelain") == "", "working tree must be clean before migration evidence registration")
+
+    contract = load(CONTRACT)
+    required = contract.get("requiredRecordFields")
+    require(isinstance(required, list) and all(isinstance(item, str) for item in required), "requiredRecordFields invalid")
+    record = load(record_path)
+    validate_record(record, set(required))
+
+    lock_fd = acquire_lock()
+    try:
+        os.write(lock_fd, (record["migrationRunId"] + "\n").encode("ascii"))
+        os.fsync(lock_fd)
+        registry = load(REGISTRY)
+        records = registry.get("records")
+        require(isinstance(records, list) and all(isinstance(item, dict) for item in records), "registry records invalid")
+        require(all(item.get("migrationRunId") != record["migrationRunId"] for item in records), "migrationRunId already registered")
+        records.append(record)
+        registry["rehearsalEvidenceCount"] = len(records)
+        registry["passingRehearsalCount"] = sum(
+            1 for item in records
+            if item.get("preflightResult") == "PASS" and item.get("applyResult") == "PASS" and item.get("verificationResult") == "PASS"
+        )
+        registry["productionEquivalentRehearsalCount"] = sum(1 for item in records if item.get("environmentClass") == "PRODUCTION_EQUIVALENT_REHEARSAL")
+        registry["latestRehearsalRunId"] = record["migrationRunId"]
+        atomic_write(registry)
+    finally:
+        os.close(lock_fd)
+        try:
+            LOCK.unlink()
+        except FileNotFoundError:
+            pass
+
+    print(f"Registered non-production migration rehearsal: {record['migrationRunId']}")
+    print("This registry never creates production migration evidence or Production readiness.")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except Failure as exc:
+        print(f"MIGRATION REHEARSAL REGISTRATION FAILED: {exc}", file=sys.stderr)
+        raise SystemExit(1)
