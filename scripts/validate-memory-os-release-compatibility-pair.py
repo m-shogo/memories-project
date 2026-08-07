@@ -100,24 +100,26 @@ def main() -> int:
     require(authority.get("productionEvidence") is False and authority.get("productionReady") is False, "pair authority cannot promote production")
     require(authority.get("productionDecision") == "NO_GO", "production decision must remain NO_GO")
 
+    # Candidate/local execution evidence is deliberately a lower, immutable
+    # authority. Approved pair admission must not rewrite or relabel it.
     exec_boundary = execution.get("releaseAuthorityBoundary")
-    exec_readiness = execution.get("readiness")
-    require(isinstance(exec_boundary, dict) and isinstance(exec_readiness, dict), "execution authority missing")
-    require(exec_boundary.get("approvedReleaseCount") == approved_release_count, "execution approvedReleaseCount drift")
-    require(exec_boundary.get("approvedRollbackPairCount") == count, "execution approvedRollbackPairCount drift")
-    require(exec_boundary.get("releaseCompatibilityEvidence") is (count > 0), "execution releaseCompatibilityEvidence drift")
-    require(exec_boundary.get("productionEvidence") is False and exec_boundary.get("productionReady") is False, "execution authority cannot promote production")
-    require(exec_readiness.get("approvedReleasePairAvailable") is (count > 0), "execution pair readiness drift")
+    require(isinstance(exec_boundary, dict), "candidate execution release boundary missing")
+    require(exec_boundary.get("canonicalReleaseMatrixChanged") is False, "candidate execution cannot change release matrix")
+    require(exec_boundary.get("releaseCompatibilityEvidence") is False, "candidate execution cannot become approved release evidence")
+    require(exec_boundary.get("productionEvidence") is False and exec_boundary.get("productionReady") is False, "candidate execution cannot promote production")
 
     current_counts = gaps.get("currentCounts")
     require(isinstance(current_counts, dict), "compatibility gap counts missing")
     require(current_counts.get("approvedBackendReleases") == approved_release_count, "gap approved release count drift")
     require(current_counts.get("approvedRollbackPairs") == count, "gap rollback pair count drift")
+    require(gaps.get("releaseCompatibilityEvidence") is (count > 0), "gap releaseCompatibilityEvidence drift")
+    require(gaps.get("productionEvidence") is False and gaps.get("productionReady") is False, "gap authority cannot promote production")
 
     print("Memory OS approved release compatibility pair validation PASS")
     print(f"approved releases: {approved_release_count}")
     print(f"approved rollback pairs: {count}")
     print(f"release compatibility evidence: {str(count > 0).lower()}")
+    print("candidate/local execution remains non-release evidence")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
