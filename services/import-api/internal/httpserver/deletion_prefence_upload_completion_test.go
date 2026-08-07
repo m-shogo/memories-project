@@ -29,12 +29,12 @@ import (
 const deletionPrefenceUploadCompletionRequests = 16
 
 type postHeadBarrierStore struct {
-	inner       upload.ObjectStore
-	expected    int
-	mu          sync.Mutex
-	reached     int
-	allReached  chan struct{}
-	release     chan struct{}
+	inner      upload.ObjectStore
+	expected   int
+	mu         sync.Mutex
+	reached    int
+	allReached chan struct{}
+	release    chan struct{}
 }
 
 func newPostHeadBarrierStore(inner upload.ObjectStore, expected int) *postHeadBarrierStore {
@@ -120,25 +120,25 @@ type deletionPrefenceUploadCompletionResultsDocument struct {
 		ContainsSecrets                  bool   `json:"containsSecrets"`
 	} `json:"environment"`
 	Scenario struct {
-		ScenarioID                       string         `json:"scenarioId"`
-		IssuedAndUploadedBeforeFence     int            `json:"issuedAndUploadedBeforeFence"`
-		RealHeadCompletedBeforeFence     int            `json:"realHeadCompletedBeforeFence"`
-		DeletionRequestStatus            int            `json:"deletionRequestStatus"`
-		DeletionEpoch                    int64          `json:"deletionEpoch"`
-		CompletionUnauthorizedAfterFence int            `json:"completionUnauthorizedAfterFence"`
-		UnexpectedStatusCount            int            `json:"unexpectedStatusCount"`
-		TransportErrors                  int            `json:"transportErrors"`
-		PreWorkerIssuedAuthorizationRows int            `json:"preWorkerIssuedAuthorizationRows"`
-		PreWorkerConsumedAuthorizationRows int          `json:"preWorkerConsumedAuthorizationRows"`
-		PreWorkerQuarantineRows          int            `json:"preWorkerQuarantineRows"`
-		WorkerReceiptCount               int            `json:"workerReceiptCount"`
-		ErasedObjectVersions             int64          `json:"erasedObjectVersions"`
-		FinalOwnedRowCount               int            `json:"finalOwnedRowCount"`
-		FinalAccountState                string         `json:"finalAccountState"`
-		FinalAccountEpoch                int64          `json:"finalAccountEpoch"`
-		Assertions                       map[string]any `json:"assertions"`
-		Result                           string         `json:"result"`
-		IntegrityResult                  string         `json:"integrityResult"`
+		ScenarioID                         string         `json:"scenarioId"`
+		IssuedAndUploadedBeforeFence       int            `json:"issuedAndUploadedBeforeFence"`
+		RealHeadCompletedBeforeFence       int            `json:"realHeadCompletedBeforeFence"`
+		DeletionRequestStatus              int            `json:"deletionRequestStatus"`
+		DeletionEpoch                      int64          `json:"deletionEpoch"`
+		CompletionUnauthorizedAfterFence   int            `json:"completionUnauthorizedAfterFence"`
+		UnexpectedStatusCount              int            `json:"unexpectedStatusCount"`
+		TransportErrors                    int            `json:"transportErrors"`
+		PreWorkerIssuedAuthorizationRows   int            `json:"preWorkerIssuedAuthorizationRows"`
+		PreWorkerConsumedAuthorizationRows int            `json:"preWorkerConsumedAuthorizationRows"`
+		PreWorkerQuarantineRows            int            `json:"preWorkerQuarantineRows"`
+		WorkerReceiptCount                 int            `json:"workerReceiptCount"`
+		ErasedObjectVersions               int64          `json:"erasedObjectVersions"`
+		FinalOwnedRowCount                 int            `json:"finalOwnedRowCount"`
+		FinalAccountState                  string         `json:"finalAccountState"`
+		FinalAccountEpoch                  int64          `json:"finalAccountEpoch"`
+		Assertions                         map[string]any `json:"assertions"`
+		Result                             string         `json:"result"`
+		IntegrityResult                    string         `json:"integrityResult"`
 	} `json:"scenario"`
 	Limitations []string `json:"limitations"`
 }
@@ -410,15 +410,15 @@ func TestAccountDeletionPrefenceUploadCompletionLocalDependencies(t *testing.T) 
 	document.Scenario.FinalAccountState = finalState
 	document.Scenario.FinalAccountEpoch = finalEpoch
 	document.Scenario.Assertions = map[string]any{
-		"allRealHeadsCompletedBeforeFence": barrierStore.reachedCount() == deletionPrefenceUploadCompletionRequests,
+		"allRealHeadsCompletedBeforeFence":            barrierStore.reachedCount() == deletionPrefenceUploadCompletionRequests,
 		"allCompletionRequestsUnauthorizedAfterFence": unauthorized == deletionPrefenceUploadCompletionRequests,
-		"noUnexpectedStatuses": unexpected == 0,
-		"noTransportErrors": transportErrors == 0,
-		"noCompletionMutationBeforeWorker": issuedRows == deletionPrefenceUploadCompletionRequests && consumedRows == 0 && quarantineRows == 0,
-		"allUploadedObjectVersionsErased": erasedVersions == deletionPrefenceUploadCompletionRequests,
-		"deletionWorkerCompleted": len(receipts) == 1,
-		"finalOwnedRowCount": finalOwnedRows,
-		"productionEvidence": false,
+		"noUnexpectedStatuses":                        unexpected == 0,
+		"noTransportErrors":                           transportErrors == 0,
+		"noCompletionMutationBeforeWorker":            issuedRows == deletionPrefenceUploadCompletionRequests && consumedRows == 0 && quarantineRows == 0,
+		"allUploadedObjectVersionsErased":             erasedVersions == deletionPrefenceUploadCompletionRequests,
+		"deletionWorkerCompleted":                     len(receipts) == 1,
+		"finalOwnedRowCount":                          finalOwnedRows,
+		"productionEvidence":                          false,
 	}
 	document.Scenario.Result = "PASS"
 	document.Scenario.IntegrityResult = "PASS"
