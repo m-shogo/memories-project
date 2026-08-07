@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-parser-inflight-cancellation-results.v1",
-  "commitSha": "c67f605049604fb6dd36451e3c11b0f5e84412e6",
-  "generatedAt": "2026-08-07T00:57:57.628309Z",
+  "commitSha": "b625d584d86b2429b69dd9fce0af2455220e3ee6",
+  "generatedAt": "2026-08-07T21:21:35.906565Z",
   "environment": {
     "mode": "GITHUB_ACTIONS_UBUNTU_LINUX",
     "productionEvidence": false,
@@ -11,7 +11,7 @@
   "result": "PASS",
   "integrityResult": "PASS",
   "exitCode": 0,
-  "durationSeconds": 0.464837,
+  "durationSeconds": 0.688518,
   "assertions": {
     "workerFrameObservedBeforeCancel": true,
     "spoolDataObservedBeforeCancel": true,
