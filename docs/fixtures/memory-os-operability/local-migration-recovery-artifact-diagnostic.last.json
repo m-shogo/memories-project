@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "local-migration-recovery-artifact",
-  "sourceCommitSha": "fc85a6531e82ca04e73c03011984f4ada317bf2d",
+  "sourceCommitSha": "5321ccde779d1ff34033ca0851d77152b561d558",
   "failureStage": "actual-recovery-artifact",
   "result": "FAIL",
   "exitCode": 3,
