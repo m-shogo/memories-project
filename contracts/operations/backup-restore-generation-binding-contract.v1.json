@@ -1,11 +1,13 @@
 {
   "contractId": "memory-os.operability.backup-restore-generation-binding.v1",
   "schemaVersion": "memory-os-backup-restore-generation-binding.v1",
-  "description": "Fail-closed admission authority for promoting backup/restore evidence into a production-equivalent environment generation. Existing exact-source local PostgreSQL and object-version restore foundations remain local-only and cannot be relabeled because the production-equivalent generation registry is empty.",
+  "description": "Fail-closed admission authority for promoting backup/restore evidence into a production-equivalent environment generation. Existing exact-source local PostgreSQL and object-version restore foundations remain local-only and cannot be relabeled.",
   "backupRestorePolicyContract": "contracts/operations/backup-restore-contract.v1.json",
   "localFoundationEvidence": "contracts/operations/backup-local-foundation-evidence.v1.json",
   "environmentGenerationContract": "contracts/operations/production-equivalent-environment-generation-contract.v1.json",
   "environmentGenerationRegistry": "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+  "generationEvidenceContract": "contracts/operations/backup-restore-generation-evidence-contract.v1.json",
+  "generationEvidenceRegistry": "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
   "validator": "scripts/validate-memory-os-backup-restore-generation-binding.py",
   "workflow": ".github/workflows/backup-restore-generation-binding.yml",
   "requiredBindings": {
@@ -41,6 +43,7 @@
     "registeredProductionEquivalentGenerationCount": 0,
     "generationBoundBackupCount": 0,
     "generationBoundRestoreCount": 0,
+    "productionEquivalentRecoveryCandidateCount": 0,
     "productionEquivalentRestoreEvidence": false,
     "productionEvidence": false,
     "productionReady": false,
@@ -50,18 +53,20 @@
     "contractDefined": true,
     "validatorImplemented": true,
     "automaticWorkflowImplemented": true,
+    "generationEvidenceRegistryImplemented": true,
     "localPostgresqlRestoreFoundationAvailable": true,
     "localObjectVersionRestoreFoundationAvailable": true,
     "environmentGenerationAvailable": false,
     "generationBoundBackupAvailable": false,
     "generationBoundRestoreAvailable": false,
+    "productionEquivalentRecoveryCandidateAvailable": false,
     "independentReviewCompleted": false,
     "productionEquivalentRestoreEvidence": false,
     "productionReady": false
   },
   "limitations": [
     "the existing exact-source local PostgreSQL and MinIO restore proofs remain local-only",
-    "no production-equivalent environment generation is registered",
+    "no production-equivalent environment generation or generation-bound recovery evidence is currently registered",
     "this contract binds future evidence but does not create a backup, provision an environment or execute a restore",
     "production traffic and production credentials remain unnecessary and forbidden as automatic promotion shortcuts"
   ]
