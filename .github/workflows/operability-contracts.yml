@@ -8,6 +8,7 @@ on:
       - "services/import-api/README.md"
       - "contracts/operations/**"
       - "infra/observability/**"
+      - "docs/evidence/migrations/recovery/**"
       - "docs/runbooks/memory-os-migration-recovery.md"
       - "docs/runbooks/memory-os-incident-response.md"
       - "docs/runbooks/memory-os-version-compatibility.md"
@@ -34,6 +35,10 @@ on:
       - "scripts/validate-memory-os-live-object-load.py"
       - "scripts/reconcile-memory-os-live-load-status.py"
       - "scripts/validate-memory-os-migration-lifecycle.py"
+      - "scripts/memory_os_migration_recovery_point.py"
+      - "scripts/validate-memory-os-migration-evidence-registry.py"
+      - "scripts/validate-memory-os-local-migration-recovery-artifact.py"
+      - "scripts/run-memory-os-local-migration-recovery-artifact.sh"
       - "scripts/validate-memory-os-incident-response.py"
       - "scripts/validate-memory-os-incident-tabletop.py"
       - "scripts/validate-memory-os-version-compatibility.py"
@@ -49,6 +54,7 @@ on:
       - "services/import-api/internal/httpserver/**"
       - ".github/workflows/operability-contracts.yml"
       - ".github/workflows/local-logical-restore.yml"
+      - ".github/workflows/local-migration-recovery-artifact.yml"
   push:
     branches:
       - so
@@ -58,6 +64,7 @@ on:
       - "services/import-api/README.md"
       - "contracts/operations/**"
       - "infra/observability/**"
+      - "docs/evidence/migrations/recovery/**"
       - "docs/runbooks/memory-os-migration-recovery.md"
       - "docs/runbooks/memory-os-incident-response.md"
       - "docs/runbooks/memory-os-version-compatibility.md"
@@ -84,6 +91,10 @@ on:
       - "scripts/validate-memory-os-live-object-load.py"
       - "scripts/reconcile-memory-os-live-load-status.py"
       - "scripts/validate-memory-os-migration-lifecycle.py"
+      - "scripts/memory_os_migration_recovery_point.py"
+      - "scripts/validate-memory-os-migration-evidence-registry.py"
+      - "scripts/validate-memory-os-local-migration-recovery-artifact.py"
+      - "scripts/run-memory-os-local-migration-recovery-artifact.sh"
       - "scripts/validate-memory-os-incident-response.py"
       - "scripts/validate-memory-os-incident-tabletop.py"
       - "scripts/validate-memory-os-version-compatibility.py"
@@ -99,6 +110,7 @@ on:
       - "services/import-api/internal/httpserver/**"
       - ".github/workflows/operability-contracts.yml"
       - ".github/workflows/local-logical-restore.yml"
+      - ".github/workflows/local-migration-recovery-artifact.yml"
   workflow_dispatch:
 
 permissions:
@@ -139,18 +151,28 @@ jobs:
           python -m py_compile scripts/validate-memory-os-live-object-load.py
           python -m py_compile scripts/reconcile-memory-os-live-load-status.py
           python -m py_compile scripts/validate-memory-os-migration-lifecycle.py
+          python -m py_compile scripts/memory_os_migration_recovery_point.py
+          python -m py_compile scripts/validate-memory-os-migration-evidence-registry.py
+          python -m py_compile scripts/validate-memory-os-local-migration-recovery-artifact.py
           python -m py_compile scripts/validate-memory-os-incident-response.py
           python -m py_compile scripts/validate-memory-os-incident-tabletop.py
           python -m py_compile scripts/validate-memory-os-version-compatibility.py
           python -m py_compile scripts/validate-memory-os-entry-docs.py
           bash -n scripts/regenerate-memory-os-load-results.sh
           bash -n scripts/run-memory-os-local-logical-restore.sh
+          bash -n scripts/run-memory-os-local-migration-recovery-artifact.sh
 
       - name: Validate production operability authority
         run: python scripts/validate-memory-os-operability.py
 
       - name: Validate migration lifecycle contract and runbook
         run: python scripts/validate-memory-os-migration-lifecycle.py
+
+      - name: Validate migration rehearsal evidence registry
+        run: python scripts/validate-memory-os-migration-evidence-registry.py
+
+      - name: Validate local actual migration recovery-artifact contract
+        run: python scripts/validate-memory-os-local-migration-recovery-artifact.py
 
       - name: Validate incident response contract and runbook
         run: python scripts/validate-memory-os-incident-response.py
