@@ -1,0 +1,64 @@
+{
+  "schemaVersion": "memory-os-production-equivalent-environment-record.v1",
+  "environmentId": "memory-os-pe-delta",
+  "generationId": "gen-2026-08-07-delta",
+  "status": "PLANNED",
+  "topology": {
+    "regionClass": "nonproduction-planned",
+    "nonLoopback": false,
+    "productionTraffic": false,
+    "productionCredentials": false
+  },
+  "postgresql": {
+    "tlsVerified": false,
+    "runtimeRoleBypassRLS": false,
+    "forceRLSVerified": false,
+    "connectionBudgetDeclared": false,
+    "poolTelemetryVerified": false,
+    "restoreEvidenceRef": null
+  },
+  "objectStorage": {
+    "tlsVerified": false,
+    "scopedCredentialsVerified": false,
+    "versioningVerified": false,
+    "retentionLifecycleVerified": false,
+    "exactVersionDeleteVerified": false,
+    "restoreEvidenceRef": null
+  },
+  "queueWorkers": {
+    "boundedBackpressureVerified": false,
+    "queueTelemetryVerified": false,
+    "deletionBacklogTelemetryVerified": false,
+    "leaseRetryVerified": false
+  },
+  "network": {
+    "tlsVerificationRequired": true,
+    "latencyProfileRef": null,
+    "failureInjectionRef": null
+  },
+  "identityAndSecrets": {
+    "dedicatedNonProductionCredentials": false,
+    "credentialScopeRef": null,
+    "containsSecretMaterial": false
+  },
+  "backupRestore": {
+    "sameGenerationLinked": false,
+    "isolatedRestoreVerified": false,
+    "evidenceRef": null
+  },
+  "materialDeltas": [
+    {
+      "deltaId": "DELTA-001",
+      "description": "synthetic material topology difference without independent review",
+      "classification": "MATERIAL",
+      "accepted": true,
+      "independentReviewRef": null
+    }
+  ],
+  "evidenceBoundary": {
+    "productionEvidence": false,
+    "productionEquivalentDependencies": false,
+    "independentReviewCompleted": false,
+    "productionReady": false
+  }
+}
