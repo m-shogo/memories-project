@@ -70,8 +70,8 @@
   "readiness": {
     "contractDefined": true,
     "registriesDefined": true,
-    "validatorImplemented": false,
-    "automaticWorkflowImplemented": false,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": true,
     "approvedBackendReleaseAvailable": false,
     "approvedClientBaselineAvailable": false,
     "supportWindowImplemented": false,
