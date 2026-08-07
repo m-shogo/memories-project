@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "memory-os-controlled-saturation-repeatability-results.v1",
+  "sourceCommitSha": "cab4cf8157de28dd403b68ec0ef49ed9d8805155",
+  "runRefs": [
+    "docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.repeat-31157504019-1-a.v1.json",
+    "docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.repeat-31157504019-1-b.v1.json"
+  ],
+  "independentRunCount": 2,
+  "signals": {
+    "a": {
+      "concurrency": 16,
+      "kind": "THROUGHPUT_LATENCY_KNEE",
+      "throughputGainFromPrevious": -0.0332206974162875,
+      "p95LatencyRatioFromPrevious": 2.1943309011727856
+    },
+    "b": {
+      "concurrency": 24,
+      "kind": "THROUGHPUT_LATENCY_KNEE",
+      "throughputGainFromPrevious": -0.010788960733082194,
+      "p95LatencyRatioFromPrevious": 1.4781272758108122
+    }
+  },
+  "signalStepDistance": 1,
+  "repeatableLocalDegradationSignalObserved": true,
+  "capacityBoundaryEstablished": false,
+  "operationalThresholdApproved": false,
+  "independentReviewCompleted": false,
+  "productionEquivalentEvidence": false,
+  "productionEvidence": false,
+  "productionReady": false,
+  "productionDecision": "NO_GO",
+  "result": "PASS",
+  "limitations": [
+    "local ephemeral PostgreSQL 16 and MinIO only",
+    "single API process and synthetic account per run",
+    "bounded batches, not a sustained arrival-rate generator",
+    "a latency/throughput knee is a local degradation signal, not a production-safe threshold",
+    "independent review remains mandatory before any operating target is proposed"
+  ]
+}

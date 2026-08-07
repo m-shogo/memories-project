@@ -7,7 +7,14 @@
   "dependencyMode": "LOCAL_POSTGRES_MINIO",
   "classification": "BOUNDED_LOCAL_CAPACITY_REPEATABILITY",
   "requiredIndependentRuns": 2,
-  "concurrencySteps": [4, 8, 16, 24, 32, 48],
+  "concurrencySteps": [
+    4,
+    8,
+    16,
+    24,
+    32,
+    48
+  ],
   "requestsPerStep": 64,
   "signalPolicy": {
     "actualFailureSignalTakesPrecedence": true,
@@ -47,11 +54,11 @@
   "workflow": ".github/workflows/controlled-saturation-repeatability.yml",
   "readiness": {
     "contractDefined": true,
-    "analyzerImplemented": false,
-    "validatorImplemented": false,
-    "automaticWorkflowImplemented": false,
-    "independentRunCount": 0,
-    "repeatableLocalDegradationSignalObserved": false,
+    "analyzerImplemented": true,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": true,
+    "independentRunCount": 2,
+    "repeatableLocalDegradationSignalObserved": true,
     "capacityBoundaryEstablished": false,
     "operationalThresholdApproved": false,
     "independentReviewCompleted": false,

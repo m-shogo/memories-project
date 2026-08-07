@@ -368,7 +368,8 @@
     "deletionActualProcessKillProven": true,
     "deletionHostFailureRecoveryProven": false,
     "deletionContainerKillRecoveryProven": true,
-    "deletionReplacementContainerRecoveryProven": true
+    "deletionReplacementContainerRecoveryProven": true,
+    "repeatableLocalDegradationSignalObserved": true
   },
   "evidenceRefs": [
     "services/import-api/internal/loadtest/harness.go",
@@ -455,6 +456,12 @@
     "scripts/validate-memory-os-deletion-worker-container-kill-recovery.py",
     "scripts/reconcile-memory-os-deletion-worker-container-kill-recovery.py",
     ".github/workflows/deletion-worker-container-kill-recovery.yml",
-    "docs/fixtures/memory-os-operability/deletion-worker-container-kill-recovery-results.sample.v1.json"
+    "docs/fixtures/memory-os-operability/deletion-worker-container-kill-recovery-results.sample.v1.json",
+    "contracts/operations/controlled-saturation-repeatability-contract.v1.json",
+    "scripts/analyze-memory-os-controlled-saturation-repeatability.py",
+    "scripts/validate-memory-os-controlled-saturation-repeatability.py",
+    "scripts/reconcile-memory-os-controlled-saturation-repeatability.py",
+    ".github/workflows/controlled-saturation-repeatability.yml",
+    "docs/fixtures/memory-os-operability/controlled-saturation-repeatability-results.v1.json"
   ]
 }
