@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "memory-os-operation-request.v1",
+  "requestId": "sustained-local-soak-parallel-v2-20260807-v1",
+  "operation": "EXECUTE_TWO_INDEPENDENT_EXACT_60_MINUTE_LOCAL_LONG_SOAKS",
+  "sourceWorkflow": ".github/workflows/sustained-local-soak-parallel-v2.yml",
+  "requiredIndependentRuns": 2,
+  "durationSecondsPerRun": 3600,
+  "productionTraffic": false,
+  "productionCredentials": false,
+  "productionEvidence": false,
+  "constraints": {
+    "originalOneHourSessionMustExpire": true,
+    "freshSessionRecoveryProbeRequired": true,
+    "exactSourceBindingRequired": true,
+    "appendOnlyRunResultsRequired": true,
+    "setupAndRunFailuresRequireDiagnostic": true,
+    "leakProofAutomaticPromotionForbidden": true,
+    "productionReadyAutomaticPromotionForbidden": true
+  }
+}
