@@ -35,7 +35,6 @@
         "production-shaped rehearsal with lock and runtime budgets",
         "mixed-version deployment proof",
         "isolated restore linkage for destructive contract decisions",
-        "passing local migration rehearsal that restores the actual pre-migration artifact and reapplies the migration",
         "production-equivalent migration recovery artifact restore bound to the actual recovery point and independently reviewed"
       ],
       "evidenceRefs": [
@@ -61,7 +60,9 @@
         "scripts/validate-memory-os-migration-production-shaped-admission.py",
         "scripts/reconcile-memory-os-migration-production-shaped-admission.py",
         ".github/workflows/migration-production-shaped-admission.yml",
-        "docs/evidence/migrations/recovery/mig_20260807_f61f6d4ee39b.json"
+        "docs/evidence/migrations/recovery/mig_20260807_f61f6d4ee39b.json",
+        "scripts/reconcile-memory-os-local-migration-recovery-artifact.py",
+        ".github/workflows/local-migration-recovery-artifact.yml"
       ]
     },
     {

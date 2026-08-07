@@ -161,7 +161,9 @@
     "scripts/run-memory-os-local-migration-recovery-artifact.sh",
     "scripts/validate-memory-os-local-migration-recovery-artifact.py",
     "docs/evidence/migrations/recovery/README.md",
-    "docs/evidence/migrations/recovery/mig_20260807_f61f6d4ee39b.json"
+    "docs/evidence/migrations/recovery/mig_20260807_f61f6d4ee39b.json",
+    "scripts/reconcile-memory-os-local-migration-recovery-artifact.py",
+    ".github/workflows/local-migration-recovery-artifact.yml"
   ],
   "readiness": {
     "policyDefined": true,
