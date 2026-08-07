@@ -67,7 +67,7 @@ jobs:
           --health-retries 30
 
     steps:
-      - name: Checkout exact so source
+      - name: Checkout latest so
         uses: actions/checkout@v4
         with:
           ref: so
@@ -84,14 +84,17 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Capture exact source
+      - name: Capture exact foundation source
+        id: source
         run: |
           set -euo pipefail
           git fetch origin so
           test "$(git branch --show-current)" = "so"
           test -z "$(git status --porcelain)"
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
-          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          sha="$(git rev-parse HEAD)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "SOURCE_SHA=$sha" >> "$GITHUB_ENV"
 
       - name: Start local MinIO
         run: |
@@ -110,7 +113,8 @@ jobs:
           docker logs memory-os-sustained-soak-smoke-minio
           exit 1
 
-      - name: Validate foundation and compressed smoke
+      - name: Validate foundation and compressed multi-surface smoke
+        id: smoke
         env:
           MEMORY_OS_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/memory_os_security?sslmode=disable
           MEMORY_OS_TEST_S3_ENDPOINT: http://127.0.0.1:9000
@@ -152,17 +156,17 @@ jobs:
                 -count=1 -timeout=8m
             ) >> "$log" 2>&1 || code=$?
           fi
-          echo "SOAK_SMOKE_EXIT_CODE=$code" >> "$GITHUB_ENV"
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           exit 0
 
       - name: Reconcile foundation implementation
-        if: env.SOAK_SMOKE_EXIT_CODE == '0'
+        if: steps.smoke.outputs.exit_code == '0'
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin so
-          if ! git diff --quiet "${SOURCE_SHA}" origin/so -- \
+          if ! git diff --quiet "$SOURCE_SHA" origin/so -- \
             .github/workflows/sustained-local-soak.yml \
             contracts/operations/sustained-local-soak-contract.v1.json \
             scripts/validate-memory-os-sustained-local-soak.py \
@@ -172,7 +176,7 @@ jobs:
             scripts/reconcile-memory-os-sustained-local-soak-status.py \
             scripts/validate-memory-os-load-evidence-index.py \
             services/import-api/internal/httpserver/sustained_local_soak_test.go; then
-            echo "Newer soak-foundation source exists; its own smoke run must reconcile."
+            echo "Newer soak-foundation source exists; refusing stale reconciliation."
             exit 75
           fi
           git reset --hard origin/so
@@ -196,7 +200,7 @@ jobs:
           fi
 
       - name: Record privacy-safe smoke diagnostic
-        if: env.SOAK_SMOKE_EXIT_CODE != '0'
+        if: steps.smoke.outputs.exit_code != '0'
         run: |
           set -euo pipefail
           git fetch origin so
@@ -206,40 +210,42 @@ jobs:
           import os
           import re
           from pathlib import Path
-          text = Path("/tmp/memory-os-sustained-soak-smoke.log").read_text(encoding="utf-8", errors="replace")
-          text = re.sub(r"postgres(?:ql)?://[^\s]+", "<redacted-database-url>", text)
-          text = re.sub(r"https?://[^\s]+", "<redacted-endpoint>", text)
-          text = text.replace("minioadmin", "<redacted-local-credential>")
-          text = re.sub(r"Bearer\s+\S+", "Bearer <redacted>", text, flags=re.I)
-          text = re.sub(r"acct_[A-Za-z0-9_-]+", "<redacted-synthetic-account>", text)
+          text = Path('/tmp/memory-os-sustained-soak-smoke.log').read_text(encoding='utf-8', errors='replace')
+          text = re.sub(r'postgres(?:ql)?://[^\s]+', '<redacted-database-url>', text)
+          text = re.sub(r'https?://[^\s]+', '<redacted-endpoint>', text)
+          text = text.replace('minioadmin', '<redacted-local-credential>')
+          text = re.sub(r'Bearer\s+\S+', 'Bearer <redacted>', text, flags=re.I)
+          text = re.sub(r'acct_[A-Za-z0-9_-]+', '<redacted-synthetic-account>', text)
           value = {
-              "schemaVersion": "memory-os-validator-diagnostic.v1",
-              "workflow": "sustained-local-soak-foundation-smoke",
-              "sourceCommitSha": os.environ["SOURCE_SHA"],
-              "result": "FAIL",
-              "exitCode": int(os.environ["SOAK_SMOKE_EXIT_CODE"]),
-              "output": text[-12000:],
-              "containsSecrets": False,
-              "evidenceRun": False,
-              "configuredDurationSeconds": 12,
-              "productionEvidence": False,
-              "productionEquivalentDependencies": False,
-              "localSustainedSoakEvidence": False,
-              "leakProof": False,
+              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'workflow': 'sustained-local-soak-foundation-smoke',
+              'sourceCommitSha': os.environ['SOURCE_SHA'],
+              'result': 'FAIL',
+              'exitCode': int('${{ steps.smoke.outputs.exit_code }}'),
+              'output': text[-12000:],
+              'containsSecrets': False,
+              'evidenceRun': False,
+              'configuredDurationSeconds': 12,
+              'productionEvidence': False,
+              'productionEquivalentDependencies': False,
+              'localSustainedSoakEvidence': False,
+              'leakProof': False,
           }
-          path = Path("docs/fixtures/memory-os-operability/sustained-local-soak-smoke-diagnostic.last.json")
+          path = Path('docs/fixtures/memory-os-operability/sustained-local-soak-smoke-diagnostic.last.json')
           path.parent.mkdir(parents=True, exist_ok=True)
-          path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
           PY
           git add docs/fixtures/memory-os-operability/sustained-local-soak-smoke-diagnostic.last.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "test(soak): record sustained local soak diagnostic"
-          git pull --rebase origin so
-          git push origin HEAD:so
+          if ! git diff --cached --quiet; then
+            git commit -m "test(soak): record sustained local soak diagnostic"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
 
       - name: Enforce foundation smoke
-        run: test "${SOAK_SMOKE_EXIT_CODE}" = "0"
+        run: test "${{ steps.smoke.outputs.exit_code }}" = "0"
 
   long-run:
     if: github.event_name != 'push'
@@ -305,6 +311,7 @@ jobs:
           exit 1
 
       - name: Execute one 60-minute LOCAL_LONG_SOAK run
+        id: long_soak
         env:
           MEMORY_OS_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/memory_os_security?sslmode=disable
           MEMORY_OS_TEST_S3_ENDPOINT: http://127.0.0.1:9000
@@ -312,13 +319,14 @@ jobs:
           MEMORY_OS_TEST_S3_SECRET_KEY: minioadmin
           MEMORY_OS_RUN_SUSTAINED_LOCAL_SOAK: "1"
           MEMORY_OS_SOAK_DURATION_SECONDS: "3600"
-          MEMORY_OS_SUSTAINED_LOCAL_SOAK_RESULTS_PATH: ${{ env.SOAK_RESULT_PATH }}
-          MEMORY_OS_COMMIT_SHA: ${{ env.SOURCE_SHA }}
-          MEMORY_OS_SOAK_RUN_ID: ${{ env.SOAK_RUN_ID }}
         run: |
           set +e
+          export MEMORY_OS_SUSTAINED_LOCAL_SOAK_RESULTS_PATH="$SOAK_RESULT_PATH"
+          export MEMORY_OS_COMMIT_SHA="$SOURCE_SHA"
+          export MEMORY_OS_SOAK_RUN_ID="$SOAK_RUN_ID"
           log=/tmp/memory-os-sustained-local-soak.log
           : > "$log"
+          rm -f "$SOAK_RESULT_PATH"
           code=0
           echo "STAGE: exact-60-minute-local-long-soak" >> "$log"
           (
@@ -334,17 +342,17 @@ jobs:
               --expected-commit-sha "$SOURCE_SHA" \
               >> "$log" 2>&1 || code=$?
           fi
-          echo "LONG_SOAK_EXIT_CODE=$code" >> "$GITHUB_ENV"
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           exit 0
 
       - name: Publish append-only exact-source run result
-        if: env.LONG_SOAK_EXIT_CODE == '0'
+        if: steps.long_soak.outputs.exit_code == '0'
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin so
-          if ! git diff --quiet "${SOURCE_SHA}" origin/so -- \
+          if ! git diff --quiet "$SOURCE_SHA" origin/so -- \
             .github/workflows/sustained-local-soak.yml \
             contracts/operations/sustained-local-soak-contract.v1.json \
             scripts/validate-memory-os-sustained-local-soak.py \
@@ -379,10 +387,9 @@ jobs:
           git commit -m "test(soak): record sustained local soak result"
           git pull --rebase origin so
           git push origin HEAD:so
-          echo "PUBLISHED_SOAK_RESULT=$target" >> "$GITHUB_ENV"
 
       - name: Aggregate and reconcile run authority
-        if: env.LONG_SOAK_EXIT_CODE == '0'
+        if: steps.long_soak.outputs.exit_code == '0'
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -411,7 +418,7 @@ jobs:
           fi
 
       - name: Record privacy-safe long-run diagnostic
-        if: env.LONG_SOAK_EXIT_CODE != '0'
+        if: steps.long_soak.outputs.exit_code != '0'
         run: |
           set -euo pipefail
           git fetch origin so
@@ -421,38 +428,40 @@ jobs:
           import os
           import re
           from pathlib import Path
-          text = Path("/tmp/memory-os-sustained-local-soak.log").read_text(encoding="utf-8", errors="replace")
-          text = re.sub(r"postgres(?:ql)?://[^\s]+", "<redacted-database-url>", text)
-          text = re.sub(r"https?://[^\s]+", "<redacted-endpoint>", text)
-          text = text.replace("minioadmin", "<redacted-local-credential>")
-          text = re.sub(r"Bearer\s+\S+", "Bearer <redacted>", text, flags=re.I)
-          text = re.sub(r"acct_[A-Za-z0-9_-]+", "<redacted-synthetic-account>", text)
+          text = Path('/tmp/memory-os-sustained-local-soak.log').read_text(encoding='utf-8', errors='replace')
+          text = re.sub(r'postgres(?:ql)?://[^\s]+', '<redacted-database-url>', text)
+          text = re.sub(r'https?://[^\s]+', '<redacted-endpoint>', text)
+          text = text.replace('minioadmin', '<redacted-local-credential>')
+          text = re.sub(r'Bearer\s+\S+', 'Bearer <redacted>', text, flags=re.I)
+          text = re.sub(r'acct_[A-Za-z0-9_-]+', '<redacted-synthetic-account>', text)
           value = {
-              "schemaVersion": "memory-os-validator-diagnostic.v1",
-              "workflow": "sustained-local-soak",
-              "sourceCommitSha": os.environ["SOURCE_SHA"],
-              "runId": os.environ["SOAK_RUN_ID"],
-              "result": "FAIL",
-              "exitCode": int(os.environ["LONG_SOAK_EXIT_CODE"]),
-              "output": text[-12000:],
-              "containsSecrets": False,
-              "configuredDurationSeconds": 3600,
-              "productionEvidence": False,
-              "productionEquivalentDependencies": False,
-              "localSustainedSoakEvidence": False,
-              "productionSustainedSoakEvidence": False,
-              "leakProof": False,
+              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'workflow': 'sustained-local-soak',
+              'sourceCommitSha': os.environ['SOURCE_SHA'],
+              'runId': os.environ['SOAK_RUN_ID'],
+              'result': 'FAIL',
+              'exitCode': int('${{ steps.long_soak.outputs.exit_code }}'),
+              'output': text[-12000:],
+              'containsSecrets': False,
+              'configuredDurationSeconds': 3600,
+              'productionEvidence': False,
+              'productionEquivalentDependencies': False,
+              'localSustainedSoakEvidence': False,
+              'productionSustainedSoakEvidence': False,
+              'leakProof': False,
           }
-          path = Path("docs/fixtures/memory-os-operability/sustained-local-soak-diagnostic.last.json")
+          path = Path('docs/fixtures/memory-os-operability/sustained-local-soak-diagnostic.last.json')
           path.parent.mkdir(parents=True, exist_ok=True)
-          path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
           PY
           git add docs/fixtures/memory-os-operability/sustained-local-soak-diagnostic.last.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "test(soak): record sustained local soak diagnostic"
-          git pull --rebase origin so
-          git push origin HEAD:so
+          if ! git diff --cached --quiet; then
+            git commit -m "test(soak): record sustained local soak diagnostic"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
 
       - name: Enforce long-run success
-        run: test "${LONG_SOAK_EXIT_CODE}" = "0"
+        run: test "${{ steps.long_soak.outputs.exit_code }}" = "0"
