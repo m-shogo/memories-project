@@ -27,7 +27,7 @@
     "upload at least one real versioned MinIO object for each account and retain canonical database object ledger",
     "claim both deletion leases directly without invoking Worker.Sweep",
     "for case claimed-before-erasure perform no erasure and abandon the lease",
-    "for case object-erased-before-db-sweep erase the real object version but leave the database ledger and account state deleting, then abandon the lease",
+    "for case object-erased-before-db-sweep erase the real object version with the database object ledger intentionally retained and account state still deleting, then abandon the lease",
     "do not call Release, Sweep or Complete for either abandoned claim",
     "prove replacement worker cannot claim before lease expiry",
     "wait only until the bounded one-second lease expires",
