@@ -1,0 +1,92 @@
+{
+  "contractId": "memory-os.operability.incident-human-tabletop-evidence.v1",
+  "schemaVersion": "memory-os-incident-human-tabletop-evidence.v1",
+  "description": "Append-only admission authority for human-led incident tabletop completion evidence. Automated control exercises, planned records and CI output cannot create human completion. Each accepted record must bind one canonical planned scenario, operational pseudonyms, required command roles, every planned inject response, severity/containment/recovery decisions, independent verification, owned remediation and severity-specific closure approvals.",
+  "sourceIncidentPolicy": "contracts/operations/incident-response-contract.v1.json",
+  "sourceTabletopContract": "contracts/operations/incident-tabletop-record-contract.v1.json",
+  "sourcePlan": "docs/fixtures/memory-os-operability/incident-tabletop-plan.v1.json",
+  "ledgerDirectory": "docs/evidence/incident-tabletops",
+  "writer": "scripts/register-memory-os-incident-human-tabletop.py",
+  "validator": "scripts/validate-memory-os-incident-human-tabletops.py",
+  "reconcile": "scripts/reconcile-memory-os-incident-human-tabletops.py",
+  "workflow": ".github/workflows/incident-human-tabletop-evidence.yml",
+  "recordSchemaVersion": "memory-os-incident-human-tabletop-record.v1",
+  "requiredScenarioIds": [
+    "IR-DRILL-001",
+    "IR-DRILL-002",
+    "IR-DRILL-003",
+    "IR-DRILL-004",
+    "IR-DRILL-005",
+    "IR-DRILL-006"
+  ],
+  "requiredAttendanceRoles": [
+    "INCIDENT_COMMANDER",
+    "OPERATIONS_LEAD",
+    "SYSTEM_OWNER",
+    "SCRIBE"
+  ],
+  "additionalAttendanceForSeverity": {
+    "SEV0": ["SECURITY_PRIVACY_LEAD"],
+    "SEV1": []
+  },
+  "requiredDecisionTypes": [
+    "SEVERITY",
+    "CONTAINMENT",
+    "RECOVERY"
+  ],
+  "completionRules": {
+    "sourcePlanExerciseMustExist": true,
+    "scenarioIdAndPlannedSeverityMustMatchPlan": true,
+    "sourceCommitMustExist": true,
+    "startedAndCompletedUtcRequired": true,
+    "completedMustNotPrecedeStarted": true,
+    "everyPlannedInjectRequiresObservedResponse": true,
+    "requiredCommandRolesMustAttend": true,
+    "actorRefsMustBeOperationalPseudonyms": true,
+    "decisionActorsMustBeAttendees": true,
+    "independentVerificationRequired": true,
+    "independentVerifierMustDifferFromDecisionActors": true,
+    "eachObservedGapRequiresOwnedRemediation": true,
+    "closureApprovalRolesMustMatchIncidentSeverityPolicy": true,
+    "closureApproversMustBeAttendees": true,
+    "resultCannotBeNotRun": true,
+    "oneAcceptedCompletionPerScenario": true,
+    "appendOnlyWriterRequired": true,
+    "rawSecretsUrlsTokensAndPersonalContentForbidden": true
+  },
+  "forbiddenPromotion": [
+    "PLANNED record treated as completed evidence",
+    "automated incident-control exercise treated as human attendance",
+    "CI actor treated as human command role",
+    "missing inject response inferred from expectedDecision",
+    "unowned gap ignored to obtain PASS",
+    "tabletop completion treated as production recovery drill",
+    "tabletop completion treated as configured paging or external contact ownership",
+    "tabletop completion treated as production readiness"
+  ],
+  "currentAuthority": {
+    "acceptedCompletedScenarioCount": 0,
+    "requiredScenarioCount": 6,
+    "allRequiredScenariosCompleted": false,
+    "humanTabletopEvidenceComplete": false,
+    "productionRecoveryDrillCompleted": false,
+    "pagingConfigured": false,
+    "externalContactTreeOwned": false,
+    "independentIncidentControlReviewCompleted": false,
+    "productionEvidence": false,
+    "productionReady": false,
+    "productionDecision": "NO_GO"
+  },
+  "readiness": {
+    "contractDefined": true,
+    "ledgerDirectoryDefined": true,
+    "writerImplemented": false,
+    "validatorImplemented": false,
+    "automaticWorkflowImplemented": false,
+    "acceptedCompletedScenarioCount": 0,
+    "allRequiredScenariosCompleted": false,
+    "productionRecoveryDrillCompleted": false,
+    "independentIncidentControlReviewCompleted": false,
+    "productionReady": false
+  }
+}
