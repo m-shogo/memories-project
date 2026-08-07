@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "memory-os-deletion-lease-recovery-results.v1",
+  "commitSha": "3e1105eb6723819940772f10697239618c0ab83f",
+  "generatedAt": "2026-08-07T04:17:27Z",
+  "environment": {
+    "os": "linux",
+    "arch": "amd64",
+    "goVersion": "go1.23.12",
+    "dependencyMode": "LOCAL_POSTGRES_MINIO",
+    "syntheticDataOnly": true,
+    "leaseAbandonmentSimulation": true,
+    "productionTraffic": false,
+    "productionCredentials": false,
+    "productionEvidence": false,
+    "productionEquivalentDependencies": false,
+    "actualProcessKillCovered": false,
+    "actualHostFailureCovered": false,
+    "containsSecrets": false
+  },
+  "scenario": {
+    "scenarioId": "account-deletion-lease-expiry-reclaim-local-dependencies",
+    "initialClaims": 2,
+    "claimsAvailableBeforeExpiry": 0,
+    "replacementWorkerReceipts": 2,
+    "uniqueReplacementReceipts": 2,
+    "replacementWorkerErrors": 0,
+    "finalDeletionPending": 0,
+    "finalDeletionStuck": 0,
+    "finalOwnedRowCount": 0,
+    "finalDeletedTombstonesEpoch2": 2,
+    "remainingObjectVersions": 0,
+    "assertions": {
+      "actualHostFailureCovered": false,
+      "actualProcessKillCovered": false,
+      "allOwnedRowsErased": true,
+      "backlogConverged": true,
+      "bothClaimsReclaimedAfterExpiry": true,
+      "noClaimBeforeExpiry": true,
+      "noResurrection": true,
+      "partialObjectErasureRecoveredIdempotently": true,
+      "productionEvidence": false
+    },
+    "result": "PASS",
+    "integrityResult": "PASS"
+  },
+  "limitations": [
+    "lease abandonment simulates process interruption; no operating-system process is killed",
+    "one-second lease is test-only and not a production recommendation",
+    "local PostgreSQL and MinIO are not production-equivalent dependencies"
+  ]
+}
