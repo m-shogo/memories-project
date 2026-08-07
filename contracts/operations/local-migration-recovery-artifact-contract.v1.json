@@ -9,6 +9,12 @@
   "validator": "scripts/validate-memory-os-local-migration-recovery-artifact.py",
   "evidenceRoot": "docs/evidence/migrations/recovery",
   "resultSchemaVersion": "memory-os-local-migration-recovery-artifact.v1",
+  "operatorBudgets": {
+    "lockBudgetMs": 5000,
+    "statementBudgetMs": 120000,
+    "isolatedCleanDatabaseExpectedLockWaitMs": 0,
+    "lockWaitInstrumentation": "NO_COMPETING_SESSIONS_BY_CONSTRUCTION_NOT_PRODUCTION_LOCK_TELEMETRY"
+  },
   "requiredAssertions": {
     "sourceBaselineApplied": true,
     "recoveryArtifactDigestRecorded": true,
@@ -39,6 +45,7 @@
     "not production-equivalent infrastructure or credentials",
     "not proof that a production migration may be automatically rolled back",
     "does not exercise application traffic during migration",
+    "clean isolated database has no competing sessions by construction and therefore does not provide production lock-wait telemetry",
     "does not satisfy destructive-contract isolated restore approval"
   ],
   "readiness": {
