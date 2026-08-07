@@ -1,0 +1,51 @@
+{
+  "contractId": "memory-os.operability.local-prometheus-process-rehearsal.v1",
+  "schemaVersion": "memory-os-local-prometheus-process-rehearsal.v1",
+  "resultsSchemaVersion": "memory-os-local-prometheus-process-rehearsal-results.v1",
+  "description": "Exact-source local rehearsal proving that a pinned real Prometheus process can use bearer-token authentication to scrape a loopback privacy-safe fixture, mark the target up and ingest/query a bounded Memory OS fixture metric. Canonical Go scrape-handler behavior remains proven separately by its unit/in-process tests; this rehearsal does not claim a production metrics backend or an end-to-end production deployment.",
+  "runner": "scripts/run-memory-os-local-prometheus-process-rehearsal.py",
+  "validator": "scripts/validate-memory-os-local-prometheus-process-rehearsal.py",
+  "reconcile": "scripts/reconcile-memory-os-local-prometheus-process-rehearsal.py",
+  "workflow": ".github/workflows/local-prometheus-process-rehearsal.yml",
+  "result": "docs/fixtures/memory-os-operability/local-prometheus-process-rehearsal-results.v1.json",
+  "prometheusImage": "prom/prometheus:v3.5.0",
+  "canonicalHandlerEvidenceRefs": [
+    "contracts/operations/metrics-scrape-contract.v1.json",
+    "services/import-api/internal/metrics/scrape.go",
+    "services/import-api/internal/metrics/prometheus.go",
+    "services/import-api/internal/httpserver/metrics_scrape_test.go",
+    "scripts/validate-memory-os-metrics-scrape.py"
+  ],
+  "requiredAssertions": {
+    "realPrometheusProcessStarted": true,
+    "bearerTokenFileConfigured": true,
+    "unauthorizedFixtureRequestRejected": true,
+    "prometheusTargetUp": true,
+    "fixtureMetricIngestedAndQueryable": true,
+    "fixtureTokenAbsentFromResult": true,
+    "canonicalGoHandlerUsedByExternalProcess": false,
+    "productionMetricsBackendUsed": false,
+    "productionNetworkPolicyExercised": false,
+    "productionCredentialsUsed": false,
+    "productionTrafficUsed": false
+  },
+  "promotionRules": {
+    "fixtureScrapeCanBeCalledCanonicalHandlerEndToEnd": false,
+    "localPrometheusCanBeCalledProductionMetricsBackend": false,
+    "localBearerTokenCanBeCalledProductionSecretProvisioning": false,
+    "loopbackNetworkCanBeCalledPrivateProductionNetwork": false,
+    "productionEvidenceMayBeDerived": false,
+    "productionReadyMayBeDerived": false
+  },
+  "readiness": {
+    "contractDefined": true,
+    "runnerImplemented": true,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": true,
+    "exactSourcePassCommitted": false,
+    "localRealPrometheusScrapeProven": false,
+    "canonicalHandlerExternalScrapeProven": false,
+    "productionMetricsBackendIntegrated": false,
+    "productionReady": false
+  }
+}
