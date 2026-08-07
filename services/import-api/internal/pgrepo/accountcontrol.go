@@ -74,6 +74,34 @@ func (a AccountControl) Current(ctx context.Context, accountID string) (epochgua
 	return snapshot, nil
 }
 
+// CurrentWithin reads the canonical account state through a transaction whose
+// runtime role and verified account/epoch context are already installed by
+// dbscope.Executor. It deliberately does not borrow another pool connection:
+// write-boundary fence checks run while the caller already owns this tx, and a
+// nested pool acquisition can deadlock every worker once concurrency reaches
+// the pool limit.
+func (a AccountControl) CurrentWithin(ctx context.Context, tx dbscope.Transaction, accountID string) (epochguard.Snapshot, error) {
+	adapted, err := pgscope.From(tx)
+	if err != nil {
+		return epochguard.Snapshot{}, err
+	}
+	snapshot := epochguard.Snapshot{}
+	var state string
+	err = adapted.QueryRow(ctx,
+		`SELECT account_id, account_epoch, state
+		 FROM memory_os.account_control WHERE account_id = $1`,
+		accountID,
+	).Scan(&snapshot.AccountID, &snapshot.Epoch, &state)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return epochguard.Snapshot{}, ErrNotFound
+	}
+	if err != nil {
+		return epochguard.Snapshot{}, fmt.Errorf("read account control in scoped transaction: %w", err)
+	}
+	snapshot.State = epochguard.State(state)
+	return snapshot, nil
+}
+
 // BeginDeletion bumps the account epoch under the caller's own API-role context.
 // The account identifier is never sent: begin_account_deletion() reads it from
 // the transaction-local verified context, so no request field can redirect it.
