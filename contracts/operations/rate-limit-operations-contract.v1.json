@@ -138,7 +138,7 @@
     "recoveryVerificationDefined": true,
     "productionControlPlaneImplemented": false,
     "automaticExpiryImplemented": false,
-    "evidenceLedgerImplemented": false,
+    "evidenceLedgerImplemented": true,
     "sharedStoreImplemented": false,
     "trustedProxyDeploymentConfigured": false,
     "drillCompleted": false,
@@ -148,6 +148,12 @@
   "evidenceRefs": [
     "contracts/operations/rate-limit-operations-contract.v1.json",
     "docs/runbooks/memory-os-rate-limit-operations.md",
-    "scripts/validate-memory-os-rate-limit-operations.py"
+    "scripts/validate-memory-os-rate-limit-operations.py",
+    "contracts/operations/rate-limit-operation-evidence-contract.v1.json",
+    "docs/evidence/rate-limit-operations/README.md",
+    "docs/fixtures/memory-os-operability/rate-limit-operation-record.template.v1.json",
+    "scripts/create-memory-os-rate-limit-operation-evidence.py",
+    "scripts/validate-memory-os-rate-limit-operation-evidence.py",
+    "scripts/reconcile-memory-os-rate-limit-operation-evidence.py"
   ]
 }

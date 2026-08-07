@@ -225,14 +225,17 @@
         "binding emergency-operation policy that forbids unlimited/fail-open public traffic and permits only normal bounded, strict local emergency or route fail-closed modes",
         "trusted-proxy disablement procedure for uncertain deployment ownership",
         "canonical activation, rollback, shared-store recovery and no-business-mutation verification runbook",
-        "append-only rate-limit emergency-operation ledger foundation is implemented with bounded activation-intent validation, distinct operator/reviewer identities, exact-source and policy binding, a hard 60-minute maximum, fail-open prohibition and a read-only effective-state evaluator that expires stale intent fail-closed; runtime policy is deliberately not mutated and production evidence remains false"
+        "append-only rate-limit emergency-operation ledger foundation is implemented with bounded activation-intent validation, distinct operator/reviewer identities, exact-source and policy binding, a hard 60-minute maximum, fail-open prohibition and a read-only effective-state evaluator that expires stale intent fail-closed; runtime policy is deliberately not mutated and production evidence remains false",
+        "append-only rate-limit emergency-operation evidence contract with closed modes, proxy modes, activation reasons and verification checks",
+        "exclusive-create writer that rejects duplicate operation IDs before any overwrite",
+        "privacy validator forbidding raw IP, network identity, tokens, account/session identifiers, URLs, credentials and free-form evidence text"
       ],
       "missingEvidence": [
         "production-equivalent distributed enforcement (shared atomic store)",
         "trusted-proxy configuration owned per deployment",
         "load-calibrated limits from observed traffic",
-        "production emergency control plane with automatic expiry and append-only operation evidence ledger",
-        "completed emergency-mode, shared-store recovery and trusted-proxy disablement drills"
+        "completed emergency-mode, shared-store recovery and trusted-proxy disablement drills",
+        "production emergency control plane with automatic expiry"
       ],
       "evidenceRefs": [
         "contracts/operations/rate-limit-policy-contract.v1.json",
@@ -251,7 +254,13 @@
         "scripts/evaluate-memory-os-rate-limit-emergency-state.py",
         "scripts/validate-memory-os-rate-limit-emergency-ledger.py",
         "scripts/reconcile-memory-os-rate-limit-emergency-ledger.py",
-        ".github/workflows/rate-limit-emergency-ledger.yml"
+        ".github/workflows/rate-limit-emergency-ledger.yml",
+        "contracts/operations/rate-limit-operation-evidence-contract.v1.json",
+        "docs/evidence/rate-limit-operations/README.md",
+        "docs/fixtures/memory-os-operability/rate-limit-operation-record.template.v1.json",
+        "scripts/create-memory-os-rate-limit-operation-evidence.py",
+        "scripts/validate-memory-os-rate-limit-operation-evidence.py",
+        "scripts/reconcile-memory-os-rate-limit-operation-evidence.py"
       ]
     },
     {
