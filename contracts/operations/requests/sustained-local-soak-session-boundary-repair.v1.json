@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "memory-os-operation-request.v1",
+  "requestId": "sustained-local-soak-session-boundary-repair-20260807-v1",
+  "operation": "REPAIR_LOCAL_LONG_SOAK_SESSION_BOUNDARY",
+  "reason": "the exact 3600-second local soak correctly expires the original one-hour session before the post-run recovery probe; preserve the one-hour TTL, prove the old token is rejected, then re-authenticate the same active account for recovery verification",
+  "productionTraffic": false,
+  "productionCredentials": false,
+  "productionEvidence": false,
+  "requestedOutcome": {
+    "originalSessionExpiryRequired": true,
+    "freshSessionRecoveryRequired": true,
+    "sessionTtlExtensionForbidden": true,
+    "productionReadyPromotionForbidden": true
+  }
+}
