@@ -1,0 +1,78 @@
+{
+  "contractId": "memory-os.operability.deletion-prefence-linearization.v1",
+  "schemaVersion": "memory-os-deletion-prefence-linearization.v1",
+  "resultsSchemaVersion": "memory-os-deletion-prefence-linearization-results.v1",
+  "description": "Local PostgreSQL and MinIO checkpoint proving that requests which started before account deletion, completed session resolution at the old epoch, and were intentionally paused before the fenced service boundary cannot resume successfully after DELETE /v1/account durably advances the account epoch.",
+  "scenarioId": "account-deletion-prefence-inflight-linearization-local-dependencies",
+  "dependencyMode": "LOCAL_POSTGRES_MINIO",
+  "inFlightRequests": 32,
+  "surface": "GET /v1/import-jobs/{jobId}/preview",
+  "resultPath": "docs/fixtures/memory-os-operability/deletion-prefence-linearization-results.sample.v1.json",
+  "runner": "services/import-api/internal/httpserver/deletion_prefence_linearization_test.go",
+  "validator": "scripts/validate-memory-os-deletion-prefence-linearization.py",
+  "reconcile": "scripts/reconcile-memory-os-deletion-prefence-linearization.py",
+  "workflow": ".github/workflows/deletion-prefence-linearization.yml",
+  "requiredSequence": [
+    "create one synthetic active account, session and committed Preview",
+    "start 32 authenticated Preview requests",
+    "prove all 32 session lookups completed successfully at account epoch 1",
+    "pause all 32 requests before the fenced Preview service executes",
+    "DELETE /v1/account returns 202 with durable deletion epoch 2",
+    "release the already-authenticated old-epoch requests",
+    "all 32 requests return exactly 401 with no transport error or successful response",
+    "leased deletion worker completes exactly one receipt",
+    "all account-owned rows are erased and deleted tombstone remains at epoch 2"
+  ],
+  "successCriteria": {
+    "authenticatedBeforeFence": 32,
+    "deletionRequestStatus": 202,
+    "deletionEpoch": 2,
+    "releasedAfterFence": 32,
+    "unauthorizedAfterFence": 32,
+    "unexpectedStatusCount": 0,
+    "transportErrors": 0,
+    "workerReceiptCount": 1,
+    "finalOwnedRowCount": 0,
+    "finalAccountState": "deleted",
+    "finalAccountEpoch": 2,
+    "productionEvidence": false
+  },
+  "abortCriteria": [
+    "any request reaches the service before all 32 old-epoch session resolutions are paused",
+    "DELETE does not return 202 with epoch 2",
+    "any released old-epoch request returns anything other than 401",
+    "any released request has a transport error",
+    "deletion worker processes zero or more than one account",
+    "any account-owned row survives worker completion",
+    "result contains bearer token, account id, job id, Preview id, object key, endpoint credential or database URL"
+  ],
+  "evidenceBoundary": {
+    "syntheticDataOnly": true,
+    "productionTraffic": false,
+    "productionCredentials": false,
+    "productionEvidence": false,
+    "productionEquivalentDependencies": false,
+    "previewReadSurfaceOnly": true,
+    "hostFailureCovered": false,
+    "multiAccountWorkerSaturationCovered": false,
+    "productionReady": false
+  },
+  "readiness": {
+    "contractDefined": true,
+    "runnerImplemented": true,
+    "validatorImplemented": false,
+    "automaticWorkflowImplemented": false,
+    "exactSourceResultCommitted": false,
+    "preFenceInFlightLinearizationProven": false,
+    "productionDependenciesTested": false,
+    "independentReviewCompleted": false,
+    "productionReady": false
+  },
+  "limitations": [
+    "Preview read is the first in-flight surface proven",
+    "one account and one deletion worker",
+    "local PostgreSQL 16 and MinIO on a GitHub-hosted runner",
+    "does not prove host-failure behavior or multi-account worker saturation",
+    "not production deletion-capacity evidence"
+  ]
+}
