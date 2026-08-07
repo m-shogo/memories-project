@@ -1,0 +1,1004 @@
+{
+  "schemaVersion": "memory-os-sustained-local-soak-results.v1",
+  "commitSha": "9dd97a9571e58a08a1d8ee43a9f378a505a09c15",
+  "runId": "gha-31157909318-1-b",
+  "generatedAt": "2026-08-07T08:30:57Z",
+  "environment": {
+    "os": "linux",
+    "arch": "amd64",
+    "numCpu": 4,
+    "goVersion": "go1.23.12",
+    "dependencyMode": "LOCAL_POSTGRES_MINIO",
+    "classification": "LOCAL_LONG_SOAK",
+    "syntheticDataOnly": true,
+    "loopbackDependenciesOnly": true,
+    "productionTraffic": false,
+    "productionCredentials": false,
+    "productionEvidence": false,
+    "productionEquivalentDependencies": false,
+    "containsSecrets": false
+  },
+  "scenario": {
+    "scenarioId": "mixed-import-lifecycle-local-long-soak",
+    "startedAt": "2026-08-07T07:30:57Z",
+    "completedAt": "2026-08-07T08:30:57Z",
+    "durationSeconds": 3600.103112721,
+    "windowCount": 12,
+    "coverage": {
+      "authenticatedPreviewRead": true,
+      "deletionWorker": true,
+      "minio": true,
+      "parserSupervisor": true,
+      "postgresql": true,
+      "scanQueue": true,
+      "signedUploadLifecycle": true
+    },
+    "observations": [
+      {
+        "window": 1,
+        "observedAt": "2026-08-07T07:35:57Z",
+        "elapsedSeconds": 300.105125698,
+        "requestsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 1,
+          "previewRead": 64,
+          "signedUploadLifecycle": 8
+        },
+        "successesBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 1,
+          "previewRead": 64,
+          "signedUploadLifecycle": 8
+        },
+        "failuresBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 0,
+          "previewRead": 0,
+          "signedUploadLifecycle": 0
+        },
+        "statusClassCountsBySurface": {
+          "deletionWorker": {
+            "fail": 0,
+            "pass": 0
+          },
+          "parserSupervisor": {
+            "fail": 0,
+            "pass": 1
+          },
+          "previewRead": {
+            "2xx": 64
+          },
+          "signedUploadLifecycle": {
+            "2xx": 8
+          }
+        },
+        "latencyP50MsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 212.059241,
+          "previewRead": 10.767,
+          "signedUploadLifecycle": 16.97
+        },
+        "latencyP95MsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 212.059241,
+          "previewRead": 23.409,
+          "signedUploadLifecycle": 25.372
+        },
+        "latencyP99MsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 212.059241,
+          "previewRead": 28.403,
+          "signedUploadLifecycle": 25.372
+        },
+        "heapAllocBytes": 1049984,
+        "heapInuseBytes": 2818048,
+        "rssBytes": 21061632,
+        "goroutines": 5,
+        "dbPoolMaxConns": 4,
+        "dbPoolTotalConns": 4,
+        "dbPoolAcquiredConns": 0,
+        "dbPoolIdleConns": 4,
+        "dbPoolEmptyAcquireCount": 192,
+        "dbPoolCanceledAcquireCount": 0,
+        "dbPoolAcquireDurationMs": 390.059986,
+        "scanQueuePending": 8,
+        "scanQueueOldestPendingSeconds": 299.98152,
+        "deletionPending": 0,
+        "deletionStuck": 0,
+        "minioLifecycleSuccesses": 8,
+        "parserRuns": 1,
+        "parserFailures": 0
+      },
+      {
+        "window": 2,
+        "observedAt": "2026-08-07T07:40:57Z",
+        "elapsedSeconds": 600.103518559,
+        "requestsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 1,
+          "previewRead": 64,
+          "signedUploadLifecycle": 8
+        },
+        "successesBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 1,
+          "previewRead": 64,
+          "signedUploadLifecycle": 8
+        },
+        "failuresBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 0,
+          "previewRead": 0,
+          "signedUploadLifecycle": 0
+        },
+        "statusClassCountsBySurface": {
+          "deletionWorker": {
+            "fail": 0,
+            "pass": 0
+          },
+          "parserSupervisor": {
+            "fail": 0,
+            "pass": 1
+          },
+          "previewRead": {
+            "2xx": 64
+          },
+          "signedUploadLifecycle": {
+            "2xx": 8
+          }
+        },
+        "latencyP50MsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 123.701731,
+          "previewRead": 10.071,
+          "signedUploadLifecycle": 17.152
+        },
+        "latencyP95MsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 123.701731,
+          "previewRead": 11.479,
+          "signedUploadLifecycle": 19.304
+        },
+        "latencyP99MsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 123.701731,
+          "previewRead": 12.413,
+          "signedUploadLifecycle": 19.304
+        },
+        "heapAllocBytes": 1077176,
+        "heapInuseBytes": 2850816,
+        "rssBytes": 21594112,
+        "goroutines": 5,
+        "dbPoolMaxConns": 4,
+        "dbPoolTotalConns": 4,
+        "dbPoolAcquiredConns": 0,
+        "dbPoolIdleConns": 4,
+        "dbPoolEmptyAcquireCount": 379,
+        "dbPoolCanceledAcquireCount": 0,
+        "dbPoolAcquireDurationMs": 689.833521,
+        "scanQueuePending": 16,
+        "scanQueueOldestPendingSeconds": 599.980033,
+        "deletionPending": 0,
+        "deletionStuck": 0,
+        "minioLifecycleSuccesses": 8,
+        "parserRuns": 1,
+        "parserFailures": 0
+      },
+      {
+        "window": 3,
+        "observedAt": "2026-08-07T07:45:57Z",
+        "elapsedSeconds": 900.10453213,
+        "requestsBySurface": {
+          "deletionWorker": 1,
+          "parserSupervisor": 1,
+          "previewRead": 64,
+          "signedUploadLifecycle": 8
+        },
+        "successesBySurface": {
+          "deletionWorker": 1,
+          "parserSupervisor": 1,
+          "previewRead": 64,
+          "signedUploadLifecycle": 8
+        },
+        "failuresBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 0,
+          "previewRead": 0,
+          "signedUploadLifecycle": 0
+        },
+        "statusClassCountsBySurface": {
+          "deletionWorker": {
+            "fail": 0,
+            "pass": 1
+          },
+          "parserSupervisor": {
+            "fail": 0,
+            "pass": 1
+          },
+          "previewRead": {
+            "2xx": 64
+          },
+          "signedUploadLifecycle": {
+            "2xx": 8
+          }
+        },
+        "latencyP50MsBySurface": {
+          "deletionWorker": 29.575533,
+          "parserSupervisor": 128.871175,
+          "previewRead": 9.94,
+          "signedUploadLifecycle": 17.517
+        },
+        "latencyP95MsBySurface": {
+          "deletionWorker": 29.575533,
+          "parserSupervisor": 128.871175,
+          "previewRead": 11.516,
+          "signedUploadLifecycle": 18.91
+        },
+        "latencyP99MsBySurface": {
+          "deletionWorker": 29.575533,
+          "parserSupervisor": 128.871175,
+          "previewRead": 11.947,
+          "signedUploadLifecycle": 18.91
+        },
+        "heapAllocBytes": 1105424,
+        "heapInuseBytes": 2932736,
+        "rssBytes": 21557248,
+        "goroutines": 5,
+        "dbPoolMaxConns": 4,
+        "dbPoolTotalConns": 4,
+        "dbPoolAcquiredConns": 0,
+        "dbPoolIdleConns": 4,
+        "dbPoolEmptyAcquireCount": 567,
+        "dbPoolCanceledAcquireCount": 0,
+        "dbPoolAcquireDurationMs": 983.552978,
+        "scanQueuePending": 24,
+        "scanQueueOldestPendingSeconds": 899.980858,
+        "deletionPending": 0,
+        "deletionStuck": 0,
+        "minioLifecycleSuccesses": 8,
+        "parserRuns": 1,
+        "parserFailures": 0
+      },
+      {
+        "window": 4,
+        "observedAt": "2026-08-07T07:50:57Z",
+        "elapsedSeconds": 1200.103156394,
+        "requestsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 1,
+          "previewRead": 64,
+          "signedUploadLifecycle": 8
+        },
+        "successesBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 1,
+          "previewRead": 64,
+          "signedUploadLifecycle": 8
+        },
+        "failuresBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 0,
+          "previewRead": 0,
+          "signedUploadLifecycle": 0
+        },
+        "statusClassCountsBySurface": {
+          "deletionWorker": {
+            "fail": 0,
+            "pass": 0
+          },
+          "parserSupervisor": {
+            "fail": 0,
+            "pass": 1
+          },
+          "previewRead": {
+            "2xx": 64
+          },
+          "signedUploadLifecycle": {
+            "2xx": 8
+          }
+        },
+        "latencyP50MsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 124.790778,
+          "previewRead": 9.865,
+          "signedUploadLifecycle": 16.55
+        },
+        "latencyP95MsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 124.790778,
+          "previewRead": 11.71,
+          "signedUploadLifecycle": 18.242
+        },
+        "latencyP99MsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 124.790778,
+          "previewRead": 12.996,
+          "signedUploadLifecycle": 18.242
+        },
+        "heapAllocBytes": 1112912,
+        "heapInuseBytes": 2957312,
+        "rssBytes": 21417984,
+        "goroutines": 5,
+        "dbPoolMaxConns": 4,
+        "dbPoolTotalConns": 4,
+        "dbPoolAcquiredConns": 0,
+        "dbPoolIdleConns": 4,
+        "dbPoolEmptyAcquireCount": 754,
+        "dbPoolCanceledAcquireCount": 0,
+        "dbPoolAcquireDurationMs": 1282.29177,
+        "scanQueuePending": 32,
+        "scanQueueOldestPendingSeconds": 1199.980282,
+        "deletionPending": 0,
+        "deletionStuck": 0,
+        "minioLifecycleSuccesses": 8,
+        "parserRuns": 1,
+        "parserFailures": 0
+      },
+      {
+        "window": 5,
+        "observedAt": "2026-08-07T07:55:57Z",
+        "elapsedSeconds": 1500.103007461,
+        "requestsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 1,
+          "previewRead": 64,
+          "signedUploadLifecycle": 8
+        },
+        "successesBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 1,
+          "previewRead": 64,
+          "signedUploadLifecycle": 8
+        },
+        "failuresBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 0,
+          "previewRead": 0,
+          "signedUploadLifecycle": 0
+        },
+        "statusClassCountsBySurface": {
+          "deletionWorker": {
+            "fail": 0,
+            "pass": 0
+          },
+          "parserSupervisor": {
+            "fail": 0,
+            "pass": 1
+          },
+          "previewRead": {
+            "2xx": 64
+          },
+          "signedUploadLifecycle": {
+            "2xx": 8
+          }
+        },
+        "latencyP50MsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 124.788729,
+          "previewRead": 9.894,
+          "signedUploadLifecycle": 17.15
+        },
+        "latencyP95MsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 124.788729,
+          "previewRead": 11.711,
+          "signedUploadLifecycle": 19.317
+        },
+        "latencyP99MsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 124.788729,
+          "previewRead": 12.004,
+          "signedUploadLifecycle": 19.317
+        },
+        "heapAllocBytes": 1135736,
+        "heapInuseBytes": 2990080,
+        "rssBytes": 21893120,
+        "goroutines": 5,
+        "dbPoolMaxConns": 4,
+        "dbPoolTotalConns": 4,
+        "dbPoolAcquiredConns": 0,
+        "dbPoolIdleConns": 4,
+        "dbPoolEmptyAcquireCount": 939,
+        "dbPoolCanceledAcquireCount": 0,
+        "dbPoolAcquireDurationMs": 1581.447226,
+        "scanQueuePending": 40,
+        "scanQueueOldestPendingSeconds": 1499.980268,
+        "deletionPending": 0,
+        "deletionStuck": 0,
+        "minioLifecycleSuccesses": 8,
+        "parserRuns": 1,
+        "parserFailures": 0
+      },
+      {
+        "window": 6,
+        "observedAt": "2026-08-07T08:00:57Z",
+        "elapsedSeconds": 1800.103219713,
+        "requestsBySurface": {
+          "deletionWorker": 1,
+          "parserSupervisor": 1,
+          "previewRead": 64,
+          "signedUploadLifecycle": 8
+        },
+        "successesBySurface": {
+          "deletionWorker": 1,
+          "parserSupervisor": 1,
+          "previewRead": 64,
+          "signedUploadLifecycle": 8
+        },
+        "failuresBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 0,
+          "previewRead": 0,
+          "signedUploadLifecycle": 0
+        },
+        "statusClassCountsBySurface": {
+          "deletionWorker": {
+            "fail": 0,
+            "pass": 1
+          },
+          "parserSupervisor": {
+            "fail": 0,
+            "pass": 1
+          },
+          "previewRead": {
+            "2xx": 64
+          },
+          "signedUploadLifecycle": {
+            "2xx": 8
+          }
+        },
+        "latencyP50MsBySurface": {
+          "deletionWorker": 30.067234,
+          "parserSupervisor": 320.4913,
+          "previewRead": 9.867,
+          "signedUploadLifecycle": 17.171
+        },
+        "latencyP95MsBySurface": {
+          "deletionWorker": 30.067234,
+          "parserSupervisor": 320.4913,
+          "previewRead": 11.382,
+          "signedUploadLifecycle": 18.165
+        },
+        "latencyP99MsBySurface": {
+          "deletionWorker": 30.067234,
+          "parserSupervisor": 320.4913,
+          "previewRead": 11.576,
+          "signedUploadLifecycle": 18.165
+        },
+        "heapAllocBytes": 1150448,
+        "heapInuseBytes": 3112960,
+        "rssBytes": 21479424,
+        "goroutines": 5,
+        "dbPoolMaxConns": 4,
+        "dbPoolTotalConns": 4,
+        "dbPoolAcquiredConns": 0,
+        "dbPoolIdleConns": 4,
+        "dbPoolEmptyAcquireCount": 1127,
+        "dbPoolCanceledAcquireCount": 0,
+        "dbPoolAcquireDurationMs": 1875.973552,
+        "scanQueuePending": 48,
+        "scanQueueOldestPendingSeconds": 1799.980614,
+        "deletionPending": 0,
+        "deletionStuck": 0,
+        "minioLifecycleSuccesses": 8,
+        "parserRuns": 1,
+        "parserFailures": 0
+      },
+      {
+        "window": 7,
+        "observedAt": "2026-08-07T08:05:57Z",
+        "elapsedSeconds": 2100.10454676,
+        "requestsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 1,
+          "previewRead": 64,
+          "signedUploadLifecycle": 8
+        },
+        "successesBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 1,
+          "previewRead": 64,
+          "signedUploadLifecycle": 8
+        },
+        "failuresBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 0,
+          "previewRead": 0,
+          "signedUploadLifecycle": 0
+        },
+        "statusClassCountsBySurface": {
+          "deletionWorker": {
+            "fail": 0,
+            "pass": 0
+          },
+          "parserSupervisor": {
+            "fail": 0,
+            "pass": 1
+          },
+          "previewRead": {
+            "2xx": 64
+          },
+          "signedUploadLifecycle": {
+            "2xx": 8
+          }
+        },
+        "latencyP50MsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 126.301476,
+          "previewRead": 9.794,
+          "signedUploadLifecycle": 16.919
+        },
+        "latencyP95MsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 126.301476,
+          "previewRead": 12.031,
+          "signedUploadLifecycle": 17.756
+        },
+        "latencyP99MsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 126.301476,
+          "previewRead": 12.347,
+          "signedUploadLifecycle": 17.756
+        },
+        "heapAllocBytes": 1155016,
+        "heapInuseBytes": 3112960,
+        "rssBytes": 21766144,
+        "goroutines": 5,
+        "dbPoolMaxConns": 4,
+        "dbPoolTotalConns": 4,
+        "dbPoolAcquiredConns": 0,
+        "dbPoolIdleConns": 4,
+        "dbPoolEmptyAcquireCount": 1313,
+        "dbPoolCanceledAcquireCount": 0,
+        "dbPoolAcquireDurationMs": 2172.622623,
+        "scanQueuePending": 56,
+        "scanQueueOldestPendingSeconds": 2099.980803,
+        "deletionPending": 0,
+        "deletionStuck": 0,
+        "minioLifecycleSuccesses": 8,
+        "parserRuns": 1,
+        "parserFailures": 0
+      },
+      {
+        "window": 8,
+        "observedAt": "2026-08-07T08:10:57Z",
+        "elapsedSeconds": 2400.103340221,
+        "requestsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 1,
+          "previewRead": 64,
+          "signedUploadLifecycle": 8
+        },
+        "successesBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 1,
+          "previewRead": 64,
+          "signedUploadLifecycle": 8
+        },
+        "failuresBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 0,
+          "previewRead": 0,
+          "signedUploadLifecycle": 0
+        },
+        "statusClassCountsBySurface": {
+          "deletionWorker": {
+            "fail": 0,
+            "pass": 0
+          },
+          "parserSupervisor": {
+            "fail": 0,
+            "pass": 1
+          },
+          "previewRead": {
+            "2xx": 64
+          },
+          "signedUploadLifecycle": {
+            "2xx": 8
+          }
+        },
+        "latencyP50MsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 126.911929,
+          "previewRead": 9.27,
+          "signedUploadLifecycle": 16.024
+        },
+        "latencyP95MsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 126.911929,
+          "previewRead": 10.995,
+          "signedUploadLifecycle": 17.368
+        },
+        "latencyP99MsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 126.911929,
+          "previewRead": 11.202,
+          "signedUploadLifecycle": 17.368
+        },
+        "heapAllocBytes": 1161872,
+        "heapInuseBytes": 3104768,
+        "rssBytes": 21770240,
+        "goroutines": 5,
+        "dbPoolMaxConns": 4,
+        "dbPoolTotalConns": 4,
+        "dbPoolAcquiredConns": 0,
+        "dbPoolIdleConns": 4,
+        "dbPoolEmptyAcquireCount": 1496,
+        "dbPoolCanceledAcquireCount": 0,
+        "dbPoolAcquireDurationMs": 2452.971067,
+        "scanQueuePending": 64,
+        "scanQueueOldestPendingSeconds": 2399.980688,
+        "deletionPending": 0,
+        "deletionStuck": 0,
+        "minioLifecycleSuccesses": 8,
+        "parserRuns": 1,
+        "parserFailures": 0
+      },
+      {
+        "window": 9,
+        "observedAt": "2026-08-07T08:15:57Z",
+        "elapsedSeconds": 2700.103232992,
+        "requestsBySurface": {
+          "deletionWorker": 1,
+          "parserSupervisor": 1,
+          "previewRead": 64,
+          "signedUploadLifecycle": 8
+        },
+        "successesBySurface": {
+          "deletionWorker": 1,
+          "parserSupervisor": 1,
+          "previewRead": 64,
+          "signedUploadLifecycle": 8
+        },
+        "failuresBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 0,
+          "previewRead": 0,
+          "signedUploadLifecycle": 0
+        },
+        "statusClassCountsBySurface": {
+          "deletionWorker": {
+            "fail": 0,
+            "pass": 1
+          },
+          "parserSupervisor": {
+            "fail": 0,
+            "pass": 1
+          },
+          "previewRead": {
+            "2xx": 64
+          },
+          "signedUploadLifecycle": {
+            "2xx": 8
+          }
+        },
+        "latencyP50MsBySurface": {
+          "deletionWorker": 20.010836,
+          "parserSupervisor": 125.585263,
+          "previewRead": 9.817,
+          "signedUploadLifecycle": 17.892
+        },
+        "latencyP95MsBySurface": {
+          "deletionWorker": 20.010836,
+          "parserSupervisor": 125.585263,
+          "previewRead": 11.313,
+          "signedUploadLifecycle": 18.922
+        },
+        "latencyP99MsBySurface": {
+          "deletionWorker": 20.010836,
+          "parserSupervisor": 125.585263,
+          "previewRead": 12.24,
+          "signedUploadLifecycle": 18.922
+        },
+        "heapAllocBytes": 1167080,
+        "heapInuseBytes": 3178496,
+        "rssBytes": 22360064,
+        "goroutines": 5,
+        "dbPoolMaxConns": 4,
+        "dbPoolTotalConns": 4,
+        "dbPoolAcquiredConns": 0,
+        "dbPoolIdleConns": 4,
+        "dbPoolEmptyAcquireCount": 1684,
+        "dbPoolCanceledAcquireCount": 0,
+        "dbPoolAcquireDurationMs": 2750.375384,
+        "scanQueuePending": 72,
+        "scanQueueOldestPendingSeconds": 2699.980461,
+        "deletionPending": 0,
+        "deletionStuck": 0,
+        "minioLifecycleSuccesses": 8,
+        "parserRuns": 1,
+        "parserFailures": 0
+      },
+      {
+        "window": 10,
+        "observedAt": "2026-08-07T08:20:57Z",
+        "elapsedSeconds": 3000.103350198,
+        "requestsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 1,
+          "previewRead": 64,
+          "signedUploadLifecycle": 8
+        },
+        "successesBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 1,
+          "previewRead": 64,
+          "signedUploadLifecycle": 8
+        },
+        "failuresBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 0,
+          "previewRead": 0,
+          "signedUploadLifecycle": 0
+        },
+        "statusClassCountsBySurface": {
+          "deletionWorker": {
+            "fail": 0,
+            "pass": 0
+          },
+          "parserSupervisor": {
+            "fail": 0,
+            "pass": 1
+          },
+          "previewRead": {
+            "2xx": 64
+          },
+          "signedUploadLifecycle": {
+            "2xx": 8
+          }
+        },
+        "latencyP50MsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 189.36991,
+          "previewRead": 9.947,
+          "signedUploadLifecycle": 16.747
+        },
+        "latencyP95MsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 189.36991,
+          "previewRead": 11.382,
+          "signedUploadLifecycle": 17.253
+        },
+        "latencyP99MsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 189.36991,
+          "previewRead": 12.419,
+          "signedUploadLifecycle": 17.253
+        },
+        "heapAllocBytes": 1172304,
+        "heapInuseBytes": 3153920,
+        "rssBytes": 21716992,
+        "goroutines": 5,
+        "dbPoolMaxConns": 4,
+        "dbPoolTotalConns": 4,
+        "dbPoolAcquiredConns": 0,
+        "dbPoolIdleConns": 4,
+        "dbPoolEmptyAcquireCount": 1870,
+        "dbPoolCanceledAcquireCount": 0,
+        "dbPoolAcquireDurationMs": 3051.705522,
+        "scanQueuePending": 80,
+        "scanQueueOldestPendingSeconds": 2999.980753,
+        "deletionPending": 0,
+        "deletionStuck": 0,
+        "minioLifecycleSuccesses": 8,
+        "parserRuns": 1,
+        "parserFailures": 0
+      },
+      {
+        "window": 11,
+        "observedAt": "2026-08-07T08:25:57Z",
+        "elapsedSeconds": 3300.103304691,
+        "requestsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 1,
+          "previewRead": 64,
+          "signedUploadLifecycle": 8
+        },
+        "successesBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 1,
+          "previewRead": 64,
+          "signedUploadLifecycle": 8
+        },
+        "failuresBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 0,
+          "previewRead": 0,
+          "signedUploadLifecycle": 0
+        },
+        "statusClassCountsBySurface": {
+          "deletionWorker": {
+            "fail": 0,
+            "pass": 0
+          },
+          "parserSupervisor": {
+            "fail": 0,
+            "pass": 1
+          },
+          "previewRead": {
+            "2xx": 64
+          },
+          "signedUploadLifecycle": {
+            "2xx": 8
+          }
+        },
+        "latencyP50MsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 128.781714,
+          "previewRead": 10.018,
+          "signedUploadLifecycle": 16.255
+        },
+        "latencyP95MsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 128.781714,
+          "previewRead": 11.597,
+          "signedUploadLifecycle": 17.818
+        },
+        "latencyP99MsBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 128.781714,
+          "previewRead": 11.922,
+          "signedUploadLifecycle": 17.818
+        },
+        "heapAllocBytes": 1168552,
+        "heapInuseBytes": 3162112,
+        "rssBytes": 21594112,
+        "goroutines": 5,
+        "dbPoolMaxConns": 4,
+        "dbPoolTotalConns": 4,
+        "dbPoolAcquiredConns": 0,
+        "dbPoolIdleConns": 4,
+        "dbPoolEmptyAcquireCount": 2057,
+        "dbPoolCanceledAcquireCount": 0,
+        "dbPoolAcquireDurationMs": 3346.675621,
+        "scanQueuePending": 88,
+        "scanQueueOldestPendingSeconds": 3299.980645,
+        "deletionPending": 0,
+        "deletionStuck": 0,
+        "minioLifecycleSuccesses": 8,
+        "parserRuns": 1,
+        "parserFailures": 0
+      },
+      {
+        "window": 12,
+        "observedAt": "2026-08-07T08:30:57Z",
+        "elapsedSeconds": 3600.103107606,
+        "requestsBySurface": {
+          "deletionWorker": 1,
+          "parserSupervisor": 1,
+          "previewRead": 64,
+          "signedUploadLifecycle": 8
+        },
+        "successesBySurface": {
+          "deletionWorker": 1,
+          "parserSupervisor": 1,
+          "previewRead": 64,
+          "signedUploadLifecycle": 8
+        },
+        "failuresBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 0,
+          "previewRead": 0,
+          "signedUploadLifecycle": 0
+        },
+        "statusClassCountsBySurface": {
+          "deletionWorker": {
+            "fail": 0,
+            "pass": 1
+          },
+          "parserSupervisor": {
+            "fail": 0,
+            "pass": 1
+          },
+          "previewRead": {
+            "2xx": 64
+          },
+          "signedUploadLifecycle": {
+            "2xx": 8
+          }
+        },
+        "latencyP50MsBySurface": {
+          "deletionWorker": 21.435006,
+          "parserSupervisor": 129.201636,
+          "previewRead": 9.871,
+          "signedUploadLifecycle": 20.384
+        },
+        "latencyP95MsBySurface": {
+          "deletionWorker": 21.435006,
+          "parserSupervisor": 129.201636,
+          "previewRead": 11.544,
+          "signedUploadLifecycle": 190.753
+        },
+        "latencyP99MsBySurface": {
+          "deletionWorker": 21.435006,
+          "parserSupervisor": 129.201636,
+          "previewRead": 12,
+          "signedUploadLifecycle": 190.753
+        },
+        "heapAllocBytes": 1172976,
+        "heapInuseBytes": 3186688,
+        "rssBytes": 21864448,
+        "goroutines": 5,
+        "dbPoolMaxConns": 4,
+        "dbPoolTotalConns": 4,
+        "dbPoolAcquiredConns": 0,
+        "dbPoolIdleConns": 4,
+        "dbPoolEmptyAcquireCount": 2245,
+        "dbPoolCanceledAcquireCount": 0,
+        "dbPoolAcquireDurationMs": 3646.518405,
+        "scanQueuePending": 96,
+        "scanQueueOldestPendingSeconds": 3599.980086,
+        "deletionPending": 0,
+        "deletionStuck": 0,
+        "minioLifecycleSuccesses": 8,
+        "parserRuns": 1,
+        "parserFailures": 0
+      }
+    ],
+    "trends": {
+      "dbConnectionTrend": {
+        "acquireDurationMsPerMinute": 59.0638861356912,
+        "acquiredConnsPerMinute": 0,
+        "emptyAcquireCountPerMinute": 37.28183107897647,
+        "totalConnsPerMinute": 0
+      },
+      "deletionBacklogTrend": {
+        "pendingPerMinute": 0,
+        "stuckPerMinute": 0
+      },
+      "errorRateTrendBySurface": {
+        "deletionWorker": 0,
+        "parserSupervisor": 0,
+        "previewRead": 0,
+        "signedUploadLifecycle": 0
+      },
+      "goroutineSlopePerMinute": 8.480142948164237e-17,
+      "heapAllocSlopeBytesPerMinute": 2095.994984326303,
+      "heapInuseSlopeBytesPerMinute": 6891.593945779835,
+      "latencyTrendBySurface": {
+        "deletionWorker": {
+          "p95MsPerMinute": 0.06905127549461798,
+          "p99MsPerMinute": 0.06905127549461798
+        },
+        "parserSupervisor": {
+          "p95MsPerMinute": -0.4378116452686052,
+          "p99MsPerMinute": -0.4378116452686052
+        },
+        "previewRead": {
+          "p95MsPerMinute": -0.09361885989047686,
+          "p99MsPerMinute": -0.13074333209775735
+        },
+        "signedUploadLifecycle": {
+          "p95MsPerMinute": 1.2527012031157712,
+          "p99MsPerMinute": 1.2527012031157712
+        }
+      },
+      "rssSlopeBytesPerMinute": 10194.171860917668,
+      "scanQueueTrend": {
+        "oldestPendingSecondsPerMinute": 60.00001470771049,
+        "pendingPerMinute": 1.6000005536413187
+      }
+    },
+    "assertions": {
+      "allRequiredCoverageExecuted": true,
+      "capacityBoundaryEstablished": false,
+      "deletionBacklogConverged": true,
+      "leakProof": false,
+      "operationalThresholdApproved": false,
+      "postRunRecoveryProbePassed": true,
+      "productionEquivalentDependencies": false,
+      "productionEvidence": false,
+      "scanQueueRemainsWithinBound": true
+    },
+    "result": "PASS",
+    "integrityResult": "PASS"
+  },
+  "limitations": [
+    "local PostgreSQL 16 and MinIO on one GitHub-hosted runner",
+    "parser recovery runs in a bounded Linux child test while API RSS/heap measure the long-lived HTTP test process",
+    "scan queue is observed but intentionally not drained by a production scan-worker topology",
+    "one account drives Preview/upload workload; separate synthetic accounts exercise deletion worker convergence",
+    "one passing run is not repeated sustained-soak evidence and never proves absence of leaks",
+    "not production or production-equivalent evidence"
+  ]
+}
