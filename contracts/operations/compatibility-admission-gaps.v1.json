@@ -1,0 +1,92 @@
+{
+  "schemaVersion": "memory-os-compatibility-admission-gaps.v1",
+  "sourceAuthorities": [
+    "contracts/operations/release-baseline-registry.v1.json",
+    "contracts/operations/client-baseline-registry.v1.json",
+    "contracts/operations/parser-artifact-registry.v1.json",
+    "contracts/operations/version-compatibility-foundations.v1.json",
+    "contracts/operations/version-compatibility-execution-evidence.v1.json"
+  ],
+  "currentCounts": {
+    "approvedBackendReleases": 0,
+    "approvedClientBaselines": 0,
+    "reviewedProductionParserArtifacts": 0,
+    "approvedRollbackPairs": 0
+  },
+  "alreadyProvenCandidateLocalOnly": {
+    "candidateOnlyMixedVersionExecution": true,
+    "candidateApplyConcurrencyAndSIGKILLRecovery": true,
+    "postgresql17LogicalForwardExecution": true
+  },
+  "blockingGaps": [
+    {
+      "id": "COMPAT-GAP-APPROVED-RELEASE-PAIR",
+      "blocking": true,
+      "current": 0,
+      "requiredMinimum": 2,
+      "reason": "an approved predecessor and approved successor are required before release compatibility can be executed"
+    },
+    {
+      "id": "COMPAT-GAP-ROLLBACK-PAIR",
+      "blocking": true,
+      "current": 0,
+      "requiredMinimum": 1,
+      "reason": "at least one rollback-eligible approved release pair with retained exact artifacts and admitted rehearsal is required"
+    },
+    {
+      "id": "COMPAT-GAP-APPROVED-CLIENT-BASELINE",
+      "blocking": true,
+      "current": 0,
+      "requiredMinimum": 1,
+      "reason": "client/server support windows cannot exist without an immutable approved client artifact baseline"
+    },
+    {
+      "id": "COMPAT-GAP-REVIEWED-PARSER-ARTIFACT",
+      "blocking": true,
+      "current": 0,
+      "requiredMinimum": 1,
+      "reason": "production parser compatibility requires a reviewed immutable parser artifact and replay evidence"
+    },
+    {
+      "id": "COMPAT-GAP-ROLLING-DEPLOYMENT",
+      "blocking": true,
+      "current": false,
+      "required": true,
+      "reason": "approved old/current simultaneous traffic, connection drain, rollout ordering, stop conditions and application rollback are not proven"
+    },
+    {
+      "id": "COMPAT-GAP-REMAINING-ROUTES",
+      "blocking": true,
+      "current": false,
+      "required": true,
+      "reason": "candidate/local execution covers session and Apply but not all import, Preview, parser and other persisted-state routes against an approved pair"
+    },
+    {
+      "id": "COMPAT-GAP-DB-PRODUCTION-UPGRADE",
+      "blocking": true,
+      "current": false,
+      "required": true,
+      "reason": "local PostgreSQL 16-to-17 logical forward restore passes, but production-shaped pool drain, replication, WAL, failover and rollback decision evidence is absent"
+    },
+    {
+      "id": "COMPAT-GAP-INDEPENDENT-REVIEW",
+      "blocking": true,
+      "current": false,
+      "required": true,
+      "reason": "integrated compatibility review with zero unresolved Critical or High findings is absent"
+    }
+  ],
+  "blockingGapCount": 8,
+  "releaseCompatibilityEvidence": false,
+  "productionEvidence": false,
+  "productionReady": false,
+  "productionDecision": "NO_GO",
+  "nextAdmissionOrder": [
+    "approve an immutable backend release baseline only after its existing release-evidence gate passes",
+    "obtain a second approved release and form an approved predecessor/successor pair",
+    "approve at least one immutable client baseline and reviewed parser artifact",
+    "execute approved-pair mixed-version routes and rolling rollback rehearsal",
+    "execute production-shaped PostgreSQL upgrade/failover evidence",
+    "complete independent integrated compatibility review"
+  ]
+}
