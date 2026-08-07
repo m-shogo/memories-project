@@ -1,0 +1,100 @@
+{
+  "contractId": "memory-os.operability.controlled-saturation-ramp.v1",
+  "schemaVersion": "memory-os-controlled-saturation-ramp.v1",
+  "resultsSchemaVersion": "memory-os-controlled-saturation-ramp-results.v1",
+  "description": "Bounded local PostgreSQL plus MinIO saturation-discovery ramp for the signed-upload lifecycle. The experiment may observe overload failures without weakening its assertions, but it may never promote one ephemeral run into a production capacity boundary or operating threshold.",
+  "scenarioId": "signed-upload-controlled-saturation-ramp-local-dependencies",
+  "dependencyMode": "LOCAL_POSTGRES_MINIO",
+  "classification": "BOUNDED_LOCAL_CAPACITY_RAMP",
+  "workloadType": "CONTROLLED_RAMP",
+  "measuredLifecycle": [
+    "POST /v1/import-jobs/{jobId}/upload-authorizations",
+    "presigned PUT to local MinIO",
+    "POST /v1/upload-authorizations/{authorizationId}/complete"
+  ],
+  "concurrencySteps": [4, 8, 16, 24, 32, 48],
+  "requestsPerStep": 64,
+  "maximumMeasuredRequests": 384,
+  "postRampRecoveryProbeRequests": 1,
+  "maximumTotalLifecycleRequests": 385,
+  "resultPath": "docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.sample.v1.json",
+  "runner": "services/import-api/internal/httpserver/controlled_saturation_ramp_test.go",
+  "validator": "scripts/validate-memory-os-controlled-saturation-ramp.py",
+  "reconcile": "scripts/reconcile-memory-os-controlled-saturation-ramp-status.py",
+  "workflow": ".github/workflows/controlled-saturation-ramp.yml",
+  "requiredMeasurements": [
+    "requests",
+    "concurrency",
+    "successes",
+    "failures",
+    "statusClassCounts",
+    "durationSeconds",
+    "throughput",
+    "latencyP50Ms",
+    "latencyP95Ms",
+    "latencyP99Ms",
+    "poolMaxConns",
+    "poolEmptyAcquireCountDelta",
+    "poolCanceledAcquireCountDelta",
+    "poolAcquireDurationDeltaMs"
+  ],
+  "signalRules": {
+    "firstSaturationSignal": "first concurrency step with any transport error, any 5xx, any 3xx/4xx, or fewer successful 202 lifecycle completions than requests",
+    "firstPoolContentionSignal": "first concurrency step where pgxpool EmptyAcquireCount increases; this is queue/contention evidence only and is not by itself a capacity boundary",
+    "noObservedSaturationDecision": "BOUNDARY_NOT_ESTABLISHED",
+    "observedSaturationDecision": "LOCAL_SATURATION_SIGNAL_REQUIRES_REPEATABILITY_REVIEW",
+    "singleRunCapacityBoundaryPromotionForbidden": true,
+    "automaticOperationalThresholdPromotionForbidden": true
+  },
+  "integrityCriteria": {
+    "forEverySuccessfulLifecycleOneConsumedAuthorization": true,
+    "forEverySuccessfulLifecycleOneScanPendingQuarantineRow": true,
+    "successfulLifecycleObjectKeysUnique": true,
+    "successfulLifecycleObjectVersionIdsUnique": true,
+    "no3xxOr4xxAcceptedAsSaturation": true,
+    "postRampRecoveryProbeMustSucceed": true
+  },
+  "abortCriteria": [
+    "any cross-tenant or authorization invariant failure",
+    "database/object accounting diverges from successful lifecycle completions",
+    "post-ramp recovery probe does not complete exactly once",
+    "any persisted token, account identifier, object key, signed URL or credential in the result document",
+    "any attempt to run with production traffic or production credentials",
+    "runner exceeds the workflow timeout"
+  ],
+  "evidenceBoundary": {
+    "syntheticDataOnly": true,
+    "productionTraffic": false,
+    "productionCredentials": false,
+    "productionEvidence": false,
+    "productionEquivalentDependencies": false,
+    "capacityBoundaryEstablished": false,
+    "operationalThresholdApproved": false,
+    "independentReviewCompleted": false,
+    "productionReady": false
+  },
+  "readiness": {
+    "contractDefined": true,
+    "runnerImplemented": false,
+    "validatorImplemented": false,
+    "automaticWorkflowImplemented": false,
+    "exactSourceResultCommitted": false,
+    "localRampExecuted": false,
+    "localSaturationSignalObserved": false,
+    "poolContentionSignalObserved": false,
+    "repeatabilityEstablished": false,
+    "capacityBoundaryEstablished": false,
+    "operationalThresholdApproved": false,
+    "independentReviewCompleted": false,
+    "productionReady": false
+  },
+  "limitations": [
+    "ephemeral GitHub-hosted runner with local PostgreSQL 16 and local MinIO",
+    "single synthetic account and one API process",
+    "bounded request batches rather than a sustained arrival-rate generator",
+    "no production network, TLS, autoscaling, replica, noisy-neighbor or external queue topology",
+    "pool contention is recorded but cannot alone define a safe operating threshold",
+    "one ramp cannot establish repeatability",
+    "not production capacity evidence"
+  ]
+}
