@@ -10,6 +10,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/sustained-local-soak-contract.v1.json"
+RUNNER_PATH = ROOT / "services/import-api/internal/httpserver/sustained_local_soak_test.go"
 
 
 class Fail(RuntimeError):
@@ -37,6 +38,26 @@ def positive_int(value: Any, field: str) -> int:
     return value
 
 
+def validate_runner_safety() -> None:
+    try:
+        source = RUNNER_PATH.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise Fail(f"missing runner: {RUNNER_PATH.relative_to(ROOT)}") from exc
+    for required in (
+        "DeletionPending               int64",
+        "DeletionStuck                 int64",
+        "func sustainedSoakDeletionBacklog(t *testing.T, server *liveServer) (int64, int64)",
+        "refusing to write long-soak evidence for a run configured below 3600 seconds",
+        "sustainedMinimumEvidenceDurationSec = 3600",
+        "sustainedMaximumRunDurationSec      = 5400",
+    ):
+        require(required in source, f"runner safety binding missing: {required}")
+    require("DeletionPending               int                       `json:\"deletionPending\"`" not in source,
+            "runner reverted deletion pending telemetry to int")
+    require("DeletionStuck                 int                       `json:\"deletionStuck\"`" not in source,
+            "runner reverted deletion stuck telemetry to int")
+
+
 def main() -> int:
     contract = load(CONTRACT_PATH)
     require(contract.get("schemaVersion") == "memory-os-sustained-local-soak.v1", "schema drift")
@@ -44,6 +65,7 @@ def main() -> int:
     require(contract.get("scenarioId") == "mixed-import-lifecycle-local-long-soak", "scenario drift")
     require(contract.get("dependencyMode") == "LOCAL_POSTGRES_MINIO", "dependency mode drift")
     require(contract.get("classification") == "LOCAL_LONG_SOAK", "classification drift")
+    validate_runner_safety()
 
     minimum_seconds = positive_int(contract.get("minimumRunDurationSeconds"), "minimumRunDurationSeconds")
     maximum_seconds = positive_int(contract.get("maximumSingleRunDurationSeconds"), "maximumSingleRunDurationSeconds")
