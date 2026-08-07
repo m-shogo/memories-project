@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+OBJECTIVES_REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
 LOCK = ROOT / "contracts/operations/.backup-restore-generation-evidence.lock"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
@@ -62,9 +63,39 @@ def generation_by_id(generations: list[Any], generation_id: Any, field: str) -> 
     return matches[0]
 
 
+def objective_for_record(record: dict[str, Any]) -> dict[str, Any] | None:
+    registry = load(OBJECTIVES_REGISTRY)
+    rows = registry.get("records")
+    current_id = registry.get("currentObjectiveId")
+    require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "recovery objectives registry invalid")
+    objective_id = record.get("recoveryObjectivesId")
+    measurements = (
+        record.get("measuredRpoSeconds"),
+        record.get("measuredRtoSeconds"),
+        record.get("measuredObjectDatabaseSkewSeconds"),
+    )
+    if objective_id is None:
+        require(all(value is None for value in measurements), "recovery measurements require an approved recoveryObjectivesId")
+        return None
+    require(isinstance(objective_id, str) and objective_id, "recoveryObjectivesId invalid")
+    require(objective_id == current_id, "recovery evidence must bind the current approved recovery objectives")
+    matches = [row for row in rows if row.get("objectiveId") == objective_id]
+    require(len(matches) == 1, "recoveryObjectivesId is not uniquely registered")
+    objective = matches[0]
+    rpo, rto, skew = measurements
+    for value, field in ((rpo, "measuredRpoSeconds"), (rto, "measuredRtoSeconds"), (skew, "measuredObjectDatabaseSkewSeconds")):
+        require(isinstance(value, int) and not isinstance(value, bool) and value >= 0, f"{field} invalid")
+    require(rpo <= objective.get("rpoSeconds", -1), "measured RPO exceeds approved target")
+    require(rto <= objective.get("rtoSeconds", -1), "measured RTO exceeds approved target")
+    require(skew <= objective.get("maximumObjectDatabaseSkewSeconds", -1), "measured object/database skew exceeds approved target")
+    return objective
+
+
 def candidate(record: dict[str, Any]) -> bool:
+    objective = objective_for_record(record)
     return (
-        record.get("evidenceComplete") is True
+        objective is not None
+        and record.get("evidenceComplete") is True
         and record.get("isolatedRestoreVerified") is True
         and record.get("postgresPitrVerified") is True
         and record.get("independentObjectRetentionVerified") is True
@@ -72,9 +103,6 @@ def candidate(record: dict[str, Any]) -> bool:
         and record.get("restoreOnlyCredentialSeparationVerified") is True
         and record.get("databaseObjectRecoveryCoherenceVerified") is True
         and record.get("nonResurrectionVerification") == "PASS"
-        and isinstance(record.get("approvedRecoveryObjectivesRef"), str)
-        and isinstance(record.get("measuredRpoSeconds"), int)
-        and isinstance(record.get("measuredRtoSeconds"), int)
         and isinstance(record.get("securityReviewRef"), str)
         and isinstance(record.get("operabilityReviewRef"), str)
         and record.get("securityReviewRef") != record.get("operabilityReviewRef")
@@ -87,6 +115,7 @@ def validate_record(record: dict[str, Any]) -> None:
     required = set(contract.get("requiredRecordFields", []))
     require(set(record) == required, f"record field set drift: {sorted(set(record) ^ required)}")
     require(record.get("schemaVersion") == contract.get("recordSchemaVersion"), "record schemaVersion drift")
+    require(contract.get("recoveryObjectivesRegistry") == str(OBJECTIVES_REGISTRY.relative_to(ROOT)), "recoveryObjectivesRegistry ref drift")
     require(isinstance(record.get("evidenceId"), str) and EVIDENCE_ID.fullmatch(record["evidenceId"]), "evidenceId invalid")
     source_commit = record.get("sourceCommitSha")
     require(isinstance(source_commit, str) and SHA40.fullmatch(source_commit), "sourceCommitSha invalid")
@@ -115,15 +144,7 @@ def validate_record(record: dict[str, Any]) -> None:
     ):
         require(isinstance(record.get(field), bool), f"{field} must be boolean")
     require(record.get("nonResurrectionVerification") in {"PASS", "FAIL", "NOT_RUN"}, "nonResurrectionVerification invalid")
-
-    objectives_ref = repo_ref(record.get("approvedRecoveryObjectivesRef"), "approvedRecoveryObjectivesRef", required=False)
-    rpo = record.get("measuredRpoSeconds")
-    rto = record.get("measuredRtoSeconds")
-    if objectives_ref is None:
-        require(rpo is None and rto is None, "RPO/RTO measurements cannot satisfy admission without approved recovery objectives")
-    else:
-        require(isinstance(rpo, int) and not isinstance(rpo, bool) and rpo >= 0, "measuredRpoSeconds invalid")
-        require(isinstance(rto, int) and not isinstance(rto, bool) and rto >= 0, "measuredRtoSeconds invalid")
+    objective_for_record(record)
 
     source_id = record["sourceEnvironmentGenerationId"]
     target_id = record["restoreTargetGenerationId"]
@@ -204,7 +225,7 @@ def main() -> int:
         registry["productionReady"] = False
         registry["limitations"] = [
             "generation-bound recovery evidence remains non-production evidence",
-            "production-equivalent recovery candidates require all fail-closed controls and independent reviews",
+            "production-equivalent recovery candidates require current approved recovery objectives, all fail-closed controls and independent reviews",
             "this registry never establishes application production readiness"
         ]
         atomic_write(registry)
