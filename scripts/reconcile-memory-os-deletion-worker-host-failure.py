@@ -75,8 +75,8 @@ def main() -> int:
         joined = "\n".join(str(item).lower() for item in missing)
         require("host" in joined or "node" in joined, f"{gate_id} must retain physical host/node blocker")
 
-    load = load_json = load(LOAD)
-    readiness_load = load_json.get("readiness")
+    load_contract = load(LOAD)
+    readiness_load = load_contract.get("readiness")
     require(isinstance(readiness_load, dict), "load readiness missing")
     require(readiness_load.get("deletionContainerKillRecoveryProven") is True, "container recovery must remain proven")
     require(readiness_load.get("deletionHostFailureRecoveryProven") is False, "host recovery cannot be promoted by admission foundation")
