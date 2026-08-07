@@ -1,0 +1,43 @@
+{
+  "contractId": "memory-os.operability.rate-limit-local-multiprocess-shared-store.v1",
+  "schemaVersion": "memory-os-rate-limit-local-multiprocess-shared-store.v1",
+  "resultsSchemaVersion": "memory-os-rate-limit-local-multiprocess-shared-store-results.v1",
+  "description": "Exact-source local rehearsal for the rate-limit Store abstraction using two independent OS test processes and a loopback HTTP broker backed by the canonical MemoryStore. It proves cross-process budget sharing through the Store interface, client re-instantiation continuity and fail-closed store outage behavior, but is explicitly not a distributed production store or production-equivalent runtime.",
+  "runner": "services/import-api/internal/ratelimit/shared_store_multiprocess_test.go",
+  "validator": "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py",
+  "reconcile": "scripts/reconcile-memory-os-rate-limit-local-multiprocess-shared-store.py",
+  "workflow": ".github/workflows/rate-limit-local-multiprocess-shared-store.yml",
+  "result": "docs/fixtures/memory-os-operability/rate-limit-local-multiprocess-shared-store-results.v1.json",
+  "test": "TestLocalSharedStoreCrossProcessBudgetRestartAndOutage",
+  "requiredAssertions": {
+    "independentOsClientProcesses": true,
+    "sharedBudgetAtomicAcrossProcesses": true,
+    "freshClientProcessDoesNotResetBudget": true,
+    "storeOutageFailsClosed": true,
+    "productionStoreImplementationExercised": false,
+    "productionEquivalentRuntimeExercised": false,
+    "productionTlsExercised": false,
+    "deploymentTrustedProxyConfigurationExercised": false,
+    "productionCredentialsUsed": false,
+    "productionTrafficUsed": false
+  },
+  "promotionRules": {
+    "localRehearsalCanPromoteDistributedRuntimeAdmission": false,
+    "testOnlyLoopbackBrokerCanBeCalledProductionSharedStore": false,
+    "clientReinstantiationCanBeCalledRuntimeHostRestart": false,
+    "localOutageCanBeCalledProductionFailover": false,
+    "productionEquivalentEvidenceMayBeDerived": false,
+    "productionReadyMayBeDerived": false
+  },
+  "readiness": {
+    "contractDefined": true,
+    "runnerImplemented": true,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": true,
+    "exactSourcePassCommitted": false,
+    "localCrossProcessStoreSemanticsProven": false,
+    "distributedSharedStoreImplemented": false,
+    "productionEquivalentRuntimeEvidence": false,
+    "productionReady": false
+  }
+}
