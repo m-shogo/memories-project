@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+"""Validate append-only approved predecessor/successor release pairs."""
+
+from __future__ import annotations
+
+import importlib.util
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+CONTRACT = ROOT / "contracts/operations/release-compatibility-pair-contract.v1.json"
+RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
+REGISTRY = ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"
+WRITER = ROOT / "scripts/register-memory-os-release-compatibility-pair.py"
+EXECUTION = ROOT / "contracts/operations/version-compatibility-execution-evidence.v1.json"
+GAPS = ROOT / "contracts/operations/compatibility-admission-gaps.v1.json"
+
+
+class Fail(RuntimeError):
+    pass
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise Fail(message)
+
+
+def load(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError) as exc:
+        raise Fail(f"cannot load {path.relative_to(ROOT)}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+    return value
+
+
+def load_writer():
+    spec = importlib.util.spec_from_file_location("memory_os_release_pair_writer", WRITER)
+    require(spec is not None and spec.loader is not None, "cannot load release pair writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def main() -> int:
+    contract = load(CONTRACT)
+    release_registry = load(RELEASES)
+    registry = load(REGISTRY)
+    execution = load(EXECUTION)
+    gaps = load(GAPS)
+    writer = load_writer()
+
+    require(contract.get("schemaVersion") == "memory-os-release-compatibility-pair.v1", "pair contract schema drift")
+    require(contract.get("releaseRegistry") == str(RELEASES.relative_to(ROOT)), "release registry ref drift")
+    require(contract.get("registry") == str(REGISTRY.relative_to(ROOT)), "pair registry ref drift")
+    require(contract.get("writer") == str(WRITER.relative_to(ROOT)) and WRITER.is_file(), "pair writer ref drift")
+    for field in ("validator", "reconcile", "workflow"):
+        ref = contract.get(field)
+        require(isinstance(ref, str) and ref and (ROOT / ref).is_file(), f"pair authority artifact missing: {field}")
+    rules = contract.get("rules")
+    require(isinstance(rules, dict) and rules and all(value is True for value in rules.values()), "pair rules must remain fail-closed")
+
+    approved_release_count = release_registry.get("approvedReleaseCount")
+    releases = release_registry.get("releases")
+    require(isinstance(approved_release_count, int) and approved_release_count >= 0, "approved release count invalid")
+    require(isinstance(releases, list) and len(releases) == approved_release_count, "release registry count drift")
+
+    require(registry.get("schemaVersion") == "memory-os-release-compatibility-pair-registry.v1", "pair registry schema drift")
+    require(registry.get("appendOnly") is True, "pair registry must remain append-only")
+    require(registry.get("productionEvidence") is False and registry.get("productionReady") is False, "pair registry cannot promote production")
+    pairs = registry.get("pairs")
+    count = registry.get("approvedPairCount")
+    rollback_count = registry.get("rollbackEligiblePairCount")
+    require(isinstance(pairs, list) and all(isinstance(row, dict) for row in pairs), "pair rows invalid")
+    require(isinstance(count, int) and count == len(pairs), "approvedPairCount drift")
+    require(isinstance(rollback_count, int) and rollback_count == count, "rollbackEligiblePairCount drift")
+    ids: set[str] = set()
+    relations: set[tuple[str, str]] = set()
+    for row in pairs:
+        writer.validate_record(row)
+        pair_id = row.get("pairId")
+        relation = (row.get("predecessorReleaseId"), row.get("successorReleaseId"))
+        require(isinstance(pair_id, str) and pair_id not in ids, f"duplicate pairId: {pair_id}")
+        require(relation not in relations, f"duplicate predecessor/successor pair: {relation}")
+        ids.add(pair_id)
+        relations.add(relation)
+    latest_pair_id = registry.get("latestPairId")
+    require(latest_pair_id == (pairs[-1].get("pairId") if pairs else None), "latestPairId drift")
+    if approved_release_count < 2:
+        require(count == 0, "approved pair cannot exist with fewer than two approved releases")
+
+    authority = contract.get("currentAuthority")
+    require(isinstance(authority, dict), "currentAuthority missing")
+    require(authority.get("approvedPairCount") == count, "pair authority count drift")
+    require(authority.get("latestPairId") == latest_pair_id, "pair authority latest ID drift")
+    require(authority.get("rollbackEligiblePairCount") == rollback_count, "pair authority rollback count drift")
+    require(authority.get("releaseCompatibilityEvidence") is (count > 0), "pair authority compatibility evidence drift")
+    require(authority.get("productionEvidence") is False and authority.get("productionReady") is False, "pair authority cannot promote production")
+    require(authority.get("productionDecision") == "NO_GO", "production decision must remain NO_GO")
+
+    exec_boundary = execution.get("releaseAuthorityBoundary")
+    exec_readiness = execution.get("readiness")
+    require(isinstance(exec_boundary, dict) and isinstance(exec_readiness, dict), "execution authority missing")
+    require(exec_boundary.get("approvedReleaseCount") == approved_release_count, "execution approvedReleaseCount drift")
+    require(exec_boundary.get("approvedRollbackPairCount") == count, "execution approvedRollbackPairCount drift")
+    require(exec_boundary.get("releaseCompatibilityEvidence") is (count > 0), "execution releaseCompatibilityEvidence drift")
+    require(exec_boundary.get("productionEvidence") is False and exec_boundary.get("productionReady") is False, "execution authority cannot promote production")
+    require(exec_readiness.get("approvedReleasePairAvailable") is (count > 0), "execution pair readiness drift")
+
+    current_counts = gaps.get("currentCounts")
+    require(isinstance(current_counts, dict), "compatibility gap counts missing")
+    require(current_counts.get("approvedBackendReleases") == approved_release_count, "gap approved release count drift")
+    require(current_counts.get("approvedRollbackPairs") == count, "gap rollback pair count drift")
+
+    print("Memory OS approved release compatibility pair validation PASS")
+    print(f"approved releases: {approved_release_count}")
+    print(f"approved rollback pairs: {count}")
+    print(f"release compatibility evidence: {str(count > 0).lower()}")
+    print("production evidence: false")
+    print("production decision: NO_GO")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except Fail as exc:
+        print(f"RELEASE COMPATIBILITY PAIR VALIDATION FAILED: {exc}", file=sys.stderr)
+        raise SystemExit(1)
