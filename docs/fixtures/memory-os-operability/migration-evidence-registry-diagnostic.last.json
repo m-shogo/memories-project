@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "migration-evidence-registry",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "Memory OS migration rehearsal evidence registry validation PASS\nregistered rehearsals: 0\npassing rehearsals: 0\nproduction-equivalent rehearsals: 0\nproduction migration evidence: 0\nproduction decision: NO_GO\nMIGRATION LIFECYCLE VALIDATION FAILED: runbook missing heading: ## Non-negotiable rules\nTraceback (most recent call last):\n  File \"/home/runner/work/memories-project/memories-project/scripts/reconcile-memory-os-migration-evidence-registry.py\", line 150, in <module>\n    raise SystemExit(main())\n                     ^^^^^^\n  File \"/home/runner/work/memories-project/memories-project/scripts/reconcile-memory-os-migration-evidence-registry.py\", line 136, in main\n    subprocess.run([\"python\", str(LIFECYCLE_VALIDATOR)], cwd=ROOT, check=True)\n  File \"/opt/hostedtoolcache/Python/3.12.13/x64/lib/python3.12/subprocess.py\", line 571, in run\n    raise CalledProcessError(retcode, process.args,\nsubprocess.CalledProcessError: Command '['python', '/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-migration-lifecycle.py']' returned non-zero exit status 1.\n",
+  "containsSecrets": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
