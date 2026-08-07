@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "sustained-local-soak-foundation-smoke",
-  "sourceCommitSha": "535cb5b848cf73d843f808865be81f65c7c89030",
+  "sourceCommitSha": "d8bc482711fb2e1c23ac3443b60a94cbb05886ea",
   "result": "FAIL",
   "exitCode": 1,
   "output": "STAGE: contract-and-python\nMemory OS sustained local soak contract validation PASS\nminimum run seconds: 3600\nminimum independent runs: 2\nlocal sustained soak evidence: false\nproduction sustained soak evidence: false\nleak proof: false\nproduction evidence: false\nSUSTAINED LOCAL SOAK AGGREGATE FAILED: missing file: docs/fixtures/memory-os-operability/sustained-local-soak-results.aggregate.v1.json\n",
