@@ -86,7 +86,7 @@
   },
   "limitations": [
     "lease abandonment is a deterministic process-interruption simulation, not an operating-system SIGKILL or host crash",
-    "one-second lease is a bounded test configuration rather than a production lease recommendation",
+    "one-second lease is a bounded test configuration and not a production lease recommendation",
     "two accounts and one replacement worker do not establish deletion throughput or capacity",
     "local PostgreSQL 16 and MinIO are not production-equivalent dependencies"
   ]
