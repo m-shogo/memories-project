@@ -1,0 +1,155 @@
+{
+  "schemaVersion": "memory-os-operability-admission-inventory.v1",
+  "deterministic": true,
+  "areas": [
+    {
+      "id": "OPS-P0-001",
+      "authority": "contracts/operations/migration-production-shaped-admission-contract.v1.json",
+      "foundationImplemented": true,
+      "admittedEvidenceCount": 0,
+      "dependencyCounts": {
+        "approvedReleases": 0,
+        "environmentGenerations": 0
+      },
+      "nextGate": "registered production-equivalent generation plus approved predecessor/successor before production-shaped migration rehearsal admission",
+      "status": "PARTIAL",
+      "blocking": true,
+      "missingEvidenceCount": 4,
+      "productionEvidence": false,
+      "productionReady": false
+    },
+    {
+      "id": "OPS-P0-002",
+      "authority": "contracts/operations/incident-human-tabletop-evidence-contract.v1.json",
+      "secondaryAuthority": "contracts/operations/incident-contact-routing-admission-contract.v1.json",
+      "foundationImplemented": true,
+      "admittedEvidenceCount": 0,
+      "requiredEvidenceCount": 6,
+      "secondaryAdmittedEvidenceCount": 0,
+      "dependencyCounts": {
+        "observabilityStacks": 0
+      },
+      "nextGate": "human-led completion of six canonical tabletop scenarios; configured contact routing additionally requires an admitted observability stack",
+      "status": "PARTIAL",
+      "blocking": true,
+      "missingEvidenceCount": 5,
+      "productionEvidence": false,
+      "productionReady": false
+    },
+    {
+      "id": "OPS-P0-003",
+      "authority": "contracts/operations/observability-stack-deployment-contract.v1.json",
+      "foundationImplemented": true,
+      "admittedEvidenceCount": 0,
+      "nextGate": "admit integrated structured-log backend, retention deletion, access audit and review evidence",
+      "status": "PARTIAL",
+      "blocking": true,
+      "missingEvidenceCount": 3,
+      "productionEvidence": false,
+      "productionReady": false
+    },
+    {
+      "id": "OPS-P0-004",
+      "authority": "contracts/operations/observability-stack-deployment-contract.v1.json",
+      "foundationImplemented": true,
+      "admittedEvidenceCount": 0,
+      "nextGate": "admit real metrics scrape/backend/dashboard/paging delivery and response evidence",
+      "status": "PARTIAL",
+      "blocking": true,
+      "missingEvidenceCount": 7,
+      "productionEvidence": false,
+      "productionReady": false
+    },
+    {
+      "id": "OPS-P0-005",
+      "authority": "contracts/operations/rate-limit-distributed-runtime-admission-contract.v1.json",
+      "foundationImplemented": true,
+      "admittedEvidenceCount": 0,
+      "nextGate": "admit shared-store/trusted-proxy multi-instance runtime with restart continuity and runtime-observed emergency expiry drills",
+      "status": "PARTIAL",
+      "blocking": true,
+      "missingEvidenceCount": 5,
+      "productionEvidence": false,
+      "productionReady": false
+    },
+    {
+      "id": "OPS-P0-006",
+      "authority": "contracts/operations/load-test-scenario-contract.v1.json",
+      "foundationImplemented": true,
+      "admittedEvidenceCount": 2,
+      "requiredEvidenceCount": 2,
+      "dependencyCounts": {
+        "environmentGenerations": 0,
+        "localSustainedSoakEvidence": true,
+        "repeatableLocalDegradationSignalObserved": true
+      },
+      "nextGate": "local repeated 60-minute soak and descriptive trend review are complete; next require independent leak/stability criteria plus generation-bound production-equivalent capacity, dependency and host-failure evidence",
+      "status": "PARTIAL",
+      "blocking": true,
+      "missingEvidenceCount": 6,
+      "productionEvidence": false,
+      "productionReady": false
+    },
+    {
+      "id": "OPS-P0-007",
+      "authority": "contracts/operations/backup-restore-generation-evidence-contract.v1.json",
+      "secondaryAuthority": "contracts/operations/backup-restore-generation-binding-contract.v1.json",
+      "foundationImplemented": true,
+      "admittedEvidenceCount": 0,
+      "dependencyCounts": {
+        "environmentGenerations": 0,
+        "generationBoundBackups": 0,
+        "productionEquivalentRecoveryCandidates": 0
+      },
+      "nextGate": "register a reviewed production-equivalent environment generation, then admit generation-bound PITR, independent object retention and isolated restore evidence with approved/measured RPO/RTO and non-resurrection verification",
+      "status": "PARTIAL_FOUNDATIONS_ONLY",
+      "blocking": true,
+      "missingEvidenceCount": 6,
+      "productionEvidence": false,
+      "productionReady": false
+    },
+    {
+      "id": "OPS-P0-008",
+      "authority": "contracts/operations/compatibility-admission-gaps.v1.json",
+      "foundationImplemented": true,
+      "admittedEvidenceCount": 0,
+      "dependencyCounts": {
+        "approvedReleases": 0,
+        "approvedClients": 0,
+        "reviewedParserArtifacts": 0
+      },
+      "nextGate": "approved predecessor/successor, immutable client baseline and reviewed parser artifact before production release compatibility",
+      "status": "PARTIAL",
+      "blocking": true,
+      "missingEvidenceCount": 10,
+      "productionEvidence": false,
+      "productionReady": false
+    },
+    {
+      "id": "OPS-P0-009",
+      "authority": "contracts/operations/production-shaped-failure-drill-contract.v1.json",
+      "foundationImplemented": true,
+      "admittedEvidenceCount": 0,
+      "requiredEvidenceCount": 4,
+      "dependencyCounts": {
+        "environmentGenerations": 0
+      },
+      "nextGate": "generation-bound multi-instance, object-store, PostgreSQL failover and parser durable-spool restart drills",
+      "status": "PARTIAL",
+      "blocking": true,
+      "missingEvidenceCount": 8,
+      "productionEvidence": false,
+      "productionReady": false
+    }
+  ],
+  "productionEquivalentEnvironmentGenerationCount": 0,
+  "productionEvidence": false,
+  "productionReady": false,
+  "productionDecision": "NO_GO",
+  "notes": [
+    "foundationImplemented means the admission path exists; it does not mean runtime or production evidence exists",
+    "admittedEvidenceCount is derived only from canonical append-only registries or accepted human tabletop ledger files",
+    "candidate/local evidence is not counted as production admission unless its owning authority explicitly admits it",
+    "local repeated soak evidence is tracked separately from independent leak proof and production-shaped soak evidence"
+  ]
+}
