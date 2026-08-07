@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "memory-os-deletion-worker-container-kill-recovery-results.v1",
+  "commitSha": "3c87e3b1e6407d87d79e3318a05fe0e0c1745e64",
+  "generatedAt": "2026-08-07T05:00:34Z",
+  "environment": {
+    "os": "linux",
+    "arch": "amd64",
+    "goVersion": "go1.23.12",
+    "dependencyMode": "LOCAL_POSTGRES_MINIO",
+    "syntheticDataOnly": true,
+    "actualProcessKillCovered": true,
+    "actualContainerKillCovered": true,
+    "replacementContainerRecoveryCovered": true,
+    "actualHostFailureCovered": false,
+    "availabilityZoneFailureCovered": false,
+    "productionTraffic": false,
+    "productionCredentials": false,
+    "productionEvidence": false,
+    "productionEquivalentDependencies": false,
+    "containsSecrets": false
+  },
+  "scenario": {
+    "scenarioId": "account-deletion-worker-container-kill-recovery-local-dependencies",
+    "killedContainerExitCode": 137,
+    "actualContainerKillObserved": true,
+    "ledgerRowsAfterKill": 1,
+    "objectVersionsAfterKill": 0,
+    "claimsAvailableBeforeExpiry": 0,
+    "replacementContainerExitCode": 0,
+    "replacementAttempt2Confirmed": true,
+    "finalDeletionPending": 0,
+    "finalDeletionStuck": 0,
+    "finalOwnedRowCount": 0,
+    "finalAccountState": "deleted",
+    "finalAccountEpoch": 2,
+    "remainingObjectVersions": 0,
+    "assertions": {
+      "actualContainerKillObserved": true,
+      "actualHostFailureCovered": false,
+      "allOwnedRowsErased": true,
+      "availabilityZoneFailureCovered": false,
+      "backlogConverged": true,
+      "ledgerSurvivedContainerKill": true,
+      "noClaimBeforeExpiry": true,
+      "noIdentityInputToWorkerContainers": true,
+      "noObjectResurrection": true,
+      "objectErasedBeforeContainerKill": true,
+      "productionEvidence": false,
+      "replacementContainerAttempt2": true,
+      "runtimeContainerRestricted": true
+    },
+    "result": "PASS",
+    "integrityResult": "PASS"
+  },
+  "limitations": [
+    "actual Docker container kill and replacement do not prove physical host, VM, node or availability-zone failure",
+    "five-second lease is test-only and not a production recommendation",
+    "local PostgreSQL and MinIO are not production-equivalent dependencies"
+  ]
+}
