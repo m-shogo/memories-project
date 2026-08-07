@@ -1,10 +1,10 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "deletion-under-load",
-  "sourceCommitSha": "401ece0dc46bd6bebe3b382262d5ec67adc3a7c0",
+  "sourceCommitSha": "9eb9443bf479326c6ca26b4ca47641c2f3db6b95",
   "result": "FAIL",
   "exitCode": 1,
-  "output": "STAGE: format-and-compile\nSTAGE: execute-post-fence-load\n# github.com/m-shogo/memories-project/services/import-api/internal/httpserver [github.com/m-shogo/memories-project/services/import-api/internal/httpserver.test]\ninternal/httpserver/deletion_under_load_test.go:70:12: undefined: liveHTTPClient\ninternal/httpserver/deletion_under_load_test.go:120:21: undefined: summarizeLiveHTTPSamples\nFAIL\tgithub.com/m-shogo/memories-project/services/import-api/internal/httpserver [build failed]\nFAIL\n",
+  "output": "STAGE: format-and-compile\nSTAGE: execute-post-fence-load\n--- FAIL: TestAccountDeletionPostFenceLoadLocalDependencies (0.81s)\n    deletion_under_load_test.go:223: post-fence requests were not uniformly unauthorized: {Summary:{Requests:400 Concurrency:32 Successes:0 Failures:400 StatusClassCounts:map[4xx:336 5xx:64] DurationSeconds:0.174429512 Throughput:2293.1899276310537 LatencyP50Ms:11.304 LatencyP95Ms:28.441 LatencyP99Ms:29.24} StatusCodeCounts:map[401:336 500:64]}\nFAIL\nFAIL\tgithub.com/m-shogo/memories-project/services/import-api/internal/httpserver\t0.815s\nFAIL\n",
   "containsSecrets": false,
   "productionEvidence": false,
   "requestsStartedBeforeFenceCovered": false
