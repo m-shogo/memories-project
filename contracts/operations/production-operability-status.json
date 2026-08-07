@@ -622,7 +622,11 @@
         "rolling deployment order, connection drain, failure injection and application rollback rehearsal",
         "destructive contract-migration and downgrade compatibility proof",
         "production-shaped mixed-version review with zero unresolved Critical or High findings",
-        "full old/current backend mixed-version route, mutation, persisted-state and rollback coverage beyond the proven session/authentication slice"
+        "full old/current backend mixed-version route, mutation, persisted-state and rollback coverage beyond the proven session/authentication slice",
+        "persisted Preview and Apply compatibility fixtures across an approved predecessor and successor release pair",
+        "simultaneous approved-release old/current mutation traffic and concurrent idempotency-claim race coverage on one production-shaped database",
+        "approved-release process termination during in-progress Apply with production-shaped connection-pool cleanup and deterministic recovery evidence",
+        "rolling deployment, traffic drain and application rollback rehearsal using rollback-eligible approved release artifacts"
       ],
       "evidenceRefs": [
         ".github/workflows/security-contracts.yml",
