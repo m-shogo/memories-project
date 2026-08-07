@@ -1,0 +1,64 @@
+name: Backup Restore Generation Evidence
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/backup-restore-generation-evidence.yml"
+      - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "contracts/operations/backup-restore-generation-binding-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "scripts/register-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-binding.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: backup-restore-generation-evidence-so
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate generation-bound recovery admission
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/register-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-generation-evidence.py \
+            scripts/reconcile-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-generation-binding.py
+          python scripts/reconcile-memory-os-backup-restore-generation-evidence.py
+          python scripts/validate-memory-os-backup-restore-generation-evidence.py
+          python scripts/validate-memory-os-backup-restore-generation-binding.py
+          python scripts/validate-memory-os-operability.py
+      - name: Commit bounded recovery authority
+        run: |
+          set -euo pipefail
+          git add \
+            contracts/operations/backup-restore-generation-evidence-contract.v1.json \
+            contracts/operations/backup-restore-generation-binding-contract.v1.json \
+            contracts/operations/production-operability-status.json
+          if ! git diff --cached --quiet; then
+            git diff --cached --check
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(restore): reconcile generation-bound recovery authority"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
