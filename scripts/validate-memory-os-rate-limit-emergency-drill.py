@@ -152,7 +152,7 @@ def main() -> int:
             "forbidden fail-open mode became selectable")
 
     assertions = contract.get("requiredAssertions")
-    require(isinstance(assertions, dict) and len(assertions) == 13,
+    require(isinstance(assertions, dict) and len(assertions) == 14,
             "requiredAssertions drift")
     for flag in (
         "policyExplicitlyPermitsEmergencyLocal", "forbiddenFailOpenModeNeverSelected",
@@ -186,8 +186,7 @@ def main() -> int:
 
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "readiness must be an object")
-    for flag in ("contractDefined",):
-        require(readiness.get(flag) is True, f"readiness.{flag} must be true")
+    require(readiness.get("contractDefined") is True, "readiness.contractDefined must be true")
     if args.require_reconciled:
         for flag in (
             "runnerImplemented", "validatorImplemented", "automaticWorkflowImplemented",
