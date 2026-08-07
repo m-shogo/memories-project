@@ -89,7 +89,7 @@ jobs:
           MEMORY_OS_TEST_S3_ACCESS_KEY: minioadmin
           MEMORY_OS_TEST_S3_SECRET_KEY: minioadmin
           MEMORY_OS_RUN_DELETION_WORKER_SATURATION: "1"
-          MEMORY_OS_DELETION_WORKER_SATURATION_RESULTS_PATH: ../../docs/fixtures/memory-os-operability/deletion-worker-saturation-results.sample.v1.json
+          MEMORY_OS_DELETION_WORKER_SATURATION_RESULTS_PATH: ../../../../docs/fixtures/memory-os-operability/deletion-worker-saturation-results.sample.v1.json
         run: |
           set +e
           export MEMORY_OS_COMMIT_SHA="$SOURCE_SHA"
