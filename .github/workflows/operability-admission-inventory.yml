@@ -13,6 +13,7 @@ on:
       - "contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json"
       - "contracts/operations/load-test-scenario-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/recovery-objectives-registry.v1.json"
       - "contracts/operations/backup-restore-generation-binding-contract.v1.json"
       - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
       - "contracts/operations/release-baseline-registry.v1.json"
