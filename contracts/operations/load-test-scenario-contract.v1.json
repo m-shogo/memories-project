@@ -308,7 +308,7 @@
   "readiness": {
     "localLivePostgresCheckpointImplemented": true,
     "localLiveObjectStoreCheckpointImplemented": true,
-    "exactHeadLiveResultsCommitted": false,
+    "exactHeadLiveResultsCommitted": true,
     "productionShapedWorkload": false,
     "capacityBoundaryEstablished": false,
     "sustainedSoakEvidence": false,

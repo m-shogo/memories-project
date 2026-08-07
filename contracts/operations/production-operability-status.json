@@ -249,10 +249,11 @@
         "machine-readable partition between mock executed, external live executed and genuinely deferred scenarios",
         "bounded authenticated Preview concurrency ramp over local PostgreSQL records six concurrency steps with all-2xx integrity and a local candidate-safe concurrency while explicitly leaving the saturation boundary and operating threshold unproven",
         "six-window authenticated Preview short CI stability sample records Linux RSS, Go heap and goroutine observations plus per-window throughput and latency while explicitly refusing sustained-soak, leak-proof or capacity claims",
-        "local PostgreSQL and MinIO deletion-under-load checkpoint proves that after a durable 202 epoch fence, 400 concurrent requests using the former session all return 401 while the leased deletion worker completes and leaves zero owned rows"
+        "local PostgreSQL and MinIO deletion-under-load checkpoint proves that after a durable 202 epoch fence, 400 concurrent requests using the former session all return 401 while the leased deletion worker completes and leaves zero owned rows",
+        "exact-HEAD committed PASS result from the local PostgreSQL Preview read and concurrent idempotent Apply checkpoint",
+        "exact-HEAD committed PASS result from the local MinIO signed-upload, exact-version completion and scan-enqueue checkpoint"
       ],
       "missingEvidence": [
-        "exact-HEAD committed PASS results from the live PostgreSQL and MinIO checkpoint (automatic generation pending)",
         "capacity boundary, saturation report and load-calibrated operational thresholds",
         "sustained soak with RSS/heap/goroutine-slope evidence (SOAK PROOF INSUFFICIENT)",
         "production-equivalent dependency behavior and real-Apple load evidence",
@@ -299,7 +300,9 @@
         "scripts/validate-memory-os-deletion-under-load.py",
         "scripts/reconcile-memory-os-deletion-under-load-status.py",
         "docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json",
-        ".github/workflows/deletion-under-load.yml"
+        ".github/workflows/deletion-under-load.yml",
+        "docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json",
+        "docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json"
       ]
     },
     {
