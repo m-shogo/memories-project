@@ -5,7 +5,7 @@
   "description": "Linux-only local PostgreSQL and MinIO proof that an actual deletion-worker child process killed with SIGKILL after real object erasure but before database sweep cannot resurrect data and is safely recovered by lease expiry plus replacement-worker reclaim.",
   "scenarioId": "account-deletion-worker-sigkill-recovery-local-dependencies",
   "dependencyMode": "LOCAL_POSTGRES_MINIO",
-  "leaseSeconds": 2,
+  "leaseSeconds": 5,
   "killSignal": "SIGKILL",
   "interruptionPoint": "AFTER_REAL_OBJECT_ERASURE_BEFORE_DATABASE_SWEEP_OR_LEASE_RELEASE",
   "runner": "services/import-api/internal/httpserver/deletion_worker_sigkill_recovery_linux_test.go",
@@ -79,7 +79,7 @@
   },
   "limitations": [
     "SIGKILL covers one Linux child process and does not prove host, container-runtime or availability-zone failure",
-    "two-second lease is test-only and not a production lease recommendation",
+    "five-second lease is test-only and not a production lease recommendation",
     "local PostgreSQL 16 and MinIO are not production-equivalent dependencies",
     "one account does not establish throughput, capacity or safe operating thresholds"
   ]
