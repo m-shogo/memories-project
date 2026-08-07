@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "memory-os-rate-limit-distributed-runtime-admission-registry.v1",
+  "appendOnly": true,
+  "admittedRuntimeCount": 0,
+  "productionEquivalentRuntimeCount": 0,
+  "productionRuntimeCount": 0,
+  "runtimes": [],
+  "productionReady": false
+}
