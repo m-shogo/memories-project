@@ -1,0 +1,67 @@
+{
+  "contractId": "memory-os.operability.controlled-saturation-repeatability.v1",
+  "schemaVersion": "memory-os-controlled-saturation-repeatability.v1",
+  "description": "Fail-closed repeatability authority for the bounded local signed-upload saturation ramp. Two independent GitHub-hosted runners must reproduce a local degradation signal at the same or adjacent configured concurrency step. This may establish repeatable local degradation only; it cannot establish production capacity or approve an operating threshold.",
+  "sourceRampContract": "contracts/operations/controlled-saturation-ramp-contract.v1.json",
+  "sourceScenarioId": "signed-upload-controlled-saturation-ramp-local-dependencies",
+  "dependencyMode": "LOCAL_POSTGRES_MINIO",
+  "classification": "BOUNDED_LOCAL_CAPACITY_REPEATABILITY",
+  "requiredIndependentRuns": 2,
+  "concurrencySteps": [4, 8, 16, 24, 32, 48],
+  "requestsPerStep": 64,
+  "signalPolicy": {
+    "actualFailureSignalTakesPrecedence": true,
+    "degradationKneeRequiresPoolContention": true,
+    "maximumThroughputGainFromPreviousStep": 0.05,
+    "minimumP95LatencyRatioFromPreviousStep": 1.25,
+    "repeatableWhenStepDistanceAtMost": 1,
+    "poolContentionAloneIsSignal": false,
+    "singleRunPromotionForbidden": true,
+    "missingSignalFailsClosed": true
+  },
+  "requiredRunBoundaries": {
+    "independentGitHubHostedRunner": true,
+    "independentPostgreSQLService": true,
+    "independentMinIOService": true,
+    "sameExactSourceCommit": true,
+    "syntheticDataOnly": true,
+    "productionTraffic": false,
+    "productionCredentials": false,
+    "productionEvidence": false,
+    "productionEquivalentDependencies": false
+  },
+  "promotionBoundary": {
+    "repeatableLocalDegradationSignalMayBecomeTrue": true,
+    "capacityBoundaryEstablished": false,
+    "operationalThresholdApproved": false,
+    "productionCapacityEvidence": false,
+    "productionEquivalentEvidence": false,
+    "independentReviewCompleted": false,
+    "productionReady": false,
+    "productionDecision": "NO_GO"
+  },
+  "resultPath": "docs/fixtures/memory-os-operability/controlled-saturation-repeatability-results.v1.json",
+  "analyzer": "scripts/analyze-memory-os-controlled-saturation-repeatability.py",
+  "validator": "scripts/validate-memory-os-controlled-saturation-repeatability.py",
+  "reconcile": "scripts/reconcile-memory-os-controlled-saturation-repeatability.py",
+  "workflow": ".github/workflows/controlled-saturation-repeatability.yml",
+  "readiness": {
+    "contractDefined": true,
+    "analyzerImplemented": false,
+    "validatorImplemented": false,
+    "automaticWorkflowImplemented": false,
+    "independentRunCount": 0,
+    "repeatableLocalDegradationSignalObserved": false,
+    "capacityBoundaryEstablished": false,
+    "operationalThresholdApproved": false,
+    "independentReviewCompleted": false,
+    "productionReady": false
+  },
+  "limitations": [
+    "local ephemeral PostgreSQL 16 and MinIO only",
+    "single API process and synthetic account per run",
+    "bounded batches, not a sustained arrival-rate generator",
+    "a latency/throughput knee is a local degradation signal, not a production-safe threshold",
+    "independent review remains mandatory before any operating target is proposed"
+  ]
+}
