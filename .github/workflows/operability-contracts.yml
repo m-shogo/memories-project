@@ -34,6 +34,9 @@ on:
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
       - "scripts/reconcile-memory-os-production-equivalent-generation-status.py"
+      - "scripts/register-memory-os-recovery-objectives.py"
+      - "scripts/validate-memory-os-recovery-objectives.py"
+      - "scripts/reconcile-memory-os-recovery-objectives.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
@@ -66,6 +69,7 @@ on:
       - ".github/workflows/local-logical-restore.yml"
       - ".github/workflows/local-migration-recovery-artifact.yml"
       - ".github/workflows/production-equivalent-environment-generation.yml"
+      - ".github/workflows/recovery-objectives-admission.yml"
       - ".github/workflows/backup-restore-generation-binding.yml"
       - ".github/workflows/backup-restore-generation-evidence.yml"
   push:
@@ -103,6 +107,9 @@ on:
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
       - "scripts/reconcile-memory-os-production-equivalent-generation-status.py"
+      - "scripts/register-memory-os-recovery-objectives.py"
+      - "scripts/validate-memory-os-recovery-objectives.py"
+      - "scripts/reconcile-memory-os-recovery-objectives.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
@@ -135,6 +142,7 @@ on:
       - ".github/workflows/local-logical-restore.yml"
       - ".github/workflows/local-migration-recovery-artifact.yml"
       - ".github/workflows/production-equivalent-environment-generation.yml"
+      - ".github/workflows/recovery-objectives-admission.yml"
       - ".github/workflows/backup-restore-generation-binding.yml"
       - ".github/workflows/backup-restore-generation-evidence.yml"
   workflow_dispatch:
@@ -177,6 +185,9 @@ jobs:
           python -m py_compile scripts/register-memory-os-production-equivalent-environment-generation.py
           python -m py_compile scripts/validate-memory-os-production-equivalent-environment-generation.py
           python -m py_compile scripts/reconcile-memory-os-production-equivalent-generation-status.py
+          python -m py_compile scripts/register-memory-os-recovery-objectives.py
+          python -m py_compile scripts/validate-memory-os-recovery-objectives.py
+          python -m py_compile scripts/reconcile-memory-os-recovery-objectives.py
           python -m py_compile scripts/register-memory-os-backup-restore-generation-evidence.py
           python -m py_compile scripts/validate-memory-os-backup-restore-generation-evidence.py
           python -m py_compile scripts/reconcile-memory-os-backup-restore-generation-evidence.py
@@ -257,6 +268,9 @@ jobs:
 
       - name: Validate immutable production-equivalent environment generations
         run: python scripts/validate-memory-os-production-equivalent-environment-generation.py
+
+      - name: Validate explicit recovery objectives authority
+        run: python scripts/validate-memory-os-recovery-objectives.py
 
       - name: Validate generation-bound backup/restore binding
         run: python scripts/validate-memory-os-backup-restore-generation-binding.py
