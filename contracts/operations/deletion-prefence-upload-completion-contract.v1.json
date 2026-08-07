@@ -16,13 +16,14 @@
   "validationRules": {
     "runnerMustBeGofmtClean": true,
     "runnerPackageCompileConfirmed": true,
+    "requestBodySinglePassJSONEncodingRequired": true,
     "exactSourceBindingRequired": true,
     "failureDiagnosticRequired": true,
     "staleEvidenceRejected": true
   },
   "requiredSequence": [
     "create one synthetic active account and 16 uploadable import jobs",
-    "issue 16 upload authorizations at account epoch 1",
+    "issue 16 upload authorizations at account epoch 1 using the live-server request helper with exactly one JSON encoding pass",
     "perform 16 real presigned PUTs to local versioned MinIO",
     "start 16 authenticated upload-completion requests",
     "prove all 16 requests pass the outer fence and initial database snapshot by reaching and completing real MinIO HEAD",
@@ -52,6 +53,7 @@
     "productionEvidence": false
   },
   "abortCriteria": [
+    "upload-authorization fixture applies JSON encoding more than once",
     "any completion request fails to reach real MinIO HEAD before the deletion fence",
     "any request returns from the post-HEAD checkpoint before all 16 are paused",
     "DELETE does not return 202 with epoch 2",
