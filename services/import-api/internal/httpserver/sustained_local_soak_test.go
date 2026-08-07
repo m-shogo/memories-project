@@ -32,34 +32,34 @@ const (
 )
 
 type sustainedSoakObservation struct {
-	Window                         int                       `json:"window"`
-	ObservedAt                     string                    `json:"observedAt"`
-	ElapsedSeconds                 float64                   `json:"elapsedSeconds"`
-	RequestsBySurface              map[string]int            `json:"requestsBySurface"`
-	SuccessesBySurface             map[string]int            `json:"successesBySurface"`
-	FailuresBySurface              map[string]int            `json:"failuresBySurface"`
-	StatusClassCountsBySurface     map[string]map[string]int `json:"statusClassCountsBySurface"`
-	LatencyP50MsBySurface          map[string]float64         `json:"latencyP50MsBySurface"`
-	LatencyP95MsBySurface          map[string]float64         `json:"latencyP95MsBySurface"`
-	LatencyP99MsBySurface          map[string]float64         `json:"latencyP99MsBySurface"`
-	HeapAllocBytes                 uint64                    `json:"heapAllocBytes"`
-	HeapInuseBytes                 uint64                    `json:"heapInuseBytes"`
-	RSSBytes                       int64                     `json:"rssBytes"`
-	Goroutines                     int                       `json:"goroutines"`
-	DBPoolMaxConns                 int32                     `json:"dbPoolMaxConns"`
-	DBPoolTotalConns               int32                     `json:"dbPoolTotalConns"`
-	DBPoolAcquiredConns            int32                     `json:"dbPoolAcquiredConns"`
-	DBPoolIdleConns                int32                     `json:"dbPoolIdleConns"`
-	DBPoolEmptyAcquireCount        int64                     `json:"dbPoolEmptyAcquireCount"`
-	DBPoolCanceledAcquireCount     int64                     `json:"dbPoolCanceledAcquireCount"`
-	DBPoolAcquireDurationMs        float64                   `json:"dbPoolAcquireDurationMs"`
-	ScanQueuePending               int                       `json:"scanQueuePending"`
-	ScanQueueOldestPendingSeconds  float64                   `json:"scanQueueOldestPendingSeconds"`
-	DeletionPending                int                       `json:"deletionPending"`
-	DeletionStuck                  int                       `json:"deletionStuck"`
-	MinIOLifecycleSuccesses        int                       `json:"minioLifecycleSuccesses"`
-	ParserRuns                     int                       `json:"parserRuns"`
-	ParserFailures                 int                       `json:"parserFailures"`
+	Window                        int                       `json:"window"`
+	ObservedAt                    string                    `json:"observedAt"`
+	ElapsedSeconds                float64                   `json:"elapsedSeconds"`
+	RequestsBySurface             map[string]int            `json:"requestsBySurface"`
+	SuccessesBySurface            map[string]int            `json:"successesBySurface"`
+	FailuresBySurface             map[string]int            `json:"failuresBySurface"`
+	StatusClassCountsBySurface    map[string]map[string]int `json:"statusClassCountsBySurface"`
+	LatencyP50MsBySurface         map[string]float64        `json:"latencyP50MsBySurface"`
+	LatencyP95MsBySurface         map[string]float64        `json:"latencyP95MsBySurface"`
+	LatencyP99MsBySurface         map[string]float64        `json:"latencyP99MsBySurface"`
+	HeapAllocBytes                uint64                    `json:"heapAllocBytes"`
+	HeapInuseBytes                uint64                    `json:"heapInuseBytes"`
+	RSSBytes                      int64                     `json:"rssBytes"`
+	Goroutines                    int                       `json:"goroutines"`
+	DBPoolMaxConns                int32                     `json:"dbPoolMaxConns"`
+	DBPoolTotalConns              int32                     `json:"dbPoolTotalConns"`
+	DBPoolAcquiredConns           int32                     `json:"dbPoolAcquiredConns"`
+	DBPoolIdleConns               int32                     `json:"dbPoolIdleConns"`
+	DBPoolEmptyAcquireCount       int64                     `json:"dbPoolEmptyAcquireCount"`
+	DBPoolCanceledAcquireCount    int64                     `json:"dbPoolCanceledAcquireCount"`
+	DBPoolAcquireDurationMs       float64                   `json:"dbPoolAcquireDurationMs"`
+	ScanQueuePending              int                       `json:"scanQueuePending"`
+	ScanQueueOldestPendingSeconds float64                   `json:"scanQueueOldestPendingSeconds"`
+	DeletionPending               int                       `json:"deletionPending"`
+	DeletionStuck                 int                       `json:"deletionStuck"`
+	MinIOLifecycleSuccesses       int                       `json:"minioLifecycleSuccesses"`
+	ParserRuns                    int                       `json:"parserRuns"`
+	ParserFailures                int                       `json:"parserFailures"`
 }
 
 type sustainedSoakResultsDocument struct {
@@ -83,17 +83,17 @@ type sustainedSoakResultsDocument struct {
 		ContainsSecrets                  bool   `json:"containsSecrets"`
 	} `json:"environment"`
 	Scenario struct {
-		ScenarioID      string                      `json:"scenarioId"`
-		StartedAt       string                      `json:"startedAt"`
-		CompletedAt     string                      `json:"completedAt"`
-		DurationSeconds float64                     `json:"durationSeconds"`
-		WindowCount     int                         `json:"windowCount"`
-		Coverage        map[string]bool             `json:"coverage"`
-		Observations    []sustainedSoakObservation  `json:"observations"`
-		Trends          map[string]any              `json:"trends"`
-		Assertions      map[string]any              `json:"assertions"`
-		Result          string                      `json:"result"`
-		IntegrityResult string                      `json:"integrityResult"`
+		ScenarioID      string                     `json:"scenarioId"`
+		StartedAt       string                     `json:"startedAt"`
+		CompletedAt     string                     `json:"completedAt"`
+		DurationSeconds float64                    `json:"durationSeconds"`
+		WindowCount     int                        `json:"windowCount"`
+		Coverage        map[string]bool            `json:"coverage"`
+		Observations    []sustainedSoakObservation `json:"observations"`
+		Trends          map[string]any             `json:"trends"`
+		Assertions      map[string]any             `json:"assertions"`
+		Result          string                     `json:"result"`
+		IntegrityResult string                     `json:"integrityResult"`
 	} `json:"scenario"`
 	Limitations []string `json:"limitations"`
 }
@@ -358,43 +358,43 @@ func TestMixedImportLifecycleLocalLongSoak(t *testing.T) {
 			ObservedAt:     time.Now().UTC().Format(time.RFC3339),
 			ElapsedSeconds: time.Since(started).Seconds(),
 			RequestsBySurface: map[string]int{
-				"previewRead":          sustainedPreviewRequestsPerWindow,
+				"previewRead":           sustainedPreviewRequestsPerWindow,
 				"signedUploadLifecycle": sustainedUploadLifecyclesPerWindow,
 				"parserSupervisor":      1,
 				"deletionWorker":        deletionRequests,
 			},
 			SuccessesBySurface: map[string]int{
-				"previewRead":          previewBatch.Successes,
+				"previewRead":           previewBatch.Successes,
 				"signedUploadLifecycle": uploadBatch.Successes,
 				"parserSupervisor":      1 - parserFailures,
 				"deletionWorker":        deletionSuccesses,
 			},
 			FailuresBySurface: map[string]int{
-				"previewRead":          previewBatch.Failures,
+				"previewRead":           previewBatch.Failures,
 				"signedUploadLifecycle": uploadBatch.Failures,
 				"parserSupervisor":      parserFailures,
 				"deletionWorker":        deletionFailures,
 			},
 			StatusClassCountsBySurface: map[string]map[string]int{
-				"previewRead":          previewBatch.StatusClassCounts,
+				"previewRead":           previewBatch.StatusClassCounts,
 				"signedUploadLifecycle": uploadBatch.StatusClassCounts,
 				"parserSupervisor":      {"pass": 1 - parserFailures, "fail": parserFailures},
 				"deletionWorker":        {"pass": deletionSuccesses, "fail": deletionFailures},
 			},
 			LatencyP50MsBySurface: map[string]float64{
-				"previewRead":          previewBatch.LatencyP50Ms,
+				"previewRead":           previewBatch.LatencyP50Ms,
 				"signedUploadLifecycle": uploadBatch.LatencyP50Ms,
 				"parserSupervisor":      float64(parserDuration) / float64(time.Millisecond),
 				"deletionWorker":        float64(deletionDuration) / float64(time.Millisecond),
 			},
 			LatencyP95MsBySurface: map[string]float64{
-				"previewRead":          previewBatch.LatencyP95Ms,
+				"previewRead":           previewBatch.LatencyP95Ms,
 				"signedUploadLifecycle": uploadBatch.LatencyP95Ms,
 				"parserSupervisor":      float64(parserDuration) / float64(time.Millisecond),
 				"deletionWorker":        float64(deletionDuration) / float64(time.Millisecond),
 			},
 			LatencyP99MsBySurface: map[string]float64{
-				"previewRead":          previewBatch.LatencyP99Ms,
+				"previewRead":           previewBatch.LatencyP99Ms,
 				"signedUploadLifecycle": uploadBatch.LatencyP99Ms,
 				"parserSupervisor":      float64(parserDuration) / float64(time.Millisecond),
 				"deletionWorker":        float64(deletionDuration) / float64(time.Millisecond),
@@ -475,10 +475,10 @@ func TestMixedImportLifecycleLocalLongSoak(t *testing.T) {
 		"latencyTrendBySurface":        latencyTrend,
 		"errorRateTrendBySurface":      errorTrend,
 		"dbConnectionTrend": map[string]float64{
-			"totalConnsPerMinute":           sustainedSoakSlope(observations, func(o sustainedSoakObservation) float64 { return float64(o.DBPoolTotalConns) }),
-			"acquiredConnsPerMinute":        sustainedSoakSlope(observations, func(o sustainedSoakObservation) float64 { return float64(o.DBPoolAcquiredConns) }),
-			"emptyAcquireCountPerMinute":    sustainedSoakSlope(observations, func(o sustainedSoakObservation) float64 { return float64(o.DBPoolEmptyAcquireCount) }),
-			"acquireDurationMsPerMinute":    sustainedSoakSlope(observations, func(o sustainedSoakObservation) float64 { return o.DBPoolAcquireDurationMs }),
+			"totalConnsPerMinute":        sustainedSoakSlope(observations, func(o sustainedSoakObservation) float64 { return float64(o.DBPoolTotalConns) }),
+			"acquiredConnsPerMinute":     sustainedSoakSlope(observations, func(o sustainedSoakObservation) float64 { return float64(o.DBPoolAcquiredConns) }),
+			"emptyAcquireCountPerMinute": sustainedSoakSlope(observations, func(o sustainedSoakObservation) float64 { return float64(o.DBPoolEmptyAcquireCount) }),
+			"acquireDurationMsPerMinute": sustainedSoakSlope(observations, func(o sustainedSoakObservation) float64 { return o.DBPoolAcquireDurationMs }),
 		},
 		"scanQueueTrend": map[string]float64{
 			"pendingPerMinute":              sustainedSoakSlope(observations, func(o sustainedSoakObservation) float64 { return float64(o.ScanQueuePending) }),
@@ -492,12 +492,12 @@ func TestMixedImportLifecycleLocalLongSoak(t *testing.T) {
 
 	coverage := map[string]bool{
 		"authenticatedPreviewRead": totalPreviewSuccesses == sustainedLocalSoakWindows*sustainedPreviewRequestsPerWindow,
-		"signedUploadLifecycle":     totalUploadSuccesses == sustainedLocalSoakWindows*sustainedUploadLifecyclesPerWindow,
-		"parserSupervisor":          totalParserRuns == sustainedLocalSoakWindows && totalParserFailures == 0,
-		"scanQueue":                 finalQueuePending > 0 && finalQueuePending <= sustainedMaximumScanQueuePending,
-		"deletionWorker":            deletionCycles == sustainedLocalSoakWindows/sustainedDeletionCycleEveryWindows,
-		"postgresql":                true,
-		"minio":                     true,
+		"signedUploadLifecycle":    totalUploadSuccesses == sustainedLocalSoakWindows*sustainedUploadLifecyclesPerWindow,
+		"parserSupervisor":         totalParserRuns == sustainedLocalSoakWindows && totalParserFailures == 0,
+		"scanQueue":                finalQueuePending > 0 && finalQueuePending <= sustainedMaximumScanQueuePending,
+		"deletionWorker":           deletionCycles == sustainedLocalSoakWindows/sustainedDeletionCycleEveryWindows,
+		"postgresql":               true,
+		"minio":                    true,
 	}
 	allCoverage := true
 	for _, covered := range coverage {
