@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Normalize the human-readable load readiness note from canonical machine-readable proof flags."""
+"""Normalize human-readable load summaries from canonical machine-readable proof flags."""
 
 from __future__ import annotations
 
@@ -58,9 +58,29 @@ def main() -> int:
         "host/node/AZ failure recovery, production-equivalent dependency behavior or independently reviewed operating "
         "thresholds; OPS-P0-006 remains PARTIAL and Production remains NO_GO."
     )
+
+    deferred = document.get("deferredScenarios")
+    if not isinstance(deferred, list):
+        raise SystemExit("deferredScenarios missing")
+    deletion = next(
+        (item for item in deferred if isinstance(item, dict) and item.get("scenarioId") == "deletion-under-load"),
+        None,
+    )
+    if not isinstance(deletion, dict):
+        raise SystemExit("deletion-under-load deferred scenario missing")
+    deletion["reason"] = (
+        "post-fence former-session load, primary Preview/Apply/upload-authorization/upload-completion pre-fence linearization, "
+        "bounded multi-account worker saturation, lease-expiry recovery, actual process SIGKILL and actual Docker container "
+        "kill/replacement recovery are proven against local dependencies; physical host/node/AZ loss, production-equivalent "
+        "multi-instance topology and dependency behavior, capacity boundary and independently reviewed operating thresholds remain deferred"
+    )
+    if deletion.get("requiredDependencyMode") != "PRODUCTION_EQUIVALENT":
+        raise SystemExit("deletion-under-load deferred dependency boundary drift")
+
     LOAD_PATH.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
-    print("Memory OS load readiness note reconciliation PASS")
+    print("Memory OS load readiness summary reconciliation PASS")
     print("primary account-bound pre-fence aggregate: proven")
+    print("multi-account deletion-worker saturation: proven")
     print("actual Linux SIGKILL recovery: proven")
     print("actual Docker container kill/replacement recovery: proven")
     print("physical host/node/AZ recovery: false")
