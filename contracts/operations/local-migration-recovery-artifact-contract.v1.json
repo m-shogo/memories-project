@@ -1,0 +1,54 @@
+{
+  "contractId": "memory-os.operability.local-migration-recovery-artifact.v1",
+  "schemaVersion": "memory-os-local-migration-recovery-artifact-contract.v1",
+  "description": "Exact-source local PostgreSQL rehearsal that creates the actual pre-migration logical dump artifact, hashes it, applies the migration under test, restores that exact artifact into a separate database, proves the pre-migration surface is restored, reapplies the migration, and reruns the canonical SQL integration suite. This is local same-cluster evidence only and cannot satisfy production-shaped restore or rollback requirements.",
+  "migrationLifecycleContract": "contracts/operations/migration-lifecycle-contract.v1.json",
+  "migrationUnderTest": "010_memory_os_apple_identity.sql",
+  "baselineSequenceRule": "CANONICAL_PREFIX_EXCLUDING_MIGRATION_UNDER_TEST",
+  "runner": "scripts/run-memory-os-local-migration-recovery-artifact.sh",
+  "validator": "scripts/validate-memory-os-local-migration-recovery-artifact.py",
+  "evidenceRoot": "docs/evidence/migrations/recovery",
+  "resultSchemaVersion": "memory-os-local-migration-recovery-artifact.v1",
+  "requiredAssertions": {
+    "sourceBaselineApplied": true,
+    "recoveryArtifactDigestRecorded": true,
+    "migrationAppliedOnSource": true,
+    "migrationSpecificSourceTestPassed": true,
+    "exactRecoveryArtifactRestored": true,
+    "preMigrationSurfaceRecovered": true,
+    "migrationReappliedAfterRestore": true,
+    "canonicalSqlSuitePassedAfterRecovery": true,
+    "actualRecoveryArtifactRestored": true,
+    "containsSecrets": false,
+    "productionTraffic": false,
+    "productionCredentials": false,
+    "productionEvidence": false
+  },
+  "environment": {
+    "databaseEngine": "PostgreSQL",
+    "databaseMajorVersion": 16,
+    "dependencyMode": "LOCAL_POSTGRES_SAME_CLUSTER",
+    "sourceAndRecoveryDatabaseMustDiffer": true,
+    "localhostOnly": true,
+    "syntheticDataOnly": true,
+    "productionEquivalent": false
+  },
+  "limitations": [
+    "same PostgreSQL cluster logical dump and restore",
+    "not PITR, WAL archive, physical backup or replication evidence",
+    "not production-equivalent infrastructure or credentials",
+    "not proof that a production migration may be automatically rolled back",
+    "does not exercise application traffic during migration",
+    "does not satisfy destructive-contract isolated restore approval"
+  ],
+  "readiness": {
+    "contractDefined": true,
+    "runnerImplemented": false,
+    "validatorImplemented": false,
+    "automaticWorkflowImplemented": false,
+    "exactSourceEvidenceCommitted": false,
+    "localActualRecoveryArtifactRestoreProven": false,
+    "productionEquivalentRecoveryArtifactRestoreProven": false,
+    "productionReady": false
+  }
+}
