@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "memory-os-release-compatibility-pair-registry.v1",
+  "appendOnly": true,
+  "approvedPairCount": 0,
+  "rollbackEligiblePairCount": 0,
+  "latestPairId": null,
+  "pairs": [],
+  "productionEvidence": false,
+  "productionReady": false,
+  "limitations": [
+    "no approved predecessor/successor pair exists",
+    "candidate or local mixed-version evidence is not an approved release pair",
+    "pair admission does not establish application production readiness"
+  ]
+}
