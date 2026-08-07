@@ -1,0 +1,56 @@
+{
+  "schemaVersion": "memory-os-deletion-prefence-mutation-linearization-results.v1",
+  "commitSha": "9d1c95df5ab65d028f5e01ac7de5639340c57fc7",
+  "generatedAt": "2026-08-07T03:23:21Z",
+  "environment": {
+    "os": "linux",
+    "arch": "amd64",
+    "goVersion": "go1.23.12",
+    "dependencyMode": "LOCAL_POSTGRES_MINIO",
+    "syntheticDataOnly": true,
+    "productionTraffic": false,
+    "productionCredentials": false,
+    "productionEvidence": false,
+    "productionEquivalentDependencies": false,
+    "containsSecrets": false
+  },
+  "scenario": {
+    "scenarioId": "account-deletion-prefence-mutation-linearization-local-dependencies",
+    "applyRequests": 16,
+    "uploadAuthorizationRequests": 16,
+    "authenticatedBeforeFence": 32,
+    "deletionRequestStatus": 202,
+    "deletionEpoch": 2,
+    "applyUnauthorizedAfterFence": 16,
+    "uploadAuthorizationUnauthorizedAfterFence": 16,
+    "unexpectedStatusCount": 0,
+    "transportErrors": 0,
+    "preWorkerApplyConfirmationRows": 0,
+    "preWorkerMemoryItemRows": 0,
+    "preWorkerUploadAuthorizationRows": 0,
+    "preWorkerQuarantineRows": 0,
+    "workerReceiptCount": 1,
+    "finalOwnedRowCount": 0,
+    "finalAccountState": "deleted",
+    "finalAccountEpoch": 2,
+    "assertions": {
+      "allApplyUnauthorizedAfterFence": true,
+      "allAuthenticatedBeforeFence": true,
+      "allUploadAuthorizationUnauthorizedAfterFence": true,
+      "deletionWorkerCompleted": true,
+      "finalOwnedRowCount": 0,
+      "noPreWorkerMutation": true,
+      "noTransportErrors": true,
+      "noUnexpectedStatuses": true,
+      "productionEvidence": false
+    },
+    "result": "PASS",
+    "integrityResult": "PASS"
+  },
+  "limitations": [
+    "covers Apply and upload authorization but not upload completion already in flight",
+    "one synthetic account and one deletion worker",
+    "local PostgreSQL 16 and MinIO on a GitHub-hosted runner",
+    "not production deletion-capacity evidence"
+  ]
+}
