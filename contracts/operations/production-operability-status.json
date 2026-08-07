@@ -27,7 +27,8 @@
         "Security Contracts provisions a clean PostgreSQL 16 database, applies the complete canonical migration sequence and executes every SQL integration suite",
         "append-only privacy-safe migration rehearsal evidence registry is implemented with an external-record writer, exact source-commit binding, canonical migration-sequence binding, distinct operator/reviewer pseudonyms, lock and statement budgets, recovery-point reference verification, atomic replacement and fail-closed validation; registrations remain non-production evidence",
         "append-only privacy-safe migration rehearsal evidence registry is implemented with an external-record writer, exact source-commit and canonical migration-sequence binding, distinct operator/reviewer pseudonyms, lock and statement budgets, an opaque SHA-256 recovery-artifact reference, and a separately validated local logical-restore capability authority; arbitrary repository files can no longer satisfy recovery evidence, while the actual rehearsal recovery artifact is still not restored by this registry and registrations remain non-production evidence",
-        "append-only privacy-safe migration rehearsal evidence registry is implemented with exact source/canonical sequence binding, typed SHA-256 recovery-artifact references, a separately validated local logical-restore capability authority, and a per-run actual-artifact restore evidence requirement; arbitrary repository files or digest-only claims cannot satisfy recovery evidence and registrations remain non-production"
+        "append-only privacy-safe migration rehearsal evidence registry is implemented with exact source/canonical sequence binding, typed SHA-256 recovery-artifact references, a separately validated local logical-restore capability authority, and a per-run actual-artifact restore evidence requirement; arbitrary repository files or digest-only claims cannot satisfy recovery evidence and registrations remain non-production",
+        "production-shaped migration rehearsal admission is generation-bound and reuses the canonical append-only migration evidence ledger: admission additionally requires a registered environment generation, an approved predecessor/successor release pair, generation-consistent recovery evidence, mixed-version observation and independent security/operability review; the admission registry is currently empty"
       ],
       "missingEvidence": [
         "production-shaped rehearsal with lock and runtime budgets",
@@ -52,7 +53,13 @@
         "contracts/operations/local-migration-recovery-artifact-contract.v1.json",
         "scripts/run-memory-os-local-migration-recovery-artifact.sh",
         "scripts/validate-memory-os-local-migration-recovery-artifact.py",
-        "docs/evidence/migrations/recovery/README.md"
+        "docs/evidence/migrations/recovery/README.md",
+        "contracts/operations/migration-production-shaped-admission-contract.v1.json",
+        "contracts/operations/migration-production-shaped-admission-registry.v1.json",
+        "scripts/register-memory-os-migration-production-shaped-admission.py",
+        "scripts/validate-memory-os-migration-production-shaped-admission.py",
+        "scripts/reconcile-memory-os-migration-production-shaped-admission.py",
+        ".github/workflows/migration-production-shaped-admission.yml"
       ]
     },
     {
