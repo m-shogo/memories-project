@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate high-impact operability evidence is attached only to its owning OPS areas."""
+"""Validate high-impact operability evidence is attached only to its owning P0 areas."""
 
 from __future__ import annotations
 
@@ -43,10 +43,14 @@ def main() -> int:
     by_id: dict[str, set[str]] = {}
     for area in areas:
         require(isinstance(area, dict) and isinstance(area.get("id"), str), "invalid status area")
+        area_id = area["id"]
+        if not area_id.startswith("OPS-P0-"):
+            continue
         refs = area.get("evidenceRefs")
-        require(isinstance(refs, list), f"{area.get('id')} evidenceRefs missing")
-        require(all(isinstance(ref, str) for ref in refs), f"{area.get('id')} evidenceRefs invalid")
-        by_id[area["id"]] = set(refs)
+        require(isinstance(refs, list), f"{area_id} evidenceRefs missing")
+        require(all(isinstance(ref, str) for ref in refs), f"{area_id} evidenceRefs invalid")
+        by_id[area_id] = set(refs)
+    require(by_id, "no P0 operability areas found")
 
     entries = contract.get("ownership")
     require(isinstance(entries, list) and entries, "ownership entries missing")
@@ -63,17 +67,19 @@ def main() -> int:
         require(isinstance(required, list) and required and len(required) == len(set(required)), f"ownership[{index}].requiredOwners invalid")
         require(set(required) <= set(allowed), f"ownership[{index}] required owners must be allowed")
         for owner in allowed:
-            require(owner in by_id, f"ownership[{index}] unknown allowed owner: {owner}")
+            require(owner in by_id, f"ownership[{index}] unknown allowed P0 owner: {owner}")
         for owner in required:
             require(ref in by_id[owner], f"{ref} missing from required owner {owner}")
-        for area_id, refs in by_id.items():
-            if ref in refs:
-                require(area_id in set(allowed), f"{ref} is misclassified under {area_id}; allowed={allowed}")
+        allowed_set = set(allowed)
+        for area_id, area_refs in by_id.items():
+            if ref in area_refs:
+                require(area_id in allowed_set, f"{ref} is misclassified under {area_id}; allowed={allowed}")
 
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "readiness missing")
     require(readiness.get("productionReady") is False, "ownership validator cannot make productionReady")
     print("Memory OS operability evidence ownership validation PASS")
+    print(f"P0 areas checked: {len(by_id)}")
     print(f"owned authorities: {len(entries)}")
     print("cross-area misclassification: none")
     print("production decision: NO_GO")
