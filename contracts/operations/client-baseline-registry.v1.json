@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "memory-os-client-baseline-registry.v1",
+  "registryClass": "APPROVED_CLIENT_BASELINES",
+  "appendOnly": true,
+  "productionEvidence": false,
+  "approvedClientBaselineCount": 0,
+  "latestApprovedClientByClass": {
+    "IOS_APP": null,
+    "PORTAL": null
+  },
+  "clients": [],
+  "limitations": [
+    "no iOS or Portal client baseline has been approved",
+    "source code, branch heads, CI artifacts and version strings do not create client approval",
+    "an approved client baseline must bind an immutable executable artifact digest and reviewed compatibility metadata",
+    "empty registry means no client/server support window can be claimed"
+  ]
+}
