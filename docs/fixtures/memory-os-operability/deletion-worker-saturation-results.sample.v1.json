@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "memory-os-deletion-worker-saturation-results.v1",
+  "commitSha": "d50ee28dd6d63e922e72c0c0f49431fa8a539791",
+  "generatedAt": "2026-08-07T03:07:44Z",
+  "environment": {
+    "os": "linux",
+    "arch": "amd64",
+    "goVersion": "go1.23.12",
+    "dependencyMode": "LOCAL_POSTGRES_MINIO",
+    "syntheticDataOnly": true,
+    "productionTraffic": false,
+    "productionCredentials": false,
+    "productionEvidence": false,
+    "productionEquivalentDependencies": false,
+    "containsSecrets": false
+  },
+  "scenario": {
+    "scenarioId": "multi-account-deletion-worker-saturation-local-dependencies",
+    "deletingAccounts": 24,
+    "workerCount": 4,
+    "maxAccountsPerWorker": 6,
+    "allDeletionRequestsAccepted": true,
+    "deletionEpoch": 2,
+    "workerErrors": 0,
+    "workerReceiptCount": 24,
+    "uniqueWorkerReceiptCount": 24,
+    "duplicateWorkerReceiptCount": 0,
+    "controlPreviewRequests": 400,
+    "controlPreviewConcurrency": 16,
+    "controlPreview2xx": 400,
+    "controlPreview5xx": 0,
+    "controlPreviewTransportErrors": 0,
+    "finalDeletionPending": 0,
+    "finalDeletionStuck": 0,
+    "finalOwnedRowCount": 0,
+    "allDeletionTombstonesEpoch2": true,
+    "assertions": {
+      "allDeletionRequestsAccepted": true,
+      "allDeletionTombstonesEpoch2": true,
+      "capacityBoundaryEstablished": false,
+      "controlPreviewAll2xx": true,
+      "deletionBacklogConverged": true,
+      "finalOwnedRowsZero": true,
+      "operationalThresholdApproved": false,
+      "productionEvidence": false,
+      "workerReceiptsUnique": true
+    },
+    "result": "PASS",
+    "integrityResult": "PASS"
+  },
+  "limitations": [
+    "bounded local workload with 24 synthetic deleting accounts and four workers",
+    "control traffic is authenticated Preview read only",
+    "local PostgreSQL 16 and MinIO on a GitHub-hosted runner",
+    "not a production capacity or operating-threshold claim"
+  ]
+}
