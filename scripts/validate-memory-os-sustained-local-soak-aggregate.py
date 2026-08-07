@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Validate repeated local long-soak result documents and their aggregate authority."""
+"""Validate repeated LOCAL_LONG_SOAK documents and descriptive aggregate authority."""
 
 from __future__ import annotations
 
 import argparse
 import json
-import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -15,7 +15,7 @@ CONTRACT_PATH = ROOT / "contracts/operations/sustained-local-soak-contract.v1.js
 RESULT_GLOB = "sustained-local-soak-results.run-*.v1.json"
 RESULT_DIR = ROOT / "docs/fixtures/memory-os-operability"
 AGGREGATE_PATH = RESULT_DIR / "sustained-local-soak-results.aggregate.v1.json"
-SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+RESULT_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak-result.py"
 
 
 class Fail(RuntimeError):
@@ -38,121 +38,47 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def number(value: Any, field: str) -> float:
-    require(isinstance(value, (int, float)) and not isinstance(value, bool), f"{field} must be numeric")
-    return float(value)
-
-
-def validate_run(path: Path, contract: dict[str, Any]) -> tuple[str, str]:
-    doc = load(path)
-    require(doc.get("schemaVersion") == contract.get("resultsSchemaVersion"), f"{path.name}: schema drift")
-    commit = doc.get("commitSha")
-    run_id = doc.get("runId")
-    require(isinstance(commit, str) and SHA_RE.fullmatch(commit) is not None, f"{path.name}: full source commit required")
+def validate_run(path: Path) -> tuple[str, str]:
+    completed = subprocess.run(
+        [sys.executable, str(RESULT_VALIDATOR), str(path)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise Fail(
+            f"single-run validator rejected {path.relative_to(ROOT)}:\n"
+            f"{completed.stdout[-4000:]}{completed.stderr[-4000:]}"
+        )
+    value = load(path)
+    run_id = value.get("runId")
+    commit_sha = value.get("commitSha")
     require(isinstance(run_id, str) and run_id, f"{path.name}: runId required")
-
-    environment = doc.get("environment")
-    require(isinstance(environment, dict), f"{path.name}: environment required")
-    require(environment.get("dependencyMode") == "LOCAL_POSTGRES_MINIO", f"{path.name}: dependency mode drift")
-    require(environment.get("classification") == "LOCAL_LONG_SOAK", f"{path.name}: classification drift")
-    require(environment.get("syntheticDataOnly") is True, f"{path.name}: synthetic-only required")
-    require(environment.get("loopbackDependenciesOnly") is True, f"{path.name}: loopback-only required")
-    for key in (
-        "productionTraffic",
-        "productionCredentials",
-        "productionEvidence",
-        "productionEquivalentDependencies",
-        "containsSecrets",
-    ):
-        require(environment.get(key) is False, f"{path.name}: environment.{key} must remain false")
-
-    scenario = doc.get("scenario")
-    require(isinstance(scenario, dict), f"{path.name}: scenario required")
-    require(scenario.get("scenarioId") == contract.get("scenarioId"), f"{path.name}: scenario id drift")
-    duration = number(scenario.get("durationSeconds"), f"{path.name}.durationSeconds")
-    require(duration >= contract.get("minimumRunDurationSeconds", 3600), f"{path.name}: run shorter than 60 minutes")
-    require(duration <= contract.get("maximumSingleRunDurationSeconds", 5400) + 120, f"{path.name}: run exceeded bounded duration tolerance")
-    require(scenario.get("result") == "PASS", f"{path.name}: run must PASS")
-    require(scenario.get("integrityResult") == "PASS", f"{path.name}: integrity must PASS")
-
-    coverage = scenario.get("coverage")
-    require(isinstance(coverage, dict), f"{path.name}: coverage required")
-    for key, required in contract.get("requiredCoverage", {}).items():
-        if required is True:
-            require(coverage.get(key) is True, f"{path.name}: missing coverage {key}")
-
-    observations = scenario.get("observations")
-    require(isinstance(observations, list) and len(observations) >= 12, f"{path.name}: at least 12 observation windows required")
-    required_observations = contract.get("requiredObservationsPerWindow", [])
-    previous_elapsed = -1.0
-    for index, observation in enumerate(observations):
-        require(isinstance(observation, dict), f"{path.name}: observation {index} must be object")
-        for key in required_observations:
-            require(key in observation, f"{path.name}: observation {index} missing {key}")
-        elapsed = number(observation.get("elapsedSeconds"), f"{path.name}: observation {index}.elapsedSeconds")
-        require(elapsed > previous_elapsed, f"{path.name}: observation elapsed time must be monotonic")
-        previous_elapsed = elapsed
-
-    trends = scenario.get("trends")
-    require(isinstance(trends, dict), f"{path.name}: trends required")
-    for key in (
-        "rssSlopeBytesPerMinute",
-        "heapAllocSlopeBytesPerMinute",
-        "heapInuseSlopeBytesPerMinute",
-        "goroutineSlopePerMinute",
-    ):
-        number(trends.get(key), f"{path.name}.trends.{key}")
-    require(isinstance(trends.get("latencyTrendBySurface"), dict), f"{path.name}: latency trend required")
-    require(isinstance(trends.get("errorRateTrendBySurface"), dict), f"{path.name}: error trend required")
-    require(isinstance(trends.get("dbConnectionTrend"), dict), f"{path.name}: DB trend required")
-    require(isinstance(trends.get("scanQueueTrend"), dict), f"{path.name}: queue trend required")
-    require(isinstance(trends.get("deletionBacklogTrend"), dict), f"{path.name}: deletion trend required")
-
-    assertions = scenario.get("assertions")
-    require(isinstance(assertions, dict), f"{path.name}: assertions required")
-    require(assertions.get("postRunRecoveryProbePassed") is True, f"{path.name}: recovery probe required")
-    require(assertions.get("allRequiredCoverageExecuted") is True, f"{path.name}: all coverage assertion required")
-    for key in (
-        "productionEvidence",
-        "productionEquivalentDependencies",
-        "leakProof",
-        "capacityBoundaryEstablished",
-        "operationalThresholdApproved",
-    ):
-        require(assertions.get(key) is False, f"{path.name}: one local run cannot enable {key}")
-
-    serialized = json.dumps(doc, ensure_ascii=False)
-    for forbidden in (
-        "postgres://",
-        "postgresql://",
-        "minioadmin",
-        "Bearer ",
-        "X-Amz-Credential",
-        "acct_",
-    ):
-        require(forbidden not in serialized, f"{path.name}: forbidden sensitive/runtime material: {forbidden}")
-    return run_id, commit
+    require(isinstance(commit_sha, str) and len(commit_sha) == 40, f"{path.name}: commitSha required")
+    return run_id, commit_sha
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--require-evidence", action="store_true")
+    parser.add_argument("--require-local-evidence", action="store_true")
     args = parser.parse_args()
 
     contract = load(CONTRACT_PATH)
     paths = sorted(RESULT_DIR.glob(RESULT_GLOB))
     if not paths:
         require(not AGGREGATE_PATH.exists(), "aggregate cannot exist without run documents")
-        require(not args.require_evidence, "no local long-soak evidence has been committed")
+        require(not args.require_local_evidence, "no LOCAL_LONG_SOAK result documents have been committed")
         print("Memory OS sustained local soak aggregate validation PASS (foundation only)")
         print("committed long runs: 0")
-        print("sustained soak evidence: false")
+        print("local sustained soak evidence: false")
+        print("production sustained soak evidence: false")
         return 0
 
     run_ids: set[str] = set()
     commits: set[str] = set()
     for path in paths:
-        run_id, commit = validate_run(path, contract)
+        run_id, commit = validate_run(path)
         require(run_id not in run_ids, f"duplicate long-soak runId: {run_id}")
         run_ids.add(run_id)
         commits.add(commit)
@@ -160,34 +86,55 @@ def main() -> int:
     aggregate = load(AGGREGATE_PATH)
     require(aggregate.get("schemaVersion") == "memory-os-sustained-local-soak-aggregate.v1", "aggregate schema drift")
     require(aggregate.get("scenarioId") == contract.get("scenarioId"), "aggregate scenario drift")
+    require(aggregate.get("classification") == "LOCAL_LONG_SOAK", "aggregate classification drift")
     require(aggregate.get("runCount") == len(paths), "aggregate run count drift")
     require(aggregate.get("runIds") == sorted(run_ids), "aggregate runIds drift")
     require(aggregate.get("sourceCommitShas") == sorted(commits), "aggregate source commits drift")
     require(aggregate.get("allRunsDurationAtLeast3600Seconds") is True, "aggregate duration assertion required")
     require(aggregate.get("allRunsRequiredCoverageComplete") is True, "aggregate coverage assertion required")
+
+    enough_runs = len(paths) >= int(contract.get("minimumIndependentRuns", 2))
+    require(aggregate.get("minimumIndependentRunsSatisfied") is enough_runs, "aggregate repeated-run decision drift")
+    review = aggregate.get("trendReview")
+    require(isinstance(review, dict), "trendReview object required")
+    require(review.get("automaticLeakConclusionForbidden") is True, "automatic leak conclusion must remain forbidden")
+    require(review.get("automaticOperatingThresholdApprovalForbidden") is True, "automatic operating-threshold approval must remain forbidden")
+    run_trends = review.get("runTrends")
+    require(isinstance(run_trends, list) and len(run_trends) == len(paths), "trend summary must cover every committed run")
+
+    local_evidence = aggregate.get("localSustainedSoakEvidence")
+    trend_review_completed = aggregate.get("trendReviewCompleted")
+    require(isinstance(local_evidence, bool), "localSustainedSoakEvidence must be boolean")
+    require(isinstance(trend_review_completed, bool), "trendReviewCompleted must be boolean")
+    if local_evidence:
+        require(enough_runs, "local sustained-soak evidence requires at least two independent runs")
+        require(trend_review_completed is True, "local sustained-soak evidence requires completed trend review")
+    if not enough_runs:
+        require(local_evidence is False, "one run can never become local sustained-soak evidence")
+        require(trend_review_completed is False, "trend review cannot complete before repeated runs")
+
     for key in (
+        "productionSustainedSoakEvidence",
+        "leakProof",
         "productionEvidence",
         "productionEquivalentDependencies",
-        "leakProof",
         "capacityBoundaryEstablished",
         "operationalThresholdApproved",
         "productionReady",
     ):
-        require(aggregate.get(key) is False, f"aggregate local evidence cannot enable {key}")
+        require(aggregate.get(key) is False, f"LOCAL_LONG_SOAK aggregate cannot enable {key}")
 
-    enough_runs = len(paths) >= contract.get("minimumIndependentRuns", 2)
-    require(aggregate.get("minimumIndependentRunsSatisfied") is enough_runs, "aggregate repeated-run decision drift")
-    if args.require_evidence:
+    if args.require_local_evidence:
         require(enough_runs, "fewer than two independent 60-minute-or-longer runs")
-        require(aggregate.get("trendReviewCompleted") is True, "trend review must be completed before sustained-soak evidence")
-        require(aggregate.get("sustainedSoakEvidence") is True, "aggregate must explicitly register sustained local soak evidence")
-    else:
-        require(isinstance(aggregate.get("sustainedSoakEvidence"), bool), "aggregate sustainedSoakEvidence must be boolean")
+        require(trend_review_completed is True, "trend review remains pending")
+        require(local_evidence is True, "local sustained-soak evidence is not approved")
 
     print("Memory OS sustained local soak aggregate validation PASS")
     print(f"committed long runs: {len(paths)}")
     print(f"minimum independent runs satisfied: {str(enough_runs).lower()}")
-    print(f"sustained soak evidence: {str(aggregate.get('sustainedSoakEvidence')).lower()}")
+    print(f"trend review completed: {str(trend_review_completed).lower()}")
+    print(f"local sustained soak evidence: {str(local_evidence).lower()}")
+    print("production sustained soak evidence: false")
     print("leak proof: false")
     print("production evidence: false")
     return 0
