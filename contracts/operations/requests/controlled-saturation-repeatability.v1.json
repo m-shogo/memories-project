@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "memory-os-operation-request.v1",
+  "requestId": "controlled-saturation-repeatability-20260807-v1",
+  "operation": "EXECUTE_TWO_INDEPENDENT_LOCAL_SATURATION_RAMPS",
+  "sourceContract": "contracts/operations/controlled-saturation-repeatability-contract.v1.json",
+  "requiredIndependentRuns": 2,
+  "productionTraffic": false,
+  "productionCredentials": false,
+  "productionEvidence": false,
+  "requestedOutcome": {
+    "classifyRepeatableLocalDegradationSignal": true,
+    "capacityBoundaryPromotionForbidden": true,
+    "operationalThresholdApprovalForbidden": true,
+    "independentReviewStillRequired": true
+  }
+}
