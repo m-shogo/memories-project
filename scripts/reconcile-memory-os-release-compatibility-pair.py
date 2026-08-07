@@ -51,6 +51,16 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
+def gap_unsatisfied(gap: dict[str, Any]) -> bool:
+    current = gap.get("current")
+    if isinstance(current, bool):
+        return current is not gap.get("required")
+    if isinstance(current, int) and not isinstance(current, bool):
+        minimum = gap.get("requiredMinimum")
+        return isinstance(minimum, int) and current < minimum
+    return True
+
+
 def main() -> int:
     releases = load(RELEASES)
     registry = load(REGISTRY)
@@ -80,18 +90,13 @@ def main() -> int:
     authority["productionDecision"] = "NO_GO"
     write(CONTRACT, contract)
 
+    # Candidate/local execution evidence is intentionally immutable and remains
+    # non-release evidence even after approved release pairs exist.
     exec_boundary = execution.get("releaseAuthorityBoundary")
-    exec_readiness = execution.get("readiness")
-    require(isinstance(exec_boundary, dict) and isinstance(exec_readiness, dict), "execution release authority missing")
-    exec_boundary["approvedReleaseCount"] = release_count
-    exec_boundary["approvedRollbackPairCount"] = pair_count
-    exec_boundary["releaseCompatibilityEvidence"] = pair_count > 0
-    exec_boundary["productionEvidence"] = False
-    exec_boundary["productionReady"] = False
-    exec_boundary["productionDecision"] = "NO_GO"
-    exec_readiness["approvedReleasePairAvailable"] = pair_count > 0
-    exec_readiness["productionReady"] = False
-    write(EXECUTION, execution)
+    require(isinstance(exec_boundary, dict), "candidate execution release authority missing")
+    require(exec_boundary.get("canonicalReleaseMatrixChanged") is False, "candidate execution release matrix drift")
+    require(exec_boundary.get("releaseCompatibilityEvidence") is False, "candidate execution cannot be relabeled as approved release evidence")
+    require(exec_boundary.get("productionEvidence") is False and exec_boundary.get("productionReady") is False, "candidate execution cannot promote production")
 
     current_counts = gaps.get("currentCounts")
     blocking_gaps = gaps.get("blockingGaps")
@@ -105,10 +110,10 @@ def main() -> int:
             gap["current"] = release_count
         elif gap.get("id") == "COMPAT-GAP-ROLLBACK-PAIR":
             gap["current"] = pair_count
-    gaps["blockingGapCount"] = sum(1 for gap in blocking_gaps if isinstance(gap, dict) and gap.get("blocking") is True and (
-        (isinstance(gap.get("current"), int) and gap.get("current") < gap.get("requiredMinimum", 0))
-        or (isinstance(gap.get("current"), bool) and gap.get("current") is not gap.get("required"))
-    ))
+    gaps["blockingGapCount"] = sum(
+        1 for gap in blocking_gaps
+        if isinstance(gap, dict) and gap.get("blocking") is True and gap_unsatisfied(gap)
+    )
     gaps["releaseCompatibilityEvidence"] = pair_count > 0
     gaps["productionEvidence"] = False
     gaps["productionReady"] = False
@@ -126,12 +131,13 @@ def main() -> int:
     require(isinstance(existing, list) and isinstance(missing, list) and isinstance(refs, list), "OPS-P0-008 authority arrays missing")
     existing[:] = [item for item in existing if not (isinstance(item, str) and item.startswith(EVIDENCE_PREFIX))]
     append_once(existing, (
-        f"{EVIDENCE_PREFIX} approved releases={release_count}, approved predecessor/successor rollback pairs={pair_count}; pair admission requires two distinct already-approved release baselines, ELIGIBLE predecessor rollback status, pair-specific rolling deployment, application rollback, persisted-route, database-upgrade, artifact-retention and at least two independent review references, while candidate/local evidence cannot create a pair and productionEvidence/productionReady remain false"
+        f"{EVIDENCE_PREFIX} approved releases={release_count}, approved predecessor/successor rollback pairs={pair_count}; pair admission requires two distinct already-approved release baselines, ELIGIBLE predecessor rollback status, pair-specific rolling deployment, application rollback, persisted-route, database-upgrade, artifact-retention and at least two independent review references, while candidate/local execution remains a separate non-release authority and productionEvidence/productionReady remain false"
     ))
     if pair_count > 0:
         obsolete_prefixes = (
             "approved predecessor release record",
             "rollback-eligible approved release",
+            "approved predecessor and successor release pair",
         )
         missing[:] = [item for item in missing if not (isinstance(item, str) and item.startswith(obsolete_prefixes))]
     for ref in REFS:
@@ -144,6 +150,7 @@ def main() -> int:
     print(f"approved releases: {release_count}")
     print(f"approved rollback pairs: {pair_count}")
     print(f"release compatibility evidence: {str(pair_count > 0).lower()}")
+    print("candidate/local execution authority: unchanged")
     print("OPS-P0-008: PARTIAL")
     print("productionDecision: NO_GO")
     return 0
