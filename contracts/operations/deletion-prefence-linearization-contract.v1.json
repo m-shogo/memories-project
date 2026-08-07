@@ -62,8 +62,8 @@
     "runnerImplemented": true,
     "validatorImplemented": true,
     "automaticWorkflowImplemented": true,
-    "exactSourceResultCommitted": false,
-    "preFenceInFlightLinearizationProven": false,
+    "exactSourceResultCommitted": true,
+    "preFenceInFlightLinearizationProven": true,
     "productionDependenciesTested": false,
     "independentReviewCompleted": false,
     "productionReady": false
