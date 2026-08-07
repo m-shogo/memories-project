@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "memory-os-migration-evidence-registry.v1",
+  "registryClass": "NON_PRODUCTION_MIGRATION_REHEARSAL_EVIDENCE",
+  "appendOnly": true,
+  "productionEvidence": false,
+  "rehearsalEvidenceCount": 0,
+  "passingRehearsalCount": 0,
+  "productionEquivalentRehearsalCount": 0,
+  "latestRehearsalRunId": null,
+  "records": [],
+  "limitations": [
+    "no non-production migration rehearsal has been registered through this authority",
+    "production migration evidence cannot be written to this registry",
+    "a local PASS cannot satisfy production-shaped migration rehearsal requirements",
+    "database identity is stored only as a SHA-256 digest"
+  ]
+}
