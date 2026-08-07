@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "backup-restore-generation-binding",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "BACKUP RESTORE GENERATION BINDING FAILED: cannot load contracts/operations/backup-restore-drill-contract.v1.json: [Errno 2] No such file or directory: '/home/runner/work/memories-project/memories-project/contracts/operations/backup-restore-drill-contract.v1.json'\n",
+  "containsSecrets": false,
+  "productionEquivalentRestoreEvidence": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
