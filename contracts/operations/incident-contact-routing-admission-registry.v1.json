@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "memory-os-incident-contact-routing-admission-registry.v1",
+  "appendOnly": true,
+  "admittedRoutingCount": 0,
+  "productionEquivalentRoutingCount": 0,
+  "productionRoutingCount": 0,
+  "routings": [],
+  "productionReady": false
+}
