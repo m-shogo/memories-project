@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "deletion-prefence-upload-completion",
-  "sourceCommitSha": "fe1fb6d9c737faec8f9efbcd1127a0df07bde430",
+  "sourceCommitSha": "865377db6ae0d6d0a16223e023f7a4c17509ada0",
   "result": "FAIL",
   "exitCode": 1,
   "output": "STAGE: python-and-contract\nMemory OS deletion pre-fence upload completion validation PASS\nresult present: false\npost-HEAD fence covered: true\nproduction evidence: false\nSTAGE: gofmt\n",
