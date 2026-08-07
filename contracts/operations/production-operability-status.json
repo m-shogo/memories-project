@@ -608,7 +608,12 @@
         "production-shaped mixed-version process/host/network interruption with connection-pool cleanup and recovery evidence using approved release artifacts",
         "destructive contract-migration and downgrade compatibility proof with an explicit irreversible rollback boundary",
         "reviewed PostgreSQL support window plus production-shaped blue-green or in-place upgrade rehearsal with connection-pool drain, physical replication, WAL continuity, replication slots, failover and rollback decision evidence",
-        "independent review of integrated compatibility controls with zero unresolved Critical or High findings"
+        "independent review of integrated compatibility controls with zero unresolved Critical or High findings",
+        "approved predecessor release artifact and successor release pair for binding compatibility evidence",
+        "simultaneous old/current application traffic against the same production-shaped database",
+        "rolling deployment order, connection drain, failure injection and application rollback rehearsal",
+        "destructive contract-migration and downgrade compatibility proof",
+        "production-shaped mixed-version review with zero unresolved Critical or High findings"
       ],
       "evidenceRefs": [
         ".github/workflows/security-contracts.yml",
