@@ -1,0 +1,111 @@
+{
+  "contractId": "memory-os.operability.observability-stack-deployment.v1",
+  "schemaVersion": "memory-os-observability-stack-deployment.v1",
+  "description": "Fail-closed admission authority for a deployed operational observability stack spanning structured logs, metrics, dashboards, alert routing and access audit. Component-local CI evidence cannot substitute for an integrated environment record. A record may describe production-equivalent or production infrastructure, but automatic production readiness is forbidden.",
+  "sourceLogContract": "contracts/operations/observability-event-contract.v1.json",
+  "sourceLogAccessContract": "contracts/operations/observability-retention-access-contract.v1.json",
+  "sourceMetricsContract": "contracts/operations/metrics-contract.v1.json",
+  "sourceMetricsScrapeContract": "contracts/operations/metrics-scrape-contract.v1.json",
+  "sourceMetricsOperationsContract": "contracts/operations/metrics-retention-error-budget-contract.v1.json",
+  "sourceAlertingContract": "contracts/operations/metrics-alerting-contract.v1.json",
+  "environmentGenerationContract": "contracts/operations/production-equivalent-environment-generation-contract.v1.json",
+  "environmentGenerationRegistry": "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+  "registryPath": "contracts/operations/observability-stack-deployment-registry.v1.json",
+  "validator": "scripts/validate-memory-os-observability-stack-deployment.py",
+  "reconcile": "scripts/reconcile-memory-os-observability-stack-deployment.py",
+  "workflow": ".github/workflows/observability-stack-deployment.yml",
+  "allowedEnvironmentClasses": [
+    "PRODUCTION_EQUIVALENT",
+    "PRODUCTION"
+  ],
+  "requiredEvidenceDomains": {
+    "structuredLogs": [
+      "backend deployment evidence",
+      "ingestion freshness monitoring",
+      "schema rejection and drop monitoring",
+      "14-day searchable retention",
+      "90-day operational retention",
+      "365-day reviewed incident snapshot retention",
+      "retention deletion verification"
+    ],
+    "logAccess": [
+      "individual identity group assignments",
+      "multi-factor requirement",
+      "append-only access audit sink",
+      "90-day access review evidence",
+      "inactive access revocation",
+      "tested time-bounded break-glass",
+      "tested bounded export workflow"
+    ],
+    "metrics": [
+      "private authenticated scrape integration",
+      "scrape freshness and failure monitoring",
+      "metrics backend retention tiers",
+      "recording-rule deployment",
+      "dashboard data-source wiring",
+      "dashboard operator review"
+    ],
+    "alerting": [
+      "provider alert rule deployment",
+      "owned routing destination",
+      "paging delivery evidence",
+      "acknowledgement and escalation targets",
+      "inhibition behavior",
+      "delivery and response drill"
+    ]
+  },
+  "recordRequirements": {
+    "sourceCommitShaRequired": true,
+    "environmentIdentityDigestRequired": true,
+    "environmentGenerationRequiredForProductionEquivalent": true,
+    "infrastructureAsCodeRefsRequired": true,
+    "immutableBackendIdentityDigestsRequired": true,
+    "logRetentionTiersMustMatchPolicy": true,
+    "metricsRetentionTiersMustMatchPolicy": true,
+    "accessAuditAppendOnlyEvidenceRequired": true,
+    "pagingOwnershipEvidenceRequired": true,
+    "freshnessChecksRequired": true,
+    "failureAlertChecksRequired": true,
+    "breakGlassAndExportDrillsRequired": true,
+    "independentSecurityReviewRequired": true,
+    "independentOperabilityReviewRequired": true,
+    "productionCredentialsForbiddenInRecord": true,
+    "rawEndpointUrlsForbiddenInRecord": true,
+    "personalIdentifiersForbiddenInRecord": true,
+    "unresolvedCriticalOrHighFindingsForbiddenForAdmission": true
+  },
+  "promotionRules": {
+    "logsAloneCanPromoteStack": false,
+    "metricsAloneCanPromoteStack": false,
+    "dashboardScreenshotsCanPromoteStack": false,
+    "ciGeneratedAlertRulesCanPromoteRouting": false,
+    "configuredWithoutDeliveryDrillCanPromotePaging": false,
+    "retentionConfigurationWithoutDeletionVerificationCanPromoteRetention": false,
+    "productionEquivalentRecordCanPromoteProduction": false,
+    "automaticProductionReadyForbidden": true
+  },
+  "currentAuthority": {
+    "admittedStackCount": 0,
+    "productionEquivalentStackCount": 0,
+    "productionStackCount": 0,
+    "integratedStructuredLogBackendProven": false,
+    "integratedMetricsBackendProven": false,
+    "accessAuditAndReviewProven": false,
+    "pagingDeliveryAndResponseProven": false,
+    "retentionDeletionVerified": false,
+    "productionEvidence": false,
+    "productionReady": false,
+    "productionDecision": "NO_GO"
+  },
+  "readiness": {
+    "contractDefined": true,
+    "registryImplemented": false,
+    "validatorImplemented": false,
+    "automaticWorkflowImplemented": false,
+    "admittedStackCount": 0,
+    "productionEquivalentStackAvailable": false,
+    "productionStackAvailable": false,
+    "independentReviewCompleted": false,
+    "productionReady": false
+  }
+}
