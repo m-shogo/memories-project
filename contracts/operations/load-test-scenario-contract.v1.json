@@ -331,7 +331,7 @@
     },
     {
       "scenarioId": "deletion-under-load",
-      "reason": "post-fence former-session load and concurrent worker erasure now pass against local PostgreSQL and MinIO; request linearization for calls already in flight before the 202 fence, multiple-account worker saturation and production dependency behavior remain deferred",
+      "reason": "post-fence former-session load, Preview requests authenticated before the fence, Apply and upload-authorization requests authenticated before the fence with zero pre-worker durable mutation, and bounded 24-account/four-worker deletion saturation now pass against local PostgreSQL and MinIO; upload-completion requests already in flight before the fence, host/process failure behavior, production dependency behavior and independently reviewed deletion-load thresholds remain deferred",
       "requiredDependencyMode": "PRODUCTION_EQUIVALENT"
     }
   ],
@@ -347,7 +347,7 @@
     "cardinalityProof": true,
     "operationalThresholds": false,
     "productionEquivalentDependencies": false,
-    "note": "Mock and local dependency checkpoints now include bounded ramp, short CI stability and post-fence deletion load. They establish neither production capacity nor pre-fence request linearization, sustained-soak/leak proof or production-equivalent behavior; OPS-P0-006 remains PARTIAL.",
+    "note": "Mock and local dependency checkpoints now include bounded ramp, short CI stability and post-fence deletion load. They establish neither production capacity nor pre-fence request linearization, sustained-soak/leak proof or production-equivalent behavior; OPS-P0-006 remains PARTIAL. Apply and upload-authorization pre-fence mutation linearization are now proven locally with zero durable mutation; upload completion already in flight remains unproven.",
     "boundedLocalCapacityRampExecuted": true,
     "shortCIStabilitySampleExecuted": true,
     "deletionPostFenceLoadExecuted": true,
@@ -358,7 +358,10 @@
     "multiAccountDeletionWorkerSaturationProven": true,
     "localLongSoakFoundationImplemented": true,
     "localLongSoakRunCount": 0,
-    "localSustainedSoakEvidence": false
+    "localSustainedSoakEvidence": false,
+    "applyPreFenceInFlightLinearizationProven": true,
+    "uploadAuthorizationPreFenceInFlightLinearizationProven": true,
+    "uploadCompletionPreFenceInFlightLinearizationProven": false
   },
   "evidenceRefs": [
     "services/import-api/internal/loadtest/harness.go",
@@ -414,6 +417,12 @@
     "scripts/validate-memory-os-sustained-local-soak-aggregate.py",
     "scripts/update-memory-os-sustained-local-soak-aggregate.py",
     "scripts/reconcile-memory-os-sustained-local-soak-status.py",
-    ".github/workflows/sustained-local-soak.yml"
+    ".github/workflows/sustained-local-soak.yml",
+    "contracts/operations/deletion-prefence-mutation-linearization-contract.v1.json",
+    "services/import-api/internal/httpserver/deletion_prefence_mutation_linearization_test.go",
+    "scripts/validate-memory-os-deletion-prefence-mutation-linearization.py",
+    "scripts/reconcile-memory-os-deletion-prefence-mutation-linearization.py",
+    ".github/workflows/deletion-prefence-mutation-linearization.yml",
+    "docs/fixtures/memory-os-operability/deletion-prefence-mutation-linearization-results.sample.v1.json"
   ]
 }
