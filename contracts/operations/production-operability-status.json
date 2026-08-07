@@ -667,22 +667,7 @@
         "production-shaped mixed-version process/host/network interruption with connection-pool cleanup and recovery evidence using approved release artifacts",
         "destructive contract-migration and downgrade compatibility proof with an explicit irreversible rollback boundary",
         "reviewed PostgreSQL support window plus production-shaped blue-green or in-place upgrade rehearsal with connection-pool drain, physical replication, WAL continuity, replication slots, failover and rollback decision evidence",
-        "independent review of integrated compatibility controls with zero unresolved Critical or High findings",
-        "approved predecessor release artifact and successor release pair for binding compatibility evidence",
-        "simultaneous old/current application traffic against the same production-shaped database",
-        "rolling deployment order, connection drain, failure injection and application rollback rehearsal",
-        "destructive contract-migration and downgrade compatibility proof",
-        "production-shaped mixed-version review with zero unresolved Critical or High findings",
-        "full old/current backend mixed-version route, mutation, persisted-state and rollback coverage beyond the proven session/authentication slice",
-        "persisted Preview and Apply compatibility fixtures across an approved predecessor and successor release pair",
-        "simultaneous approved-release old/current mutation traffic and concurrent idempotency-claim race coverage on one production-shaped database",
-        "approved-release process termination during in-progress Apply with production-shaped connection-pool cleanup and deterministic recovery evidence",
-        "rolling deployment, traffic drain and application rollback rehearsal using rollback-eligible approved release artifacts",
-        "approved predecessor and successor release pair despite candidate-only mixed-version evidence",
-        "production rolling traffic, connection drain and application rollback rehearsal using rollback-eligible approved releases",
-        "reviewed production parser artifact with exact-byte replay and immutable rollback retention evidence",
-        "implemented client/server support windows and client/server skew tests",
-        "production-shaped PostgreSQL blue-green cutover with connection-pool drain, replication, failover and irreversible rollback-boundary review"
+        "independent review of integrated compatibility controls with zero unresolved Critical or High findings"
       ],
       "evidenceRefs": [
         ".github/workflows/security-contracts.yml",
