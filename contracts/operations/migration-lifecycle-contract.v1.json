@@ -148,7 +148,13 @@
     ".github/workflows/security-contracts.yml",
     "contracts/operations/migration-lifecycle-contract.v1.json",
     "docs/runbooks/memory-os-migration-recovery.md",
-    "scripts/validate-memory-os-migration-lifecycle.py"
+    "scripts/validate-memory-os-migration-lifecycle.py",
+    "contracts/operations/migration-evidence-registry-contract.v1.json",
+    "contracts/operations/migration-evidence-registry.v1.json",
+    "scripts/register-memory-os-migration-rehearsal-evidence.py",
+    "scripts/validate-memory-os-migration-evidence-registry.py",
+    "scripts/reconcile-memory-os-migration-evidence-registry.py",
+    ".github/workflows/migration-evidence-registry.yml"
   ],
   "readiness": {
     "policyDefined": true,
@@ -158,9 +164,9 @@
     "mixedVersionCompatibilityProven": false,
     "productionShapedRehearsalCompleted": false,
     "isolatedRestoreLinked": false,
-    "operatorEvidenceRecordImplemented": false,
+    "operatorEvidenceRecordImplemented": true,
     "automatedDestructiveRollback": false,
     "ready": false,
-    "note": "Security Contracts already provisions a clean PostgreSQL 16 database, applies the complete canonical migration sequence and runs every SQL integration suite. Mixed-version proof, recovery-point integration, evidence ledger and production-shaped rehearsal remain required, so OPS-P0-001 stays PARTIAL."
+    "note": "The append-only non-production operator evidence registry is implemented, while actual production-shaped migration rehearsal, mixed-version deployment proof, automated recovery-point verification bound to a real isolated restore, and destructive-contract restore linkage remain required."
   }
 }

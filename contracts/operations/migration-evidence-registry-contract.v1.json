@@ -94,11 +94,11 @@
   },
   "readiness": {
     "contractDefined": true,
-    "registryImplemented": false,
-    "writerImplemented": false,
-    "validatorImplemented": false,
-    "automaticWorkflowImplemented": false,
-    "operatorEvidenceRecordImplemented": false,
+    "registryImplemented": true,
+    "writerImplemented": true,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": true,
+    "operatorEvidenceRecordImplemented": true,
     "productionShapedRehearsalCompleted": false,
     "independentReviewCompleted": false,
     "productionReady": false

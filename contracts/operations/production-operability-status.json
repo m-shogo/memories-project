@@ -24,11 +24,12 @@
         "canonical full-filename migration registry covering the current PostgreSQL security sequence",
         "operator runbook for preflight, expand, bounded backfill, mixed-version observation, contract and failure decisions",
         "fail-closed validator for migration registry, policy, runbook and READY claims",
-        "Security Contracts provisions a clean PostgreSQL 16 database, applies the complete canonical migration sequence and executes every SQL integration suite"
+        "Security Contracts provisions a clean PostgreSQL 16 database, applies the complete canonical migration sequence and executes every SQL integration suite",
+        "append-only privacy-safe migration rehearsal evidence registry is implemented with an external-record writer, exact source-commit binding, canonical migration-sequence binding, distinct operator/reviewer pseudonyms, lock and statement budgets, recovery-point reference verification, atomic replacement and fail-closed validation; registrations remain non-production evidence"
       ],
       "missingEvidence": [
         "production-shaped rehearsal with lock and runtime budgets",
-        "automated recovery-point verification and append-only operator evidence record",
+        "automated recovery-point verification bound to an actual isolated recovery artifact",
         "mixed-version deployment proof",
         "isolated restore linkage for destructive contract decisions"
       ],
@@ -36,7 +37,13 @@
         ".github/workflows/security-contracts.yml",
         "contracts/operations/migration-lifecycle-contract.v1.json",
         "docs/runbooks/memory-os-migration-recovery.md",
-        "scripts/validate-memory-os-migration-lifecycle.py"
+        "scripts/validate-memory-os-migration-lifecycle.py",
+        "contracts/operations/migration-evidence-registry-contract.v1.json",
+        "contracts/operations/migration-evidence-registry.v1.json",
+        "scripts/register-memory-os-migration-rehearsal-evidence.py",
+        "scripts/validate-memory-os-migration-evidence-registry.py",
+        "scripts/reconcile-memory-os-migration-evidence-registry.py",
+        ".github/workflows/migration-evidence-registry.yml"
       ]
     },
     {
