@@ -80,8 +80,8 @@
     "runnerImplemented": true,
     "validatorImplemented": true,
     "automaticWorkflowImplemented": true,
-    "exactSourceResultCommitted": false,
-    "preFenceUploadCompletionLinearizationProven": false,
+    "exactSourceResultCommitted": true,
+    "preFenceUploadCompletionLinearizationProven": true,
     "productionDependenciesTested": false,
     "independentReviewCompleted": false,
     "productionReady": false
