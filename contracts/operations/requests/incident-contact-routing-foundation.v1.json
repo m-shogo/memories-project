@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "memory-os-operation-request.v1",
+  "requestId": "incident-contact-routing-foundation-20260807-v1",
+  "operation": "VALIDATE_INCIDENT_CONTACT_ROUTING_ADMISSION",
+  "productionTraffic": false,
+  "productionCredentials": false,
+  "productionEvidence": false,
+  "constraints": {
+    "admittedObservabilityStackRequired": true,
+    "rawContactDetailsForbidden": true,
+    "providerEscalationAndUserCommunicationOwnershipRequired": true,
+    "deliveryAndEscalationDrillsRequired": true,
+    "privacyAndOperabilityReviewRequired": true,
+    "productionReadyPromotionForbidden": true
+  }
+}
