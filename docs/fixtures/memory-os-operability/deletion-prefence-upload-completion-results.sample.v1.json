@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "memory-os-deletion-prefence-upload-completion-results.v1",
+  "commitSha": "4213cd517b5eb2ee6aa0c4373225612f955b1222",
+  "generatedAt": "2026-08-07T04:05:38Z",
+  "environment": {
+    "os": "linux",
+    "arch": "amd64",
+    "goVersion": "go1.23.12",
+    "dependencyMode": "LOCAL_POSTGRES_MINIO",
+    "syntheticDataOnly": true,
+    "productionTraffic": false,
+    "productionCredentials": false,
+    "productionEvidence": false,
+    "productionEquivalentDependencies": false,
+    "containsSecrets": false
+  },
+  "scenario": {
+    "scenarioId": "account-deletion-prefence-upload-completion-local-dependencies",
+    "issuedAndUploadedBeforeFence": 16,
+    "realHeadCompletedBeforeFence": 16,
+    "deletionRequestStatus": 202,
+    "deletionEpoch": 2,
+    "completionUnauthorizedAfterFence": 16,
+    "unexpectedStatusCount": 0,
+    "transportErrors": 0,
+    "preWorkerIssuedAuthorizationRows": 16,
+    "preWorkerConsumedAuthorizationRows": 0,
+    "preWorkerQuarantineRows": 0,
+    "workerReceiptCount": 1,
+    "erasedObjectVersions": 16,
+    "finalOwnedRowCount": 0,
+    "finalAccountState": "deleted",
+    "finalAccountEpoch": 2,
+    "assertions": {
+      "allCompletionRequestsUnauthorizedAfterFence": true,
+      "allRealHeadsCompletedBeforeFence": true,
+      "allUploadedObjectVersionsErased": true,
+      "deletionWorkerCompleted": true,
+      "finalOwnedRowCount": 0,
+      "noCompletionMutationBeforeWorker": true,
+      "noTransportErrors": true,
+      "noUnexpectedStatuses": true,
+      "productionEvidence": false
+    },
+    "result": "PASS",
+    "integrityResult": "PASS"
+  },
+  "limitations": [
+    "one synthetic account and 16 in-flight upload-completion requests",
+    "local PostgreSQL 16 and versioned MinIO on a GitHub-hosted runner",
+    "does not prove process or host failure during deletion-worker erasure",
+    "not production deletion-capacity evidence"
+  ]
+}
