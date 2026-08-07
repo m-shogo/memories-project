@@ -160,7 +160,8 @@
     "contracts/operations/local-migration-recovery-artifact-contract.v1.json",
     "scripts/run-memory-os-local-migration-recovery-artifact.sh",
     "scripts/validate-memory-os-local-migration-recovery-artifact.py",
-    "docs/evidence/migrations/recovery/README.md"
+    "docs/evidence/migrations/recovery/README.md",
+    "docs/evidence/migrations/recovery/mig_20260807_f61f6d4ee39b.json"
   ],
   "readiness": {
     "policyDefined": true,
@@ -173,6 +174,6 @@
     "operatorEvidenceRecordImplemented": true,
     "automatedDestructiveRollback": false,
     "ready": false,
-    "note": "The non-production migration registry requires typed recovery artifacts, validated restore capability and per-run actual-artifact restore evidence. No passing local actual-artifact rehearsal is registered yet; production-shaped rehearsal, production-equivalent isolated restore, mixed-version deployment proof and destructive-contract restore linkage remain required."
+    "note": "The non-production migration registry now contains a passing local rehearsal that restored its actual pre-migration logical dump artifact into a separate same-cluster database and successfully reapplied the migration and SQL suite. Production-shaped rehearsal, production-equivalent isolated restore, mixed-version deployment proof and destructive-contract restore linkage remain required."
   }
 }

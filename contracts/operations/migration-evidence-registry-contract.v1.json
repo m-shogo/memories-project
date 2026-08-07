@@ -136,8 +136,8 @@
     "claim that local rehearsal is production evidence"
   ],
   "currentAuthority": {
-    "rehearsalEvidenceCount": 0,
-    "passingRehearsalCount": 0,
+    "rehearsalEvidenceCount": 1,
+    "passingRehearsalCount": 1,
     "productionEquivalentRehearsalCount": 0,
     "productionMigrationEvidenceCount": 0,
     "productionEvidence": false,
@@ -155,7 +155,7 @@
     "localRestoreCapabilityBound": true,
     "perRunRecoveryArtifactEvidenceRequired": true,
     "productionEquivalentRestoreCapabilityConfigured": false,
-    "localActualRecoveryArtifactRestoreLinked": false,
+    "localActualRecoveryArtifactRestoreLinked": true,
     "productionEquivalentActualRecoveryArtifactRestoreLinked": false,
     "productionShapedRehearsalCompleted": false,
     "independentReviewCompleted": false,
