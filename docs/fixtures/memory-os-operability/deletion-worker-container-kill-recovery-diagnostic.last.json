@@ -1,10 +1,10 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "deletion-worker-container-kill-recovery",
-  "sourceCommitSha": "8f4ebb46c14b733efe5e4967356179fb9c5a1edc",
+  "sourceCommitSha": "99ef70d8fcbd875b9efbe7520cd69b370c954699",
   "result": "FAIL",
   "exitCode": 1,
-  "output": "STAGE: fixture-setup\ncontainer drill fixture ready\nSTAGE: killed-container-start\nUnable to find image 'debian:bookworm-slim' locally\nbookworm-slim: Pulling from library/debian\n039e6f9f9752: Pulling fs layer\n039e6f9f9752: Verifying Checksum\n039e6f9f9752: Download complete\n039e6f9f9752: Pull complete\nDigest: sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241\nStatus: Downloaded newer image for debian:bookworm-slim\nae771f3de0eeed602d51492fee8f4e3c899ac575b9dc9e5fd1735a87096e7109\nSTAGE: wait-interruption-point\n",
+  "output": "STAGE: fixture-setup\ncontainer drill fixture ready\nSTAGE: killed-container-start\nUnable to find image 'debian:bookworm-slim' locally\nbookworm-slim: Pulling from library/debian\n039e6f9f9752: Pulling fs layer\n039e6f9f9752: Verifying Checksum\n039e6f9f9752: Download complete\n039e6f9f9752: Pull complete\nDigest: sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241\nStatus: Downloaded newer image for debian:bookworm-slim\n4530772c662aadc46f676a92b9f0da0031a1f0934b568ce6769e8611721ea2a8\nSTAGE: wait-interruption-point\ncontainer_progress=\ncontainer_state running=true exit=0 oom=false error=\n",
   "containsSecrets": false,
   "actualContainerKillCovered": false,
   "actualHostFailureCovered": false,
