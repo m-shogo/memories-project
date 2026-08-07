@@ -83,8 +83,8 @@
   },
   "readiness": {
     "contractDefined": true,
-    "validatorImplemented": false,
-    "automaticValidationImplemented": false,
+    "validatorImplemented": true,
+    "automaticValidationImplemented": true,
     "environmentProvisioned": false,
     "environmentInventoryCommitted": false,
     "postgresqlEvidenceCommitted": false,
