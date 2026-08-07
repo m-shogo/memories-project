@@ -55,8 +55,8 @@ type sustainedSoakObservation struct {
 	DBPoolAcquireDurationMs       float64                   `json:"dbPoolAcquireDurationMs"`
 	ScanQueuePending              int                       `json:"scanQueuePending"`
 	ScanQueueOldestPendingSeconds float64                   `json:"scanQueueOldestPendingSeconds"`
-	DeletionPending               int                       `json:"deletionPending"`
-	DeletionStuck                 int                       `json:"deletionStuck"`
+	DeletionPending               int64                     `json:"deletionPending"`
+	DeletionStuck                 int64                     `json:"deletionStuck"`
 	MinIOLifecycleSuccesses       int                       `json:"minioLifecycleSuccesses"`
 	ParserRuns                    int                       `json:"parserRuns"`
 	ParserFailures                int                       `json:"parserFailures"`
@@ -154,7 +154,7 @@ func sustainedSoakQueueStats(t *testing.T, server *liveServer, owner string) (in
 	return pending, oldest
 }
 
-func sustainedSoakDeletionBacklog(t *testing.T, server *liveServer) (int, int) {
+func sustainedSoakDeletionBacklog(t *testing.T, server *liveServer) (int64, int64) {
 	t.Helper()
 	backlog, err := server.accountControl.Backlog(context.Background(), 3)
 	if err != nil {
