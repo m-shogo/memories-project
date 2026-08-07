@@ -14,16 +14,23 @@ REGISTRY = ROOT / "contracts/operations/migration-evidence-registry.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-migration-rehearsal-evidence.py"
 REGISTRY_VALIDATOR = ROOT / "scripts/validate-memory-os-migration-evidence-registry.py"
 RECOVERY_VALIDATOR = ROOT / "scripts/memory_os_migration_recovery_point.py"
+ARTIFACT_CONTRACT = ROOT / "contracts/operations/local-migration-recovery-artifact-contract.v1.json"
+ARTIFACT_RUNNER = ROOT / "scripts/run-memory-os-local-migration-recovery-artifact.sh"
+ARTIFACT_VALIDATOR = ROOT / "scripts/validate-memory-os-local-migration-recovery-artifact.py"
+ARTIFACT_EVIDENCE_ROOT = ROOT / "docs/evidence/migrations/recovery"
 LOCAL_RESTORE = ROOT / "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json"
 WORKFLOW = ROOT / ".github/workflows/migration-evidence-registry.yml"
 LIFECYCLE = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
 LIFECYCLE_VALIDATOR = ROOT / "scripts/validate-memory-os-migration-lifecycle.py"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 
-EVIDENCE = (
-    "append-only privacy-safe migration rehearsal evidence registry is implemented with an external-record writer, exact source-commit and canonical migration-sequence binding, distinct operator/reviewer pseudonyms, lock and statement budgets, an opaque SHA-256 recovery-artifact reference, and a separately validated local logical-restore capability authority; arbitrary repository files can no longer satisfy recovery evidence, while the actual rehearsal recovery artifact is still not restored by this registry and registrations remain non-production evidence"
+FOUNDATION_EVIDENCE = (
+    "append-only privacy-safe migration rehearsal evidence registry is implemented with exact source/canonical sequence binding, typed SHA-256 recovery-artifact references, a separately validated local logical-restore capability authority, and a per-run actual-artifact restore evidence requirement; arbitrary repository files or digest-only claims cannot satisfy recovery evidence and registrations remain non-production"
 )
-REFS = (
+LOCAL_ARTIFACT_EVIDENCE = (
+    "at least one passing local PostgreSQL migration rehearsal created the actual pre-migration logical dump artifact, recorded only its SHA-256/byte count, restored that exact artifact into a separate same-cluster database, verified the pre-migration surface, reapplied the migration, and reran the canonical SQL suite; this is local same-cluster evidence only and does not prove production-equivalent isolated restore or rollback safety"
+)
+BASE_REFS = (
     "contracts/operations/migration-evidence-registry-contract.v1.json",
     "contracts/operations/migration-evidence-registry.v1.json",
     "scripts/register-memory-os-migration-rehearsal-evidence.py",
@@ -32,6 +39,10 @@ REFS = (
     "scripts/reconcile-memory-os-migration-evidence-registry.py",
     "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json",
     ".github/workflows/migration-evidence-registry.yml",
+    "contracts/operations/local-migration-recovery-artifact-contract.v1.json",
+    "scripts/run-memory-os-local-migration-recovery-artifact.sh",
+    "scripts/validate-memory-os-local-migration-recovery-artifact.py",
+    "docs/evidence/migrations/recovery/README.md",
 )
 
 
@@ -59,12 +70,17 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
+def passing(record: dict[str, Any]) -> bool:
+    return all(record.get(field) == "PASS" for field in ("preflightResult", "applyResult", "verificationResult"))
+
+
 def main() -> int:
     for path in (
-        REGISTRY, WRITER, REGISTRY_VALIDATOR, RECOVERY_VALIDATOR, LOCAL_RESTORE,
-        WORKFLOW, LIFECYCLE_VALIDATOR,
+        REGISTRY, WRITER, REGISTRY_VALIDATOR, RECOVERY_VALIDATOR,
+        ARTIFACT_CONTRACT, ARTIFACT_RUNNER, ARTIFACT_VALIDATOR, ARTIFACT_EVIDENCE_ROOT,
+        LOCAL_RESTORE, WORKFLOW, LIFECYCLE_VALIDATOR,
     ):
-        require(path.is_file(), f"migration evidence foundation missing: {path.relative_to(ROOT)}")
+        require(path.exists(), f"migration evidence foundation missing: {path.relative_to(ROOT)}")
 
     registry = load(REGISTRY)
     contract = load(REGISTRY_CONTRACT)
@@ -74,13 +90,20 @@ def main() -> int:
     records = registry.get("records")
     require(isinstance(records, list), "migration evidence records missing")
     count = registry.get("rehearsalEvidenceCount")
-    passing = registry.get("passingRehearsalCount")
+    passing_count = registry.get("passingRehearsalCount")
     pe_count = registry.get("productionEquivalentRehearsalCount")
     require(isinstance(count, int) and count == len(records), "rehearsal count drift")
-    require(isinstance(passing, int) and 0 <= passing <= count, "passing count drift")
+    require(isinstance(passing_count, int) and 0 <= passing_count <= count, "passing count drift")
     require(isinstance(pe_count, int) and 0 <= pe_count <= count, "production-equivalent count drift")
+    local_passing = sum(
+        1 for record in records
+        if isinstance(record, dict)
+        and record.get("environmentClass") == "LOCAL_POSTGRES_REHEARSAL"
+        and passing(record)
+    )
+
     current["rehearsalEvidenceCount"] = count
-    current["passingRehearsalCount"] = passing
+    current["passingRehearsalCount"] = passing_count
     current["productionEquivalentRehearsalCount"] = pe_count
     current["productionMigrationEvidenceCount"] = 0
     current["productionEvidence"] = False
@@ -90,11 +113,16 @@ def main() -> int:
         "registryImplemented", "writerImplemented", "validatorImplemented",
         "automaticWorkflowImplemented", "operatorEvidenceRecordImplemented",
         "typedRecoveryArtifactReferenceImplemented", "localRestoreCapabilityBound",
+        "perRunRecoveryArtifactEvidenceRequired",
     ):
         readiness[flag] = True
+    readiness["localActualRecoveryArtifactRestoreLinked"] = local_passing > 0
     for flag in (
-        "productionEquivalentRestoreCapabilityConfigured", "actualRecoveryArtifactRestoreLinked",
-        "productionShapedRehearsalCompleted", "independentReviewCompleted", "productionReady",
+        "productionEquivalentRestoreCapabilityConfigured",
+        "productionEquivalentActualRecoveryArtifactRestoreLinked",
+        "productionShapedRehearsalCompleted",
+        "independentReviewCompleted",
+        "productionReady",
     ):
         readiness[flag] = False
     write(REGISTRY_CONTRACT, contract)
@@ -107,13 +135,24 @@ def main() -> int:
     lifecycle_readiness["isolatedRestoreLinked"] = False
     lifecycle_readiness["mixedVersionCompatibilityProven"] = False
     lifecycle_readiness["ready"] = False
-    lifecycle_readiness["note"] = (
-        "The append-only non-production operator evidence registry now requires a typed SHA-256 recovery-artifact reference and separately validated local logical-restore capability. The registry still does not restore the actual rehearsal recovery artifact, and production-shaped migration rehearsal, mixed-version deployment proof, production-equivalent restore capability and destructive-contract restore linkage remain required."
-    )
+    if local_passing > 0:
+        lifecycle_readiness["note"] = (
+            "The non-production migration registry now contains a passing local rehearsal that restored its actual pre-migration logical dump artifact into a separate same-cluster database and successfully reapplied the migration and SQL suite. Production-shaped rehearsal, production-equivalent isolated restore, mixed-version deployment proof and destructive-contract restore linkage remain required."
+        )
+    else:
+        lifecycle_readiness["note"] = (
+            "The non-production migration registry requires typed recovery artifacts, validated restore capability and per-run actual-artifact restore evidence. No passing local actual-artifact rehearsal is registered yet; production-shaped rehearsal, production-equivalent isolated restore, mixed-version deployment proof and destructive-contract restore linkage remain required."
+        )
     evidence_refs = lifecycle.get("evidenceRefs")
     require(isinstance(evidence_refs, list), "migration lifecycle evidenceRefs missing")
-    for ref in REFS:
+    for ref in BASE_REFS:
         append_once(evidence_refs, ref)
+    if local_passing > 0:
+        for record in records:
+            if isinstance(record, dict) and record.get("environmentClass") == "LOCAL_POSTGRES_REHEARSAL" and passing(record):
+                evidence_ref = record.get("recoveryPointRestoreEvidenceRef")
+                if isinstance(evidence_ref, str):
+                    append_once(evidence_refs, evidence_ref)
     write(LIFECYCLE, lifecycle)
 
     status = load(STATUS)
@@ -125,24 +164,32 @@ def main() -> int:
     missing = gate.get("missingEvidence")
     refs = gate.get("evidenceRefs")
     require(isinstance(existing, list) and isinstance(missing, list) and isinstance(refs, list), "OPS-P0-001 arrays missing")
-    append_once(existing, EVIDENCE)
-    old_values = {
+    append_once(existing, FOUNDATION_EVIDENCE)
+    if local_passing > 0:
+        append_once(existing, LOCAL_ARTIFACT_EVIDENCE)
+    for ref in BASE_REFS:
+        append_once(refs, ref)
+    if local_passing > 0:
+        for record in records:
+            if isinstance(record, dict) and record.get("environmentClass") == "LOCAL_POSTGRES_REHEARSAL" and passing(record):
+                evidence_ref = record.get("recoveryPointRestoreEvidenceRef")
+                if isinstance(evidence_ref, str):
+                    append_once(refs, evidence_ref)
+
+    obsolete = {
         "automated recovery-point verification and append-only operator evidence record",
         "automated recovery-point verification bound to an actual isolated recovery artifact",
+        "restore of the actual migration rehearsal recovery artifact, bound to the target recovery point and independently verified; local restore capability proof alone is insufficient",
     }
-    replacement = "restore of the actual migration rehearsal recovery artifact, bound to the target recovery point and independently verified; local restore capability proof alone is insufficient"
-    next_missing: list[Any] = []
-    for item in missing:
-        if item in old_values:
-            if replacement not in next_missing:
-                next_missing.append(replacement)
-        elif item not in next_missing:
-            next_missing.append(item)
-    if replacement not in next_missing:
-        next_missing.append(replacement)
+    next_missing = [item for item in missing if item not in obsolete]
+    if local_passing == 0:
+        local_gap = "passing local migration rehearsal that restores the actual pre-migration artifact and reapplies the migration"
+        if local_gap not in next_missing:
+            next_missing.append(local_gap)
+    production_gap = "production-equivalent migration recovery artifact restore bound to the actual recovery point and independently reviewed"
+    if production_gap not in next_missing:
+        next_missing.append(production_gap)
     gate["missingEvidence"] = next_missing
-    for ref in REFS:
-        append_once(refs, ref)
     write(STATUS, status)
 
     subprocess.run(["python", str(REGISTRY_VALIDATOR)], cwd=ROOT, check=True)
@@ -150,10 +197,11 @@ def main() -> int:
 
     print("Memory OS migration evidence registry reconciliation PASS")
     print(f"registered rehearsals: {count}")
+    print(f"local passing actual-artifact rehearsals: {local_passing}")
     print("typed recovery artifact reference: implemented")
     print("local restore capability binding: implemented")
-    print("actual recovery artifact restore linkage: false")
-    print("production-shaped rehearsal: false")
+    print(f"local actual recovery artifact restore linkage: {'true' if local_passing else 'false'}")
+    print("production-equivalent actual recovery artifact restore linkage: false")
     print("OPS-P0-001: PARTIAL")
     print("productionDecision: NO_GO")
     return 0
