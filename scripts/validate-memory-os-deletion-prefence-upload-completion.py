@@ -13,6 +13,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/deletion-prefence-upload-completion-contract.v1.json"
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/deletion-prefence-upload-completion-results.sample.v1.json"
+RUNNER_PATH = ROOT / "services/import-api/internal/httpserver/deletion_prefence_upload_completion_test.go"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
@@ -44,6 +45,27 @@ def validate_contract(contract: dict[str, Any]) -> None:
     require(contract.get("inFlightCompletionRequests") == 16, "completion request count drift")
     require(contract.get("surface") == "POST /v1/upload-authorizations/{authorizationId}/complete", "surface drift")
     require(contract.get("pausePoint") == "AFTER_REAL_MINIO_HEAD_BEFORE_POST_HEAD_EPOCH_CHECK", "pause-point drift")
+
+    rules = contract.get("validationRules")
+    require(isinstance(rules, dict), "validationRules must be object")
+    for key in (
+        "runnerMustBeGofmtClean",
+        "runnerPackageCompileConfirmed",
+        "requestBodySinglePassJSONEncodingRequired",
+        "exactSourceBindingRequired",
+        "failureDiagnosticRequired",
+        "staleEvidenceRejected",
+    ):
+        require(rules.get(key) is True, f"validation rule must remain true: {key}")
+
+    runner = RUNNER_PATH.read_text(encoding="utf-8")
+    helper_start = runner.find("func issueAndPutPrefenceUpload")
+    helper_end = runner.find("func TestAccountDeletionPrefenceUploadCompletionLocalDependencies")
+    require(helper_start >= 0 and helper_end > helper_start, "upload proof helper not found")
+    helper = runner[helper_start:helper_end]
+    require("body := map[string]any{" in helper, "upload proof request must pass structured body to live-server helper")
+    require("server.request(t, http.MethodPost" in helper, "upload proof must exercise live-server HTTP request helper")
+    require("json.Marshal(body)" not in helper, "upload proof request must not pre-marshal a body that server.request marshals")
 
     boundary = contract.get("evidenceBoundary")
     require(isinstance(boundary, dict), "evidenceBoundary must be object")
@@ -160,6 +182,7 @@ def main() -> int:
 
     print("Memory OS deletion pre-fence upload completion validation PASS")
     print(f"result present: {str(result_exists).lower()}")
+    print("request body single-pass encoding: true")
     print("post-HEAD fence covered: true")
     print("production evidence: false")
     return 0
