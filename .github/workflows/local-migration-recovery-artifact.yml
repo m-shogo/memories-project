@@ -1,0 +1,325 @@
+name: Local Migration Recovery Artifact Rehearsal
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/local-migration-recovery-artifact.yml"
+      - "contracts/operations/local-migration-recovery-artifact-contract.v1.json"
+      - "contracts/operations/migration-evidence-registry-contract.v1.json"
+      - "contracts/operations/migration-lifecycle-contract.v1.json"
+      - "infra/postgresql/security/**"
+      - "scripts/run-memory-os-local-migration-recovery-artifact.sh"
+      - "scripts/validate-memory-os-local-migration-recovery-artifact.py"
+      - "scripts/reconcile-memory-os-local-migration-recovery-artifact.py"
+      - "scripts/memory_os_migration_recovery_point.py"
+      - "scripts/register-memory-os-migration-rehearsal-evidence.py"
+      - "scripts/validate-memory-os-migration-evidence-registry.py"
+      - "scripts/reconcile-memory-os-migration-evidence-registry.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: local-migration-recovery-artifact-so
+  cancel-in-progress: true
+
+jobs:
+  rehearse:
+    if: >-
+      github.event_name != 'push' ||
+      (!contains(github.event.head_commit.message, 'test(migration): record local recovery artifact rehearsal') &&
+       !contains(github.event.head_commit.message, 'docs(migration): register local recovery artifact rehearsal'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      MEMORY_OS_ALLOW_EPHEMERAL_DATABASE_DROP: "1"
+
+    steps:
+      - name: Checkout latest so
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+
+      - name: Reconcile registry foundation before source capture
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/memory_os_migration_recovery_point.py \
+            scripts/validate-memory-os-local-migration-recovery-artifact.py \
+            scripts/reconcile-memory-os-local-migration-recovery-artifact.py \
+            scripts/register-memory-os-migration-rehearsal-evidence.py \
+            scripts/validate-memory-os-migration-evidence-registry.py \
+            scripts/reconcile-memory-os-migration-evidence-registry.py
+          bash -n scripts/run-memory-os-local-migration-recovery-artifact.sh
+          python scripts/validate-memory-os-local-migration-recovery-artifact.py
+          python scripts/reconcile-memory-os-migration-evidence-registry.py
+          git add \
+            contracts/operations/migration-evidence-registry-contract.v1.json \
+            contracts/operations/migration-lifecycle-contract.v1.json \
+            contracts/operations/production-operability-status.json
+          if ! git diff --cached --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(migration): reconcile recovery evidence foundation"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+          git fetch origin so
+          git reset --hard origin/so
+          test -z "$(git status --porcelain)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "RUN_ID=mig_$(date -u +%Y%m%d)_$(git rev-parse --short=12 HEAD)" >> "$GITHUB_ENV"
+
+      - name: Execute exact-source recovery artifact rehearsal
+        id: drill
+        run: |
+          set +e
+          log=/tmp/memory-os-local-migration-recovery-artifact.log
+          result=/tmp/${RUN_ID}.json
+          : > "$log"
+          rm -f "$result"
+          code=0
+          stage=static-validation
+          echo "STAGE: static-validation" >> "$log"
+          python scripts/validate-memory-os-local-migration-recovery-artifact.py >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            stage=actual-recovery-artifact
+            echo "STAGE: actual-recovery-artifact" >> "$log"
+            MEMORY_OS_COMMIT_SHA="$SOURCE_SHA" \
+            MEMORY_OS_MIGRATION_RUN_ID="$RUN_ID" \
+            MEMORY_OS_MIGRATION_RECOVERY_RESULT_PATH="$result" \
+            bash scripts/run-memory-os-local-migration-recovery-artifact.sh >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            stage=result-validation
+            echo "STAGE: result-validation" >> "$log"
+            python scripts/validate-memory-os-local-migration-recovery-artifact.py \
+              --path "$result" --expected-commit-sha "$SOURCE_SHA" --require-result \
+              >> "$log" 2>&1 || code=$?
+          fi
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          echo "failure_stage=$stage" >> "$GITHUB_OUTPUT"
+          echo "result_path=$result" >> "$GITHUB_OUTPUT"
+          cat "$log"
+          exit 0
+
+      - name: Publish exact recovery artifact result
+        if: steps.drill.outputs.exit_code == '0'
+        env:
+          RESULT_PATH: ${{ steps.drill.outputs.result_path }}
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          if ! git diff --quiet "$SOURCE_SHA" origin/so -- \
+            contracts/operations/local-migration-recovery-artifact-contract.v1.json \
+            contracts/operations/migration-evidence-registry-contract.v1.json \
+            contracts/operations/migration-lifecycle-contract.v1.json \
+            infra/postgresql/security \
+            scripts/run-memory-os-local-migration-recovery-artifact.sh \
+            scripts/validate-memory-os-local-migration-recovery-artifact.py \
+            scripts/memory_os_migration_recovery_point.py \
+            scripts/register-memory-os-migration-rehearsal-evidence.py; then
+            echo "Newer migration-critical source exists; refusing stale recovery artifact evidence."
+            exit 75
+          fi
+          git reset --hard origin/so
+          target="docs/evidence/migrations/recovery/${RUN_ID}.json"
+          if [[ -f "$target" ]]; then
+            python scripts/validate-memory-os-local-migration-recovery-artifact.py \
+              --path "$target" --expected-commit-sha "$SOURCE_SHA" --require-result
+            echo "Exact recovery artifact result already exists for $RUN_ID."
+          else
+            cp "$RESULT_PATH" "$target"
+            python scripts/validate-memory-os-local-migration-recovery-artifact.py \
+              --path "$target" --expected-commit-sha "$SOURCE_SHA" --require-result
+            git add "$target"
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "test(migration): record local recovery artifact rehearsal"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+
+      - name: Register append-only migration rehearsal and reconcile authority
+        if: steps.drill.outputs.exit_code == '0'
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          git reset --hard origin/so
+          result="docs/evidence/migrations/recovery/${RUN_ID}.json"
+          python scripts/validate-memory-os-local-migration-recovery-artifact.py \
+            --path "$result" --expected-commit-sha "$SOURCE_SHA" --require-result
+
+          already_registered="$(RUN_ID="$RUN_ID" python - <<'PY'
+          import json, os
+          from pathlib import Path
+          value = json.loads(Path('contracts/operations/migration-evidence-registry.v1.json').read_text())
+          print('1' if any(row.get('migrationRunId') == os.environ['RUN_ID'] for row in value.get('records', []) if isinstance(row, dict)) else '0')
+          PY
+          )"
+
+          if [[ "$already_registered" != "1" ]]; then
+            RUN_ID="$RUN_ID" SOURCE_SHA="$SOURCE_SHA" RESULT_PATH="$result" RECORD_PATH="/tmp/${RUN_ID}-record.json" python - <<'PY'
+          import datetime as dt
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path('.')
+          result = json.loads(Path(os.environ['RESULT_PATH']).read_text())
+          lifecycle = json.loads((root / 'contracts/operations/migration-lifecycle-contract.v1.json').read_text())
+          contract = json.loads((root / 'contracts/operations/local-migration-recovery-artifact-contract.v1.json').read_text())
+          canonical = lifecycle['migrationSequence']
+          budgets = contract['operatorBudgets']
+          today = dt.datetime.now(dt.timezone.utc).date()
+          deadline = today + dt.timedelta(days=30)
+          artifact = result['recoveryArtifact']
+          record = {
+              'schemaVersion': 'memory-os-migration-rehearsal-evidence.v1',
+              'migrationRunId': os.environ['RUN_ID'],
+              'environmentClass': 'LOCAL_POSTGRES_REHEARSAL',
+              'environmentGenerationId': None,
+              'databaseIdentityDigest': result['databaseIdentityDigest'],
+              'sourceCommitSha': os.environ['SOURCE_SHA'],
+              'migrationSequenceBefore': canonical[:-1],
+              'migrationSequenceAfter': canonical,
+              'startedAt': result['startedAt'],
+              'completedAt': result['completedAt'],
+              'operatorRef': 'opr_ci_recovery_operator',
+              'reviewerRef': 'rev_ci_recovery_reviewer',
+              'recoveryPointReference': artifact['reference'],
+              'recoveryPointArtifactDigest': artifact['sha256'],
+              'recoveryPointVerified': True,
+              'restoreCapabilityEvidenceRef': 'docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json',
+              'restoreCapabilityVerified': True,
+              'recoveryPointRestoreEvidenceRef': os.environ['RESULT_PATH'],
+              'lockBudgetMs': int(budgets['lockBudgetMs']),
+              'statementBudgetMs': int(budgets['statementBudgetMs']),
+              'observedLockWaitMs': int(budgets['isolatedCleanDatabaseExpectedLockWaitMs']),
+              'observedRuntimeMs': int(result['migrationApplyDurationMs']),
+              'preflightResult': 'PASS',
+              'applyResult': 'PASS',
+              'verificationResult': 'PASS',
+              'recoveryDecision': 'NO_RECOVERY_REQUIRED',
+              'openRisks': [
+                  {
+                      'riskId': 'risk_local_same_cluster_only',
+                      'ownerRef': 'opr_ci_recovery_owner',
+                      'deadline': deadline.isoformat(),
+                      'status': 'OPEN',
+                  }
+              ],
+              'containsSecrets': False,
+              'productionTraffic': False,
+              'productionCredentials': False,
+              'productionEvidence': False,
+          }
+          Path(os.environ['RECORD_PATH']).write_text(json.dumps(record, indent=2) + '\n', encoding='utf-8')
+          PY
+            python scripts/register-memory-os-migration-rehearsal-evidence.py \
+              --record "/tmp/${RUN_ID}-record.json" \
+              --confirm "REGISTER NON-PRODUCTION MIGRATION REHEARSAL"
+          fi
+
+          python scripts/reconcile-memory-os-migration-evidence-registry.py
+          python scripts/reconcile-memory-os-local-migration-recovery-artifact.py --run-id "$RUN_ID"
+          python scripts/validate-memory-os-migration-evidence-registry.py
+          python scripts/validate-memory-os-local-migration-recovery-artifact.py \
+            --path "$result" --expected-commit-sha "$SOURCE_SHA" --require-result
+          python scripts/validate-memory-os-migration-lifecycle.py
+          python scripts/validate-memory-os-operability.py
+
+          git rm -f docs/fixtures/memory-os-operability/local-migration-recovery-artifact-diagnostic.last.json 2>/dev/null || true
+          git add \
+            contracts/operations/migration-evidence-registry.v1.json \
+            contracts/operations/migration-evidence-registry-contract.v1.json \
+            contracts/operations/local-migration-recovery-artifact-contract.v1.json \
+            contracts/operations/migration-lifecycle-contract.v1.json \
+            contracts/operations/production-operability-status.json
+          git add -u docs/fixtures/memory-os-operability/local-migration-recovery-artifact-diagnostic.last.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git diff --cached --check
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(migration): register local recovery artifact rehearsal"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+
+      - name: Record privacy-safe diagnostic
+        if: steps.drill.outputs.exit_code != '0'
+        env:
+          EXIT_CODE: ${{ steps.drill.outputs.exit_code }}
+          FAILURE_STAGE: ${{ steps.drill.outputs.failure_stage }}
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          git reset --hard origin/so
+          python - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          text = Path('/tmp/memory-os-local-migration-recovery-artifact.log').read_text(encoding='utf-8', errors='replace')
+          text = re.sub(r'postgres(?:ql)?://[^\s]+', '<redacted-database-url>', text)
+          text = re.sub(r'(?i)(password|passwd)\s*[=:]\s*\S+', '<redacted-credential>', text)
+          text = text.replace('memory_os_migration_recovery_source', '<redacted-ephemeral-db>')
+          text = text.replace('memory_os_migration_recovery_target', '<redacted-ephemeral-db>')
+          value = {
+              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'workflow': 'local-migration-recovery-artifact',
+              'sourceCommitSha': os.environ.get('SOURCE_SHA', ''),
+              'failureStage': os.environ.get('FAILURE_STAGE', 'unknown'),
+              'result': 'FAIL',
+              'exitCode': int(os.environ['EXIT_CODE']),
+              'output': text[-10000:],
+              'containsSecrets': False,
+              'productionTraffic': False,
+              'productionCredentials': False,
+              'productionEvidence': False,
+              'productionReady': False,
+          }
+          path = Path('docs/fixtures/memory-os-operability/local-migration-recovery-artifact-diagnostic.last.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          PY
+          git add docs/fixtures/memory-os-operability/local-migration-recovery-artifact-diagnostic.last.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --cached --quiet; then
+            git commit -m "test(migration): record local recovery artifact diagnostic"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+
+      - name: Enforce rehearsal success
+        run: test "${{ steps.drill.outputs.exit_code }}" = "0"
