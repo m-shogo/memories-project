@@ -6,12 +6,13 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-LEDGER = ROOT / "docs/evidence/rate-limit-operations"
+DEFAULT_LEDGER = ROOT / "docs/evidence/rate-limit-operations"
 OPERATION_ID = re.compile(r"^RLOP-[0-9]{8}T[0-9]{6}Z-[a-z0-9]{6,24}$")
 
 
@@ -28,15 +29,30 @@ def timestamp(value: str) -> dt.datetime:
     return dt.datetime.fromisoformat(value[:-1] + "+00:00")
 
 
+def resolve_ledger(raw: str | None) -> Path:
+    ledger = DEFAULT_LEDGER.resolve() if raw is None else Path(raw).resolve()
+    if ledger == DEFAULT_LEDGER.resolve():
+        return ledger
+    temp_root = Path(os.environ.get("TMPDIR", "/tmp")).resolve()
+    if ledger.is_relative_to(ROOT.resolve()) or ledger.is_relative_to(temp_root):
+        return ledger
+    raise SystemExit("ledger-dir is outside approved repository/temporary roots")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--at", required=True, help="UTC RFC3339 evaluation time")
     parser.add_argument("--operation-id", required=True)
+    parser.add_argument(
+        "--ledger-dir",
+        help="optional repository/tmp ledger root for isolated CI self-tests; default is canonical ledger",
+    )
     args = parser.parse_args()
     at = timestamp(args.at)
     if OPERATION_ID.fullmatch(args.operation_id) is None:
         raise SystemExit("operation-id format invalid")
-    path = LEDGER / f"{args.operation_id}.json"
+    ledger = resolve_ledger(args.ledger_dir)
+    path = ledger / f"{args.operation_id}.json"
     if not path.is_file():
         print(json.dumps({
             "operationId": args.operation_id,
