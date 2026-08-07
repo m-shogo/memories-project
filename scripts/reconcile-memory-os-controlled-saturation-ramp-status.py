@@ -14,6 +14,14 @@ LOAD_CONTRACT = ROOT / "contracts/operations/load-test-scenario-contract.v1.json
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.sample.v1.json"
 SCENARIO_ID = "signed-upload-controlled-saturation-ramp-local-dependencies"
+EVIDENCE_REFS = (
+    "contracts/operations/controlled-saturation-ramp-contract.v1.json",
+    "services/import-api/internal/httpserver/controlled_saturation_ramp_test.go",
+    "scripts/validate-memory-os-controlled-saturation-ramp.py",
+    "scripts/reconcile-memory-os-controlled-saturation-ramp-status.py",
+    "docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.sample.v1.json",
+    ".github/workflows/controlled-saturation-ramp.yml",
+)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -36,7 +44,7 @@ def find_by_id(values: list[Any], identifier: str) -> dict[str, Any]:
     for value in values:
         if isinstance(value, dict) and value.get("id") == identifier:
             return value
-    raise SystemExit(f"missing status item {identifier}")
+    raise SystemExit(f"missing status area {identifier}")
 
 
 def find_scenario(values: list[Any], scenario_id: str) -> dict[str, Any] | None:
@@ -144,24 +152,16 @@ def main() -> int:
     ):
         if load_readiness.get(key) is not False:
             raise SystemExit(f"local controlled saturation evidence cannot enable load readiness.{key}")
-
-    for ref in (
-        "contracts/operations/controlled-saturation-ramp-contract.v1.json",
-        "services/import-api/internal/httpserver/controlled_saturation_ramp_test.go",
-        "scripts/validate-memory-os-controlled-saturation-ramp.py",
-        "scripts/reconcile-memory-os-controlled-saturation-ramp-status.py",
-        "docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.sample.v1.json",
-        ".github/workflows/controlled-saturation-ramp.yml",
-    ):
+    for ref in EVIDENCE_REFS:
         append_unique(evidence_refs, ref)
 
     status = load(STATUS_PATH)
     if status.get("productionDecision") != "NO_GO":
         raise SystemExit("refusing to reconcile controlled local evidence into a non-NO_GO production decision")
-    items = status.get("items")
-    if not isinstance(items, list):
-        raise SystemExit("production operability items missing")
-    load_status = find_by_id(items, "OPS-P0-006")
+    areas = status.get("areas")
+    if not isinstance(areas, list):
+        raise SystemExit("production operability areas missing")
+    load_status = find_by_id(areas, "OPS-P0-006")
     if load_status.get("status") != "PARTIAL":
         raise SystemExit("controlled local evidence must not change OPS-P0-006 away from PARTIAL")
     existing = load_status.get("existingEvidence")
@@ -174,7 +174,6 @@ def main() -> int:
         existing,
         "bounded local PostgreSQL plus MinIO signed-upload lifecycle ramp records throughput, latency and pgx pool contention through concurrency 48, preserves exact object/version accounting and proves post-ramp recovery without treating one run as a capacity boundary",
     )
-
     missing = [
         item for item in missing
         if not (
@@ -195,15 +194,7 @@ def main() -> int:
             "repeatable local PostgreSQL plus MinIO saturation runs that actually observe a first failure/degradation transition, plus queue/backlog interpretation and independently reviewed safe operating thresholds"
         )
     load_status["missingEvidence"] = missing
-
-    for ref in (
-        "contracts/operations/controlled-saturation-ramp-contract.v1.json",
-        "services/import-api/internal/httpserver/controlled_saturation_ramp_test.go",
-        "scripts/validate-memory-os-controlled-saturation-ramp.py",
-        "scripts/reconcile-memory-os-controlled-saturation-ramp-status.py",
-        "docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.sample.v1.json",
-        ".github/workflows/controlled-saturation-ramp.yml",
-    ):
+    for ref in EVIDENCE_REFS:
         append_unique(refs, ref)
 
     if status.get("productionDecision") != "NO_GO" or load_status.get("status") != "PARTIAL":
