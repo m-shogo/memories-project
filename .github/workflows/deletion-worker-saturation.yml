@@ -90,9 +90,9 @@ jobs:
           MEMORY_OS_TEST_S3_SECRET_KEY: minioadmin
           MEMORY_OS_RUN_DELETION_WORKER_SATURATION: "1"
           MEMORY_OS_DELETION_WORKER_SATURATION_RESULTS_PATH: ../../docs/fixtures/memory-os-operability/deletion-worker-saturation-results.sample.v1.json
-          MEMORY_OS_COMMIT_SHA: ${{ env.SOURCE_SHA }}
         run: |
           set -euo pipefail
+          export MEMORY_OS_COMMIT_SHA="$SOURCE_SHA"
           python -m py_compile \
             scripts/validate-memory-os-deletion-worker-saturation.py \
             scripts/reconcile-memory-os-deletion-worker-saturation.py
@@ -135,10 +135,9 @@ jobs:
           git push origin HEAD:so
 
       - name: Reconcile local-only authority
-        env:
-          EXPECTED_COMMIT_SHA: ${{ env.SOURCE_SHA }}
         run: |
           set -euo pipefail
+          export EXPECTED_COMMIT_SHA="$SOURCE_SHA"
           python scripts/reconcile-memory-os-deletion-worker-saturation.py
           python scripts/validate-memory-os-deletion-worker-saturation.py \
             --require-result \
