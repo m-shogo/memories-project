@@ -263,7 +263,8 @@
         "exact-source local pre-fence upload-completion proof issues and uploads 16 real versioned MinIO objects, lets all 16 completion requests pass authentication, the outer epoch guard, the initial authorization snapshot and real MinIO HEAD, durably advances account deletion to epoch 2, then proves every resumed completion returns 401 with zero consumed authorizations or quarantine rows before worker erasure; the worker subsequently removes all 16 object versions and all owned database rows",
         "exact-source local PostgreSQL plus MinIO deletion lease-recovery proof abandons two one-second leases without Release/Sweep/Complete, proves no reclaim before expiry, erases one real object before the database sweep while retaining its canonical ledger, then proves a replacement worker reclaims both jobs at attempt 2 and converges to zero pending/stuck backlog, zero owned rows, two deleted epoch-2 tombstones and zero object versions without resurrection",
         "exact-source Linux deletion-worker recovery proof launches an independent child test process that claims deletion work without parent-supplied account/object identifiers, erases a real MinIO object version, is then verified killed by operating-system SIGKILL before DB sweep or lease release, preserves the canonical DB ledger, blocks reclaim until lease expiry, and converges through an attempt-2 replacement receipt to zero backlog, owned rows and object versions",
-        "exact-source Docker deletion-worker drill proves container A claims attempt 1 without host-supplied account/object identity, erases a real MinIO version, is killed with SIGKILL/exit 137 before DB sweep or lease release, preserves the canonical ledger and lease exclusion, then container B reclaims attempt 2 after expiry and converges to zero backlog, owned rows and object versions"
+        "exact-source Docker deletion-worker drill proves container A claims attempt 1 without host-supplied account/object identity, erases a real MinIO version, is killed with SIGKILL/exit 137 before DB sweep or lease release, preserves the canonical ledger and lease exclusion, then container B reclaims attempt 2 after expiry and converges to zero backlog, owned rows and object versions",
+        "production-equivalent environment generation admission is machine-readable and append-only: load, restore, failure-drill and review evidence must bind an immutable generationId plus environment/dependency/evidence/material-delta hashes and source commit; cross-generation reuse, unknown generations and mutable latest aliases are forbidden, while the current registry remains empty and creates no production-equivalent claim"
       ],
       "missingEvidence": [
         "capacity boundary, saturation report and load-calibrated operational thresholds",
@@ -376,7 +377,11 @@
         "scripts/validate-memory-os-deletion-worker-container-kill-recovery.py",
         "scripts/reconcile-memory-os-deletion-worker-container-kill-recovery.py",
         ".github/workflows/deletion-worker-container-kill-recovery.yml",
-        "docs/fixtures/memory-os-operability/deletion-worker-container-kill-recovery-results.sample.v1.json"
+        "docs/fixtures/memory-os-operability/deletion-worker-container-kill-recovery-results.sample.v1.json",
+        "contracts/operations/production-equivalent-environment-generation-contract.v1.json",
+        "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+        "scripts/validate-memory-os-production-equivalent-environment-generation.py",
+        ".github/workflows/production-equivalent-environment-generation.yml"
       ]
     },
     {
