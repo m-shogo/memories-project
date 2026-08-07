@@ -147,15 +147,12 @@ func issueAndPutPrefenceUpload(t *testing.T, server *liveServer, ownerToken, job
 	t.Helper()
 	payload := []byte(fmt.Sprintf("title,date\nprefence completion %02d,2026-08-07\n", index))
 	digest := sha256.Sum256(payload)
-	body, err := json.Marshal(map[string]any{
+	body := map[string]any{
 		"contentLength":   len(payload),
 		"checksumSha256":  hex.EncodeToString(digest[:]),
 		"contentType":     "text/csv",
 		"sourceSurface":   "ios_files",
 		"displayFilename": fmt.Sprintf("prefence-complete-%02d.csv", index),
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
 	response, responseBody := server.request(t, http.MethodPost, "/v1/import-jobs/"+jobID+"/upload-authorizations", ownerToken, body)
 	if response.StatusCode != http.StatusCreated {
