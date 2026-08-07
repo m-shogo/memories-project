@@ -621,7 +621,8 @@
         "simultaneous old/current application traffic against the same production-shaped database",
         "rolling deployment order, connection drain, failure injection and application rollback rehearsal",
         "destructive contract-migration and downgrade compatibility proof",
-        "production-shaped mixed-version review with zero unresolved Critical or High findings"
+        "production-shaped mixed-version review with zero unresolved Critical or High findings",
+        "full old/current backend mixed-version route, mutation, persisted-state and rollback coverage beyond the proven session/authentication slice"
       ],
       "evidenceRefs": [
         ".github/workflows/security-contracts.yml",
