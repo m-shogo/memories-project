@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "deletion-lease-recovery",
-  "sourceCommitSha": "0dd8e5eaba121ae2c04070d17fe938da7990cf9e",
+  "sourceCommitSha": "e06863dc01e834cdc6ce0d5f395ec29c0201e60e",
   "result": "FAIL",
   "exitCode": 1,
   "output": "STAGE: python-and-contract\nDELETION LEASE RECOVERY FAILED: required recovery sequence fragment missing: database object ledger intentionally retained\n",
