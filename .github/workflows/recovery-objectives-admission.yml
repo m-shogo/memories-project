@@ -1,0 +1,58 @@
+name: Recovery Objectives Admission
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/recovery-objectives-admission.yml"
+      - "contracts/operations/recovery-objectives-admission-contract.v1.json"
+      - "contracts/operations/recovery-objectives-registry.v1.json"
+      - "scripts/register-memory-os-recovery-objectives.py"
+      - "scripts/validate-memory-os-recovery-objectives.py"
+      - "scripts/reconcile-memory-os-recovery-objectives.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: recovery-objectives-admission-so
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate explicit recovery objectives authority
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/register-memory-os-recovery-objectives.py \
+            scripts/validate-memory-os-recovery-objectives.py \
+            scripts/reconcile-memory-os-recovery-objectives.py
+          python scripts/reconcile-memory-os-recovery-objectives.py
+          python scripts/validate-memory-os-recovery-objectives.py
+          python scripts/validate-memory-os-operability.py
+      - name: Commit bounded objective authority
+        run: |
+          set -euo pipefail
+          git add \
+            contracts/operations/recovery-objectives-admission-contract.v1.json \
+            contracts/operations/production-operability-status.json
+          if ! git diff --cached --quiet; then
+            git diff --cached --check
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(backup): reconcile recovery objectives authority"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
