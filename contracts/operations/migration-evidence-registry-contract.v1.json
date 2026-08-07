@@ -136,8 +136,8 @@
     "claim that local rehearsal is production evidence"
   ],
   "currentAuthority": {
-    "rehearsalEvidenceCount": 1,
-    "passingRehearsalCount": 1,
+    "rehearsalEvidenceCount": 2,
+    "passingRehearsalCount": 2,
     "productionEquivalentRehearsalCount": 0,
     "productionMigrationEvidenceCount": 0,
     "productionEvidence": false,

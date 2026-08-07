@@ -62,7 +62,8 @@
         ".github/workflows/migration-production-shaped-admission.yml",
         "docs/evidence/migrations/recovery/mig_20260807_f61f6d4ee39b.json",
         "scripts/reconcile-memory-os-local-migration-recovery-artifact.py",
-        ".github/workflows/local-migration-recovery-artifact.yml"
+        ".github/workflows/local-migration-recovery-artifact.yml",
+        "docs/evidence/migrations/recovery/mig_20260807_0b5839870b65.json"
       ]
     },
     {
