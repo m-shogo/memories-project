@@ -19,6 +19,22 @@ type Guard interface {
 	Check(context.Context, security.Principal) error
 }
 
+// TransactionGuard performs a checkpoint through the already-open scoped
+// transaction. Write-boundary checks must not borrow another connection from
+// the same bounded pool: under concurrency, every request can otherwise hold
+// one connection while waiting forever for a second one.
+type TransactionGuard interface {
+	CheckWithin(context.Context, security.Principal, dbscope.Transaction) error
+}
+
+func checkWithinTransaction(ctx context.Context, guard Guard, principal security.Principal, tx dbscope.Transaction) error {
+	transactionGuard, ok := guard.(TransactionGuard)
+	if !ok || transactionGuard == nil {
+		return ErrFenceRequired
+	}
+	return transactionGuard.CheckWithin(ctx, principal, tx)
+}
+
 // Upload wraps the upload service with deletion-epoch checkpoints at request
 // start, after object-storage HEAD, and immediately before consume / scan writes.
 type Upload struct {
@@ -61,7 +77,7 @@ func (r uploadRepository) GetImportJob(ctx context.Context, tx dbscope.Transacti
 	return r.inner.GetImportJob(ctx, tx, id)
 }
 func (r uploadRepository) InsertAuthorization(ctx context.Context, tx dbscope.Transaction, value upload.Authorization) error {
-	if err := r.guard.Check(ctx, r.principal); err != nil {
+	if err := checkWithinTransaction(ctx, r.guard, r.principal, tx); err != nil {
 		return err
 	}
 	return r.inner.InsertAuthorization(ctx, tx, value)
@@ -70,16 +86,19 @@ func (r uploadRepository) GetAuthorization(ctx context.Context, tx dbscope.Trans
 	return r.inner.GetAuthorization(ctx, tx, id)
 }
 func (r uploadRepository) ConsumeIssuedAuthorization(ctx context.Context, tx dbscope.Transaction, id string, at time.Time) (bool, error) {
-	if err := r.guard.Check(ctx, r.principal); err != nil {
+	if err := checkWithinTransaction(ctx, r.guard, r.principal, tx); err != nil {
 		return false, err
 	}
 	return r.inner.ConsumeIssuedAuthorization(ctx, tx, id, at)
 }
 func (r uploadRepository) RevokeAuthorization(ctx context.Context, tx dbscope.Transaction, id, reason string) error {
+	if err := checkWithinTransaction(ctx, r.guard, r.principal, tx); err != nil {
+		return err
+	}
 	return r.inner.RevokeAuthorization(ctx, tx, id, reason)
 }
 func (r uploadRepository) EnqueueScan(ctx context.Context, tx dbscope.Transaction, ticket upload.ScanTicket) error {
-	if err := r.guard.Check(ctx, r.principal); err != nil {
+	if err := checkWithinTransaction(ctx, r.guard, r.principal, tx); err != nil {
 		return err
 	}
 	return r.inner.EnqueueScan(ctx, tx, ticket)
@@ -135,7 +154,7 @@ func (r previewRepository) InsertCandidate(ctx context.Context, tx dbscope.Trans
 	return r.inner.InsertCandidate(ctx, tx, previewID, ordinal, candidate, candidateHash)
 }
 func (r previewRepository) Finalize(ctx context.Context, tx dbscope.Transaction, previewID string, count int, candidatesHash, previewHash string) (bool, error) {
-	if err := r.guard.Check(ctx, r.principal); err != nil {
+	if err := checkWithinTransaction(ctx, r.guard, r.principal, tx); err != nil {
 		return false, err
 	}
 	return r.inner.Finalize(ctx, tx, previewID, count, candidatesHash, previewHash)
@@ -190,19 +209,19 @@ func (r applyRepository) GetPreview(ctx context.Context, tx dbscope.Transaction,
 	return r.inner.GetPreview(ctx, tx, id)
 }
 func (r applyRepository) ClaimIdempotency(ctx context.Context, tx dbscope.Transaction, claim applydomain.Claim) (applydomain.ClaimResult, error) {
-	if err := r.guard.Check(ctx, r.principal); err != nil {
+	if err := checkWithinTransaction(ctx, r.guard, r.principal, tx); err != nil {
 		return applydomain.ClaimResult{}, err
 	}
 	return r.inner.ClaimIdempotency(ctx, tx, claim)
 }
 func (r applyRepository) ApplyMaterializedPreview(ctx context.Context, tx dbscope.Transaction, previewID, previewHash string, policy applydomain.DuplicatePolicy) (applydomain.Counts, error) {
-	if err := r.guard.Check(ctx, r.principal); err != nil {
+	if err := checkWithinTransaction(ctx, r.guard, r.principal, tx); err != nil {
 		return applydomain.Counts{}, err
 	}
 	return r.inner.ApplyMaterializedPreview(ctx, tx, previewID, previewHash, policy)
 }
 func (r applyRepository) CompleteApply(ctx context.Context, tx dbscope.Transaction, applyID string, counts applydomain.Counts, at time.Time) error {
-	if err := r.guard.Check(ctx, r.principal); err != nil {
+	if err := checkWithinTransaction(ctx, r.guard, r.principal, tx); err != nil {
 		return err
 	}
 	return r.inner.CompleteApply(ctx, tx, applyID, counts, at)
