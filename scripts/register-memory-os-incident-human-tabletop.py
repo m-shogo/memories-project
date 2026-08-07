@@ -51,19 +51,7 @@ def commit_exists(sha: str) -> bool:
     return completed.returncode == 0
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--record", required=True)
-    args = parser.parse_args()
-    record_path = Path(args.record).resolve()
-    try:
-        record_path.relative_to(ROOT)
-    except ValueError:
-        pass
-    else:
-        raise WriterFailure("input record must be outside the repository")
-
-    record = load(record_path)
+def validate_human_record(record: dict[str, Any]) -> str:
     source_sha = record.get("sourceCommitSha")
     require(isinstance(source_sha, str) and SHA40.fullmatch(source_sha) and commit_exists(source_sha), "sourceCommitSha must bind repository history")
     require(record.get("status") == "COMPLETED", "only COMPLETED tabletop records may be registered")
@@ -74,7 +62,7 @@ def main() -> int:
     plan = load(PLAN)
     plans = {item.get("scenarioId"): item for item in plan.get("exercises", []) if isinstance(item, dict)}
     scenario_id = record.get("scenarioId")
-    require(scenario_id in plans, "scenarioId is not in the canonical plan")
+    require(isinstance(scenario_id, str) and scenario_id in plans, "scenarioId is not in the canonical plan")
     planned = plans[scenario_id]
     for field in ("exerciseId", "scenarioId", "plannedSeverity", "objective", "scope", "plannedInjects", "assumptions", "safetyConstraints"):
         require(record.get(field) == planned.get(field), f"completed record changed planned field: {field}")
@@ -114,6 +102,27 @@ def main() -> int:
         approved.add(role)
         used_actors.add(actor)
     require(approved == required_closure, "severity-specific closure approvals incomplete")
+    return scenario_id
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--record", required=True)
+    parser.add_argument("--validate-only", action="store_true")
+    args = parser.parse_args()
+    record_path = Path(args.record).resolve()
+    if not args.validate_only:
+        try:
+            record_path.relative_to(ROOT)
+        except ValueError:
+            pass
+        else:
+            raise WriterFailure("input record must be outside the repository")
+    record = load(record_path)
+    scenario_id = validate_human_record(record)
+    if args.validate_only:
+        print(f"Validated human tabletop completion: {scenario_id}")
+        return 0
 
     LEDGER.mkdir(parents=True, exist_ok=True)
     target = LEDGER / f"{scenario_id}.json"
