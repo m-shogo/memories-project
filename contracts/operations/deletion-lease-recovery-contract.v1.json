@@ -7,6 +7,11 @@
   "dependencyMode": "LOCAL_POSTGRES_MINIO",
   "accounts": 2,
   "leaseSeconds": 1,
+  "resultPath": "docs/fixtures/memory-os-operability/deletion-lease-recovery-results.sample.v1.json",
+  "runner": "services/import-api/internal/httpserver/deletion_lease_recovery_test.go",
+  "validator": "scripts/validate-memory-os-deletion-lease-recovery.py",
+  "reconcile": "scripts/reconcile-memory-os-deletion-lease-recovery.py",
+  "workflow": ".github/workflows/deletion-lease-recovery.yml",
   "interruptionCases": [
     {
       "caseId": "claimed-before-erasure",
@@ -67,9 +72,9 @@
   },
   "readiness": {
     "contractDefined": true,
-    "runnerImplemented": false,
-    "validatorImplemented": false,
-    "automaticWorkflowImplemented": false,
+    "runnerImplemented": true,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": true,
     "exactSourceResultCommitted": false,
     "leaseExpiryReclaimProven": false,
     "partialObjectErasureRecoveryProven": false,
