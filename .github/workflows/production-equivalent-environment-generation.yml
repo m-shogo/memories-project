@@ -9,6 +9,8 @@ on:
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
+      - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
+      - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
       - "scripts/reconcile-memory-os-production-equivalent-generation-status.py"
   workflow_dispatch:
@@ -36,20 +38,23 @@ jobs:
         run: |
           set -euo pipefail
           python -m py_compile \
+            scripts/register-memory-os-production-equivalent-environment-generation.py \
             scripts/validate-memory-os-production-equivalent-environment-generation.py \
             scripts/reconcile-memory-os-production-equivalent-generation-status.py
-          python scripts/validate-memory-os-production-equivalent-environment-generation.py
           python scripts/reconcile-memory-os-production-equivalent-generation-status.py
+          python scripts/validate-memory-os-production-equivalent-environment-generation.py
           python scripts/validate-memory-os-operability.py
-      - name: Commit bounded generation foundation authority
+      - name: Commit bounded generation authority
         run: |
           set -euo pipefail
-          git add contracts/operations/production-operability-status.json
+          git add \
+            contracts/operations/production-equivalent-environment-generation-contract.v1.json \
+            contracts/operations/production-operability-status.json
           if ! git diff --cached --quiet; then
             git diff --cached --check
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "docs(load): register environment generation admission"
+            git commit -m "docs(load): reconcile environment generation authority"
             git pull --rebase origin so
             git push origin HEAD:so
           fi
