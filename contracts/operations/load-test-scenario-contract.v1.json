@@ -331,7 +331,7 @@
     },
     {
       "scenarioId": "deletion-under-load",
-      "reason": "post-fence former-session load, all primary account-bound pre-fence surfaces, multi-account worker saturation, lease-expiry/partial-object recovery, actual Linux SIGKILL and Docker worker-container kill/replacement now pass locally; physical host/node failure, production dependency behavior and independently reviewed deletion-load thresholds remain deferred",
+      "reason": "post-fence former-session load and concurrent worker erasure now pass against local PostgreSQL and MinIO; request linearization for calls already in flight before the 202 fence, multiple-account worker saturation and production dependency behavior remain deferred",
       "requiredDependencyMode": "PRODUCTION_EQUIVALENT"
     }
   ],
@@ -347,7 +347,7 @@
     "cardinalityProof": true,
     "operationalThresholds": false,
     "productionEquivalentDependencies": false,
-    "note": "Local evidence now proves post-fence deletion rejection, Preview/Apply/upload-authorization/upload-completion pre-fence linearization across the primary account-bound HTTP surfaces, bounded multi-account deletion-worker saturation, lease-expiry attempt-2 recovery including partial object erasure, actual Linux SIGKILL worker recovery, and actual Docker worker-container SIGKILL plus independent replacement-container attempt-2 convergence. It still does not establish a production capacity boundary, repeated 60-minute sustained-soak evidence, leak proof, physical host/node/AZ failure recovery, production-equivalent dependency behavior or independently reviewed operating thresholds; OPS-P0-006 remains PARTIAL and Production remains NO_GO.",
+    "note": "Mock and local dependency checkpoints now include bounded ramp, short CI stability and post-fence deletion load. They establish neither production capacity nor pre-fence request linearization, sustained-soak/leak proof or production-equivalent behavior; OPS-P0-006 remains PARTIAL.",
     "boundedLocalCapacityRampExecuted": true,
     "shortCIStabilitySampleExecuted": true,
     "deletionPostFenceLoadExecuted": true,
