@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/contracts/operations/production-equivalent-environment-generation-record.v1.schema.json",
+  "title": "Memory OS Production-Equivalent Environment Generation Registry Record v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "environmentId",
+    "generationId",
+    "registeredAt",
+    "sourceCommitSha",
+    "environmentManifestSha256",
+    "dependencyInventorySha256",
+    "evidenceBundleManifestSha256",
+    "materialDeltaLedgerSha256",
+    "environmentRecordRef",
+    "environmentRecordSha256",
+    "supersedesGenerationId",
+    "productionTraffic",
+    "productionCredentials",
+    "productionEvidence",
+    "productionReady"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "memory-os-production-equivalent-environment-generation-record.v1" },
+    "environmentId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,63}$" },
+    "generationId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._:-]{2,95}$" },
+    "registeredAt": { "type": "string", "format": "date-time" },
+    "sourceCommitSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "environmentManifestSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "dependencyInventorySha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "evidenceBundleManifestSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "materialDeltaLedgerSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "environmentRecordRef": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "environmentRecordSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "supersedesGenerationId": { "type": ["string", "null"], "pattern": "^[a-z0-9][a-z0-9._:-]{2,95}$" },
+    "productionTraffic": { "const": false },
+    "productionCredentials": { "const": false },
+    "productionEvidence": { "const": false },
+    "productionReady": { "const": false }
+  }
+}
