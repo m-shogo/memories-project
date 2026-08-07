@@ -1,0 +1,140 @@
+#!/usr/bin/env python3
+"""Validate append-only generation-bound backup/restore evidence authority."""
+
+from __future__ import annotations
+
+import importlib.util
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
+REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+GEN_BINDING = ROOT / "contracts/operations/backup-restore-generation-binding-contract.v1.json"
+WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
+
+
+class Fail(RuntimeError):
+    pass
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise Fail(message)
+
+
+def load(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError) as exc:
+        raise Fail(f"cannot load {path.relative_to(ROOT)}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+    return value
+
+
+def load_writer():
+    spec = importlib.util.spec_from_file_location("memory_os_backup_restore_generation_writer", WRITER)
+    require(spec is not None and spec.loader is not None, "cannot load generation evidence writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def main() -> int:
+    contract = load(CONTRACT)
+    registry = load(REGISTRY)
+    generations = load(GEN_REGISTRY)
+    binding = load(GEN_BINDING)
+    writer = load_writer()
+
+    require(contract.get("schemaVersion") == "memory-os-backup-restore-generation-evidence.v1", "contract schema drift")
+    require(contract.get("registry") == str(REGISTRY.relative_to(ROOT)), "registry ref drift")
+    require(contract.get("environmentGenerationRegistry") == str(GEN_REGISTRY.relative_to(ROOT)), "generation registry ref drift")
+    require(contract.get("generationBindingContract") == str(GEN_BINDING.relative_to(ROOT)), "generation binding ref drift")
+    require(contract.get("writer") == str(WRITER.relative_to(ROOT)) and WRITER.is_file(), "writer ref drift")
+    for field in ("validator", "reconcile", "workflow"):
+        ref = contract.get(field)
+        require(isinstance(ref, str) and ref and (ROOT / ref).is_file(), f"contract artifact missing: {field}")
+
+    rules = contract.get("recordRules")
+    require(isinstance(rules, dict) and rules and all(value is True for value in rules.values()), "recordRules must remain fail-closed")
+    promotion = contract.get("promotionBoundary")
+    require(isinstance(promotion, dict), "promotionBoundary required")
+    require(promotion.get("productionEquivalentRecoveryCandidateMayBeDerivedFromCompleteReviewedRecord") is True, "candidate derivation rule drift")
+    require(promotion.get("productionEvidenceMayBeDerived") is False, "registry cannot derive production evidence")
+    require(promotion.get("productionReadyMayBeDerived") is False, "registry cannot derive production readiness")
+    require(promotion.get("humanProductionPromotionDecisionRequiredSeparately") is True, "human production decision must remain separate")
+
+    require(registry.get("schemaVersion") == "memory-os-backup-restore-generation-evidence-registry.v1", "registry schema drift")
+    require(registry.get("appendOnly") is True, "registry must remain append-only")
+    require(registry.get("productionEvidence") is False and registry.get("productionReady") is False, "registry production boundary drift")
+    rows = registry.get("records")
+    count = registry.get("registeredEvidenceCount")
+    backup_count = registry.get("completeGenerationBoundBackupCount")
+    restore_count = registry.get("completeGenerationBoundRestoreCount")
+    candidate_count = registry.get("productionEquivalentRecoveryCandidateCount")
+    require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "registry records invalid")
+    require(isinstance(count, int) and count == len(rows), "registeredEvidenceCount drift")
+    ids: set[str] = set()
+    for row in rows:
+        evidence_id = row.get("evidenceId")
+        require(isinstance(evidence_id, str) and evidence_id not in ids, f"duplicate evidenceId: {evidence_id}")
+        ids.add(evidence_id)
+        writer.validate_record(row)
+    derived_backup = sum(1 for row in rows if row.get("evidenceComplete") is True)
+    derived_restore = sum(1 for row in rows if row.get("evidenceComplete") is True and row.get("isolatedRestoreVerified") is True and row.get("restoredBackupArtifactSha256") == row.get("backupArtifactSha256"))
+    derived_candidates = sum(1 for row in rows if writer.candidate(row))
+    require(backup_count == derived_backup, "completeGenerationBoundBackupCount drift")
+    require(restore_count == derived_restore, "completeGenerationBoundRestoreCount drift")
+    require(candidate_count == derived_candidates, "productionEquivalentRecoveryCandidateCount drift")
+    generation_count = generations.get("registeredGenerationCount")
+    require(isinstance(generation_count, int) and generation_count >= 0, "generation registry count invalid")
+    if generation_count == 0:
+        require(count == 0, "recovery evidence cannot exist without registered environment generations")
+
+    boundary = contract.get("currentBoundary")
+    readiness = contract.get("readiness")
+    require(isinstance(boundary, dict) and isinstance(readiness, dict), "contract authority state missing")
+    require(boundary.get("registeredEvidenceCount") == count, "contract evidence count drift")
+    require(boundary.get("completeGenerationBoundBackupCount") == derived_backup, "contract backup count drift")
+    require(boundary.get("completeGenerationBoundRestoreCount") == derived_restore, "contract restore count drift")
+    require(boundary.get("productionEquivalentRecoveryCandidateCount") == derived_candidates, "contract candidate count drift")
+    require(boundary.get("productionEquivalentRestoreEvidence") is (derived_candidates > 0), "contract production-equivalent restore derivation drift")
+    require(boundary.get("productionEvidence") is False and boundary.get("productionReady") is False, "contract cannot promote production")
+    require(boundary.get("productionDecision") == "NO_GO", "production decision must remain NO_GO")
+
+    require(readiness.get("environmentGenerationAvailable") is (generation_count > 0), "environmentGenerationAvailable drift")
+    require(readiness.get("generationBoundBackupAvailable") is (derived_backup > 0), "generationBoundBackupAvailable drift")
+    require(readiness.get("generationBoundRestoreAvailable") is (derived_restore > 0), "generationBoundRestoreAvailable drift")
+    require(readiness.get("productionEquivalentRecoveryCandidateAvailable") is (derived_candidates > 0), "candidate readiness drift")
+    require(readiness.get("independentReviewCompleted") is (derived_candidates > 0), "independentReviewCompleted drift")
+    require(readiness.get("productionEquivalentRestoreEvidence") is (derived_candidates > 0), "productionEquivalentRestoreEvidence readiness drift")
+    require(readiness.get("productionReady") is False, "recovery registry cannot make application production ready")
+
+    binding_boundary = binding.get("currentBoundary")
+    require(isinstance(binding_boundary, dict), "generation binding currentBoundary missing")
+    require(binding_boundary.get("registeredProductionEquivalentGenerationCount") == generation_count, "generation binding generation count drift")
+    require(binding_boundary.get("generationBoundBackupCount") == derived_backup, "generation binding backup count drift")
+    require(binding_boundary.get("generationBoundRestoreCount") == derived_restore, "generation binding restore count drift")
+    require(binding_boundary.get("productionEquivalentRestoreEvidence") is (derived_candidates > 0), "generation binding restore evidence drift")
+    require(binding_boundary.get("productionEvidence") is False and binding_boundary.get("productionReady") is False, "generation binding cannot promote production")
+
+    print("Memory OS generation-bound backup/restore evidence validation PASS")
+    print(f"registered environment generations: {generation_count}")
+    print(f"registered recovery evidence records: {count}")
+    print(f"complete generation-bound restores: {derived_restore}")
+    print(f"production-equivalent recovery candidates: {derived_candidates}")
+    print("production evidence: false")
+    print("production decision: NO_GO")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except Fail as exc:
+        print(f"BACKUP RESTORE GENERATION EVIDENCE VALIDATION FAILED: {exc}", file=sys.stderr)
+        raise SystemExit(1)
