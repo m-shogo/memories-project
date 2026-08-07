@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "memory-os-backup-restore-generation-evidence-registry.v1",
+  "registryClass": "PRODUCTION_EQUIVALENT_BACKUP_RESTORE_EVIDENCE",
+  "appendOnly": true,
+  "productionEvidence": false,
+  "registeredEvidenceCount": 0,
+  "completeGenerationBoundBackupCount": 0,
+  "completeGenerationBoundRestoreCount": 0,
+  "productionEquivalentRecoveryCandidateCount": 0,
+  "records": [],
+  "productionReady": false,
+  "limitations": [
+    "no generation-bound backup/restore evidence has been registered",
+    "an empty environment-generation registry prevents production-equivalent recovery admission",
+    "local PostgreSQL and MinIO restore evidence cannot be relabeled into this registry",
+    "this registry never establishes production evidence or application production readiness"
+  ]
+}
