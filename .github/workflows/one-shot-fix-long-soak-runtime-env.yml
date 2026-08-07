@@ -1,0 +1,50 @@
+name: One Shot Fix Long Soak Runtime Env
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/one-shot-fix-long-soak-runtime-env.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+      - name: Bind dynamic long-run values at shell runtime
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/sustained-local-soak.yml')
+          text = path.read_text(encoding='utf-8')
+          old = '''          MEMORY_OS_RUN_SUSTAINED_LOCAL_SOAK: "1"\n          MEMORY_OS_SOAK_DURATION_SECONDS: "3600"\n          MEMORY_OS_SUSTAINED_LOCAL_SOAK_RESULTS_PATH: ${{ env.SOAK_RESULT_PATH }}\n          MEMORY_OS_COMMIT_SHA: ${{ env.SOURCE_SHA }}\n          MEMORY_OS_SOAK_RUN_ID: ${{ env.SOAK_RUN_ID }}\n        run: |\n          set +e\n          log=/tmp/memory-os-sustained-local-soak.log\n'''
+          new = '''          MEMORY_OS_RUN_SUSTAINED_LOCAL_SOAK: "1"\n          MEMORY_OS_SOAK_DURATION_SECONDS: "3600"\n        run: |\n          set +e\n          export MEMORY_OS_SUSTAINED_LOCAL_SOAK_RESULTS_PATH="$SOAK_RESULT_PATH"\n          export MEMORY_OS_COMMIT_SHA="$SOURCE_SHA"\n          export MEMORY_OS_SOAK_RUN_ID="$SOAK_RUN_ID"\n          log=/tmp/memory-os-sustained-local-soak.log\n'''
+          if old not in text:
+              raise SystemExit('expected dynamic-env block missing; refusing blind rewrite')
+          text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+          grep -F 'export MEMORY_OS_COMMIT_SHA="$SOURCE_SHA"' .github/workflows/sustained-local-soak.yml
+          grep -F 'export MEMORY_OS_SOAK_RUN_ID="$SOAK_RUN_ID"' .github/workflows/sustained-local-soak.yml
+          grep -F 'export MEMORY_OS_SUSTAINED_LOCAL_SOAK_RESULTS_PATH="$SOAK_RESULT_PATH"' .github/workflows/sustained-local-soak.yml
+          ! grep -F 'MEMORY_OS_COMMIT_SHA: ${{ env.SOURCE_SHA }}' .github/workflows/sustained-local-soak.yml
+      - name: Commit repair
+        run: |
+          set -euo pipefail
+          git add .github/workflows/sustained-local-soak.yml
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix(soak): bind long-run evidence env at runtime"
+          git pull --rebase origin so
+          git push origin HEAD:so
