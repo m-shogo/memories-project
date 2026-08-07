@@ -1,0 +1,113 @@
+name: Migration Evidence Registry
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/migration-evidence-registry.yml"
+      - "contracts/operations/migration-evidence-registry-contract.v1.json"
+      - "contracts/operations/migration-evidence-registry.v1.json"
+      - "contracts/operations/migration-lifecycle-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "scripts/register-memory-os-migration-rehearsal-evidence.py"
+      - "scripts/validate-memory-os-migration-evidence-registry.py"
+      - "scripts/reconcile-memory-os-migration-evidence-registry.py"
+      - "scripts/validate-memory-os-migration-lifecycle.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: migration-evidence-registry-so
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Reconcile and validate migration evidence authority
+        id: migration
+        run: |
+          set +e
+          log=/tmp/migration-evidence-registry.log
+          : > "$log"
+          code=0
+          python -m py_compile \
+            scripts/register-memory-os-migration-rehearsal-evidence.py \
+            scripts/validate-memory-os-migration-evidence-registry.py \
+            scripts/reconcile-memory-os-migration-evidence-registry.py \
+            scripts/validate-memory-os-migration-lifecycle.py \
+            >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            python scripts/reconcile-memory-os-migration-evidence-registry.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?
+          fi
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          cat "$log"
+          exit 0
+      - name: Commit bounded migration evidence authority
+        if: steps.migration.outputs.exit_code == '0'
+        run: |
+          set -euo pipefail
+          git rm -f docs/fixtures/memory-os-operability/migration-evidence-registry-diagnostic.last.json 2>/dev/null || true
+          git add \
+            contracts/operations/migration-evidence-registry-contract.v1.json \
+            contracts/operations/migration-lifecycle-contract.v1.json \
+            contracts/operations/production-operability-status.json
+          git add -u docs/fixtures/memory-os-operability/migration-evidence-registry-diagnostic.last.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git diff --cached --check
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(migration): register operator evidence authority"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+      - name: Record privacy-safe diagnostic
+        if: steps.migration.outputs.exit_code != '0'
+        env:
+          MIGRATION_EXIT_CODE: ${{ steps.migration.outputs.exit_code }}
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          git reset --hard origin/so
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          text = Path('/tmp/migration-evidence-registry.log').read_text(encoding='utf-8', errors='replace')
+          value = {
+              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'workflow': 'migration-evidence-registry',
+              'result': 'FAIL',
+              'exitCode': int(os.environ['MIGRATION_EXIT_CODE']),
+              'output': text[-12000:],
+              'containsSecrets': False,
+              'productionEvidence': False,
+              'productionReady': False,
+          }
+          path = Path('docs/fixtures/memory-os-operability/migration-evidence-registry-diagnostic.last.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          PY
+          git add docs/fixtures/memory-os-operability/migration-evidence-registry-diagnostic.last.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --cached --quiet; then
+            git commit -m "test(migration): record evidence registry diagnostic"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+      - name: Enforce migration evidence validation
+        run: test "${{ steps.migration.outputs.exit_code }}" = "0"
