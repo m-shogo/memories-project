@@ -116,8 +116,8 @@
   "readiness": {
     "contractDefined": true,
     "runnerImplemented": false,
-    "validatorImplemented": false,
-    "aggregateValidatorImplemented": false,
+    "validatorImplemented": true,
+    "aggregateValidatorImplemented": true,
     "automaticWorkflowImplemented": false,
     "firstLongRunCommitted": false,
     "secondIndependentLongRunCommitted": false,
