@@ -11,7 +11,7 @@ Town is the visible side effect.
 
 ## Current authority
 
-最終更新: 2026-07-25
+最終更新: 2026-08-07
 
 Production readinessを判断するときは、次の順で読みます。
 
@@ -32,11 +32,11 @@ product priority:
 Capture / Import first
 
 backend:
-PARTIAL SECURITY VERTICAL SLICE
+PARTIAL SECURITY / OPERABILITY VERTICAL SLICE
 executable HTTP server exists
 not a production backend
 
-implemented and live-tested foundations:
+implemented and tested foundations:
 - FORCE RLS runtime-role access
 - version-bound signed upload and object verification
 - bounded isolated parser supervision
@@ -47,23 +47,34 @@ implemented and live-tested foundations:
 - account deletion fencing and resumable deletion worker
 - Apple code exchange against a fake Apple boundary
 - provenance / interpretation invariants
+- privacy-safe structured observability and bounded metrics foundations
+- fail-closed rate-limit foundations and operator contracts
+- migration / incident / backup / compatibility machine-readable contracts and drills
+- local PostgreSQL Preview + Apply load checkpoint with exact-source PASS evidence
+- local PostgreSQL + MinIO signed-upload lifecycle load checkpoint with exact-source PASS evidence
+- local post-fence deletion-under-load checkpoint: former session 400/400 => 401 while worker erases owned rows
+- bounded local PostgreSQL capacity ramp and short CI stability sample
 
 not implemented or not production-proven:
 - rich Memory domain and user-facing retrieval/update model
 - iOS canonical client and limited Desktop Portal
 - real-Apple integration evidence
-- structured production observability, metrics and alert routing
-- endpoint-specific distributed rate limiting
-- production-shaped load and capacity evidence
-- backup/PITR and isolated restore rehearsal
-- migration lifecycle and operator recovery runbooks
-- mixed-version compatibility proof
-- critical system-level failure drills
+- production observability backend, dashboards, alert routing and paging
+- production-equivalent distributed rate limiting
+- production capacity boundary and approved operational thresholds
+- 60-minute-or-longer sustained soak / leak proof
+- production-equivalent PostgreSQL/object-storage dependency behavior
+- production object-storage TLS/scoped credentials/retention/lifecycle evidence
+- production PITR / coherent cross-domain restore rehearsal
+- production-shaped migration recovery / rollback rehearsal
+- approved-release rolling mixed-version / downgrade compatibility proof
+- production-shaped critical failure drills and independent review
+- pre-fence in-flight request linearization proof for account deletion
 
 productionDecision: `NO_GO`
 ```
 
-A passing local or remote test suite proves only the tested commit and scope. It does not prove production observability, backup restore, migration recovery, capacity, or operational readiness.
+A passing local or remote test suite proves only the tested commit and scope. Local PostgreSQL/MinIO and GitHub-hosted CI evidence are not Production or Production-Equivalent evidence.
 
 ## Development priority
 
@@ -71,17 +82,15 @@ A passing local or remote test suite proves only the tested commit and scope. It
 
 The next work must reduce production risk before adding broad user-facing scope:
 
-1. stable error taxonomy and privacy-safe structured events;
-2. request/job correlation and bounded-cardinality metrics;
-3. endpoint-specific rate limiting;
-4. migration and incident-recovery runbooks;
-5. production-shaped sustained/burst load tests;
-6. PostgreSQL PITR, object retention and isolated restore rehearsal;
-7. compatibility matrix and mixed-version tests;
-8. critical API/DB/object-store/parser interruption drills;
-9. exact-HEAD CI evidence and independent review.
+1. controlled PostgreSQL + MinIO saturation ramp to observe a repeatable first saturation signal, queue/backlog behavior and failure transition;
+2. 60-minute-or-longer repeated local soak foundation with RSS/heap/goroutine/latency/error/DB-connection trends across PostgreSQL, object storage, parser, queue and deletion worker paths;
+3. production-equivalent dependency contract for TLS, scoped credentials, retention/lifecycle, latency/failure assumptions, backup/restore, connection budgets and queue behavior;
+4. deletion linearization proof for requests already in flight before the durable 202 fence, plus multi-account worker saturation;
+5. production-shaped migration, restore, incident and failure rehearsals;
+6. approved-release compatibility/rollback evidence and client/server support-window tests;
+7. production observability, paging, distributed rate-limit and independent-review evidence.
 
-The release gate is machine-readable. A P0 area may become `READY` only when its evidence references exist and the operability validator accepts them.
+The release gate is machine-readable. A P0 area may become `READY` only when its predeclared evidence requirements are satisfied and the operability validator accepts them.
 
 ## Product direction
 
@@ -160,6 +169,13 @@ python scripts/validate-memory-os-parser-security.py
 python scripts/validate-memory-os-preview-spool.py
 python scripts/validate-memory-os-canonical-records.py
 python scripts/validate-memory-os-memory-provenance.py
+python scripts/validate-memory-os-load.py
+python scripts/validate-memory-os-load-evidence-index.py
+python scripts/validate-memory-os-live-load.py
+python scripts/validate-memory-os-live-object-load.py
+python scripts/validate-memory-os-capacity-ramp.py
+python scripts/validate-memory-os-short-stability-sample.py
+python scripts/validate-memory-os-deletion-under-load.py
 python scripts/validate-memory-os-operability.py
 python scripts/validate-memory-os-entry-docs.py
 
@@ -197,4 +213,6 @@ Production remains blocked until all P0 operability gates have executable eviden
 - component fault injection with chaos completion;
 - CI green with production observability;
 - authentication with rate limiting;
-- dependency pinning with compatibility proof.
+- dependency pinning with compatibility proof;
+- local PostgreSQL/MinIO PASS with production capacity;
+- short CI stability sampling with sustained soak or leak proof.
