@@ -595,7 +595,8 @@
         "historical candidate and current processes share session authority and persisted Apply idempotency, including simultaneous claim convergence and SIGKILL rollback/retry with zero durable residue",
         "isolated PostgreSQL 16 to 17 logical forward restore preserves schema authority, RLS, active session resolution, deletion non-resurrection and the complete canonical SQL integration suite",
         "release, rollback-admission and parser-artifact authorities remain deliberately empty so candidate, CI, tag, digest and test-harness evidence cannot manufacture approval",
-        "supplemental executed-compatibility authority proves historical-candidate/current session interoperability, bidirectional persisted Apply replay, simultaneous idempotency-claim convergence and historical-process SIGKILL rollback/retry on the shared current schema, plus a local PostgreSQL 16-to-17 logical forward restore preserving schema authority, RLS, active session resolution and deletion non-resurrection; all remain candidate/local-CI-only"
+        "supplemental executed-compatibility authority proves historical-candidate/current session interoperability, bidirectional persisted Apply replay, simultaneous idempotency-claim convergence and historical-process SIGKILL rollback/retry on the shared current schema, plus a local PostgreSQL 16-to-17 logical forward restore preserving schema authority, RLS, active session resolution and deletion non-resurrection; all remain candidate/local-CI-only",
+        "append-only reviewed client baseline authority now has an external-byte-verifying writer, fail-closed validator and operator runbook: exact iOS/Portal artifact SHA-256 and byte length are recomputed, source provenance and repository evidence are bound, CLIENT_OWNER/Security/Compatibility approvals must be distinct, and baseline approval remains explicitly separate from client/server skew and Production readiness"
       ],
       "missingEvidence": [
         "implemented client/server support windows, offline/skew policy and old-client/new-server plus new-client/old-server compatibility tests",
@@ -669,7 +670,14 @@
         "scripts/reconcile-memory-os-version-compatibility-foundation-status.py",
         ".github/workflows/version-compatibility-foundations.yml",
         "contracts/operations/version-compatibility-execution-evidence.v1.json",
-        "scripts/validate-memory-os-version-compatibility-execution-evidence.py"
+        "scripts/validate-memory-os-version-compatibility-execution-evidence.py",
+        "contracts/operations/client-baseline-registry-contract.v1.json",
+        "contracts/operations/client-baseline-registry.v1.json",
+        "scripts/register-memory-os-client-baseline.py",
+        "scripts/validate-memory-os-client-baseline-registry.py",
+        "scripts/reconcile-memory-os-client-baseline-registry.py",
+        "docs/evidence/clients/README.md",
+        ".github/workflows/client-baseline-registry.yml"
       ]
     }
   ]

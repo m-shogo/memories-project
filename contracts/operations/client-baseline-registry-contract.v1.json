@@ -86,9 +86,9 @@
   "readiness": {
     "contractDefined": true,
     "registryImplemented": true,
-    "writerImplemented": false,
-    "validatorImplemented": false,
-    "automaticWorkflowImplemented": false,
+    "writerImplemented": true,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": true,
     "approvedClientBaselineCount": 0,
     "approvedIOSBaselineAvailable": false,
     "approvedPortalBaselineAvailable": false,
