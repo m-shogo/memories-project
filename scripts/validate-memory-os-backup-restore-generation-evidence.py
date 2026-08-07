@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+OBJECTIVES_REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
 GEN_BINDING = ROOT / "contracts/operations/backup-restore-generation-binding-contract.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
 
@@ -47,12 +48,14 @@ def main() -> int:
     contract = load(CONTRACT)
     registry = load(REGISTRY)
     generations = load(GEN_REGISTRY)
+    objectives = load(OBJECTIVES_REGISTRY)
     binding = load(GEN_BINDING)
     writer = load_writer()
 
     require(contract.get("schemaVersion") == "memory-os-backup-restore-generation-evidence.v1", "contract schema drift")
     require(contract.get("registry") == str(REGISTRY.relative_to(ROOT)), "registry ref drift")
     require(contract.get("environmentGenerationRegistry") == str(GEN_REGISTRY.relative_to(ROOT)), "generation registry ref drift")
+    require(contract.get("recoveryObjectivesRegistry") == str(OBJECTIVES_REGISTRY.relative_to(ROOT)), "recovery objectives registry ref drift")
     require(contract.get("generationBindingContract") == str(GEN_BINDING.relative_to(ROOT)), "generation binding ref drift")
     require(contract.get("writer") == str(WRITER.relative_to(ROOT)) and WRITER.is_file(), "writer ref drift")
     for field in ("validator", "reconcile", "workflow"):
@@ -90,10 +93,17 @@ def main() -> int:
     require(backup_count == derived_backup, "completeGenerationBoundBackupCount drift")
     require(restore_count == derived_restore, "completeGenerationBoundRestoreCount drift")
     require(candidate_count == derived_candidates, "productionEquivalentRecoveryCandidateCount drift")
+
     generation_count = generations.get("registeredGenerationCount")
     require(isinstance(generation_count, int) and generation_count >= 0, "generation registry count invalid")
+    objective_count = objectives.get("approvedObjectiveCount")
+    objective_rows = objectives.get("records")
+    require(isinstance(objective_count, int) and objective_count >= 0, "approvedObjectiveCount invalid")
+    require(isinstance(objective_rows, list) and len(objective_rows) == objective_count, "recovery objectives registry count drift")
     if generation_count == 0:
         require(count == 0, "recovery evidence cannot exist without registered environment generations")
+    if objective_count == 0:
+        require(candidate_count == 0, "production-equivalent recovery candidate cannot exist without approved recovery objectives")
 
     boundary = contract.get("currentBoundary")
     readiness = contract.get("readiness")
@@ -107,6 +117,7 @@ def main() -> int:
     require(boundary.get("productionDecision") == "NO_GO", "production decision must remain NO_GO")
 
     require(readiness.get("environmentGenerationAvailable") is (generation_count > 0), "environmentGenerationAvailable drift")
+    require(readiness.get("approvedRecoveryObjectivesAvailable") is (objective_count > 0), "approvedRecoveryObjectivesAvailable drift")
     require(readiness.get("generationBoundBackupAvailable") is (derived_backup > 0), "generationBoundBackupAvailable drift")
     require(readiness.get("generationBoundRestoreAvailable") is (derived_restore > 0), "generationBoundRestoreAvailable drift")
     require(readiness.get("productionEquivalentRecoveryCandidateAvailable") is (derived_candidates > 0), "candidate readiness drift")
@@ -124,6 +135,7 @@ def main() -> int:
 
     print("Memory OS generation-bound backup/restore evidence validation PASS")
     print(f"registered environment generations: {generation_count}")
+    print(f"approved recovery objectives: {objective_count}")
     print(f"registered recovery evidence records: {count}")
     print(f"complete generation-bound restores: {derived_restore}")
     print(f"production-equivalent recovery candidates: {derived_candidates}")
