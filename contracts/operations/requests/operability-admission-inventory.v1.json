@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "memory-os-operation-request.v1",
+  "requestId": "operability-admission-inventory-20260807-v1",
+  "operation": "GENERATE_OPERABILITY_ADMISSION_INVENTORY",
+  "productionTraffic": false,
+  "productionCredentials": false,
+  "productionEvidence": false,
+  "constraints": {
+    "deterministicOutputRequired": true,
+    "canonicalRegistryCountsOnly": true,
+    "foundationImplementationMustNotEqualProductionEvidence": true,
+    "productionDecisionMustRemainNoGo": true
+  }
+}
