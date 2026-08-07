@@ -10,6 +10,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
+CANONICAL_SCHEMA = "memory-os-operability-status.0.1"
 
 
 class Fail(RuntimeError):
@@ -36,7 +37,7 @@ def unique_strings(value: Any, field: str) -> list[str]:
 
 def main() -> int:
     status = load(STATUS)
-    require(status.get("schemaVersion") == "memory-os-production-operability-status.v1", "status schema drift")
+    require(status.get("schemaVersion") == CANONICAL_SCHEMA, "status schema drift")
     require(status.get("productionDecision") == "NO_GO", "production decision must remain NO_GO")
     areas = status.get("areas")
     require(isinstance(areas, list) and areas, "areas missing")
@@ -61,15 +62,15 @@ def main() -> int:
             require("diagnostic.last.json" not in ref, f"{area_id} failure diagnostic cannot be canonical proof: {ref}")
         area_status = area.get("status")
         blocking = area.get("blocking")
-        require(isinstance(blocking, bool), f"{area_id}.blocking must be boolean")
+        require(blocking is True, f"{area_id} is a P0 gate and must remain classified as blocking")
         if area_status == "READY":
             require(not missing, f"{area_id} READY cannot retain missingEvidence")
-            require(blocking is False, f"{area_id} READY cannot remain blocking")
+            require(existing and refs, f"{area_id} READY requires named evidence")
         else:
             require(missing, f"{area_id} incomplete status requires missingEvidence")
-            require(blocking is True, f"{area_id} incomplete status must remain blocking")
     require(p0_count >= 9, "unexpected P0 area count")
     print("Memory OS operability status hygiene validation PASS")
+    print(f"status schema: {CANONICAL_SCHEMA}")
     print(f"P0 areas checked: {p0_count}")
     print("exact duplicate authority entries: none")
     print("failure diagnostics referenced as proof: none")
