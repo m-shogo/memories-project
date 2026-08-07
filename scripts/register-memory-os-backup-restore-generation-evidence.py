@@ -82,19 +82,25 @@ def objective_for_record(record: dict[str, Any]) -> dict[str, Any] | None:
     matches = [row for row in rows if row.get("objectiveId") == objective_id]
     require(len(matches) == 1, "recoveryObjectivesId is not uniquely registered")
     objective = matches[0]
-    rpo, rto, skew = measurements
-    for value, field in ((rpo, "measuredRpoSeconds"), (rto, "measuredRtoSeconds"), (skew, "measuredObjectDatabaseSkewSeconds")):
+    for value, field in zip(measurements, ("measuredRpoSeconds", "measuredRtoSeconds", "measuredObjectDatabaseSkewSeconds")):
         require(isinstance(value, int) and not isinstance(value, bool) and value >= 0, f"{field} invalid")
-    require(rpo <= objective.get("rpoSeconds", -1), "measured RPO exceeds approved target")
-    require(rto <= objective.get("rtoSeconds", -1), "measured RTO exceeds approved target")
-    require(skew <= objective.get("maximumObjectDatabaseSkewSeconds", -1), "measured object/database skew exceeds approved target")
     return objective
+
+
+def measurements_meet_objective(record: dict[str, Any], objective: dict[str, Any] | None) -> bool:
+    if objective is None:
+        return False
+    return (
+        record.get("measuredRpoSeconds") <= objective.get("rpoSeconds", -1)
+        and record.get("measuredRtoSeconds") <= objective.get("rtoSeconds", -1)
+        and record.get("measuredObjectDatabaseSkewSeconds") <= objective.get("maximumObjectDatabaseSkewSeconds", -1)
+    )
 
 
 def candidate(record: dict[str, Any]) -> bool:
     objective = objective_for_record(record)
     return (
-        objective is not None
+        measurements_meet_objective(record, objective)
         and record.get("evidenceComplete") is True
         and record.get("isolatedRestoreVerified") is True
         and record.get("postgresPitrVerified") is True
@@ -225,6 +231,7 @@ def main() -> int:
         registry["productionReady"] = False
         registry["limitations"] = [
             "generation-bound recovery evidence remains non-production evidence",
+            "failed RPO/RTO/object-database-skew measurements remain admissible evidence but cannot become production-equivalent recovery candidates",
             "production-equivalent recovery candidates require current approved recovery objectives, all fail-closed controls and independent reviews",
             "this registry never establishes application production readiness"
         ]
