@@ -1,0 +1,107 @@
+{
+  "contractId": "memory-os.operability.rate-limit-emergency-ledger.v1",
+  "schemaVersion": "memory-os-rate-limit-emergency-ledger.v1",
+  "description": "Append-only privacy-safe evidence and intent ledger for rate-limit emergency mode changes. It can prove that bounded intents, expiry deadlines and closure records are structurally valid, but it does not itself mutate runtime policy and therefore cannot prove a production control plane or a completed emergency drill.",
+  "sourceOperationsContract": "contracts/operations/rate-limit-operations-contract.v1.json",
+  "sourcePolicyContract": "contracts/operations/rate-limit-policy-contract.v1.json",
+  "registryPath": "contracts/operations/rate-limit-emergency-ledger.v1.json",
+  "writer": "scripts/register-memory-os-rate-limit-emergency-operation.py",
+  "effectiveStateEvaluator": "scripts/evaluate-memory-os-rate-limit-emergency-state.py",
+  "validator": "scripts/validate-memory-os-rate-limit-emergency-ledger.py",
+  "workflow": ".github/workflows/rate-limit-emergency-ledger.yml",
+  "appendOnly": true,
+  "eventTypes": [
+    "ACTIVATE_INTENT",
+    "EXPIRE_OBSERVED",
+    "RESTORE_VERIFIED",
+    "CLOSE_OPERATION"
+  ],
+  "runtimeModes": [
+    "NORMAL_CONFIGURED",
+    "STRICT_LOCAL_EMERGENCY",
+    "ROUTE_FAIL_CLOSED"
+  ],
+  "requiredActivationFields": [
+    "schemaVersion",
+    "eventId",
+    "eventType",
+    "operationId",
+    "incidentReference",
+    "sourceCommitSha",
+    "environmentClass",
+    "environmentIdentityDigest",
+    "operatorRef",
+    "reviewerRef",
+    "previousMode",
+    "requestedMode",
+    "proxyMode",
+    "affectedPolicyIds",
+    "recordedAt",
+    "startsAt",
+    "expiresAt",
+    "activationReasonCode",
+    "publicCommunicationDecision",
+    "runtimeApplied",
+    "productionEvidence"
+  ],
+  "activationGuards": {
+    "maximumDurationMinutes": 60,
+    "operatorReviewerMustDiffer": true,
+    "sourceCommitMustExist": true,
+    "affectedPoliciesMustExist": true,
+    "strictLocalEmergencyOnlyForPoliciesDeclaringEmergencyLocalFallback": true,
+    "unlimitedOrFailOpenForbidden": true,
+    "expiryRequired": true,
+    "expiryMayNotBeExtendedInPlace": true,
+    "newActivationRequiredForAdditionalTime": true,
+    "rawIpTokenAccountRequestContentForbidden": true,
+    "runtimeAppliedMustRemainFalseUntilControlPlaneIntegration": true,
+    "productionEvidenceMustRemainFalseUntilRuntimeAndIndependentReviewExist": true
+  },
+  "effectiveStateRules": {
+    "unknownOperationFailsClosed": true,
+    "expiredActivationNeverRemainsEffective": true,
+    "latestValidClosureEndsOperation": true,
+    "missingExpiryFailsClosed": true,
+    "ambiguousConcurrentActivationFailsClosed": true,
+    "evaluatorDoesNotMutateRuntime": true
+  },
+  "forbiddenEvidencePromotion": [
+    "ledger activation intent treated as proof runtime changed",
+    "wall-clock expiry treated as proof production runtime restored",
+    "simulation treated as completed emergency drill",
+    "CI PASS treated as distributed shared-store recovery",
+    "operator ledger treated as trusted-proxy deployment proof",
+    "ledger existence treated as production readiness"
+  ],
+  "currentAuthority": {
+    "registeredEventCount": 0,
+    "registeredOperationCount": 0,
+    "productionOperationCount": 0,
+    "runtimeAppliedEventCount": 0,
+    "productionEvidenceEventCount": 0,
+    "runtimeControlPlaneIntegrated": false,
+    "productionReady": false,
+    "productionDecision": "NO_GO"
+  },
+  "readiness": {
+    "contractDefined": true,
+    "registryImplemented": false,
+    "writerImplemented": false,
+    "effectiveStateEvaluatorImplemented": false,
+    "validatorImplemented": false,
+    "automaticWorkflowImplemented": false,
+    "automaticExpiryAuthorityImplemented": false,
+    "runtimeControlPlaneIntegrated": false,
+    "productionEmergencyOperationRecorded": false,
+    "completedRuntimeDrill": false,
+    "independentReviewCompleted": false,
+    "productionReady": false
+  },
+  "limitations": [
+    "the ledger records bounded intent/evidence only and does not alter the in-process or future shared rate-limit store",
+    "no production emergency operation or recovery drill is recorded",
+    "no trusted-proxy deployment assignment is proven",
+    "no production-equivalent distributed store exists"
+  ]
+}
