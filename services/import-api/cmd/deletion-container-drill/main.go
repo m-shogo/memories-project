@@ -36,12 +36,12 @@ type drillState struct {
 }
 
 type postKillState struct {
-	LedgerRows                int  `json:"ledgerRows"`
-	ObjectVersions            int  `json:"objectVersions"`
-	ClaimsAvailableBeforeExpiry int `json:"claimsAvailableBeforeExpiry"`
-	AccountDeleting           bool `json:"accountDeleting"`
-	AttemptOne                bool `json:"attemptOne"`
-	LeaseActive               bool `json:"leaseActive"`
+	LedgerRows                  int  `json:"ledgerRows"`
+	ObjectVersions              int  `json:"objectVersions"`
+	ClaimsAvailableBeforeExpiry int  `json:"claimsAvailableBeforeExpiry"`
+	AccountDeleting             bool `json:"accountDeleting"`
+	AttemptOne                  bool `json:"attemptOne"`
+	LeaseActive                 bool `json:"leaseActive"`
 }
 
 type resultDocument struct {
@@ -66,23 +66,23 @@ type resultDocument struct {
 		ContainsSecrets                  bool   `json:"containsSecrets"`
 	} `json:"environment"`
 	Scenario struct {
-		ScenarioID                  string         `json:"scenarioId"`
-		KilledContainerExitCode     int            `json:"killedContainerExitCode"`
-		ActualContainerKillObserved bool           `json:"actualContainerKillObserved"`
-		LedgerRowsAfterKill         int            `json:"ledgerRowsAfterKill"`
-		ObjectVersionsAfterKill     int            `json:"objectVersionsAfterKill"`
-		ClaimsAvailableBeforeExpiry int            `json:"claimsAvailableBeforeExpiry"`
-		ReplacementContainerExitCode int           `json:"replacementContainerExitCode"`
-		ReplacementAttempt2Confirmed bool          `json:"replacementAttempt2Confirmed"`
-		FinalDeletionPending        int64          `json:"finalDeletionPending"`
-		FinalDeletionStuck          int64          `json:"finalDeletionStuck"`
-		FinalOwnedRowCount          int            `json:"finalOwnedRowCount"`
-		FinalAccountState           string         `json:"finalAccountState"`
-		FinalAccountEpoch           int64          `json:"finalAccountEpoch"`
-		RemainingObjectVersions     int            `json:"remainingObjectVersions"`
-		Assertions                  map[string]any `json:"assertions"`
-		Result                      string         `json:"result"`
-		IntegrityResult             string         `json:"integrityResult"`
+		ScenarioID                   string         `json:"scenarioId"`
+		KilledContainerExitCode      int            `json:"killedContainerExitCode"`
+		ActualContainerKillObserved  bool           `json:"actualContainerKillObserved"`
+		LedgerRowsAfterKill          int            `json:"ledgerRowsAfterKill"`
+		ObjectVersionsAfterKill      int            `json:"objectVersionsAfterKill"`
+		ClaimsAvailableBeforeExpiry  int            `json:"claimsAvailableBeforeExpiry"`
+		ReplacementContainerExitCode int            `json:"replacementContainerExitCode"`
+		ReplacementAttempt2Confirmed bool           `json:"replacementAttempt2Confirmed"`
+		FinalDeletionPending         int64          `json:"finalDeletionPending"`
+		FinalDeletionStuck           int64          `json:"finalDeletionStuck"`
+		FinalOwnedRowCount           int            `json:"finalOwnedRowCount"`
+		FinalAccountState            string         `json:"finalAccountState"`
+		FinalAccountEpoch            int64          `json:"finalAccountEpoch"`
+		RemainingObjectVersions      int            `json:"remainingObjectVersions"`
+		Assertions                   map[string]any `json:"assertions"`
+		Result                       string         `json:"result"`
+		IntegrityResult              string         `json:"integrityResult"`
 	} `json:"scenario"`
 	Limitations []string `json:"limitations"`
 }
@@ -324,12 +324,12 @@ func verifyKill(ctx context.Context) {
 		claimsBeforeExpiry++
 	}
 	post := postKillState{
-		LedgerRows: ledgerRows,
-		ObjectVersions: len(versions),
+		LedgerRows:                  ledgerRows,
+		ObjectVersions:              len(versions),
 		ClaimsAvailableBeforeExpiry: claimsBeforeExpiry,
-		AccountDeleting: accountState == "deleting",
-		AttemptOne: attempts == 1,
-		LeaseActive: leaseActive,
+		AccountDeleting:             accountState == "deleting",
+		AttemptOne:                  attempts == 1,
+		LeaseActive:                 leaseActive,
 	}
 	if post.LedgerRows != 1 || post.ObjectVersions != 0 || post.ClaimsAvailableBeforeExpiry != 0 ||
 		!post.AccountDeleting || !post.AttemptOne || !post.LeaseActive {
@@ -424,8 +424,8 @@ func verifyFinal(ctx context.Context) {
 
 	document := resultDocument{
 		SchemaVersion: "memory-os-deletion-worker-container-kill-recovery-results.v1",
-		CommitSHA: commitSHA,
-		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
+		CommitSHA:     commitSHA,
+		GeneratedAt:   time.Now().UTC().Format(time.RFC3339),
 		Limitations: []string{
 			"actual Docker container kill and replacement do not prove physical host, VM, node or availability-zone failure",
 			"five-second lease is test-only and not a production recommendation",
@@ -455,19 +455,19 @@ func verifyFinal(ctx context.Context) {
 	document.Scenario.FinalAccountEpoch = finalEpoch
 	document.Scenario.RemainingObjectVersions = len(remaining)
 	document.Scenario.Assertions = map[string]any{
-		"actualContainerKillObserved":          killedExit == 137,
-		"runtimeContainerRestricted":           true,
-		"noIdentityInputToWorkerContainers":    true,
-		"ledgerSurvivedContainerKill":          post.LedgerRows == 1,
-		"objectErasedBeforeContainerKill":      post.ObjectVersions == 0,
-		"noClaimBeforeExpiry":                  post.ClaimsAvailableBeforeExpiry == 0,
-		"replacementContainerAttempt2":         replacementAttempt2,
-		"backlogConverged":                     backlog.Pending == 0 && backlog.Stuck == 0,
-		"allOwnedRowsErased":                   ownedRows == 0,
-		"noObjectResurrection":                 len(remaining) == 0,
-		"actualHostFailureCovered":             false,
-		"availabilityZoneFailureCovered":       false,
-		"productionEvidence":                   false,
+		"actualContainerKillObserved":       killedExit == 137,
+		"runtimeContainerRestricted":        true,
+		"noIdentityInputToWorkerContainers": true,
+		"ledgerSurvivedContainerKill":       post.LedgerRows == 1,
+		"objectErasedBeforeContainerKill":   post.ObjectVersions == 0,
+		"noClaimBeforeExpiry":               post.ClaimsAvailableBeforeExpiry == 0,
+		"replacementContainerAttempt2":      replacementAttempt2,
+		"backlogConverged":                  backlog.Pending == 0 && backlog.Stuck == 0,
+		"allOwnedRowsErased":                ownedRows == 0,
+		"noObjectResurrection":              len(remaining) == 0,
+		"actualHostFailureCovered":          false,
+		"availabilityZoneFailureCovered":    false,
+		"productionEvidence":                false,
 	}
 	document.Scenario.Result = "PASS"
 	document.Scenario.IntegrityResult = "PASS"
