@@ -1,0 +1,70 @@
+{
+  "schemaVersion": "memory-os-live-load-results.v1",
+  "commitSha": "9590a1cbc717d998280a1b6e691f30dfa01189ca",
+  "generatedAt": "2026-08-07T00:45:14Z",
+  "environment": {
+    "os": "linux",
+    "arch": "amd64",
+    "numCpu": 4,
+    "goVersion": "go1.23.12",
+    "databaseMode": "LOCAL_POSTGRES",
+    "objectStoreMode": "LOCAL_MINIO_HARNESS_ONLY_NOT_MEASURED",
+    "productionEvidence": false,
+    "note": "Live HTTP boundary over the deployment PostgreSQL principal and FORCE RLS. MinIO is provisioned because the shared live server harness requires it, but these two scenarios do not measure object-store operations."
+  },
+  "scenarios": [
+    {
+      "scenarioId": "authenticated-preview-local-postgres",
+      "workloadType": "STEADY",
+      "dependencyMode": "LOCAL_POSTGRES",
+      "startedAt": "2026-08-07T00:45:14Z",
+      "batch": {
+        "requests": 500,
+        "concurrency": 24,
+        "successes": 500,
+        "failures": 0,
+        "statusClassCounts": {
+          "2xx": 500
+        },
+        "durationSeconds": 0.718423014,
+        "throughput": 695.9687958994031,
+        "latencyP50Ms": 33.461,
+        "latencyP95Ms": 36.397,
+        "latencyP99Ms": 51.134
+      },
+      "integrityResult": "PASS",
+      "databaseAssertions": {
+        "preview_candidate_rows": 2,
+        "preview_ready_rows": 1,
+        "preview_rejection_rows": 1
+      },
+      "result": "PASS"
+    },
+    {
+      "scenarioId": "concurrent-idempotent-apply-local-postgres",
+      "workloadType": "BURST",
+      "dependencyMode": "LOCAL_POSTGRES",
+      "startedAt": "2026-08-07T00:45:14Z",
+      "batch": {
+        "requests": 96,
+        "concurrency": 24,
+        "successes": 96,
+        "failures": 0,
+        "statusClassCounts": {
+          "2xx": 96
+        },
+        "durationSeconds": 0.148287482,
+        "throughput": 647.3911263797709,
+        "latencyP50Ms": 35.064,
+        "latencyP95Ms": 39.942,
+        "latencyP99Ms": 41.771
+      },
+      "integrityResult": "PASS",
+      "databaseAssertions": {
+        "apply_confirmation_rows": 1,
+        "memory_item_rows": 2
+      },
+      "result": "PASS"
+    }
+  ]
+}

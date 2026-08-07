@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "memory-os-live-object-load-results.v1",
+  "commitSha": "9590a1cbc717d998280a1b6e691f30dfa01189ca",
+  "generatedAt": "2026-08-07T00:45:15Z",
+  "environment": {
+    "os": "linux",
+    "arch": "amd64",
+    "numCpu": 4,
+    "goVersion": "go1.23.12",
+    "databaseMode": "LOCAL_POSTGRES",
+    "objectStoreMode": "LOCAL_MINIO_MEASURED",
+    "productionEvidence": false,
+    "note": "Measures signed authorization issuance, presigned PUT, exact-version metadata verification and scan enqueue against ephemeral PostgreSQL 16 and MinIO. It is not production capacity evidence."
+  },
+  "scenarios": [
+    {
+      "scenarioId": "signed-upload-lifecycle-local-minio-postgres",
+      "workloadType": "STEADY",
+      "dependencyMode": "LOCAL_POSTGRES_MINIO",
+      "startedAt": "2026-08-07T00:45:15Z",
+      "batch": {
+        "requests": 32,
+        "concurrency": 8,
+        "successes": 32,
+        "failures": 0,
+        "statusClassCounts": {
+          "2xx": 32
+        },
+        "durationSeconds": 0.178827969,
+        "throughput": 178.9429258686039,
+        "latencyP50Ms": 41.492,
+        "latencyP95Ms": 56.517,
+        "latencyP99Ms": 57.069
+      },
+      "integrityResult": "PASS",
+      "databaseAssertions": {
+        "consumed_upload_authorization_rows": 32,
+        "distinct_object_keys": 32,
+        "distinct_object_version_ids": 32,
+        "scan_pending_quarantine_rows": 32
+      },
+      "objectStoreAssertions": {
+        "distinct_version_ids_verified": 32,
+        "exact_version_completions": 32,
+        "presigned_put_successes": 32
+      },
+      "result": "PASS"
+    }
+  ]
+}
