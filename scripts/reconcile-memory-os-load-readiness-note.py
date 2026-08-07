@@ -20,6 +20,8 @@ REQUIRED_TRUE = (
     "deletionLeaseExpiryRecoverySimulationProven",
     "deletionPartialObjectErasureRecoveryProven",
     "deletionActualProcessKillProven",
+    "deletionContainerKillRecoveryProven",
+    "deletionReplacementContainerRecoveryProven",
 )
 
 
@@ -50,16 +52,18 @@ def main() -> int:
     readiness["note"] = (
         "Local evidence now proves post-fence deletion rejection, Preview/Apply/upload-authorization/upload-completion "
         "pre-fence linearization across the primary account-bound HTTP surfaces, bounded multi-account deletion-worker "
-        "saturation, lease-expiry attempt-2 recovery including partial object erasure, and actual Linux SIGKILL worker "
-        "recovery. It still does not establish a production capacity boundary, repeated 60-minute sustained-soak evidence, "
-        "leak proof, host/container failure recovery, production-equivalent dependency behavior or independently reviewed "
-        "operating thresholds; OPS-P0-006 remains PARTIAL and Production remains NO_GO."
+        "saturation, lease-expiry attempt-2 recovery including partial object erasure, actual Linux SIGKILL worker recovery, "
+        "and actual Docker worker-container SIGKILL plus independent replacement-container attempt-2 convergence. It still "
+        "does not establish a production capacity boundary, repeated 60-minute sustained-soak evidence, leak proof, physical "
+        "host/node/AZ failure recovery, production-equivalent dependency behavior or independently reviewed operating "
+        "thresholds; OPS-P0-006 remains PARTIAL and Production remains NO_GO."
     )
     LOAD_PATH.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
     print("Memory OS load readiness note reconciliation PASS")
     print("primary account-bound pre-fence aggregate: proven")
     print("actual Linux SIGKILL recovery: proven")
-    print("host/container failure recovery: false")
+    print("actual Docker container kill/replacement recovery: proven")
+    print("physical host/node/AZ recovery: false")
     print("local sustained soak evidence: false")
     print("production-equivalent dependencies: false")
     return 0
