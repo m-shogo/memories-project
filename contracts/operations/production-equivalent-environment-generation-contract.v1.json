@@ -52,8 +52,8 @@
   "readiness": {
     "contractDefined": true,
     "registryDefined": true,
-    "validatorImplemented": false,
-    "automaticWorkflowImplemented": false,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": true,
     "generationRegistered": false,
     "generationEvidenceBound": false,
     "independentReviewCompleted": false,
