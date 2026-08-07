@@ -26,12 +26,18 @@ EXPECTED_EXTERNAL = {
         "contracts/operations/live-object-load-scenario-contract.v1.json",
         "scripts/validate-memory-os-live-object-load.py",
     ),
+    "account-deletion-post-fence-load-local-dependencies": (
+        "LOCAL_POSTGRES_MINIO",
+        "contracts/operations/deletion-under-load-contract.v1.json",
+        "scripts/validate-memory-os-deletion-under-load.py",
+    ),
 }
 EXPECTED_DEFERRED = {
     "capacity-ramp-local-postgres-minio",
     "deletion-worker-under-api-load",
     "soak-memory-leak",
     "production-equivalent",
+    "deletion-under-load",
 }
 LIVE_RESULT_REFS = {
     "docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json",
