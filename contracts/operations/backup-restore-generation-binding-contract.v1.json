@@ -1,0 +1,65 @@
+{
+  "contractId": "memory-os.operability.backup-restore-generation-binding.v1",
+  "schemaVersion": "memory-os-backup-restore-generation-binding.v1",
+  "description": "Fail-closed admission authority for promoting backup/restore evidence into a production-equivalent environment generation. Existing local destructive restore evidence remains valid as local evidence but cannot be relabeled because it predates generation binding and the production-equivalent generation registry is empty.",
+  "backupRestoreContract": "contracts/operations/backup-restore-drill-contract.v1.json",
+  "environmentGenerationContract": "contracts/operations/production-equivalent-environment-generation-contract.v1.json",
+  "environmentGenerationRegistry": "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+  "validator": "scripts/validate-memory-os-backup-restore-generation-binding.py",
+  "workflow": ".github/workflows/backup-restore-generation-binding.yml",
+  "requiredBindings": {
+    "backupArtifactSha256Required": true,
+    "backupManifestSha256Required": true,
+    "sourceEnvironmentGenerationIdRequired": true,
+    "sourceEnvironmentManifestSha256Required": true,
+    "sourceCommitShaRequired": true,
+    "restoreTargetGenerationIdRequired": true,
+    "restoreTargetManifestSha256Required": true,
+    "restoreEvidenceBundleSha256Required": true,
+    "restoreResultMustReferenceBackupArtifactSha256": true,
+    "sourceGenerationMustExistInAppendOnlyRegistry": true,
+    "restoreTargetGenerationMustExistInAppendOnlyRegistry": true,
+    "sourceManifestMustMatchRegisteredGeneration": true,
+    "restoreTargetManifestMustMatchRegisteredGeneration": true,
+    "crossGenerationRestoreRequiresMaterialDeltaReview": true,
+    "unknownOrSupersededCurrentGenerationFailsClosed": true
+  },
+  "promotionRules": {
+    "legacyLocalRestoreCanBeRelabeled": false,
+    "backupTimestampAloneIsSufficient": false,
+    "environmentIdWithoutGenerationIsSufficient": false,
+    "sameDatabaseEngineVersionAloneIsSufficient": false,
+    "sameObjectStoreVendorAloneIsSufficient": false,
+    "hashOnlyWithoutRegisteredGenerationIsSufficient": false,
+    "restoreIntoProductionRequired": false,
+    "productionCredentialsRequired": false,
+    "isolatedRestoreRequired": true,
+    "independentReviewRequired": true
+  },
+  "currentBoundary": {
+    "registeredProductionEquivalentGenerationCount": 0,
+    "generationBoundBackupCount": 0,
+    "generationBoundRestoreCount": 0,
+    "productionEquivalentRestoreEvidence": false,
+    "productionEvidence": false,
+    "productionReady": false,
+    "productionDecision": "NO_GO"
+  },
+  "readiness": {
+    "contractDefined": true,
+    "validatorImplemented": false,
+    "automaticWorkflowImplemented": false,
+    "environmentGenerationAvailable": false,
+    "generationBoundBackupAvailable": false,
+    "generationBoundRestoreAvailable": false,
+    "independentReviewCompleted": false,
+    "productionEquivalentRestoreEvidence": false,
+    "productionReady": false
+  },
+  "limitations": [
+    "the existing destructive local PostgreSQL plus MinIO restore proof remains local-only",
+    "no production-equivalent environment generation is registered",
+    "this contract binds future evidence but does not create a backup, provision an environment or execute a restore",
+    "production traffic and production credentials remain unnecessary and forbidden as automatic promotion shortcuts"
+  ]
+}
