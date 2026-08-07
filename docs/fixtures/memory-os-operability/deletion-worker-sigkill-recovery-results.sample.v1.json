@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "memory-os-deletion-worker-sigkill-recovery-results.v1",
+  "commitSha": "f052c4b275a7b8a5607b8e219686e4986b2acaad",
+  "generatedAt": "2026-08-07T04:27:54Z",
+  "environment": {
+    "os": "linux",
+    "arch": "amd64",
+    "goVersion": "go1.23.12",
+    "dependencyMode": "LOCAL_POSTGRES_MINIO",
+    "syntheticDataOnly": true,
+    "actualProcessKillCovered": true,
+    "actualHostFailureCovered": false,
+    "containerRestartCovered": false,
+    "productionTraffic": false,
+    "productionCredentials": false,
+    "productionEvidence": false,
+    "productionEquivalentDependencies": false,
+    "containsSecrets": false
+  },
+  "scenario": {
+    "scenarioId": "account-deletion-worker-sigkill-recovery-local-dependencies",
+    "childClaimAttempts": 1,
+    "actualSIGKILLObserved": true,
+    "ledgerRowsAfterKill": 1,
+    "objectVersionsAfterKill": 0,
+    "claimsAvailableBeforeExpiry": 0,
+    "replacementWorkerReceipts": 1,
+    "replacementReceiptAttempts": 2,
+    "finalDeletionPending": 0,
+    "finalDeletionStuck": 0,
+    "finalOwnedRowCount": 0,
+    "finalAccountState": "deleted",
+    "finalAccountEpoch": 2,
+    "remainingObjectVersions": 0,
+    "assertions": {
+      "actualHostFailureCovered": false,
+      "actualSIGKILLObserved": true,
+      "allOwnedRowsErased": true,
+      "backlogConverged": true,
+      "childDiscoveredClaimWithoutAccountInput": true,
+      "containerRestartCovered": false,
+      "idempotentObjectRecovery": true,
+      "ledgerSurvivedSIGKILL": true,
+      "noClaimBeforeExpiry": true,
+      "objectErasedBeforeSIGKILL": true,
+      "productionEvidence": false,
+      "replacementClaimWasAttempt2": true
+    },
+    "result": "PASS",
+    "integrityResult": "PASS"
+  },
+  "limitations": [
+    "one Linux child process is killed with SIGKILL; host and container restart are not covered",
+    "five-second lease is test-only and not a production recommendation",
+    "local PostgreSQL and MinIO are not production-equivalent dependencies"
+  ]
+}
