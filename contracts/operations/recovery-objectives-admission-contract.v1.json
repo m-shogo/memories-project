@@ -6,6 +6,7 @@
   "registry": "contracts/operations/recovery-objectives-registry.v1.json",
   "writer": "scripts/register-memory-os-recovery-objectives.py",
   "validator": "scripts/validate-memory-os-recovery-objectives.py",
+  "reconcile": "scripts/reconcile-memory-os-recovery-objectives.py",
   "workflow": ".github/workflows/recovery-objectives-admission.yml",
   "requiredRecordFields": [
     "schemaVersion",
