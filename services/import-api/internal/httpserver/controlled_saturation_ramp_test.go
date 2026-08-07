@@ -59,22 +59,22 @@ type controlledSaturationResultsDocument struct {
 		ContainsSecrets                  bool   `json:"containsSecrets"`
 	} `json:"environment"`
 	Scenario struct {
-		ScenarioID                 string                     `json:"scenarioId"`
-		WorkloadType               string                     `json:"workloadType"`
-		StartedAt                  string                     `json:"startedAt"`
-		CompletedAt                string                     `json:"completedAt"`
-		RequestsPerStep            int                        `json:"requestsPerStep"`
-		Steps                      []controlledSaturationStep `json:"steps"`
-		CandidateCleanConcurrency  int                        `json:"candidateCleanConcurrency"`
-		FirstSaturationSignal      *int                       `json:"firstSaturationSignal"`
-		FirstPoolContentionSignal  *int                       `json:"firstPoolContentionSignal"`
-		Decision                   string                     `json:"decision"`
-		RampSuccessfulLifecycles   int                        `json:"rampSuccessfulLifecycles"`
-		PostRampRecoveryProbe      liveBatchResult            `json:"postRampRecoveryProbe"`
-		FinalDatabaseAssertions    map[string]int             `json:"finalDatabaseAssertions"`
-		Assertions                 map[string]any             `json:"assertions"`
-		Result                     string                     `json:"result"`
-		IntegrityResult            string                     `json:"integrityResult"`
+		ScenarioID                string                     `json:"scenarioId"`
+		WorkloadType              string                     `json:"workloadType"`
+		StartedAt                 string                     `json:"startedAt"`
+		CompletedAt               string                     `json:"completedAt"`
+		RequestsPerStep           int                        `json:"requestsPerStep"`
+		Steps                     []controlledSaturationStep `json:"steps"`
+		CandidateCleanConcurrency int                        `json:"candidateCleanConcurrency"`
+		FirstSaturationSignal     *int                       `json:"firstSaturationSignal"`
+		FirstPoolContentionSignal *int                       `json:"firstPoolContentionSignal"`
+		Decision                  string                     `json:"decision"`
+		RampSuccessfulLifecycles  int                        `json:"rampSuccessfulLifecycles"`
+		PostRampRecoveryProbe     liveBatchResult            `json:"postRampRecoveryProbe"`
+		FinalDatabaseAssertions   map[string]int             `json:"finalDatabaseAssertions"`
+		Assertions                map[string]any             `json:"assertions"`
+		Result                    string                     `json:"result"`
+		IntegrityResult           string                     `json:"integrityResult"`
 	} `json:"scenario"`
 	Limitations []string `json:"limitations"`
 }
@@ -105,7 +105,7 @@ func controlledSaturationSnapshot(pool *pgxpool.Pool) controlledSaturationPoolSn
 	}
 }
 
-func controlledSaturationPoolDelta(before, after controlledSaturationPoolSnapshot) controlledSaturationPoolDelta {
+func calculateControlledSaturationPoolDelta(before, after controlledSaturationPoolSnapshot) controlledSaturationPoolDelta {
 	return controlledSaturationPoolDelta{
 		EmptyAcquireCount:    after.EmptyAcquireCount - before.EmptyAcquireCount,
 		CanceledAcquireCount: after.CanceledAcquireCount - before.CanceledAcquireCount,
@@ -117,12 +117,14 @@ func controlledSaturationOwnerCounts(t *testing.T, server *liveServer, owner str
 	t.Helper()
 	ctx := context.Background()
 	counts := map[string]int{}
+	var consumed int
 	if err := server.pool.QueryRow(ctx,
 		`SELECT count(*) FROM memory_os.upload_authorization
 		 WHERE owner_account_id = $1 AND state = 'consumed'`, owner,
-	).Scan(&counts["consumedAuthorizations"]); err != nil {
+	).Scan(&consumed); err != nil {
 		t.Fatal(err)
 	}
+	counts["consumedAuthorizations"] = consumed
 	var scanPending, distinctVersions, distinctKeys int
 	if err := server.pool.QueryRow(ctx,
 		`SELECT count(*),
@@ -185,7 +187,7 @@ func TestControlledSignedUploadSaturationRampLocalDependencies(t *testing.T) {
 		before := controlledSaturationSnapshot(server.appPool)
 		batch := runLiveObjectBatch(requestsPerStep, concurrency, server.server.URL, token, jobIDs)
 		after := controlledSaturationSnapshot(server.appPool)
-		delta := controlledSaturationPoolDelta(before, after)
+		delta := calculateControlledSaturationPoolDelta(before, after)
 		steps = append(steps, controlledSaturationStep{
 			Concurrency: concurrency,
 			Batch:       batch,
@@ -280,16 +282,16 @@ func TestControlledSignedUploadSaturationRampLocalDependencies(t *testing.T) {
 	document.Scenario.PostRampRecoveryProbe = recovery
 	document.Scenario.FinalDatabaseAssertions = finalCounts
 	document.Scenario.Assertions = map[string]any{
-		"allStepsExecuted":                  len(steps) == len(concurrencySteps),
-		"boundedMaximumConcurrency":         48,
-		"boundedRequestsPerStep":            requestsPerStep,
-		"postRampRecoveryProbePassed":       true,
-		"productionEvidence":                false,
-		"productionEquivalentDependencies":  false,
-		"capacityBoundaryEstablished":       false,
-		"operationalThresholdApproved":      false,
-		"repeatabilityEstablished":          false,
-		"independentReviewCompleted":        false,
+		"allStepsExecuted":                 len(steps) == len(concurrencySteps),
+		"boundedMaximumConcurrency":        48,
+		"boundedRequestsPerStep":           requestsPerStep,
+		"postRampRecoveryProbePassed":      true,
+		"productionEvidence":               false,
+		"productionEquivalentDependencies": false,
+		"capacityBoundaryEstablished":      false,
+		"operationalThresholdApproved":     false,
+		"repeatabilityEstablished":         false,
+		"independentReviewCompleted":       false,
 	}
 	document.Scenario.Result = "PASS"
 	document.Scenario.IntegrityResult = "PASS"
