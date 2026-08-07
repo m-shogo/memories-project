@@ -13,6 +13,12 @@
   "validator": "scripts/validate-memory-os-deletion-prefence-upload-completion.py",
   "reconcile": "scripts/reconcile-memory-os-deletion-prefence-upload-completion.py",
   "workflow": ".github/workflows/deletion-prefence-upload-completion.yml",
+  "validationRules": {
+    "runnerMustBeGofmtClean": true,
+    "exactSourceBindingRequired": true,
+    "failureDiagnosticRequired": true,
+    "staleEvidenceRejected": true
+  },
   "requiredSequence": [
     "create one synthetic active account and 16 uploadable import jobs",
     "issue 16 upload authorizations at account epoch 1",
@@ -69,8 +75,8 @@
   "readiness": {
     "contractDefined": true,
     "runnerImplemented": true,
-    "validatorImplemented": false,
-    "automaticWorkflowImplemented": false,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": true,
     "exactSourceResultCommitted": false,
     "preFenceUploadCompletionLinearizationProven": false,
     "productionDependenciesTested": false,
