@@ -316,7 +316,7 @@
     },
     {
       "scenarioId": "soak-memory-leak",
-      "reason": "a representative soak with RSS, heap and goroutine slope over tens of minutes has not been run; SOAK PROOF INSUFFICIENT",
+      "reason": "LOCAL_LONG_SOAK contract, multi-surface runner and fail-closed validators exist, but no 60-minute-or-longer exact-source run has been committed; production-shaped sustained soak and leak proof remain unexecuted",
       "requiredDependencyMode": "LOCAL_POSTGRES_MINIO"
     },
     {
@@ -326,8 +326,8 @@
     },
     {
       "scenarioId": "soak",
-      "reason": "a six-window short CI process sample now records RSS, heap and goroutine trends, but it is not a 60-minute repeated soak, does not cover MinIO/parser/queue/deletion/Apple dependencies and cannot prove leak freedom or production stability",
-      "requiredDependencyMode": "PRODUCTION_EQUIVALENT"
+      "reason": "LOCAL_LONG_SOAK contract, multi-surface runner and fail-closed validators exist, but no 60-minute-or-longer exact-source run has been committed; production-shaped sustained soak and leak proof remain unexecuted",
+      "requiredDependencyMode": "LOCAL_POSTGRES_MINIO"
     },
     {
       "scenarioId": "deletion-under-load",
@@ -355,7 +355,10 @@
     "productionEquivalentAdmissionContractDefined": true,
     "productionEquivalentEnvironmentProvisioned": false,
     "previewPreFenceInFlightLinearizationProven": true,
-    "multiAccountDeletionWorkerSaturationProven": true
+    "multiAccountDeletionWorkerSaturationProven": true,
+    "localLongSoakFoundationImplemented": true,
+    "localLongSoakRunCount": 0,
+    "localSustainedSoakEvidence": false
   },
   "evidenceRefs": [
     "services/import-api/internal/loadtest/harness.go",
@@ -403,6 +406,14 @@
     "scripts/validate-memory-os-deletion-worker-saturation.py",
     "scripts/reconcile-memory-os-deletion-worker-saturation.py",
     ".github/workflows/deletion-worker-saturation.yml",
-    "docs/fixtures/memory-os-operability/deletion-worker-saturation-results.sample.v1.json"
+    "docs/fixtures/memory-os-operability/deletion-worker-saturation-results.sample.v1.json",
+    "contracts/operations/sustained-local-soak-contract.v1.json",
+    "services/import-api/internal/httpserver/sustained_local_soak_test.go",
+    "scripts/validate-memory-os-sustained-local-soak.py",
+    "scripts/validate-memory-os-sustained-local-soak-result.py",
+    "scripts/validate-memory-os-sustained-local-soak-aggregate.py",
+    "scripts/update-memory-os-sustained-local-soak-aggregate.py",
+    "scripts/reconcile-memory-os-sustained-local-soak-status.py",
+    ".github/workflows/sustained-local-soak.yml"
   ]
 }

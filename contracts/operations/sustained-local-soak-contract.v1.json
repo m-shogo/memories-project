@@ -130,11 +130,11 @@
   },
   "readiness": {
     "contractDefined": true,
-    "runnerImplemented": false,
+    "runnerImplemented": true,
     "validatorImplemented": true,
     "resultValidatorImplemented": true,
     "aggregateValidatorImplemented": true,
-    "automaticWorkflowImplemented": false,
+    "automaticWorkflowImplemented": true,
     "firstLongRunCommitted": false,
     "secondIndependentLongRunCommitted": false,
     "allRequiredCoverageExecuted": false,
