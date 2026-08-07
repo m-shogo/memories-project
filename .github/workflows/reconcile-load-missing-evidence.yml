@@ -1,0 +1,45 @@
+name: Reconcile Load Missing Evidence
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/reconcile-load-missing-evidence.yml"
+      - "scripts/reconcile-memory-os-load-missing-evidence.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Normalize unresolved blockers from proof flags
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/reconcile-memory-os-load-missing-evidence.py
+          python scripts/reconcile-memory-os-load-missing-evidence.py
+          python scripts/validate-memory-os-load.py
+          python scripts/validate-memory-os-operability.py
+      - name: Commit canonical blocker cleanup
+        run: |
+          set -euo pipefail
+          git add contracts/operations/production-operability-status.json
+          if ! git diff --cached --quiet; then
+            git diff --cached --check
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(load): remove resolved stale blockers"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
