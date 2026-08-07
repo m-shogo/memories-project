@@ -152,7 +152,7 @@ for test_file in "${SQL_TESTS[@]}"; do
 done
 POST_RECOVERY_APPLE_IDENTITY="$(psql --dbname "$RECOVERY_DB" --tuples-only --no-align --command \
   "SELECT CASE WHEN to_regclass('memory_os.apple_identity') IS NULL THEN 0 ELSE 1 END;")"
-POST_RECOVERY_APPLE_REPLAY="$(psql --dbname "$RECOVERY_DB" --tuples-only --noalign --command \
+POST_RECOVERY_APPLE_REPLAY="$(psql --dbname "$RECOVERY_DB" --tuples-only --no-align --command \
   "SELECT CASE WHEN to_regclass('memory_os.apple_replay') IS NULL THEN 0 ELSE 1 END;")"
 [[ "$POST_RECOVERY_APPLE_IDENTITY" == "1" && "$POST_RECOVERY_APPLE_REPLAY" == "1" ]] || \
   fail "migration reapply after recovery did not restore current surface"
