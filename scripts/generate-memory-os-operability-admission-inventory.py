@@ -49,6 +49,7 @@ def main() -> int:
     backup_binding = load("contracts/operations/backup-restore-generation-binding-contract.v1.json")
     backup_recovery = load("contracts/operations/backup-restore-generation-evidence-registry.v1.json")
     releases = load("contracts/operations/release-baseline-registry.v1.json")
+    release_pairs = load("contracts/operations/release-compatibility-pair-registry.v1.json")
     clients = load("contracts/operations/client-baseline-registry.v1.json")
     parsers = load("contracts/operations/parser-artifact-registry.v1.json")
     failure_drills = load("contracts/operations/production-shaped-failure-drill-registry.v1.json")
@@ -63,6 +64,9 @@ def main() -> int:
     objective_count = recovery_objectives.get("approvedObjectiveCount")
     if not isinstance(objective_count, int) or objective_count < 0:
         raise SystemExit("approved recovery objective count invalid")
+    release_pair_count = release_pairs.get("approvedPairCount")
+    if not isinstance(release_pair_count, int) or release_pair_count < 0:
+        raise SystemExit("approved release pair count invalid")
     local_soak_complete = bool(
         load_ready.get("localLongSoakRunCount", 0) >= 2
         and load_ready.get("localSustainedSoakEvidence") is True
@@ -82,9 +86,10 @@ def main() -> int:
             "admittedEvidenceCount": migration.get("admittedRehearsalCount", 0),
             "dependencyCounts": {
                 "approvedReleases": releases.get("approvedReleaseCount", 0),
+                "approvedReleasePairs": release_pair_count,
                 "environmentGenerations": generations.get("registeredGenerationCount", 0),
             },
-            "nextGate": "registered production-equivalent generation plus approved predecessor/successor before production-shaped migration rehearsal admission",
+            "nextGate": "registered production-equivalent generation plus an approved predecessor/successor release pair before production-shaped migration rehearsal admission",
         },
         {
             "id": "OPS-P0-002",
@@ -170,15 +175,24 @@ def main() -> int:
         },
         {
             "id": "OPS-P0-008",
-            "authority": "contracts/operations/compatibility-admission-gaps.v1.json",
-            "foundationImplemented": exists("contracts/operations/compatibility-admission-gaps.v1.json"),
-            "admittedEvidenceCount": 0,
+            "authority": "contracts/operations/release-compatibility-pair-contract.v1.json",
+            "secondaryAuthority": "contracts/operations/compatibility-admission-gaps.v1.json",
+            "foundationImplemented": all(exists(path) for path in (
+                "contracts/operations/release-compatibility-pair-contract.v1.json",
+                "contracts/operations/release-compatibility-pair-registry.v1.json",
+                "scripts/register-memory-os-release-compatibility-pair.py",
+                "scripts/validate-memory-os-release-compatibility-pair.py",
+                "scripts/reconcile-memory-os-release-compatibility-pair.py",
+                ".github/workflows/release-compatibility-pair.yml",
+            )),
+            "admittedEvidenceCount": release_pair_count,
             "dependencyCounts": {
                 "approvedReleases": releases.get("approvedReleaseCount", 0),
+                "approvedRollbackPairs": release_pair_count,
                 "approvedClients": clients.get("approvedClientBaselineCount", 0),
                 "reviewedParserArtifacts": parsers.get("reviewedArtifactCount", 0),
             },
-            "nextGate": "approved predecessor/successor, immutable client baseline and reviewed parser artifact before production release compatibility",
+            "nextGate": "approve two release baselines and their rolling/rollback compatibility pair, then admit an immutable client baseline and reviewed retained parser artifact before production release compatibility; candidate/local execution remains separate non-release evidence",
         },
         {
             "id": "OPS-P0-009",
@@ -186,8 +200,11 @@ def main() -> int:
             "foundationImplemented": exists("contracts/operations/production-shaped-failure-drill-contract.v1.json"),
             "admittedEvidenceCount": failure_drills.get("registeredDrillCount", 0),
             "requiredEvidenceCount": 4,
-            "dependencyCounts": {"environmentGenerations": generations.get("registeredGenerationCount", 0)},
-            "nextGate": "generation-bound multi-instance, object-store, PostgreSQL failover and parser durable-spool restart drills",
+            "dependencyCounts": {
+                "environmentGenerations": generations.get("registeredGenerationCount", 0),
+                "approvedReleasePairs": release_pair_count,
+            },
+            "nextGate": "generation-bound multi-instance, object-store, PostgreSQL failover and parser durable-spool restart drills; mixed-version failure evidence additionally requires an approved release pair",
         },
     ]
 
@@ -205,6 +222,7 @@ def main() -> int:
         "areas": areas,
         "productionEquivalentEnvironmentGenerationCount": generations.get("registeredGenerationCount", 0),
         "approvedRecoveryObjectiveCount": objective_count,
+        "approvedReleaseCompatibilityPairCount": release_pair_count,
         "productionEvidence": False,
         "productionReady": False,
         "productionDecision": "NO_GO",
@@ -213,7 +231,8 @@ def main() -> int:
             "admittedEvidenceCount is derived only from canonical append-only registries or accepted human tabletop ledger files",
             "candidate/local evidence is not counted as production admission unless its owning authority explicitly admits it",
             "local repeated soak evidence is tracked separately from independent leak proof and production-shaped soak evidence",
-            "recovery-objective values are never defaulted by this inventory; zero approved objectives means RPO/RTO/skew remain intentionally undefined"
+            "recovery-objective values are never defaulted by this inventory; zero approved objectives means RPO/RTO/skew remain intentionally undefined",
+            "candidate/local mixed-version execution remains separate from the approved release-pair registry and can never create an approved predecessor/successor pair"
         ]
     }
     OUTPUT.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -221,6 +240,7 @@ def main() -> int:
     print(f"P0 areas inventoried: {len(areas)}")
     print(f"production-equivalent generations: {document['productionEquivalentEnvironmentGenerationCount']}")
     print(f"approved recovery objectives: {objective_count}")
+    print(f"approved release compatibility pairs: {release_pair_count}")
     print(f"local repeated soak complete: {str(local_soak_complete).lower()}")
     print("production decision: NO_GO")
     return 0
