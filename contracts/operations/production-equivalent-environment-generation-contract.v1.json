@@ -3,6 +3,9 @@
   "schemaVersion": "memory-os-production-equivalent-environment-generation.v1",
   "description": "Fail-closed generation-binding authority for future production-equivalent environments. An environment identifier may be reused across rebuilds, but every material rebuild must create a new immutable generation identifier and evidence generated for one generation may never be reused for another.",
   "environmentRecordSchema": "contracts/operations/production-equivalent-environment-record.v1.schema.json",
+  "generationRegistryRecordSchema": "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json",
+  "registry": "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+  "writer": "scripts/register-memory-os-production-equivalent-environment-generation.py",
   "validator": "scripts/validate-memory-os-production-equivalent-environment-generation.py",
   "workflow": ".github/workflows/production-equivalent-environment-generation.yml",
   "bindingRules": {
@@ -12,13 +15,16 @@
     "evidenceBundleManifestSha256Required": true,
     "sourceCommitShaRequired": true,
     "materialDeltaLedgerSha256Required": true,
+    "environmentRecordSha256Required": true,
     "restoreEvidenceGenerationMustMatch": true,
     "loadEvidenceGenerationMustMatch": true,
     "failureDrillGenerationMustMatch": true,
     "reviewEvidenceGenerationMustMatch": true,
     "crossGenerationEvidenceReuseForbidden": true,
     "mutableLatestAliasForbiddenAsEvidenceKey": true,
-    "unknownGenerationFailsClosed": true
+    "unknownGenerationFailsClosed": true,
+    "appendOnlyRegistrationRequired": true,
+    "supersededGenerationChainRequiredPerEnvironment": true
   },
   "materialChangeRules": {
     "postgresqlVersionOrTopologyChangeCreatesNewGeneration": true,
@@ -52,6 +58,8 @@
   "readiness": {
     "contractDefined": true,
     "registryDefined": true,
+    "registryRecordSchemaDefined": true,
+    "writerImplemented": true,
     "validatorImplemented": true,
     "automaticWorkflowImplemented": true,
     "generationRegistered": false,
@@ -63,7 +71,7 @@
   "limitations": [
     "no production-equivalent environment generation is registered",
     "this contract prevents cross-generation evidence reuse but does not provision infrastructure",
-    "a hash match does not by itself prove environment equivalence or production readiness",
+    "a registered generation and hash match do not by themselves prove environment equivalence or production readiness",
     "production traffic and production credentials remain outside automatic evidence generation"
   ]
 }
