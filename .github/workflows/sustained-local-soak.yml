@@ -1,0 +1,458 @@
+name: Sustained Local Soak
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/sustained-local-soak.yml"
+      - "contracts/operations/sustained-local-soak-contract.v1.json"
+      - "scripts/validate-memory-os-sustained-local-soak.py"
+      - "scripts/validate-memory-os-sustained-local-soak-result.py"
+      - "scripts/validate-memory-os-sustained-local-soak-aggregate.py"
+      - "scripts/update-memory-os-sustained-local-soak-aggregate.py"
+      - "scripts/reconcile-memory-os-sustained-local-soak-status.py"
+      - "scripts/validate-memory-os-load-evidence-index.py"
+      - "services/import-api/internal/httpserver/sustained_local_soak_test.go"
+      - "services/import-api/internal/httpserver/server_live_test.go"
+      - "services/import-api/internal/httpserver/live_load_test.go"
+      - "services/import-api/internal/httpserver/live_object_load_test.go"
+      - "services/import-api/internal/httpserver/deletion_under_load_test.go"
+      - "services/import-api/internal/parsersup/**"
+      - "services/import-api/internal/fenced/**"
+      - "services/import-api/internal/epochguard/**"
+      - "services/import-api/internal/pgrepo/**"
+      - "services/import-api/internal/dbscope/**"
+      - "services/import-api/internal/pgscope/**"
+      - "services/import-api/internal/authstore/**"
+      - "services/import-api/internal/upload/**"
+      - "services/import-api/internal/objectstore/**"
+      - "services/import-api/internal/accountdelete/**"
+      - "services/import-api/go.mod"
+      - "services/import-api/go.sum"
+      - "infra/postgresql/security/**"
+  schedule:
+    - cron: "37 18 * * 2,5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sustained-local-soak-${{ github.event_name }}-so
+  cancel-in-progress: true
+
+jobs:
+  foundation-smoke:
+    if: >-
+      github.event_name != 'push' ||
+      (!contains(github.event.head_commit.message, 'docs(ops): register sustained local soak foundation') &&
+       !contains(github.event.head_commit.message, 'test(soak): record sustained local soak result') &&
+       !contains(github.event.head_commit.message, 'docs(ops): reconcile sustained local soak runs') &&
+       !contains(github.event.head_commit.message, 'test(soak): record sustained local soak diagnostic'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: memory_os_security
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d memory_os_security"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    steps:
+      - name: Checkout exact so source
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: services/import-api/go.sum
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Capture exact source
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Start local MinIO
+        run: |
+          set -euo pipefail
+          docker run -d --name memory-os-sustained-soak-smoke-minio \
+            -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio server /data
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:9000/minio/health/live >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs memory-os-sustained-soak-smoke-minio
+          exit 1
+
+      - name: Validate foundation and compressed smoke
+        env:
+          MEMORY_OS_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/memory_os_security?sslmode=disable
+          MEMORY_OS_TEST_S3_ENDPOINT: http://127.0.0.1:9000
+          MEMORY_OS_TEST_S3_ACCESS_KEY: minioadmin
+          MEMORY_OS_TEST_S3_SECRET_KEY: minioadmin
+          MEMORY_OS_RUN_SUSTAINED_LOCAL_SOAK: "1"
+          MEMORY_OS_SOAK_DURATION_SECONDS: "12"
+        run: |
+          set +e
+          log=/tmp/memory-os-sustained-soak-smoke.log
+          : > "$log"
+          code=0
+          echo "STAGE: contract-and-python" >> "$log"
+          python -m py_compile \
+            scripts/validate-memory-os-sustained-local-soak.py \
+            scripts/validate-memory-os-sustained-local-soak-result.py \
+            scripts/validate-memory-os-sustained-local-soak-aggregate.py \
+            scripts/update-memory-os-sustained-local-soak-aggregate.py \
+            scripts/reconcile-memory-os-sustained-local-soak-status.py \
+            scripts/validate-memory-os-load-evidence-index.py \
+            >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-sustained-local-soak.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-sustained-local-soak-aggregate.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: gofmt" >> "$log"
+            test -z "$(gofmt -l services/import-api/internal/httpserver/sustained_local_soak_test.go)" \
+              >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: compressed-multi-surface-smoke-no-evidence" >> "$log"
+            (
+              cd services/import-api
+              go test ./internal/httpserver \
+                -run '^TestMixedImportLifecycleLocalLongSoak$' \
+                -count=1 -timeout=8m
+            ) >> "$log" 2>&1 || code=$?
+          fi
+          echo "SOAK_SMOKE_EXIT_CODE=$code" >> "$GITHUB_ENV"
+          exit 0
+
+      - name: Reconcile foundation implementation
+        if: env.SOAK_SMOKE_EXIT_CODE == '0'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin so
+          if ! git diff --quiet "${SOURCE_SHA}" origin/so -- \
+            .github/workflows/sustained-local-soak.yml \
+            contracts/operations/sustained-local-soak-contract.v1.json \
+            scripts/validate-memory-os-sustained-local-soak.py \
+            scripts/validate-memory-os-sustained-local-soak-result.py \
+            scripts/validate-memory-os-sustained-local-soak-aggregate.py \
+            scripts/update-memory-os-sustained-local-soak-aggregate.py \
+            scripts/reconcile-memory-os-sustained-local-soak-status.py \
+            scripts/validate-memory-os-load-evidence-index.py \
+            services/import-api/internal/httpserver/sustained_local_soak_test.go; then
+            echo "Newer soak-foundation source exists; its own smoke run must reconcile."
+            exit 75
+          fi
+          git reset --hard origin/so
+          python scripts/validate-memory-os-sustained-local-soak.py
+          python scripts/validate-memory-os-sustained-local-soak-aggregate.py
+          python scripts/reconcile-memory-os-sustained-local-soak-status.py
+          python scripts/validate-memory-os-sustained-local-soak.py
+          python scripts/validate-memory-os-load-evidence-index.py
+          python scripts/validate-memory-os-load.py
+          python scripts/validate-memory-os-operability.py
+          git rm -f docs/fixtures/memory-os-operability/sustained-local-soak-smoke-diagnostic.last.json 2>/dev/null || true
+          git add \
+            contracts/operations/sustained-local-soak-contract.v1.json \
+            contracts/operations/load-test-scenario-contract.v1.json \
+            contracts/operations/production-operability-status.json
+          git add -u docs/fixtures/memory-os-operability/sustained-local-soak-smoke-diagnostic.last.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git commit -m "docs(ops): register sustained local soak foundation"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+
+      - name: Record privacy-safe smoke diagnostic
+        if: env.SOAK_SMOKE_EXIT_CODE != '0'
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          git reset --hard origin/so
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+          text = Path("/tmp/memory-os-sustained-soak-smoke.log").read_text(encoding="utf-8", errors="replace")
+          text = re.sub(r"postgres(?:ql)?://[^\s]+", "<redacted-database-url>", text)
+          text = re.sub(r"https?://[^\s]+", "<redacted-endpoint>", text)
+          text = text.replace("minioadmin", "<redacted-local-credential>")
+          text = re.sub(r"Bearer\s+\S+", "Bearer <redacted>", text, flags=re.I)
+          text = re.sub(r"acct_[A-Za-z0-9_-]+", "<redacted-synthetic-account>", text)
+          value = {
+              "schemaVersion": "memory-os-validator-diagnostic.v1",
+              "workflow": "sustained-local-soak-foundation-smoke",
+              "sourceCommitSha": os.environ["SOURCE_SHA"],
+              "result": "FAIL",
+              "exitCode": int(os.environ["SOAK_SMOKE_EXIT_CODE"]),
+              "output": text[-12000:],
+              "containsSecrets": False,
+              "evidenceRun": False,
+              "configuredDurationSeconds": 12,
+              "productionEvidence": False,
+              "productionEquivalentDependencies": False,
+              "localSustainedSoakEvidence": False,
+              "leakProof": False,
+          }
+          path = Path("docs/fixtures/memory-os-operability/sustained-local-soak-smoke-diagnostic.last.json")
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+          PY
+          git add docs/fixtures/memory-os-operability/sustained-local-soak-smoke-diagnostic.last.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "test(soak): record sustained local soak diagnostic"
+          git pull --rebase origin so
+          git push origin HEAD:so
+
+      - name: Enforce foundation smoke
+        run: test "${SOAK_SMOKE_EXIT_CODE}" = "0"
+
+  long-run:
+    if: github.event_name != 'push'
+    needs: foundation-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 85
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: memory_os_security
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d memory_os_security"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    steps:
+      - name: Checkout current so after foundation reconciliation
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: services/import-api/go.sum
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Capture exact long-run source
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "SOAK_RUN_ID=gha-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
+          echo "SOAK_RESULT_PATH=/tmp/sustained-local-soak-result.json" >> "$GITHUB_ENV"
+
+      - name: Start local MinIO
+        run: |
+          set -euo pipefail
+          docker run -d --name memory-os-sustained-soak-minio \
+            -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio server /data
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:9000/minio/health/live >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs memory-os-sustained-soak-minio
+          exit 1
+
+      - name: Execute one 60-minute LOCAL_LONG_SOAK run
+        env:
+          MEMORY_OS_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/memory_os_security?sslmode=disable
+          MEMORY_OS_TEST_S3_ENDPOINT: http://127.0.0.1:9000
+          MEMORY_OS_TEST_S3_ACCESS_KEY: minioadmin
+          MEMORY_OS_TEST_S3_SECRET_KEY: minioadmin
+          MEMORY_OS_RUN_SUSTAINED_LOCAL_SOAK: "1"
+          MEMORY_OS_SOAK_DURATION_SECONDS: "3600"
+          MEMORY_OS_SUSTAINED_LOCAL_SOAK_RESULTS_PATH: ${{ env.SOAK_RESULT_PATH }}
+          MEMORY_OS_COMMIT_SHA: ${{ env.SOURCE_SHA }}
+          MEMORY_OS_SOAK_RUN_ID: ${{ env.SOAK_RUN_ID }}
+        run: |
+          set +e
+          log=/tmp/memory-os-sustained-local-soak.log
+          : > "$log"
+          code=0
+          echo "STAGE: exact-60-minute-local-long-soak" >> "$log"
+          (
+            cd services/import-api
+            go test ./internal/httpserver \
+              -run '^TestMixedImportLifecycleLocalLongSoak$' \
+              -count=1 -timeout=75m
+          ) >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: exact-result-validation" >> "$log"
+            python scripts/validate-memory-os-sustained-local-soak-result.py \
+              "$SOAK_RESULT_PATH" \
+              --expected-commit-sha "$SOURCE_SHA" \
+              >> "$log" 2>&1 || code=$?
+          fi
+          echo "LONG_SOAK_EXIT_CODE=$code" >> "$GITHUB_ENV"
+          exit 0
+
+      - name: Publish append-only exact-source run result
+        if: env.LONG_SOAK_EXIT_CODE == '0'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin so
+          if ! git diff --quiet "${SOURCE_SHA}" origin/so -- \
+            .github/workflows/sustained-local-soak.yml \
+            contracts/operations/sustained-local-soak-contract.v1.json \
+            scripts/validate-memory-os-sustained-local-soak.py \
+            scripts/validate-memory-os-sustained-local-soak-result.py \
+            scripts/validate-memory-os-sustained-local-soak-aggregate.py \
+            scripts/update-memory-os-sustained-local-soak-aggregate.py \
+            scripts/reconcile-memory-os-sustained-local-soak-status.py \
+            services/import-api/internal/httpserver \
+            services/import-api/internal/parsersup \
+            services/import-api/internal/fenced \
+            services/import-api/internal/epochguard \
+            services/import-api/internal/pgrepo \
+            services/import-api/internal/dbscope \
+            services/import-api/internal/pgscope \
+            services/import-api/internal/authstore \
+            services/import-api/internal/upload \
+            services/import-api/internal/objectstore \
+            services/import-api/internal/accountdelete \
+            services/import-api/go.mod \
+            services/import-api/go.sum \
+            infra/postgresql/security; then
+            echo "Long-soak-critical source changed during the run; refusing stale evidence publication."
+            exit 75
+          fi
+          git reset --hard origin/so
+          target="docs/fixtures/memory-os-operability/sustained-local-soak-results.run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.v1.json"
+          test ! -e "$target"
+          cp "$SOAK_RESULT_PATH" "$target"
+          python scripts/validate-memory-os-sustained-local-soak-result.py \
+            "$target" --expected-commit-sha "$SOURCE_SHA"
+          git add "$target"
+          git commit -m "test(soak): record sustained local soak result"
+          git pull --rebase origin so
+          git push origin HEAD:so
+          echo "PUBLISHED_SOAK_RESULT=$target" >> "$GITHUB_ENV"
+
+      - name: Aggregate and reconcile run authority
+        if: env.LONG_SOAK_EXIT_CODE == '0'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin so
+          git reset --hard origin/so
+          python scripts/update-memory-os-sustained-local-soak-aggregate.py
+          python scripts/validate-memory-os-sustained-local-soak-aggregate.py
+          python scripts/reconcile-memory-os-sustained-local-soak-status.py
+          python scripts/validate-memory-os-sustained-local-soak.py
+          python scripts/validate-memory-os-sustained-local-soak-aggregate.py
+          python scripts/validate-memory-os-load-evidence-index.py
+          python scripts/validate-memory-os-load.py
+          python scripts/validate-memory-os-operability.py
+          git rm -f docs/fixtures/memory-os-operability/sustained-local-soak-diagnostic.last.json 2>/dev/null || true
+          git add \
+            contracts/operations/sustained-local-soak-contract.v1.json \
+            contracts/operations/load-test-scenario-contract.v1.json \
+            contracts/operations/production-operability-status.json \
+            docs/fixtures/memory-os-operability/sustained-local-soak-results.aggregate.v1.json
+          git add -u docs/fixtures/memory-os-operability/sustained-local-soak-diagnostic.last.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git commit -m "docs(ops): reconcile sustained local soak runs"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+
+      - name: Record privacy-safe long-run diagnostic
+        if: env.LONG_SOAK_EXIT_CODE != '0'
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          git reset --hard origin/so
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+          text = Path("/tmp/memory-os-sustained-local-soak.log").read_text(encoding="utf-8", errors="replace")
+          text = re.sub(r"postgres(?:ql)?://[^\s]+", "<redacted-database-url>", text)
+          text = re.sub(r"https?://[^\s]+", "<redacted-endpoint>", text)
+          text = text.replace("minioadmin", "<redacted-local-credential>")
+          text = re.sub(r"Bearer\s+\S+", "Bearer <redacted>", text, flags=re.I)
+          text = re.sub(r"acct_[A-Za-z0-9_-]+", "<redacted-synthetic-account>", text)
+          value = {
+              "schemaVersion": "memory-os-validator-diagnostic.v1",
+              "workflow": "sustained-local-soak",
+              "sourceCommitSha": os.environ["SOURCE_SHA"],
+              "runId": os.environ["SOAK_RUN_ID"],
+              "result": "FAIL",
+              "exitCode": int(os.environ["LONG_SOAK_EXIT_CODE"]),
+              "output": text[-12000:],
+              "containsSecrets": False,
+              "configuredDurationSeconds": 3600,
+              "productionEvidence": False,
+              "productionEquivalentDependencies": False,
+              "localSustainedSoakEvidence": False,
+              "productionSustainedSoakEvidence": False,
+              "leakProof": False,
+          }
+          path = Path("docs/fixtures/memory-os-operability/sustained-local-soak-diagnostic.last.json")
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+          PY
+          git add docs/fixtures/memory-os-operability/sustained-local-soak-diagnostic.last.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "test(soak): record sustained local soak diagnostic"
+          git pull --rebase origin so
+          git push origin HEAD:so
+
+      - name: Enforce long-run success
+        run: test "${LONG_SOAK_EXIT_CODE}" = "0"
