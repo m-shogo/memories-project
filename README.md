@@ -53,7 +53,9 @@ implemented and tested foundations:
 - local PostgreSQL Preview + Apply load checkpoint with exact-source PASS evidence
 - local PostgreSQL + MinIO signed-upload lifecycle load checkpoint with exact-source PASS evidence
 - local post-fence deletion-under-load checkpoint: former session 400/400 => 401 while worker erases owned rows
-- bounded local PostgreSQL capacity ramp and short CI stability sample
+- bounded local PostgreSQL Preview capacity ramp and short CI stability sample
+- bounded local PostgreSQL + MinIO signed-upload saturation-discovery ramp: 384/384 lifecycle successes through concurrency 48, pgx pool contention observed from concurrency 4, no failure/degradation boundary established
+- fail-closed repeated LOCAL_LONG_SOAK contract and validators requiring two independent 60-minute-or-longer runs with PostgreSQL, MinIO, parser, queue and deletion-worker coverage; execution evidence is not present yet
 
 not implemented or not production-proven:
 - rich Memory domain and user-facing retrieval/update model
@@ -62,7 +64,7 @@ not implemented or not production-proven:
 - production observability backend, dashboards, alert routing and paging
 - production-equivalent distributed rate limiting
 - production capacity boundary and approved operational thresholds
-- 60-minute-or-longer sustained soak / leak proof
+- repeated 60-minute-or-longer sustained soak execution / trend review / leak proof
 - production-equivalent PostgreSQL/object-storage dependency behavior
 - production object-storage TLS/scoped credentials/retention/lifecycle evidence
 - production PITR / coherent cross-domain restore rehearsal
@@ -82,13 +84,13 @@ A passing local or remote test suite proves only the tested commit and scope. Lo
 
 The next work must reduce production risk before adding broad user-facing scope:
 
-1. controlled PostgreSQL + MinIO saturation ramp to observe a repeatable first saturation signal, queue/backlog behavior and failure transition;
-2. 60-minute-or-longer repeated local soak foundation with RSS/heap/goroutine/latency/error/DB-connection trends across PostgreSQL, object storage, parser, queue and deletion worker paths;
-3. production-equivalent dependency contract for TLS, scoped credentials, retention/lifecycle, latency/failure assumptions, backup/restore, connection budgets and queue behavior;
-4. deletion linearization proof for requests already in flight before the durable 202 fence, plus multi-account worker saturation;
-5. production-shaped migration, restore, incident and failure rehearsals;
-6. approved-release compatibility/rollback evidence and client/server support-window tests;
-7. production observability, paging, distributed rate-limit and independent-review evidence.
+1. implement the LOCAL_LONG_SOAK runner/workflow and execute at least two independent 60-minute-or-longer runs covering PostgreSQL, MinIO, parser supervision, scan queue and deletion worker with RSS/heap/goroutine/latency/error/DB-connection/backlog trend review;
+2. repeat and extend the bounded PostgreSQL + MinIO saturation experiment until a first failure/degradation transition is reproducibly observed, then interpret pool/queue/backlog behavior before any safe operating threshold is independently approved;
+3. define and execute production-equivalent dependency evidence for TLS, scoped credentials, retention/lifecycle, latency/failure assumptions, backup/restore, connection budgets and queue behavior;
+4. prove deletion linearization for requests already in flight before the durable 202 fence, plus multi-account worker saturation;
+5. complete production-shaped migration, restore, incident and failure rehearsals;
+6. complete approved-release compatibility/rollback evidence and client/server support-window tests;
+7. complete production observability, paging, distributed rate-limit and independent-review evidence.
 
 The release gate is machine-readable. A P0 area may become `READY` only when its predeclared evidence requirements are satisfied and the operability validator accepts them.
 
@@ -174,8 +176,11 @@ python scripts/validate-memory-os-load-evidence-index.py
 python scripts/validate-memory-os-live-load.py
 python scripts/validate-memory-os-live-object-load.py
 python scripts/validate-memory-os-capacity-ramp.py
+python scripts/validate-memory-os-controlled-saturation-ramp.py
 python scripts/validate-memory-os-short-stability-sample.py
 python scripts/validate-memory-os-deletion-under-load.py
+python scripts/validate-memory-os-sustained-local-soak.py
+python scripts/validate-memory-os-sustained-local-soak-aggregate.py
 python scripts/validate-memory-os-operability.py
 python scripts/validate-memory-os-entry-docs.py
 
@@ -215,4 +220,7 @@ Production remains blocked until all P0 operability gates have executable eviden
 - authentication with rate limiting;
 - dependency pinning with compatibility proof;
 - local PostgreSQL/MinIO PASS with production capacity;
-- short CI stability sampling with sustained soak or leak proof.
+- pool contention with an established saturation boundary;
+- one bounded saturation run with a repeatable operating threshold;
+- short CI stability sampling with sustained soak or leak proof;
+- one 60-minute local run with repeated sustained-soak evidence.
