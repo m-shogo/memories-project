@@ -1,0 +1,31 @@
+name: Production Equivalent Environment Schema
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/production-equivalent-environment-schema.yml"
+      - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
+      - "scripts/validate-memory-os-production-equivalent-environment-schema.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: so
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate fail-closed environment record schema
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/validate-memory-os-production-equivalent-environment-schema.py
+          python scripts/validate-memory-os-production-equivalent-environment-schema.py
