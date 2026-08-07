@@ -46,6 +46,7 @@ def main() -> int:
     load_contract = load("contracts/operations/load-test-scenario-contract.v1.json")
     generations = load("contracts/operations/production-equivalent-environment-generation-registry.v1.json")
     backup_binding = load("contracts/operations/backup-restore-generation-binding-contract.v1.json")
+    backup_recovery = load("contracts/operations/backup-restore-generation-evidence-registry.v1.json")
     releases = load("contracts/operations/release-baseline-registry.v1.json")
     clients = load("contracts/operations/client-baseline-registry.v1.json")
     parsers = load("contracts/operations/parser-artifact-registry.v1.json")
@@ -58,6 +59,10 @@ def main() -> int:
     backup_boundary = backup_binding.get("currentBoundary")
     if not isinstance(backup_boundary, dict):
         raise SystemExit("backup generation boundary missing")
+    local_soak_complete = bool(
+        load_ready.get("localLongSoakRunCount", 0) >= 2
+        and load_ready.get("localSustainedSoakEvidence") is True
+    )
 
     areas: list[dict[str, Any]] = [
         {
@@ -126,17 +131,33 @@ def main() -> int:
             "requiredEvidenceCount": 2,
             "dependencyCounts": {
                 "environmentGenerations": generations.get("registeredGenerationCount", 0),
+                "localSustainedSoakEvidence": local_soak_complete,
                 "repeatableLocalDegradationSignalObserved": bool(load_ready.get("repeatableLocalDegradationSignalObserved")),
             },
-            "nextGate": "two independent 60-minute LOCAL_LONG_SOAK results plus trend review, then production-equivalent capacity/host failure evidence",
+            "nextGate": (
+                "local repeated 60-minute soak and descriptive trend review are complete; next require independent leak/stability criteria plus generation-bound production-equivalent capacity, dependency and host-failure evidence"
+                if local_soak_complete
+                else "complete two independent 60-minute LOCAL_LONG_SOAK results plus descriptive trend review before production-equivalent capacity/host-failure admission"
+            ),
         },
         {
             "id": "OPS-P0-007",
-            "authority": "contracts/operations/backup-restore-generation-binding-contract.v1.json",
-            "foundationImplemented": exists("contracts/operations/backup-restore-generation-binding-contract.v1.json"),
+            "authority": "contracts/operations/backup-restore-generation-evidence-contract.v1.json",
+            "secondaryAuthority": "contracts/operations/backup-restore-generation-binding-contract.v1.json",
+            "foundationImplemented": all(exists(path) for path in (
+                "contracts/operations/backup-restore-generation-evidence-contract.v1.json",
+                "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
+                "scripts/register-memory-os-backup-restore-generation-evidence.py",
+                "scripts/validate-memory-os-backup-restore-generation-evidence.py",
+                ".github/workflows/backup-restore-generation-evidence.yml",
+            )),
             "admittedEvidenceCount": backup_boundary.get("generationBoundRestoreCount", 0),
-            "dependencyCounts": {"environmentGenerations": generations.get("registeredGenerationCount", 0)},
-            "nextGate": "generation-bound production-shaped backup/PITR/object retention and isolated restore evidence with measured RPO/RTO",
+            "dependencyCounts": {
+                "environmentGenerations": generations.get("registeredGenerationCount", 0),
+                "generationBoundBackups": backup_boundary.get("generationBoundBackupCount", 0),
+                "productionEquivalentRecoveryCandidates": backup_recovery.get("productionEquivalentRecoveryCandidateCount", 0),
+            },
+            "nextGate": "register a reviewed production-equivalent environment generation, then admit generation-bound PITR, independent object retention and isolated restore evidence with approved/measured RPO/RTO and non-resurrection verification",
         },
         {
             "id": "OPS-P0-008",
@@ -181,12 +202,14 @@ def main() -> int:
             "foundationImplemented means the admission path exists; it does not mean runtime or production evidence exists",
             "admittedEvidenceCount is derived only from canonical append-only registries or accepted human tabletop ledger files",
             "candidate/local evidence is not counted as production admission unless its owning authority explicitly admits it",
-        ],
+            "local repeated soak evidence is tracked separately from independent leak proof and production-shaped soak evidence"
+        ]
     }
     OUTPUT.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print("Memory OS operability admission inventory generated")
     print(f"P0 areas inventoried: {len(areas)}")
     print(f"production-equivalent generations: {document['productionEquivalentEnvironmentGenerationCount']}")
+    print(f"local repeated soak complete: {str(local_soak_complete).lower()}")
     print("production decision: NO_GO")
     return 0
 
