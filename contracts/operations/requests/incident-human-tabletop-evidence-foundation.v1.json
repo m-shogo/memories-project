@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "memory-os-operation-request.v1",
+  "requestId": "incident-human-tabletop-evidence-foundation-20260807-v1",
+  "operation": "VALIDATE_HUMAN_TABLETOP_COMPLETION_ADMISSION",
+  "productionTraffic": false,
+  "productionCredentials": false,
+  "productionEvidence": false,
+  "constraints": {
+    "automatedExerciseCannotCreateHumanCompletion": true,
+    "appendOnlyCompletionRequired": true,
+    "commandRolesAndClosureApprovalsRequired": true,
+    "productionRecoveryPromotionForbidden": true,
+    "productionReadyPromotionForbidden": true
+  }
+}
