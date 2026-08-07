@@ -117,10 +117,6 @@ def main() -> int:
     ):
         require(operations_readiness.get(flag) is False,
                 f"local decision drill cannot prove operations readiness: {flag}")
-    operation_refs = operations.get("evidenceRefs")
-    require(isinstance(operation_refs, list), "operations evidenceRefs must be list")
-    for ref in NEW_REFS:
-        changed = append_once(operation_refs, ref) or changed
 
     require(status.get("productionDecision") == "NO_GO",
             "decision drill reconcile cannot change production decision")
@@ -159,8 +155,6 @@ def main() -> int:
     status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
     CONTRACT_PATH.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n",
                              encoding="utf-8")
-    OPERATIONS_PATH.write_text(json.dumps(operations, indent=2, ensure_ascii=False) + "\n",
-                               encoding="utf-8")
     STATUS_PATH.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n",
                            encoding="utf-8")
     print("Registered local rate-limit emergency decision drill; runtime/production gaps remain")
