@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a descriptive LOCAL_LONG_SOAK aggregate without auto-promoting trend review or leak proof."""
+"""Build descriptive LOCAL_LONG_SOAK aggregate without leak or production promotion."""
 
 from __future__ import annotations
 
@@ -13,8 +13,10 @@ ROOT = Path(__file__).resolve().parents[1]
 RESULT_DIR = ROOT / "docs/fixtures/memory-os-operability"
 RESULT_GLOB = "sustained-local-soak-results.run-*.v1.json"
 AGGREGATE_PATH = RESULT_DIR / "sustained-local-soak-results.aggregate.v1.json"
+REVIEW_PATH = RESULT_DIR / "sustained-local-soak-trend-review.v1.json"
 CONTRACT_PATH = ROOT / "contracts/operations/sustained-local-soak-contract.v1.json"
 RESULT_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak-result.py"
+REVIEW_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak-trend-review.py"
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -24,12 +26,29 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def validate(path: Path, validator: Path) -> None:
+    completed = subprocess.run(
+        [sys.executable, str(validator), str(path)] if validator == RESULT_VALIDATOR else
+        [sys.executable, str(validator)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        sys.stderr.write(completed.stdout)
+        sys.stderr.write(completed.stderr)
+        raise SystemExit(f"validator rejected {path.relative_to(ROOT)}")
+
+
 def main() -> int:
     contract = load(CONTRACT_PATH)
     paths = sorted(RESULT_DIR.glob(RESULT_GLOB))
     if not paths:
         if AGGREGATE_PATH.exists():
             AGGREGATE_PATH.unlink()
+        if REVIEW_PATH.exists():
+            REVIEW_PATH.unlink()
         print("No sustained local soak result documents to aggregate")
         return 0
 
@@ -38,17 +57,7 @@ def main() -> int:
     durations: list[float] = []
     trend_summaries: list[dict[str, Any]] = []
     for path in paths:
-        completed = subprocess.run(
-            [sys.executable, str(RESULT_VALIDATOR), str(path)],
-            cwd=ROOT,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if completed.returncode != 0:
-            sys.stderr.write(completed.stdout)
-            sys.stderr.write(completed.stderr)
-            raise SystemExit(f"result validator rejected {path.relative_to(ROOT)}")
+        validate(path, RESULT_VALIDATOR)
         document = load(path)
         scenario = document["scenario"]
         run_ids.append(document["runId"])
@@ -74,6 +83,22 @@ def main() -> int:
 
     minimum_runs = int(contract["minimumIndependentRuns"])
     enough_runs = len(paths) >= minimum_runs
+    review_completed = False
+    local_evidence = False
+    review_ref: str | None = None
+    if enough_runs and REVIEW_PATH.is_file():
+        validate(REVIEW_PATH, REVIEW_VALIDATOR)
+        review = load(REVIEW_PATH)
+        review_completed = review.get("trendReviewCompleted") is True
+        local_evidence = (
+            review_completed and
+            review.get("localSustainedSoakEvidenceEligible") is True and
+            review.get("leakProof") is False and
+            review.get("productionEvidence") is False and
+            review.get("productionReady") is False
+        )
+        review_ref = str(REVIEW_PATH.relative_to(ROOT))
+
     aggregate = {
         "schemaVersion": "memory-os-sustained-local-soak-aggregate.v1",
         "scenarioId": contract["scenarioId"],
@@ -81,17 +106,21 @@ def main() -> int:
         "runCount": len(paths),
         "runIds": sorted(run_ids),
         "sourceCommitShas": sorted(set(source_shas)),
-        "allRunsDurationAtLeast3600Seconds": all(value >= int(contract["minimumRunDurationSeconds"]) for value in durations),
+        "allRunsDurationAtLeast3600Seconds": all(
+            value >= int(contract["minimumRunDurationSeconds"]) for value in durations
+        ),
         "allRunsRequiredCoverageComplete": True,
         "minimumIndependentRunsSatisfied": enough_runs,
         "trendReview": {
-            "status": "PENDING" if enough_runs else "WAITING_FOR_REPEATED_RUNS",
+            "status": "COMPLETED_DESCRIPTIVE_LOCAL_ONLY" if review_completed else
+                      ("PENDING" if enough_runs else "WAITING_FOR_REPEATED_RUNS"),
+            "reviewEvidenceRef": review_ref,
             "automaticLeakConclusionForbidden": True,
             "automaticOperatingThresholdApprovalForbidden": True,
             "runTrends": sorted(trend_summaries, key=lambda value: value["runId"]),
         },
-        "trendReviewCompleted": False,
-        "localSustainedSoakEvidence": False,
+        "trendReviewCompleted": review_completed,
+        "localSustainedSoakEvidence": local_evidence,
         "productionSustainedSoakEvidence": False,
         "leakProof": False,
         "productionEvidence": False,
@@ -104,9 +133,10 @@ def main() -> int:
     print("Memory OS sustained local soak aggregate updated")
     print(f"run count: {len(paths)}")
     print(f"minimum independent runs satisfied: {str(enough_runs).lower()}")
-    print("trend review completed: false")
-    print("local sustained soak evidence: false")
+    print(f"trend review completed: {str(review_completed).lower()}")
+    print(f"local sustained soak evidence: {str(local_evidence).lower()}")
     print("leak proof: false")
+    print("production evidence: false")
     return 0
 
 
