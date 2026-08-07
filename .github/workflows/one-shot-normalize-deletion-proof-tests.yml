@@ -1,0 +1,90 @@
+name: One Shot Normalize Deletion Proof Tests
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/one-shot-normalize-deletion-proof-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  normalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: services/import-api/go.sum
+      - name: Normalize and compile test package
+        run: |
+          set +e
+          gofmt -w \
+            services/import-api/internal/httpserver/deletion_prefence_linearization_test.go \
+            services/import-api/internal/httpserver/deletion_worker_saturation_test.go
+          log=/tmp/deletion-proof-compile.log
+          (
+            cd services/import-api
+            go test ./internal/httpserver -run '^TestDoesNotExist$' -count=1
+          ) >"$log" 2>&1
+          code=$?
+          echo "COMPILE_EXIT_CODE=$code" >> "$GITHUB_ENV"
+          exit 0
+      - name: Commit normalized sources
+        run: |
+          set -euo pipefail
+          git add \
+            services/import-api/internal/httpserver/deletion_prefence_linearization_test.go \
+            services/import-api/internal/httpserver/deletion_worker_saturation_test.go
+          if ! git diff --cached --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "fix(deletion): normalize proof test formatting"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+      - name: Record compile diagnostic
+        if: env.COMPILE_EXIT_CODE != '0'
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          git reset --hard origin/so
+          python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+          text = Path('/tmp/deletion-proof-compile.log').read_text(encoding='utf-8', errors='replace')
+          text = re.sub(r'postgres(?:ql)?://[^\s]+', '<redacted-database-url>', text)
+          text = re.sub(r'https?://[^\s]+', '<redacted-endpoint>', text)
+          text = text.replace('minioadmin', '<redacted-local-credential>')
+          text = re.sub(r'Bearer\s+\S+', 'Bearer <redacted>', text, flags=re.I)
+          text = re.sub(r'acct_[A-Za-z0-9_-]+', '<redacted-synthetic-account>', text)
+          value = {
+              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'workflow': 'one-shot-normalize-deletion-proof-tests',
+              'result': 'FAIL',
+              'exitCode': int(__import__('os').environ['COMPILE_EXIT_CODE']),
+              'output': text[-12000:],
+              'containsSecrets': False,
+              'productionEvidence': False,
+          }
+          path = Path('docs/fixtures/memory-os-operability/deletion-proof-compile-diagnostic.last.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          PY
+          git add docs/fixtures/memory-os-operability/deletion-proof-compile-diagnostic.last.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "test(deletion): record proof compile diagnostic"
+          git pull --rebase origin so
+          git push origin HEAD:so
+      - name: Enforce compile
+        run: test "${COMPILE_EXIT_CODE}" = "0"
