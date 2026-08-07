@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://memory-os.example/contracts/operations/production-equivalent-environment-record.v1.schema.json",
+  "title": "Memory OS Production-Equivalent Environment Record v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "environmentId",
+    "generationId",
+    "status",
+    "topology",
+    "postgresql",
+    "objectStorage",
+    "queueWorkers",
+    "network",
+    "identityAndSecrets",
+    "backupRestore",
+    "materialDeltas",
+    "evidenceBoundary"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "memory-os-production-equivalent-environment-record.v1" },
+    "environmentId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,63}$" },
+    "generationId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._:-]{2,95}$" },
+    "status": { "enum": ["PLANNED", "PROVISIONED_UNVALIDATED", "VALIDATION_IN_PROGRESS", "VALIDATED_LOCAL_NONPRODUCTION", "REJECTED"] },
+    "topology": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["regionClass", "nonLoopback", "productionTraffic", "productionCredentials"],
+      "properties": {
+        "regionClass": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "nonLoopback": { "type": "boolean" },
+        "productionTraffic": { "const": false },
+        "productionCredentials": { "const": false }
+      }
+    },
+    "postgresql": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tlsVerified", "runtimeRoleBypassRLS", "forceRLSVerified", "connectionBudgetDeclared", "poolTelemetryVerified", "restoreEvidenceRef"],
+      "properties": {
+        "tlsVerified": { "type": "boolean" },
+        "runtimeRoleBypassRLS": { "const": false },
+        "forceRLSVerified": { "type": "boolean" },
+        "connectionBudgetDeclared": { "type": "boolean" },
+        "poolTelemetryVerified": { "type": "boolean" },
+        "restoreEvidenceRef": { "type": ["string", "null"], "maxLength": 256 }
+      }
+    },
+    "objectStorage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tlsVerified", "scopedCredentialsVerified", "versioningVerified", "retentionLifecycleVerified", "exactVersionDeleteVerified", "restoreEvidenceRef"],
+      "properties": {
+        "tlsVerified": { "type": "boolean" },
+        "scopedCredentialsVerified": { "type": "boolean" },
+        "versioningVerified": { "type": "boolean" },
+        "retentionLifecycleVerified": { "type": "boolean" },
+        "exactVersionDeleteVerified": { "type": "boolean" },
+        "restoreEvidenceRef": { "type": ["string", "null"], "maxLength": 256 }
+      }
+    },
+    "queueWorkers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["boundedBackpressureVerified", "queueTelemetryVerified", "deletionBacklogTelemetryVerified", "leaseRetryVerified"],
+      "properties": {
+        "boundedBackpressureVerified": { "type": "boolean" },
+        "queueTelemetryVerified": { "type": "boolean" },
+        "deletionBacklogTelemetryVerified": { "type": "boolean" },
+        "leaseRetryVerified": { "type": "boolean" }
+      }
+    },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tlsVerificationRequired", "latencyProfileRef", "failureInjectionRef"],
+      "properties": {
+        "tlsVerificationRequired": { "const": true },
+        "latencyProfileRef": { "type": ["string", "null"], "maxLength": 256 },
+        "failureInjectionRef": { "type": ["string", "null"], "maxLength": 256 }
+      }
+    },
+    "identityAndSecrets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dedicatedNonProductionCredentials", "credentialScopeRef", "containsSecretMaterial"],
+      "properties": {
+        "dedicatedNonProductionCredentials": { "type": "boolean" },
+        "credentialScopeRef": { "type": ["string", "null"], "maxLength": 256 },
+        "containsSecretMaterial": { "const": false }
+      }
+    },
+    "backupRestore": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sameGenerationLinked", "isolatedRestoreVerified", "evidenceRef"],
+      "properties": {
+        "sameGenerationLinked": { "type": "boolean" },
+        "isolatedRestoreVerified": { "type": "boolean" },
+        "evidenceRef": { "type": ["string", "null"], "maxLength": 256 }
+      }
+    },
+    "materialDeltas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["deltaId", "description", "classification", "accepted", "independentReviewRef"],
+        "properties": {
+          "deltaId": { "type": "string", "pattern": "^[A-Z0-9._-]{3,64}$" },
+          "description": { "type": "string", "minLength": 1, "maxLength": 500 },
+          "classification": { "enum": ["MATERIAL", "NON_MATERIAL"] },
+          "accepted": { "type": "boolean" },
+          "independentReviewRef": { "type": ["string", "null"], "maxLength": 256 }
+        }
+      }
+    },
+    "evidenceBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["productionEvidence", "productionEquivalentDependencies", "independentReviewCompleted", "productionReady"],
+      "properties": {
+        "productionEvidence": { "const": false },
+        "productionEquivalentDependencies": { "type": "boolean" },
+        "independentReviewCompleted": { "type": "boolean" },
+        "productionReady": { "const": false }
+      }
+    }
+  }
+}
