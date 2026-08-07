@@ -66,7 +66,6 @@ def generation_by_id(generations: list[Any], generation_id: Any, field: str) -> 
 def objective_for_record(record: dict[str, Any]) -> dict[str, Any] | None:
     registry = load(OBJECTIVES_REGISTRY)
     rows = registry.get("records")
-    current_id = registry.get("currentObjectiveId")
     require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "recovery objectives registry invalid")
     objective_id = record.get("recoveryObjectivesId")
     measurements = (
@@ -78,7 +77,6 @@ def objective_for_record(record: dict[str, Any]) -> dict[str, Any] | None:
         require(all(value is None for value in measurements), "recovery measurements require an approved recoveryObjectivesId")
         return None
     require(isinstance(objective_id, str) and objective_id, "recoveryObjectivesId invalid")
-    require(objective_id == current_id, "recovery evidence must bind the current approved recovery objectives")
     matches = [row for row in rows if row.get("objectiveId") == objective_id]
     require(len(matches) == 1, "recoveryObjectivesId is not uniquely registered")
     objective = matches[0]
@@ -99,8 +97,12 @@ def measurements_meet_objective(record: dict[str, Any], objective: dict[str, Any
 
 def candidate(record: dict[str, Any]) -> bool:
     objective = objective_for_record(record)
+    objectives_registry = load(OBJECTIVES_REGISTRY)
+    current_objective_id = objectives_registry.get("currentObjectiveId")
     return (
-        measurements_meet_objective(record, objective)
+        objective is not None
+        and record.get("recoveryObjectivesId") == current_objective_id
+        and measurements_meet_objective(record, objective)
         and record.get("evidenceComplete") is True
         and record.get("isolatedRestoreVerified") is True
         and record.get("postgresPitrVerified") is True
@@ -231,6 +233,7 @@ def main() -> int:
         registry["productionReady"] = False
         registry["limitations"] = [
             "generation-bound recovery evidence remains non-production evidence",
+            "historical evidence remains valid against the approved objective ID recorded at execution time, but only evidence bound to the current objective ID can become a current production-equivalent recovery candidate",
             "failed RPO/RTO/object-database-skew measurements remain admissible evidence but cannot become production-equivalent recovery candidates",
             "production-equivalent recovery candidates require current approved recovery objectives, all fail-closed controls and independent reviews",
             "this registry never establishes application production readiness"
