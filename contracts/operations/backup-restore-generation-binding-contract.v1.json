@@ -47,8 +47,8 @@
   },
   "readiness": {
     "contractDefined": true,
-    "validatorImplemented": false,
-    "automaticWorkflowImplemented": false,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": true,
     "environmentGenerationAvailable": false,
     "generationBoundBackupAvailable": false,
     "generationBoundRestoreAvailable": false,
