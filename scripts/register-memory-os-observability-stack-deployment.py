@@ -1,0 +1,175 @@
+#!/usr/bin/env python3
+"""Register one integrated observability-stack deployment evidence record."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import tempfile
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+CONTRACT = ROOT / "contracts/operations/observability-stack-deployment-contract.v1.json"
+REGISTRY = ROOT / "contracts/operations/observability-stack-deployment-registry.v1.json"
+GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+LOCK = ROOT / "contracts/operations/.observability-stack-deployment.lock"
+SHA40 = re.compile(r"^[0-9a-f]{40}$")
+DIGEST = re.compile(r"^[0-9a-f]{64}$")
+STACK_ID = re.compile(r"^obsstack_[a-z0-9][a-z0-9_-]{7,63}$")
+PRODUCTION_CONFIRMATION = "REGISTER PRODUCTION OBSERVABILITY STACK EVIDENCE"
+REF_FIELDS = (
+    "infrastructureAsCodeRefs", "structuredLogEvidenceRefs", "metricsEvidenceRefs",
+    "accessAuditEvidenceRefs", "pagingEvidenceRefs", "retentionDeletionEvidenceRefs",
+)
+DIGEST_FIELDS = (
+    "environmentIdentityDigest", "structuredLogBackendIdentityDigest",
+    "metricsBackendIdentityDigest", "accessAuditSinkIdentityDigest",
+    "pagingDestinationIdentityDigest",
+)
+
+
+class Fail(RuntimeError):
+    pass
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise Fail(message)
+
+
+def load(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    require(isinstance(value, dict), f"root must be object: {path}")
+    return value
+
+
+def git(*args: str) -> str:
+    completed = subprocess.run(["git", *args], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    require(completed.returncode == 0, f"git {' '.join(args)} failed")
+    return completed.stdout.strip()
+
+
+def evidence_refs(value: Any, field: str) -> list[str]:
+    require(isinstance(value, list) and value, f"{field} must be non-empty")
+    require(all(isinstance(item, str) and item and not Path(item).is_absolute() and ".." not in Path(item).parts for item in value), f"{field} invalid")
+    require(len(value) == len(set(value)), f"{field} contains duplicates")
+    for item in value:
+        require((ROOT / item).is_file(), f"{field} evidence path missing: {item}")
+    return value
+
+
+def validate_record(record: dict[str, Any], confirmation: str) -> None:
+    contract = load(CONTRACT)
+    required = set(contract.get("requiredRecordFields", []))
+    require(set(record) == required, f"record field set drift: {sorted(set(record) ^ required)}")
+    require(record.get("schemaVersion") == contract.get("recordSchemaVersion"), "record schemaVersion drift")
+    require(isinstance(record.get("stackId"), str) and STACK_ID.fullmatch(record["stackId"]), "stackId invalid")
+    environment = record.get("environmentClass")
+    require(environment in contract.get("allowedEnvironmentClasses", []), "environmentClass invalid")
+    source = record.get("sourceCommitSha")
+    require(isinstance(source, str) and SHA40.fullmatch(source), "sourceCommitSha invalid")
+    require(git("cat-file", "-e", source + "^{commit}") == "", "source commit does not exist")
+    for field in DIGEST_FIELDS:
+        require(isinstance(record.get(field), str) and DIGEST.fullmatch(record[field]), f"{field} must be SHA-256 digest")
+    for field in REF_FIELDS:
+        evidence_refs(record.get(field), field)
+    for field in ("securityReviewRef", "operabilityReviewRef"):
+        value = record.get(field)
+        require(isinstance(value, str) and value and not Path(value).is_absolute() and ".." not in Path(value).parts and (ROOT / value).is_file(), f"{field} invalid")
+    findings = record.get("unresolvedFindings")
+    require(isinstance(findings, list), "unresolvedFindings must be a list")
+    for index, finding in enumerate(findings):
+        require(isinstance(finding, dict) and set(finding) == {"findingId", "severity", "status"}, f"unresolvedFindings[{index}] field drift")
+        require(isinstance(finding.get("findingId"), str) and finding["findingId"], f"unresolvedFindings[{index}].findingId invalid")
+        require(finding.get("severity") in {"LOW", "MEDIUM"}, "Critical/High findings block observability admission")
+        require(finding.get("status") in {"OPEN", "ACCEPTED_WITH_OWNER"}, f"unresolvedFindings[{index}].status invalid")
+    require(record.get("evidenceComplete") is True, "evidenceComplete must be true")
+    require(record.get("productionReady") is False, "observability stack evidence cannot make application productionReady")
+    generation = record.get("environmentGenerationId")
+    if environment == "PRODUCTION_EQUIVALENT":
+        require(isinstance(generation, str) and generation, "production-equivalent stack requires environmentGenerationId")
+        generations = load(GEN_REGISTRY)
+        rows = generations.get("generations")
+        require(isinstance(rows, list) and any(isinstance(row, dict) and row.get("generationId") == generation for row in rows), "environmentGenerationId is not registered")
+        require(record.get("productionEvidence") is False, "production-equivalent stack cannot be production evidence")
+    else:
+        require(generation is None, "production stack must not borrow a production-equivalent generation id")
+        require(confirmation == PRODUCTION_CONFIRMATION, f"production record requires confirmation: {PRODUCTION_CONFIRMATION}")
+        require(record.get("productionEvidence") is True, "production stack record must explicitly classify itself as production evidence")
+    serialized = json.dumps(record, ensure_ascii=False).lower()
+    for forbidden in ("http://", "https://", "postgres://", "postgresql://", "@", "password", "private_key", "access_key", "bearer "):
+        require(forbidden not in serialized, f"record contains forbidden material: {forbidden}")
+
+
+def atomic_write(value: dict[str, Any]) -> None:
+    descriptor, temp_name = tempfile.mkstemp(prefix=".observability-stack.", suffix=".tmp", dir=REGISTRY.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(value, handle, indent=2, ensure_ascii=False)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, REGISTRY)
+    finally:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--record", required=True)
+    parser.add_argument("--confirm", default="")
+    args = parser.parse_args()
+    record_path = Path(args.record).resolve()
+    try:
+        record_path.relative_to(ROOT)
+    except ValueError:
+        pass
+    else:
+        raise Fail("input record must be outside repository")
+    require(git("status", "--porcelain") == "", "working tree must be clean")
+    record = load(record_path)
+    validate_record(record, args.confirm)
+
+    try:
+        lock_fd = os.open(LOCK, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError as exc:
+        raise Fail("observability stack registry lock already exists") from exc
+    try:
+        os.write(lock_fd, (record["stackId"] + "\n").encode("ascii"))
+        os.fsync(lock_fd)
+        registry = load(REGISTRY)
+        stacks = registry.get("stacks")
+        require(isinstance(stacks, list), "registry stacks invalid")
+        require(all(isinstance(item, dict) for item in stacks), "registry contains invalid stack")
+        require(all(item.get("stackId") != record["stackId"] for item in stacks), "stackId already registered")
+        require(all(item.get("environmentIdentityDigest") != record["environmentIdentityDigest"] for item in stacks), "environment identity already registered")
+        stacks.append(record)
+        registry["admittedStackCount"] = len(stacks)
+        registry["productionEquivalentStackCount"] = sum(1 for item in stacks if item.get("environmentClass") == "PRODUCTION_EQUIVALENT")
+        registry["productionStackCount"] = sum(1 for item in stacks if item.get("environmentClass") == "PRODUCTION")
+        registry["productionReady"] = False
+        atomic_write(registry)
+    finally:
+        os.close(lock_fd)
+        try:
+            LOCK.unlink()
+        except FileNotFoundError:
+            pass
+    print(f"Registered observability stack evidence: {record['stackId']}")
+    print("Application production readiness remains false.")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except Fail as exc:
+        print(f"OBSERVABILITY STACK REGISTRATION FAILED: {exc}")
+        raise SystemExit(1)
