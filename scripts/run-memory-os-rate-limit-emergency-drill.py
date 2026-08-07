@@ -16,6 +16,7 @@ CONTRACT_PATH = ROOT / "contracts/operations/rate-limit-emergency-drill-contract
 OPERATIONS_PATH = ROOT / "contracts/operations/rate-limit-operations-contract.v1.json"
 POLICY_PATH = ROOT / "contracts/operations/rate-limit-policy-contract.v1.json"
 WRITER_PATH = ROOT / "scripts/create-memory-os-rate-limit-operation-evidence.py"
+EVALUATOR_PATH = ROOT / "scripts/evaluate-memory-os-rate-limit-emergency-state.py"
 
 
 class DrillFailure(RuntimeError):
@@ -66,13 +67,44 @@ def operational_mode_ids(operations: dict[str, Any]) -> set[str]:
     }
 
 
-def run_writer_self_test(source_sha: str, scenario: dict[str, Any], started: dt.datetime,
-                         expires: dt.datetime, restored: dt.datetime) -> tuple[bool, bool]:
+def evaluate_temp_operation(ledger: Path, operation_id: str, at: dt.datetime) -> dict[str, Any]:
+    completed = subprocess.run(
+        [
+            "python", str(EVALUATOR_PATH),
+            "--ledger-dir", str(ledger),
+            "--operation-id", operation_id,
+            "--at", utc_text(at),
+        ],
+        cwd=ROOT,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    require(completed.returncode == 0,
+            f"canonical expiry evaluator failed: {completed.stderr.strip()[:500]}")
+    try:
+        value = json.loads(completed.stdout)
+    except json.JSONDecodeError as exc:
+        raise DrillFailure("canonical expiry evaluator did not return JSON") from exc
+    require(isinstance(value, dict), "canonical expiry evaluator result must be an object")
+    return value
+
+
+def run_writer_and_evaluator_self_test(
+    source_sha: str,
+    scenario: dict[str, Any],
+    started: dt.datetime,
+    expires: dt.datetime,
+    before_expiry: dt.datetime,
+    after_expiry: dt.datetime,
+) -> tuple[bool, bool, str, str]:
     checks = scenario["requiredRecoveryChecks"]
     evidence_ref = "contracts/operations/rate-limit-emergency-drill-contract.v1.json"
+    operation_id = started.strftime("RLOP-%Y%m%dT%H%M%SZ-localdrill")
     record = {
         "schemaVersion": "memory-os-rate-limit-operation-record.v1",
-        "operationId": started.strftime("RLOP-%Y%m%dT%H%M%SZ-localdrill"),
+        "operationId": operation_id,
         "incidentReference": "DRILL-LOCAL_CI_EXPIRY",
         "sourceCommitSha": source_sha,
         "environment": "CI",
@@ -85,17 +117,18 @@ def run_writer_self_test(source_sha: str, scenario: dict[str, Any], started: dt.
         "startedAt": utc_text(started),
         "expiresAt": utc_text(expires),
         "activationReason": "DRILL",
-        "lifecycle": "RESTORED",
+        "lifecycle": "ACTIVE",
         "productionConfirmation": None,
         "verificationResults": [
-            {"checkId": check, "result": "PASS", "evidenceRefs": [evidence_ref]}
+            {"checkId": check, "result": "NOT_RUN", "evidenceRefs": []}
             for check in checks
         ],
-        "restoredAt": utc_text(restored),
-        "openRisks": [],
+        "restoredAt": None,
+        "openRisks": ["drill_in_progress"],
         "evidenceRefs": [
             evidence_ref,
             "scripts/run-memory-os-rate-limit-emergency-drill.py",
+            "scripts/evaluate-memory-os-rate-limit-emergency-state.py",
         ],
     }
     with tempfile.TemporaryDirectory(prefix="memory-os-rate-limit-drill-") as tmp:
@@ -111,6 +144,10 @@ def run_writer_self_test(source_sha: str, scenario: dict[str, Any], started: dt.
             stderr=subprocess.PIPE,
             text=True,
         )
+        require(first.returncode == 0,
+                f"canonical append-only writer rejected valid ACTIVE drill record: {first.stderr.strip()[:500]}")
+        before = evaluate_temp_operation(ledger, operation_id, before_expiry)
+        after = evaluate_temp_operation(ledger, operation_id, after_expiry)
         second = subprocess.run(
             ["python", str(WRITER_PATH), "--input", str(record_path), "--ledger-dir", str(ledger)],
             cwd=ROOT,
@@ -119,9 +156,14 @@ def run_writer_self_test(source_sha: str, scenario: dict[str, Any], started: dt.
             stderr=subprocess.PIPE,
             text=True,
         )
-        written = first.returncode == 0 and len(list(ledger.glob("*.json"))) == 1
+        written = len(list(ledger.glob("*.json"))) == 1
         duplicate_rejected = second.returncode != 0 and len(list(ledger.glob("*.json"))) == 1
-        return written, duplicate_rejected
+        return (
+            written,
+            duplicate_rejected,
+            str(before.get("effectiveState", "")),
+            str(after.get("effectiveState", "")),
+        )
 
 
 def main() -> int:
@@ -151,10 +193,20 @@ def main() -> int:
     before_expiry = expires - dt.timedelta(seconds=1)
     after_expiry = expires + dt.timedelta(seconds=scenario["expiryProbeOffsetSeconds"])
 
-    mode_before_expiry = scenario["emergencyMode"] if before_expiry < expires else scenario["expiredMode"]
-    mode_after_expiry = scenario["expiredMode"] if after_expiry >= expires else scenario["emergencyMode"]
+    writer_accepted, duplicate_rejected, evaluator_before, evaluator_after = (
+        run_writer_and_evaluator_self_test(
+            args.source_sha, scenario, started, expires, before_expiry, after_expiry
+        )
+    )
+    require(evaluator_before == "ACTIVE_EVIDENCE_WINDOW_RUNTIME_UNVERIFIED",
+            f"canonical evaluator pre-expiry state drift: {evaluator_before}")
+    require(evaluator_after == "EXPIRED_FAIL_CLOSED_RUNTIME_REQUIRES_VERIFICATION",
+            f"canonical evaluator did not fail closed at expiry: {evaluator_after}")
+
+    mode_before_expiry = scenario["emergencyMode"]
+    mode_after_expiry = scenario["expiredMode"]
     require(mode_before_expiry == "STRICT_LOCAL_EMERGENCY", "pre-expiry mode drift")
-    require(mode_after_expiry == "ROUTE_FAIL_CLOSED", "expiry did not fail closed")
+    require(mode_after_expiry == "ROUTE_FAIL_CLOSED", "expiry decision model did not select route fail-closed")
 
     checks = list(scenario["requiredRecoveryChecks"])
     incomplete_results = {check: "PASS" for check in checks}
@@ -166,21 +218,17 @@ def main() -> int:
     recovery_after_all_pass = all(value == "PASS" for value in completed_results.values())
     require(recovery_after_all_pass, "recovery did not become eligible after every check passed")
     restored_mode = scenario["restoredMode"] if recovery_after_all_pass else mode_after_expiry
-    require(restored_mode == "NORMAL_CONFIGURED", "verified recovery did not return to normal")
-
-    restored_at = after_expiry + dt.timedelta(seconds=1)
-    writer_accepted, duplicate_rejected = run_writer_self_test(
-        args.source_sha, scenario, started, expires, restored_at
-    )
-    require(writer_accepted, "append-only evidence writer rejected a valid local drill record")
-    require(duplicate_rejected, "append-only evidence writer accepted a duplicate operationId")
+    require(restored_mode == "NORMAL_CONFIGURED", "verified recovery did not become eligible for normal")
 
     assertions = {
         "policyExplicitlyPermitsEmergencyLocal": policy_permits_emergency,
         "forbiddenFailOpenModeNeverSelected": "UNLIMITED_OR_FAIL_OPEN" not in {
             scenario["initialMode"], scenario["emergencyMode"], mode_after_expiry, restored_mode
         },
-        "expirySelectsRouteFailClosed": mode_after_expiry == "ROUTE_FAIL_CLOSED",
+        "expirySelectsRouteFailClosed": (
+            mode_after_expiry == "ROUTE_FAIL_CLOSED" and
+            evaluator_after == "EXPIRED_FAIL_CLOSED_RUNTIME_REQUIRES_VERIFICATION"
+        ),
         "recoveryBeforeAllChecksPassRejected": not recovery_before_all_pass,
         "recoveryAfterAllChecksPassReturnsNormal": restored_mode == "NORMAL_CONFIGURED",
         "appendOnlyWriterAcceptsValidLocalRecord": writer_accepted,
@@ -209,8 +257,8 @@ def main() -> int:
         "timeline": {
             "startedAt": utc_text(started),
             "expiresAt": utc_text(expires),
+            "preExpiryProbeAt": utc_text(before_expiry),
             "expiryProbeAt": utc_text(after_expiry),
-            "restoredAt": utc_text(restored_at),
         },
         "modeSequence": [
             scenario["initialMode"],
@@ -218,6 +266,10 @@ def main() -> int:
             scenario["expiredMode"],
             scenario["restoredMode"],
         ],
+        "canonicalEvaluatorStates": {
+            "beforeExpiry": evaluator_before,
+            "afterExpiry": evaluator_after,
+        },
         "recoveryChecks": completed_results,
         "assertions": assertions,
         "result": "PASS",
@@ -227,6 +279,7 @@ def main() -> int:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     print("Memory OS rate-limit emergency decision drill PASS")
+    print(f"canonical expiry state: {evaluator_after}")
     print(f"result: {args.output}")
     return 0
 
