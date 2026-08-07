@@ -154,7 +154,9 @@
     "scripts/register-memory-os-migration-rehearsal-evidence.py",
     "scripts/validate-memory-os-migration-evidence-registry.py",
     "scripts/reconcile-memory-os-migration-evidence-registry.py",
-    ".github/workflows/migration-evidence-registry.yml"
+    ".github/workflows/migration-evidence-registry.yml",
+    "scripts/memory_os_migration_recovery_point.py",
+    "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json"
   ],
   "readiness": {
     "policyDefined": true,
@@ -167,6 +169,6 @@
     "operatorEvidenceRecordImplemented": true,
     "automatedDestructiveRollback": false,
     "ready": false,
-    "note": "The append-only non-production operator evidence registry is implemented, while actual production-shaped migration rehearsal, mixed-version deployment proof, automated recovery-point verification bound to a real isolated restore, and destructive-contract restore linkage remain required."
+    "note": "The append-only non-production operator evidence registry now requires a typed SHA-256 recovery-artifact reference and separately validated local logical-restore capability. The registry still does not restore the actual rehearsal recovery artifact, and production-shaped migration rehearsal, mixed-version deployment proof, production-equivalent restore capability and destructive-contract restore linkage remain required."
   }
 }

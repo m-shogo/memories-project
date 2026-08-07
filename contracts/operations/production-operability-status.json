@@ -25,11 +25,12 @@
         "operator runbook for preflight, expand, bounded backfill, mixed-version observation, contract and failure decisions",
         "fail-closed validator for migration registry, policy, runbook and READY claims",
         "Security Contracts provisions a clean PostgreSQL 16 database, applies the complete canonical migration sequence and executes every SQL integration suite",
-        "append-only privacy-safe migration rehearsal evidence registry is implemented with an external-record writer, exact source-commit binding, canonical migration-sequence binding, distinct operator/reviewer pseudonyms, lock and statement budgets, recovery-point reference verification, atomic replacement and fail-closed validation; registrations remain non-production evidence"
+        "append-only privacy-safe migration rehearsal evidence registry is implemented with an external-record writer, exact source-commit binding, canonical migration-sequence binding, distinct operator/reviewer pseudonyms, lock and statement budgets, recovery-point reference verification, atomic replacement and fail-closed validation; registrations remain non-production evidence",
+        "append-only privacy-safe migration rehearsal evidence registry is implemented with an external-record writer, exact source-commit and canonical migration-sequence binding, distinct operator/reviewer pseudonyms, lock and statement budgets, an opaque SHA-256 recovery-artifact reference, and a separately validated local logical-restore capability authority; arbitrary repository files can no longer satisfy recovery evidence, while the actual rehearsal recovery artifact is still not restored by this registry and registrations remain non-production evidence"
       ],
       "missingEvidence": [
         "production-shaped rehearsal with lock and runtime budgets",
-        "automated recovery-point verification bound to an actual isolated recovery artifact",
+        "restore of the actual migration rehearsal recovery artifact, bound to the target recovery point and independently verified; local restore capability proof alone is insufficient",
         "mixed-version deployment proof",
         "isolated restore linkage for destructive contract decisions"
       ],
@@ -43,7 +44,9 @@
         "scripts/register-memory-os-migration-rehearsal-evidence.py",
         "scripts/validate-memory-os-migration-evidence-registry.py",
         "scripts/reconcile-memory-os-migration-evidence-registry.py",
-        ".github/workflows/migration-evidence-registry.yml"
+        ".github/workflows/migration-evidence-registry.yml",
+        "scripts/memory_os_migration_recovery_point.py",
+        "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json"
       ]
     },
     {
