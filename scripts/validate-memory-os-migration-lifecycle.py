@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Fail-closed validator for Memory OS migration lifecycle policy."""
+"""Fail-closed validation for the Memory OS PostgreSQL migration lifecycle."""
 
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -11,24 +12,38 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
-MIGRATION_DIR = ROOT / "infra/postgresql/security"
-EVIDENCE_REGISTRY_CONTRACT = ROOT / "contracts/operations/migration-evidence-registry-contract.v1.json"
-EVIDENCE_REGISTRY = ROOT / "contracts/operations/migration-evidence-registry.v1.json"
-EVIDENCE_WRITER = ROOT / "scripts/register-memory-os-migration-rehearsal-evidence.py"
-EVIDENCE_VALIDATOR = ROOT / "scripts/validate-memory-os-migration-evidence-registry.py"
-EVIDENCE_WORKFLOW = ROOT / ".github/workflows/migration-evidence-registry.yml"
-EXPECTED_SEQUENCE = [
-    "001_memory_os_import_rls.sql",
-    "002_memory_os_account_control.sql",
-    "002_memory_os_upload_authorization.sql",
-    "003_memory_os_preview_domain.sql",
-    "004_memory_os_account_session.sql",
-    "005_memory_os_apply_memory.sql",
-    "006_memory_os_deletion_fencing.sql",
-    "007_memory_os_app_login.sql",
-    "008_memory_os_deletion_runtime.sql",
-    "009_memory_os_deletion_visibility.sql",
-    "010_memory_os_apple_identity.sql",
+SECURITY_WORKFLOW_PATH = ROOT / ".github/workflows/security-contracts.yml"
+MIGRATION_EVIDENCE_CONTRACT = ROOT / "contracts/operations/migration-evidence-registry-contract.v1.json"
+MIGRATION_EVIDENCE_REGISTRY = ROOT / "contracts/operations/migration-evidence-registry.v1.json"
+MIGRATION_EVIDENCE_WRITER = ROOT / "scripts/register-memory-os-migration-rehearsal-evidence.py"
+MIGRATION_EVIDENCE_VALIDATOR = ROOT / "scripts/validate-memory-os-migration-evidence-registry.py"
+MIGRATION_EVIDENCE_WORKFLOW = ROOT / ".github/workflows/migration-evidence-registry.yml"
+EXPECTED_PHASES = [
+    "PREFLIGHT",
+    "EXPAND",
+    "MIGRATE_DATA",
+    "OBSERVE_MIXED_VERSION",
+    "CONTRACT",
+]
+REQUIRED_RUNBOOK_HEADINGS = [
+    "## Non-negotiable invariants",
+    "## Phase 0 — Preflight",
+    "## Phase 1 — EXPAND",
+    "## Phase 2 — MIGRATE_DATA",
+    "## Phase 3 — OBSERVE_MIXED_VERSION",
+    "## Phase 4 — CONTRACT",
+    "## Failure decision tree",
+    "## Verification record",
+    "## Current limitations",
+]
+REQUIRED_RUNBOOK_PHRASES = [
+    "A PostgreSQL transaction rollback does **not** prove",
+    "forward-fix",
+    "old-version drain",
+    "isolated restore",
+    "FORCE RLS",
+    "bounded, idempotent, resumable",
+    "Production decision remains: **NO_GO**",
 ]
 REQUIRED_STATUS_REFS = {
     ".github/workflows/security-contracts.yml",
@@ -36,23 +51,7 @@ REQUIRED_STATUS_REFS = {
     "docs/runbooks/memory-os-migration-recovery.md",
     "scripts/validate-memory-os-migration-lifecycle.py",
 }
-REQUIRED_RUNBOOK_HEADINGS = [
-    "## Non-negotiable rules",
-    "## Before any migration",
-    "## Expand",
-    "## Migrate data",
-    "## Observe mixed versions",
-    "## Contract",
-    "## Failure and recovery decisions",
-    "## Evidence record",
-    "## Current limitations",
-]
-REQUIRED_RUNBOOK_PHRASES = [
-    "Production decision remains: **NO_GO**",
-    "A transaction rollback is not evidence that a migration rollback strategy is complete",
-    "Forward-fix is the default after a committed additive schema change",
-    "Never assume a down migration is safe after a destructive contract migration",
-]
+SHA_FILE_RE = re.compile(r"^\d{3}_[a-z0-9_]+\.sql$")
 
 
 class ValidationFailure(RuntimeError):
@@ -76,7 +75,7 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def unique_strings(value: Any, field: str) -> list[str]:
-    require(isinstance(value, list) and value, f"{field} must be a non-empty list")
+    require(isinstance(value, list), f"{field} must be a list")
     require(all(isinstance(item, str) and item.strip() for item in value),
             f"{field} contains an empty or non-string value")
     require(len(value) == len(set(value)), f"{field} contains duplicates")
@@ -87,50 +86,88 @@ def main() -> int:
     contract = load(CONTRACT_PATH)
     require(contract.get("schemaVersion") == "memory-os-migration-lifecycle.v1",
             "unsupported migration lifecycle schemaVersion")
-    require(contract.get("canonicalDirectory") == "infra/postgresql/security",
-            "canonical migration directory drift")
+
+    directory_ref = contract.get("canonicalDirectory")
     runbook_ref = contract.get("canonicalRunbook")
+    validator_ref = contract.get("validator")
+    require(directory_ref == "infra/postgresql/security", "canonicalDirectory drift")
     require(runbook_ref == "docs/runbooks/memory-os-migration-recovery.md",
-            "canonical runbook drift")
-    require(contract.get("validator") == "scripts/validate-memory-os-migration-lifecycle.py",
+            "canonicalRunbook drift")
+    require(validator_ref == "scripts/validate-memory-os-migration-lifecycle.py",
             "validator path drift")
 
+    contract_refs = unique_strings(contract.get("evidenceRefs"), "evidenceRefs")
+    missing_contract_refs = REQUIRED_STATUS_REFS - set(contract_refs)
+    require(not missing_contract_refs,
+            f"migration contract omits evidence: {sorted(missing_contract_refs)}")
+    for ref in contract_refs:
+        require((ROOT / ref).is_file(), f"migration contract evidence path missing: {ref}")
+
+    migration_dir = ROOT / directory_ref
+    require(migration_dir.is_dir(), "canonical migration directory is missing")
     sequence = unique_strings(contract.get("migrationSequence"), "migrationSequence")
-    require(sequence == EXPECTED_SEQUENCE,
-            f"canonical migration sequence drift: {sequence}")
-    for filename in sequence:
-        require((MIGRATION_DIR / filename).is_file(), f"missing canonical migration: {filename}")
+    require(all(SHA_FILE_RE.fullmatch(name) for name in sequence),
+            "migrationSequence contains a non-canonical filename")
+    actual = sorted(
+        path.name
+        for path in migration_dir.glob("*.sql")
+        if path.is_file() and not path.name.startswith("test_")
+    )
+    require(actual == sequence,
+            f"canonical migration registry mismatch: expected={sequence}, actual={actual}")
+
+    try:
+        security_workflow = SECURITY_WORKFLOW_PATH.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise ValidationFailure("Security Contracts workflow is missing") from exc
+    require("image: postgres:16-alpine" in security_workflow,
+            "clean migration CI must use the PostgreSQL 16 service baseline")
+    positions: list[int] = []
+    for migration in sequence:
+        require(security_workflow.count(migration) == 1,
+                f"Security Contracts must apply {migration} exactly once")
+        positions.append(security_workflow.index(migration))
+    require(positions == sorted(positions),
+            "Security Contracts migration application order differs from the canonical registry")
+    require("psql --set=ON_ERROR_STOP=1" in security_workflow,
+            "clean migration CI must stop on the first SQL error")
 
     strategy = contract.get("strategy")
     require(isinstance(strategy, dict), "strategy must be an object")
-    require(strategy.get("name") == "EXPAND_MIGRATE_CONTRACT", "migration strategy drift")
-    require(strategy.get("defaultRecovery") == "FORWARD_FIX", "default recovery must remain FORWARD_FIX")
-    for key in (
-        "productionAutoApply", "destructiveChangeInSameRelease",
+    require(strategy.get("name") == "EXPAND_MIGRATE_CONTRACT", "strategy name drift")
+    require(strategy.get("defaultRecovery") == "FORWARD_FIX",
+            "default recovery must remain FORWARD_FIX")
+    for required_true in (
+        "mixedVersionWindowRequired",
+        "oldApplicationVersionMustRemainCompatibleDuringExpand",
+        "backfillsMustBeIdempotentAndResumable",
+        "contractRequiresOldVersionDrain",
+        "contractRequiresIndependentRecoveryPoint",
+        "schemaChangeAndLargeBackfillMustBeSeparateSteps",
     ):
-        require(strategy.get(key) is False, f"strategy.{key} must remain false")
-    for key in (
-        "mixedVersionWindowRequired", "oldApplicationVersionMustRemainCompatibleDuringExpand",
-        "backfillsMustBeIdempotentAndResumable", "contractRequiresOldVersionDrain",
-        "contractRequiresIndependentRecoveryPoint", "schemaChangeAndLargeBackfillMustBeSeparateSteps",
-    ):
-        require(strategy.get(key) is True, f"strategy.{key} must remain true")
+        require(strategy.get(required_true) is True, f"strategy.{required_true} must be true")
+    require(strategy.get("productionAutoApply") is False,
+            "productionAutoApply must remain false")
+    require(strategy.get("destructiveChangeInSameRelease") is False,
+            "destructiveChangeInSameRelease must remain false")
 
     phases = contract.get("phases")
-    require(isinstance(phases, list) and [item.get("phase") for item in phases if isinstance(item, dict)] ==
-            ["PREFLIGHT", "EXPAND", "MIGRATE_DATA", "OBSERVE_MIXED_VERSION", "CONTRACT"],
-            "migration lifecycle phases drift")
+    require(isinstance(phases, list), "phases must be a list")
+    phase_names = [item.get("phase") for item in phases if isinstance(item, dict)]
+    require(phase_names == EXPECTED_PHASES,
+            f"migration phase order drift: {phase_names}")
     for item in phases:
         require(isinstance(item, dict), "phase entries must be objects")
-        require(isinstance(item.get("exitCriteria"), str) and item["exitCriteria"],
-                f"{item.get('phase')}.exitCriteria required")
+        require(isinstance(item.get("exitCriteria"), str) and item["exitCriteria"].strip(),
+                f"{item.get('phase')}: exitCriteria is required")
         for list_field in ("requiredEvidence", "allowed", "forbidden"):
             if list_field in item:
                 unique_strings(item[list_field], f"{item.get('phase')}.{list_field}")
 
     recovery = contract.get("recoveryDecision")
     require(isinstance(recovery, dict), "recoveryDecision must be an object")
-    require(recovery.get("beforeMutation") == "STOP_AND_CORRECT", "before-mutation recovery drift")
+    require(recovery.get("beforeMutation") == "STOP_AND_CORRECT",
+            "before-mutation recovery drift")
     require("FORWARD_FIX" in str(recovery.get("additiveMigrationCommittedApplicationUnhealthy")),
             "committed additive migration must retain forward-fix")
     require("NEVER_ASSUME_DOWN_MIGRATION_IS_SAFE" in str(recovery.get("contractMigrationCommitted")),
@@ -139,10 +176,16 @@ def main() -> int:
     guards = contract.get("operatorGuards")
     require(isinstance(guards, dict), "operatorGuards must be an object")
     for guard in (
-        "requireExactHead", "requireCleanWorkingTree", "requireExplicitTargetDatabase",
-        "requireProductionConfirmationPhrase", "requireSingleWriterMigrationLock",
-        "requireLockTimeout", "requireStatementTimeout", "requirePostMigrationVerification",
-        "forbidSuperuserRuntimeTraffic", "forbidSecretValuesInEvidence",
+        "requireExactHead",
+        "requireCleanWorkingTree",
+        "requireExplicitTargetDatabase",
+        "requireProductionConfirmationPhrase",
+        "requireSingleWriterMigrationLock",
+        "requireLockTimeout",
+        "requireStatementTimeout",
+        "requirePostMigrationVerification",
+        "forbidSuperuserRuntimeTraffic",
+        "forbidSecretValuesInEvidence",
     ):
         require(guards.get(guard) is True, f"operatorGuards.{guard} must be true")
 
@@ -150,37 +193,58 @@ def main() -> int:
     require(isinstance(evidence_record, dict), "evidenceRecord must be an object")
     fields = unique_strings(evidence_record.get("requiredFields"), "evidenceRecord.requiredFields")
     for field in (
-        "migrationRunId", "databaseIdentityDigest", "sourceCommitSha",
-        "recoveryPointReference", "verificationResult", "recoveryDecision", "openRisks",
+        "migrationRunId",
+        "databaseIdentityDigest",
+        "sourceCommitSha",
+        "recoveryPointReference",
+        "verificationResult",
+        "recoveryDecision",
+        "openRisks",
     ):
         require(field in fields, f"evidenceRecord missing required field: {field}")
-    require(evidence_record.get("appendOnly") is True, "migration evidence record must remain append-only")
+    require(evidence_record.get("appendOnly") is True,
+            "migration evidence record must remain append-only")
     require(evidence_record.get("privacyClass") == "operational_sensitive_no_secrets",
             "migration evidence privacy class drift")
 
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "readiness must be an object")
     for foundation in (
-        "policyDefined", "runbookDefined", "migrationRegistryComplete",
-        "ciDryRunAgainstCleanDatabase", "operatorEvidenceRecordImplemented",
+        "policyDefined",
+        "runbookDefined",
+        "migrationRegistryComplete",
+        "ciDryRunAgainstCleanDatabase",
+        "operatorEvidenceRecordImplemented",
     ):
         require(readiness.get(foundation) is True, f"readiness.{foundation} must be true")
-    for path in (EVIDENCE_REGISTRY_CONTRACT, EVIDENCE_REGISTRY, EVIDENCE_WRITER, EVIDENCE_VALIDATOR, EVIDENCE_WORKFLOW):
+    for path in (
+        MIGRATION_EVIDENCE_CONTRACT,
+        MIGRATION_EVIDENCE_REGISTRY,
+        MIGRATION_EVIDENCE_WRITER,
+        MIGRATION_EVIDENCE_VALIDATOR,
+        MIGRATION_EVIDENCE_WORKFLOW,
+    ):
         require(path.is_file(), f"operator evidence authority missing: {path.relative_to(ROOT)}")
-    evidence_authority = load(EVIDENCE_REGISTRY_CONTRACT)
+    evidence_authority = load(MIGRATION_EVIDENCE_CONTRACT)
     evidence_readiness = evidence_authority.get("readiness")
-    require(isinstance(evidence_readiness, dict) and
-            evidence_readiness.get("registryImplemented") is True and
-            evidence_readiness.get("writerImplemented") is True and
-            evidence_readiness.get("validatorImplemented") is True and
-            evidence_readiness.get("automaticWorkflowImplemented") is True and
-            evidence_readiness.get("operatorEvidenceRecordImplemented") is True,
-            "operator evidence authority is not fully implemented")
+    require(isinstance(evidence_readiness, dict), "operator evidence readiness missing")
+    for implemented in (
+        "registryImplemented",
+        "writerImplemented",
+        "validatorImplemented",
+        "automaticWorkflowImplemented",
+        "operatorEvidenceRecordImplemented",
+    ):
+        require(evidence_readiness.get(implemented) is True,
+                f"operator evidence authority incomplete: {implemented}")
     require(evidence_authority.get("currentAuthority", {}).get("productionEvidence") is False,
-            "operator evidence authority cannot create production evidence")
+            "operator evidence authority cannot manufacture production evidence")
     for unproven in (
-        "mixedVersionCompatibilityProven", "productionShapedRehearsalCompleted",
-        "isolatedRestoreLinked", "automatedDestructiveRollback", "ready",
+        "mixedVersionCompatibilityProven",
+        "productionShapedRehearsalCompleted",
+        "isolatedRestoreLinked",
+        "automatedDestructiveRollback",
+        "ready",
     ):
         require(readiness.get(unproven) is False,
                 f"unproven migration readiness cannot be true: {unproven}")
@@ -208,9 +272,12 @@ def main() -> int:
             f"OPS-P0-001 omits migration lifecycle evidence: {sorted(missing_refs)}")
     if area.get("status") == "READY":
         for required_for_ready in (
-            "ciDryRunAgainstCleanDatabase", "mixedVersionCompatibilityProven",
-            "productionShapedRehearsalCompleted", "isolatedRestoreLinked",
-            "operatorEvidenceRecordImplemented", "ready",
+            "ciDryRunAgainstCleanDatabase",
+            "mixedVersionCompatibilityProven",
+            "productionShapedRehearsalCompleted",
+            "isolatedRestoreLinked",
+            "operatorEvidenceRecordImplemented",
+            "ready",
         ):
             require(readiness.get(required_for_ready) is True,
                     f"OPS-P0-001 READY without readiness.{required_for_ready}")
