@@ -1,0 +1,103 @@
+name: One Shot Normalize Deletion Container Drill
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/one-shot-normalize-deletion-container-drill.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  normalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: services/import-api/go.sum
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Normalize and compile container drill
+        id: compile
+        run: |
+          set +e
+          gofmt -w \
+            services/import-api/cmd/deletion-container-drill/main.go \
+            services/import-api/cmd/deletion-container-drill-helper/main.go
+          log=/tmp/deletion-container-drill-compile.log
+          code=0
+          python scripts/validate-memory-os-deletion-worker-container-kill-recovery.py >"$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            (
+              cd services/import-api
+              go test ./cmd/deletion-container-drill ./cmd/deletion-container-drill-helper -run '^$' -count=1
+            ) >>"$log" 2>&1 || code=$?
+          fi
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Commit normalized source
+        run: |
+          set -euo pipefail
+          git add \
+            services/import-api/cmd/deletion-container-drill/main.go \
+            services/import-api/cmd/deletion-container-drill-helper/main.go
+          if ! git diff --cached --quiet; then
+            git diff --cached --check
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "fix(deletion): normalize container-kill drill"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+      - name: Record privacy-safe compile diagnostic
+        if: steps.compile.outputs.exit_code != '0'
+        env:
+          COMPILE_EXIT_CODE: ${{ steps.compile.outputs.exit_code }}
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          git reset --hard origin/so
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+          text = Path('/tmp/deletion-container-drill-compile.log').read_text(encoding='utf-8', errors='replace')
+          text = re.sub(r'postgres(?:ql)?://[^\s]+', '<redacted-database-url>', text)
+          text = re.sub(r'https?://[^\s]+', '<redacted-endpoint>', text)
+          text = text.replace('minioadmin', '<redacted-local-credential>')
+          value = {
+              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'workflow': 'one-shot-normalize-deletion-container-drill',
+              'result': 'FAIL',
+              'exitCode': int(os.environ['COMPILE_EXIT_CODE']),
+              'output': text[-12000:],
+              'containsSecrets': False,
+              'actualContainerKillCovered': False,
+              'actualHostFailureCovered': False,
+              'productionEvidence': False,
+          }
+          path = Path('docs/fixtures/memory-os-operability/deletion-worker-container-kill-recovery-compile-diagnostic.last.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          PY
+          git add docs/fixtures/memory-os-operability/deletion-worker-container-kill-recovery-compile-diagnostic.last.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --cached --quiet; then
+            git commit -m "test(deletion): record container-kill compile diagnostic"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+      - name: Enforce compile
+        run: test "${{ steps.compile.outputs.exit_code }}" = "0"
