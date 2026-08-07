@@ -65,7 +65,8 @@
         "exact-source automated incident control exercise covering tenant isolation, PostgreSQL commit outage, object-store outage, migration/version incompatibility, restore non-resurrection and parser compromise/stall scenarios",
         "all scenario-specific repository validators pass with output stored only as SHA-256 digests and bounded byte counts rather than raw logs",
         "severity, declaration, containment, stop conditions, evidence preservation, recovery verification, promotion block and closure block are retained for all six scenarios",
-        "automated exercise explicitly leaves human tabletop, paging, external communications, production recovery drill and independent approval incomplete"
+        "automated exercise explicitly leaves human tabletop, paging, external communications, production recovery drill and independent approval incomplete",
+        "human-led incident tabletop completion admission is append-only and fail-closed: accepted records must preserve the canonical plan, bind an exact source commit, record required command-role assignments and severity-specific closure approvals, and pass the canonical completed-tabletop validator; automated control exercises cannot manufacture human attendance"
       ],
       "missingEvidence": [
         "configured paging and alert routing with owned acknowledgement path",
@@ -88,7 +89,13 @@
         "scripts/reconcile-memory-os-incident-control-exercise.py",
         ".github/workflows/incident-control-exercise.yml",
         "scripts/reconcile-memory-os-incident-control-authority.py",
-        ".github/workflows/reconcile-incident-control-authority.yml"
+        ".github/workflows/reconcile-incident-control-authority.yml",
+        "contracts/operations/incident-human-tabletop-evidence-contract.v1.json",
+        "docs/evidence/incident-tabletops/README.md",
+        "scripts/register-memory-os-incident-human-tabletop.py",
+        "scripts/validate-memory-os-incident-human-tabletops.py",
+        "scripts/reconcile-memory-os-incident-human-tabletops.py",
+        ".github/workflows/incident-human-tabletop-evidence.yml"
       ]
     },
     {

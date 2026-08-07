@@ -26,7 +26,9 @@
     "SCRIBE"
   ],
   "additionalAttendanceForSeverity": {
-    "SEV0": ["SECURITY_PRIVACY_LEAD"],
+    "SEV0": [
+      "SECURITY_PRIVACY_LEAD"
+    ],
     "SEV1": []
   },
   "requiredDecisionTypes": [
@@ -80,9 +82,9 @@
   "readiness": {
     "contractDefined": true,
     "ledgerDirectoryDefined": true,
-    "writerImplemented": false,
-    "validatorImplemented": false,
-    "automaticWorkflowImplemented": false,
+    "writerImplemented": true,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": true,
     "acceptedCompletedScenarioCount": 0,
     "allRequiredScenariosCompleted": false,
     "productionRecoveryDrillCompleted": false,
