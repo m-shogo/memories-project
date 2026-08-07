@@ -1,13 +1,14 @@
 {
   "contractId": "memory-os.operability.migration-evidence-registry.v1",
   "schemaVersion": "memory-os-migration-evidence-registry-contract.v1",
-  "description": "Append-only privacy-safe operator evidence authority for non-production migration rehearsals. It implements the migration lifecycle evidence-record shape without allowing CI or local rehearsals to become production migration evidence. Production migration evidence requires a separate externally authorized authority.",
+  "description": "Append-only privacy-safe operator evidence authority for non-production migration rehearsals. Recovery evidence is split into an opaque SHA-256 reference to the rehearsal's actual recovery artifact and a separately validated restore-capability authority. A local restore capability proof cannot be substituted for the actual recovery artifact, and CI/local rehearsals can never become production migration evidence.",
   "migrationLifecycleContract": "contracts/operations/migration-lifecycle-contract.v1.json",
   "registryPath": "contracts/operations/migration-evidence-registry.v1.json",
   "writer": "scripts/register-memory-os-migration-rehearsal-evidence.py",
   "validator": "scripts/validate-memory-os-migration-evidence-registry.py",
   "reconcile": "scripts/reconcile-memory-os-migration-evidence-registry.py",
   "workflow": ".github/workflows/migration-evidence-registry.yml",
+  "recoveryPointValidator": "scripts/memory_os_migration_recovery_point.py",
   "recordSchemaVersion": "memory-os-migration-rehearsal-evidence.v1",
   "appendOnly": true,
   "allowedEnvironmentClasses": [
@@ -29,7 +30,10 @@
     "operatorRef",
     "reviewerRef",
     "recoveryPointReference",
+    "recoveryPointArtifactDigest",
     "recoveryPointVerified",
+    "restoreCapabilityEvidenceRef",
+    "restoreCapabilityVerified",
     "lockBudgetMs",
     "statementBudgetMs",
     "observedLockWaitMs",
@@ -50,8 +54,12 @@
     "exactSourceCommitMustExist": true,
     "databaseIdentityStoredOnlyAsSha256": true,
     "operatorAndReviewerMustBeDistinctPseudonyms": true,
-    "recoveryPointReferenceMustExist": true,
+    "recoveryPointReferenceMustBeSha256Digest": true,
+    "recoveryPointArtifactDigestMustMatchReference": true,
     "recoveryPointVerifiedRequired": true,
+    "restoreCapabilityEvidenceMustExistAndPass": true,
+    "restoreCapabilityVerifiedRequired": true,
+    "productionEquivalentRehearsalRequiresConfiguredRestoreCapability": true,
     "lockAndStatementBudgetsRequired": true,
     "observedLockWaitMustNotExceedBudgetForPass": true,
     "observedRuntimeMustNotExceedStatementBudgetForPass": true,
@@ -61,6 +69,22 @@
     "productionCredentialsForbidden": true,
     "productionEvidenceForbidden": true,
     "atomicRegistryReplacement": true
+  },
+  "restoreCapabilityAuthorities": {
+    "LOCAL_POSTGRES_REHEARSAL": {
+      "configured": true,
+      "evidenceRef": "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json",
+      "schemaVersion": "memory-os-local-logical-restore-results.v1",
+      "productionEvidenceRequired": false,
+      "scope": "RESTORE_CAPABILITY_PROOF_ONLY_NOT_THE_REHEARSAL_RECOVERY_ARTIFACT"
+    },
+    "PRODUCTION_EQUIVALENT_REHEARSAL": {
+      "configured": false,
+      "evidenceRef": null,
+      "schemaVersion": null,
+      "productionEvidenceRequired": false,
+      "scope": "BLOCKED_UNTIL_ENVIRONMENT_SPECIFIC_ISOLATED_RESTORE_CAPABILITY_IS_PROVEN"
+    }
   },
   "resultValues": [
     "PASS",
@@ -81,6 +105,8 @@
     "credentials or tokens",
     "account, session, job, preview or object identifiers",
     "raw SQL output containing user data",
+    "arbitrary repository file used as recovery proof",
+    "local restore capability proof presented as the actual recovery artifact",
     "claim that local rehearsal is production evidence"
   ],
   "currentAuthority": {
@@ -99,6 +125,10 @@
     "validatorImplemented": true,
     "automaticWorkflowImplemented": true,
     "operatorEvidenceRecordImplemented": true,
+    "typedRecoveryArtifactReferenceImplemented": true,
+    "localRestoreCapabilityBound": true,
+    "productionEquivalentRestoreCapabilityConfigured": false,
+    "actualRecoveryArtifactRestoreLinked": false,
     "productionShapedRehearsalCompleted": false,
     "independentReviewCompleted": false,
     "productionReady": false
