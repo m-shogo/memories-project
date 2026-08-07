@@ -331,7 +331,7 @@
     },
     {
       "scenarioId": "deletion-under-load",
-      "reason": "post-fence former-session load, Preview requests authenticated before the fence, Apply and upload-authorization requests authenticated before the fence with zero pre-worker durable mutation, and bounded 24-account/four-worker deletion saturation now pass against local PostgreSQL and MinIO; upload-completion requests already in flight before the fence, host/process failure behavior, production dependency behavior and independently reviewed deletion-load thresholds remain deferred",
+      "reason": "post-fence former-session load and concurrent worker erasure now pass against local PostgreSQL and MinIO; request linearization for calls already in flight before the 202 fence, multiple-account worker saturation and production dependency behavior remain deferred",
       "requiredDependencyMode": "PRODUCTION_EQUIVALENT"
     }
   ],
@@ -347,7 +347,7 @@
     "cardinalityProof": true,
     "operationalThresholds": false,
     "productionEquivalentDependencies": false,
-    "note": "Mock and local dependency checkpoints now include bounded ramp, short CI stability and post-fence deletion load. They establish neither production capacity nor pre-fence request linearization, sustained-soak/leak proof or production-equivalent behavior; OPS-P0-006 remains PARTIAL. Apply and upload-authorization pre-fence mutation linearization are now proven locally with zero durable mutation; upload completion already in flight remains unproven.",
+    "note": "Mock and local dependency checkpoints now include bounded ramp, short CI stability and post-fence deletion load. They establish neither production capacity nor pre-fence request linearization, sustained-soak/leak proof or production-equivalent behavior; OPS-P0-006 remains PARTIAL.",
     "boundedLocalCapacityRampExecuted": true,
     "shortCIStabilitySampleExecuted": true,
     "deletionPostFenceLoadExecuted": true,
