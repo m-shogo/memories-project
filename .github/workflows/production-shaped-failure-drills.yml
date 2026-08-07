@@ -1,0 +1,113 @@
+name: Production Shaped Failure Drill Admission
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - "contracts/operations/requests/production-shaped-failure-drill-foundation.v1.json"
+      - "contracts/operations/production-shaped-failure-drill-registry.v1.json"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: production-shaped-failure-drills-so
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Reconcile and validate drill admission
+        id: drills
+        run: |
+          set +e
+          log=/tmp/production-shaped-failure-drills.log
+          : > "$log"
+          code=0
+          python -m py_compile \
+            scripts/register-memory-os-production-shaped-failure-drill.py \
+            scripts/validate-memory-os-production-shaped-failure-drills.py \
+            scripts/reconcile-memory-os-production-shaped-failure-drills.py \
+            >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            python scripts/reconcile-memory-os-production-shaped-failure-drills.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-chaos-failure-drills-v2.py >> "$log" 2>&1 || code=$?
+            python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?
+          fi
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          cat "$log"
+          exit 0
+      - name: Commit bounded drill admission authority
+        if: steps.drills.outputs.exit_code == '0'
+        run: |
+          set -euo pipefail
+          git rm -f docs/fixtures/memory-os-operability/production-shaped-failure-drill-diagnostic.last.json 2>/dev/null || true
+          git add \
+            contracts/operations/production-shaped-failure-drill-contract.v1.json \
+            contracts/operations/production-operability-status.json
+          git add -u docs/fixtures/memory-os-operability/production-shaped-failure-drill-diagnostic.last.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git diff --cached --check
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(chaos): register production-shaped drill admission"
+            for attempt in 1 2 3 4; do
+              git pull --rebase origin so
+              if git push origin HEAD:so; then exit 0; fi
+              sleep 2
+            done
+            exit 1
+          fi
+      - name: Record privacy-safe diagnostic
+        if: steps.drills.outputs.exit_code != '0'
+        env:
+          DRILL_EXIT_CODE: ${{ steps.drills.outputs.exit_code }}
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          git reset --hard origin/so
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          text = Path('/tmp/production-shaped-failure-drills.log').read_text(encoding='utf-8', errors='replace')
+          value = {
+              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'workflow': 'production-shaped-failure-drills',
+              'result': 'FAIL',
+              'exitCode': int(os.environ['DRILL_EXIT_CODE']),
+              'output': text[-12000:],
+              'containsSecrets': False,
+              'registeredDrillCount': 0,
+              'productionEvidence': False,
+              'productionReady': False,
+          }
+          path = Path('docs/fixtures/memory-os-operability/production-shaped-failure-drill-diagnostic.last.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          PY
+          git add docs/fixtures/memory-os-operability/production-shaped-failure-drill-diagnostic.last.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --cached --quiet; then
+            git commit -m "test(chaos): record production-shaped drill diagnostic"
+            for attempt in 1 2 3; do
+              git pull --rebase origin so
+              if git push origin HEAD:so; then exit 0; fi
+              sleep 2
+            done
+          fi
+      - name: Enforce drill admission validation
+        run: test "${{ steps.drills.outputs.exit_code }}" = "0"
