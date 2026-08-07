@@ -1,7 +1,7 @@
 {
   "contractId": "memory-os.operability.migration-evidence-registry.v1",
   "schemaVersion": "memory-os-migration-evidence-registry-contract.v1",
-  "description": "Append-only privacy-safe operator evidence authority for non-production migration rehearsals. Recovery evidence is split into an opaque SHA-256 reference to the rehearsal's actual recovery artifact and a separately validated restore-capability authority. A local restore capability proof cannot be substituted for the actual recovery artifact, and CI/local rehearsals can never become production migration evidence.",
+  "description": "Append-only privacy-safe operator evidence authority for non-production migration rehearsals. Recovery evidence is split into an opaque SHA-256 reference to the rehearsal's actual recovery artifact, a separately validated environment restore-capability authority, and a per-run result proving that exact artifact was restored and the migration safely reapplied. CI/local rehearsals can never become production migration evidence.",
   "migrationLifecycleContract": "contracts/operations/migration-lifecycle-contract.v1.json",
   "registryPath": "contracts/operations/migration-evidence-registry.v1.json",
   "writer": "scripts/register-memory-os-migration-rehearsal-evidence.py",
@@ -9,6 +9,7 @@
   "reconcile": "scripts/reconcile-memory-os-migration-evidence-registry.py",
   "workflow": ".github/workflows/migration-evidence-registry.yml",
   "recoveryPointValidator": "scripts/memory_os_migration_recovery_point.py",
+  "recoveryArtifactResultValidator": "scripts/validate-memory-os-local-migration-recovery-artifact.py",
   "recordSchemaVersion": "memory-os-migration-rehearsal-evidence.v1",
   "appendOnly": true,
   "allowedEnvironmentClasses": [
@@ -34,6 +35,7 @@
     "recoveryPointVerified",
     "restoreCapabilityEvidenceRef",
     "restoreCapabilityVerified",
+    "recoveryPointRestoreEvidenceRef",
     "lockBudgetMs",
     "statementBudgetMs",
     "observedLockWaitMs",
@@ -59,6 +61,9 @@
     "recoveryPointVerifiedRequired": true,
     "restoreCapabilityEvidenceMustExistAndPass": true,
     "restoreCapabilityVerifiedRequired": true,
+    "actualRecoveryArtifactRestoreEvidenceRequired": true,
+    "actualRecoveryArtifactDigestMustMatchRecord": true,
+    "actualRecoveryArtifactRestoreResultMustPass": true,
     "productionEquivalentRehearsalRequiresConfiguredRestoreCapability": true,
     "lockAndStatementBudgetsRequired": true,
     "observedLockWaitMustNotExceedBudgetForPass": true,
@@ -86,6 +91,26 @@
       "scope": "BLOCKED_UNTIL_ENVIRONMENT_SPECIFIC_ISOLATED_RESTORE_CAPABILITY_IS_PROVEN"
     }
   },
+  "actualRecoveryArtifactAuthorities": {
+    "LOCAL_POSTGRES_REHEARSAL": {
+      "evidenceRoot": "docs/evidence/migrations/recovery",
+      "schemaVersion": "memory-os-local-migration-recovery-artifact.v1",
+      "validator": "scripts/validate-memory-os-local-migration-recovery-artifact.py",
+      "requireMigrationRunIdMatch": true,
+      "requireArtifactDigestMatch": true,
+      "requireActualRecoveryArtifactRestored": true,
+      "productionEvidenceRequired": false
+    },
+    "PRODUCTION_EQUIVALENT_REHEARSAL": {
+      "evidenceRoot": null,
+      "schemaVersion": null,
+      "validator": null,
+      "requireMigrationRunIdMatch": true,
+      "requireArtifactDigestMatch": true,
+      "requireActualRecoveryArtifactRestored": true,
+      "productionEvidenceRequired": false
+    }
+  },
   "resultValues": [
     "PASS",
     "FAIL",
@@ -106,7 +131,8 @@
     "account, session, job, preview or object identifiers",
     "raw SQL output containing user data",
     "arbitrary repository file used as recovery proof",
-    "local restore capability proof presented as the actual recovery artifact",
+    "generic restore capability proof presented as the actual recovery artifact",
+    "recovery artifact digest with no matching per-run restore result",
     "claim that local rehearsal is production evidence"
   ],
   "currentAuthority": {
@@ -127,8 +153,10 @@
     "operatorEvidenceRecordImplemented": true,
     "typedRecoveryArtifactReferenceImplemented": true,
     "localRestoreCapabilityBound": true,
+    "perRunRecoveryArtifactEvidenceRequired": true,
     "productionEquivalentRestoreCapabilityConfigured": false,
-    "actualRecoveryArtifactRestoreLinked": false,
+    "localActualRecoveryArtifactRestoreLinked": false,
+    "productionEquivalentActualRecoveryArtifactRestoreLinked": false,
     "productionShapedRehearsalCompleted": false,
     "independentReviewCompleted": false,
     "productionReady": false
