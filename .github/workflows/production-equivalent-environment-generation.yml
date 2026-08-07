@@ -1,0 +1,55 @@
+name: Production Equivalent Environment Generation
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/production-equivalent-environment-generation.yml"
+      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
+      - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/reconcile-memory-os-production-equivalent-generation-status.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: production-equivalent-environment-generation-so
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate immutable generation binding
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/validate-memory-os-production-equivalent-environment-generation.py \
+            scripts/reconcile-memory-os-production-equivalent-generation-status.py
+          python scripts/validate-memory-os-production-equivalent-environment-generation.py
+          python scripts/reconcile-memory-os-production-equivalent-generation-status.py
+          python scripts/validate-memory-os-operability.py
+      - name: Commit bounded generation foundation authority
+        run: |
+          set -euo pipefail
+          git add contracts/operations/production-operability-status.json
+          if ! git diff --cached --quiet; then
+            git diff --cached --check
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(load): register environment generation admission"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
