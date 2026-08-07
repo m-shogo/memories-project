@@ -1,0 +1,52 @@
+name: Reconcile Chaos Mixed-Version Overlay
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/reconcile-chaos-mixed-version-overlay.yml"
+      - "scripts/reconcile-memory-os-chaos-mixed-version-overlay.py"
+      - "contracts/operations/version-compatibility-execution-evidence.v1.json"
+      - "docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Reconcile candidate/local failure evidence
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/reconcile-memory-os-chaos-mixed-version-overlay.py
+          python scripts/reconcile-memory-os-chaos-mixed-version-overlay.py
+          python scripts/validate-memory-os-chaos-failure-drills-v2.py
+          python scripts/validate-memory-os-version-compatibility-execution-evidence.py
+          python scripts/validate-memory-os-operability.py
+      - name: Commit bounded chaos authority update
+        run: |
+          set -euo pipefail
+          git add contracts/operations/production-operability-status.json
+          if ! git diff --cached --quiet; then
+            git diff --cached --check
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(chaos): classify candidate mixed-version failure recovery"
+            for attempt in 1 2 3 4; do
+              git pull --rebase origin so
+              if git push origin HEAD:so; then exit 0; fi
+              sleep 2
+            done
+            exit 1
+          fi
