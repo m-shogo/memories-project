@@ -8,27 +8,53 @@ on:
       - ".github/workflows/production-equivalent-dependency-contract.yml"
       - "contracts/operations/production-equivalent-dependency-contract.v1.json"
       - "scripts/validate-memory-os-production-equivalent-dependencies.py"
+      - "scripts/reconcile-memory-os-production-equivalent-foundation.py"
   pull_request:
     paths:
       - ".github/workflows/production-equivalent-dependency-contract.yml"
       - "contracts/operations/production-equivalent-dependency-contract.v1.json"
       - "scripts/validate-memory-os-production-equivalent-dependencies.py"
+      - "scripts/reconcile-memory-os-production-equivalent-foundation.py"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Validate fail-closed admission contract
         run: |
           set -euo pipefail
-          python -m py_compile scripts/validate-memory-os-production-equivalent-dependencies.py
+          python -m py_compile \
+            scripts/validate-memory-os-production-equivalent-dependencies.py \
+            scripts/reconcile-memory-os-production-equivalent-foundation.py
           python scripts/validate-memory-os-production-equivalent-dependencies.py
+      - name: Reconcile foundation into canonical load authority
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          python scripts/reconcile-memory-os-production-equivalent-foundation.py
+          python scripts/validate-memory-os-production-equivalent-dependencies.py
+          python scripts/validate-memory-os-load-evidence-index.py
+          python scripts/validate-memory-os-load.py
+          python scripts/validate-memory-os-operability.py
+          git add \
+            contracts/operations/load-test-scenario-contract.v1.json \
+            contracts/operations/production-operability-status.json
+          if ! git diff --cached --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(load): register production-equivalent admission foundation"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
