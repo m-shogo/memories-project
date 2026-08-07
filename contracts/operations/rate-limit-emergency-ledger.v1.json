@@ -5,5 +5,8 @@
   "registeredOperationCount": 0,
   "events": [],
   "productionEvidence": false,
-  "productionReady": false
+  "productionReady": false,
+  "productionOperationCount": 0,
+  "runtimeAppliedEventCount": 0,
+  "productionEvidenceEventCount": 0
 }

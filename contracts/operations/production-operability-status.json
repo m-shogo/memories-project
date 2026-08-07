@@ -217,7 +217,8 @@
         "machine-readable policy contract, negative fixtures and validator",
         "binding emergency-operation policy that forbids unlimited/fail-open public traffic and permits only normal bounded, strict local emergency or route fail-closed modes",
         "trusted-proxy disablement procedure for uncertain deployment ownership",
-        "canonical activation, rollback, shared-store recovery and no-business-mutation verification runbook"
+        "canonical activation, rollback, shared-store recovery and no-business-mutation verification runbook",
+        "append-only rate-limit emergency-operation ledger foundation is implemented with bounded activation-intent validation, distinct operator/reviewer identities, exact-source and policy binding, a hard 60-minute maximum, fail-open prohibition and a read-only effective-state evaluator that expires stale intent fail-closed; runtime policy is deliberately not mutated and production evidence remains false"
       ],
       "missingEvidence": [
         "production-equivalent distributed enforcement (shared atomic store)",
@@ -236,7 +237,14 @@
         "contracts/operations/rate-limit-operations-contract.v1.json",
         "docs/runbooks/memory-os-rate-limit-operations.md",
         "scripts/validate-memory-os-rate-limit-operations.py",
-        "scripts/reconcile-memory-os-rate-limit-operations.py"
+        "scripts/reconcile-memory-os-rate-limit-operations.py",
+        "contracts/operations/rate-limit-emergency-ledger-contract.v1.json",
+        "contracts/operations/rate-limit-emergency-ledger.v1.json",
+        "scripts/register-memory-os-rate-limit-emergency-operation.py",
+        "scripts/evaluate-memory-os-rate-limit-emergency-state.py",
+        "scripts/validate-memory-os-rate-limit-emergency-ledger.py",
+        "scripts/reconcile-memory-os-rate-limit-emergency-ledger.py",
+        ".github/workflows/rate-limit-emergency-ledger.yml"
       ]
     },
     {
