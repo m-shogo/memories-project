@@ -1,0 +1,116 @@
+{
+  "contractId": "memory-os.operability.production-shaped-failure-drill.v1",
+  "schemaVersion": "memory-os-production-shaped-failure-drill.v1",
+  "description": "Generation-bound admission authority for production-equivalent or production failure drills. Existing local outage, process-kill, parser-restart and candidate mixed-version results remain valid local evidence but cannot satisfy these scenarios by relabeling.",
+  "environmentGenerationContract": "contracts/operations/production-equivalent-environment-generation-contract.v1.json",
+  "environmentGenerationRegistry": "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+  "registryPath": "contracts/operations/production-shaped-failure-drill-registry.v1.json",
+  "writer": "scripts/register-memory-os-production-shaped-failure-drill.py",
+  "validator": "scripts/validate-memory-os-production-shaped-failure-drills.py",
+  "reconcile": "scripts/reconcile-memory-os-production-shaped-failure-drills.py",
+  "workflow": ".github/workflows/production-shaped-failure-drills.yml",
+  "allowedEnvironmentClasses": ["PRODUCTION_EQUIVALENT", "PRODUCTION"],
+  "scenarioClasses": [
+    {
+      "id": "FAIL-PROD-001",
+      "class": "MULTI_INSTANCE_NODE_INTERRUPTION",
+      "requiredAssertions": [
+        "at least two distinct runtime node identity digests",
+        "failure controller identity is outside the failed node",
+        "in-flight work has an explicit success-or-retry outcome",
+        "new work routes away from the failed node",
+        "shared dependency reconnect succeeds from replacement capacity",
+        "session, deletion-fence, idempotency and tenant-isolation invariants remain valid",
+        "recovery completion and operator stop conditions are recorded"
+      ]
+    },
+    {
+      "id": "FAIL-PROD-002",
+      "class": "OBJECT_STORE_OUTAGE_OR_PARTITION",
+      "requiredAssertions": [
+        "TLS and scoped runtime credentials are active",
+        "outage or partition is observed independently from the application process",
+        "ambiguous upload or object state fails closed",
+        "no Preview or durable memory commit is created from unavailable object bytes",
+        "recovery uses exact object-version authority",
+        "retention and lifecycle controls remain enabled",
+        "retry after dependency recovery converges without duplicate effects"
+      ]
+    },
+    {
+      "id": "FAIL-PROD-003",
+      "class": "POSTGRES_POOL_DISRUPTION_AND_FAILOVER",
+      "requiredAssertions": [
+        "database primary loss or equivalent failover event is independently observed",
+        "connection pool disruption and drain are measured",
+        "replacement database endpoint or role is healthy before recovery",
+        "expired or revoked sessions do not resurrect",
+        "deleted accounts and deletion leases do not resurrect or duplicate",
+        "idempotency claims produce no duplicate effects",
+        "FORCE RLS and NOBYPASSRLS runtime role invariants are reverified",
+        "replication or recovery continuity evidence is bound to the drill"
+      ]
+    },
+    {
+      "id": "FAIL-PROD-004",
+      "class": "PARSER_HOST_RESTART_AND_DURABLE_SPOOL_REMOUNT",
+      "requiredAssertions": [
+        "reviewed parser artifact digest is used",
+        "parser child process-group termination and orphan/reaping scan are recorded",
+        "host or container restart occurs after spool seal and before ResumeCommit",
+        "spool storage is remounted from durable storage on replacement runtime",
+        "sealed spool checksum and request binding are unchanged",
+        "ResumeCommit completes without parser or object-store re-read",
+        "no partial spool residue, duplicate Preview or duplicate memory effect remains"
+      ]
+    }
+  ],
+  "recordRequirements": {
+    "exactSourceCommitRequired": true,
+    "environmentIdentityDigestRequired": true,
+    "environmentGenerationRequiredForProductionEquivalent": true,
+    "failureControllerIdentityDigestRequired": true,
+    "dependencyIdentityDigestsRequired": true,
+    "startedFailedRecoveredUtcRequired": true,
+    "syntheticAccountsOnlyForProductionEquivalent": true,
+    "productionTrafficForbiddenForProductionEquivalent": true,
+    "productionCredentialsForbiddenFromEvidence": true,
+    "rawEndpointsAndPersonalIdentifiersForbidden": true,
+    "allScenarioAssertionsRequireEvidenceRefs": true,
+    "independentOperabilityReviewRequired": true,
+    "independentSecurityReviewRequired": true,
+    "unresolvedCriticalOrHighFindingsForbidden": true
+  },
+  "promotionRules": {
+    "localProcessKillCanPromote": false,
+    "localContainerKillCanPromote": false,
+    "localMinioOutageCanPromote": false,
+    "localPostgresqlCommitOutageCanPromote": false,
+    "candidateMixedVersionKillCanPromote": false,
+    "sameNodeRestartCanPromoteHostRestart": false,
+    "productionEquivalentCanPromoteProduction": false,
+    "singleScenarioCanMakeOPSReady": false,
+    "automaticProductionReadyForbidden": true
+  },
+  "currentAuthority": {
+    "registeredDrillCount": 0,
+    "productionEquivalentDrillCount": 0,
+    "productionDrillCount": 0,
+    "completedScenarioCount": 0,
+    "allRequiredScenarioClassesCompleted": false,
+    "independentReviewCompleted": false,
+    "productionEvidence": false,
+    "productionReady": false,
+    "productionDecision": "NO_GO"
+  },
+  "readiness": {
+    "contractDefined": true,
+    "registryImplemented": false,
+    "writerImplemented": false,
+    "validatorImplemented": false,
+    "automaticWorkflowImplemented": false,
+    "completedScenarioCount": 0,
+    "allRequiredScenarioClassesCompleted": false,
+    "productionReady": false
+  }
+}
