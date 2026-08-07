@@ -1,0 +1,49 @@
+{
+  "contractId": "memory-os.operability.recovery-objectives-admission.v1",
+  "schemaVersion": "memory-os-recovery-objectives-admission.v1",
+  "recordSchemaVersion": "memory-os-recovery-objectives-record.v1",
+  "description": "Append-only authority for explicitly approved recovery objectives. This contract does not choose RPO/RTO values; it only admits values supplied through reviewed evidence and prevents restore evidence from inventing or silently changing them.",
+  "registry": "contracts/operations/recovery-objectives-registry.v1.json",
+  "writer": "scripts/register-memory-os-recovery-objectives.py",
+  "validator": "scripts/validate-memory-os-recovery-objectives.py",
+  "workflow": ".github/workflows/recovery-objectives-admission.yml",
+  "requiredRecordFields": [
+    "schemaVersion",
+    "objectiveId",
+    "scope",
+    "rpoSeconds",
+    "rtoSeconds",
+    "maximumObjectDatabaseSkewSeconds",
+    "rpoMeasurementMethod",
+    "rtoMeasurementMethod",
+    "skewMeasurementMethod",
+    "ownerRef",
+    "approvalEvidenceRefs",
+    "approvedAt",
+    "supersedesObjectiveId",
+    "productionEvidence",
+    "productionReady"
+  ],
+  "rules": {
+    "valuesMustBeExplicitPositiveIntegers": true,
+    "objectDatabaseSkewMayBeZero": true,
+    "measurementMethodsRequired": true,
+    "ownerRequired": true,
+    "atLeastTwoDistinctApprovalEvidenceRefsRequired": true,
+    "appendOnlySupersessionRequired": true,
+    "implicitDefaultsForbidden": true,
+    "restoreEvidenceCannotOverrideObjectives": true,
+    "productionEvidenceForbidden": true,
+    "productionReadyForbidden": true
+  },
+  "currentAuthority": {
+    "approvedObjectiveCount": 0,
+    "currentObjectiveId": null,
+    "rpoDefined": false,
+    "rtoDefined": false,
+    "objectDatabaseSkewDefined": false,
+    "productionEvidence": false,
+    "productionReady": false,
+    "productionDecision": "NO_GO"
+  }
+}
