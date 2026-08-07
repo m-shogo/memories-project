@@ -10,13 +10,17 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from memory_os_migration_recovery_point import RecoveryPointFailure, validate_recovery_point
+
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/migration-evidence-registry-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/migration-evidence-registry.v1.json"
 LIFECYCLE = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-migration-rehearsal-evidence.py"
+RECOVERY_VALIDATOR = ROOT / "scripts/memory_os_migration_recovery_point.py"
 WORKFLOW = ROOT / ".github/workflows/migration-evidence-registry.yml"
+LOCAL_RESTORE = ROOT / "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 RUN_ID = re.compile(r"^mig_[0-9]{8}_[a-z0-9][a-z0-9._-]{2,63}$")
@@ -45,7 +49,14 @@ def commit_exists(sha: str) -> bool:
     return result.returncode == 0
 
 
-def validate_record(record: dict[str, Any], required: set[str], canonical: list[str], generations: list[Any], index: int) -> None:
+def validate_record(
+    record: dict[str, Any],
+    required: set[str],
+    canonical: list[str],
+    generations: list[Any],
+    contract: dict[str, Any],
+    index: int,
+) -> None:
     prefix = f"records[{index}]"
     require(set(record) >= required, f"{prefix} missing fields")
     require(record.get("schemaVersion") == "memory-os-migration-rehearsal-evidence.v1", f"{prefix} schema drift")
@@ -62,9 +73,10 @@ def validate_record(record: dict[str, Any], required: set[str], canonical: list[
     require(after == canonical, f"{prefix}.migrationSequenceAfter must equal canonical sequence")
     require(isinstance(record.get("operatorRef"), str) and record["operatorRef"].startswith("opr_"), f"{prefix}.operatorRef invalid")
     require(isinstance(record.get("reviewerRef"), str) and record["reviewerRef"].startswith("rev_") and record["reviewerRef"] != record["operatorRef"], f"{prefix}.reviewerRef invalid")
-    ref = record.get("recoveryPointReference")
-    require(isinstance(ref, str) and ref and not Path(ref).is_absolute() and ".." not in Path(ref).parts and (ROOT / ref).is_file(), f"{prefix}.recoveryPointReference invalid")
-    require(record.get("recoveryPointVerified") is True, f"{prefix} recovery point not verified")
+    try:
+        validate_recovery_point(record, env, canonical, contract)
+    except RecoveryPointFailure as exc:
+        raise Fail(f"{prefix} recovery evidence invalid: {exc}") from exc
     for field in ("lockBudgetMs", "statementBudgetMs", "observedLockWaitMs", "observedRuntimeMs"):
         require(isinstance(record.get(field), int) and record[field] >= 0, f"{prefix}.{field} invalid")
     require(record["lockBudgetMs"] > 0 and record["statementBudgetMs"] > 0, f"{prefix} budgets must be positive")
@@ -96,9 +108,10 @@ def main() -> int:
     require(contract.get("registryPath") == str(REGISTRY.relative_to(ROOT)), "registry reference drift")
     require(contract.get("writer") == str(WRITER.relative_to(ROOT)), "writer reference drift")
     require(contract.get("validator") == str(Path(__file__).resolve().relative_to(ROOT)), "validator reference drift")
+    require(contract.get("recoveryPointValidator") == str(RECOVERY_VALIDATOR.relative_to(ROOT)), "recovery-point validator reference drift")
     require(contract.get("appendOnly") is True and contract.get("productionEnvironmentRegistrationImplemented") is False, "contract production boundary drift")
     require(set(contract.get("allowedEnvironmentClasses", [])) == {"LOCAL_POSTGRES_REHEARSAL", "PRODUCTION_EQUIVALENT_REHEARSAL"}, "environment classes drift")
-    require(WRITER.is_file(), "migration rehearsal writer missing")
+    require(WRITER.is_file() and RECOVERY_VALIDATOR.is_file(), "migration rehearsal writer/recovery validator missing")
 
     canonical = lifecycle.get("migrationSequence")
     require(isinstance(canonical, list) and canonical, "canonical migration sequence missing")
@@ -107,6 +120,47 @@ def main() -> int:
     for field in lifecycle.get("evidenceRecord", {}).get("requiredFields", []):
         aliases = {"environment": "environmentClass", "operator": "operatorRef", "reviewer": "reviewerRef"}
         require(aliases.get(field, field) in required, f"registry record omits lifecycle evidence field: {field}")
+    for field in (
+        "recoveryPointArtifactDigest", "restoreCapabilityEvidenceRef", "restoreCapabilityVerified",
+    ):
+        require(field in required, f"typed recovery field missing: {field}")
+
+    rules = contract.get("registrationRules")
+    require(isinstance(rules, dict), "registrationRules missing")
+    for flag in (
+        "recoveryPointReferenceMustBeSha256Digest",
+        "recoveryPointArtifactDigestMustMatchReference",
+        "recoveryPointVerifiedRequired",
+        "restoreCapabilityEvidenceMustExistAndPass",
+        "restoreCapabilityVerifiedRequired",
+        "productionEquivalentRehearsalRequiresConfiguredRestoreCapability",
+    ):
+        require(rules.get(flag) is True, f"registrationRules.{flag} must be true")
+
+    authorities = contract.get("restoreCapabilityAuthorities")
+    require(isinstance(authorities, dict), "restoreCapabilityAuthorities missing")
+    local = authorities.get("LOCAL_POSTGRES_REHEARSAL")
+    pe = authorities.get("PRODUCTION_EQUIVALENT_REHEARSAL")
+    require(isinstance(local, dict) and local.get("configured") is True,
+            "local restore capability authority must be configured")
+    require(local.get("evidenceRef") == str(LOCAL_RESTORE.relative_to(ROOT)),
+            "local restore capability evidence path drift")
+    require(local.get("schemaVersion") == "memory-os-local-logical-restore-results.v1",
+            "local restore capability schema drift")
+    require(isinstance(pe, dict) and pe.get("configured") is False and pe.get("evidenceRef") is None,
+            "production-equivalent restore capability must remain unconfigured")
+    local_restore = load(LOCAL_RESTORE)
+    require(local_restore.get("schemaVersion") == "memory-os-local-logical-restore-results.v1",
+            "local logical restore result schema drift")
+    local_scenario = local_restore.get("scenario")
+    local_env = local_restore.get("environment")
+    require(isinstance(local_scenario, dict) and local_scenario.get("result") == "PASS" and
+            local_scenario.get("integrityResult") == "PASS",
+            "local logical restore capability is not PASS")
+    require(local_scenario.get("migrationFilesApplied") == len(canonical),
+            "local logical restore capability is stale for canonical migration count")
+    require(isinstance(local_env, dict) and local_env.get("productionEvidence") is False,
+            "local logical restore capability cannot be production evidence")
 
     require(registry.get("schemaVersion") == "memory-os-migration-evidence-registry.v1", "registry schema drift")
     require(registry.get("registryClass") == "NON_PRODUCTION_MIGRATION_REHEARSAL_EVIDENCE", "registry class drift")
@@ -119,19 +173,19 @@ def main() -> int:
 
     ids: set[str] = set()
     passing = 0
-    pe = 0
+    pe_count = 0
     for index, record in enumerate(records):
         require(isinstance(record, dict), f"records[{index}] invalid")
-        validate_record(record, set(required), canonical, generations, index)
+        validate_record(record, set(required), canonical, generations, contract, index)
         run_id = record["migrationRunId"]
         require(run_id not in ids, f"duplicate migrationRunId: {run_id}")
         ids.add(run_id)
         if all(record.get(field) == "PASS" for field in ("preflightResult", "applyResult", "verificationResult")):
             passing += 1
         if record.get("environmentClass") == "PRODUCTION_EQUIVALENT_REHEARSAL":
-            pe += 1
+            pe_count += 1
     require(registry.get("passingRehearsalCount") == passing, "passing rehearsal count drift")
-    require(registry.get("productionEquivalentRehearsalCount") == pe, "production-equivalent rehearsal count drift")
+    require(registry.get("productionEquivalentRehearsalCount") == pe_count, "production-equivalent rehearsal count drift")
     expected_latest = records[-1]["migrationRunId"] if records else None
     require(registry.get("latestRehearsalRunId") == expected_latest, "latest rehearsal run drift")
 
@@ -140,17 +194,27 @@ def main() -> int:
     require(isinstance(authority, dict) and isinstance(readiness, dict), "contract authority/readiness missing")
     require(authority.get("rehearsalEvidenceCount") == count, "contract rehearsal count drift")
     require(authority.get("passingRehearsalCount") == passing, "contract passing count drift")
-    require(authority.get("productionEquivalentRehearsalCount") == pe, "contract PE count drift")
+    require(authority.get("productionEquivalentRehearsalCount") == pe_count, "contract PE count drift")
     require(authority.get("productionMigrationEvidenceCount") == 0 and authority.get("productionEvidence") is False and authority.get("productionReady") is False and authority.get("productionDecision") == "NO_GO", "contract production authority drift")
-    require(readiness.get("contractDefined") is True and readiness.get("registryImplemented") is True and readiness.get("writerImplemented") is True and readiness.get("validatorImplemented") is True, "foundation readiness incomplete")
+    for flag in (
+        "contractDefined", "registryImplemented", "writerImplemented", "validatorImplemented",
+        "operatorEvidenceRecordImplemented", "typedRecoveryArtifactReferenceImplemented",
+        "localRestoreCapabilityBound",
+    ):
+        require(readiness.get(flag) is True, f"foundation readiness incomplete: {flag}")
     require(readiness.get("automaticWorkflowImplemented") is WORKFLOW.is_file(), "workflow readiness drift")
-    require(readiness.get("operatorEvidenceRecordImplemented") is True, "operator evidence record implementation drift")
-    require(readiness.get("productionShapedRehearsalCompleted") is False and readiness.get("independentReviewCompleted") is False and readiness.get("productionReady") is False, "unsafe migration readiness promotion")
+    for flag in (
+        "productionEquivalentRestoreCapabilityConfigured", "actualRecoveryArtifactRestoreLinked",
+        "productionShapedRehearsalCompleted", "independentReviewCompleted", "productionReady",
+    ):
+        require(readiness.get(flag) is False, f"unsafe migration readiness promotion: {flag}")
 
     print("Memory OS migration rehearsal evidence registry validation PASS")
     print(f"registered rehearsals: {count}")
     print(f"passing rehearsals: {passing}")
-    print(f"production-equivalent rehearsals: {pe}")
+    print(f"production-equivalent rehearsals: {pe_count}")
+    print("local restore capability: BOUND_TO_VALIDATED_LOGICAL_RESTORE")
+    print("actual recovery artifact restore linkage: NOT_PROVEN")
     print("production migration evidence: 0")
     print("production decision: NO_GO")
     return 0
