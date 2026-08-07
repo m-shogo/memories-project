@@ -196,6 +196,8 @@
     "scripts/run-memory-os-incident-control-exercise.py",
     "scripts/validate-memory-os-incident-control-exercise.py",
     "scripts/reconcile-memory-os-incident-control-exercise.py",
-    ".github/workflows/incident-control-exercise.yml"
+    ".github/workflows/incident-control-exercise.yml",
+    "scripts/reconcile-memory-os-incident-control-authority.py",
+    ".github/workflows/reconcile-incident-control-authority.yml"
   ]
 }
