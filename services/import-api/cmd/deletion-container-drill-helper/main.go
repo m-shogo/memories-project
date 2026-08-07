@@ -24,14 +24,15 @@ func fail(stage string) {
 
 // progress emits one append-only, low-information marker per stage. The file
 // name and stderr line carry only an allowlisted stage label; no account, job,
-// object or credential material is written. Separate files avoid transient
-// truncation races that can make an in-place progress file appear empty.
+// object or credential material is written. The markers are world-readable
+// because the Docker container writes them as root while the GitHub runner
+// reads them as its unprivileged host user; their contents are fixed "ok" only.
 func progress(prefix string, stage string) {
 	_, _ = fmt.Fprintf(os.Stderr, "CONTAINER_DRILL_PROGRESS:%s\n", stage)
 	if prefix == "" {
 		return
 	}
-	if err := os.WriteFile(prefix+"."+stage, []byte("ok\n"), 0o600); err != nil {
+	if err := os.WriteFile(prefix+"."+stage, []byte("ok\n"), 0o644); err != nil {
 		fail("progress_signal")
 	}
 }
@@ -100,7 +101,7 @@ func main() {
 			fail("object_erasure")
 		}
 		progress(progressPrefix, "object-erased")
-		if err := os.WriteFile(signalPath, []byte("claimed-and-erased\n"), 0o600); err != nil {
+		if err := os.WriteFile(signalPath, []byte("claimed-and-erased\n"), 0o644); err != nil {
 			fail("ready_signal")
 		}
 		progress(progressPrefix, "interruption-point-ready")
@@ -127,7 +128,7 @@ func main() {
 		if err != nil || backlog.Pending != 0 || backlog.Stuck != 0 {
 			fail("replacement_backlog")
 		}
-		if err := os.WriteFile(signalPath, []byte("recovered-attempt-2\n"), 0o600); err != nil {
+		if err := os.WriteFile(signalPath, []byte("recovered-attempt-2\n"), 0o644); err != nil {
 			fail("recovery_signal")
 		}
 		progress(progressPrefix, "replacement-recovered")
