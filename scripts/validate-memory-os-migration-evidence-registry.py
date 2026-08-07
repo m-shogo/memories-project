@@ -19,8 +19,10 @@ LIFECYCLE = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-migration-rehearsal-evidence.py"
 RECOVERY_VALIDATOR = ROOT / "scripts/memory_os_migration_recovery_point.py"
+ARTIFACT_VALIDATOR = ROOT / "scripts/validate-memory-os-local-migration-recovery-artifact.py"
 WORKFLOW = ROOT / ".github/workflows/migration-evidence-registry.yml"
 LOCAL_RESTORE = ROOT / "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json"
+LOCAL_ARTIFACT_ROOT = ROOT / "docs/evidence/migrations/recovery"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 RUN_ID = re.compile(r"^mig_[0-9]{8}_[a-z0-9][a-z0-9._-]{2,63}$")
@@ -45,8 +47,18 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def commit_exists(sha: str) -> bool:
-    result = subprocess.run(["git", "cat-file", "-e", sha + "^{commit}"], cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+    result = subprocess.run(
+        ["git", "cat-file", "-e", sha + "^{commit}"],
+        cwd=ROOT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
     return result.returncode == 0
+
+
+def is_passing(record: dict[str, Any]) -> bool:
+    return all(record.get(field) == "PASS" for field in ("preflightResult", "applyResult", "verificationResult"))
 
 
 def validate_record(
@@ -83,8 +95,7 @@ def validate_record(
     for field in ("preflightResult", "applyResult", "verificationResult"):
         require(record.get(field) in {"PASS", "FAIL", "NOT_RUN"}, f"{prefix}.{field} invalid")
     require(record.get("containsSecrets") is False and record.get("productionTraffic") is False and record.get("productionCredentials") is False and record.get("productionEvidence") is False, f"{prefix} evidence boundary drift")
-    passing = all(record.get(field) == "PASS" for field in ("preflightResult", "applyResult", "verificationResult"))
-    if passing:
+    if is_passing(record):
         require(record["observedLockWaitMs"] <= record["lockBudgetMs"], f"{prefix} passing lock wait exceeded budget")
         require(record["observedRuntimeMs"] <= record["statementBudgetMs"], f"{prefix} passing runtime exceeded budget")
         require(record.get("recoveryDecision") == "NO_RECOVERY_REQUIRED", f"{prefix} passing rehearsal recovery decision drift")
@@ -109,9 +120,10 @@ def main() -> int:
     require(contract.get("writer") == str(WRITER.relative_to(ROOT)), "writer reference drift")
     require(contract.get("validator") == str(Path(__file__).resolve().relative_to(ROOT)), "validator reference drift")
     require(contract.get("recoveryPointValidator") == str(RECOVERY_VALIDATOR.relative_to(ROOT)), "recovery-point validator reference drift")
+    require(contract.get("recoveryArtifactResultValidator") == str(ARTIFACT_VALIDATOR.relative_to(ROOT)), "recovery-artifact result validator reference drift")
     require(contract.get("appendOnly") is True and contract.get("productionEnvironmentRegistrationImplemented") is False, "contract production boundary drift")
     require(set(contract.get("allowedEnvironmentClasses", [])) == {"LOCAL_POSTGRES_REHEARSAL", "PRODUCTION_EQUIVALENT_REHEARSAL"}, "environment classes drift")
-    require(WRITER.is_file() and RECOVERY_VALIDATOR.is_file(), "migration rehearsal writer/recovery validator missing")
+    require(WRITER.is_file() and RECOVERY_VALIDATOR.is_file() and ARTIFACT_VALIDATOR.is_file(), "migration rehearsal writer/recovery validators missing")
 
     canonical = lifecycle.get("migrationSequence")
     require(isinstance(canonical, list) and canonical, "canonical migration sequence missing")
@@ -121,7 +133,10 @@ def main() -> int:
         aliases = {"environment": "environmentClass", "operator": "operatorRef", "reviewer": "reviewerRef"}
         require(aliases.get(field, field) in required, f"registry record omits lifecycle evidence field: {field}")
     for field in (
-        "recoveryPointArtifactDigest", "restoreCapabilityEvidenceRef", "restoreCapabilityVerified",
+        "recoveryPointArtifactDigest",
+        "restoreCapabilityEvidenceRef",
+        "restoreCapabilityVerified",
+        "recoveryPointRestoreEvidenceRef",
     ):
         require(field in required, f"typed recovery field missing: {field}")
 
@@ -133,6 +148,9 @@ def main() -> int:
         "recoveryPointVerifiedRequired",
         "restoreCapabilityEvidenceMustExistAndPass",
         "restoreCapabilityVerifiedRequired",
+        "actualRecoveryArtifactRestoreEvidenceRequired",
+        "actualRecoveryArtifactDigestMustMatchRecord",
+        "actualRecoveryArtifactRestoreResultMustPass",
         "productionEquivalentRehearsalRequiresConfiguredRestoreCapability",
     ):
         require(rules.get(flag) is True, f"registrationRules.{flag} must be true")
@@ -162,6 +180,25 @@ def main() -> int:
     require(isinstance(local_env, dict) and local_env.get("productionEvidence") is False,
             "local logical restore capability cannot be production evidence")
 
+    artifact_authorities = contract.get("actualRecoveryArtifactAuthorities")
+    require(isinstance(artifact_authorities, dict), "actualRecoveryArtifactAuthorities missing")
+    local_artifact = artifact_authorities.get("LOCAL_POSTGRES_REHEARSAL")
+    pe_artifact = artifact_authorities.get("PRODUCTION_EQUIVALENT_REHEARSAL")
+    require(isinstance(local_artifact, dict), "local actual recovery artifact authority missing")
+    require(local_artifact.get("evidenceRoot") == str(LOCAL_ARTIFACT_ROOT.relative_to(ROOT)),
+            "local actual recovery artifact evidence root drift")
+    require(local_artifact.get("schemaVersion") == "memory-os-local-migration-recovery-artifact.v1",
+            "local actual recovery artifact schema drift")
+    require(local_artifact.get("validator") == str(ARTIFACT_VALIDATOR.relative_to(ROOT)),
+            "local actual recovery artifact validator drift")
+    for flag in ("requireMigrationRunIdMatch", "requireArtifactDigestMatch", "requireActualRecoveryArtifactRestored"):
+        require(local_artifact.get(flag) is True, f"local actual recovery authority missing {flag}")
+    require(local_artifact.get("productionEvidenceRequired") is False,
+            "local actual recovery authority cannot require production evidence")
+    require(isinstance(pe_artifact, dict) and pe_artifact.get("evidenceRoot") is None and
+            pe_artifact.get("schemaVersion") is None and pe_artifact.get("validator") is None,
+            "production-equivalent actual recovery authority must remain unconfigured")
+
     require(registry.get("schemaVersion") == "memory-os-migration-evidence-registry.v1", "registry schema drift")
     require(registry.get("registryClass") == "NON_PRODUCTION_MIGRATION_REHEARSAL_EVIDENCE", "registry class drift")
     require(registry.get("appendOnly") is True and registry.get("productionEvidence") is False, "registry authority boundary drift")
@@ -173,6 +210,7 @@ def main() -> int:
 
     ids: set[str] = set()
     passing = 0
+    local_passing = 0
     pe_count = 0
     for index, record in enumerate(records):
         require(isinstance(record, dict), f"records[{index}] invalid")
@@ -180,8 +218,10 @@ def main() -> int:
         run_id = record["migrationRunId"]
         require(run_id not in ids, f"duplicate migrationRunId: {run_id}")
         ids.add(run_id)
-        if all(record.get(field) == "PASS" for field in ("preflightResult", "applyResult", "verificationResult")):
+        if is_passing(record):
             passing += 1
+            if record.get("environmentClass") == "LOCAL_POSTGRES_REHEARSAL":
+                local_passing += 1
         if record.get("environmentClass") == "PRODUCTION_EQUIVALENT_REHEARSAL":
             pe_count += 1
     require(registry.get("passingRehearsalCount") == passing, "passing rehearsal count drift")
@@ -197,24 +237,35 @@ def main() -> int:
     require(authority.get("productionEquivalentRehearsalCount") == pe_count, "contract PE count drift")
     require(authority.get("productionMigrationEvidenceCount") == 0 and authority.get("productionEvidence") is False and authority.get("productionReady") is False and authority.get("productionDecision") == "NO_GO", "contract production authority drift")
     for flag in (
-        "contractDefined", "registryImplemented", "writerImplemented", "validatorImplemented",
-        "operatorEvidenceRecordImplemented", "typedRecoveryArtifactReferenceImplemented",
+        "contractDefined",
+        "registryImplemented",
+        "writerImplemented",
+        "validatorImplemented",
+        "operatorEvidenceRecordImplemented",
+        "typedRecoveryArtifactReferenceImplemented",
         "localRestoreCapabilityBound",
+        "perRunRecoveryArtifactEvidenceRequired",
     ):
         require(readiness.get(flag) is True, f"foundation readiness incomplete: {flag}")
     require(readiness.get("automaticWorkflowImplemented") is WORKFLOW.is_file(), "workflow readiness drift")
+    require(readiness.get("localActualRecoveryArtifactRestoreLinked") is (local_passing > 0),
+            "local actual recovery artifact readiness/count drift")
     for flag in (
-        "productionEquivalentRestoreCapabilityConfigured", "actualRecoveryArtifactRestoreLinked",
-        "productionShapedRehearsalCompleted", "independentReviewCompleted", "productionReady",
+        "productionEquivalentRestoreCapabilityConfigured",
+        "productionEquivalentActualRecoveryArtifactRestoreLinked",
+        "productionShapedRehearsalCompleted",
+        "independentReviewCompleted",
+        "productionReady",
     ):
         require(readiness.get(flag) is False, f"unsafe migration readiness promotion: {flag}")
 
     print("Memory OS migration rehearsal evidence registry validation PASS")
     print(f"registered rehearsals: {count}")
     print(f"passing rehearsals: {passing}")
+    print(f"local passing actual-artifact rehearsals: {local_passing}")
     print(f"production-equivalent rehearsals: {pe_count}")
     print("local restore capability: BOUND_TO_VALIDATED_LOGICAL_RESTORE")
-    print("actual recovery artifact restore linkage: NOT_PROVEN")
+    print(f"local actual recovery artifact restore linkage: {'PROVEN_LOCAL_ONLY' if local_passing else 'NOT_YET_REGISTERED'}")
     print("production migration evidence: 0")
     print("production decision: NO_GO")
     return 0
