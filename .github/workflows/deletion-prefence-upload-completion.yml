@@ -32,7 +32,7 @@ permissions:
 
 concurrency:
   group: deletion-prefence-upload-completion-so
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   prove:
