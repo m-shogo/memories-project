@@ -712,7 +712,8 @@
         "isolated PostgreSQL 16 to 17 logical forward restore preserves schema authority, RLS, active session resolution, deletion non-resurrection and the complete canonical SQL integration suite",
         "release, rollback-admission and parser-artifact authorities remain deliberately empty so candidate, CI, tag, digest and test-harness evidence cannot manufacture approval",
         "supplemental executed-compatibility authority proves historical-candidate/current session interoperability, bidirectional persisted Apply replay, simultaneous idempotency-claim convergence and historical-process SIGKILL rollback/retry on the shared current schema, plus a local PostgreSQL 16-to-17 logical forward restore preserving schema authority, RLS, active session resolution and deletion non-resurrection; all remain candidate/local-CI-only",
-        "append-only reviewed client baseline authority now has an external-byte-verifying writer, fail-closed validator and operator runbook: exact iOS/Portal artifact SHA-256 and byte length are recomputed, source provenance and repository evidence are bound, CLIENT_OWNER/Security/Compatibility approvals must be distinct, and baseline approval remains explicitly separate from client/server skew and Production readiness"
+        "append-only reviewed client baseline authority now has an external-byte-verifying writer, fail-closed validator and operator runbook: exact iOS/Portal artifact SHA-256 and byte length are recomputed, source provenance and repository evidence are bound, CLIENT_OWNER/Security/Compatibility approvals must be distinct, and baseline approval remains explicitly separate from client/server skew and Production readiness",
+        "approved release compatibility-pair authority is append-only and fail-closed: approved releases=0, approved predecessor/successor rollback pairs=0; pair admission requires two distinct already-approved release baselines, ELIGIBLE predecessor rollback status, pair-specific rolling deployment, application rollback, persisted-route, database-upgrade, artifact-retention and at least two independent review references, while candidate/local evidence cannot create a pair and productionEvidence/productionReady remain false"
       ],
       "missingEvidence": [
         "implemented client/server support windows, offline/skew policy and old-client/new-server plus new-client/old-server compatibility tests",
@@ -793,7 +794,13 @@
         "scripts/validate-memory-os-client-baseline-registry.py",
         "scripts/reconcile-memory-os-client-baseline-registry.py",
         "docs/evidence/clients/README.md",
-        ".github/workflows/client-baseline-registry.yml"
+        ".github/workflows/client-baseline-registry.yml",
+        "contracts/operations/release-compatibility-pair-contract.v1.json",
+        "contracts/operations/release-compatibility-pair-registry.v1.json",
+        "scripts/register-memory-os-release-compatibility-pair.py",
+        "scripts/validate-memory-os-release-compatibility-pair.py",
+        "scripts/reconcile-memory-os-release-compatibility-pair.py",
+        ".github/workflows/release-compatibility-pair.yml"
       ]
     }
   ]
