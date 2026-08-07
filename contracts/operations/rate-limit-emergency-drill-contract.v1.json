@@ -1,0 +1,72 @@
+{
+  "contractId": "memory-os.operability.rate-limit-emergency-drill.v1",
+  "schemaVersion": "memory-os-rate-limit-emergency-drill.v1",
+  "description": "Local/CI decision-model drill for the Memory OS rate-limit emergency policy. It proves the repository authority chooses only bounded emergency modes, automatically falls to ROUTE_FAIL_CLOSED at expiry, and permits restoration to NORMAL_CONFIGURED only after every required recovery verification passes. It does not change runtime traffic and is not a production control plane drill.",
+  "sourceOperationsContract": "contracts/operations/rate-limit-operations-contract.v1.json",
+  "sourcePolicyContract": "contracts/operations/rate-limit-policy-contract.v1.json",
+  "sourceEvidenceContract": "contracts/operations/rate-limit-operation-evidence-contract.v1.json",
+  "runner": "scripts/run-memory-os-rate-limit-emergency-drill.py",
+  "validator": "scripts/validate-memory-os-rate-limit-emergency-drill.py",
+  "resultPath": "docs/fixtures/memory-os-operability/rate-limit-emergency-drill-results.sample.v1.json",
+  "scenario": {
+    "scenarioId": "apple-exchange-emergency-expiry-and-recovery-local-ci",
+    "policyId": "apple-exchange",
+    "requiredPolicyFailureMode": "fail_closed_emergency_local",
+    "initialMode": "NORMAL_CONFIGURED",
+    "emergencyMode": "STRICT_LOCAL_EMERGENCY",
+    "expiredMode": "ROUTE_FAIL_CLOSED",
+    "restoredMode": "NORMAL_CONFIGURED",
+    "maximumEmergencyDurationMinutes": 60,
+    "expiryProbeOffsetSeconds": 1,
+    "requiredRecoveryChecks": [
+      "shared_store_atomicity",
+      "policy_generation_exact_source",
+      "trusted_proxy_boundary",
+      "rejected_requests_no_account_session_replay_mutation",
+      "rejected_requests_no_upload_apply_memory_mutation",
+      "metrics_and_events_present",
+      "bounded_canary",
+      "temporary_mode_expired"
+    ]
+  },
+  "requiredAssertions": {
+    "policyExplicitlyPermitsEmergencyLocal": true,
+    "forbiddenFailOpenModeNeverSelected": true,
+    "expirySelectsRouteFailClosed": true,
+    "recoveryBeforeAllChecksPassRejected": true,
+    "recoveryAfterAllChecksPassReturnsNormal": true,
+    "appendOnlyWriterAcceptsValidLocalRecord": true,
+    "duplicateOperationIdRejected": true,
+    "exactSourceCommitBound": true,
+    "containsSecrets": false,
+    "runtimeTrafficChanged": false,
+    "productionTraffic": false,
+    "productionCredentials": false,
+    "productionEvidence": false,
+    "productionControlPlaneExercised": false
+  },
+  "classification": "LOCAL_CI_DECISION_MODEL",
+  "limitations": [
+    "does not mutate a deployed rate-limit control plane",
+    "does not exercise a distributed shared atomic store",
+    "does not verify deployment-owned trusted-proxy configuration",
+    "uses simulated passage of the emergency expiry window rather than sleeping for 60 minutes",
+    "does not prove production alert routing, paging, operator acknowledgement or automatic deployment rollback",
+    "cannot make OPS-P0-005 READY"
+  ],
+  "readiness": {
+    "contractDefined": true,
+    "runnerImplemented": false,
+    "validatorImplemented": false,
+    "automaticWorkflowImplemented": false,
+    "exactSourceResultCommitted": false,
+    "localDecisionModelDrillExecuted": false,
+    "runtimeEmergencyModeDrillExecuted": false,
+    "productionControlPlaneImplemented": false,
+    "automaticProductionExpiryImplemented": false,
+    "productionReady": false
+  },
+  "evidenceRefs": [
+    "contracts/operations/rate-limit-emergency-drill-contract.v1.json"
+  ]
+}
