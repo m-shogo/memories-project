@@ -1,0 +1,226 @@
+name: Rate Limit Emergency Decision Drill
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/rate-limit-emergency-drill.yml"
+      - "contracts/operations/rate-limit-emergency-drill-contract.v1.json"
+      - "contracts/operations/rate-limit-operation-evidence-contract.v1.json"
+      - "contracts/operations/rate-limit-operations-contract.v1.json"
+      - "contracts/operations/rate-limit-policy-contract.v1.json"
+      - "scripts/run-memory-os-rate-limit-emergency-drill.py"
+      - "scripts/validate-memory-os-rate-limit-emergency-drill.py"
+      - "scripts/reconcile-memory-os-rate-limit-emergency-drill.py"
+      - "scripts/evaluate-memory-os-rate-limit-emergency-state.py"
+      - "scripts/create-memory-os-rate-limit-operation-evidence.py"
+      - "scripts/validate-memory-os-rate-limit-operation-evidence.py"
+      - "scripts/reconcile-memory-os-rate-limit-operation-evidence.py"
+      - "scripts/validate-memory-os-rate-limit-operations.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rate-limit-emergency-decision-drill-so
+  cancel-in-progress: true
+
+jobs:
+  drill:
+    if: >-
+      github.event_name != 'push' ||
+      (!contains(github.event.head_commit.message, 'test(rate-limit): record emergency decision drill result') &&
+       !contains(github.event.head_commit.message, 'docs(rate-limit): register emergency decision drill'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout latest so
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Reconcile canonical evidence ledger before source capture
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/create-memory-os-rate-limit-operation-evidence.py \
+            scripts/validate-memory-os-rate-limit-operation-evidence.py \
+            scripts/reconcile-memory-os-rate-limit-operation-evidence.py \
+            scripts/validate-memory-os-rate-limit-operations.py
+          python scripts/validate-memory-os-rate-limit-operation-evidence.py
+          python scripts/reconcile-memory-os-rate-limit-operation-evidence.py
+          python scripts/validate-memory-os-rate-limit-operation-evidence.py
+          python scripts/validate-memory-os-rate-limit-operations.py
+          git add \
+            contracts/operations/rate-limit-operations-contract.v1.json \
+            contracts/operations/production-operability-status.json
+          if ! git diff --cached --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(rate-limit): register operation evidence ledger"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+          git fetch origin so
+          git reset --hard origin/so
+          test -z "$(git status --porcelain)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Execute exact-source local decision drill
+        id: execute
+        run: |
+          set +e
+          log=/tmp/memory-os-rate-limit-emergency-drill.log
+          result=/tmp/memory-os-rate-limit-emergency-drill-result.json
+          : > "$log"
+          rm -f "$result"
+          code=0
+          stage=compile
+          echo "STAGE: compile" >> "$log"
+          python -m py_compile \
+            scripts/run-memory-os-rate-limit-emergency-drill.py \
+            scripts/validate-memory-os-rate-limit-emergency-drill.py \
+            scripts/reconcile-memory-os-rate-limit-emergency-drill.py \
+            scripts/evaluate-memory-os-rate-limit-emergency-state.py \
+            >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            stage=static-validation
+            echo "STAGE: static-validation" >> "$log"
+            python scripts/validate-memory-os-rate-limit-emergency-drill.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            stage=decision-drill
+            echo "STAGE: decision-drill" >> "$log"
+            python scripts/run-memory-os-rate-limit-emergency-drill.py \
+              --source-sha "$SOURCE_SHA" \
+              --output "$result" >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            stage=result-validation
+            echo "STAGE: result-validation" >> "$log"
+            cp "$result" docs/fixtures/memory-os-operability/rate-limit-emergency-drill-results.sample.v1.json
+            python scripts/validate-memory-os-rate-limit-emergency-drill.py \
+              --expected-commit-sha "$SOURCE_SHA" --require-result >> "$log" 2>&1 || code=$?
+            git checkout -- docs/fixtures/memory-os-operability/rate-limit-emergency-drill-results.sample.v1.json 2>/dev/null || \
+              rm -f docs/fixtures/memory-os-operability/rate-limit-emergency-drill-results.sample.v1.json
+          fi
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          echo "failure_stage=$stage" >> "$GITHUB_OUTPUT"
+          echo "result_path=$result" >> "$GITHUB_OUTPUT"
+          cat "$log"
+          exit 0
+
+      - name: Publish exact-source drill result
+        if: steps.execute.outputs.exit_code == '0'
+        env:
+          RESULT_PATH: ${{ steps.execute.outputs.result_path }}
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          if ! git diff --quiet "$SOURCE_SHA" origin/so -- \
+            contracts/operations/rate-limit-emergency-drill-contract.v1.json \
+            contracts/operations/rate-limit-operation-evidence-contract.v1.json \
+            contracts/operations/rate-limit-operations-contract.v1.json \
+            contracts/operations/rate-limit-policy-contract.v1.json \
+            scripts/run-memory-os-rate-limit-emergency-drill.py \
+            scripts/validate-memory-os-rate-limit-emergency-drill.py \
+            scripts/reconcile-memory-os-rate-limit-emergency-drill.py \
+            scripts/evaluate-memory-os-rate-limit-emergency-state.py \
+            scripts/create-memory-os-rate-limit-operation-evidence.py \
+            scripts/validate-memory-os-rate-limit-operation-evidence.py; then
+            echo "Newer rate-limit-critical source exists; refusing stale decision evidence."
+            exit 75
+          fi
+          git reset --hard origin/so
+          cp "$RESULT_PATH" docs/fixtures/memory-os-operability/rate-limit-emergency-drill-results.sample.v1.json
+          python scripts/validate-memory-os-rate-limit-emergency-drill.py \
+            --expected-commit-sha "$SOURCE_SHA" --require-result
+          git add docs/fixtures/memory-os-operability/rate-limit-emergency-drill-results.sample.v1.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "test(rate-limit): record emergency decision drill result"
+          git pull --rebase origin so
+          git push origin HEAD:so
+
+      - name: Reconcile drill authority without runtime promotion
+        if: steps.execute.outputs.exit_code == '0'
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          git reset --hard origin/so
+          python scripts/validate-memory-os-rate-limit-emergency-drill.py \
+            --expected-commit-sha "$SOURCE_SHA" --require-result
+          python scripts/reconcile-memory-os-rate-limit-operation-evidence.py
+          python scripts/reconcile-memory-os-rate-limit-emergency-drill.py
+          python scripts/validate-memory-os-rate-limit-emergency-drill.py \
+            --expected-commit-sha "$SOURCE_SHA" --require-result --require-reconciled
+          python scripts/validate-memory-os-rate-limit-operation-evidence.py
+          python scripts/validate-memory-os-rate-limit-operations.py
+          python scripts/validate-memory-os-rate-limit.py
+          python scripts/validate-memory-os-operability.py
+          git add \
+            contracts/operations/rate-limit-emergency-drill-contract.v1.json \
+            contracts/operations/rate-limit-operations-contract.v1.json \
+            contracts/operations/production-operability-status.json
+          if git diff --cached --quiet; then
+            echo "Rate-limit decision drill authority already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs(rate-limit): register emergency decision drill"
+          git pull --rebase origin so
+          git push origin HEAD:so
+
+      - name: Record privacy-safe diagnostic
+        if: steps.execute.outputs.exit_code != '0'
+        env:
+          EXIT_CODE: ${{ steps.execute.outputs.exit_code }}
+          FAILURE_STAGE: ${{ steps.execute.outputs.failure_stage }}
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          git reset --hard origin/so
+          python - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          text = Path('/tmp/memory-os-rate-limit-emergency-drill.log').read_text(encoding='utf-8', errors='replace')
+          text = re.sub(r'postgres(?:ql)?://[^\s]+', '<redacted-database-url>', text)
+          text = re.sub(r'https?://[^\s]+', '<redacted-url>', text)
+          text = re.sub(r'Bearer\s+\S+', 'Bearer <redacted>', text, flags=re.I)
+          value = {
+              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'workflow': 'rate-limit-emergency-decision-drill',
+              'sourceCommitSha': os.environ.get('SOURCE_SHA', ''),
+              'failureStage': os.environ.get('FAILURE_STAGE', 'unknown'),
+              'result': 'FAIL',
+              'exitCode': int(os.environ['EXIT_CODE']),
+              'output': text[-8000:],
+              'containsSecrets': False,
+              'runtimeTrafficChanged': False,
+              'productionTraffic': False,
+              'productionCredentials': False,
+              'productionEvidence': False,
+              'productionControlPlaneExercised': False,
+          }
+          path = Path('docs/fixtures/memory-os-operability/rate-limit-emergency-drill-diagnostic.last.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          PY
+          git add docs/fixtures/memory-os-operability/rate-limit-emergency-drill-diagnostic.last.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "test(rate-limit): record emergency decision drill diagnostic"
+          git pull --rebase origin so
+          git push origin HEAD:so
+
+      - name: Enforce drill success
+        run: test "${{ steps.execute.outputs.exit_code }}" = "0"
