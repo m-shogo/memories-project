@@ -10,7 +10,9 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 INDEX_PATH = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
-EXPECTED_EXTERNAL = {
+CONTROLLED_CONTRACT_PATH = ROOT / "contracts/operations/controlled-saturation-ramp-contract.v1.json"
+CONTROLLED_SCENARIO_ID = "signed-upload-controlled-saturation-ramp-local-dependencies"
+BASE_EXPECTED_EXTERNAL = {
     "authenticated-preview-local-postgres": (
         "LOCAL_POSTGRES",
         "contracts/operations/live-postgres-load-scenario-contract.v1.json",
@@ -42,6 +44,11 @@ EXPECTED_EXTERNAL = {
         "scripts/validate-memory-os-deletion-under-load.py",
     ),
 }
+CONTROLLED_EXPECTED_EXTERNAL = (
+    "LOCAL_POSTGRES_MINIO",
+    "contracts/operations/controlled-saturation-ramp-contract.v1.json",
+    "scripts/validate-memory-os-controlled-saturation-ramp.py",
+)
 EXPECTED_DEFERRED = {
     "capacity-ramp-local-postgres-minio",
     "deletion-worker-under-api-load",
@@ -90,6 +97,16 @@ def unique_scenario_map(items: Any, field: str) -> dict[str, dict[str, Any]]:
 
 def main() -> int:
     contract = load(INDEX_PATH)
+    controlled_contract = load(CONTROLLED_CONTRACT_PATH)
+    controlled_readiness = controlled_contract.get("readiness")
+    require(isinstance(controlled_readiness, dict), "controlled saturation readiness must be object")
+    controlled_committed = controlled_readiness.get("exactSourceResultCommitted")
+    require(isinstance(controlled_committed, bool), "controlled saturation exactSourceResultCommitted must be boolean")
+
+    expected_external = dict(BASE_EXPECTED_EXTERNAL)
+    if controlled_committed:
+        expected_external[CONTROLLED_SCENARIO_ID] = CONTROLLED_EXPECTED_EXTERNAL
+
     modes = contract.get("dependencyModes")
     require(isinstance(modes, list) and len(modes) == len(set(modes)),
             "dependencyModes must be a unique list")
@@ -114,12 +131,12 @@ def main() -> int:
     require(external_ids.isdisjoint(deferred_ids),
             f"live scenario marked deferred: {sorted(external_ids & deferred_ids)}")
 
-    require(external_ids == set(EXPECTED_EXTERNAL),
+    require(external_ids == set(expected_external),
             f"external live scenario set drift: {sorted(external_ids)}")
     require(deferred_ids == EXPECTED_DEFERRED,
             f"deferred scenario set drift: {sorted(deferred_ids)}")
 
-    for scenario_id, (mode, contract_ref, validator_ref) in EXPECTED_EXTERNAL.items():
+    for scenario_id, (mode, contract_ref, validator_ref) in expected_external.items():
         item = external[scenario_id]
         require(item.get("dependencyMode") == mode,
                 f"{scenario_id}: dependencyMode drift")
@@ -148,6 +165,21 @@ def main() -> int:
     require(deletion.get("requestsStartedBeforeFenceCovered") is False,
             "post-fence deletion checkpoint cannot claim pre-fence request coverage")
 
+    if controlled_committed:
+        controlled = external[CONTROLLED_SCENARIO_ID]
+        require(controlled.get("classification") == "BOUNDED_LOCAL_CAPACITY_RAMP",
+                "controlled saturation classification drift")
+        for key in (
+            "capacityBoundaryEstablished",
+            "operationalThresholdApproved",
+            "repeatabilityEstablished",
+        ):
+            require(controlled.get(key) is False,
+                    f"one controlled local ramp cannot enable {key}")
+    else:
+        require(CONTROLLED_SCENARIO_ID not in external,
+                "controlled saturation scenario cannot enter the load index before exact-source reconciliation")
+
     for scenario_id, item in deferred.items():
         reason = item.get("reason")
         mode = item.get("requiredDependencyMode")
@@ -170,6 +202,9 @@ def main() -> int:
     ):
         require(readiness.get(local_only_false) is False,
                 f"local evidence cannot enable readiness.{local_only_false}")
+    if controlled_committed:
+        require(readiness.get("controlledLocalDependencySaturationRampExecuted") is True,
+                "reconciled controlled saturation result must be reflected in load readiness")
 
     results_committed = readiness.get("exactHeadLiveResultsCommitted")
     require(isinstance(results_committed, bool),
@@ -179,9 +214,6 @@ def main() -> int:
         require(all(result_presence.values()),
                 f"live results marked committed but files are missing: {result_presence}")
     elif any(result_presence.values()):
-        # Both files are generated atomically by one workflow. A partial pair is
-        # always invalid. A complete pair with the flag still false is allowed
-        # only transiently inside the workflow before reconciliation.
         require(all(result_presence.values()),
                 f"partial live result pair exists: {result_presence}")
 
@@ -197,6 +229,7 @@ def main() -> int:
     print(f"local/live external: {len(external)}")
     print(f"deferred: {len(deferred)}")
     print(f"live results committed flag: {results_committed}")
+    print(f"controlled saturation committed flag: {controlled_committed}")
     return 0
 
 
