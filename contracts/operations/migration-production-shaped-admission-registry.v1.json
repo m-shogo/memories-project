@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "memory-os-migration-production-shaped-admission-registry.v1",
+  "appendOnly": true,
+  "admittedRehearsalCount": 0,
+  "admissions": [],
+  "productionEvidence": false,
+  "productionReady": false
+}
