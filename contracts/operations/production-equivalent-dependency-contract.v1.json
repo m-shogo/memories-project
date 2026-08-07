@@ -1,0 +1,107 @@
+{
+  "contractId": "memory-os.operability.production-equivalent-dependencies.v1",
+  "schemaVersion": "memory-os-production-equivalent-dependencies.v1",
+  "description": "Fail-closed admission contract for any future environment that may be called production-equivalent for load, recovery or operability evidence. Defining this contract does not provision an environment and cannot itself satisfy OPS-P0-006.",
+  "classification": "PRODUCTION_EQUIVALENT_ADMISSION",
+  "dependencyMode": "PRODUCTION_EQUIVALENT",
+  "requiredDomains": {
+    "postgresql": {
+      "tlsRequired": true,
+      "runtimeRoleMustNotBypassRLS": true,
+      "forceRLSEnabled": true,
+      "connectionBudgetDeclared": true,
+      "connectionPoolTelemetryRequired": true,
+      "backupAndRestoreEvidenceRequired": true,
+      "failoverOrOutageBehaviorRequired": true
+    },
+    "objectStorage": {
+      "tlsRequired": true,
+      "scopedCredentialsRequired": true,
+      "versioningRequired": true,
+      "retentionLifecycleDeclared": true,
+      "exactVersionDeleteRequired": true,
+      "outageAndRecoveryEvidenceRequired": true
+    },
+    "queueAndWorkers": {
+      "boundedBackpressureRequired": true,
+      "queueDepthAndAgeTelemetryRequired": true,
+      "deletionBacklogTelemetryRequired": true,
+      "workerLeaseAndRetryBehaviorRequired": true
+    },
+    "network": {
+      "nonLoopbackTopologyRequired": true,
+      "tlsVerificationRequired": true,
+      "latencyProfileRecorded": true,
+      "failureInjectionBounded": true
+    },
+    "identityAndSecrets": {
+      "productionCredentialsForbidden": true,
+      "dedicatedNonProductionCredentialsRequired": true,
+      "credentialScopeRecorded": true,
+      "secretMaterialForbiddenFromEvidence": true
+    }
+  },
+  "requiredEvidence": [
+    "environment inventory with immutable identifier and region/topology description",
+    "PostgreSQL TLS, role, RLS and pool-budget verification",
+    "object-store TLS, scoped-credential, versioning and lifecycle verification",
+    "queue and worker backpressure/deletion-backlog verification",
+    "bounded latency and dependency-failure behavior measurements",
+    "backup plus isolated restore linkage for the same environment generation",
+    "material-delta ledger against intended production topology",
+    "independent review of every accepted material delta"
+  ],
+  "materialDeltaPolicy": {
+    "emptyDeltaSetRequiredForAutomaticEquivalence": true,
+    "automaticWaiverForbidden": true,
+    "independentReviewRequiredForAnyAcceptedDelta": true,
+    "unknownDeltaFailsClosed": true,
+    "productionTrafficRequired": false,
+    "productionCredentialsRequired": false
+  },
+  "promotionRules": {
+    "contractAloneIsEvidence": false,
+    "localPostgresMinioCanBeRelabeled": false,
+    "githubHostedRunnerCanBeRelabeled": false,
+    "singlePassingScenarioCanPromoteEnvironment": false,
+    "allRequiredDomainsMustPass": true,
+    "allRequiredEvidenceMustBeCommitted": true,
+    "independentReviewRequired": true,
+    "automaticProductionReadyPromotionForbidden": true
+  },
+  "evidenceBoundary": {
+    "environmentProvisioned": false,
+    "environmentValidated": false,
+    "productionTraffic": false,
+    "productionCredentials": false,
+    "productionEvidence": false,
+    "productionEquivalentDependencies": false,
+    "capacityBoundaryEstablished": false,
+    "operationalThresholdApproved": false,
+    "independentReviewCompleted": false,
+    "productionReady": false
+  },
+  "readiness": {
+    "contractDefined": true,
+    "validatorImplemented": false,
+    "automaticValidationImplemented": false,
+    "environmentProvisioned": false,
+    "environmentInventoryCommitted": false,
+    "postgresqlEvidenceCommitted": false,
+    "objectStorageEvidenceCommitted": false,
+    "queueWorkerEvidenceCommitted": false,
+    "networkEvidenceCommitted": false,
+    "backupRestoreEvidenceCommitted": false,
+    "materialDeltaLedgerCommitted": false,
+    "independentReviewCompleted": false,
+    "productionEquivalentDependencies": false,
+    "productionReady": false
+  },
+  "limitations": [
+    "this file defines admission criteria only",
+    "no environment is provisioned by this contract",
+    "local PostgreSQL and MinIO evidence remains local-only",
+    "production credentials and production traffic are not required and remain forbidden for automatic evidence generation",
+    "OPS-P0-006 remains PARTIAL until separate execution evidence satisfies this contract"
+  ]
+}
