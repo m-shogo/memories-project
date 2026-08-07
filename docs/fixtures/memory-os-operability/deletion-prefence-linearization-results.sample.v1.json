@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "memory-os-deletion-prefence-linearization-results.v1",
+  "commitSha": "07c16165306f65181cf7749d16392333c0d3c56d",
+  "generatedAt": "2026-08-07T03:07:01Z",
+  "environment": {
+    "os": "linux",
+    "arch": "amd64",
+    "goVersion": "go1.23.12",
+    "dependencyMode": "LOCAL_POSTGRES_MINIO",
+    "syntheticDataOnly": true,
+    "productionTraffic": false,
+    "productionCredentials": false,
+    "productionEvidence": false,
+    "productionEquivalentDependencies": false,
+    "containsSecrets": false
+  },
+  "scenario": {
+    "scenarioId": "account-deletion-prefence-inflight-linearization-local-dependencies",
+    "inFlightRequests": 32,
+    "authenticatedBeforeFence": 32,
+    "deletionRequestStatus": 202,
+    "deletionEpoch": 2,
+    "releasedAfterFence": 32,
+    "unauthorizedAfterFence": 32,
+    "unexpectedStatusCount": 0,
+    "transportErrors": 0,
+    "workerReceiptCount": 1,
+    "finalOwnedRowCount": 0,
+    "finalAccountState": "deleted",
+    "finalAccountEpoch": 2,
+    "assertions": {
+      "allAuthenticatedBeforeFence": true,
+      "allReleasedAfterFenceUnauthorized": true,
+      "deletionWorkerCompleted": true,
+      "finalOwnedRowCount": 0,
+      "noTransportErrors": true,
+      "noUnexpectedStatuses": true,
+      "productionEvidence": false
+    },
+    "result": "PASS",
+    "integrityResult": "PASS"
+  },
+  "limitations": [
+    "Preview read is the in-flight surface exercised",
+    "one synthetic account and one deletion worker",
+    "local PostgreSQL 16 and MinIO on a GitHub-hosted runner",
+    "not production deletion-capacity evidence"
+  ]
+}
