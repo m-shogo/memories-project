@@ -6,10 +6,7 @@ on:
       - so
     paths:
       - ".github/workflows/deletion-under-load.yml"
-      - "services/import-api/internal/httpserver/deletion_under_load_test.go"
-      - "services/import-api/internal/httpserver/live_load_test.go"
-      - "services/import-api/internal/httpserver/server_live_test.go"
-      - "services/import-api/internal/accountdelete/**"
+      - "services/import-api/internal/**"
       - "infra/postgresql/security/**"
       - "contracts/operations/deletion-under-load-contract.v1.json"
       - "scripts/validate-memory-os-deletion-under-load.py"
@@ -141,10 +138,7 @@ jobs:
           for attempt in 1 2 3; do
             git fetch origin so
             if ! git diff --quiet "${SOURCE_SHA}" origin/so -- \
-              services/import-api/internal/httpserver/deletion_under_load_test.go \
-              services/import-api/internal/httpserver/live_load_test.go \
-              services/import-api/internal/httpserver/server_live_test.go \
-              services/import-api/internal/accountdelete \
+              services/import-api/internal \
               infra/postgresql/security \
               contracts/operations/deletion-under-load-contract.v1.json \
               scripts/validate-memory-os-deletion-under-load.py; then
