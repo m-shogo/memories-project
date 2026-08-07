@@ -56,17 +56,23 @@
   ],
   "readiness": {
     "contractDefined": true,
-    "runnerImplemented": false,
-    "validatorImplemented": false,
-    "automaticWorkflowImplemented": false,
-    "exactSourceResultCommitted": false,
-    "localDecisionModelDrillExecuted": false,
+    "runnerImplemented": true,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": true,
+    "exactSourceResultCommitted": true,
+    "localDecisionModelDrillExecuted": true,
     "runtimeEmergencyModeDrillExecuted": false,
     "productionControlPlaneImplemented": false,
     "automaticProductionExpiryImplemented": false,
     "productionReady": false
   },
   "evidenceRefs": [
-    "contracts/operations/rate-limit-emergency-drill-contract.v1.json"
+    "contracts/operations/rate-limit-emergency-drill-contract.v1.json",
+    "scripts/run-memory-os-rate-limit-emergency-drill.py",
+    "scripts/validate-memory-os-rate-limit-emergency-drill.py",
+    "scripts/reconcile-memory-os-rate-limit-emergency-drill.py",
+    "scripts/evaluate-memory-os-rate-limit-emergency-state.py",
+    "docs/fixtures/memory-os-operability/rate-limit-emergency-drill-results.sample.v1.json",
+    ".github/workflows/rate-limit-emergency-drill.yml"
   ]
 }

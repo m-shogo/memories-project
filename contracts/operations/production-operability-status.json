@@ -228,7 +228,8 @@
         "append-only rate-limit emergency-operation ledger foundation is implemented with bounded activation-intent validation, distinct operator/reviewer identities, exact-source and policy binding, a hard 60-minute maximum, fail-open prohibition and a read-only effective-state evaluator that expires stale intent fail-closed; runtime policy is deliberately not mutated and production evidence remains false",
         "append-only rate-limit emergency-operation evidence contract with closed modes, proxy modes, activation reasons and verification checks",
         "exclusive-create writer that rejects duplicate operation IDs before any overwrite",
-        "privacy validator forbidding raw IP, network identity, tokens, account/session identifiers, URLs, credentials and free-form evidence text"
+        "privacy validator forbidding raw IP, network identity, tokens, account/session identifiers, URLs, credentials and free-form evidence text",
+        "exact-source local/CI emergency decision-model drill proves the canonical append-only writer rejects duplicate operation IDs and the canonical read-only evaluator classifies an ACTIVE emergency record as expired fail-closed after the 60-minute boundary; restoration to NORMAL is modeled as eligible only after every required recovery check passes, without mutating runtime traffic or claiming automatic production expiry"
       ],
       "missingEvidence": [
         "production-equivalent distributed enforcement (shared atomic store)",
@@ -260,7 +261,13 @@
         "docs/fixtures/memory-os-operability/rate-limit-operation-record.template.v1.json",
         "scripts/create-memory-os-rate-limit-operation-evidence.py",
         "scripts/validate-memory-os-rate-limit-operation-evidence.py",
-        "scripts/reconcile-memory-os-rate-limit-operation-evidence.py"
+        "scripts/reconcile-memory-os-rate-limit-operation-evidence.py",
+        "contracts/operations/rate-limit-emergency-drill-contract.v1.json",
+        "scripts/run-memory-os-rate-limit-emergency-drill.py",
+        "scripts/validate-memory-os-rate-limit-emergency-drill.py",
+        "scripts/reconcile-memory-os-rate-limit-emergency-drill.py",
+        "docs/fixtures/memory-os-operability/rate-limit-emergency-drill-results.sample.v1.json",
+        ".github/workflows/rate-limit-emergency-drill.yml"
       ]
     },
     {
