@@ -46,27 +46,27 @@ type deletionPrefenceMutationResultsDocument struct {
 		ContainsSecrets                  bool   `json:"containsSecrets"`
 	} `json:"environment"`
 	Scenario struct {
-		ScenarioID                             string         `json:"scenarioId"`
-		ApplyRequests                          int            `json:"applyRequests"`
-		UploadAuthorizationRequests            int            `json:"uploadAuthorizationRequests"`
-		AuthenticatedBeforeFence               int            `json:"authenticatedBeforeFence"`
-		DeletionRequestStatus                  int            `json:"deletionRequestStatus"`
-		DeletionEpoch                          int64          `json:"deletionEpoch"`
-		ApplyUnauthorizedAfterFence            int            `json:"applyUnauthorizedAfterFence"`
-		UploadAuthorizationUnauthorizedAfterFence int         `json:"uploadAuthorizationUnauthorizedAfterFence"`
-		UnexpectedStatusCount                  int            `json:"unexpectedStatusCount"`
-		TransportErrors                        int            `json:"transportErrors"`
-		PreWorkerApplyConfirmationRows         int            `json:"preWorkerApplyConfirmationRows"`
-		PreWorkerMemoryItemRows                int            `json:"preWorkerMemoryItemRows"`
-		PreWorkerUploadAuthorizationRows       int            `json:"preWorkerUploadAuthorizationRows"`
-		PreWorkerQuarantineRows                int            `json:"preWorkerQuarantineRows"`
-		WorkerReceiptCount                     int            `json:"workerReceiptCount"`
-		FinalOwnedRowCount                     int            `json:"finalOwnedRowCount"`
-		FinalAccountState                      string         `json:"finalAccountState"`
-		FinalAccountEpoch                      int64          `json:"finalAccountEpoch"`
-		Assertions                             map[string]any `json:"assertions"`
-		Result                                 string         `json:"result"`
-		IntegrityResult                        string         `json:"integrityResult"`
+		ScenarioID                                string         `json:"scenarioId"`
+		ApplyRequests                             int            `json:"applyRequests"`
+		UploadAuthorizationRequests               int            `json:"uploadAuthorizationRequests"`
+		AuthenticatedBeforeFence                  int            `json:"authenticatedBeforeFence"`
+		DeletionRequestStatus                     int            `json:"deletionRequestStatus"`
+		DeletionEpoch                             int64          `json:"deletionEpoch"`
+		ApplyUnauthorizedAfterFence               int            `json:"applyUnauthorizedAfterFence"`
+		UploadAuthorizationUnauthorizedAfterFence int            `json:"uploadAuthorizationUnauthorizedAfterFence"`
+		UnexpectedStatusCount                     int            `json:"unexpectedStatusCount"`
+		TransportErrors                           int            `json:"transportErrors"`
+		PreWorkerApplyConfirmationRows            int            `json:"preWorkerApplyConfirmationRows"`
+		PreWorkerMemoryItemRows                   int            `json:"preWorkerMemoryItemRows"`
+		PreWorkerUploadAuthorizationRows          int            `json:"preWorkerUploadAuthorizationRows"`
+		PreWorkerQuarantineRows                   int            `json:"preWorkerQuarantineRows"`
+		WorkerReceiptCount                        int            `json:"workerReceiptCount"`
+		FinalOwnedRowCount                        int            `json:"finalOwnedRowCount"`
+		FinalAccountState                         string         `json:"finalAccountState"`
+		FinalAccountEpoch                         int64          `json:"finalAccountEpoch"`
+		Assertions                                map[string]any `json:"assertions"`
+		Result                                    string         `json:"result"`
+		IntegrityResult                           string         `json:"integrityResult"`
 	} `json:"scenario"`
 	Limitations []string `json:"limitations"`
 }
@@ -245,10 +245,10 @@ func TestAccountDeletionPrefenceMutationLinearizationLocalDependencies(t *testin
 
 	preWorkerCounts := map[string]int{}
 	queries := map[string]string{
-		"apply_confirmation": `SELECT count(*) FROM memory_os.apply_confirmation WHERE owner_account_id = $1`,
-		"memory_item":         `SELECT count(*) FROM memory_os.memory_item WHERE owner_account_id = $1`,
+		"apply_confirmation":   `SELECT count(*) FROM memory_os.apply_confirmation WHERE owner_account_id = $1`,
+		"memory_item":          `SELECT count(*) FROM memory_os.memory_item WHERE owner_account_id = $1`,
 		"upload_authorization": `SELECT count(*) FROM memory_os.upload_authorization WHERE owner_account_id = $1`,
-		"quarantine_object":   `SELECT count(*) FROM memory_os.quarantine_object WHERE owner_account_id = $1`,
+		"quarantine_object":    `SELECT count(*) FROM memory_os.quarantine_object WHERE owner_account_id = $1`,
 	}
 	for name, query := range queries {
 		var count int
@@ -351,18 +351,18 @@ func TestAccountDeletionPrefenceMutationLinearizationLocalDependencies(t *testin
 	document.Scenario.FinalAccountState = finalState
 	document.Scenario.FinalAccountEpoch = finalEpoch
 	document.Scenario.Assertions = map[string]any{
-		"allAuthenticatedBeforeFence": resolver.resolvedCount() == deletionPrefenceMutationTotalRequests,
-		"allApplyUnauthorizedAfterFence": applyUnauthorized == deletionPrefenceMutationApplyRequests,
+		"allAuthenticatedBeforeFence":                  resolver.resolvedCount() == deletionPrefenceMutationTotalRequests,
+		"allApplyUnauthorizedAfterFence":               applyUnauthorized == deletionPrefenceMutationApplyRequests,
 		"allUploadAuthorizationUnauthorizedAfterFence": uploadUnauthorized == deletionPrefenceMutationUploadRequests,
-		"noUnexpectedStatuses": unexpected == 0,
-		"noTransportErrors": transportErrors == 0,
+		"noUnexpectedStatuses":                         unexpected == 0,
+		"noTransportErrors":                            transportErrors == 0,
 		"noPreWorkerMutation": preWorkerCounts["apply_confirmation"] == 0 &&
 			preWorkerCounts["memory_item"] == 0 &&
 			preWorkerCounts["upload_authorization"] == 0 &&
 			preWorkerCounts["quarantine_object"] == 0,
 		"deletionWorkerCompleted": len(receipts) == 1,
-		"finalOwnedRowCount": finalOwnedRows,
-		"productionEvidence": false,
+		"finalOwnedRowCount":      finalOwnedRows,
+		"productionEvidence":      false,
 	}
 	document.Scenario.Result = "PASS"
 	document.Scenario.IntegrityResult = "PASS"
