@@ -73,9 +73,10 @@
     }
   ],
   "limitations": [
-    "no non-production migration rehearsal has been registered through this authority",
+    "registered evidence is limited to non-production migration rehearsals and currently includes one passing local same-cluster actual-artifact restore rehearsal",
     "production migration evidence cannot be written to this registry",
     "a local PASS cannot satisfy production-shaped migration rehearsal requirements",
-    "database identity is stored only as a SHA-256 digest"
+    "database identity is stored only as a SHA-256 digest",
+    "production-equivalent restore capability and independently reviewed recovery-artifact linkage remain unconfigured"
   ]
 }
