@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "deletion-under-load",
+  "sourceCommitSha": "87e84e416ffb66111a454dc18bf97c9e5eddaa40",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "STAGE: format-and-compile\nSTAGE: execute-post-fence-load\n# github.com/m-shogo/memories-project/services/import-api/internal/httpserver [github.com/m-shogo/memories-project/services/import-api/internal/httpserver.test]\ninternal/httpserver/controlled_saturation_ramp_test.go:108:6: controlledSaturationPoolDelta redeclared in this block\n\tinternal/httpserver/controlled_saturation_ramp_test.go:29:6: other declaration of controlledSaturationPoolDelta\ninternal/httpserver/controlled_saturation_ramp_test.go:123:10: invalid operation: cannot take address of counts[\"consumedAuthorizations\"] (map index expression of type int)\ninternal/httpserver/controlled_saturation_ramp_test.go:188:50: too many arguments in conversion to controlledSaturationPoolDelta\nFAIL\tgithub.com/m-shogo/memories-project/services/import-api/internal/httpserver [build failed]\nFAIL\n",
+  "containsSecrets": false,
+  "productionEvidence": false,
+  "requestsStartedBeforeFenceCovered": false
+}
