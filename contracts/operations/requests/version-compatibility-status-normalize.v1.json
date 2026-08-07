@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "memory-os-operation-request.v1",
+  "requestId": "version-compatibility-status-normalize-20260807-v1",
+  "operation": "NORMALIZE_OPS_P0_008_COMPATIBILITY_BLOCKERS",
+  "productionTraffic": false,
+  "productionCredentials": false,
+  "productionEvidence": false,
+  "constraints": {
+    "reuseExistingExecutionReconciler": true,
+    "preserveCandidateLocalProofs": true,
+    "approvedReleaseCountMustRemainZero": true,
+    "approvedRollbackPairCountMustRemainZero": true,
+    "reviewedParserArtifactCountMustRemainZero": true,
+    "productionReadyPromotionForbidden": true
+  }
+}
