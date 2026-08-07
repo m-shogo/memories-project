@@ -17,6 +17,12 @@
   "validator": "scripts/validate-memory-os-deletion-prefence-mutation-linearization.py",
   "reconcile": "scripts/reconcile-memory-os-deletion-prefence-mutation-linearization.py",
   "workflow": ".github/workflows/deletion-prefence-mutation-linearization.yml",
+  "validationRules": {
+    "runnerMustBeGofmtClean": true,
+    "exactSourceBindingRequired": true,
+    "failureDiagnosticRequired": true,
+    "staleEvidenceRejected": true
+  },
   "requiredSequence": [
     "create one synthetic active account, one committed Preview and 16 upload-target import jobs",
     "start 16 Apply and 16 upload-authorization HTTP requests",
