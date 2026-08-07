@@ -1,0 +1,170 @@
+#!/usr/bin/env python3
+"""Fail-closed validator for client/server support-window admission registries."""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+CONTRACT = ROOT / "contracts/operations/client-server-support-window-contract.v1.json"
+RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
+CLIENTS = ROOT / "contracts/operations/client-baseline-registry.v1.json"
+SKEW = ROOT / "contracts/operations/client-server-skew-registry.v1.json"
+
+
+class Fail(RuntimeError):
+    pass
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise Fail(message)
+
+
+def load(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError) as exc:
+        raise Fail(f"cannot load {path.relative_to(ROOT)}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+    return value
+
+
+def main() -> int:
+    contract = load(CONTRACT)
+    releases = load(RELEASES)
+    clients = load(CLIENTS)
+    skew = load(SKEW)
+
+    require(contract.get("schemaVersion") == "memory-os-client-server-support-window.v1", "contract schema drift")
+    require(contract.get("releaseRegistry") == str(RELEASES.relative_to(ROOT)), "release registry ref drift")
+    require(contract.get("clientRegistry") == str(CLIENTS.relative_to(ROOT)), "client registry ref drift")
+    require(contract.get("skewRegistry") == str(SKEW.relative_to(ROOT)), "skew registry ref drift")
+    require(contract.get("supportedClientClasses") == ["IOS_APP", "PORTAL"], "client class drift")
+    require(contract.get("admissibleDirections") == [
+        "CURRENT_CLIENT_CURRENT_BACKEND",
+        "PREVIOUS_CLIENT_CURRENT_BACKEND",
+        "CURRENT_CLIENT_PREVIOUS_BACKEND",
+    ], "skew direction drift")
+
+    rules = contract.get("admissionRules")
+    require(isinstance(rules, dict) and rules, "admissionRules required")
+    required_rules = (
+        "approvedBackendReleaseRequired",
+        "approvedClientBaselineRequired",
+        "exactClientArtifactDigestRequired",
+        "exactBackendArtifactDigestRequired",
+        "apiContractVersionBindingRequired",
+        "databaseContractVersionBindingRequired",
+        "parserProtocolVersionBindingRequired",
+        "authenticationSessionCompatibilityRequired",
+        "deletionFenceCompatibilityRequired",
+        "persistedMutationIdempotencyCompatibilityRequired",
+        "offlineResumeCompatibilityRequiredWhenClientCanOperateOffline",
+        "explicitMinimumSupportedClientVersionRequired",
+        "explicitMaximumSupportedSkewRequired",
+        "expiryOrRetirementDateRequired",
+        "rollbackEligibilityRequiredForPreviousBackend",
+        "independentReviewRequired",
+    )
+    for key in required_rules:
+        require(rules.get(key) is True, f"admission rule must remain true: {key}")
+
+    forbidden = contract.get("forbiddenPromotionSources")
+    require(isinstance(forbidden, list), "forbiddenPromotionSources required")
+    joined_forbidden = "\n".join(str(item).lower() for item in forbidden)
+    for term in ("branch head", "historical candidate", "ci pass", "unbound git tag", "manual compatibility"):
+        require(term in joined_forbidden, f"forbidden promotion source missing: {term}")
+
+    required_evidence = contract.get("requiredPairEvidence")
+    require(isinstance(required_evidence, list), "requiredPairEvidence required")
+    joined_evidence = "\n".join(str(item).lower() for item in required_evidence)
+    for terms in (
+        ("exact approved client artifact", "approved backend release"),
+        ("old-client/new-server", "read", "write"),
+        ("new-client/old-server", "read", "write"),
+        ("session issuance", "resolution"),
+        ("apply", "idempotency"),
+        ("account deletion", "fencing"),
+        ("offline resume",),
+        ("below the minimum support boundary",),
+        ("rollback boundary",),
+        ("retirement", "silently widen"),
+    ):
+        require(all(term in joined_evidence for term in terms), f"pair evidence requirement missing: {terms}")
+
+    require(releases.get("schemaVersion") == "memory-os-release-baseline-registry.v1", "release registry schema drift")
+    require(releases.get("appendOnly") is True and releases.get("productionEvidence") is False, "release registry boundary drift")
+    approved_release_count = releases.get("approvedReleaseCount")
+    require(isinstance(approved_release_count, int) and approved_release_count >= 0, "approvedReleaseCount invalid")
+    release_rows = releases.get("releases")
+    require(isinstance(release_rows, list) and len(release_rows) == approved_release_count, "release registry count mismatch")
+
+    require(clients.get("schemaVersion") == "memory-os-client-baseline-registry.v1", "client registry schema drift")
+    require(clients.get("appendOnly") is True and clients.get("productionEvidence") is False, "client registry boundary drift")
+    approved_client_count = clients.get("approvedClientBaselineCount")
+    require(isinstance(approved_client_count, int) and approved_client_count >= 0, "approvedClientBaselineCount invalid")
+    client_rows = clients.get("clients")
+    require(isinstance(client_rows, list) and len(client_rows) == approved_client_count, "client registry count mismatch")
+
+    require(skew.get("schemaVersion") == "memory-os-client-server-skew-registry.v1", "skew registry schema drift")
+    require(skew.get("appendOnly") is True and skew.get("productionEvidence") is False, "skew registry boundary drift")
+    pair_count = skew.get("admissibleSkewPairCount")
+    pairs = skew.get("pairs")
+    require(isinstance(pair_count, int) and pair_count >= 0, "admissibleSkewPairCount invalid")
+    require(isinstance(pairs, list) and len(pairs) == pair_count, "skew registry count mismatch")
+
+    # Current repository boundary: no approved backend or client baseline means
+    # support-window admission is mathematically empty. This prevents a future
+    # candidate/CI result from silently manufacturing a compatibility promise.
+    require(approved_release_count == 0, "current foundation expects zero approved backend releases")
+    require(approved_client_count == 0, "current foundation expects zero approved client baselines")
+    require(pair_count == 0, "no skew pair may be admitted while either approved registry is empty")
+    require(releases.get("latestApprovedReleaseId") is None, "latest approved release must remain null")
+    latest_clients = clients.get("latestApprovedClientByClass")
+    require(isinstance(latest_clients, dict), "latestApprovedClientByClass required")
+    require(latest_clients.get("IOS_APP") is None and latest_clients.get("PORTAL") is None, "latest approved clients must remain null")
+
+    boundary = contract.get("currentBoundary")
+    require(isinstance(boundary, dict), "currentBoundary required")
+    require(boundary.get("approvedBackendReleaseCount") == approved_release_count == 0, "backend release boundary drift")
+    require(boundary.get("approvedClientBaselineCount") == approved_client_count == 0, "client baseline boundary drift")
+    require(boundary.get("admissibleSkewPairCount") == pair_count == 0, "skew pair boundary drift")
+    for key in ("implementedClientSupportWindow", "clientServerSkewEvidence", "releaseCompatibilityEvidence", "productionEvidence", "productionReady"):
+        require(boundary.get(key) is False, f"foundation cannot enable {key}")
+    require(boundary.get("productionDecision") == "NO_GO", "production decision must remain NO_GO")
+
+    readiness = contract.get("readiness")
+    require(isinstance(readiness, dict), "readiness required")
+    require(readiness.get("contractDefined") is True and readiness.get("registriesDefined") is True, "foundation definition drift")
+    for key in ("validatorImplemented", "automaticWorkflowImplemented"):
+        require(isinstance(readiness.get(key), bool), f"readiness.{key} must be boolean")
+    for key in (
+        "approvedBackendReleaseAvailable",
+        "approvedClientBaselineAvailable",
+        "supportWindowImplemented",
+        "skewPairExecuted",
+        "independentReviewCompleted",
+        "productionReady",
+    ):
+        require(readiness.get(key) is False, f"foundation cannot enable readiness.{key}")
+
+    print("Memory OS client/server support-window validation PASS")
+    print("approved backend releases: 0")
+    print("approved client baselines: 0")
+    print("admissible skew pairs: 0")
+    print("client/server skew evidence: false")
+    print("production evidence: false")
+    print("production decision: NO_GO")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except Fail as exc:
+        print(f"CLIENT SERVER SUPPORT WINDOW FAILED: {exc}", file=sys.stderr)
+        raise SystemExit(1)
