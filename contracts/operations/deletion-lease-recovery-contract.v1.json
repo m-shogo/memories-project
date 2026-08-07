@@ -1,0 +1,88 @@
+{
+  "contractId": "memory-os.operability.deletion-lease-recovery.v1",
+  "schemaVersion": "memory-os-deletion-lease-recovery.v1",
+  "resultsSchemaVersion": "memory-os-deletion-lease-recovery-results.v1",
+  "description": "Bounded local PostgreSQL and MinIO checkpoint for deletion-worker interruption recovery. It simulates a worker process disappearing after claiming a deletion lease without Release/Complete, including one account whose object versions were already erased while its database ledger remained intact. After lease expiry, a replacement worker must reclaim both accounts and converge idempotently without resurrection.",
+  "scenarioId": "account-deletion-lease-expiry-reclaim-local-dependencies",
+  "dependencyMode": "LOCAL_POSTGRES_MINIO",
+  "accounts": 2,
+  "leaseSeconds": 1,
+  "interruptionCases": [
+    {
+      "caseId": "claimed-before-erasure",
+      "description": "lease claimed and then abandoned before object or database erasure"
+    },
+    {
+      "caseId": "object-erased-before-db-sweep",
+      "description": "lease claimed, real uploaded object versions erased, database object ledger intentionally retained, then process simulated as disappeared without Release/Complete"
+    }
+  ],
+  "requiredSequence": [
+    "create and fence two synthetic accounts at deletion epoch 2",
+    "upload at least one real versioned MinIO object for each account and retain canonical database object ledger",
+    "claim both deletion leases directly without invoking Worker.Sweep",
+    "for case claimed-before-erasure perform no erasure and abandon the lease",
+    "for case object-erased-before-db-sweep erase the real object version but leave the database ledger and account state deleting, then abandon the lease",
+    "do not call Release, Sweep or Complete for either abandoned claim",
+    "prove replacement worker cannot claim before lease expiry",
+    "wait only until the bounded one-second lease expires",
+    "replacement worker reclaims both accounts",
+    "object erasure remains idempotent for the already-erased case because the ledger survives",
+    "replacement worker completes database sweep and tombstone transition for both accounts",
+    "final deletion backlog pending and stuck counts are zero",
+    "all account-owned database rows are zero and no uploaded object version is resurrected"
+  ],
+  "successCriteria": {
+    "initialClaims": 2,
+    "claimsAvailableBeforeExpiry": 0,
+    "replacementWorkerReceipts": 2,
+    "uniqueReplacementReceipts": 2,
+    "replacementWorkerErrors": 0,
+    "finalDeletionPending": 0,
+    "finalDeletionStuck": 0,
+    "finalOwnedRowCount": 0,
+    "finalDeletedTombstonesEpoch2": 2,
+    "remainingObjectVersions": 0,
+    "productionEvidence": false
+  },
+  "abortCriteria": [
+    "an abandoned lease is reclaimable before its expiry",
+    "the replacement worker cannot reclaim both expired leases",
+    "already-erased object handling creates a new version or resurrects data",
+    "database object ledger is removed before replacement-worker convergence in the partial-erasure case",
+    "replacement worker reports an erasure error",
+    "any account-owned row or uploaded object version survives final convergence",
+    "result contains account id, object key, database URL, signed URL, token or credential"
+  ],
+  "evidenceBoundary": {
+    "syntheticDataOnly": true,
+    "productionTraffic": false,
+    "productionCredentials": false,
+    "productionEvidence": false,
+    "productionEquivalentDependencies": false,
+    "leaseAbandonmentSimulatesProcessInterruption": true,
+    "actualProcessKillCovered": false,
+    "actualHostFailureCovered": false,
+    "productionReady": false
+  },
+  "readiness": {
+    "contractDefined": true,
+    "runnerImplemented": false,
+    "validatorImplemented": false,
+    "automaticWorkflowImplemented": false,
+    "exactSourceResultCommitted": false,
+    "leaseExpiryReclaimProven": false,
+    "partialObjectErasureRecoveryProven": false,
+    "actualProcessKillCovered": false,
+    "actualHostFailureCovered": false,
+    "productionDependenciesTested": false,
+    "independentReviewCompleted": false,
+    "productionReady": false
+  },
+  "limitations": [
+    "lease abandonment is a deterministic process-interruption simulation, not an operating-system SIGKILL or host crash",
+    "one-second lease is a bounded test configuration rather than a production lease recommendation",
+    "two accounts and one replacement worker do not establish deletion throughput or capacity",
+    "local PostgreSQL 16 and MinIO are not production-equivalent dependencies"
+  ]
+}
