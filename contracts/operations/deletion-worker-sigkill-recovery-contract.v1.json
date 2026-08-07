@@ -68,11 +68,11 @@
   },
   "readiness": {
     "contractDefined": true,
-    "runnerImplemented": false,
-    "validatorImplemented": false,
-    "automaticWorkflowImplemented": false,
-    "exactSourceResultCommitted": false,
-    "actualSIGKILLRecoveryProven": false,
+    "runnerImplemented": true,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": true,
+    "exactSourceResultCommitted": true,
+    "actualSIGKILLRecoveryProven": true,
     "productionDependenciesTested": false,
     "independentReviewCompleted": false,
     "productionReady": false
