@@ -16,6 +16,7 @@ STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 RESULT_DIR = ROOT / "docs/fixtures/memory-os-operability"
 RESULT_GLOB = "sustained-local-soak-results.run-*.v1.json"
 AGGREGATE_PATH = RESULT_DIR / "sustained-local-soak-results.aggregate.v1.json"
+REVIEW_PATH = RESULT_DIR / "sustained-local-soak-trend-review.v1.json"
 AGGREGATE_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak-aggregate.py"
 
 FOUNDATION_REFS = (
@@ -25,8 +26,18 @@ FOUNDATION_REFS = (
     "scripts/validate-memory-os-sustained-local-soak-result.py",
     "scripts/validate-memory-os-sustained-local-soak-aggregate.py",
     "scripts/update-memory-os-sustained-local-soak-aggregate.py",
+    "scripts/review-memory-os-sustained-local-soak-trends.py",
+    "scripts/validate-memory-os-sustained-local-soak-trend-review.py",
     "scripts/reconcile-memory-os-sustained-local-soak-status.py",
     ".github/workflows/sustained-local-soak.yml",
+    ".github/workflows/reconcile-sustained-local-soak-authority.yml",
+)
+REPEATED_SOAK_STALE_GAPS = {
+    "sustained soak with RSS/heap/goroutine-slope evidence (SOAK PROOF INSUFFICIENT)",
+    "60-minute-or-longer repeated soak over PostgreSQL, object storage, parser, queue, deletion and authentication paths with RSS/heap/goroutine slope review and independently approved leak/stability criteria",
+}
+REMAINING_REVIEW_GAP = (
+    "independently approved leak/stability criteria and review over the repeated LOCAL_LONG_SOAK trends; descriptive cross-run review is complete but leakProof remains false"
 )
 
 
@@ -105,6 +116,7 @@ def main() -> int:
         aggregate = load(AGGREGATE_PATH)
     else:
         require(not AGGREGATE_PATH.exists(), "aggregate exists without run documents")
+        require(not REVIEW_PATH.exists(), "trend review exists without run documents")
 
     readiness["contractDefined"] = True
     readiness["firstLongRunCommitted"] = run_count >= 1
@@ -124,6 +136,7 @@ def main() -> int:
     if readiness["localSustainedSoakEvidence"]:
         require(run_count >= minimum_runs, "local sustained-soak evidence requires repeated runs")
         require(readiness["trendReviewCompleted"], "local sustained-soak evidence requires trend review")
+        require(REVIEW_PATH.is_file(), "local sustained-soak evidence requires canonical trend-review file")
 
     load_contract = load(LOAD_PATH)
     load_readiness = load_contract.get("readiness")
@@ -141,6 +154,8 @@ def main() -> int:
         append_unique(evidence_refs, "docs/fixtures/memory-os-operability/sustained-local-soak-results.aggregate.v1.json")
         for path in paths:
             append_unique(evidence_refs, str(path.relative_to(ROOT)))
+    if readiness["trendReviewCompleted"]:
+        append_unique(evidence_refs, str(REVIEW_PATH.relative_to(ROOT)))
 
     for deferred_id in ("soak-memory-leak", "soak"):
         item = find_scenario(deferred, deferred_id)
@@ -162,7 +177,7 @@ def main() -> int:
             )
         else:
             item["reason"] = (
-                "repeated LOCAL_LONG_SOAK execution and descriptive trend review exist, but this local evidence is not leak proof and is not production-shaped sustained-soak evidence"
+                "repeated LOCAL_LONG_SOAK execution and descriptive trend review exist, but this local evidence is not leak proof and is not production-shaped sustained-soak evidence; independent leak/stability criteria remain required"
             )
         item["requiredDependencyMode"] = "LOCAL_POSTGRES_MINIO"
 
@@ -184,20 +199,32 @@ def main() -> int:
     if run_count >= 1:
         append_unique(existing, f"{run_count} exact-source LOCAL_LONG_SOAK run document(s) satisfy the per-run validator; production evidence and leak proof remain false")
     if readiness["localSustainedSoakEvidence"]:
-        append_unique(existing, "repeated LOCAL_LONG_SOAK runs plus cross-run trend review are registered as local-only sustained-soak evidence; this is not leak proof or production-shaped evidence")
+        append_unique(existing, "repeated LOCAL_LONG_SOAK runs plus cross-run descriptive trend review are registered as local-only sustained-soak evidence; this is not leak proof or production-shaped evidence")
 
     local_prefixes = (
         "two independent 60-minute-or-longer LOCAL_LONG_SOAK runs",
         "a second independent 60-minute-or-longer LOCAL_LONG_SOAK run",
         "cross-run LOCAL_LONG_SOAK trend review",
     )
-    missing = [item for item in missing if not (isinstance(item, str) and item.startswith(local_prefixes))]
+    missing = [
+        item for item in missing
+        if not (
+            isinstance(item, str)
+            and (
+                item.startswith(local_prefixes)
+                or item in REPEATED_SOAK_STALE_GAPS
+                or item == REMAINING_REVIEW_GAP
+            )
+        )
+    ]
     if run_count == 0:
         missing.append("two independent 60-minute-or-longer LOCAL_LONG_SOAK runs plus cross-run RSS/heap/goroutine/latency/error/DB/queue/deletion trend review")
     elif run_count < minimum_runs:
         missing.append("a second independent 60-minute-or-longer LOCAL_LONG_SOAK run plus cross-run RSS/heap/goroutine/latency/error/DB/queue/deletion trend review")
     elif not readiness["trendReviewCompleted"]:
         missing.append("cross-run LOCAL_LONG_SOAK trend review before local-only sustained-soak evidence can be registered")
+    else:
+        missing.append(REMAINING_REVIEW_GAP)
     load_status["missingEvidence"] = missing
     for ref in FOUNDATION_REFS:
         append_unique(refs, ref)
@@ -205,6 +232,15 @@ def main() -> int:
         append_unique(refs, "docs/fixtures/memory-os-operability/sustained-local-soak-results.aggregate.v1.json")
         for path in paths:
             append_unique(refs, str(path.relative_to(ROOT)))
+    if readiness["trendReviewCompleted"]:
+        append_unique(refs, str(REVIEW_PATH.relative_to(ROOT)))
+
+    if readiness["localSustainedSoakEvidence"]:
+        for stale in REPEATED_SOAK_STALE_GAPS:
+            require(stale not in load_status["missingEvidence"],
+                    f"completed repeated-soak gap remained stale: {stale}")
+        require(REMAINING_REVIEW_GAP in load_status["missingEvidence"],
+                "independent leak/stability review gap must remain explicit")
 
     require(status.get("productionDecision") == "NO_GO", "production decision drift")
     require(load_status.get("status") == "PARTIAL", "OPS-P0-006 status drift")
@@ -217,8 +253,9 @@ def main() -> int:
     print(f"committed LOCAL_LONG_SOAK runs: {run_count}")
     print(f"trend review completed: {str(readiness['trendReviewCompleted']).lower()}")
     print(f"local sustained soak evidence: {str(readiness['localSustainedSoakEvidence']).lower()}")
-    print("production sustained soak evidence: false")
     print("leak proof: false")
+    print("independent leak/stability review: required")
+    print("production sustained soak evidence: false")
     print("OPS-P0-006: PARTIAL")
     print("Production: NO_GO")
     return 0
