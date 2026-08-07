@@ -9,7 +9,10 @@
   "validator": "scripts/validate-memory-os-production-shaped-failure-drills.py",
   "reconcile": "scripts/reconcile-memory-os-production-shaped-failure-drills.py",
   "workflow": ".github/workflows/production-shaped-failure-drills.yml",
-  "allowedEnvironmentClasses": ["PRODUCTION_EQUIVALENT", "PRODUCTION"],
+  "allowedEnvironmentClasses": [
+    "PRODUCTION_EQUIVALENT",
+    "PRODUCTION"
+  ],
   "scenarioClasses": [
     {
       "id": "FAIL-PROD-001",
@@ -105,10 +108,10 @@
   },
   "readiness": {
     "contractDefined": true,
-    "registryImplemented": false,
-    "writerImplemented": false,
-    "validatorImplemented": false,
-    "automaticWorkflowImplemented": false,
+    "registryImplemented": true,
+    "writerImplemented": true,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": true,
     "completedScenarioCount": 0,
     "allRequiredScenarioClassesCompleted": false,
     "productionReady": false
