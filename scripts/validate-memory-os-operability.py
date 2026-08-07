@@ -306,25 +306,48 @@ def validate(repo_root: Path) -> tuple[int, int, str]:
             raise ValidationFailure(f"Round 10 authority omits {gate}")
     for gate in (gate for gate in REQUIRED if gate.startswith("OPS-P0-")):
         if gate not in audit:
-            raise ValidationFailure(f"production audit omits {gate}")
+            raise ValidationFailure(f"operability audit omits {gate}")
+    for phrase in (
+        "transaction rollback is not migration rollback",
+        "object versioning is not backup",
+        "fault injection is not chaos completion",
+        "CI green is not production observability",
+    ):
+        if phrase not in authority:
+            raise ValidationFailure(f"Round 10 authority omits: {phrase}")
+    for path in (STATUS_PATH.as_posix(), AUDIT_PATH.as_posix()):
+        if path not in authority:
+            raise ValidationFailure(f"Round 10 authority does not link {path}")
+    rendered_decision = decision.replace("_", "-")
+    if decision not in authority or (decision not in audit and rendered_decision not in audit):
+        raise ValidationFailure("production decision disagrees across authority files")
 
-    return ready_count, len(blocking), decision
+    return ready_count, len(areas), decision
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--repo-root", type=Path, default=Path("."))
+    parser.add_argument(
+        "--repo-root",
+        type=Path,
+        default=Path(__file__).resolve().parents[1],
+        help="repository root",
+    )
     args = parser.parse_args()
-    ready_count, p0_count, decision = validate(args.repo_root.resolve())
-    print("Memory OS production operability validation PASS")
-    print(f"P0 ready: {ready_count}/{p0_count}")
+    try:
+        ready, total, decision = validate(args.repo_root.resolve())
+    except ValidationFailure as exc:
+        print(f"OPERABILITY VALIDATION FAILED: {exc}", file=sys.stderr)
+        return 1
+    except Exception as exc:
+        print(f"OPERABILITY VALIDATION FAILED WITH UNEXPECTED ERROR: {exc}", file=sys.stderr)
+        return 2
+
+    print("Memory OS production-operability validation PASS")
+    print(f"ready gates: {ready}/{total}")
     print(f"production decision: {decision}")
     return 0
 
 
 if __name__ == "__main__":
-    try:
-        raise SystemExit(main())
-    except ValidationFailure as exc:
-        print(f"OPERABILITY VALIDATION FAILED: {exc}", file=sys.stderr)
-        raise SystemExit(1)
+    raise SystemExit(main())
