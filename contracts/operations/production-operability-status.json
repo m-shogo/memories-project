@@ -389,21 +389,31 @@
         "four protected recovery domains covering canonical PostgreSQL state, exact object versions, release metadata and incident/deletion evidence",
         "nine-phase isolated restore lifecycle with mandatory authority, integrity, idempotency and non-resurrection verification",
         "promotion guards that block routing on cross-tenant visibility, resurrection, recovery-point incoherence, missing artifacts, unmeasured objectives or incomplete checks",
-        "canonical backup/restore runbook and fail-closed policy validator"
+        "canonical backup/restore runbook and fail-closed policy validator",
+        "executable local PostgreSQL logical dump and isolated-restore drill over the complete canonical migration sequence",
+        "restored database verification covering all canonical SQL integration suites, four NOBYPASSRLS runtime roles and FORCE RLS tenant tables",
+        "synthetic deleted account and account-session digest remain absent after restore and cannot resolve through memory_auth_runtime",
+        "privacy-safe exact-source restore result with database identity stored only as a SHA-256 digest",
+        "executable local three-bucket MinIO exact-version recovery drill using explicit source and backup VersionIds",
+        "complete simulated source-version loss before restore with backup checksum and source-version metadata binding preserved",
+        "privacy-safe exact-source object recovery result storing only SHA-256 digests of bucket, key and provider version identifiers"
       ],
       "missingEvidence": [
-        "production PostgreSQL backup schedule, independent retention and PITR configuration",
-        "cross-cluster isolated restore rehearsal with approved recovery owner and promotion decision",
-        "coherent PostgreSQL and object-version recovery-point selection",
-        "approved and measured RPO/RTO",
-        "production deletion and expired-session non-resurrection verification after restore",
         "production PostgreSQL backup and PITR configuration with independent retention",
         "independent object-version retention and exact-version recovery validation",
         "approved and measured RPO and RTO under production-shaped recovery",
         "cross-cluster isolated restore drill with approved recovery owner and promotion decision",
         "production restore drill completion across coherent PostgreSQL and object recovery points",
         "production backup monitoring, freshness enforcement and paging",
-        "independent review of recovery evidence and promotion decision"
+        "independent review of recovery evidence and promotion decision",
+        "production PostgreSQL backup schedule, encrypted independent retention and WAL/PITR configuration",
+        "production object-store TLS, restore-only credential separation and provider durability evidence",
+        "coherent PostgreSQL and exact object-version recovery-point selection with measured skew",
+        "approved and measured RPO/RTO and backup freshness monitoring",
+        "production deletion, expired/revoked-session, replay and lease non-resurrection verification after restore",
+        "restore promotion rehearsal and independent security/privacy review",
+        "production independent object backup retention, deletion protection, immutability and lifecycle verification",
+        "production-shaped cross-cluster isolated restore drill with approved recovery owner and promotion decision"
       ],
       "evidenceRefs": [
         "contracts/operations/local-logical-restore-contract.v1.json",
@@ -416,7 +426,14 @@
         "contracts/operations/local-object-version-restore-contract.v1.json",
         "docs/runbooks/memory-os-backup-restore.md",
         "scripts/validate-memory-os-backup-restore.py",
-        "scripts/reconcile-memory-os-backup-restore.py"
+        "scripts/reconcile-memory-os-backup-restore.py",
+        "contracts/operations/backup-local-foundation-evidence.v1.json",
+        "docs/fixtures/memory-os-operability/local-object-version-restore-results.sample.v1.json",
+        "scripts/validate-memory-os-backup-local-foundations.py",
+        "scripts/validate-memory-os-local-object-version-restore.py",
+        "scripts/reconcile-memory-os-backup-authority.py",
+        ".github/workflows/local-object-version-restore.yml",
+        ".github/workflows/reconcile-backup-authority.yml"
       ]
     },
     {
