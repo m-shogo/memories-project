@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+"""Reconcile repeatable local degradation evidence without approving capacity thresholds."""
+
+from __future__ import annotations
+
+import json
+import subprocess
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+CONTRACT = ROOT / "contracts/operations/controlled-saturation-repeatability-contract.v1.json"
+RESULT = ROOT / "docs/fixtures/memory-os-operability/controlled-saturation-repeatability-results.v1.json"
+VALIDATOR = ROOT / "scripts/validate-memory-os-controlled-saturation-repeatability.py"
+LOAD = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
+STATUS = ROOT / "contracts/operations/production-operability-status.json"
+WORKFLOW = ROOT / ".github/workflows/controlled-saturation-repeatability.yml"
+
+EVIDENCE = (
+    "two-run local controlled-saturation repeatability authority classifies a throughput/latency degradation knee or actual failure signal on independent PostgreSQL+MinIO runners; even a repeatable local signal remains non-production and cannot itself establish a capacity boundary or approve an operating threshold"
+)
+REFS = (
+    "contracts/operations/controlled-saturation-repeatability-contract.v1.json",
+    "scripts/analyze-memory-os-controlled-saturation-repeatability.py",
+    "scripts/validate-memory-os-controlled-saturation-repeatability.py",
+    "scripts/reconcile-memory-os-controlled-saturation-repeatability.py",
+    ".github/workflows/controlled-saturation-repeatability.yml",
+    "docs/fixtures/memory-os-operability/controlled-saturation-repeatability-results.v1.json",
+)
+
+
+class Fail(RuntimeError):
+    pass
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise Fail(message)
+
+
+def load(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+    return value
+
+
+def write(path: Path, value: dict[str, Any]) -> None:
+    path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def append_once(values: list[Any], value: str) -> None:
+    if value not in values:
+        values.append(value)
+
+
+def main() -> int:
+    subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=True)
+    result = load(RESULT)
+    repeatable = result.get("repeatableLocalDegradationSignalObserved") is True
+
+    contract = load(CONTRACT)
+    readiness = contract.get("readiness")
+    require(isinstance(readiness, dict), "repeatability readiness missing")
+    readiness["analyzerImplemented"] = True
+    readiness["validatorImplemented"] = True
+    readiness["automaticWorkflowImplemented"] = WORKFLOW.is_file()
+    readiness["independentRunCount"] = 2
+    readiness["repeatableLocalDegradationSignalObserved"] = repeatable
+    readiness["capacityBoundaryEstablished"] = False
+    readiness["operationalThresholdApproved"] = False
+    readiness["independentReviewCompleted"] = False
+    readiness["productionReady"] = False
+    write(CONTRACT, contract)
+
+    load_contract = load(LOAD)
+    load_readiness = load_contract.get("readiness")
+    require(isinstance(load_readiness, dict), "load readiness missing")
+    load_readiness["repeatableLocalDegradationSignalObserved"] = repeatable
+    load_readiness["capacityBoundaryEstablished"] = False
+    load_readiness["operationalThresholds"] = False
+    refs = load_contract.get("evidenceRefs")
+    require(isinstance(refs, list), "load evidenceRefs missing")
+    for ref in REFS:
+        append_once(refs, ref)
+    write(LOAD, load_contract)
+
+    status = load(STATUS)
+    require(status.get("productionDecision") == "NO_GO", "production decision must remain NO_GO")
+    gate = next((row for row in status.get("areas", []) if isinstance(row, dict) and row.get("id") == "OPS-P0-006"), None)
+    require(isinstance(gate, dict), "OPS-P0-006 missing")
+    require(str(gate.get("status")).startswith("PARTIAL"), "OPS-P0-006 must remain PARTIAL")
+    existing = gate.get("existingEvidence")
+    missing = gate.get("missingEvidence")
+    gate_refs = gate.get("evidenceRefs")
+    require(isinstance(existing, list) and isinstance(missing, list) and isinstance(gate_refs, list), "OPS-P0-006 arrays missing")
+    append_once(existing, EVIDENCE)
+    for ref in REFS:
+        append_once(gate_refs, ref)
+    if repeatable:
+        rewritten: list[Any] = []
+        for item in missing:
+            text = str(item)
+            if "repeatable saturation transition" in text.lower():
+                replacement = "production-shaped capacity boundary plus independently reviewed safe operating thresholds derived from admitted repeated evidence"
+                if replacement not in rewritten:
+                    rewritten.append(replacement)
+            elif item not in rewritten:
+                rewritten.append(item)
+        gate["missingEvidence"] = rewritten
+    write(STATUS, status)
+
+    print("Memory OS controlled saturation repeatability reconciliation PASS")
+    print(f"repeatable local degradation signal: {repeatable}")
+    print("capacity boundary established: false")
+    print("operational threshold approved: false")
+    print("OPS-P0-006: PARTIAL")
+    print("productionDecision: NO_GO")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except Fail as exc:
+        print(f"CONTROLLED SATURATION REPEATABILITY RECONCILE FAILED: {exc}")
+        raise SystemExit(1)
