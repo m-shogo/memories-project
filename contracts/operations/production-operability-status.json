@@ -252,7 +252,8 @@
         "exclusive-create writer that rejects duplicate operation IDs before any overwrite",
         "privacy validator forbidding raw IP, network identity, tokens, account/session identifiers, URLs, credentials and free-form evidence text",
         "exact-source local/CI emergency decision-model drill proves the canonical append-only writer rejects duplicate operation IDs and the canonical read-only evaluator classifies an ACTIVE emergency record as expired fail-closed after the 60-minute boundary; restoration to NORMAL is modeled as eligible only after every required recovery check passes, without mutating runtime traffic or claiming automatic production expiry",
-        "canonical per-operation rate-limit evidence ledger provides exclusive append-only records, privacy validation, distinct operator/reviewer handles, bounded 60-minute expiry and recovery verification; a supplemental read-only evaluator classifies expired records fail-closed without mutating runtime or claiming automatic production expiry"
+        "canonical per-operation rate-limit evidence ledger provides exclusive append-only records, privacy validation, distinct operator/reviewer handles, bounded 60-minute expiry and recovery verification; a supplemental read-only evaluator classifies expired records fail-closed without mutating runtime or claiming automatic production expiry",
+        "generation-bound distributed rate-limit runtime admission is implemented: future evidence must bind the exact policy digest, at least two runtime instances, an atomic shared store, trusted-proxy deployment, restart continuity, fail-closed dependency behavior, runtime-observed emergency expiry/restoration, alert delivery and independent security/operability review; the registry is currently empty and creates no runtime deployment claim"
       ],
       "missingEvidence": [
         "production-equivalent distributed enforcement (shared atomic store)",
@@ -284,7 +285,13 @@
         "scripts/validate-memory-os-rate-limit-emergency-drill.py",
         "scripts/reconcile-memory-os-rate-limit-emergency-drill.py",
         "docs/fixtures/memory-os-operability/rate-limit-emergency-drill-results.sample.v1.json",
-        ".github/workflows/rate-limit-emergency-drill.yml"
+        ".github/workflows/rate-limit-emergency-drill.yml",
+        "contracts/operations/rate-limit-distributed-runtime-admission-contract.v1.json",
+        "contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json",
+        "scripts/register-memory-os-rate-limit-distributed-runtime.py",
+        "scripts/validate-memory-os-rate-limit-distributed-runtime.py",
+        "scripts/reconcile-memory-os-rate-limit-distributed-runtime.py",
+        ".github/workflows/rate-limit-distributed-runtime-admission.yml"
       ]
     },
     {
