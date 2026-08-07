@@ -1,0 +1,245 @@
+name: Deletion Worker SIGKILL Recovery
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/deletion-worker-sigkill-recovery.yml"
+      - "contracts/operations/deletion-worker-sigkill-recovery-contract.v1.json"
+      - "scripts/validate-memory-os-deletion-worker-sigkill-recovery.py"
+      - "scripts/reconcile-memory-os-deletion-worker-sigkill-recovery.py"
+      - "services/import-api/internal/httpserver/deletion_worker_sigkill_recovery_linux_test.go"
+      - "services/import-api/internal/httpserver/deletion_lease_recovery_test.go"
+      - "services/import-api/internal/httpserver/deletion_prefence_upload_completion_test.go"
+      - "services/import-api/internal/httpserver/server_live_test.go"
+      - "services/import-api/internal/httpserver/server.go"
+      - "services/import-api/internal/accountdelete/**"
+      - "services/import-api/internal/pgrepo/**"
+      - "services/import-api/internal/objectstore/**"
+      - "services/import-api/internal/authstore/**"
+      - "services/import-api/internal/dbscope/**"
+      - "services/import-api/internal/pgscope/**"
+      - "services/import-api/internal/upload/**"
+      - "infra/postgresql/security/**"
+      - "services/import-api/go.mod"
+      - "services/import-api/go.sum"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deletion-worker-sigkill-recovery-so
+  cancel-in-progress: false
+
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: memory_os_security
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d memory_os_security"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: services/import-api/go.sum
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Capture exact source
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Start local MinIO
+        run: |
+          set -euo pipefail
+          docker run -d --name memory-os-deletion-sigkill-minio \
+            -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio server /data
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:9000/minio/health/live >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs memory-os-deletion-sigkill-minio
+          exit 1
+
+      - name: Execute exact-source SIGKILL proof
+        id: proof
+        env:
+          MEMORY_OS_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/memory_os_security?sslmode=disable
+          MEMORY_OS_TEST_S3_ENDPOINT: http://127.0.0.1:9000
+          MEMORY_OS_TEST_S3_ACCESS_KEY: minioadmin
+          MEMORY_OS_TEST_S3_SECRET_KEY: minioadmin
+          MEMORY_OS_RUN_DELETION_SIGKILL_RECOVERY: "1"
+          MEMORY_OS_DELETION_SIGKILL_RECOVERY_RESULTS_PATH: ../../../../docs/fixtures/memory-os-operability/deletion-worker-sigkill-recovery-results.sample.v1.json
+        run: |
+          set +e
+          export MEMORY_OS_COMMIT_SHA="$SOURCE_SHA"
+          log=/tmp/memory-os-deletion-sigkill-recovery.log
+          : > "$log"
+          result=docs/fixtures/memory-os-operability/deletion-worker-sigkill-recovery-results.sample.v1.json
+          rm -f "$result"
+          code=0
+          echo "STAGE: python-and-contract" >> "$log"
+          python -m py_compile \
+            scripts/validate-memory-os-deletion-worker-sigkill-recovery.py \
+            scripts/reconcile-memory-os-deletion-worker-sigkill-recovery.py \
+            >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-deletion-worker-sigkill-recovery.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: gofmt" >> "$log"
+            test -z "$(gofmt -l services/import-api/internal/httpserver/deletion_worker_sigkill_recovery_linux_test.go)" \
+              >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: live-proof" >> "$log"
+            (
+              cd services/import-api
+              go test ./internal/httpserver \
+                -run '^TestDeletionWorkerSIGKILLRecoveryLocalDependencies$' \
+                -count=1 -timeout=15m
+            ) >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: exact-result-validation" >> "$log"
+            python scripts/validate-memory-os-deletion-worker-sigkill-recovery.py \
+              --require-result \
+              --expected-commit-sha "$SOURCE_SHA" \
+              >> "$log" 2>&1 || code=$?
+          fi
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Commit exact-source result
+        if: steps.proof.outputs.exit_code == '0'
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          if ! git diff --quiet "$SOURCE_SHA" origin/so -- \
+            .github/workflows/deletion-worker-sigkill-recovery.yml \
+            contracts/operations/deletion-worker-sigkill-recovery-contract.v1.json \
+            scripts/validate-memory-os-deletion-worker-sigkill-recovery.py \
+            scripts/reconcile-memory-os-deletion-worker-sigkill-recovery.py \
+            services/import-api/internal/httpserver/deletion_worker_sigkill_recovery_linux_test.go \
+            services/import-api/internal/httpserver/deletion_lease_recovery_test.go \
+            services/import-api/internal/httpserver/deletion_prefence_upload_completion_test.go \
+            services/import-api/internal/httpserver/server_live_test.go \
+            services/import-api/internal/httpserver/server.go \
+            services/import-api/internal/accountdelete \
+            services/import-api/internal/pgrepo \
+            services/import-api/internal/objectstore \
+            services/import-api/internal/authstore \
+            services/import-api/internal/dbscope \
+            services/import-api/internal/pgscope \
+            services/import-api/internal/upload \
+            infra/postgresql/security; then
+            echo "Relevant source changed while SIGKILL proof ran; refusing stale evidence."
+            exit 75
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/fixtures/memory-os-operability/deletion-worker-sigkill-recovery-results.sample.v1.json
+          git commit -m "test(deletion): record SIGKILL recovery result"
+          git pull --rebase origin so
+          git push origin HEAD:so
+
+      - name: Reconcile local-only authority
+        if: steps.proof.outputs.exit_code == '0'
+        run: |
+          set -euo pipefail
+          export EXPECTED_COMMIT_SHA="$SOURCE_SHA"
+          python scripts/reconcile-memory-os-deletion-worker-sigkill-recovery.py
+          python scripts/validate-memory-os-deletion-worker-sigkill-recovery.py \
+            --require-result --expected-commit-sha "$SOURCE_SHA"
+          git rm -f docs/fixtures/memory-os-operability/deletion-worker-sigkill-recovery-diagnostic.last.json 2>/dev/null || true
+          git add contracts/operations/deletion-worker-sigkill-recovery-contract.v1.json
+          git add -u docs/fixtures/memory-os-operability/deletion-worker-sigkill-recovery-diagnostic.last.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(deletion): register SIGKILL recovery evidence"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+
+      - name: Record privacy-safe failure diagnostic
+        if: steps.proof.outputs.exit_code != '0'
+        env:
+          PROOF_EXIT_CODE: ${{ steps.proof.outputs.exit_code }}
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          git reset --hard origin/so
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+          text = Path('/tmp/memory-os-deletion-sigkill-recovery.log').read_text(encoding='utf-8', errors='replace')
+          patterns = (
+              (r'postgres(?:ql)?://[^\s]+', '<redacted-database-url>'),
+              (r'https?://[^\s]+', '<redacted-endpoint>'),
+              (r'Bearer\s+\S+', 'Bearer <redacted>'),
+              (r'acct_[A-Za-z0-9_-]+', '<redacted-synthetic-account>'),
+              (r'job_[A-Za-z0-9_-]+', '<redacted-job>'),
+              (r'upl_[A-Za-z0-9_-]+', '<redacted-authorization>'),
+              (r'quarantine/[A-Za-z0-9._:/-]+', '<redacted-object-key>'),
+          )
+          for pattern, replacement in patterns:
+              text = re.sub(pattern, replacement, text, flags=re.I)
+          text = text.replace('minioadmin', '<redacted-local-credential>')
+          value = {
+              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'workflow': 'deletion-worker-sigkill-recovery',
+              'sourceCommitSha': os.environ['SOURCE_SHA'],
+              'result': 'FAIL',
+              'exitCode': int(os.environ['PROOF_EXIT_CODE']),
+              'output': text[-12000:],
+              'containsSecrets': False,
+              'actualProcessKillCovered': False,
+              'actualHostFailureCovered': False,
+              'productionEvidence': False,
+              'productionEquivalentDependencies': False,
+          }
+          path = Path('docs/fixtures/memory-os-operability/deletion-worker-sigkill-recovery-diagnostic.last.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          PY
+          git add docs/fixtures/memory-os-operability/deletion-worker-sigkill-recovery-diagnostic.last.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --cached --quiet; then
+            git commit -m "test(deletion): record SIGKILL recovery diagnostic"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+
+      - name: Enforce proof result
+        run: test "${{ steps.proof.outputs.exit_code }}" = "0"
