@@ -614,7 +614,8 @@
         "complete simulated source-version loss before restore with backup checksum and source-version metadata binding preserved",
         "privacy-safe exact-source object recovery result storing only SHA-256 digests of bucket, key and provider version identifiers",
         "future production-equivalent restore promotion is generation-bound: backup artifact/manifest hashes, source environment generation/manifest, source commit, restore target generation/manifest and restore evidence bundle must match append-only registered generations; legacy local restore evidence cannot be relabeled and cross-generation restores require material-delta review",
-        "generation-bound backup/restore evidence admission is append-only and fail-closed: registered environment generations=0, recovery records=0, complete generation-bound restores=0, production-equivalent recovery candidates=0; exact generation/manifest/artifact hashes, isolated restore, PITR, independent object retention, recovery coherence, non-resurrection, approved objectives and distinct security/operability review are required before a candidate can be derived, while productionEvidence and productionReady remain false"
+        "generation-bound backup/restore evidence admission is append-only and fail-closed: registered environment generations=0, recovery records=0, complete generation-bound restores=0, production-equivalent recovery candidates=0; exact generation/manifest/artifact hashes, isolated restore, PITR, independent object retention, recovery coherence, non-resurrection, approved objectives and distinct security/operability review are required before a candidate can be derived, while productionEvidence and productionReady remain false",
+        "recovery objectives approval is append-only: approval registry exists but contains 0 records, so RPO/RTO/object-database skew remain intentionally undefined and restore evidence is forbidden from inventing targets"
       ],
       "missingEvidence": [
         "production PostgreSQL backup and PITR schedule with encrypted independent retention, WAL continuity and tested point-in-time recovery selection",
@@ -653,7 +654,13 @@
         "scripts/register-memory-os-backup-restore-generation-evidence.py",
         "scripts/validate-memory-os-backup-restore-generation-evidence.py",
         "scripts/reconcile-memory-os-backup-restore-generation-evidence.py",
-        ".github/workflows/backup-restore-generation-evidence.yml"
+        ".github/workflows/backup-restore-generation-evidence.yml",
+        "contracts/operations/recovery-objectives-admission-contract.v1.json",
+        "contracts/operations/recovery-objectives-registry.v1.json",
+        "scripts/register-memory-os-recovery-objectives.py",
+        "scripts/validate-memory-os-recovery-objectives.py",
+        "scripts/reconcile-memory-os-recovery-objectives.py",
+        ".github/workflows/recovery-objectives-admission.yml"
       ]
     },
     {
