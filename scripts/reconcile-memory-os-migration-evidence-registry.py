@@ -30,6 +30,7 @@ FOUNDATION_EVIDENCE = (
 LOCAL_ARTIFACT_EVIDENCE = (
     "at least one passing local PostgreSQL migration rehearsal created the actual pre-migration logical dump artifact, recorded only its SHA-256/byte count, restored that exact artifact into a separate same-cluster database, verified the pre-migration surface, reapplied the migration, and reran the canonical SQL suite; this is local same-cluster evidence only and does not prove production-equivalent isolated restore or rollback safety"
 )
+LOCAL_GAP = "passing local migration rehearsal that restores the actual pre-migration artifact and reapplies the migration"
 BASE_REFS = (
     "contracts/operations/migration-evidence-registry-contract.v1.json",
     "contracts/operations/migration-evidence-registry.v1.json",
@@ -42,6 +43,8 @@ BASE_REFS = (
     "contracts/operations/local-migration-recovery-artifact-contract.v1.json",
     "scripts/run-memory-os-local-migration-recovery-artifact.sh",
     "scripts/validate-memory-os-local-migration-recovery-artifact.py",
+    "scripts/reconcile-memory-os-local-migration-recovery-artifact.py",
+    ".github/workflows/local-migration-recovery-artifact.yml",
     "docs/evidence/migrations/recovery/README.md",
 )
 
@@ -180,16 +183,18 @@ def main() -> int:
         "automated recovery-point verification and append-only operator evidence record",
         "automated recovery-point verification bound to an actual isolated recovery artifact",
         "restore of the actual migration rehearsal recovery artifact, bound to the target recovery point and independently verified; local restore capability proof alone is insufficient",
+        LOCAL_GAP,
     }
     next_missing = [item for item in missing if item not in obsolete]
     if local_passing == 0:
-        local_gap = "passing local migration rehearsal that restores the actual pre-migration artifact and reapplies the migration"
-        if local_gap not in next_missing:
-            next_missing.append(local_gap)
+        next_missing.append(LOCAL_GAP)
     production_gap = "production-equivalent migration recovery artifact restore bound to the actual recovery point and independently reviewed"
     if production_gap not in next_missing:
         next_missing.append(production_gap)
     gate["missingEvidence"] = next_missing
+    if local_passing > 0:
+        require(LOCAL_GAP not in gate["missingEvidence"],
+                "satisfied local actual-artifact gap remained in missingEvidence")
     write(STATUS, status)
 
     subprocess.run(["python", str(REGISTRY_VALIDATOR)], cwd=ROOT, check=True)
