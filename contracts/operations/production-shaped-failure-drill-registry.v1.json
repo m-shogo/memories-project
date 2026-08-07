@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "memory-os-production-shaped-failure-drill-registry.v1",
+  "appendOnly": true,
+  "registeredDrillCount": 0,
+  "productionEquivalentDrillCount": 0,
+  "productionDrillCount": 0,
+  "drills": [],
+  "productionReady": false
+}
