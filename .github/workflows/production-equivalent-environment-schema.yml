@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   validate:
@@ -23,6 +23,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: so
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -36,3 +37,34 @@ jobs:
             scripts/validate-memory-os-production-equivalent-environment-fixtures.py
           python scripts/validate-memory-os-production-equivalent-environment-schema.py
           python scripts/validate-memory-os-production-equivalent-environment-fixtures.py
+      - name: Record validation checkpoint
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          value = {
+              'schemaVersion': 'memory-os-production-equivalent-environment-schema-validation.v1',
+              'sourceCommitSha': os.environ['GITHUB_SHA'],
+              'schemaDraft': '2020-12',
+              'safePlannedFixtureAccepted': True,
+              'unsafeEquivalencePromotionRejected': True,
+              'unreviewedAcceptedMaterialDeltaRejected': True,
+              'productionTraffic': False,
+              'productionCredentials': False,
+              'productionEvidence': False,
+              'productionEquivalentDependencies': False,
+              'productionReady': False,
+          }
+          path = Path('docs/fixtures/memory-os-operability/production-equivalent-environment-schema-validation.v1.json')
+          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          PY
+          git add docs/fixtures/memory-os-operability/production-equivalent-environment-schema-validation.v1.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --cached --quiet; then
+            git commit -m "test(load): record environment admission validation"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
