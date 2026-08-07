@@ -78,7 +78,6 @@ for migration in "${MIGRATIONS[@]}"; do
   SQL_TESTS+=("$test_path")
 done
 UNDER_TEST_SPECIFIC_TEST="$MIGRATION_DIR/test_${UNDER_TEST#*_}"
-TEST_HELPER_BOOTSTRAP="${SQL_TESTS[0]}"
 
 DUMP_FILE="$(mktemp "${TMPDIR:-/tmp}/memory-os-migration-recovery.XXXXXX.dump")"
 cleanup() {
@@ -128,11 +127,13 @@ psql --dbname "$SOURCE_DB" --set=ON_ERROR_STOP=1 --file "$MIGRATION_DIR/$UNDER_T
 APPLY_COMPLETED_MS="$(now_ms)"
 APPLY_DURATION_MS="$((APPLY_COMPLETED_MS - APPLY_STARTED_MS))"
 [[ "$APPLY_DURATION_MS" -ge 0 ]] || fail "migration apply duration invalid"
-# The security SQL suites share the memory_os_test assertion helpers created by
-# the first suite. Bootstrap those helpers before executing the migration-under-
-# test suite in isolation; the recovery database below still runs the complete
-# canonical suite in order.
-psql --dbname "$SOURCE_DB" --set=ON_ERROR_STOP=1 --file "$TEST_HELPER_BOOTSTRAP" >/dev/null
+# The SQL integration suites intentionally share assertion helpers. Execute all
+# baseline suites in canonical order before the migration-under-test suite so
+# the source verification uses the same helper and privilege setup as the
+# repository's canonical Security Contracts workflow.
+for test_file in "${SQL_TESTS[@]:0:${#SQL_TESTS[@]}-1}"; do
+  psql --dbname "$SOURCE_DB" --set=ON_ERROR_STOP=1 --file "$test_file" >/dev/null
+done
 psql --dbname "$SOURCE_DB" --set=ON_ERROR_STOP=1 --file "$UNDER_TEST_SPECIFIC_TEST" >/dev/null
 POST_SOURCE_APPLE_IDENTITY="$(psql --dbname "$SOURCE_DB" --tuples-only --no-align --command \
   "SELECT CASE WHEN to_regclass('memory_os.apple_identity') IS NULL THEN 0 ELSE 1 END;")"
