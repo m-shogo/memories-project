@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-deletion-under-load-results.v1",
-  "commitSha": "a0aa2d48d4fcf7b82be83b48903b5cb1a5301279",
-  "generatedAt": "2026-08-07T03:18:20Z",
+  "commitSha": "22d898fbd35fe40fd62f1caa6d196f26b201b9f5",
+  "generatedAt": "2026-08-07T03:34:43Z",
   "environment": {
     "os": "linux",
     "arch": "amd64",
@@ -17,8 +17,8 @@
   },
   "scenario": {
     "scenarioId": "account-deletion-post-fence-load-local-dependencies",
-    "startedAt": "2026-08-07T03:18:19Z",
-    "completedAt": "2026-08-07T03:18:20Z",
+    "startedAt": "2026-08-07T03:34:42Z",
+    "completedAt": "2026-08-07T03:34:43Z",
     "preFence": {
       "summary": {
         "requests": 120,
@@ -28,11 +28,11 @@
         "statusClassCounts": {
           "2xx": 120
         },
-        "durationSeconds": 0.252835753,
-        "throughput": 474.6164202497105,
-        "latencyP50Ms": 30.426,
-        "latencyP95Ms": 49.681,
-        "latencyP99Ms": 55.329
+        "durationSeconds": 0.24936633,
+        "throughput": 481.2197380456295,
+        "latencyP50Ms": 30.545,
+        "latencyP95Ms": 46.99,
+        "latencyP99Ms": 51.43
       },
       "statusCodeCounts": {
         "200": 120
@@ -49,17 +49,17 @@
         "statusClassCounts": {
           "4xx": 400
         },
-        "durationSeconds": 0.166534943,
-        "throughput": 2401.898321122913,
-        "latencyP50Ms": 10.646,
-        "latencyP95Ms": 27.69,
-        "latencyP99Ms": 28.16
+        "durationSeconds": 0.162871429,
+        "throughput": 2455.9249124043727,
+        "latencyP50Ms": 10.446,
+        "latencyP95Ms": 26.814,
+        "latencyP99Ms": 27.992
       },
       "statusCodeCounts": {
         "401": 400
       }
     },
-    "workerDurationSeconds": 0.053986841,
+    "workerDurationSeconds": 0.053650633,
     "workerReceiptCount": 1,
     "finalOwnedRowCount": 0,
     "finalAccountState": "deleted",
