@@ -262,7 +262,8 @@
         "exact-source local pre-fence mutation proof pauses 16 Apply and 16 upload-authorization requests after epoch-1 session resolution, durably advances account deletion to epoch 2, then proves all 32 resume as 401 with zero transport errors and zero apply_confirmation, memory_item, upload_authorization or quarantine_object mutations before worker erasure",
         "exact-source local pre-fence upload-completion proof issues and uploads 16 real versioned MinIO objects, lets all 16 completion requests pass authentication, the outer epoch guard, the initial authorization snapshot and real MinIO HEAD, durably advances account deletion to epoch 2, then proves every resumed completion returns 401 with zero consumed authorizations or quarantine rows before worker erasure; the worker subsequently removes all 16 object versions and all owned database rows",
         "exact-source local PostgreSQL plus MinIO deletion lease-recovery proof abandons two one-second leases without Release/Sweep/Complete, proves no reclaim before expiry, erases one real object before the database sweep while retaining its canonical ledger, then proves a replacement worker reclaims both jobs at attempt 2 and converges to zero pending/stuck backlog, zero owned rows, two deleted epoch-2 tombstones and zero object versions without resurrection",
-        "exact-source Linux deletion-worker recovery proof launches an independent child test process that claims deletion work without parent-supplied account/object identifiers, erases a real MinIO object version, is then verified killed by operating-system SIGKILL before DB sweep or lease release, preserves the canonical DB ledger, blocks reclaim until lease expiry, and converges through an attempt-2 replacement receipt to zero backlog, owned rows and object versions"
+        "exact-source Linux deletion-worker recovery proof launches an independent child test process that claims deletion work without parent-supplied account/object identifiers, erases a real MinIO object version, is then verified killed by operating-system SIGKILL before DB sweep or lease release, preserves the canonical DB ledger, blocks reclaim until lease expiry, and converges through an attempt-2 replacement receipt to zero backlog, owned rows and object versions",
+        "exact-source Docker deletion-worker drill proves container A claims attempt 1 without host-supplied account/object identity, erases a real MinIO version, is killed with SIGKILL/exit 137 before DB sweep or lease release, preserves the canonical ledger and lease exclusion, then container B reclaims attempt 2 after expiry and converges to zero backlog, owned rows and object versions"
       ],
       "missingEvidence": [
         "capacity boundary, saturation report and load-calibrated operational thresholds",
@@ -368,7 +369,14 @@
         "scripts/validate-memory-os-deletion-worker-sigkill-recovery.py",
         "scripts/reconcile-memory-os-deletion-worker-sigkill-recovery.py",
         ".github/workflows/deletion-worker-sigkill-recovery.yml",
-        "docs/fixtures/memory-os-operability/deletion-worker-sigkill-recovery-results.sample.v1.json"
+        "docs/fixtures/memory-os-operability/deletion-worker-sigkill-recovery-results.sample.v1.json",
+        "contracts/operations/deletion-worker-container-kill-recovery-contract.v1.json",
+        "services/import-api/cmd/deletion-container-drill/main.go",
+        "services/import-api/cmd/deletion-container-drill-helper/main.go",
+        "scripts/validate-memory-os-deletion-worker-container-kill-recovery.py",
+        "scripts/reconcile-memory-os-deletion-worker-container-kill-recovery.py",
+        ".github/workflows/deletion-worker-container-kill-recovery.yml",
+        "docs/fixtures/memory-os-operability/deletion-worker-container-kill-recovery-results.sample.v1.json"
       ]
     },
     {
@@ -390,7 +398,8 @@
         "started-worker parser cancellation drill proving a completed frame reaches spool storage before cancellation, the blocked pipe read returns context.Canceled in under one second, cleanup removes the partial attempt and the same spool ID recovers with independent verification",
         "local PostgreSQL commit-outage recovery drill proving a failed atomic Preview commit leaves zero durable rows, preserves sealed spool evidence, and ResumeCommit commits from the exact same spool/request after connectivity returns without object-store or parser access",
         "deterministic deletion-worker disappearance simulation proves an unreleased lease blocks competing claims until expiry, then a replacement worker reclaims at attempt 2; a case interrupted after real MinIO object erasure but before the DB sweep recovers idempotently because the database ledger survives",
-        "actual Linux SIGKILL deletion-worker drill verifies WaitStatus=SIGKILL after real object erasure and before DB sweep/release; the unreleased lease remains exclusive until expiry and a replacement worker reclaims at attempt 2 without data resurrection"
+        "actual Linux SIGKILL deletion-worker drill verifies WaitStatus=SIGKILL after real object erasure and before DB sweep/release; the unreleased lease remains exclusive until expiry and a replacement worker reclaims at attempt 2 without data resurrection",
+        "actual Docker worker-container kill/replacement drill verifies SIGKILL exit 137 after real object erasure, lease exclusivity until expiry, and independent replacement-container attempt-2 convergence under memory_app_login with superuser/BYPASSRLS forbidden"
       ],
       "missingEvidence": [
         "mixed-version failure drill",
@@ -451,7 +460,14 @@
         "scripts/validate-memory-os-deletion-worker-sigkill-recovery.py",
         "scripts/reconcile-memory-os-deletion-worker-sigkill-recovery.py",
         ".github/workflows/deletion-worker-sigkill-recovery.yml",
-        "docs/fixtures/memory-os-operability/deletion-worker-sigkill-recovery-results.sample.v1.json"
+        "docs/fixtures/memory-os-operability/deletion-worker-sigkill-recovery-results.sample.v1.json",
+        "contracts/operations/deletion-worker-container-kill-recovery-contract.v1.json",
+        "services/import-api/cmd/deletion-container-drill/main.go",
+        "services/import-api/cmd/deletion-container-drill-helper/main.go",
+        "scripts/validate-memory-os-deletion-worker-container-kill-recovery.py",
+        "scripts/reconcile-memory-os-deletion-worker-container-kill-recovery.py",
+        ".github/workflows/deletion-worker-container-kill-recovery.yml",
+        "docs/fixtures/memory-os-operability/deletion-worker-container-kill-recovery-results.sample.v1.json"
       ]
     },
     {

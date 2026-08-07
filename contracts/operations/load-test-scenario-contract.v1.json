@@ -331,7 +331,7 @@
     },
     {
       "scenarioId": "deletion-under-load",
-      "reason": "post-fence former-session load, all primary account-bound pre-fence surfaces, bounded multi-account worker saturation, lease-expiry/partial-object recovery, and actual Linux SIGKILL attempt-2 reclaim now pass against local PostgreSQL and MinIO; host/container failure, production dependency behavior and independently reviewed deletion-load thresholds remain deferred",
+      "reason": "post-fence former-session load, all primary account-bound pre-fence surfaces, multi-account worker saturation, lease-expiry/partial-object recovery, actual Linux SIGKILL and Docker worker-container kill/replacement now pass locally; physical host/node failure, production dependency behavior and independently reviewed deletion-load thresholds remain deferred",
       "requiredDependencyMode": "PRODUCTION_EQUIVALENT"
     }
   ],
@@ -347,7 +347,7 @@
     "cardinalityProof": true,
     "operationalThresholds": false,
     "productionEquivalentDependencies": false,
-    "note": "Local evidence now proves post-fence deletion rejection, Preview/Apply/upload-authorization/upload-completion pre-fence linearization across the primary account-bound HTTP surfaces, bounded multi-account deletion-worker saturation, lease-expiry attempt-2 recovery including partial object erasure, and actual Linux SIGKILL worker recovery. It still does not establish a production capacity boundary, repeated 60-minute sustained-soak evidence, leak proof, host/container failure recovery, production-equivalent dependency behavior or independently reviewed operating thresholds; OPS-P0-006 remains PARTIAL and Production remains NO_GO.",
+    "note": "Local evidence now proves post-fence deletion rejection, Preview/Apply/upload-authorization/upload-completion pre-fence linearization across the primary account-bound HTTP surfaces, bounded multi-account deletion-worker saturation, lease-expiry attempt-2 recovery including partial object erasure, and actual Linux SIGKILL worker recovery. It still does not establish a production capacity boundary, repeated 60-minute sustained-soak evidence, leak proof, host/container failure recovery, production-equivalent dependency behavior or independently reviewed operating thresholds; OPS-P0-006 remains PARTIAL and Production remains NO_GO. Docker worker-container kill/replacement recovery is proven locally; physical host/node/AZ failure remains unproven.",
     "boundedLocalCapacityRampExecuted": true,
     "shortCIStabilitySampleExecuted": true,
     "deletionPostFenceLoadExecuted": true,
@@ -366,7 +366,9 @@
     "deletionLeaseExpiryRecoverySimulationProven": true,
     "deletionPartialObjectErasureRecoveryProven": true,
     "deletionActualProcessKillProven": true,
-    "deletionHostFailureRecoveryProven": false
+    "deletionHostFailureRecoveryProven": false,
+    "deletionContainerKillRecoveryProven": true,
+    "deletionReplacementContainerRecoveryProven": true
   },
   "evidenceRefs": [
     "services/import-api/internal/loadtest/harness.go",
@@ -446,6 +448,13 @@
     "scripts/validate-memory-os-deletion-worker-sigkill-recovery.py",
     "scripts/reconcile-memory-os-deletion-worker-sigkill-recovery.py",
     ".github/workflows/deletion-worker-sigkill-recovery.yml",
-    "docs/fixtures/memory-os-operability/deletion-worker-sigkill-recovery-results.sample.v1.json"
+    "docs/fixtures/memory-os-operability/deletion-worker-sigkill-recovery-results.sample.v1.json",
+    "contracts/operations/deletion-worker-container-kill-recovery-contract.v1.json",
+    "services/import-api/cmd/deletion-container-drill/main.go",
+    "services/import-api/cmd/deletion-container-drill-helper/main.go",
+    "scripts/validate-memory-os-deletion-worker-container-kill-recovery.py",
+    "scripts/reconcile-memory-os-deletion-worker-container-kill-recovery.py",
+    ".github/workflows/deletion-worker-container-kill-recovery.yml",
+    "docs/fixtures/memory-os-operability/deletion-worker-container-kill-recovery-results.sample.v1.json"
   ]
 }
