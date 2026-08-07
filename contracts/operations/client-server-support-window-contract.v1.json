@@ -1,0 +1,89 @@
+{
+  "contractId": "memory-os.operability.client-server-support-window.v1",
+  "schemaVersion": "memory-os-client-server-support-window.v1",
+  "description": "Fail-closed admission authority for future client/server compatibility windows. It defines how an iOS or Portal client and an approved backend release may become an admissible skew pair; the contract itself creates no support claim and current empty approved-release/client registries imply zero admissible pairs.",
+  "releaseRegistry": "contracts/operations/release-baseline-registry.v1.json",
+  "clientRegistry": "contracts/operations/client-baseline-registry.v1.json",
+  "skewRegistry": "contracts/operations/client-server-skew-registry.v1.json",
+  "validator": "scripts/validate-memory-os-client-server-support-window.py",
+  "workflow": ".github/workflows/client-server-support-window.yml",
+  "supportedClientClasses": [
+    "IOS_APP",
+    "PORTAL"
+  ],
+  "admissibleDirections": [
+    "CURRENT_CLIENT_CURRENT_BACKEND",
+    "PREVIOUS_CLIENT_CURRENT_BACKEND",
+    "CURRENT_CLIENT_PREVIOUS_BACKEND"
+  ],
+  "admissionRules": {
+    "approvedBackendReleaseRequired": true,
+    "approvedClientBaselineRequired": true,
+    "exactClientArtifactDigestRequired": true,
+    "exactBackendArtifactDigestRequired": true,
+    "apiContractVersionBindingRequired": true,
+    "databaseContractVersionBindingRequired": true,
+    "parserProtocolVersionBindingRequired": true,
+    "authenticationSessionCompatibilityRequired": true,
+    "deletionFenceCompatibilityRequired": true,
+    "persistedMutationIdempotencyCompatibilityRequired": true,
+    "offlineResumeCompatibilityRequiredWhenClientCanOperateOffline": true,
+    "explicitMinimumSupportedClientVersionRequired": true,
+    "explicitMaximumSupportedSkewRequired": true,
+    "expiryOrRetirementDateRequired": true,
+    "rollbackEligibilityRequiredForPreviousBackend": true,
+    "independentReviewRequired": true
+  },
+  "forbiddenPromotionSources": [
+    "branch head",
+    "historical candidate commit",
+    "CI PASS alone",
+    "unbound Git tag",
+    "source build success",
+    "test binary digest without reviewed client baseline",
+    "marketing or UI version string without artifact digest",
+    "manual compatibility assertion without exact pair evidence"
+  ],
+  "requiredPairEvidence": [
+    "exact approved client artifact digest and approved backend release artifact digest",
+    "old-client/new-server authenticated read and write journeys",
+    "new-client/old-server authenticated read and write journeys when previous backend is claimed supported",
+    "session issuance and resolution across the supported skew",
+    "persisted Apply replay/idempotency across the supported skew",
+    "account deletion fencing across the supported skew",
+    "offline resume or retry semantics for any supported offline client state",
+    "negative tests for client versions below the minimum support boundary",
+    "negative tests for backend versions outside the admitted rollback boundary",
+    "reviewed retirement/expiry behavior that does not silently widen support"
+  ],
+  "currentBoundary": {
+    "approvedBackendReleaseCount": 0,
+    "approvedClientBaselineCount": 0,
+    "admissibleSkewPairCount": 0,
+    "implementedClientSupportWindow": false,
+    "clientServerSkewEvidence": false,
+    "releaseCompatibilityEvidence": false,
+    "productionEvidence": false,
+    "productionReady": false,
+    "productionDecision": "NO_GO"
+  },
+  "readiness": {
+    "contractDefined": true,
+    "registriesDefined": true,
+    "validatorImplemented": false,
+    "automaticWorkflowImplemented": false,
+    "approvedBackendReleaseAvailable": false,
+    "approvedClientBaselineAvailable": false,
+    "supportWindowImplemented": false,
+    "skewPairExecuted": false,
+    "independentReviewCompleted": false,
+    "productionReady": false
+  },
+  "limitations": [
+    "no approved production backend release exists",
+    "no approved client baseline exists",
+    "no client/server skew pair is currently admissible",
+    "this foundation does not claim iOS or Portal runtime implementation",
+    "candidate-only mixed-version backend evidence cannot manufacture client support"
+  ]
+}
