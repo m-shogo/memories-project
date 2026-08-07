@@ -77,6 +77,8 @@ func (h ApplyHandler) bodyLimit() int64 {
 
 func writeApplyError(writer http.ResponseWriter, err error) {
 	switch {
+	case isFencedSessionError(err):
+		writeProblem(writer, http.StatusUnauthorized, "SEC_AUTHENTICATION_REQUIRED")
 	case errors.Is(err, applydomain.ErrDuplicatePolicyUnsupported):
 		// Distinct from SEC_APPLY_REQUEST_INVALID on purpose: the value is
 		// well-formed and was previously accepted, so the client is told the
