@@ -1,0 +1,34 @@
+name: Production Equivalent Dependency Contract
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/production-equivalent-dependency-contract.yml"
+      - "contracts/operations/production-equivalent-dependency-contract.v1.json"
+      - "scripts/validate-memory-os-production-equivalent-dependencies.py"
+  pull_request:
+    paths:
+      - ".github/workflows/production-equivalent-dependency-contract.yml"
+      - "contracts/operations/production-equivalent-dependency-contract.v1.json"
+      - "scripts/validate-memory-os-production-equivalent-dependencies.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate fail-closed admission contract
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/validate-memory-os-production-equivalent-dependencies.py
+          python scripts/validate-memory-os-production-equivalent-dependencies.py
