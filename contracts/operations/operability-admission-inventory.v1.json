@@ -98,10 +98,11 @@
       "admittedEvidenceCount": 0,
       "dependencyCounts": {
         "environmentGenerations": 0,
+        "approvedRecoveryObjectives": 0,
         "generationBoundBackups": 0,
         "productionEquivalentRecoveryCandidates": 0
       },
-      "nextGate": "register a reviewed production-equivalent environment generation, then admit generation-bound PITR, independent object retention and isolated restore evidence with approved/measured RPO/RTO and non-resurrection verification",
+      "nextGate": "explicitly approve RPO/RTO/object-database skew without defaults, register a reviewed production-equivalent environment generation, then admit generation-bound PITR, independent object retention and isolated restore evidence whose measured objectives pass current targets plus non-resurrection review",
       "status": "PARTIAL_FOUNDATIONS_ONLY",
       "blocking": true,
       "missingEvidenceCount": 6,
@@ -143,6 +144,7 @@
     }
   ],
   "productionEquivalentEnvironmentGenerationCount": 0,
+  "approvedRecoveryObjectiveCount": 0,
   "productionEvidence": false,
   "productionReady": false,
   "productionDecision": "NO_GO",
@@ -150,6 +152,7 @@
     "foundationImplemented means the admission path exists; it does not mean runtime or production evidence exists",
     "admittedEvidenceCount is derived only from canonical append-only registries or accepted human tabletop ledger files",
     "candidate/local evidence is not counted as production admission unless its owning authority explicitly admits it",
-    "local repeated soak evidence is tracked separately from independent leak proof and production-shaped soak evidence"
+    "local repeated soak evidence is tracked separately from independent leak proof and production-shaped soak evidence",
+    "recovery-objective values are never defaulted by this inventory; zero approved objectives means RPO/RTO/skew remain intentionally undefined"
   ]
 }
