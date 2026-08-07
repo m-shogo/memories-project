@@ -2,9 +2,10 @@
 """Append one reviewed non-production migration rehearsal evidence record.
 
 The input JSON must live outside the repository. This writer verifies the
-canonical migration sequence, privacy boundary, budgets, recovery point and
-operator/reviewer separation, then performs one atomic append-only update. It
-cannot write production migration evidence.
+canonical migration sequence, privacy boundary, budgets, typed recovery artifact
+reference, separately validated restore capability, and operator/reviewer
+separation, then performs one atomic append-only update. It cannot write
+production migration evidence.
 """
 
 from __future__ import annotations
@@ -19,6 +20,8 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Any
+
+from memory_os_migration_recovery_point import RecoveryPointFailure, validate_recovery_point
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/migration-evidence-registry-contract.v1.json"
@@ -77,14 +80,6 @@ def timestamp(value: Any, field: str) -> dt.datetime:
     return parsed
 
 
-def safe_ref(value: Any, field: str) -> str:
-    require(isinstance(value, str) and value.strip(), f"{field} required")
-    relative = Path(value)
-    require(not relative.is_absolute() and ".." not in relative.parts, f"{field} unsafe path")
-    require((ROOT / relative).is_file(), f"{field} missing: {value}")
-    return value
-
-
 def validate_risks(value: Any) -> None:
     require(isinstance(value, list), "openRisks must be a list")
     seen: set[str] = set()
@@ -102,7 +97,7 @@ def validate_risks(value: Any) -> None:
         seen.add(risk_id)
 
 
-def validate_record(record: dict[str, Any], required_fields: set[str]) -> None:
+def validate_record(record: dict[str, Any], required_fields: set[str], registry_contract: dict[str, Any]) -> None:
     require(set(record) >= required_fields, f"record missing fields: {sorted(required_fields - set(record))}")
     require(record.get("schemaVersion") == "memory-os-migration-rehearsal-evidence.v1", "record schema drift")
     run_id = record.get("migrationRunId")
@@ -133,8 +128,10 @@ def validate_record(record: dict[str, Any], required_fields: set[str]) -> None:
     require(isinstance(operator, str) and ACTOR.fullmatch(operator) is not None and operator.startswith("opr_"), "operatorRef invalid")
     require(isinstance(reviewer, str) and ACTOR.fullmatch(reviewer) is not None and reviewer.startswith("rev_"), "reviewerRef invalid")
     require(operator != reviewer, "operator and reviewer must be distinct")
-    safe_ref(record.get("recoveryPointReference"), "recoveryPointReference")
-    require(record.get("recoveryPointVerified") is True, "recovery point must be verified")
+    try:
+        validate_recovery_point(record, env_class, canonical, registry_contract)
+    except RecoveryPointFailure as exc:
+        raise Failure(f"recovery evidence invalid: {exc}") from exc
 
     for field in ("lockBudgetMs", "statementBudgetMs", "observedLockWaitMs", "observedRuntimeMs"):
         require(isinstance(record.get(field), int) and record[field] >= 0, f"{field} invalid")
@@ -214,7 +211,7 @@ def main() -> int:
     required = contract.get("requiredRecordFields")
     require(isinstance(required, list) and all(isinstance(item, str) for item in required), "requiredRecordFields invalid")
     record = load(record_path)
-    validate_record(record, set(required))
+    validate_record(record, set(required), contract)
 
     lock_fd = acquire_lock()
     try:
