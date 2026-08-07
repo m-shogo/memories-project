@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "memory-os-operation-request.v1",
+  "requestId": "migration-production-shaped-admission-foundation-20260807-v1",
+  "operation": "VALIDATE_MIGRATION_PRODUCTION_SHAPED_ADMISSION",
+  "productionTraffic": false,
+  "productionCredentials": false,
+  "productionEvidence": false,
+  "constraints": {
+    "canonicalMigrationLedgerReuseRequired": true,
+    "environmentGenerationBindingRequired": true,
+    "approvedPredecessorSuccessorRequired": true,
+    "generationBoundRecoveryRequired": true,
+    "mixedVersionObservationRequired": true,
+    "independentSecurityAndOperabilityReviewRequired": true,
+    "productionReadyPromotionForbidden": true
+  }
+}
