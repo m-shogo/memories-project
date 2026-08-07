@@ -18,6 +18,13 @@ fail() {
   exit 1
 }
 
+now_ms() {
+  python - <<'PY'
+import time
+print(time.time_ns() // 1_000_000)
+PY
+}
+
 for command in psql pg_dump pg_restore python sha256sum; do
   command -v "$command" >/dev/null 2>&1 || fail "$command is required"
 done
@@ -40,6 +47,8 @@ esac
 [[ "$RECOVERY_DB" =~ ^[a-z][a-z0-9_]{2,62}$ ]] || fail "invalid recovery database name"
 [[ "$SOURCE_DB" != "$RECOVERY_DB" ]] || fail "source and recovery database must differ"
 [[ "$SOURCE_DB" != "postgres" && "$RECOVERY_DB" != "postgres" ]] || fail "postgres database is protected"
+DATABASE_IDENTITY_DIGEST="$(printf '%s' "LOCAL_POSTGRES_REHEARSAL:$SOURCE_DB:$RECOVERY_DB:$SOURCE_SHA" | sha256sum | awk '{print $1}')"
+[[ "$DATABASE_IDENTITY_DIGEST" =~ ^[0-9a-f]{64}$ ]] || fail "database identity digest invalid"
 
 mapfile -t MIGRATIONS < <(
   python - "$LIFECYCLE" <<'PY'
@@ -51,7 +60,7 @@ for item in value['migrationSequence']:
 PY
 )
 [[ "${#MIGRATIONS[@]}" -ge 2 ]] || fail "canonical migration sequence is too short"
-UNDER_TEST="${MIGRATIONS[-1]}"
+UNDER_TEST="${MIGRATIONS[$(( ${#MIGRATIONS[@]} - 1 ))]}"
 EXPECTED_UNDER_TEST="$(python - "$CONTRACT" <<'PY'
 import json, sys
 from pathlib import Path
@@ -113,7 +122,11 @@ ARTIFACT_BYTES="$(wc -c < "$DUMP_FILE" | tr -d ' ')"
 [[ "$ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]] || fail "recovery artifact digest invalid"
 [[ "$ARTIFACT_BYTES" =~ ^[0-9]+$ && "$ARTIFACT_BYTES" -gt 0 ]] || fail "recovery artifact byte count invalid"
 
+APPLY_STARTED_MS="$(now_ms)"
 psql --dbname "$SOURCE_DB" --set=ON_ERROR_STOP=1 --file "$MIGRATION_DIR/$UNDER_TEST" >/dev/null
+APPLY_COMPLETED_MS="$(now_ms)"
+APPLY_DURATION_MS="$((APPLY_COMPLETED_MS - APPLY_STARTED_MS))"
+[[ "$APPLY_DURATION_MS" -ge 0 ]] || fail "migration apply duration invalid"
 psql --dbname "$SOURCE_DB" --set=ON_ERROR_STOP=1 --file "$UNDER_TEST_SPECIFIC_TEST" >/dev/null
 POST_SOURCE_APPLE_IDENTITY="$(psql --dbname "$SOURCE_DB" --tuples-only --no-align --command \
   "SELECT CASE WHEN to_regclass('memory_os.apple_identity') IS NULL THEN 0 ELSE 1 END;")"
@@ -144,7 +157,8 @@ DURATION_SECONDS="$((END_EPOCH - START_EPOCH))"
 mkdir -p "$(dirname "$RESULT_PATH")"
 
 SOURCE_SHA="$SOURCE_SHA" RUN_ID="$RUN_ID" STARTED_AT="$STARTED_AT" COMPLETED_AT="$COMPLETED_AT" \
-DURATION_SECONDS="$DURATION_SECONDS" UNDER_TEST="$UNDER_TEST" \
+DURATION_SECONDS="$DURATION_SECONDS" APPLY_DURATION_MS="$APPLY_DURATION_MS" \
+DATABASE_IDENTITY_DIGEST="$DATABASE_IDENTITY_DIGEST" UNDER_TEST="$UNDER_TEST" \
 BASELINE_COUNT="${#BASELINE[@]}" FINAL_COUNT="${#MIGRATIONS[@]}" SQL_TEST_COUNT="${#SQL_TESTS[@]}" \
 ARTIFACT_DIGEST="$ARTIFACT_DIGEST" ARTIFACT_BYTES="$ARTIFACT_BYTES" RESULT_PATH="$RESULT_PATH" \
 python - <<'PY'
@@ -175,10 +189,12 @@ result = {
     'generatedAt': dt.datetime.now(dt.timezone.utc).isoformat().replace('+00:00', 'Z'),
     'environmentClass': 'LOCAL_POSTGRES_REHEARSAL',
     'databaseMode': 'EPHEMERAL_POSTGRESQL_16_SAME_CLUSTER_PREMIGRATION_LOGICAL_RECOVERY',
+    'databaseIdentityDigest': os.environ['DATABASE_IDENTITY_DIGEST'],
     'migrationUnderTest': os.environ['UNDER_TEST'],
     'startedAt': os.environ['STARTED_AT'],
     'completedAt': os.environ['COMPLETED_AT'],
     'durationSeconds': int(os.environ['DURATION_SECONDS']),
+    'migrationApplyDurationMs': int(os.environ['APPLY_DURATION_MS']),
     'baselineMigrationCount': int(os.environ['BASELINE_COUNT']),
     'finalMigrationCount': int(os.environ['FINAL_COUNT']),
     'sqlIntegrationTestsExecutedAfterRecovery': int(os.environ['SQL_TEST_COUNT']),
@@ -206,5 +222,6 @@ Path(os.environ['RESULT_PATH']).write_text(
 PY
 
 printf 'Memory OS local migration recovery artifact rehearsal PASS\n'
-printf 'migration: %s  artifact sha256: %s  bytes: %s\n' "$UNDER_TEST" "$ARTIFACT_DIGEST" "$ARTIFACT_BYTES"
+printf 'migration: %s  apply ms: %s  artifact sha256: %s  bytes: %s\n' \
+  "$UNDER_TEST" "$APPLY_DURATION_MS" "$ARTIFACT_DIGEST" "$ARTIFACT_BYTES"
 printf 'result: %s\n' "$RESULT_PATH"
