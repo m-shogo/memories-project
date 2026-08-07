@@ -41,6 +41,9 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
+      - "scripts/register-memory-os-release-compatibility-pair.py"
+      - "scripts/validate-memory-os-release-compatibility-pair.py"
+      - "scripts/reconcile-memory-os-release-compatibility-pair.py"
       - "scripts/run-memory-os-local-logical-restore.sh"
       - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-load-evidence-index.py"
@@ -72,6 +75,7 @@ on:
       - ".github/workflows/recovery-objectives-admission.yml"
       - ".github/workflows/backup-restore-generation-binding.yml"
       - ".github/workflows/backup-restore-generation-evidence.yml"
+      - ".github/workflows/release-compatibility-pair.yml"
   push:
     branches:
       - so
@@ -114,6 +118,9 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
+      - "scripts/register-memory-os-release-compatibility-pair.py"
+      - "scripts/validate-memory-os-release-compatibility-pair.py"
+      - "scripts/reconcile-memory-os-release-compatibility-pair.py"
       - "scripts/run-memory-os-local-logical-restore.sh"
       - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-load-evidence-index.py"
@@ -145,6 +152,7 @@ on:
       - ".github/workflows/recovery-objectives-admission.yml"
       - ".github/workflows/backup-restore-generation-binding.yml"
       - ".github/workflows/backup-restore-generation-evidence.yml"
+      - ".github/workflows/release-compatibility-pair.yml"
   workflow_dispatch:
 
 permissions:
@@ -192,6 +200,9 @@ jobs:
           python -m py_compile scripts/validate-memory-os-backup-restore-generation-evidence.py
           python -m py_compile scripts/reconcile-memory-os-backup-restore-generation-evidence.py
           python -m py_compile scripts/validate-memory-os-backup-restore-generation-binding.py
+          python -m py_compile scripts/register-memory-os-release-compatibility-pair.py
+          python -m py_compile scripts/validate-memory-os-release-compatibility-pair.py
+          python -m py_compile scripts/reconcile-memory-os-release-compatibility-pair.py
           python -m py_compile scripts/validate-memory-os-load.py
           python -m py_compile scripts/validate-memory-os-load-evidence-index.py
           python -m py_compile scripts/validate-memory-os-live-load.py
@@ -229,6 +240,9 @@ jobs:
 
       - name: Validate version compatibility policy and matrix
         run: python scripts/validate-memory-os-version-compatibility.py
+
+      - name: Validate approved release compatibility pair authority
+        run: python scripts/validate-memory-os-release-compatibility-pair.py
 
       - name: Validate observability event contract
         run: python scripts/validate-memory-os-observability.py
