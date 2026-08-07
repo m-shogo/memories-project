@@ -23,10 +23,11 @@ func fail(stage string) {
 }
 
 // progress emits one append-only, low-information marker per stage. The file
-// name carries only an allowlisted stage label; no account, job, object or
-// credential material is written. Separate files avoid transient truncation
-// races that can make an in-place progress file appear empty to the host.
+// name and stderr line carry only an allowlisted stage label; no account, job,
+// object or credential material is written. Separate files avoid transient
+// truncation races that can make an in-place progress file appear empty.
 func progress(prefix string, stage string) {
+	_, _ = fmt.Fprintf(os.Stderr, "CONTAINER_DRILL_PROGRESS:%s\n", stage)
 	if prefix == "" {
 		return
 	}
