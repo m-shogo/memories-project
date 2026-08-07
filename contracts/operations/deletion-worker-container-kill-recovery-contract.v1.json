@@ -71,12 +71,12 @@
   },
   "readiness": {
     "contractDefined": true,
-    "fixtureImplemented": false,
-    "workerHelperImplemented": false,
-    "validatorImplemented": false,
-    "automaticWorkflowImplemented": false,
-    "exactSourceResultCommitted": false,
-    "actualContainerKillRecoveryProven": false,
+    "fixtureImplemented": true,
+    "workerHelperImplemented": true,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": true,
+    "exactSourceResultCommitted": true,
+    "actualContainerKillRecoveryProven": true,
     "productionDependenciesTested": false,
     "independentReviewCompleted": false,
     "productionReady": false
