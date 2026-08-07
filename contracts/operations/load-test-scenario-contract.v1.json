@@ -263,6 +263,14 @@
       "productionEvidence": false,
       "sustainedSoakEvidence": false,
       "leakProof": false
+    },
+    {
+      "scenarioId": "account-deletion-post-fence-load-local-dependencies",
+      "contractRef": "contracts/operations/deletion-under-load-contract.v1.json",
+      "validatorRef": "scripts/validate-memory-os-deletion-under-load.py",
+      "dependencyMode": "LOCAL_POSTGRES_MINIO",
+      "productionEvidence": false,
+      "requestsStartedBeforeFenceCovered": false
     }
   ],
   "deferredScenarios": [
@@ -290,6 +298,11 @@
       "scenarioId": "soak",
       "reason": "a six-window short CI process sample now records RSS, heap and goroutine trends, but it is not a 60-minute repeated soak, does not cover MinIO/parser/queue/deletion/Apple dependencies and cannot prove leak freedom or production stability",
       "requiredDependencyMode": "PRODUCTION_EQUIVALENT"
+    },
+    {
+      "scenarioId": "deletion-under-load",
+      "reason": "post-fence former-session load and concurrent worker erasure now pass against local PostgreSQL and MinIO; request linearization for calls already in flight before the 202 fence, multiple-account worker saturation and production dependency behavior remain deferred",
+      "requiredDependencyMode": "PRODUCTION_EQUIVALENT"
     }
   ],
   "readiness": {
@@ -304,9 +317,10 @@
     "cardinalityProof": true,
     "operationalThresholds": false,
     "productionEquivalentDependencies": false,
-    "note": "Mock and local dependency checkpoints are supplemented by bounded ramp and short CI stability samples. These record local concurrency and process trends but establish neither a saturation boundary nor sustained-soak/leak proof; OPS-P0-006 remains PARTIAL.",
+    "note": "Mock and local dependency checkpoints now include bounded ramp, short CI stability and post-fence deletion load. They establish neither production capacity nor pre-fence request linearization, sustained-soak/leak proof or production-equivalent behavior; OPS-P0-006 remains PARTIAL.",
     "boundedLocalCapacityRampExecuted": true,
-    "shortCIStabilitySampleExecuted": true
+    "shortCIStabilitySampleExecuted": true,
+    "deletionPostFenceLoadExecuted": true
   },
   "evidenceRefs": [
     "services/import-api/internal/loadtest/harness.go",
@@ -328,6 +342,10 @@
     "services/import-api/internal/httpserver/short_stability_sample_test.go",
     "contracts/operations/short-stability-sample-contract.v1.json",
     "scripts/validate-memory-os-short-stability-sample.py",
-    "docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json"
+    "docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json",
+    "services/import-api/internal/httpserver/deletion_under_load_test.go",
+    "contracts/operations/deletion-under-load-contract.v1.json",
+    "scripts/validate-memory-os-deletion-under-load.py",
+    "docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json"
   ]
 }
