@@ -35,20 +35,20 @@ type deletionLeaseRecoveryResultsDocument struct {
 		ContainsSecrets                  bool   `json:"containsSecrets"`
 	} `json:"environment"`
 	Scenario struct {
-		ScenarioID                    string         `json:"scenarioId"`
-		InitialClaims                 int            `json:"initialClaims"`
-		ClaimsAvailableBeforeExpiry   int            `json:"claimsAvailableBeforeExpiry"`
-		ReplacementWorkerReceipts     int            `json:"replacementWorkerReceipts"`
-		UniqueReplacementReceipts     int            `json:"uniqueReplacementReceipts"`
-		ReplacementWorkerErrors       int            `json:"replacementWorkerErrors"`
-		FinalDeletionPending          int64          `json:"finalDeletionPending"`
-		FinalDeletionStuck            int64          `json:"finalDeletionStuck"`
-		FinalOwnedRowCount            int            `json:"finalOwnedRowCount"`
-		FinalDeletedTombstonesEpoch2  int            `json:"finalDeletedTombstonesEpoch2"`
-		RemainingObjectVersions       int            `json:"remainingObjectVersions"`
-		Assertions                    map[string]any `json:"assertions"`
-		Result                        string         `json:"result"`
-		IntegrityResult               string         `json:"integrityResult"`
+		ScenarioID                   string         `json:"scenarioId"`
+		InitialClaims                int            `json:"initialClaims"`
+		ClaimsAvailableBeforeExpiry  int            `json:"claimsAvailableBeforeExpiry"`
+		ReplacementWorkerReceipts    int            `json:"replacementWorkerReceipts"`
+		UniqueReplacementReceipts    int            `json:"uniqueReplacementReceipts"`
+		ReplacementWorkerErrors      int            `json:"replacementWorkerErrors"`
+		FinalDeletionPending         int64          `json:"finalDeletionPending"`
+		FinalDeletionStuck           int64          `json:"finalDeletionStuck"`
+		FinalOwnedRowCount           int            `json:"finalOwnedRowCount"`
+		FinalDeletedTombstonesEpoch2 int            `json:"finalDeletedTombstonesEpoch2"`
+		RemainingObjectVersions      int            `json:"remainingObjectVersions"`
+		Assertions                   map[string]any `json:"assertions"`
+		Result                       string         `json:"result"`
+		IntegrityResult              string         `json:"integrityResult"`
 	} `json:"scenario"`
 	Limitations []string `json:"limitations"`
 }
@@ -335,15 +335,15 @@ func TestDeletionLeaseExpiryRecoveryLocalDependencies(t *testing.T) {
 	document.Scenario.FinalDeletedTombstonesEpoch2 = deletedTombstones
 	document.Scenario.RemainingObjectVersions = remainingVersions
 	document.Scenario.Assertions = map[string]any{
-		"noClaimBeforeExpiry":                          claimsBeforeExpiry == 0,
-		"bothClaimsReclaimedAfterExpiry":               len(receipts) == deletionLeaseRecoveryAccounts,
-		"partialObjectErasureRecoveredIdempotently":    retainedLedgerRows == 1 && len(partialVersions) == 0,
-		"noResurrection":                               remainingVersions == 0,
-		"backlogConverged":                             backlog.Pending == 0 && backlog.Stuck == 0,
-		"allOwnedRowsErased":                           finalOwnedRows == 0,
-		"actualProcessKillCovered":                     false,
-		"actualHostFailureCovered":                     false,
-		"productionEvidence":                           false,
+		"noClaimBeforeExpiry":                       claimsBeforeExpiry == 0,
+		"bothClaimsReclaimedAfterExpiry":            len(receipts) == deletionLeaseRecoveryAccounts,
+		"partialObjectErasureRecoveredIdempotently": retainedLedgerRows == 1 && len(partialVersions) == 0,
+		"noResurrection":                            remainingVersions == 0,
+		"backlogConverged":                          backlog.Pending == 0 && backlog.Stuck == 0,
+		"allOwnedRowsErased":                        finalOwnedRows == 0,
+		"actualProcessKillCovered":                  false,
+		"actualHostFailureCovered":                  false,
+		"productionEvidence":                        false,
 	}
 	document.Scenario.Result = "PASS"
 	document.Scenario.IntegrityResult = "PASS"
