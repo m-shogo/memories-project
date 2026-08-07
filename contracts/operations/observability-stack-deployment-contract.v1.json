@@ -1,7 +1,8 @@
 {
   "contractId": "memory-os.operability.observability-stack-deployment.v1",
   "schemaVersion": "memory-os-observability-stack-deployment.v1",
-  "description": "Fail-closed admission authority for a deployed operational observability stack spanning structured logs, metrics, dashboards, alert routing and access audit. Component-local CI evidence cannot substitute for an integrated environment record. A record may describe production-equivalent or production infrastructure, but automatic production readiness is forbidden.",
+  "recordSchemaVersion": "memory-os-observability-stack-deployment-record.v1",
+  "description": "Fail-closed admission authority for a deployed operational observability stack spanning structured logs, metrics, dashboards, alert routing and access audit. Component-local CI evidence cannot substitute for an integrated environment record. A record may describe production-equivalent or production infrastructure, but automatic application production readiness is forbidden.",
   "sourceLogContract": "contracts/operations/observability-event-contract.v1.json",
   "sourceLogAccessContract": "contracts/operations/observability-retention-access-contract.v1.json",
   "sourceMetricsContract": "contracts/operations/metrics-contract.v1.json",
@@ -11,12 +12,37 @@
   "environmentGenerationContract": "contracts/operations/production-equivalent-environment-generation-contract.v1.json",
   "environmentGenerationRegistry": "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
   "registryPath": "contracts/operations/observability-stack-deployment-registry.v1.json",
+  "writer": "scripts/register-memory-os-observability-stack-deployment.py",
   "validator": "scripts/validate-memory-os-observability-stack-deployment.py",
   "reconcile": "scripts/reconcile-memory-os-observability-stack-deployment.py",
   "workflow": ".github/workflows/observability-stack-deployment.yml",
   "allowedEnvironmentClasses": [
     "PRODUCTION_EQUIVALENT",
     "PRODUCTION"
+  ],
+  "requiredRecordFields": [
+    "schemaVersion",
+    "stackId",
+    "environmentClass",
+    "sourceCommitSha",
+    "environmentIdentityDigest",
+    "environmentGenerationId",
+    "structuredLogBackendIdentityDigest",
+    "metricsBackendIdentityDigest",
+    "accessAuditSinkIdentityDigest",
+    "pagingDestinationIdentityDigest",
+    "infrastructureAsCodeRefs",
+    "structuredLogEvidenceRefs",
+    "metricsEvidenceRefs",
+    "accessAuditEvidenceRefs",
+    "pagingEvidenceRefs",
+    "retentionDeletionEvidenceRefs",
+    "securityReviewRef",
+    "operabilityReviewRef",
+    "unresolvedFindings",
+    "evidenceComplete",
+    "productionEvidence",
+    "productionReady"
   ],
   "requiredEvidenceDomains": {
     "structuredLogs": [
@@ -72,7 +98,9 @@
     "productionCredentialsForbiddenInRecord": true,
     "rawEndpointUrlsForbiddenInRecord": true,
     "personalIdentifiersForbiddenInRecord": true,
-    "unresolvedCriticalOrHighFindingsForbiddenForAdmission": true
+    "unresolvedCriticalOrHighFindingsForbiddenForAdmission": true,
+    "evidenceCompleteRequired": true,
+    "applicationProductionReadyMustRemainFalse": true
   },
   "promotionRules": {
     "logsAloneCanPromoteStack": false,
@@ -100,6 +128,7 @@
   "readiness": {
     "contractDefined": true,
     "registryImplemented": false,
+    "writerImplemented": false,
     "validatorImplemented": false,
     "automaticWorkflowImplemented": false,
     "admittedStackCount": 0,
