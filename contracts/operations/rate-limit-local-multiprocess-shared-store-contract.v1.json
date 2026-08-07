@@ -34,8 +34,8 @@
     "runnerImplemented": true,
     "validatorImplemented": true,
     "automaticWorkflowImplemented": true,
-    "exactSourcePassCommitted": false,
-    "localCrossProcessStoreSemanticsProven": false,
+    "exactSourcePassCommitted": true,
+    "localCrossProcessStoreSemanticsProven": true,
     "distributedSharedStoreImplemented": false,
     "productionEquivalentRuntimeEvidence": false,
     "productionReady": false

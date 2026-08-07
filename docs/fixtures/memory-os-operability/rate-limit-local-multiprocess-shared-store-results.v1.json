@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "memory-os-rate-limit-local-multiprocess-shared-store-results.v1",
+  "sourceCommitSha": "42cdb63e0bf0ea87df5ace8745f63e0f95170e9e",
+  "generatedAt": "2026-08-07T11:53:40.239286Z",
+  "classification": "LOCAL_MULTI_PROCESS_SHARED_STORE_REHEARSAL",
+  "dependencyMode": "TEST_ONLY_LOOPBACK_HTTP_BROKER_MEMORY_STORE",
+  "test": "TestLocalSharedStoreCrossProcessBudgetRestartAndOutage",
+  "assertions": {
+    "independentOsClientProcesses": true,
+    "sharedBudgetAtomicAcrossProcesses": true,
+    "freshClientProcessDoesNotResetBudget": true,
+    "storeOutageFailsClosed": true,
+    "productionStoreImplementationExercised": false,
+    "productionEquivalentRuntimeExercised": false,
+    "productionTlsExercised": false,
+    "deploymentTrustedProxyConfigurationExercised": false,
+    "productionCredentialsUsed": false,
+    "productionTrafficUsed": false
+  },
+  "result": "PASS",
+  "productionEvidence": false,
+  "productionEquivalentRuntimeEvidence": false,
+  "productionReady": false,
+  "limitations": [
+    "shared broker is a loopback HTTP test server backed by MemoryStore",
+    "client processes are independent OS test processes but the broker is not Redis or another deployment shared store",
+    "fresh client-process continuity is not a runtime host/container restart drill",
+    "store outage is local loopback connection failure, not production failover",
+    "no TLS, trusted-proxy deployment, production traffic or production credentials are exercised"
+  ]
+}

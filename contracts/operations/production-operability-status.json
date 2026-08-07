@@ -271,7 +271,8 @@
         "privacy validator forbidding raw IP, network identity, tokens, account/session identifiers, URLs, credentials and free-form evidence text",
         "exact-source local/CI emergency decision-model drill proves the canonical append-only writer rejects duplicate operation IDs and the canonical read-only evaluator classifies an ACTIVE emergency record as expired fail-closed after the 60-minute boundary; restoration to NORMAL is modeled as eligible only after every required recovery check passes, without mutating runtime traffic or claiming automatic production expiry",
         "canonical per-operation rate-limit evidence ledger provides exclusive append-only records, privacy validation, distinct operator/reviewer handles, bounded 60-minute expiry and recovery verification; a supplemental read-only evaluator classifies expired records fail-closed without mutating runtime or claiming automatic production expiry",
-        "generation-bound distributed rate-limit runtime admission is implemented: future evidence must bind the exact policy digest, at least two runtime instances, an atomic shared store, trusted-proxy deployment, restart continuity, fail-closed dependency behavior, runtime-observed emergency expiry/restoration, alert delivery and independent security/operability review; the registry is currently empty and creates no runtime deployment claim"
+        "generation-bound distributed rate-limit runtime admission is implemented: future evidence must bind the exact policy digest, at least two runtime instances, an atomic shared store, trusted-proxy deployment, restart continuity, fail-closed dependency behavior, runtime-observed emergency expiry/restoration, alert delivery and independent security/operability review; the registry is currently empty and creates no runtime deployment claim",
+        "exact-source local multi-process rate-limit shared-store rehearsal proves two independent OS test clients consume one atomic shared budget through the canonical Store interface, a fresh client process cannot reset exhausted backend state, and a loopback shared-store outage maps to fail-closed store_unavailable; the broker is test-only MemoryStore-backed HTTP, so this is not a distributed production store, runtime-host restart, TLS/trusted-proxy deployment or production-equivalent evidence"
       ],
       "missingEvidence": [
         "production-equivalent distributed enforcement (shared atomic store)",
@@ -309,7 +310,13 @@
         "scripts/register-memory-os-rate-limit-distributed-runtime.py",
         "scripts/validate-memory-os-rate-limit-distributed-runtime.py",
         "scripts/reconcile-memory-os-rate-limit-distributed-runtime.py",
-        ".github/workflows/rate-limit-distributed-runtime-admission.yml"
+        ".github/workflows/rate-limit-distributed-runtime-admission.yml",
+        "contracts/operations/rate-limit-local-multiprocess-shared-store-contract.v1.json",
+        "services/import-api/internal/ratelimit/shared_store_multiprocess_test.go",
+        "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py",
+        "scripts/reconcile-memory-os-rate-limit-local-multiprocess-shared-store.py",
+        ".github/workflows/rate-limit-local-multiprocess-shared-store.yml",
+        "docs/fixtures/memory-os-operability/rate-limit-local-multiprocess-shared-store-results.v1.json"
       ]
     },
     {
