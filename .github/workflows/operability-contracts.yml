@@ -23,6 +23,8 @@ on:
       - "scripts/validate-memory-os-observability-access.py"
       - "scripts/validate-memory-os-rate-limit.py"
       - "scripts/validate-memory-os-rate-limit-operations.py"
+      - "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py"
+      - "scripts/reconcile-memory-os-rate-limit-local-multiprocess-shared-store.py"
       - "scripts/validate-memory-os-metrics.py"
       - "scripts/validate-memory-os-metrics-scrape.py"
       - "scripts/validate-memory-os-metrics-operations.py"
@@ -76,6 +78,7 @@ on:
       - ".github/workflows/backup-restore-generation-binding.yml"
       - ".github/workflows/backup-restore-generation-evidence.yml"
       - ".github/workflows/release-compatibility-pair.yml"
+      - ".github/workflows/rate-limit-local-multiprocess-shared-store.yml"
   push:
     branches:
       - so
@@ -100,6 +103,8 @@ on:
       - "scripts/validate-memory-os-observability-access.py"
       - "scripts/validate-memory-os-rate-limit.py"
       - "scripts/validate-memory-os-rate-limit-operations.py"
+      - "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py"
+      - "scripts/reconcile-memory-os-rate-limit-local-multiprocess-shared-store.py"
       - "scripts/validate-memory-os-metrics.py"
       - "scripts/validate-memory-os-metrics-scrape.py"
       - "scripts/validate-memory-os-metrics-operations.py"
@@ -153,6 +158,7 @@ on:
       - ".github/workflows/backup-restore-generation-binding.yml"
       - ".github/workflows/backup-restore-generation-evidence.yml"
       - ".github/workflows/release-compatibility-pair.yml"
+      - ".github/workflows/rate-limit-local-multiprocess-shared-store.yml"
   workflow_dispatch:
 
 permissions:
@@ -182,6 +188,8 @@ jobs:
           python -m py_compile scripts/validate-memory-os-observability-access.py
           python -m py_compile scripts/validate-memory-os-rate-limit.py
           python -m py_compile scripts/validate-memory-os-rate-limit-operations.py
+          python -m py_compile scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py
+          python -m py_compile scripts/reconcile-memory-os-rate-limit-local-multiprocess-shared-store.py
           python -m py_compile scripts/validate-memory-os-metrics.py
           python -m py_compile scripts/validate-memory-os-metrics-scrape.py
           python -m py_compile scripts/validate-memory-os-metrics-operations.py
@@ -255,6 +263,9 @@ jobs:
 
       - name: Validate rate-limit emergency operations policy
         run: python scripts/validate-memory-os-rate-limit-operations.py
+
+      - name: Validate local multi-process shared-store rehearsal
+        run: python scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py
 
       - name: Validate metrics contract
         run: python scripts/validate-memory-os-metrics.py
