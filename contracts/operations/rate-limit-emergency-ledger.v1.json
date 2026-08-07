@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "memory-os-rate-limit-emergency-ledger-registry.v1",
+  "appendOnly": true,
+  "registeredEventCount": 0,
+  "registeredOperationCount": 0,
+  "events": [],
+  "productionEvidence": false,
+  "productionReady": false
+}
