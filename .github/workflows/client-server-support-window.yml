@@ -1,0 +1,56 @@
+name: Client Server Support Window
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/client-server-support-window.yml"
+      - "contracts/operations/client-server-support-window-contract.v1.json"
+      - "contracts/operations/client-baseline-registry.v1.json"
+      - "contracts/operations/client-server-skew-registry.v1.json"
+      - "contracts/operations/release-baseline-registry.v1.json"
+      - "scripts/validate-memory-os-client-server-support-window.py"
+      - "scripts/reconcile-memory-os-client-server-support-window-status.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: client-server-support-window-so
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate fail-closed skew admission
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/validate-memory-os-client-server-support-window.py \
+            scripts/reconcile-memory-os-client-server-support-window-status.py
+          python scripts/validate-memory-os-client-server-support-window.py
+          python scripts/reconcile-memory-os-client-server-support-window-status.py
+          python scripts/validate-memory-os-operability.py
+      - name: Commit bounded foundation authority
+        run: |
+          set -euo pipefail
+          git add contracts/operations/production-operability-status.json
+          if ! git diff --cached --quiet; then
+            git diff --cached --check
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(compat): register client skew admission foundation"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
