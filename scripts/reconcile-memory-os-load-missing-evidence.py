@@ -21,14 +21,18 @@ PROVEN_FLAGS = (
     "deletionLeaseExpiryRecoverySimulationProven",
     "deletionPartialObjectErasureRecoveryProven",
     "deletionActualProcessKillProven",
+    "deletionContainerKillRecoveryProven",
+    "deletionReplacementContainerRecoveryProven",
+    "repeatableLocalDegradationSignalObserved",
 )
 
 STALE_RESOLVED = {
     "request-linearization proof for operations already in flight before the deletion fence plus multi-account worker saturation, production topology and independently reviewed deletion-load thresholds",
+    "repeatable local PostgreSQL plus MinIO saturation runs that actually observe a first failure/degradation transition, plus queue/backlog interpretation and independently reviewed safe operating thresholds",
 }
 
-CANONICAL_CONTAINER_BLOCKER = (
-    "actual deletion-worker container/host interruption recovery, production topology and independently reviewed deletion-load thresholds"
+CANONICAL_HOST_BLOCKER = (
+    "physical deletion-worker host/node/AZ interruption recovery in a registered production-equivalent generation, plus production topology and independently reviewed deletion-load thresholds"
 )
 
 
@@ -48,14 +52,14 @@ def main() -> int:
     for flag in PROVEN_FLAGS:
         if readiness.get(flag) is not True:
             raise SystemExit(f"cannot remove blocker while proof flag is not true: {flag}")
-    if readiness.get("deletionHostFailureRecoveryProven") is not False:
-        raise SystemExit("host failure flag unexpectedly promoted")
-    if readiness.get("capacityBoundaryEstablished") is not False:
-        raise SystemExit("capacity boundary unexpectedly promoted")
-    if readiness.get("localSustainedSoakEvidence") is not False:
-        raise SystemExit("sustained soak unexpectedly promoted")
-    if readiness.get("productionEquivalentDependencies") is not False:
-        raise SystemExit("production-equivalent dependencies unexpectedly promoted")
+    for flag in (
+        "deletionHostFailureRecoveryProven",
+        "capacityBoundaryEstablished",
+        "localSustainedSoakEvidence",
+        "productionEquivalentDependencies",
+    ):
+        if readiness.get(flag) is not False:
+            raise SystemExit(f"unresolved load flag unexpectedly promoted: {flag}")
 
     status = load(STATUS)
     area = next((item for item in status.get("areas", []) if item.get("id") == "OPS-P0-006"), None)
@@ -68,26 +72,28 @@ def main() -> int:
     if not isinstance(missing, list):
         raise SystemExit("OPS-P0-006 missingEvidence must be array")
     normalized: list[str] = []
-    container_blocker_added = False
+    host_blocker_added = False
+    host_legacy_fragments = (
+        "deletion-worker container/host interruption recovery",
+        "deletion-worker host/container failure behavior",
+        "deletion-worker host/container interruption recovery",
+        "deletion-worker process kill and host failure behavior",
+        "deletion-worker process kill and host/container interruption recovery",
+    )
     for item in missing:
         if not isinstance(item, str):
             raise SystemExit("OPS-P0-006 missingEvidence entries must be strings")
         if item in STALE_RESOLVED:
             continue
-        if item in {
-            "actual deletion-worker host/container failure behavior, production topology and independently reviewed deletion-load thresholds",
-            "actual deletion-worker host/container interruption recovery, production topology and independently reviewed deletion-load thresholds",
-            "actual deletion-worker process kill and host failure behavior, production topology and independently reviewed deletion-load thresholds",
-            "actual deletion-worker process kill and host/container interruption recovery, production topology and independently reviewed deletion-load thresholds",
-        }:
-            if not container_blocker_added:
-                normalized.append(CANONICAL_CONTAINER_BLOCKER)
-                container_blocker_added = True
+        if any(fragment in item for fragment in host_legacy_fragments):
+            if not host_blocker_added:
+                normalized.append(CANONICAL_HOST_BLOCKER)
+                host_blocker_added = True
             continue
         if item not in normalized:
             normalized.append(item)
-    if not container_blocker_added and CANONICAL_CONTAINER_BLOCKER not in normalized:
-        normalized.append(CANONICAL_CONTAINER_BLOCKER)
+    if not host_blocker_added and CANONICAL_HOST_BLOCKER not in normalized:
+        normalized.append(CANONICAL_HOST_BLOCKER)
 
     required_remaining_fragments = (
         "capacity boundary",
@@ -95,12 +101,15 @@ def main() -> int:
         "production-equivalent dependency behavior",
         "production object-store TLS",
         "two independent 60-minute-or-longer LOCAL_LONG_SOAK runs",
-        "container/host interruption recovery",
+        "physical deletion-worker host/node/AZ interruption recovery",
     )
     joined = "\n".join(normalized)
     for fragment in required_remaining_fragments:
         if fragment not in joined:
             raise SystemExit(f"required unresolved blocker disappeared: {fragment}")
+    for stale in STALE_RESOLVED:
+        if stale in normalized:
+            raise SystemExit(f"resolved blocker remained: {stale}")
 
     area["missingEvidence"] = normalized
     if status.get("productionDecision") != "NO_GO":
@@ -108,10 +117,11 @@ def main() -> int:
     write(STATUS, status)
 
     print("Memory OS load missing-evidence reconciliation PASS")
-    print("resolved primary pre-fence/multi-account blockers removed: true")
-    print("container/host interruption blocker retained: true")
-    print("sustained soak blocker retained: true")
-    print("production-equivalent blocker retained: true")
+    print("primary pre-fence/multi-account blockers: resolved")
+    print("repeatable local degradation blocker: resolved")
+    print("physical host/node/AZ blocker: retained")
+    print("sustained soak blocker: retained")
+    print("production-equivalent blocker: retained")
     print("OPS-P0-006: PARTIAL")
     print("productionDecision: NO_GO")
     return 0
