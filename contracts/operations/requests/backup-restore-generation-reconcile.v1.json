@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "memory-os-operation-request.v1",
+  "requestId": "backup-restore-generation-reconcile-20260807-v1",
+  "operation": "RECONCILE_BACKUP_RESTORE_GENERATION_AUTHORITY",
+  "productionTraffic": false,
+  "productionCredentials": false,
+  "productionEvidence": false,
+  "constraints": {
+    "targetOperabilityArea": "OPS-P0-007",
+    "removeHistoricalMisclassificationFromOPS-P0-003": true,
+    "normalizeDuplicateBackupRestoreBlockers": true,
+    "productionEquivalentRestorePromotionForbidden": true,
+    "productionReadyPromotionForbidden": true,
+    "failureDiagnosticRequired": true
+  }
+}
