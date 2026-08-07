@@ -1,0 +1,117 @@
+name: Observability Stack Deployment Admission
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - "contracts/operations/requests/observability-stack-deployment-foundation.v1.json"
+      - "contracts/operations/observability-stack-deployment-registry.v1.json"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: observability-stack-deployment-so
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Reconcile and validate integrated admission
+        id: stack
+        run: |
+          set +e
+          log=/tmp/observability-stack-deployment.log
+          : > "$log"
+          code=0
+          python -m py_compile \
+            scripts/register-memory-os-observability-stack-deployment.py \
+            scripts/validate-memory-os-observability-stack-deployment.py \
+            scripts/reconcile-memory-os-observability-stack-deployment.py \
+            >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            python scripts/reconcile-memory-os-observability-stack-deployment.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-observability.py >> "$log" 2>&1 || code=$?
+            python scripts/validate-memory-os-observability-access.py >> "$log" 2>&1 || code=$?
+            python scripts/validate-memory-os-metrics.py >> "$log" 2>&1 || code=$?
+            python scripts/validate-memory-os-metrics-operations.py >> "$log" 2>&1 || code=$?
+            python scripts/validate-memory-os-metrics-alerting.py >> "$log" 2>&1 || code=$?
+            python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?
+          fi
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          cat "$log"
+          exit 0
+      - name: Commit bounded stack admission authority
+        if: steps.stack.outputs.exit_code == '0'
+        run: |
+          set -euo pipefail
+          git rm -f docs/fixtures/memory-os-operability/observability-stack-deployment-diagnostic.last.json 2>/dev/null || true
+          git add \
+            contracts/operations/observability-stack-deployment-contract.v1.json \
+            contracts/operations/production-operability-status.json
+          git add -u docs/fixtures/memory-os-operability/observability-stack-deployment-diagnostic.last.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git diff --cached --check
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(observability): register stack deployment admission"
+            for attempt in 1 2 3 4; do
+              git pull --rebase origin so
+              if git push origin HEAD:so; then exit 0; fi
+              sleep 2
+            done
+            exit 1
+          fi
+      - name: Record privacy-safe diagnostic
+        if: steps.stack.outputs.exit_code != '0'
+        env:
+          STACK_EXIT_CODE: ${{ steps.stack.outputs.exit_code }}
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          git reset --hard origin/so
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          text = Path('/tmp/observability-stack-deployment.log').read_text(encoding='utf-8', errors='replace')
+          value = {
+              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'workflow': 'observability-stack-deployment',
+              'result': 'FAIL',
+              'exitCode': int(os.environ['STACK_EXIT_CODE']),
+              'output': text[-12000:],
+              'containsSecrets': False,
+              'admittedStackCount': 0,
+              'productionEvidence': False,
+              'productionReady': False,
+          }
+          path = Path('docs/fixtures/memory-os-operability/observability-stack-deployment-diagnostic.last.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          PY
+          git add docs/fixtures/memory-os-operability/observability-stack-deployment-diagnostic.last.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --cached --quiet; then
+            git commit -m "test(observability): record stack admission diagnostic"
+            for attempt in 1 2 3; do
+              git pull --rebase origin so
+              if git push origin HEAD:so; then exit 0; fi
+              sleep 2
+            done
+          fi
+      - name: Enforce stack admission validation
+        run: test "${{ steps.stack.outputs.exit_code }}" = "0"
