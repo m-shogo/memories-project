@@ -1,0 +1,55 @@
+name: Reconcile Deletion SIGKILL Authority
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/reconcile-deletion-sigkill-authority.yml"
+      - "scripts/reconcile-memory-os-deletion-sigkill-authority.py"
+      - "contracts/operations/deletion-worker-sigkill-recovery-contract.v1.json"
+      - "docs/fixtures/memory-os-operability/deletion-worker-sigkill-recovery-results.sample.v1.json"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reconcile-deletion-sigkill-authority-so
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Reconcile actual process-kill evidence
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/validate-memory-os-deletion-worker-sigkill-recovery.py \
+            scripts/reconcile-memory-os-deletion-sigkill-authority.py \
+            scripts/validate-memory-os-load.py
+          python scripts/reconcile-memory-os-deletion-sigkill-authority.py
+          python scripts/validate-memory-os-load.py
+      - name: Commit canonical authority update
+        run: |
+          set -euo pipefail
+          git add \
+            contracts/operations/load-test-scenario-contract.v1.json \
+            contracts/operations/production-operability-status.json
+          if ! git diff --cached --quiet; then
+            git diff --cached --check
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(deletion): register SIGKILL in canonical authority"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
