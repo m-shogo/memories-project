@@ -22,6 +22,15 @@ func fail(stage string) {
 	os.Exit(70)
 }
 
+func progress(path string, stage string) {
+	if path == "" {
+		return
+	}
+	if err := os.WriteFile(path, []byte(stage+"\n"), 0o600); err != nil {
+		fail("progress_signal")
+	}
+}
+
 func main() {
 	ctx := context.Background()
 	mode := os.Getenv("MEMORY_OS_CONTAINER_DRILL_MODE")
@@ -30,15 +39,18 @@ func main() {
 	access := os.Getenv("MEMORY_OS_TEST_S3_ACCESS_KEY")
 	secret := os.Getenv("MEMORY_OS_TEST_S3_SECRET_KEY")
 	signalPath := os.Getenv("MEMORY_OS_CONTAINER_DRILL_SIGNAL_PATH")
+	progressPath := os.Getenv("MEMORY_OS_CONTAINER_DRILL_PROGRESS_PATH")
 	if mode == "" || databaseURL == "" || endpoint == "" || access == "" || secret == "" || signalPath == "" {
 		fail("missing_configuration")
 	}
+	progress(progressPath, "configuration-accepted")
 
 	pool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
 		fail("database_pool")
 	}
 	defer pool.Close()
+	progress(progressPath, "database-pool-created")
 
 	var currentUser string
 	var superuser, bypassRLS bool
@@ -50,6 +62,7 @@ func main() {
 	if currentUser != "memory_app_login" || superuser || bypassRLS {
 		fail("runtime_identity_not_restricted")
 	}
+	progress(progressPath, "runtime-identity-verified")
 
 	executor := dbscope.New(pgscope.Beginner{Pool: pool})
 	control := pgrepo.AccountControl{Pool: pool, Transactions: executor}
@@ -63,6 +76,7 @@ func main() {
 	if err != nil {
 		fail("object_store")
 	}
+	progress(progressPath, "dependencies-ready")
 
 	switch mode {
 	case "erase-block":
@@ -70,17 +84,21 @@ func main() {
 		if err != nil || !ok || claim.Attempts != 1 || claim.DeletionEpoch != 2 {
 			fail("initial_claim")
 		}
+		progress(progressPath, "claim-acquired")
 		keys, err := control.ObjectKeys(ctx, claim.AccountID, claim.DeletionEpoch)
 		if err != nil || len(keys) == 0 {
 			fail("object_ledger")
 		}
+		progress(progressPath, "object-ledger-discovered")
 		erased, err := objects.EraseObject(ctx, keys[0])
 		if err != nil || erased < 1 {
 			fail("object_erasure")
 		}
+		progress(progressPath, "object-erased")
 		if err := os.WriteFile(signalPath, []byte("claimed-and-erased\n"), 0o600); err != nil {
 			fail("ready_signal")
 		}
+		progress(progressPath, "interruption-point-ready")
 		// Intentionally never Release, Sweep or Complete. The container must be
 		// killed externally while this lease remains active.
 		for {
@@ -94,10 +112,12 @@ func main() {
 			Objects:      objects,
 			LeaseSeconds: 30,
 		}
+		progress(progressPath, "replacement-worker-ready")
 		receipts, err := worker.Sweep(ctx, 1)
 		if err != nil || len(receipts) != 1 || receipts[0].DeletionEpoch != 2 || receipts[0].Attempts != 2 {
 			fail("replacement_reclaim")
 		}
+		progress(progressPath, "replacement-attempt-2-complete")
 		backlog, err := worker.Backlog(ctx)
 		if err != nil || backlog.Pending != 0 || backlog.Stuck != 0 {
 			fail("replacement_backlog")
@@ -105,6 +125,7 @@ func main() {
 		if err := os.WriteFile(signalPath, []byte("recovered-attempt-2\n"), 0o600); err != nil {
 			fail("recovery_signal")
 		}
+		progress(progressPath, "replacement-recovered")
 
 	default:
 		fail("unknown_mode")
