@@ -613,7 +613,8 @@
         "executable local three-bucket MinIO exact-version recovery drill using explicit source and backup VersionIds",
         "complete simulated source-version loss before restore with backup checksum and source-version metadata binding preserved",
         "privacy-safe exact-source object recovery result storing only SHA-256 digests of bucket, key and provider version identifiers",
-        "future production-equivalent restore promotion is generation-bound: backup artifact/manifest hashes, source environment generation/manifest, source commit, restore target generation/manifest and restore evidence bundle must match append-only registered generations; legacy local restore evidence cannot be relabeled and cross-generation restores require material-delta review"
+        "future production-equivalent restore promotion is generation-bound: backup artifact/manifest hashes, source environment generation/manifest, source commit, restore target generation/manifest and restore evidence bundle must match append-only registered generations; legacy local restore evidence cannot be relabeled and cross-generation restores require material-delta review",
+        "generation-bound backup/restore evidence admission is append-only and fail-closed: registered environment generations=0, recovery records=0, complete generation-bound restores=0, production-equivalent recovery candidates=0; exact generation/manifest/artifact hashes, isolated restore, PITR, independent object retention, recovery coherence, non-resurrection, approved objectives and distinct security/operability review are required before a candidate can be derived, while productionEvidence and productionReady remain false"
       ],
       "missingEvidence": [
         "production PostgreSQL backup and PITR schedule with encrypted independent retention, WAL continuity and tested point-in-time recovery selection",
@@ -646,7 +647,13 @@
         "scripts/validate-memory-os-backup-restore-generation-binding.py",
         ".github/workflows/backup-restore-generation-binding.yml",
         "contracts/operations/production-equivalent-environment-generation-contract.v1.json",
-        "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+        "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+        "contracts/operations/backup-restore-generation-evidence-contract.v1.json",
+        "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
+        "scripts/register-memory-os-backup-restore-generation-evidence.py",
+        "scripts/validate-memory-os-backup-restore-generation-evidence.py",
+        "scripts/reconcile-memory-os-backup-restore-generation-evidence.py",
+        ".github/workflows/backup-restore-generation-evidence.yml"
       ]
     },
     {
