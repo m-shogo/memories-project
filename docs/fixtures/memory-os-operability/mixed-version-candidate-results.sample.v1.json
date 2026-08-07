@@ -1,8 +1,8 @@
 {
   "schemaVersion": "memory-os-mixed-version-candidate-results.v1",
-  "currentCommitSha": "b22a2e9b3a880c98e6b4e063abc91531bc463b19",
+  "currentCommitSha": "9590a1cbc717d998280a1b6e691f30dfa01189ca",
   "candidateBaselineCommitSha": "2af6e8e10755cc707c6bdd958a049a0f4afb3d70",
-  "generatedAt": "2026-08-06T10:29:13.169916Z",
+  "generatedAt": "2026-08-07T00:46:33.040151Z",
   "environment": {
     "mode": "EPHEMERAL_POSTGRESQL_16_MINIO_TWO_DATABASE_CANDIDATE_BASELINE",
     "productionEvidence": false,
@@ -14,9 +14,9 @@
   },
   "scenario": {
     "scenarioId": "historical-candidate-on-current-expanded-schema",
-    "startedAt": "2026-08-06T10:28:51Z",
-    "completedAt": "2026-08-06T10:29:13Z",
-    "durationSeconds": 22,
+    "startedAt": "2026-08-07T00:46:07Z",
+    "completedAt": "2026-08-07T00:46:32Z",
+    "durationSeconds": 25,
     "currentMigrationsAppliedPerDatabase": 11,
     "candidateBaselineSqlTestsExecuted": 11,
     "currentSqlTestsExecuted": 11,
