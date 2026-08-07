@@ -113,23 +113,23 @@ type deletionWorkerSIGKILLResultsDocument struct {
 		ContainsSecrets                  bool   `json:"containsSecrets"`
 	} `json:"environment"`
 	Scenario struct {
-		ScenarioID                   string         `json:"scenarioId"`
-		ChildClaimAttempts           int            `json:"childClaimAttempts"`
-		ActualSIGKILLObserved        bool           `json:"actualSIGKILLObserved"`
-		LedgerRowsAfterKill          int            `json:"ledgerRowsAfterKill"`
-		ObjectVersionsAfterKill      int            `json:"objectVersionsAfterKill"`
-		ClaimsAvailableBeforeExpiry  int            `json:"claimsAvailableBeforeExpiry"`
-		ReplacementWorkerReceipts    int            `json:"replacementWorkerReceipts"`
-		ReplacementReceiptAttempts   int            `json:"replacementReceiptAttempts"`
-		FinalDeletionPending         int64          `json:"finalDeletionPending"`
-		FinalDeletionStuck           int64          `json:"finalDeletionStuck"`
-		FinalOwnedRowCount           int            `json:"finalOwnedRowCount"`
-		FinalAccountState            string         `json:"finalAccountState"`
-		FinalAccountEpoch            int64          `json:"finalAccountEpoch"`
-		RemainingObjectVersions      int            `json:"remainingObjectVersions"`
-		Assertions                   map[string]any `json:"assertions"`
-		Result                       string         `json:"result"`
-		IntegrityResult              string         `json:"integrityResult"`
+		ScenarioID                  string         `json:"scenarioId"`
+		ChildClaimAttempts          int            `json:"childClaimAttempts"`
+		ActualSIGKILLObserved       bool           `json:"actualSIGKILLObserved"`
+		LedgerRowsAfterKill         int            `json:"ledgerRowsAfterKill"`
+		ObjectVersionsAfterKill     int            `json:"objectVersionsAfterKill"`
+		ClaimsAvailableBeforeExpiry int            `json:"claimsAvailableBeforeExpiry"`
+		ReplacementWorkerReceipts   int            `json:"replacementWorkerReceipts"`
+		ReplacementReceiptAttempts  int            `json:"replacementReceiptAttempts"`
+		FinalDeletionPending        int64          `json:"finalDeletionPending"`
+		FinalDeletionStuck          int64          `json:"finalDeletionStuck"`
+		FinalOwnedRowCount          int            `json:"finalOwnedRowCount"`
+		FinalAccountState           string         `json:"finalAccountState"`
+		FinalAccountEpoch           int64          `json:"finalAccountEpoch"`
+		RemainingObjectVersions     int            `json:"remainingObjectVersions"`
+		Assertions                  map[string]any `json:"assertions"`
+		Result                      string         `json:"result"`
+		IntegrityResult             string         `json:"integrityResult"`
 	} `json:"scenario"`
 	Limitations []string `json:"limitations"`
 }
@@ -351,17 +351,17 @@ func TestDeletionWorkerSIGKILLRecoveryLocalDependencies(t *testing.T) {
 	document.Scenario.RemainingObjectVersions = len(remaining)
 	document.Scenario.Assertions = map[string]any{
 		"childDiscoveredClaimWithoutAccountInput": true,
-		"actualSIGKILLObserved":                  actualSIGKILLObserved,
-		"ledgerSurvivedSIGKILL":                 ledgerRows == 1,
-		"objectErasedBeforeSIGKILL":             len(afterKillVersions) == 0,
-		"noClaimBeforeExpiry":                   claimsBeforeExpiry == 0,
-		"replacementClaimWasAttempt2":           receipts[0].Attempts == 2,
-		"idempotentObjectRecovery":              len(remaining) == 0,
-		"backlogConverged":                      backlog.Pending == 0 && backlog.Stuck == 0,
-		"allOwnedRowsErased":                    finalOwnedRows == 0,
-		"actualHostFailureCovered":              false,
-		"containerRestartCovered":               false,
-		"productionEvidence":                    false,
+		"actualSIGKILLObserved":                   actualSIGKILLObserved,
+		"ledgerSurvivedSIGKILL":                   ledgerRows == 1,
+		"objectErasedBeforeSIGKILL":               len(afterKillVersions) == 0,
+		"noClaimBeforeExpiry":                     claimsBeforeExpiry == 0,
+		"replacementClaimWasAttempt2":             receipts[0].Attempts == 2,
+		"idempotentObjectRecovery":                len(remaining) == 0,
+		"backlogConverged":                        backlog.Pending == 0 && backlog.Stuck == 0,
+		"allOwnedRowsErased":                      finalOwnedRows == 0,
+		"actualHostFailureCovered":                false,
+		"containerRestartCovered":                 false,
+		"productionEvidence":                      false,
 	}
 	document.Scenario.Result = "PASS"
 	document.Scenario.IntegrityResult = "PASS"
