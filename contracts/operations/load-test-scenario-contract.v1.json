@@ -271,12 +271,23 @@
       "dependencyMode": "LOCAL_POSTGRES_MINIO",
       "productionEvidence": false,
       "requestsStartedBeforeFenceCovered": false
+    },
+    {
+      "scenarioId": "signed-upload-controlled-saturation-ramp-local-dependencies",
+      "contractRef": "contracts/operations/controlled-saturation-ramp-contract.v1.json",
+      "validatorRef": "scripts/validate-memory-os-controlled-saturation-ramp.py",
+      "dependencyMode": "LOCAL_POSTGRES_MINIO",
+      "classification": "BOUNDED_LOCAL_CAPACITY_RAMP",
+      "productionEvidence": false,
+      "capacityBoundaryEstablished": false,
+      "operationalThresholdApproved": false,
+      "repeatabilityEstablished": false
     }
   ],
   "deferredScenarios": [
     {
       "scenarioId": "capacity-ramp-local-postgres-minio",
-      "reason": "a bounded authenticated Preview ramp now executes against local PostgreSQL, but it observed no saturation transition and does not exercise MinIO; deliberate overload, queue/backlog observation and reviewed safe operating thresholds remain deferred",
+      "reason": "a bounded local PostgreSQL plus MinIO lifecycle ramp now executes through concurrency 48 with pool telemetry, but no failure/degradation boundary was established; repeatable overload discovery and independently reviewed safe operating thresholds remain deferred",
       "requiredDependencyMode": "LOCAL_POSTGRES_MINIO"
     },
     {
@@ -320,7 +331,8 @@
     "note": "Mock and local dependency checkpoints now include bounded ramp, short CI stability and post-fence deletion load. They establish neither production capacity nor pre-fence request linearization, sustained-soak/leak proof or production-equivalent behavior; OPS-P0-006 remains PARTIAL.",
     "boundedLocalCapacityRampExecuted": true,
     "shortCIStabilitySampleExecuted": true,
-    "deletionPostFenceLoadExecuted": true
+    "deletionPostFenceLoadExecuted": true,
+    "controlledLocalDependencySaturationRampExecuted": true
   },
   "evidenceRefs": [
     "services/import-api/internal/loadtest/harness.go",
@@ -346,6 +358,12 @@
     "services/import-api/internal/httpserver/deletion_under_load_test.go",
     "contracts/operations/deletion-under-load-contract.v1.json",
     "scripts/validate-memory-os-deletion-under-load.py",
-    "docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json"
+    "docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json",
+    "contracts/operations/controlled-saturation-ramp-contract.v1.json",
+    "services/import-api/internal/httpserver/controlled_saturation_ramp_test.go",
+    "scripts/validate-memory-os-controlled-saturation-ramp.py",
+    "scripts/reconcile-memory-os-controlled-saturation-ramp-status.py",
+    "docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.sample.v1.json",
+    ".github/workflows/controlled-saturation-ramp.yml"
   ]
 }

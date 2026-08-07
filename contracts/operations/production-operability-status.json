@@ -251,16 +251,17 @@
         "six-window authenticated Preview short CI stability sample records Linux RSS, Go heap and goroutine observations plus per-window throughput and latency while explicitly refusing sustained-soak, leak-proof or capacity claims",
         "local PostgreSQL and MinIO deletion-under-load checkpoint proves that after a durable 202 epoch fence, 400 concurrent requests using the former session all return 401 while the leased deletion worker completes and leaves zero owned rows",
         "exact-HEAD committed PASS result from the local PostgreSQL Preview read and concurrent idempotent Apply checkpoint",
-        "exact-HEAD committed PASS result from the local MinIO signed-upload, exact-version completion and scan-enqueue checkpoint"
+        "exact-HEAD committed PASS result from the local MinIO signed-upload, exact-version completion and scan-enqueue checkpoint",
+        "bounded local PostgreSQL plus MinIO signed-upload lifecycle ramp records throughput, latency and pgx pool contention through concurrency 48, preserves exact object/version accounting and proves post-ramp recovery without treating one run as a capacity boundary"
       ],
       "missingEvidence": [
         "capacity boundary, saturation report and load-calibrated operational thresholds",
         "sustained soak with RSS/heap/goroutine-slope evidence (SOAK PROOF INSUFFICIENT)",
         "production-equivalent dependency behavior and real-Apple load evidence",
         "production object-store TLS, scoped credentials, retention and lifecycle evidence",
-        "deliberate local PostgreSQL plus MinIO saturation ramp with queue/backlog signals, first-failure transition, repeatability and independently reviewed safe operating thresholds",
         "60-minute-or-longer repeated soak over PostgreSQL, object storage, parser, queue, deletion and authentication paths with RSS/heap/goroutine slope review and independently approved leak/stability criteria",
-        "request-linearization proof for operations already in flight before the deletion fence plus multi-account worker saturation, production topology and independently reviewed deletion-load thresholds"
+        "request-linearization proof for operations already in flight before the deletion fence plus multi-account worker saturation, production topology and independently reviewed deletion-load thresholds",
+        "repeatable local PostgreSQL plus MinIO saturation runs that actually observe a first failure/degradation transition, plus queue/backlog interpretation and independently reviewed safe operating thresholds"
       ],
       "evidenceRefs": [
         "services/import-api/internal/loadtest/harness.go",
@@ -302,7 +303,13 @@
         "docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json",
         ".github/workflows/deletion-under-load.yml",
         "docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json",
-        "docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json"
+        "docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json",
+        "contracts/operations/controlled-saturation-ramp-contract.v1.json",
+        "services/import-api/internal/httpserver/controlled_saturation_ramp_test.go",
+        "scripts/validate-memory-os-controlled-saturation-ramp.py",
+        "scripts/reconcile-memory-os-controlled-saturation-ramp-status.py",
+        "docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.sample.v1.json",
+        ".github/workflows/controlled-saturation-ramp.yml"
       ]
     },
     {
