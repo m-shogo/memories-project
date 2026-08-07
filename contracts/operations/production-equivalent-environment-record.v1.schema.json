@@ -114,7 +114,23 @@
           "classification": { "enum": ["MATERIAL", "NON_MATERIAL"] },
           "accepted": { "type": "boolean" },
           "independentReviewRef": { "type": ["string", "null"], "maxLength": 256 }
-        }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "classification": { "const": "MATERIAL" },
+                "accepted": { "const": true }
+              },
+              "required": ["classification", "accepted"]
+            },
+            "then": {
+              "properties": {
+                "independentReviewRef": { "type": "string", "minLength": 1, "maxLength": 256 }
+              }
+            }
+          }
+        ]
       }
     },
     "evidenceBoundary": {
@@ -128,5 +144,81 @@
         "productionReady": { "const": false }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "evidenceBoundary": {
+            "properties": {
+              "productionEquivalentDependencies": { "const": true }
+            },
+            "required": ["productionEquivalentDependencies"]
+          }
+        },
+        "required": ["evidenceBoundary"]
+      },
+      "then": {
+        "properties": {
+          "status": { "const": "VALIDATED_LOCAL_NONPRODUCTION" },
+          "topology": {
+            "properties": {
+              "nonLoopback": { "const": true }
+            }
+          },
+          "postgresql": {
+            "properties": {
+              "tlsVerified": { "const": true },
+              "forceRLSVerified": { "const": true },
+              "connectionBudgetDeclared": { "const": true },
+              "poolTelemetryVerified": { "const": true },
+              "restoreEvidenceRef": { "type": "string", "minLength": 1, "maxLength": 256 }
+            }
+          },
+          "objectStorage": {
+            "properties": {
+              "tlsVerified": { "const": true },
+              "scopedCredentialsVerified": { "const": true },
+              "versioningVerified": { "const": true },
+              "retentionLifecycleVerified": { "const": true },
+              "exactVersionDeleteVerified": { "const": true },
+              "restoreEvidenceRef": { "type": "string", "minLength": 1, "maxLength": 256 }
+            }
+          },
+          "queueWorkers": {
+            "properties": {
+              "boundedBackpressureVerified": { "const": true },
+              "queueTelemetryVerified": { "const": true },
+              "deletionBacklogTelemetryVerified": { "const": true },
+              "leaseRetryVerified": { "const": true }
+            }
+          },
+          "network": {
+            "properties": {
+              "latencyProfileRef": { "type": "string", "minLength": 1, "maxLength": 256 },
+              "failureInjectionRef": { "type": "string", "minLength": 1, "maxLength": 256 }
+            }
+          },
+          "identityAndSecrets": {
+            "properties": {
+              "dedicatedNonProductionCredentials": { "const": true },
+              "credentialScopeRef": { "type": "string", "minLength": 1, "maxLength": 256 }
+            }
+          },
+          "backupRestore": {
+            "properties": {
+              "sameGenerationLinked": { "const": true },
+              "isolatedRestoreVerified": { "const": true },
+              "evidenceRef": { "type": "string", "minLength": 1, "maxLength": 256 }
+            }
+          },
+          "evidenceBoundary": {
+            "properties": {
+              "independentReviewCompleted": { "const": true }
+            }
+          }
+        }
+      }
+    }
+  ]
 }
