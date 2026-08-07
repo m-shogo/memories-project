@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -33,7 +32,7 @@ def main() -> int:
 
     release_count = releases.get("approvedReleaseCount")
     client_count = clients.get("approvedClientBaselineCount")
-    parser_count = parsers.get("reviewedProductionArtifactCount")
+    parser_count = parsers.get("reviewedArtifactCount")
     rollback_count = foundations.get("aggregateBoundaries", {}).get("approvedRollbackPairCount")
     if not all(isinstance(value, int) and value >= 0 for value in (release_count, client_count, parser_count, rollback_count)):
         raise SystemExit("compatibility registry counts must be non-negative integers")
@@ -114,7 +113,6 @@ def main() -> int:
 
     document = {
         "schemaVersion": "memory-os-compatibility-admission-gaps.v1",
-        "generatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "sourceAuthorities": [
             str(RELEASES.relative_to(ROOT)),
             str(CLIENTS.relative_to(ROOT)),
@@ -141,8 +139,8 @@ def main() -> int:
             "approve at least one immutable client baseline and reviewed parser artifact",
             "execute approved-pair mixed-version routes and rolling rollback rehearsal",
             "execute production-shaped PostgreSQL upgrade/failover evidence",
-            "complete independent integrated compatibility review",
-        ],
+            "complete independent integrated compatibility review"
+        ]
     }
     OUTPUT.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
     print("Memory OS compatibility admission gaps updated")
