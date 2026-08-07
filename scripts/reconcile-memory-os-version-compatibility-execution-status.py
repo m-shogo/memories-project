@@ -29,7 +29,7 @@ REFS = (
 )
 
 CANONICAL_MISSING = [
-    "implemented client support windows, offline/skew policy and old-client/new-server plus new-client/old-server compatibility tests",
+    "implemented client/server support windows, offline/skew policy and old-client/new-server plus new-client/old-server compatibility tests",
     "approved predecessor and successor release pair with three distinct required approvals and complete security, migration, parser, restore, load and compatibility evidence",
     "rollback-eligible approved release pair with retained exact binaries, parser artifacts, object-version requirements and an admitted isolated rollback rehearsal",
     "production-shaped rolling deployment using approved releases, including simultaneous old/current traffic, connection drain, rollout ordering, monitored stop conditions, application rollback timing and deterministic recovery",
@@ -38,7 +38,7 @@ CANONICAL_MISSING = [
     "production-shaped mixed-version process/host/network interruption with connection-pool cleanup and recovery evidence using approved release artifacts",
     "destructive contract-migration and downgrade compatibility proof with an explicit irreversible rollback boundary",
     "reviewed PostgreSQL support window plus production-shaped blue-green or in-place upgrade rehearsal with connection-pool drain, physical replication, WAL continuity, replication slots, failover and rollback decision evidence",
-    "independent integrated compatibility review with zero unresolved Critical or High findings",
+    "independent review of integrated compatibility controls with zero unresolved Critical or High findings",
 ]
 
 
@@ -111,16 +111,16 @@ def main() -> int:
 
     joined = "\n".join(CANONICAL_MISSING).lower()
     for label, terms in {
-        "client skew": ("client", "skew"),
+        "client skew": ("client/server", "old-client/new-server", "new-client/old-server"),
         "approved release pair": ("approved predecessor", "successor"),
         "rollback pair": ("rollback-eligible", "rollback rehearsal"),
         "rolling traffic": ("rolling deployment", "connection drain", "application rollback"),
-        "remaining routes": ("remaining import", "preview", "parser"),
-        "parser artifact": ("reviewed production parser artifact", "exact-byte"),
+        "remaining routes": ("mixed-version", "persisted-state", "remaining import", "preview", "parser"),
+        "parser artifact": ("parser artifact", "reviewed production parser artifact", "exact-byte"),
         "failure recovery": ("process/host/network", "connection-pool"),
         "destructive downgrade": ("destructive", "downgrade"),
-        "database upgrade": ("physical replication", "wal continuity", "failover"),
-        "independent review": ("independent integrated", "critical", "high"),
+        "database upgrade": ("postgresql", "physical replication", "wal continuity", "failover"),
+        "independent review": ("independent review", "critical", "high"),
     }.items():
         require(all(term in joined for term in terms), f"required compatibility blocker missing: {label}")
 
