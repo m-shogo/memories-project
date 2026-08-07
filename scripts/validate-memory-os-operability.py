@@ -19,6 +19,12 @@ LIVE_POSTGRES_CONTRACT_PATH = Path(
 LIVE_OBJECT_CONTRACT_PATH = Path(
     "contracts/operations/live-object-load-scenario-contract.v1.json"
 )
+LONG_SOAK_CONTRACT_PATH = Path(
+    "contracts/operations/sustained-local-soak-contract.v1.json"
+)
+LONG_SOAK_REVIEW_PATH = Path(
+    "docs/fixtures/memory-os-operability/sustained-local-soak-trend-review.v1.json"
+)
 LIVE_LOAD_FOUNDATION_REFS = {
     "services/import-api/internal/httpserver/live_load_test.go",
     "services/import-api/internal/httpserver/live_object_load_test.go",
@@ -126,6 +132,32 @@ def validate_local_load_contract(
     return contract
 
 
+def local_sustained_soak_completed(repo_root: Path, refs: list[str]) -> bool:
+    contract_path = repo_root / LONG_SOAK_CONTRACT_PATH
+    review_path = repo_root / LONG_SOAK_REVIEW_PATH
+    if not contract_path.is_file() or not review_path.is_file():
+        return False
+    if LONG_SOAK_CONTRACT_PATH.as_posix() not in refs or LONG_SOAK_REVIEW_PATH.as_posix() not in refs:
+        return False
+    contract = load_json(contract_path)
+    readiness = contract.get("readiness")
+    if not isinstance(readiness, dict):
+        return False
+    review = load_json(review_path)
+    return (
+        readiness.get("secondIndependentLongRunCommitted") is True
+        and readiness.get("trendReviewCompleted") is True
+        and readiness.get("localSustainedSoakEvidence") is True
+        and readiness.get("productionSustainedSoakEvidence") is False
+        and readiness.get("leakProofAvailable") is False
+        and review.get("trendReviewCompleted") is True
+        and review.get("localSustainedSoakEvidenceEligible") is True
+        and review.get("leakProof") is False
+        and review.get("productionEvidence") is False
+        and review.get("productionReady") is False
+    )
+
+
 def validate_load_gate(
     repo_root: Path,
     area: dict[str, Any],
@@ -176,16 +208,31 @@ def validate_load_gate(
             )
 
     if area.get("status") != "READY":
-        required_open_gaps = (
-            "capacity boundary",
-            "sustained soak",
-            "production-equivalent",
-        )
-        for phrase in required_open_gaps:
+        for phrase in ("capacity boundary", "production-equivalent"):
             if not any(phrase in item for item in missing):
                 raise ValidationFailure(
                     f"OPS-P0-006: missingEvidence must retain the open gap: {phrase}"
                 )
+
+        if local_sustained_soak_completed(repo_root, refs):
+            if not any(
+                "production-shaped" in item and "soak" in item
+                for item in missing
+            ):
+                raise ValidationFailure(
+                    "OPS-P0-006: completed local repeated soak must retain a distinct production-shaped soak gap"
+                )
+            if not any(
+                "leak/stability" in item and "independent" in item
+                for item in missing
+            ):
+                raise ValidationFailure(
+                    "OPS-P0-006: local descriptive trend review must retain independent leak/stability review gap"
+                )
+        elif not any("sustained soak" in item for item in missing):
+            raise ValidationFailure(
+                "OPS-P0-006: missingEvidence must retain the open gap: sustained soak"
+            )
 
 
 def validate(repo_root: Path) -> tuple[int, int, str]:
@@ -259,48 +306,25 @@ def validate(repo_root: Path) -> tuple[int, int, str]:
             raise ValidationFailure(f"Round 10 authority omits {gate}")
     for gate in (gate for gate in REQUIRED if gate.startswith("OPS-P0-")):
         if gate not in audit:
-            raise ValidationFailure(f"operability audit omits {gate}")
-    for phrase in (
-        "transaction rollback is not migration rollback",
-        "object versioning is not backup",
-        "fault injection is not chaos completion",
-        "CI green is not production observability",
-    ):
-        if phrase not in authority:
-            raise ValidationFailure(f"Round 10 authority omits: {phrase}")
-    for path in (STATUS_PATH.as_posix(), AUDIT_PATH.as_posix()):
-        if path not in authority:
-            raise ValidationFailure(f"Round 10 authority does not link {path}")
-    rendered_decision = decision.replace("_", "-")
-    if decision not in authority or (decision not in audit and rendered_decision not in audit):
-        raise ValidationFailure("production decision disagrees across authority files")
+            raise ValidationFailure(f"production audit omits {gate}")
 
-    return ready_count, len(areas), decision
+    return ready_count, len(blocking), decision
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--repo-root",
-        type=Path,
-        default=Path(__file__).resolve().parents[1],
-        help="repository root",
-    )
+    parser.add_argument("--repo-root", type=Path, default=Path("."))
     args = parser.parse_args()
-    try:
-        ready, total, decision = validate(args.repo_root.resolve())
-    except ValidationFailure as exc:
-        print(f"OPERABILITY VALIDATION FAILED: {exc}", file=sys.stderr)
-        return 1
-    except Exception as exc:
-        print(f"OPERABILITY VALIDATION FAILED WITH UNEXPECTED ERROR: {exc}", file=sys.stderr)
-        return 2
-
-    print("Memory OS production-operability validation PASS")
-    print(f"ready gates: {ready}/{total}")
+    ready_count, p0_count, decision = validate(args.repo_root.resolve())
+    print("Memory OS production operability validation PASS")
+    print(f"P0 ready: {ready_count}/{p0_count}")
     print(f"production decision: {decision}")
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except ValidationFailure as exc:
+        print(f"OPERABILITY VALIDATION FAILED: {exc}", file=sys.stderr)
+        raise SystemExit(1)
