@@ -94,9 +94,9 @@ jobs:
           MEMORY_OS_TEST_S3_SECRET_KEY: minioadmin
           MEMORY_OS_RUN_PREFENCE_LINEARIZATION: "1"
           MEMORY_OS_PREFENCE_LINEARIZATION_RESULTS_PATH: ../../docs/fixtures/memory-os-operability/deletion-prefence-linearization-results.sample.v1.json
-          MEMORY_OS_COMMIT_SHA: ${{ env.SOURCE_SHA }}
         run: |
           set -euo pipefail
+          export MEMORY_OS_COMMIT_SHA="$SOURCE_SHA"
           python -m py_compile \
             scripts/validate-memory-os-deletion-prefence-linearization.py \
             scripts/reconcile-memory-os-deletion-prefence-linearization.py
@@ -143,10 +143,9 @@ jobs:
           git push origin HEAD:so
 
       - name: Reconcile local-only authority
-        env:
-          EXPECTED_COMMIT_SHA: ${{ env.SOURCE_SHA }}
         run: |
           set -euo pipefail
+          export EXPECTED_COMMIT_SHA="$SOURCE_SHA"
           python scripts/reconcile-memory-os-deletion-prefence-linearization.py
           python scripts/validate-memory-os-deletion-prefence-linearization.py \
             --require-result \
