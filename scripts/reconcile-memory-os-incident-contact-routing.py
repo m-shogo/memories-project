@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+"""Reconcile incident-contact routing admission without inventing configured contacts."""
+
+from __future__ import annotations
+
+import json
+import subprocess
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parents[1]
+CONTRACT = ROOT / "contracts/operations/incident-contact-routing-admission-contract.v1.json"
+REGISTRY = ROOT / "contracts/operations/incident-contact-routing-admission-registry.v1.json"
+WRITER = ROOT / "scripts/register-memory-os-incident-contact-routing.py"
+VALIDATOR = ROOT / "scripts/validate-memory-os-incident-contact-routing.py"
+WORKFLOW = ROOT / ".github/workflows/incident-contact-routing-admission.yml"
+STATUS = ROOT / "contracts/operations/production-operability-status.json"
+
+EVIDENCE = (
+    "incident contact-routing admission is fail-closed and composes with an already-admitted observability stack: future evidence must provide pseudonymous owners and destination digests for incident command, security/privacy, system ownership, provider escalation and user communication, plus delivery/escalation/user-communication drills and independent privacy/operability review; the registry is currently empty"
+)
+REFS = (
+    "contracts/operations/incident-contact-routing-admission-contract.v1.json",
+    "contracts/operations/incident-contact-routing-admission-registry.v1.json",
+    "scripts/register-memory-os-incident-contact-routing.py",
+    "scripts/validate-memory-os-incident-contact-routing.py",
+    "scripts/reconcile-memory-os-incident-contact-routing.py",
+    ".github/workflows/incident-contact-routing-admission.yml",
+)
+
+
+class Fail(RuntimeError):
+    pass
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise Fail(message)
+
+
+def load(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+    return value
+
+
+def write(path: Path, value: dict[str, Any]) -> None:
+    path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def append_once(values: list[Any], value: str) -> None:
+    if value not in values:
+        values.append(value)
+
+
+def main() -> int:
+    for path in (REGISTRY, WRITER, VALIDATOR, WORKFLOW):
+        require(path.is_file(), f"contact routing admission missing: {path.relative_to(ROOT)}")
+    registry = load(REGISTRY)
+    routings = registry.get("routings")
+    require(isinstance(routings, list), "contact routing registry missing")
+    pe = sum(1 for row in routings if isinstance(row, dict) and row.get("environmentClass") == "PRODUCTION_EQUIVALENT")
+    prod = sum(1 for row in routings if isinstance(row, dict) and row.get("environmentClass") == "PRODUCTION")
+
+    contract = load(CONTRACT)
+    current = contract.get("currentAuthority")
+    readiness = contract.get("readiness")
+    require(isinstance(current, dict) and isinstance(readiness, dict), "contact routing authority missing")
+    current["admittedRoutingCount"] = len(routings)
+    current["productionEquivalentRoutingCount"] = pe
+    current["productionRoutingCount"] = prod
+    current["externalContactTreeOwned"] = len(routings) > 0
+    current["pagingAndEscalationDeliveryProven"] = len(routings) > 0
+    current["userCommunicationPathProven"] = len(routings) > 0
+    current["independentReviewCompleted"] = len(routings) > 0
+    current["productionEvidence"] = prod > 0
+    current["productionReady"] = False
+    current["productionDecision"] = "NO_GO"
+    readiness["registryImplemented"] = True
+    readiness["writerImplemented"] = True
+    readiness["validatorImplemented"] = True
+    readiness["automaticWorkflowImplemented"] = True
+    readiness["admittedRoutingCount"] = len(routings)
+    readiness["productionRoutingAvailable"] = prod > 0
+    readiness["productionReady"] = False
+    write(CONTRACT, contract)
+
+    status = load(STATUS)
+    require(status.get("productionDecision") == "NO_GO", "production decision must remain NO_GO")
+    gate = next((row for row in status.get("areas", []) if isinstance(row, dict) and row.get("id") == "OPS-P0-002"), None)
+    require(isinstance(gate, dict), "OPS-P0-002 missing")
+    require(gate.get("status") == "PARTIAL" and gate.get("blocking") is True, "OPS-P0-002 must remain blocking PARTIAL")
+    existing = gate.get("existingEvidence")
+    refs = gate.get("evidenceRefs")
+    require(isinstance(existing, list) and isinstance(refs, list), "OPS-P0-002 authority arrays missing")
+    append_once(existing, EVIDENCE)
+    for ref in REFS:
+        append_once(refs, ref)
+    write(STATUS, status)
+
+    subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=True)
+    print("Memory OS incident contact routing reconciliation PASS")
+    print(f"admitted routings: {len(routings)}")
+    print("external contact tree owned: false" if not routings else "external contact tree owned: evidence admitted")
+    print("OPS-P0-002: PARTIAL")
+    print("productionDecision: NO_GO")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except Fail as exc:
+        print(f"INCIDENT CONTACT ROUTING RECONCILE FAILED: {exc}")
+        raise SystemExit(1)
