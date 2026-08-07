@@ -99,6 +99,10 @@ def validate_result(
         require(SHA40.fullmatch(expected_sha) is not None, "expected commit SHA invalid")
         require(source_sha == expected_sha, "result commitSha does not match expected source")
 
+    database_digest = result.get("databaseIdentityDigest")
+    require(isinstance(database_digest, str) and SHA256.fullmatch(database_digest) is not None,
+            "databaseIdentityDigest must be SHA-256")
+
     canonical = lifecycle.get("migrationSequence")
     require(isinstance(canonical, list) and len(canonical) >= 2,
             "canonical migration sequence missing")
@@ -122,6 +126,9 @@ def validate_result(
     duration = result.get("durationSeconds")
     require(isinstance(duration, int) and duration >= 0 and duration <= 300,
             "local recovery rehearsal duration invalid")
+    apply_duration = result.get("migrationApplyDurationMs")
+    require(isinstance(apply_duration, int) and 0 <= apply_duration <= 300000,
+            "migrationApplyDurationMs invalid")
 
     artifact = result.get("recoveryArtifact")
     require(isinstance(artifact, dict), "recoveryArtifact must be object")
