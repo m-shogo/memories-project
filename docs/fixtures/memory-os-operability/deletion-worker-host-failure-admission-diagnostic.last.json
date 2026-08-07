@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "deletion-worker-host-failure-admission",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "Traceback (most recent call last):\n  File \"/home/runner/work/memories-project/memories-project/scripts/reconcile-memory-os-deletion-worker-host-failure.py\", line 95, in <module>\n    raise SystemExit(main())\n                     ^^^^^^\n  File \"/home/runner/work/memories-project/memories-project/scripts/reconcile-memory-os-deletion-worker-host-failure.py\", line 52, in main\n    contract = load(CONTRACT)\n               ^^^^\nUnboundLocalError: cannot access local variable 'load' where it is not associated with a value\n",
+  "containsSecrets": false,
+  "actualPhysicalHostOrVMNodeLossCovered": false,
+  "deletionHostFailureRecoveryProven": false,
+  "productionEquivalentEvidence": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
