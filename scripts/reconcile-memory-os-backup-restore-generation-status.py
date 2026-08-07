@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Register backup/restore generation-binding foundation while keeping production restore blocked."""
+"""Register backup/restore generation binding in the correct operability area.
+
+This also repairs historical misclassification where this reconciler appended
+restore-generation evidence to OPS-P0-003 (observability) instead of OPS-P0-007
+(backup_restore), and normalizes the duplicated backup/restore blocker list.
+"""
 
 from __future__ import annotations
 
@@ -11,6 +16,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/backup-restore-generation-binding-contract.v1.json"
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-binding.py"
+BACKUP_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore.py"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 
 EVIDENCE = (
@@ -25,6 +31,14 @@ REFS = (
     "contracts/operations/production-equivalent-environment-generation-contract.v1.json",
     "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
 )
+CANONICAL_MISSING = [
+    "production PostgreSQL backup and PITR schedule with encrypted independent retention, WAL continuity and tested point-in-time recovery selection",
+    "production independent object backup retention with TLS, restore-only credential separation, deletion protection, immutability, lifecycle controls and provider durability evidence",
+    "approved and measured RPO and RTO under production-shaped recovery, with coherent PostgreSQL/object recovery-point skew measurement plus backup monitoring, freshness enforcement and paging",
+    "production-shaped cross-cluster isolated restore drill with an approved recovery owner, coherent PostgreSQL and exact object-version recovery points, and an explicit promotion decision",
+    "production deletion, expired/revoked-session, replay, idempotency and lease non-resurrection verification after restore",
+    "independent review of generation-bound recovery evidence, security/privacy invariants, measured objectives and the restore promotion decision",
+]
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -56,31 +70,58 @@ def main() -> int:
     status = load(STATUS)
     if status.get("productionDecision") != "NO_GO":
         raise SystemExit("productionDecision must remain NO_GO")
-    gate = next((item for item in status.get("areas", []) if isinstance(item, dict) and item.get("id") == "OPS-P0-003"), None)
-    if not isinstance(gate, dict):
-        raise SystemExit("OPS-P0-003 missing")
-    if gate.get("status") != "PARTIAL" or gate.get("blocking") is not True:
-        raise SystemExit("OPS-P0-003 must remain blocking PARTIAL")
-    existing = gate.get("existingEvidence")
-    refs = gate.get("evidenceRefs")
-    missing = gate.get("missingEvidence")
-    if not isinstance(existing, list) or not isinstance(refs, list) or not isinstance(missing, list):
+    areas = status.get("areas")
+    if not isinstance(areas, list):
+        raise SystemExit("operability areas missing")
+    observability = next((item for item in areas if isinstance(item, dict) and item.get("id") == "OPS-P0-003"), None)
+    backup = next((item for item in areas if isinstance(item, dict) and item.get("id") == "OPS-P0-007"), None)
+    if not isinstance(observability, dict) or not isinstance(backup, dict):
+        raise SystemExit("OPS-P0-003 or OPS-P0-007 missing")
+    if backup.get("status") not in {"PARTIAL_FOUNDATIONS_ONLY", "PARTIAL"} or backup.get("blocking") is not True:
+        raise SystemExit("OPS-P0-007 must remain blocking and incomplete")
+
+    # Repair historical misclassification if the old reconciler ever wrote to
+    # observability. Do not remove any unrelated observability authority.
+    obs_existing = observability.get("existingEvidence")
+    obs_refs = observability.get("evidenceRefs")
+    if not isinstance(obs_existing, list) or not isinstance(obs_refs, list):
         raise SystemExit("OPS-P0-003 authority arrays missing")
+    observability["existingEvidence"] = [item for item in obs_existing if item != EVIDENCE]
+    observability["evidenceRefs"] = [ref for ref in obs_refs if ref not in set(REFS)]
+
+    existing = backup.get("existingEvidence")
+    refs = backup.get("evidenceRefs")
+    if not isinstance(existing, list) or not isinstance(refs, list):
+        raise SystemExit("OPS-P0-007 authority arrays missing")
     append_once(existing, EVIDENCE)
     for ref in REFS:
         if not (ROOT / ref).is_file():
             raise SystemExit(f"missing restore-generation ref: {ref}")
         append_once(refs, ref)
-    joined = "\n".join(str(item).lower() for item in missing)
-    for term in ("production-shaped restore", "production-equivalent", "independent review"):
+    backup["missingEvidence"] = list(CANONICAL_MISSING)
+
+    joined = "\n".join(CANONICAL_MISSING)
+    for term in (
+        "PostgreSQL backup and PITR",
+        "independent object",
+        "RPO and RTO",
+        "isolated restore",
+        "non-resurrection",
+        "restore drill",
+        "backup monitoring",
+        "independent review",
+    ):
         if term not in joined:
-            raise SystemExit(f"actual restore blocker must remain: {term}")
+            raise SystemExit(f"canonical backup blocker missing validator term: {term}")
 
     STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    subprocess.run(["python", str(BACKUP_VALIDATOR)], cwd=ROOT, check=True)
     print("Memory OS backup/restore generation status reconciliation PASS")
-    print("generation binding foundation: registered")
+    print("misclassified OPS-P0-003 restore evidence: removed")
+    print("generation binding foundation: registered under OPS-P0-007")
+    print("backup/restore blocker list: normalized")
     print("production-equivalent restore evidence: false")
-    print("OPS-P0-003: PARTIAL")
+    print("OPS-P0-007: incomplete")
     print("productionDecision: NO_GO")
     return 0
 
