@@ -1,0 +1,224 @@
+name: Controlled Saturation Repeatability
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - "contracts/operations/requests/controlled-saturation-repeatability.v1.json"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: controlled-saturation-repeatability-so
+  cancel-in-progress: false
+
+jobs:
+  ramp:
+    strategy:
+      fail-fast: false
+      matrix:
+        ordinal: [a, b]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: memory_os_security
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d memory_os_security"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: services/import-api/go.sum
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Execute bounded local ramp
+        id: ramp
+        env:
+          MEMORY_OS_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/memory_os_security?sslmode=disable
+          MEMORY_OS_TEST_S3_ENDPOINT: http://127.0.0.1:9000
+          MEMORY_OS_TEST_S3_ACCESS_KEY: minioadmin
+          MEMORY_OS_TEST_S3_SECRET_KEY: minioadmin
+          MEMORY_OS_RUN_CONTROLLED_SATURATION_RAMP: "1"
+        run: |
+          set +e
+          log=/tmp/controlled-saturation-repeatability-${{ matrix.ordinal }}.log
+          result=/tmp/controlled-saturation-repeatability-${{ matrix.ordinal }}.json
+          : > "$log"
+          rm -f "$result"
+          code=0
+          echo "STAGE: validate-source" >> "$log"
+          python -m py_compile \
+            scripts/analyze-memory-os-controlled-saturation-repeatability.py \
+            scripts/validate-memory-os-controlled-saturation-repeatability.py \
+            scripts/reconcile-memory-os-controlled-saturation-repeatability.py \
+            >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: start-minio" >> "$log"
+            docker run -d --name memory-os-repeatability-minio-${{ matrix.ordinal }} \
+              -p 9000:9000 \
+              -e MINIO_ROOT_USER=minioadmin \
+              -e MINIO_ROOT_PASSWORD=minioadmin \
+              minio/minio server /data >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            ready=0
+            for attempt in $(seq 1 60); do
+              if curl --fail --silent http://127.0.0.1:9000/minio/health/live >/dev/null; then ready=1; break; fi
+              sleep 1
+            done
+            if [[ "$ready" != "1" ]]; then
+              echo "MinIO did not become ready" >> "$log"
+              code=70
+            fi
+          fi
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: controlled-ramp" >> "$log"
+            export MEMORY_OS_CONTROLLED_SATURATION_RESULTS_PATH="$result"
+            export MEMORY_OS_COMMIT_SHA="${GITHUB_SHA}"
+            (cd services/import-api && go test ./internal/httpserver -run '^TestControlledSignedUploadSaturationRampLocalDependencies$' -count=1 -timeout=12m) >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            cp docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.sample.v1.json /tmp/canonical-ramp.json
+            cp "$result" docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.sample.v1.json
+            python scripts/validate-memory-os-controlled-saturation-ramp.py --expected-commit-sha "${GITHUB_SHA}" >> "$log" 2>&1 || code=$?
+            cp /tmp/canonical-ramp.json docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.sample.v1.json
+          fi
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          echo "result_path=$result" >> "$GITHUB_OUTPUT"
+          cat "$log"
+          exit 0
+      - name: Publish append-only repeatability run
+        if: steps.ramp.outputs.exit_code == '0'
+        run: |
+          set -euo pipefail
+          source_sha="${GITHUB_SHA}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin so
+          if ! git diff --quiet "$source_sha" origin/so -- \
+            services/import-api/internal/httpserver/controlled_saturation_ramp_test.go \
+            services/import-api/internal/httpserver/live_object_load_test.go \
+            services/import-api/internal/httpserver/server_live_test.go \
+            services/import-api/internal/pgrepo \
+            services/import-api/internal/upload \
+            services/import-api/internal/objectstore \
+            services/import-api/go.mod services/import-api/go.sum \
+            infra/postgresql/security \
+            contracts/operations/controlled-saturation-ramp-contract.v1.json; then
+            echo "critical saturation source changed during run; refusing stale evidence"
+            exit 75
+          fi
+          git reset --hard origin/so
+          target="docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.repeat-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${{ matrix.ordinal }}.v1.json"
+          test ! -e "$target"
+          cp "${{ steps.ramp.outputs.result_path }}" "$target"
+          git add "$target"
+          git commit -m "test(load): record saturation repeatability run ${{ matrix.ordinal }}"
+          for attempt in 1 2 3 4; do
+            git pull --rebase origin so
+            if git push origin HEAD:so; then exit 0; fi
+            sleep 2
+          done
+          exit 1
+      - name: Record privacy-safe ramp diagnostic
+        if: steps.ramp.outputs.exit_code != '0'
+        env:
+          RAMP_EXIT_CODE: ${{ steps.ramp.outputs.exit_code }}
+          ORDINAL: ${{ matrix.ordinal }}
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          git reset --hard origin/so
+          python - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          ordinal = os.environ['ORDINAL']
+          text = Path(f'/tmp/controlled-saturation-repeatability-{ordinal}.log').read_text(encoding='utf-8', errors='replace')
+          text = re.sub(r'postgres(?:ql)?://[^\s]+', '<redacted-database-url>', text)
+          text = re.sub(r'https?://[^\s]+', '<redacted-endpoint>', text)
+          text = text.replace('minioadmin', '<redacted-local-credential>')
+          value = {
+              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'workflow': 'controlled-saturation-repeatability',
+              'ordinal': ordinal,
+              'sourceCommitSha': os.environ['GITHUB_SHA'],
+              'result': 'FAIL',
+              'exitCode': int(os.environ['RAMP_EXIT_CODE']),
+              'output': text[-12000:],
+              'containsSecrets': False,
+              'capacityBoundaryEstablished': False,
+              'operationalThresholdApproved': False,
+              'productionEvidence': False,
+          }
+          path = Path(f'docs/fixtures/memory-os-operability/controlled-saturation-repeatability-diagnostic.{ordinal}.last.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          PY
+          git add "docs/fixtures/memory-os-operability/controlled-saturation-repeatability-diagnostic.${{ matrix.ordinal }}.last.json"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --cached --quiet; then
+            git commit -m "test(load): record saturation repeatability diagnostic ${{ matrix.ordinal }}"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+      - name: Enforce ramp
+        run: test "${{ steps.ramp.outputs.exit_code }}" = "0"
+
+  aggregate:
+    needs: ramp
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Analyze and reconcile two independent runs
+        run: |
+          set -euo pipefail
+          a="docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.repeat-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-a.v1.json"
+          b="docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.repeat-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-b.v1.json"
+          test -f "$a" && test -f "$b"
+          python scripts/analyze-memory-os-controlled-saturation-repeatability.py --run-a "$a" --run-b "$b"
+          python scripts/validate-memory-os-controlled-saturation-repeatability.py
+          python scripts/reconcile-memory-os-controlled-saturation-repeatability.py
+          python scripts/validate-memory-os-controlled-saturation-repeatability.py
+          python scripts/validate-memory-os-load.py
+          python scripts/validate-memory-os-operability.py
+      - name: Commit repeatability authority
+        run: |
+          set -euo pipefail
+          git add \
+            contracts/operations/controlled-saturation-repeatability-contract.v1.json \
+            contracts/operations/load-test-scenario-contract.v1.json \
+            contracts/operations/production-operability-status.json \
+            docs/fixtures/memory-os-operability/controlled-saturation-repeatability-results.v1.json
+          if ! git diff --cached --quiet; then
+            git diff --cached --check
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(load): register saturation repeatability evidence"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
