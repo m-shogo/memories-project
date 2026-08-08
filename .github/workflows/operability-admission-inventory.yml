@@ -15,7 +15,10 @@ on:
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "contracts/operations/recovery-objectives-registry.v1.json"
       - "contracts/operations/backup-restore-generation-binding-contract.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
       - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
       - "contracts/operations/release-baseline-registry.v1.json"
       - "contracts/operations/release-compatibility-pair-registry.v1.json"
       - "contracts/operations/client-baseline-registry.v1.json"
@@ -24,6 +27,7 @@ on:
       - "contracts/operations/production-operability-status.json"
       - "scripts/generate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-operability-admission-inventory.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
       - "scripts/validate-memory-os-operability-status-hygiene.py"
       - ".github/workflows/operability-admission-inventory.yml"
   workflow_dispatch:
@@ -57,6 +61,7 @@ jobs:
           python -m py_compile \
             scripts/generate-memory-os-operability-admission-inventory.py \
             scripts/validate-memory-os-operability-admission-inventory.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
             scripts/validate-memory-os-operability-status-hygiene.py \
             >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then
@@ -64,6 +69,9 @@ jobs:
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-operability-admission-inventory.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-operability-status-hygiene.py >> "$log" 2>&1 || code=$?
