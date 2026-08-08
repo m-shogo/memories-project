@@ -40,6 +40,7 @@ def main() -> int:
     ids = [row.get("id") for row in rows if isinstance(row, dict)]
     require(ids == [f"OPS-P0-{number:03d}" for number in range(1, 10)], f"inventory area order/set drift: {ids}")
     status_rows = {row.get("id"): row for row in status.get("areas", []) if isinstance(row, dict)}
+    inventory_rows = {row.get("id"): row for row in rows if isinstance(row, dict)}
     for row in rows:
         area_id = row["id"]
         require(row.get("productionEvidence") is False and row.get("productionReady") is False, f"{area_id} inventory cannot promote production")
@@ -53,11 +54,79 @@ def main() -> int:
         missing = source.get("missingEvidence")
         require(isinstance(missing, list), f"{area_id}.missingEvidence invalid")
         require(row.get("missingEvidenceCount") == len(missing), f"{area_id}.missingEvidenceCount drift")
+
     generations = load(ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json")
-    require(inventory.get("productionEquivalentEnvironmentGenerationCount") == generations.get("registeredGenerationCount"), "environment generation count drift")
+    recovery_objectives = load(ROOT / "contracts/operations/recovery-objectives-registry.v1.json")
+    backup_binding = load(ROOT / "contracts/operations/backup-restore-generation-binding-contract.v1.json")
+    backup_recovery = load(ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json")
+    non_resurrection_contract = load(ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json")
+    non_resurrection_registry = load(ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json")
+
+    generation_count = generations.get("registeredGenerationCount")
+    objective_count = recovery_objectives.get("approvedObjectiveCount")
+    require(isinstance(generation_count, int) and generation_count >= 0, "environment generation count invalid")
+    require(isinstance(objective_count, int) and objective_count >= 0, "recovery objective count invalid")
+    require(inventory.get("productionEquivalentEnvironmentGenerationCount") == generation_count, "environment generation count drift")
+    require(inventory.get("approvedRecoveryObjectiveCount") == objective_count, "approved recovery objective count drift")
+
+    typed_record_count = non_resurrection_registry.get("registeredRecordCount")
+    typed_complete_count = non_resurrection_registry.get("completeRecordCount")
+    typed_covered_count = non_resurrection_registry.get("candidateCoveredCount")
+    require(all(isinstance(value, int) and value >= 0 for value in (typed_record_count, typed_complete_count, typed_covered_count)), "typed non-resurrection registry counts invalid")
+    require(typed_covered_count <= typed_complete_count <= typed_record_count, "typed non-resurrection registry count ordering invalid")
+    require(non_resurrection_registry.get("productionEvidence") is False and non_resurrection_registry.get("productionReady") is False, "typed non-resurrection registry cannot promote production")
+    require(inventory.get("typedNonResurrectionRecordCount") == typed_record_count, "inventory typed record count drift")
+    require(inventory.get("completeTypedNonResurrectionRecordCount") == typed_complete_count, "inventory complete typed record count drift")
+
+    typed_boundary = non_resurrection_contract.get("currentBoundary")
+    require(isinstance(typed_boundary, dict), "typed non-resurrection currentBoundary missing")
+    pending_typed = typed_boundary.get("preOverlayEligiblePendingTypedCoverageCount")
+    final_candidate_count = backup_recovery.get("productionEquivalentRecoveryCandidateCount")
+    require(isinstance(pending_typed, int) and pending_typed >= 0, "pending typed coverage count invalid")
+    require(isinstance(final_candidate_count, int) and final_candidate_count >= 0, "final recovery candidate count invalid")
+    require(typed_boundary.get("productionEquivalentRecoveryCandidateCount") == final_candidate_count, "typed boundary final candidate count drift")
+    require(typed_boundary.get("candidateCoveredCount") == typed_covered_count, "typed boundary covered candidate count drift")
+    require(final_candidate_count == typed_covered_count, "final recovery candidate must equal complete typed coverage of pre-overlay eligible records")
+    require(typed_boundary.get("productionEvidence") is False and typed_boundary.get("productionReady") is False, "typed boundary cannot promote production")
+    require(typed_boundary.get("productionDecision") == "NO_GO", "typed boundary production decision drift")
+
+    backup_boundary = backup_binding.get("currentBoundary")
+    require(isinstance(backup_boundary, dict), "backup generation boundary missing")
+    backup_row = inventory_rows.get("OPS-P0-007")
+    require(isinstance(backup_row, dict), "OPS-P0-007 inventory row missing")
+    require(backup_row.get("authority") == "contracts/operations/backup-restore-generation-evidence-contract.v1.json", "OPS-P0-007 authority drift")
+    require(backup_row.get("secondaryAuthority") == "contracts/operations/backup-restore-generation-binding-contract.v1.json", "OPS-P0-007 secondary authority drift")
+    require(backup_row.get("tertiaryAuthority") == "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json", "OPS-P0-007 typed authority drift")
+    require(backup_row.get("foundationImplemented") is True, "OPS-P0-007 admission foundation incomplete")
+    deps = backup_row.get("dependencyCounts")
+    require(isinstance(deps, dict), "OPS-P0-007 dependencyCounts missing")
+    expected_dependencies = {
+        "environmentGenerations": generation_count,
+        "approvedRecoveryObjectives": objective_count,
+        "generationBoundBackups": backup_boundary.get("generationBoundBackupCount"),
+        "generationBoundRestores": backup_boundary.get("generationBoundRestoreCount"),
+        "typedNonResurrectionRecords": typed_record_count,
+        "completeTypedNonResurrectionRecords": typed_complete_count,
+        "preOverlayEligiblePendingTypedCoverage": pending_typed,
+        "typedCoveredRecoveryCandidates": typed_covered_count,
+        "productionEquivalentRecoveryCandidates": final_candidate_count,
+    }
+    require(deps == expected_dependencies, f"OPS-P0-007 dependencyCounts drift: {deps}")
+    require(backup_row.get("admittedEvidenceCount") == backup_boundary.get("generationBoundRestoreCount"), "OPS-P0-007 admitted restore count drift")
+    require("all eight typed non-resurrection domains" in backup_row.get("nextGate", ""), "OPS-P0-007 nextGate must preserve typed non-resurrection requirement")
+
+    if typed_record_count == 0:
+        require(final_candidate_count == 0, "final recovery candidate cannot exist without typed non-resurrection record")
+    if generation_count == 0 or objective_count == 0:
+        require(final_candidate_count == 0, "final recovery candidate cannot exist without generation and approved objectives")
+
     print("Memory OS operability admission inventory validation PASS")
     print("P0 areas: 9")
-    print(f"production-equivalent generations: {inventory.get('productionEquivalentEnvironmentGenerationCount')}")
+    print(f"production-equivalent generations: {generation_count}")
+    print(f"approved recovery objectives: {objective_count}")
+    print(f"typed non-resurrection records: {typed_record_count}")
+    print(f"final recovery candidates: {final_candidate_count}")
+    print("generic non-resurrection PASS bypass: false")
     print("production decision: NO_GO")
     return 0
 
