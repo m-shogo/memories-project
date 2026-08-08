@@ -47,8 +47,8 @@
     "testImplemented": true,
     "validatorImplemented": true,
     "automaticWorkflowImplemented": true,
-    "exactSourcePassResultCommitted": false,
-    "childProcessOrphanScanCompleted": false,
+    "exactSourcePassResultCommitted": true,
+    "childProcessOrphanScanCompleted": true,
     "hostRestartExecuted": false,
     "productionArtifactExecuted": false,
     "productionReady": false
@@ -60,6 +60,7 @@
     "services/import-api/internal/parsersup/process_group_reaping_drill_linux_test.go",
     "scripts/validate-memory-os-parser-process-group-reaping.py",
     "scripts/reconcile-memory-os-parser-process-group-reaping.py",
-    ".github/workflows/parser-process-group-reaping.yml"
+    ".github/workflows/parser-process-group-reaping.yml",
+    "docs/fixtures/memory-os-operability/parser-process-group-reaping-results.sample.v1.json"
   ]
 }
