@@ -12,6 +12,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+GEN_CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
 WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
@@ -48,6 +49,7 @@ def run_validator(path: Path, label: str) -> None:
 def main() -> int:
     contract = load(CONTRACT)
     registry = load(REGISTRY)
+    generation_contract = load(GEN_CONTRACT)
     generation_registry = load(GEN_REGISTRY)
     writer = load_module(WRITER, "memory_os_non_resurrection_writer")
     generation_writer = load_module(GEN_WRITER, "memory_os_generation_recovery_writer_overlay")
@@ -62,6 +64,14 @@ def main() -> int:
     require(isinstance(coverage_rule, dict) and coverage_rule and all(value is True for value in coverage_rule.values()), "candidateCoverageRule drift")
     required_domains = contract.get("requiredDomains")
     require(isinstance(required_domains, list) and len(required_domains) == 8 and len(required_domains) == len(set(required_domains)), "requiredDomains drift")
+
+    require(generation_contract.get("typedNonResurrectionAdmissionContract") == str(CONTRACT.relative_to(ROOT)), "generation contract typed overlay ref drift")
+    require(generation_contract.get("typedNonResurrectionAdmissionRegistry") == str(REGISTRY.relative_to(ROOT)), "generation contract typed overlay registry ref drift")
+    generation_rules = generation_contract.get("recordRules")
+    require(isinstance(generation_rules, dict) and generation_rules.get("typedNonResurrectionCoverageRequiredForProductionEquivalentRestoreCandidate") is True, "generation contract typed coverage gate missing")
+    require(generation_rules.get("genericNonResurrectionPassAloneCannotCreateCandidate") is True, "generation contract generic PASS bypass guard missing")
+    generation_promotion = generation_contract.get("promotionBoundary")
+    require(isinstance(generation_promotion, dict) and generation_promotion.get("completeReviewedRecordAlsoRequiresTypedNonResurrectionCoverage") is True, "generation promotion boundary is not typed-overlay bound")
 
     local = contract.get("localFoundationEvidence")
     require(isinstance(local, dict), "localFoundationEvidence missing")
@@ -113,7 +123,7 @@ def main() -> int:
     require(boundary.get("completeTypedRecordCount") == derived_complete, "contract complete typed count drift")
     require(boundary.get("productionEquivalentRecoveryCandidateCount") == len(final_candidate_ids), "contract candidate count drift")
     require(boundary.get("candidateCoveredCount") == len(covered_base_ids), "contract covered candidate count drift")
-    require(boundary.get("uncoveredCandidateCount") == len(pending_typed_ids), "contract pending typed coverage count drift")
+    require(boundary.get("preOverlayEligiblePendingTypedCoverageCount") == len(pending_typed_ids), "contract pending typed coverage count drift")
     require(boundary.get("productionEquivalentNonResurrectionEvidence") is (len(final_candidate_ids) > 0), "contract non-resurrection evidence derivation drift")
     require(boundary.get("productionEvidence") is False and boundary.get("productionReady") is False, "contract cannot promote production")
     require(boundary.get("productionDecision") == "NO_GO", "production decision must remain NO_GO")
