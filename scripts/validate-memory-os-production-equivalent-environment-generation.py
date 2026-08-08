@@ -3,9 +3,8 @@
 
 from __future__ import annotations
 
-import hashlib
+import importlib.util
 import json
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -16,18 +15,9 @@ CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-genera
 REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 ENV_SCHEMA = ROOT / "contracts/operations/production-equivalent-environment-record.v1.schema.json"
 GEN_SCHEMA = ROOT / "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
+ENV_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-record.py"
 WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
-SHA40 = re.compile(r"^[0-9a-f]{40}$")
-DIGEST = re.compile(r"^[0-9a-f]{64}$")
-ENV_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{2,63}$")
-GEN_ID = re.compile(r"^[a-z0-9][a-z0-9._:-]{2,95}$")
-RECORD_FIELDS = {
-    "schemaVersion", "environmentId", "generationId", "registeredAt",
-    "sourceCommitSha", "environmentManifestSha256", "dependencyInventorySha256",
-    "evidenceBundleManifestSha256", "materialDeltaLedgerSha256", "environmentRecordRef",
-    "environmentRecordSha256", "supersedesGenerationId", "productionTraffic",
-    "productionCredentials", "productionEvidence", "productionReady",
-}
+NEGATIVE = ROOT / "scripts/validate-memory-os-production-equivalent-environment-generation-negative.py"
 
 
 class Fail(RuntimeError):
@@ -48,64 +38,17 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+def load_writer():
+    spec = importlib.util.spec_from_file_location("memory_os_environment_generation_writer_for_validator", WRITER)
+    require(spec is not None and spec.loader is not None, "cannot load environment generation writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
-def commit_exists(sha: str) -> bool:
-    completed = subprocess.run(
-        ["git", "cat-file", "-e", sha + "^{commit}"],
-        cwd=ROOT,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
-    )
-    return completed.returncode == 0
-
-
-def repo_file(ref: Any, field: str) -> Path:
-    require(isinstance(ref, str) and ref and not Path(ref).is_absolute(), f"{field} invalid")
-    path = Path(ref)
-    require(".." not in path.parts, f"{field} traversal forbidden")
-    absolute = ROOT / path
-    require(absolute.is_file(), f"{field} missing: {ref}")
-    return absolute
-
-
-def validate_generation_record(record: dict[str, Any], prior_by_environment: dict[str, str]) -> dict[str, Any]:
-    require(set(record) == RECORD_FIELDS, f"generation record field drift: {sorted(set(record) ^ RECORD_FIELDS)}")
-    require(record.get("schemaVersion") == "memory-os-production-equivalent-environment-generation-record.v1", "generation record schema drift")
-    env_id = record.get("environmentId")
-    gen_id = record.get("generationId")
-    require(isinstance(env_id, str) and ENV_ID.fullmatch(env_id), "environmentId invalid")
-    require(isinstance(gen_id, str) and GEN_ID.fullmatch(gen_id), "generationId invalid")
-    require("latest" not in gen_id.lower() and "current" not in gen_id.lower(), "mutable generation alias forbidden")
-    source = record.get("sourceCommitSha")
-    require(isinstance(source, str) and SHA40.fullmatch(source), "sourceCommitSha invalid")
-    require(commit_exists(source), f"sourceCommitSha not present in repository history: {source}")
-    for field in (
-        "environmentManifestSha256", "dependencyInventorySha256", "evidenceBundleManifestSha256",
-        "materialDeltaLedgerSha256", "environmentRecordSha256",
-    ):
-        require(isinstance(record.get(field), str) and DIGEST.fullmatch(record[field]), f"{field} invalid")
-    expected_supersedes = prior_by_environment.get(env_id)
-    require(record.get("supersedesGenerationId") == expected_supersedes, f"supersedes chain drift for environment {env_id}")
-    prior_by_environment[env_id] = gen_id
-    for field in ("productionTraffic", "productionCredentials", "productionEvidence", "productionReady"):
-        require(record.get(field) is False, f"generation record cannot enable {field}")
-
-    env_path = repo_file(record.get("environmentRecordRef"), "environmentRecordRef")
-    require(record.get("environmentRecordSha256") == sha256(env_path), "environmentRecordSha256 mismatch")
-    env = load(env_path)
-    require(env.get("schemaVersion") == "memory-os-production-equivalent-environment-record.v1", "environment record schema drift")
-    require(env.get("environmentId") == env_id and env.get("generationId") == gen_id, "environment/generation identity mismatch")
-    topology = env.get("topology")
-    identity = env.get("identityAndSecrets")
-    boundary = env.get("evidenceBoundary")
-    require(isinstance(topology, dict) and topology.get("productionTraffic") is False and topology.get("productionCredentials") is False, "generation environment must remain non-production")
-    require(isinstance(identity, dict) and identity.get("containsSecretMaterial") is False, "generation environment contains secret material")
-    require(isinstance(boundary, dict) and boundary.get("productionEvidence") is False and boundary.get("productionReady") is False, "generation environment production boundary drift")
-    return env
+def run_negative() -> None:
+    completed = subprocess.run([sys.executable, str(NEGATIVE)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    require(completed.returncode == 0, f"environment generation negative admission suite failed:\n{completed.stdout[-8000:]}{completed.stderr[-8000:]}")
 
 
 def main() -> int:
@@ -113,23 +56,44 @@ def main() -> int:
     registry = load(REGISTRY)
     env_schema = load(ENV_SCHEMA)
     gen_schema = load(GEN_SCHEMA)
+    writer = load_writer()
 
     require(contract.get("schemaVersion") == "memory-os-production-equivalent-environment-generation.v1", "contract schema drift")
-    require(contract.get("environmentRecordSchema") == str(ENV_SCHEMA.relative_to(ROOT)), "environment schema ref drift")
-    require(contract.get("generationRegistryRecordSchema") == str(GEN_SCHEMA.relative_to(ROOT)), "generation record schema ref drift")
-    require(contract.get("registry") == str(REGISTRY.relative_to(ROOT)), "registry ref drift")
-    require(contract.get("writer") == str(WRITER.relative_to(ROOT)) and WRITER.is_file(), "generation writer ref drift")
+    expected_refs = {
+        "environmentRecordSchema": ENV_SCHEMA,
+        "environmentRecordSemanticValidator": ENV_VALIDATOR,
+        "generationRegistryRecordSchema": GEN_SCHEMA,
+        "registry": REGISTRY,
+        "writer": WRITER,
+        "negativeAdmissionValidator": NEGATIVE,
+    }
+    for field, path in expected_refs.items():
+        require(contract.get(field) == str(path.relative_to(ROOT)), f"contract ref drift: {field}")
+        require(path.is_file(), f"generation artifact missing: {field}")
+    for field in ("validator", "workflow"):
+        ref = contract.get(field)
+        require(isinstance(ref, str) and ref and (ROOT / ref).is_file(), f"generation artifact missing: {field}")
     require(env_schema.get("$schema") == "https://json-schema.org/draft/2020-12/schema", "environment schema draft drift")
     require(gen_schema.get("$schema") == "https://json-schema.org/draft/2020-12/schema", "generation record schema draft drift")
+    evidence_boundary_schema = env_schema.get("properties", {}).get("evidenceBoundary", {})
+    require("independentReviewRef" in evidence_boundary_schema.get("required", []), "environment schema must require independentReviewRef field")
 
     bindings = contract.get("bindingRules")
-    require(isinstance(bindings, dict), "bindingRules required")
-    for key, value in bindings.items():
-        require(value is True, f"generation binding rule must remain true: {key}")
+    require(isinstance(bindings, dict) and bindings and all(value is True for value in bindings.values()), "generation binding rules must remain fail-closed")
+    for key in (
+        "environmentRecordFullSemanticValidationRequired",
+        "allNonNullEnvironmentEvidenceRefsMustResolveInRepository",
+        "equivalentEnvironmentRequiresIndependentReviewEvidence",
+        "registrationDoesNotImplyPreflightEligibility",
+        "preflightEligibilityRequiresValidatedEquivalentDependenciesAndIndependentReview",
+    ):
+        require(bindings.get(key) is True, f"required generation binding rule missing: {key}")
     material = contract.get("materialChangeRules")
     require(isinstance(material, dict) and material and all(value is True for value in material.values()), "material change rules must remain fail-closed")
     result_rules = contract.get("resultAdmissionRules")
     require(isinstance(result_rules, dict) and result_rules and all(value is True for value in result_rules.values()), "result admission rules must remain fail-closed")
+    negative_cases = contract.get("negativeAdmissionCases")
+    require(isinstance(negative_cases, list) and len(negative_cases) >= 10 and len(negative_cases) == len(set(negative_cases)), "generation negative admission cases incomplete or duplicated")
 
     require(registry.get("schemaVersion") == "memory-os-production-equivalent-environment-generation-registry.v1", "registry schema drift")
     require(registry.get("appendOnly") is True, "generation registry must be append-only")
@@ -138,14 +102,29 @@ def main() -> int:
     rows = registry.get("generations")
     require(isinstance(count, int) and count >= 0, "registeredGenerationCount invalid")
     require(isinstance(rows, list) and len(rows) == count and all(isinstance(row, dict) for row in rows), "generation registry count mismatch")
+
     ids: set[str] = set()
     prior_by_environment: dict[str, str] = {}
+    eligibility_by_id: dict[str, bool] = {}
     env_by_generation: dict[str, dict[str, Any]] = {}
     for row in rows:
         generation_id = row.get("generationId")
+        environment_id = row.get("environmentId")
         require(isinstance(generation_id, str) and generation_id not in ids, f"duplicate generationId: {generation_id}")
         ids.add(generation_id)
-        env_by_generation[generation_id] = validate_generation_record(row, prior_by_environment)
+        expected_supersedes = prior_by_environment.get(environment_id)
+        require(row.get("supersedesGenerationId") == expected_supersedes, f"supersedes chain drift for environment {environment_id}")
+        require(isinstance(environment_id, str), "environmentId invalid")
+        prior_by_environment[environment_id] = generation_id
+        try:
+            eligible = writer.validate_record(row)
+        except Exception as exc:
+            raise Fail(f"generation record validation failed for {generation_id}: {exc}") from exc
+        require(isinstance(eligible, bool), "generation semantic eligibility predicate invalid")
+        eligibility_by_id[generation_id] = eligible
+        env_ref = row.get("environmentRecordRef")
+        require(isinstance(env_ref, str) and (ROOT / env_ref).is_file(), "environment record ref missing after writer validation")
+        env_by_generation[generation_id] = load(ROOT / env_ref)
 
     current_id = registry.get("currentGenerationId")
     if count == 0:
@@ -155,15 +134,18 @@ def main() -> int:
         require(current_id == rows[-1].get("generationId"), "currentGenerationId must equal latest append-only registry record")
         current_env = env_by_generation[current_id]
 
+    preflight_eligible_count = sum(1 for value in eligibility_by_id.values() if value)
     derived_provisioned = bool(current_env and current_env.get("status") in {"PROVISIONED_UNVALIDATED", "VALIDATION_IN_PROGRESS", "VALIDATED_LOCAL_NONPRODUCTION"})
     derived_validated = bool(current_env and current_env.get("status") == "VALIDATED_LOCAL_NONPRODUCTION")
+    current_eligible = bool(current_id and eligibility_by_id.get(current_id) is True)
     current_evidence_boundary = current_env.get("evidenceBoundary", {}) if current_env else {}
-    derived_reviewed = bool(derived_validated and current_evidence_boundary.get("independentReviewCompleted") is True)
-    derived_equivalent = bool(derived_reviewed and current_evidence_boundary.get("productionEquivalentDependencies") is True)
+    derived_reviewed = bool(current_eligible and current_evidence_boundary.get("independentReviewCompleted") is True)
+    derived_equivalent = current_eligible
 
     boundary = contract.get("currentBoundary")
     require(isinstance(boundary, dict), "currentBoundary required")
     require(boundary.get("registeredGenerationCount") == count, "contract/registry generation count mismatch")
+    require(boundary.get("preflightEligibleGenerationCount") == preflight_eligible_count, "preflightEligibleGenerationCount derivation drift")
     require(boundary.get("currentGenerationId") == current_id, "current generation drift")
     require(boundary.get("environmentProvisioned") is derived_provisioned, "environmentProvisioned derivation drift")
     require(boundary.get("environmentValidated") is derived_validated, "environmentValidated derivation drift")
@@ -173,19 +155,28 @@ def main() -> int:
 
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "readiness required")
-    for key in ("contractDefined", "registryDefined", "registryRecordSchemaDefined", "writerImplemented", "validatorImplemented", "automaticWorkflowImplemented"):
+    for key in (
+        "contractDefined", "registryDefined", "registryRecordSchemaDefined", "environmentRecordSemanticValidatorImplemented",
+        "writerImplemented", "validatorImplemented", "negativeAdmissionSuiteImplemented", "automaticWorkflowImplemented",
+    ):
         require(readiness.get(key) is True, f"generation foundation incomplete: {key}")
     require(readiness.get("generationRegistered") is (count > 0), "generationRegistered derivation drift")
+    require(readiness.get("preflightEligibleGenerationAvailable") is (preflight_eligible_count > 0), "preflightEligibleGenerationAvailable drift")
     require(readiness.get("generationEvidenceBound") is (count > 0), "generationEvidenceBound derivation drift")
     require(readiness.get("independentReviewCompleted") is derived_reviewed, "independentReviewCompleted derivation drift")
     require(readiness.get("productionEquivalentDependencies") is derived_equivalent, "readiness productionEquivalentDependencies drift")
     require(readiness.get("productionReady") is False, "generation authority cannot make application production ready")
 
+    run_negative()
+
     print("Memory OS production-equivalent environment generation validation PASS")
     print(f"registered generations: {count}")
+    print(f"preflight-eligible generations: {preflight_eligible_count}")
     print(f"current generation: {current_id or 'none'}")
-    print(f"production-equivalent dependencies: {str(derived_equivalent).lower()}")
+    print(f"current production-equivalent dependencies: {str(derived_equivalent).lower()}")
+    print("registration implies preflight eligibility: false")
     print("cross-generation evidence reuse: forbidden")
+    print("negative admission suite: PASS")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
