@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "memory-os-backup-restore-promotion-review-registry.v1",
+  "appendOnly": true,
+  "registeredReviewCount": 0,
+  "goRecommendationCount": 0,
+  "noGoCount": 0,
+  "deferCount": 0,
+  "currentDecisionId": null,
+  "records": [],
+  "productionTrafficChanged": false,
+  "productionEvidence": false,
+  "productionReady": false,
+  "limitations": [
+    "no recovery promotion review has been registered",
+    "a review cannot exist without a current final production-equivalent recovery candidate",
+    "GO_RECOMMENDATION remains review evidence only and never changes traffic or application production readiness"
+  ]
+}
