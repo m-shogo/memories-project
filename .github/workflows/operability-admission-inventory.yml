@@ -31,7 +31,9 @@ on:
       - "scripts/generate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
+      - "scripts/request-memory-os-backup-restore-drill.py"
       - "scripts/validate-memory-os-backup-restore-drill-request.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-drill-request.py"
       - "scripts/validate-memory-os-operability-status-hygiene.py"
       - ".github/workflows/operability-admission-inventory.yml"
@@ -68,7 +70,9 @@ jobs:
             scripts/generate-memory-os-operability-admission-inventory.py \
             scripts/validate-memory-os-operability-admission-inventory.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
+            scripts/request-memory-os-backup-restore-drill.py \
             scripts/validate-memory-os-backup-restore-drill-request.py \
+            scripts/validate-memory-os-backup-restore-drill-request-negative.py \
             scripts/reconcile-memory-os-backup-restore-drill-request.py \
             scripts/validate-memory-os-operability-status-hygiene.py \
             >> "$log" 2>&1 || code=$?
