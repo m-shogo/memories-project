@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,7 @@ GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-ge
 OBJECTIVES_REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
 GEN_BINDING = ROOT / "contracts/operations/backup-restore-generation-binding-contract.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
+NEGATIVE_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
 
 
 class Fail(RuntimeError):
@@ -42,6 +44,26 @@ def load_writer():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def validate_negative_admission_suite(contract: dict[str, Any]) -> None:
+    expected_ref = str(NEGATIVE_VALIDATOR.relative_to(ROOT))
+    require(contract.get("negativeAdmissionValidator") == expected_ref, "negative admission validator ref drift")
+    require(NEGATIVE_VALIDATOR.is_file(), "negative admission validator missing")
+    cases = contract.get("negativeAdmissionCases")
+    require(isinstance(cases, list) and len(cases) >= 10 and len(cases) == len(set(cases)), "negative admission cases incomplete or duplicated")
+    completed = subprocess.run(
+        [sys.executable, str(NEGATIVE_VALIDATOR)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    require(
+        completed.returncode == 0,
+        "negative admission suite failed:\n" + completed.stdout[-4000:] + completed.stderr[-4000:],
+    )
 
 
 def main() -> int:
@@ -116,6 +138,7 @@ def main() -> int:
     require(boundary.get("productionEvidence") is False and boundary.get("productionReady") is False, "contract cannot promote production")
     require(boundary.get("productionDecision") == "NO_GO", "production decision must remain NO_GO")
 
+    require(readiness.get("negativeAdmissionSuiteImplemented") is True, "negativeAdmissionSuiteImplemented must remain true")
     require(readiness.get("environmentGenerationAvailable") is (generation_count > 0), "environmentGenerationAvailable drift")
     require(readiness.get("approvedRecoveryObjectivesAvailable") is (objective_count > 0), "approvedRecoveryObjectivesAvailable drift")
     require(readiness.get("generationBoundBackupAvailable") is (derived_backup > 0), "generationBoundBackupAvailable drift")
@@ -133,12 +156,15 @@ def main() -> int:
     require(binding_boundary.get("productionEquivalentRestoreEvidence") is (derived_candidates > 0), "generation binding restore evidence drift")
     require(binding_boundary.get("productionEvidence") is False and binding_boundary.get("productionReady") is False, "generation binding cannot promote production")
 
+    validate_negative_admission_suite(contract)
+
     print("Memory OS generation-bound backup/restore evidence validation PASS")
     print(f"registered environment generations: {generation_count}")
     print(f"approved recovery objectives: {objective_count}")
     print(f"registered recovery evidence records: {count}")
     print(f"complete generation-bound restores: {derived_restore}")
     print(f"production-equivalent recovery candidates: {derived_candidates}")
+    print("negative admission suite: PASS")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
