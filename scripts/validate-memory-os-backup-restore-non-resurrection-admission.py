@@ -96,39 +96,42 @@ def main() -> int:
 
     generation_rows = generation_registry.get("records")
     require(isinstance(generation_rows, list) and all(isinstance(row, dict) for row in generation_rows), "generation recovery registry records invalid")
-    candidate_ids = {row.get("evidenceId") for row in generation_rows if generation_writer.candidate(row)}
-    require(None not in candidate_ids, "candidate evidenceId missing")
+    base_candidate_ids = {row.get("evidenceId") for row in generation_rows if generation_writer.base_candidate(row)}
+    final_candidate_ids = {row.get("evidenceId") for row in generation_rows if generation_writer.candidate(row)}
+    require(None not in base_candidate_ids and None not in final_candidate_ids, "candidate evidenceId missing")
     complete_typed_ids = {row.get("generationEvidenceId") for row in rows if row.get("evidenceComplete") is True}
-    covered_ids = candidate_ids & complete_typed_ids
-    uncovered_ids = candidate_ids - complete_typed_ids
-    require(not uncovered_ids, "production-equivalent recovery candidate lacks complete typed non-resurrection coverage")
-    require(isinstance(covered_count, int) and covered_count == len(covered_ids), "candidateCoveredCount drift")
+    covered_base_ids = base_candidate_ids & complete_typed_ids
+    pending_typed_ids = base_candidate_ids - complete_typed_ids
+    require(final_candidate_ids == covered_base_ids, "final candidate derivation bypasses typed non-resurrection coverage")
+    require(isinstance(covered_count, int) and covered_count == len(covered_base_ids), "candidateCoveredCount drift")
+    require(generation_registry.get("productionEquivalentRecoveryCandidateCount") == len(final_candidate_ids), "generation registry final candidate count drift")
 
     boundary = contract.get("currentBoundary")
     readiness = contract.get("readiness")
     require(isinstance(boundary, dict) and isinstance(readiness, dict), "contract authority state missing")
     require(boundary.get("registeredTypedRecordCount") == count, "contract typed record count drift")
     require(boundary.get("completeTypedRecordCount") == derived_complete, "contract complete typed count drift")
-    require(boundary.get("productionEquivalentRecoveryCandidateCount") == len(candidate_ids), "contract candidate count drift")
-    require(boundary.get("candidateCoveredCount") == len(covered_ids), "contract covered candidate count drift")
-    require(boundary.get("uncoveredCandidateCount") == len(uncovered_ids), "contract uncovered candidate count drift")
-    require(boundary.get("productionEquivalentNonResurrectionEvidence") is (len(candidate_ids) > 0 and not uncovered_ids), "contract non-resurrection evidence derivation drift")
+    require(boundary.get("productionEquivalentRecoveryCandidateCount") == len(final_candidate_ids), "contract candidate count drift")
+    require(boundary.get("candidateCoveredCount") == len(covered_base_ids), "contract covered candidate count drift")
+    require(boundary.get("uncoveredCandidateCount") == len(pending_typed_ids), "contract pending typed coverage count drift")
+    require(boundary.get("productionEquivalentNonResurrectionEvidence") is (len(final_candidate_ids) > 0), "contract non-resurrection evidence derivation drift")
     require(boundary.get("productionEvidence") is False and boundary.get("productionReady") is False, "contract cannot promote production")
     require(boundary.get("productionDecision") == "NO_GO", "production decision must remain NO_GO")
     require(readiness.get("localAppleReplayRestoreProven") is True, "local Apple replay proof readiness drift")
     require(readiness.get("localCoherentRecoverySetProven") is True, "local coherent recovery proof readiness drift")
-    require(readiness.get("productionEquivalentCandidateAvailable") is (len(candidate_ids) > 0), "candidate availability drift")
-    require(readiness.get("productionEquivalentCandidateTypedCoverageComplete") is (len(candidate_ids) > 0 and not uncovered_ids), "typed candidate coverage readiness drift")
-    require(readiness.get("independentReviewCompleted") is (len(candidate_ids) > 0 and not uncovered_ids), "independent review readiness drift")
-    require(readiness.get("productionEquivalentNonResurrectionEvidence") is (len(candidate_ids) > 0 and not uncovered_ids), "non-resurrection readiness drift")
+    require(readiness.get("productionEquivalentCandidateAvailable") is (len(final_candidate_ids) > 0), "candidate availability drift")
+    require(readiness.get("productionEquivalentCandidateTypedCoverageComplete") is (len(final_candidate_ids) > 0), "typed candidate coverage readiness drift")
+    require(readiness.get("independentReviewCompleted") is (len(final_candidate_ids) > 0), "independent review readiness drift")
+    require(readiness.get("productionEquivalentNonResurrectionEvidence") is (len(final_candidate_ids) > 0), "non-resurrection readiness drift")
     require(readiness.get("productionReady") is False, "overlay cannot make application production ready")
 
     run_validator(NEGATIVE, "non-resurrection negative admission suite")
     print("Memory OS backup/restore typed non-resurrection admission validation PASS")
-    print(f"generation recovery candidates: {len(candidate_ids)}")
+    print(f"pre-overlay eligible generation records: {len(base_candidate_ids)}")
     print(f"typed records: {count}")
-    print(f"covered candidates: {len(covered_ids)}")
-    print("uncovered candidates: 0")
+    print(f"final production-equivalent recovery candidates: {len(final_candidate_ids)}")
+    print(f"pending typed coverage: {len(pending_typed_ids)}")
+    print("generic PASS candidate bypass: false")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
