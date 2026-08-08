@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "memory-os-ops-p0-007-admission-snapshot.v1",
+  "deterministic": true,
+  "areaId": "OPS-P0-007",
+  "stage": "PREREQUISITES_BLOCKED",
+  "strictPrerequisiteBlockers": [
+    "TWO_DISTINCT_SEMANTICALLY_ELIGIBLE_ENVIRONMENTS",
+    "CURRENT_APPROVED_RECOVERY_OBJECTIVE"
+  ],
+  "strictPrerequisiteBlockerCount": 2,
+  "registeredEnvironmentGenerationCount": 0,
+  "preflightEligibleGenerationCount": 0,
+  "unsupersededPreflightEligibleGenerationCount": 0,
+  "distinctPreflightEligibleEnvironmentCount": 0,
+  "eligibleDirectedRestorePairCount": 0,
+  "approvedRecoveryObjectiveCount": 0,
+  "currentRecoveryObjectiveId": null,
+  "reviewedDrillRequestCount": 0,
+  "currentExecutableDrillRequestCount": 0,
+  "generationRecoveryEvidenceCount": 0,
+  "drillRequestBoundGenerationRecoveryEvidenceCount": 0,
+  "completeTypedNonResurrectionRecordCount": 0,
+  "finalProductionEquivalentRecoveryCandidateCount": 0,
+  "canonicalMissingEvidenceCount": 6,
+  "downstreamRequirements": [
+    "submit one externally reviewed planning-only restore drill request bound to an eligible source/target generation pair and the current approved recovery objective",
+    "revalidate the drill request immediately before any isolated restore execution",
+    "admit request-bound generation recovery evidence with exact backup/manifest/restore hashes and measured approved objectives",
+    "bind all eight typed non-resurrection domains with independent security and operability review",
+    "retain the canonical six production backup/restore blockers until genuine production-shaped evidence closes them",
+    "make any production promotion as a separate human decision"
+  ],
+  "nextAction": "produce and independently review two distinct semantically eligible non-production environment generations; independently approve explicit recovery objectives without AI-selected defaults",
+  "requestCreated": false,
+  "restoreExecuted": false,
+  "productionTrafficChanged": false,
+  "productionEvidence": false,
+  "productionReady": false,
+  "productionDecision": "NO_GO"
+}
