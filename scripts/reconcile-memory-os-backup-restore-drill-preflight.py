@@ -104,8 +104,10 @@ def main() -> int:
     require(isinstance(existing, list) and isinstance(refs, list) and isinstance(missing, list), "OPS-P0-007 authority arrays missing")
     require(len(missing) == 6, "canonical OPS-P0-007 six-blocker boundary drift")
     existing[:] = [item for item in existing if not (isinstance(item, str) and item.startswith(EVIDENCE_PREFIX))]
+    blockers = state["blockingPrerequisites"]
+    blocker_text = ",".join(blockers) if blockers else "none"
     append_once(existing, (
-        f"{EVIDENCE_PREFIX} registered/unsuperseded generations={state['registeredGenerationCount']}/{state['unsupersededGenerationCount']}, distinct unsuperseded environments={state['distinctUnsupersededEnvironmentCount']}, eligible directed source-target pairs={state['eligibleDirectedSourceTargetPairCount']}, approved recovery objectives={state['approvedRecoveryObjectiveCount']}, reviewed/current drill requests={state['reviewedDrillRequestCount']}/{state['currentExecutableDrillRequestCount']}, decision={state['preflightDecision']}; READY authorizes only external reviewed request submission, never request creation, backup/restore execution, production traffic or promotion"
+        f"{EVIDENCE_PREFIX} registered/unsuperseded generations={state['registeredGenerationCount']}/{state['unsupersededGenerationCount']}, distinct unsuperseded environments={state['distinctUnsupersededEnvironmentCount']}, eligible directed source-target pairs={state['eligibleDirectedSourceTargetPairCount']}, approved recovery objectives={state['approvedRecoveryObjectiveCount']}, reviewed/current drill requests={state['reviewedDrillRequestCount']}/{state['currentExecutableDrillRequestCount']}, blocking prerequisites={state['blockingPrerequisiteCount']}[{blocker_text}], decision={state['preflightDecision']}; READY authorizes only external reviewed request submission, never prerequisite/request creation, backup/restore execution, production traffic or promotion"
     ))
     for ref in REFS:
         require((ROOT / ref).is_file(), f"preflight evidence ref missing: {ref}")
@@ -116,13 +118,14 @@ def main() -> int:
     STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     completed = subprocess.run([sys.executable, str(VALIDATOR_MODULE)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-    require(completed.returncode == 0, f"post-reconcile preflight validator failed:\n{completed.stdout[-7000:]}{completed.stderr[-7000:]}")
+    require(completed.returncode == 0, f"post-reconcile preflight validator failed:\n{completed.stdout[-8000:]}{completed.stderr[-8000:]}")
 
     print("Memory OS production-equivalent restore drill preflight reconciliation PASS")
     print(f"preflight decision: {state['preflightDecision']}")
+    print(f"blocking prerequisites ({state['blockingPrerequisiteCount']}): {blocker_text}")
     print(f"eligible directed source-target pairs: {state['eligibleDirectedSourceTargetPairCount']}")
     print(f"reviewed/current drill requests: {state['reviewedDrillRequestCount']}/{state['currentExecutableDrillRequestCount']}")
-    print("automatic request creation: false")
+    print("automatic prerequisite/request creation: false")
     print("restore executed: false")
     print("canonical OPS-P0-007 blockers preserved: 6")
     print("production evidence: false")
