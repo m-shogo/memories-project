@@ -20,14 +20,16 @@
         "four runtime roles retain NOBYPASSRLS",
         "tenant tables retain FORCE RLS",
         "synthetic deleted account and session digest do not resurrect",
-        "deleted synthetic token cannot resolve through memory_auth_runtime"
+        "deleted synthetic token cannot resolve through memory_auth_runtime",
+        "synthetic expired active session row remains expired after restore and cannot resolve through memory_auth_runtime",
+        "synthetic revoked unexpired session row remains revoked after restore and cannot resolve through memory_auth_runtime"
       ],
       "doesNotProve": [
         "physical backup or WAL/PITR",
         "cross-cluster restore",
         "production backup schedule or independent retention",
         "approved RPO or RTO",
-        "production deletion and expired-session non-resurrection"
+        "production deletion and expired/revoked-session non-resurrection"
       ]
     },
     {
