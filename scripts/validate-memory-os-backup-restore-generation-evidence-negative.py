@@ -117,6 +117,7 @@ def base_record(commit_sha: str) -> dict[str, Any]:
 
 def base_drill_request() -> dict[str, Any]:
     contract = load(DRILL_CONTRACT)
+    operability_ref = "contracts/operations/backup-restore-drill-request-contract.v1.json"
     return {
         "schemaVersion": contract["recordSchemaVersion"],
         "requestId": "brrq_negative_base",
@@ -147,11 +148,11 @@ def base_drill_request() -> dict[str, Any]:
             "immutabilityRequired": True,
         },
         "requiredEvidenceDomains": list(contract["requiredEvidenceDomains"]),
-        "entryCriteriaRefs": ["SECURITY.md", "README.md", "CLAUDE.md"],
+        "entryCriteriaRefs": ["SECURITY.md", "README.md", operability_ref],
         "approvalRefs": {
             "recoveryOwner": "README.md",
             "securityReview": "SECURITY.md",
-            "operabilityReview": "CLAUDE.md",
+            "operabilityReview": operability_ref,
         },
         "stopConditions": list(contract["requiredStopConditions"]),
         "openRisks": [],
@@ -332,8 +333,6 @@ def main() -> int:
         production_flag["productionEvidence"] = True
         expect_rejected("production evidence relabel", lambda: writer.validate_record(production_flag))
 
-        # Supersede the current objective. The immutable historical evidence remains
-        # structurally auditable, but new registration/current candidate must fail.
         stale_objectives = load(objectives_registry)
         stale_objectives["approvedObjectiveCount"] = 3
         stale_objectives["currentObjectiveId"] = "recovery_objectives_new"
