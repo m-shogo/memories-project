@@ -37,6 +37,7 @@ LOGICAL_EVIDENCE = (
     "executable local PostgreSQL logical dump and isolated-restore drill over the complete canonical migration sequence",
     "restored database verification covering all canonical SQL integration suites, four NOBYPASSRLS runtime roles and FORCE RLS tenant tables",
     "synthetic deleted account and account-session digest remain absent after restore and cannot resolve through memory_auth_runtime",
+    "synthetic expired-active and revoked-unexpired session rows preserve their terminal authorization semantics after restore and both remain non-resolvable through memory_auth_runtime",
     "privacy-safe exact-source restore result with database identity stored only as a SHA-256 digest",
 )
 OBJECT_EVIDENCE = (
@@ -171,9 +172,15 @@ def validate_logical(result: dict[str, Any]) -> None:
         "deletedSyntheticAccountsAfterRestore",
         "deletedSyntheticSessionDigestsAfterRestore",
         "deletedSyntheticSessionsResolvedAfterRestore",
+        "expiredSyntheticSessionsResolvedAfterRestore",
+        "revokedSyntheticSessionsResolvedAfterRestore",
     ):
         require(assertions.get(field) == 0,
                 f"logical non-resurrection assertion failed: {field}")
+    require(assertions.get("expiredSyntheticSessionRowsAfterRestore") == 1,
+            "expired synthetic session state did not survive restore safely")
+    require(assertions.get("revokedSyntheticSessionRowsAfterRestore") == 1,
+            "revoked synthetic session state did not survive restore safely")
 
 
 def validate_object(result: dict[str, Any]) -> None:
