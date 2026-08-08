@@ -136,13 +136,28 @@
     "evidenceBoundary": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["productionEvidence", "productionEquivalentDependencies", "independentReviewCompleted", "productionReady"],
+      "required": ["productionEvidence", "productionEquivalentDependencies", "independentReviewCompleted", "independentReviewRef", "productionReady"],
       "properties": {
         "productionEvidence": { "const": false },
         "productionEquivalentDependencies": { "type": "boolean" },
         "independentReviewCompleted": { "type": "boolean" },
+        "independentReviewRef": { "type": ["string", "null"], "maxLength": 256 },
         "productionReady": { "const": false }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "independentReviewCompleted": { "const": true } },
+            "required": ["independentReviewCompleted"]
+          },
+          "then": {
+            "properties": { "independentReviewRef": { "type": "string", "minLength": 1, "maxLength": 256 } }
+          },
+          "else": {
+            "properties": { "independentReviewRef": { "type": "null" } }
+          }
+        }
+      ]
     }
   },
   "allOf": [
@@ -214,7 +229,8 @@
           },
           "evidenceBoundary": {
             "properties": {
-              "independentReviewCompleted": { "const": true }
+              "independentReviewCompleted": { "const": true },
+              "independentReviewRef": { "type": "string", "minLength": 1, "maxLength": 256 }
             }
           }
         }
