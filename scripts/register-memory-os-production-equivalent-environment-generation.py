@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -19,6 +20,7 @@ CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-genera
 REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 ENV_SCHEMA = ROOT / "contracts/operations/production-equivalent-environment-record.v1.schema.json"
 GEN_SCHEMA = ROOT / "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
+ENV_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-record.py"
 LOCK = ROOT / "contracts/operations/.production-equivalent-environment-generation.lock"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
@@ -51,6 +53,14 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def load_environment_validator():
+    spec = importlib.util.spec_from_file_location("memory_os_environment_record_validator_for_generation_writer", ENV_VALIDATOR)
+    require(spec is not None and spec.loader is not None, "cannot load environment record semantic validator")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def git(*args: str) -> str:
     completed = subprocess.run(["git", *args], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     require(completed.returncode == 0, f"git {' '.join(args)} failed")
@@ -70,19 +80,20 @@ def repo_ref(value: Any, field: str) -> Path:
     return absolute
 
 
-def validate_record(record: dict[str, Any]) -> None:
+def validate_record(record: dict[str, Any]) -> bool:
     contract = load(CONTRACT)
     require(set(record) == REQUIRED, f"record field set drift: {sorted(set(record) ^ REQUIRED)}")
     require(record.get("schemaVersion") == "memory-os-production-equivalent-environment-generation-record.v1", "schemaVersion drift")
     require(isinstance(record.get("environmentId"), str) and ENV_ID.fullmatch(record["environmentId"]), "environmentId invalid")
     require(isinstance(record.get("generationId"), str) and GEN_ID.fullmatch(record["generationId"]), "generationId invalid")
-    require("latest" not in record["generationId"].lower() and "current" not in record["generationId"].lower(), "mutable generation aliases are forbidden")
+    require("latest" not in record["generationId"].casefold() and "current" not in record["generationId"].casefold(), "mutable generation aliases are forbidden")
     registered_at = record.get("registeredAt")
-    require(isinstance(registered_at, str), "registeredAt required")
+    require(isinstance(registered_at, str) and registered_at.endswith("Z"), "registeredAt must be UTC RFC3339 ending in Z")
     try:
-        datetime.fromisoformat(registered_at.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(registered_at[:-1] + "+00:00")
     except ValueError as exc:
-        raise Fail("registeredAt must be ISO-8601 date-time") from exc
+        raise Fail("registeredAt must be UTC RFC3339 date-time") from exc
+    require(parsed.utcoffset() is not None and parsed.utcoffset().total_seconds() == 0, "registeredAt must be UTC")
     source = record.get("sourceCommitSha")
     require(isinstance(source, str) and SHA40.fullmatch(source), "sourceCommitSha invalid")
     require(git("cat-file", "-e", source + "^{commit}") == "", "sourceCommitSha does not exist")
@@ -99,26 +110,28 @@ def validate_record(record: dict[str, Any]) -> None:
     env_path = repo_ref(record.get("environmentRecordRef"), "environmentRecordRef")
     require(record["environmentRecordSha256"] == sha256(env_path), "environmentRecordSha256 mismatch")
     env = load(env_path)
-    require(env.get("schemaVersion") == "memory-os-production-equivalent-environment-record.v1", "environment record schema drift")
-    require(env.get("environmentId") == record["environmentId"], "environmentId mismatch with environment record")
-    require(env.get("generationId") == record["generationId"], "generationId mismatch with environment record")
-    boundary = env.get("evidenceBoundary")
-    topology = env.get("topology")
-    identity = env.get("identityAndSecrets")
-    require(isinstance(boundary, dict) and boundary.get("productionEvidence") is False and boundary.get("productionReady") is False, "environment record production boundary invalid")
-    require(isinstance(topology, dict) and topology.get("productionTraffic") is False and topology.get("productionCredentials") is False, "environment record must remain non-production")
-    require(isinstance(identity, dict) and identity.get("containsSecretMaterial") is False, "environment record contains secret material")
+    env_validator = load_environment_validator()
+    try:
+        preflight_eligible = env_validator.validate_environment_record(
+            env,
+            expected_environment_id=record["environmentId"],
+            expected_generation_id=record["generationId"],
+        )
+    except Exception as exc:
+        raise Fail(f"environment record semantic validation failed: {exc}") from exc
 
     require(contract.get("environmentRecordSchema") == str(ENV_SCHEMA.relative_to(ROOT)), "environment record schema ref drift")
+    require(contract.get("environmentRecordSemanticValidator") == str(ENV_VALIDATOR.relative_to(ROOT)), "environment semantic validator ref drift")
     require(contract.get("generationRegistryRecordSchema") == str(GEN_SCHEMA.relative_to(ROOT)), "generation registry record schema ref drift")
     require(contract.get("registry") == str(REGISTRY.relative_to(ROOT)), "registry ref drift")
 
     serialized = json.dumps(record, ensure_ascii=False).lower()
     for forbidden in (
         "http://", "https://", "postgres://", "postgresql://", "authorization: bearer",
-        "password", "private_key", "access_key", "secret", "raw_ip", "account_id", "session_id", "@",
+        "password", "private_key", "access_key", "secret", "raw_ip", "account_id", "session_id", "@", "latest",
     ):
         require(forbidden not in serialized, f"generation record contains forbidden material: {forbidden}")
+    return preflight_eligible
 
 
 def atomic_write(value: dict[str, Any]) -> None:
@@ -150,7 +163,7 @@ def main() -> int:
         raise Fail("input generation record must be outside repository")
     require(git("status", "--porcelain") == "", "working tree must be clean")
     record = load(input_path)
-    validate_record(record)
+    preflight_eligible = validate_record(record)
 
     try:
         lock_fd = os.open(LOCK, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -173,6 +186,8 @@ def main() -> int:
         registry["productionEvidence"] = False
         registry["limitations"] = [
             "registered generations are non-production evidence until independent admission requirements are satisfied",
+            "registration preserves planned/provisioned/rejected environment history and never implies restore-drill preflight eligibility",
+            "preflight eligibility is independently re-derived from the full environment record and repository-resolvable evidence",
             "environmentId alone is never an evidence key",
             "generation registration does not by itself prove production-equivalent dependencies or application readiness"
         ]
@@ -185,6 +200,8 @@ def main() -> int:
             pass
 
     print(f"Registered production-equivalent environment generation candidate: {record['generationId']}")
+    print(f"Restore-drill preflight eligible now: {str(preflight_eligible).lower()}")
+    print("Registration implies equivalence: false")
     print("Production evidence: false")
     print("Application production readiness: false")
     return 0
