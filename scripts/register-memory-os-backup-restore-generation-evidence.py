@@ -143,7 +143,7 @@ def drill_request_for_record(record: dict[str, Any], *, require_current: bool) -
 def drill_request_current(record: dict[str, Any]) -> bool:
     try:
         drill_request_for_record(record, require_current=True)
-    except Fail:
+    except Exception:
         return False
     return True
 
