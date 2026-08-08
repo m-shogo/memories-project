@@ -1,0 +1,70 @@
+{
+  "contractId": "memory-os.operability.local-apple-replay-restore.v1",
+  "schemaVersion": "memory-os-local-apple-replay-restore.v1",
+  "resultsSchemaVersion": "memory-os-local-apple-replay-restore-results.v1",
+  "description": "Local PostgreSQL logical restore drill for live Sign in with Apple nonce/code anti-replay records. Two synthetic live replay digests are consumed before backup, restored into a separate database, and the identical pair must still be rejected after restore. This is local-only logical restore evidence, not production PITR or Apple production traffic evidence.",
+  "runner": "scripts/run-memory-os-local-apple-replay-restore.py",
+  "validator": "scripts/validate-memory-os-local-apple-replay-restore.py",
+  "workflow": ".github/workflows/local-apple-replay-restore.yml",
+  "resultPath": "docs/fixtures/memory-os-operability/local-apple-replay-restore-results.sample.v1.json",
+  "diagnosticPath": "docs/fixtures/memory-os-operability/local-apple-replay-restore-diagnostic.last.json",
+  "dependencyMode": "EPHEMERAL_POSTGRESQL_16_SAME_CLUSTER_LOGICAL_RESTORE",
+  "scenario": {
+    "scenarioId": "apple-live-replay-guard-logical-restore",
+    "requiredSteps": [
+      "create clean source and target PostgreSQL databases",
+      "apply complete canonical migration sequence to source",
+      "consume one synthetic nonce digest and one synthetic authorization-code digest with a live TTL",
+      "verify exactly two live replay rows exist before backup",
+      "create a custom-format PostgreSQL logical dump",
+      "restore into a separate empty target database",
+      "verify both replay rows remain live after restore",
+      "attempt the identical replay pair through memory_auth_runtime",
+      "require duplicate replay consumption to fail closed",
+      "write privacy-safe exact-source result without raw replay digests"
+    ],
+    "successCriteria": [
+      "all canonical migrations apply",
+      "source replay row count is exactly two",
+      "pg_dump and pg_restore complete without ignored errors",
+      "restored replay row count is exactly two",
+      "memory_auth_runtime cannot consume the identical nonce/code pair again",
+      "result contains no replay digest values or database credentials",
+      "production evidence remains false"
+    ],
+    "abortCriteria": [
+      "database endpoint is non-local",
+      "source or target database identity is ambiguous",
+      "replay pair is absent or expired before backup",
+      "dump or restore fails",
+      "restored replay row count differs from two",
+      "duplicate replay consumption succeeds after restore",
+      "raw replay digests database URLs or credentials would enter evidence"
+    ]
+  },
+  "evidenceBoundary": {
+    "syntheticDataOnly": true,
+    "productionEvidence": false,
+    "postgresPitrEvidence": false,
+    "crossClusterEvidence": false,
+    "realAppleTrafficEvidence": false,
+    "replayNonResurrectionScope": "synthetic live nonce and authorization-code anti-replay records remain consumed across local logical restore",
+    "productionReady": false
+  },
+  "readiness": {
+    "contractDefined": true,
+    "runnerImplemented": true,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": true,
+    "exactSourcePassResultCommitted": false,
+    "localReplayGuardRestoreProven": false,
+    "productionReplayRestoreProven": false,
+    "productionReady": false
+  },
+  "evidenceRefs": [
+    "contracts/operations/local-apple-replay-restore-contract.v1.json",
+    "scripts/run-memory-os-local-apple-replay-restore.py",
+    "scripts/validate-memory-os-local-apple-replay-restore.py",
+    ".github/workflows/local-apple-replay-restore.yml"
+  ]
+}
