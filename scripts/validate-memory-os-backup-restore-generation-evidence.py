@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate append-only generation-bound backup/restore evidence authority."""
+"""Validate append-only, drill-request-bound generation recovery evidence authority."""
 
 from __future__ import annotations
 
@@ -15,6 +15,8 @@ CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contr
 REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 OBJECTIVES_REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
+DRILL_CONTRACT = ROOT / "contracts/operations/backup-restore-drill-request-contract.v1.json"
+DRILL_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
 GEN_BINDING = ROOT / "contracts/operations/backup-restore-generation-binding-contract.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
 NEGATIVE_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
@@ -51,7 +53,7 @@ def validate_negative_admission_suite(contract: dict[str, Any]) -> None:
     require(contract.get("negativeAdmissionValidator") == expected_ref, "negative admission validator ref drift")
     require(NEGATIVE_VALIDATOR.is_file(), "negative admission validator missing")
     cases = contract.get("negativeAdmissionCases")
-    require(isinstance(cases, list) and len(cases) >= 10 and len(cases) == len(set(cases)), "negative admission cases incomplete or duplicated")
+    require(isinstance(cases, list) and len(cases) >= 15 and len(cases) == len(set(cases)), "negative admission cases incomplete or duplicated")
     completed = subprocess.run(
         [sys.executable, str(NEGATIVE_VALIDATOR)],
         cwd=ROOT,
@@ -62,7 +64,7 @@ def validate_negative_admission_suite(contract: dict[str, Any]) -> None:
     )
     require(
         completed.returncode == 0,
-        "negative admission suite failed:\n" + completed.stdout[-4000:] + completed.stderr[-4000:],
+        "negative admission suite failed:\n" + completed.stdout[-6000:] + completed.stderr[-6000:],
     )
 
 
@@ -71,24 +73,47 @@ def main() -> int:
     registry = load(REGISTRY)
     generations = load(GEN_REGISTRY)
     objectives = load(OBJECTIVES_REGISTRY)
+    drill_registry = load(DRILL_REGISTRY)
     binding = load(GEN_BINDING)
     writer = load_writer()
 
     require(contract.get("schemaVersion") == "memory-os-backup-restore-generation-evidence.v1", "contract schema drift")
-    require(contract.get("registry") == str(REGISTRY.relative_to(ROOT)), "registry ref drift")
-    require(contract.get("environmentGenerationRegistry") == str(GEN_REGISTRY.relative_to(ROOT)), "generation registry ref drift")
-    require(contract.get("recoveryObjectivesRegistry") == str(OBJECTIVES_REGISTRY.relative_to(ROOT)), "recovery objectives registry ref drift")
-    require(contract.get("generationBindingContract") == str(GEN_BINDING.relative_to(ROOT)), "generation binding ref drift")
-    require(contract.get("writer") == str(WRITER.relative_to(ROOT)) and WRITER.is_file(), "writer ref drift")
-    for field in ("validator", "reconcile", "workflow"):
+    expected_refs = {
+        "registry": REGISTRY,
+        "environmentGenerationRegistry": GEN_REGISTRY,
+        "recoveryObjectivesRegistry": OBJECTIVES_REGISTRY,
+        "drillRequestContract": DRILL_CONTRACT,
+        "drillRequestRegistry": DRILL_REGISTRY,
+        "generationBindingContract": GEN_BINDING,
+        "writer": WRITER,
+        "negativeAdmissionValidator": NEGATIVE_VALIDATOR,
+    }
+    for field, path in expected_refs.items():
+        require(contract.get(field) == str(path.relative_to(ROOT)), f"contract ref drift: {field}")
+        require(path.is_file(), f"contract artifact missing: {field}")
+    for field in ("validator", "reconcile", "workflow", "typedNonResurrectionAdmissionContract", "typedNonResurrectionAdmissionRegistry"):
         ref = contract.get(field)
         require(isinstance(ref, str) and ref and (ROOT / ref).is_file(), f"contract artifact missing: {field}")
 
     rules = contract.get("recordRules")
     require(isinstance(rules, dict) and rules and all(value is True for value in rules.values()), "recordRules must remain fail-closed")
+    for key in (
+        "drillRequestMustExist",
+        "drillRequestMustBeCurrentlyExecutableForNewEvidence",
+        "historicalEvidenceMayRemainAuditableAfterDrillRequestBecomesStale",
+        "drillRequestSourceGenerationMustMatchEvidence",
+        "drillRequestRestoreTargetGenerationMustMatchEvidence",
+        "drillRequestRecoveryObjectivesIdMustMatchEvidence",
+        "typedNonResurrectionCoverageRequiredForProductionEquivalentRestoreCandidate",
+        "genericNonResurrectionPassAloneCannotCreateCandidate",
+    ):
+        require(rules.get(key) is True, f"required fail-closed rule missing: {key}")
+
     promotion = contract.get("promotionBoundary")
     require(isinstance(promotion, dict), "promotionBoundary required")
     require(promotion.get("productionEquivalentRecoveryCandidateMayBeDerivedFromCompleteReviewedRecord") is True, "candidate derivation rule drift")
+    require(promotion.get("completeReviewedRecordAlsoRequiresAdmittedDrillRequestBinding") is True, "candidate must remain drill-request-bound")
+    require(promotion.get("completeReviewedRecordAlsoRequiresTypedNonResurrectionCoverage") is True, "candidate must remain typed-overlay-bound")
     require(promotion.get("productionEvidenceMayBeDerived") is False, "registry cannot derive production evidence")
     require(promotion.get("productionReadyMayBeDerived") is False, "registry cannot derive production readiness")
     require(promotion.get("humanProductionPromotionDecisionRequiredSeparately") is True, "human production decision must remain separate")
@@ -98,39 +123,59 @@ def main() -> int:
     require(registry.get("productionEvidence") is False and registry.get("productionReady") is False, "registry production boundary drift")
     rows = registry.get("records")
     count = registry.get("registeredEvidenceCount")
+    bound_count = registry.get("drillRequestBoundEvidenceCount")
     backup_count = registry.get("completeGenerationBoundBackupCount")
     restore_count = registry.get("completeGenerationBoundRestoreCount")
     candidate_count = registry.get("productionEquivalentRecoveryCandidateCount")
     require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "registry records invalid")
     require(isinstance(count, int) and count == len(rows), "registeredEvidenceCount drift")
+    require(all(isinstance(value, int) and value >= 0 for value in (bound_count, backup_count, restore_count, candidate_count)), "registry derived counts invalid")
+
     ids: set[str] = set()
+    derived_bound = 0
     for row in rows:
         evidence_id = row.get("evidenceId")
         require(isinstance(evidence_id, str) and evidence_id not in ids, f"duplicate evidenceId: {evidence_id}")
         ids.add(evidence_id)
-        writer.validate_record(row)
+        # Immutable historical rows stay auditable after their request/objective/generation becomes stale.
+        writer.validate_record(row, require_current_drill_request=False)
+        derived_bound += 1
     derived_backup = sum(1 for row in rows if row.get("evidenceComplete") is True)
-    derived_restore = sum(1 for row in rows if row.get("evidenceComplete") is True and row.get("isolatedRestoreVerified") is True and row.get("restoredBackupArtifactSha256") == row.get("backupArtifactSha256"))
+    derived_restore = sum(
+        1 for row in rows
+        if row.get("evidenceComplete") is True
+        and row.get("isolatedRestoreVerified") is True
+        and row.get("restoredBackupArtifactSha256") == row.get("backupArtifactSha256")
+    )
     derived_candidates = sum(1 for row in rows if writer.candidate(row))
+    require(bound_count == derived_bound == count, "every generation evidence row must remain drill-request-bound")
     require(backup_count == derived_backup, "completeGenerationBoundBackupCount drift")
     require(restore_count == derived_restore, "completeGenerationBoundRestoreCount drift")
     require(candidate_count == derived_candidates, "productionEquivalentRecoveryCandidateCount drift")
+    require(0 <= candidate_count <= restore_count <= backup_count <= bound_count <= count, "generation evidence count ordering invalid")
 
     generation_count = generations.get("registeredGenerationCount")
-    require(isinstance(generation_count, int) and generation_count >= 0, "generation registry count invalid")
     objective_count = objectives.get("approvedObjectiveCount")
     objective_rows = objectives.get("records")
+    drill_rows = drill_registry.get("requests")
+    drill_count = drill_registry.get("registeredRequestCount")
+    current_drill_count = drill_registry.get("currentExecutableRequestCount")
+    require(isinstance(generation_count, int) and generation_count >= 0, "generation registry count invalid")
     require(isinstance(objective_count, int) and objective_count >= 0, "approvedObjectiveCount invalid")
     require(isinstance(objective_rows, list) and len(objective_rows) == objective_count, "recovery objectives registry count drift")
-    if generation_count == 0:
-        require(count == 0, "recovery evidence cannot exist without registered environment generations")
-    if objective_count == 0:
-        require(candidate_count == 0, "production-equivalent recovery candidate cannot exist without approved recovery objectives")
+    require(isinstance(drill_rows, list) and isinstance(drill_count, int) and drill_count == len(drill_rows), "drill request registry count drift")
+    require(isinstance(current_drill_count, int) and 0 <= current_drill_count <= drill_count, "current drill request count invalid")
+    require(drill_registry.get("productionEvidence") is False and drill_registry.get("productionReady") is False, "drill request registry production boundary drift")
+    if generation_count == 0 or drill_count == 0:
+        require(count == 0, "recovery evidence cannot exist without registered generations and a reviewed drill request")
+    if objective_count == 0 or current_drill_count == 0:
+        require(candidate_count == 0, "current recovery candidate cannot exist without current objectives and executable drill request")
 
     boundary = contract.get("currentBoundary")
     readiness = contract.get("readiness")
     require(isinstance(boundary, dict) and isinstance(readiness, dict), "contract authority state missing")
     require(boundary.get("registeredEvidenceCount") == count, "contract evidence count drift")
+    require(boundary.get("drillRequestBoundEvidenceCount") == derived_bound, "contract drill-bound evidence count drift")
     require(boundary.get("completeGenerationBoundBackupCount") == derived_backup, "contract backup count drift")
     require(boundary.get("completeGenerationBoundRestoreCount") == derived_restore, "contract restore count drift")
     require(boundary.get("productionEquivalentRecoveryCandidateCount") == derived_candidates, "contract candidate count drift")
@@ -141,6 +186,7 @@ def main() -> int:
     require(readiness.get("negativeAdmissionSuiteImplemented") is True, "negativeAdmissionSuiteImplemented must remain true")
     require(readiness.get("environmentGenerationAvailable") is (generation_count > 0), "environmentGenerationAvailable drift")
     require(readiness.get("approvedRecoveryObjectivesAvailable") is (objective_count > 0), "approvedRecoveryObjectivesAvailable drift")
+    require(readiness.get("drillRequestAvailable") is (drill_count > 0), "drillRequestAvailable drift")
     require(readiness.get("generationBoundBackupAvailable") is (derived_backup > 0), "generationBoundBackupAvailable drift")
     require(readiness.get("generationBoundRestoreAvailable") is (derived_restore > 0), "generationBoundRestoreAvailable drift")
     require(readiness.get("productionEquivalentRecoveryCandidateAvailable") is (derived_candidates > 0), "candidate readiness drift")
@@ -158,12 +204,13 @@ def main() -> int:
 
     validate_negative_admission_suite(contract)
 
-    print("Memory OS generation-bound backup/restore evidence validation PASS")
-    print(f"registered environment generations: {generation_count}")
-    print(f"approved recovery objectives: {objective_count}")
-    print(f"registered recovery evidence records: {count}")
+    print("Memory OS drill-bound generation backup/restore evidence validation PASS")
+    print(f"registered/current drill requests: {drill_count}/{current_drill_count}")
+    print(f"registered/drill-bound recovery evidence: {count}/{derived_bound}")
     print(f"complete generation-bound restores: {derived_restore}")
     print(f"production-equivalent recovery candidates: {derived_candidates}")
+    print("historical evidence audit after request supersession: allowed")
+    print("new evidence without current drill request: forbidden")
     print("negative admission suite: PASS")
     print("production evidence: false")
     print("production decision: NO_GO")
