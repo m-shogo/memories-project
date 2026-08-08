@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "production-equivalent-environment-generation",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "PRODUCTION-EQUIVALENT GENERATION STATUS FAILED: generation validator failed:\nPRODUCTION-EQUIVALENT GENERATION FAILED: environment generation negative admission suite failed:\nTraceback (most recent call last):\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-production-equivalent-environment-generation-negative.py\", line 257, in <module>\n    raise SystemExit(main())\n                     ^^^^^^\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-production-equivalent-environment-generation-negative.py\", line 182, in main\n    require(env_validator.validate_environment_record(planned) is False, \"PLANNED environment must be structurally valid but preflight-ineligible\")\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-production-equivalent-environment-record.py\", line 196, in validate_environment_record\n    require(forbidden not in serialized, f\"environment record contains forbidden material: {forbidden}\")\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-production-equivalent-environment-record.py\", line 36, in require\n    raise Fail(message)\nmemory_os_environment_semantic_negative.Fail: environment record contains forbidden material: secret\n\n\n",
+  "containsSecrets": false,
+  "generationCreated": false,
+  "preflightEligibilityFabricated": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
