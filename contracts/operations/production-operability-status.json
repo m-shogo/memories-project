@@ -635,7 +635,8 @@
         "exact-source local PostgreSQL plus MinIO coherent recovery-set drill destroys source database state and source object versions, restores both into separate targets, independently re-derives one shared opaque recovery-set digest from restored database and object state, verifies exact backup-object checksum, and rejects a deliberate one-sided digest mismatch; this proves local shared recovery-set binding only, not temporal recovery-point skew, PITR or production-equivalent recovery",
         "exact-source local Apple replay-guard logical restore proves synthetic live nonce and authorization-code replay records remain consumed after restore and the identical pair is rejected without durable replay mutation; this remains same-cluster synthetic local evidence and is not PITR or production-equivalent proof",
         "production-equivalent non-resurrection admission overlay is typed and fail-closed: pre-overlay eligible generation records=0, typed records=0, complete typed records=0, final production-equivalent recovery candidates=0, pending typed coverage=0; a generic nonResurrectionVerification PASS is insufficient and final candidate derivation requires separate deleted-account/session, expired/revoked-session, Apple nonce/code replay, deletion-lease and idempotent-effect evidence with distinct security/operability review; productionEvidence and productionReady remain false",
-        "generation-bound backup/restore evidence admission is append-only and fail-closed: registered environment generations=0, approved recovery objectives=0, current objectiveId=none, recovery records=0, complete generation-bound restores=0, production-equivalent recovery candidates=0; candidate admission requires exact generation/manifest/artifact hashes, current objective binding, measured RPO/RTO/object-database skew within approved targets, isolated restore, PITR, independent object retention, recovery coherence, non-resurrection and distinct security/operability review, while productionEvidence and productionReady remain false"
+        "generation-bound backup/restore evidence admission is append-only and fail-closed: registered environment generations=0, approved recovery objectives=0, current objectiveId=none, recovery records=0, complete generation-bound restores=0, production-equivalent recovery candidates=0; candidate admission requires exact generation/manifest/artifact hashes, current objective binding, measured RPO/RTO/object-database skew within approved targets, isolated restore, PITR, independent object retention, recovery coherence, non-resurrection and distinct security/operability review, while productionEvidence and productionReady remain false",
+        "production-equivalent backup/restore drill request admission is planning-only and fail-closed: registered environment generations=0, approved recovery objectives=0, admitted planning requests=0, currently executable requests=0, admissionDecision=BLOCKED_NO_REGISTERED_GENERATION_OR_APPROVED_OBJECTIVE; admission requires two distinct unsuperseded registered production-equivalent generations, the current approved objective, PITR/WAL and exact object-version policies, all eight planned evidence domains, distinct Recovery Owner/Security/Operability approvals and mandatory stop conditions; historical requests remain auditable after supersession but become non-executable, and request admission never executes a restore or creates production evidence"
       ],
       "missingEvidence": [
         "production PostgreSQL backup and PITR schedule with encrypted independent retention, WAL continuity and tested point-in-time recovery selection",
@@ -697,7 +698,15 @@
         "contracts/operations/local-apple-replay-restore-contract.v1.json",
         "docs/fixtures/memory-os-operability/local-apple-replay-restore-results.sample.v1.json",
         "scripts/validate-memory-os-local-apple-replay-restore.py",
-        ".github/workflows/local-apple-replay-restore.yml"
+        ".github/workflows/local-apple-replay-restore.yml",
+        "contracts/operations/backup-restore-drill-request-contract.v1.json",
+        "contracts/operations/backup-restore-drill-request-registry.v1.json",
+        "docs/runbooks/memory-os-production-equivalent-backup-restore-drill.md",
+        "scripts/request-memory-os-backup-restore-drill.py",
+        "scripts/validate-memory-os-backup-restore-drill-request.py",
+        "scripts/validate-memory-os-backup-restore-drill-request-negative.py",
+        "scripts/reconcile-memory-os-backup-restore-drill-request.py",
+        ".github/workflows/backup-restore-drill-request.yml"
       ]
     },
     {
