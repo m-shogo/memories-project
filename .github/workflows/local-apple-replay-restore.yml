@@ -1,0 +1,143 @@
+name: Local Apple Replay Restore Drill
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/local-apple-replay-restore.yml"
+      - "contracts/operations/local-apple-replay-restore-contract.v1.json"
+      - "contracts/operations/migration-lifecycle-contract.v1.json"
+      - "infra/postgresql/security/**"
+      - "scripts/run-memory-os-local-apple-replay-restore.py"
+      - "scripts/validate-memory-os-local-apple-replay-restore.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: local-apple-replay-restore-so
+  cancel-in-progress: false
+
+jobs:
+  replay-restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      MEMORY_OS_ALLOW_EPHEMERAL_DATABASE_DROP: "1"
+      MEMORY_OS_LOCAL_APPLE_REPLAY_RESTORE_RESULTS_PATH: ${{ github.workspace }}/docs/fixtures/memory-os-operability/local-apple-replay-restore-results.sample.v1.json
+    steps:
+      - name: Checkout latest so
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+
+      - name: Capture exact source state
+        run: |
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Validate static replay restore contract
+        run: |
+          python -m py_compile \
+            scripts/run-memory-os-local-apple-replay-restore.py \
+            scripts/validate-memory-os-local-apple-replay-restore.py
+          python scripts/validate-memory-os-local-apple-replay-restore.py
+
+      - name: Execute replay restore drill
+        id: drill
+        env:
+          MEMORY_OS_COMMIT_SHA: ${{ env.SOURCE_SHA }}
+        run: |
+          set +e
+          python scripts/run-memory-os-local-apple-replay-restore.py > /tmp/local-apple-replay-restore.log 2>&1
+          code=$?
+          set -e
+          DRILL_EXIT_CODE="$code" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          output = Path('/tmp/local-apple-replay-restore.log').read_text(encoding='utf-8', errors='replace')[-4000:]
+          diagnostic = {
+              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'workflow': 'local-apple-replay-restore',
+              'sourceCommitSha': os.environ['SOURCE_SHA'],
+              'result': 'PASS' if os.environ['DRILL_EXIT_CODE'] == '0' else 'FAIL',
+              'exitCode': int(os.environ['DRILL_EXIT_CODE']),
+              'output': output,
+              'containsSecrets': False,
+              'productionEvidence': False,
+          }
+          path = Path('docs/fixtures/memory-os-operability/local-apple-replay-restore-diagnostic.last.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(diagnostic, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+          PY
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+
+      - name: Validate exact-source replay result
+        id: validation
+        if: steps.drill.outputs.exit_code == '0'
+        env:
+          EXPECTED_COMMIT_SHA: ${{ env.SOURCE_SHA }}
+        run: |
+          set +e
+          python scripts/validate-memory-os-local-apple-replay-restore.py > /tmp/replay-validation.log 2>&1
+          code=$?
+          set -e
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          cat /tmp/replay-validation.log
+
+      - name: Commit result or bounded diagnostic
+        run: |
+          git add docs/fixtures/memory-os-operability/local-apple-replay-restore-diagnostic.last.json
+          if [ "${{ steps.drill.outputs.exit_code }}" = "0" ] && \
+             [ "${{ steps.validation.outputs.exit_code }}" = "0" ]; then
+            git add docs/fixtures/memory-os-operability/local-apple-replay-restore-results.sample.v1.json
+          fi
+          if git diff --cached --quiet; then
+            echo "Replay restore evidence is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            if [ "${{ steps.drill.outputs.exit_code }}" = "0" ] && \
+               [ "${{ steps.validation.outputs.exit_code }}" = "0" ]; then
+              git commit -m "test(backup): record Apple replay restore evidence"
+            else
+              git commit -m "test(backup): record Apple replay restore failure diagnostic"
+            fi
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+
+      - name: Fail after preserving diagnostic
+        if: steps.drill.outputs.exit_code != '0' || steps.validation.outputs.exit_code != '0'
+        run: exit 1
