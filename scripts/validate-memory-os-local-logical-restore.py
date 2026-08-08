@@ -100,9 +100,15 @@ def validate_result(result: dict[str, Any], expected_sha: str | None,
         "deletedSyntheticAccountsAfterRestore",
         "deletedSyntheticSessionDigestsAfterRestore",
         "deletedSyntheticSessionsResolvedAfterRestore",
+        "expiredSyntheticSessionsResolvedAfterRestore",
+        "revokedSyntheticSessionsResolvedAfterRestore",
     ):
         require(assertions.get(field) == 0,
-                f"synthetic deleted state resurrected: {field}")
+                f"synthetic session/deletion state became usable after restore: {field}")
+    require(assertions.get("expiredSyntheticSessionRowsAfterRestore") == 1,
+            "expired synthetic session state was not preserved after restore")
+    require(assertions.get("revokedSyntheticSessionRowsAfterRestore") == 1,
+            "revoked synthetic session state was not preserved after restore")
 
     limitations = result.get("limitations")
     require(isinstance(limitations, list) and len(limitations) >= 5,
@@ -113,15 +119,17 @@ def validate_result(result: dict[str, Any], expected_sha: str | None,
         "not PITR",
         "not object-store",
         "not approved RPO or RTO",
-        "synthetic deletion",
+        "expired/revoked session",
     ):
         require(phrase in joined, f"result limitation omitted: {phrase}")
 
     serialized = json.dumps(result, ensure_ascii=False).lower()
     for forbidden in (
         "postgres://", "postgresql://", "password", "pgpassword",
-        "dddddddddddddddddddddddddddddddd", "acct_restore_deleted_0001",
-        "ses_restore_deleted_0001",
+        "dddddddddddddddddddddddddddddddd", "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "ffffffffffffffffffffffffffffffff", "acct_restore_deleted_0001",
+        "acct_restore_session_owner_0001", "ses_restore_deleted_0001",
+        "ses_restore_expired_0001", "ses_restore_revoked_0001",
     ):
         require(forbidden not in serialized,
                 f"result contains forbidden evidence value: {forbidden}")
@@ -164,8 +172,8 @@ def main() -> int:
     require(scenario.get("scenarioId") ==
             "postgresql-logical-dump-isolated-restore-smoke",
             "contract scenario ID drift")
-    for field, minimum in (("requiredSteps", 10), ("successCriteria", 8),
-                           ("abortCriteria", 5)):
+    for field, minimum in (("requiredSteps", 14), ("successCriteria", 11),
+                           ("abortCriteria", 6)):
         items = scenario.get(field)
         require(isinstance(items, list) and len(items) >= minimum,
                 f"scenario.{field} is incomplete")
@@ -180,8 +188,10 @@ def main() -> int:
     ):
         require(boundary.get(false_claim) is False,
                 f"local restore cannot claim {false_claim}")
-    require("synthetic" in str(boundary.get("deletionNonResurrectionScope")),
-            "non-resurrection scope must remain synthetic")
+    scope = str(boundary.get("deletionNonResurrectionScope"))
+    for phrase in ("synthetic", "expired", "revoked", "non-resolvable"):
+        require(phrase in scope,
+                f"non-resurrection scope must include {phrase}")
 
     privacy = contract.get("privacy")
     require(isinstance(privacy, dict), "privacy must be an object")
@@ -223,8 +233,10 @@ def main() -> int:
         'test_name="test_${migration#*_}"',
         "SQL integration test count does not match migration count",
         "synthetic deletion did not complete before dump",
+        "expired/revoked synthetic session setup is invalid before dump",
         "deleted synthetic account resurrected",
-        "deleted synthetic session digest resurrected",
+        "expired synthetic token resolved after restore",
+        "revoked synthetic token resolved after restore",
         "MEMORY_OS_COMMIT_SHA must be a full commit SHA",
     ):
         require(snippet in runner, f"runner missing safety/evidence boundary: {snippet}")
@@ -240,6 +252,7 @@ def main() -> int:
     for foundation in (
         "contractDefined", "runnerImplemented", "validatorImplemented",
         "automaticWorkflowImplemented", "exactSourcePassResultTrackedInStatus",
+        "expiredRevokedSessionChecksImplemented",
     ):
         require(readiness.get(foundation) is True,
                 f"readiness.{foundation} must be true")
@@ -280,6 +293,7 @@ def main() -> int:
     print(f"canonical migrations: {migration_count}  SQL integration tests: {len(sql_tests)}")
     print(f"result present: {RESULT_PATH.is_file()}")
     print(f"OPS-P0-007 status: {matches[0].get('status')}")
+    print("expired/revoked session proof required: true")
     print("production decision: NO_GO")
     return 0
 
