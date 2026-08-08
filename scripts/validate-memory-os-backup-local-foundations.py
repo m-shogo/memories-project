@@ -111,9 +111,15 @@ def validate_logical(result: dict[str, Any]) -> None:
         "deletedSyntheticAccountsAfterRestore",
         "deletedSyntheticSessionDigestsAfterRestore",
         "deletedSyntheticSessionsResolvedAfterRestore",
+        "expiredSyntheticSessionsResolvedAfterRestore",
+        "revokedSyntheticSessionsResolvedAfterRestore",
     ):
         require(assertions.get(field) == 0,
                 f"logical restore non-resurrection assertion failed: {field}")
+    require(assertions.get("expiredSyntheticSessionRowsAfterRestore") == 1,
+            "expired session terminal state was not preserved")
+    require(assertions.get("revokedSyntheticSessionRowsAfterRestore") == 1,
+            "revoked session terminal state was not preserved")
 
 
 def validate_object(result: dict[str, Any]) -> None:
@@ -189,6 +195,9 @@ def main() -> int:
                     f"foundation path missing: {foundation_id}.{field}")
         strings(item.get("proves"), f"{foundation_id}.proves", 6)
         strings(item.get("doesNotProve"), f"{foundation_id}.doesNotProve", 5)
+    logical_proves = "\n".join(by_id["LOCAL_POSTGRESQL_LOGICAL_RESTORE"]["proves"])
+    for phrase in ("expired active session", "revoked unexpired session", "cannot resolve"):
+        require(phrase in logical_proves, f"logical foundation index omits terminal-session proof: {phrase}")
 
     boundary = index.get("combinedBoundary")
     require(isinstance(boundary, dict), "combinedBoundary must be an object")
@@ -226,6 +235,7 @@ def main() -> int:
 
     print("Memory OS local backup/restore foundation validation PASS")
     print("committed foundations: 2")
+    print("expired/revoked session restore semantics: PASS")
     print(f"OPS-P0-007 status: {gate.get('status')}")
     print("production decision: NO_GO")
     return 0
