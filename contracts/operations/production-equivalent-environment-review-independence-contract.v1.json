@@ -1,0 +1,31 @@
+{
+  "contractId": "memory-os.operability.production-equivalent-environment-review-independence.v1",
+  "schemaVersion": "memory-os-production-equivalent-environment-review-independence-contract.v1",
+  "description": "Fail-closed review-independence authority for restore-preflight-eligible production-equivalent environment generations. The environment-level independent review artifact must be distinct from component runtime/restore evidence and from material-delta review artifacts so one document cannot self-attest both implementation evidence and independent review.",
+  "generationRegistry": "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+  "generationEligibilityHelper": "scripts/memory_os_environment_generation_eligibility.py",
+  "validator": "scripts/validate-memory-os-production-equivalent-environment-review-independence.py",
+  "workflow": ".github/workflows/production-equivalent-environment-review-independence.yml",
+  "rules": {
+    "appliesOnlyToPreflightEligibleGenerations": true,
+    "environmentIndependentReviewRefRequired": true,
+    "environmentReviewMustDifferFromPostgresqlRestoreEvidence": true,
+    "environmentReviewMustDifferFromObjectRestoreEvidence": true,
+    "environmentReviewMustDifferFromLatencyEvidence": true,
+    "environmentReviewMustDifferFromFailureInjectionEvidence": true,
+    "environmentReviewMustDifferFromCredentialScopeEvidence": true,
+    "environmentReviewMustDifferFromBackupRestoreEvidence": true,
+    "environmentReviewMustDifferFromMaterialDeltaReviewEvidence": true,
+    "allComparedEvidenceRefsMustResolveInRepository": true,
+    "productionEvidenceForbidden": true,
+    "productionReadyForbidden": true
+  },
+  "currentBoundary": {
+    "preflightEligibleGenerationCount": 0,
+    "independentlyReviewedEligibleGenerationCount": 0,
+    "reviewReuseViolationCount": 0,
+    "productionEvidence": false,
+    "productionReady": false,
+    "productionDecision": "NO_GO"
+  }
+}
