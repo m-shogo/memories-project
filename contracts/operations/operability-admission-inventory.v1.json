@@ -142,7 +142,7 @@
       "nextGate": "approve two release baselines and their rolling/rollback compatibility pair, then admit an immutable client baseline and reviewed retained parser artifact before production release compatibility; candidate/local execution remains separate non-release evidence",
       "status": "PARTIAL",
       "blocking": true,
-      "missingEvidenceCount": 15,
+      "missingEvidenceCount": 20,
       "productionEvidence": false,
       "productionReady": false
     },
