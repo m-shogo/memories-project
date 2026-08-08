@@ -142,7 +142,7 @@ def main() -> int:
     tuples: set[tuple[Any, Any, Any]] = set()
     derived_executable = 0
     for row in requests:
-        writer.validate_request(row)
+        writer.validate_request(row, require_current=False)
         request_id = row.get("requestId")
         require(isinstance(request_id, str) and request_id not in request_ids, f"duplicate requestId: {request_id}")
         request_ids.add(request_id)
@@ -162,11 +162,14 @@ def main() -> int:
     require(state.get("approvedRecoveryObjectiveCount") == objective_count, "contract objective count drift")
     require(state.get("registeredRequestCount") == request_count, "contract request count drift")
     require(state.get("currentExecutableRequestCount") == executable_count, "contract executable request count drift")
-    expected_decision = (
-        "BLOCKED_NO_REGISTERED_GENERATION_OR_APPROVED_OBJECTIVE"
-        if generation_count < 2 or objective_count == 0
-        else ("ADMITTED_REQUEST_AVAILABLE" if executable_count > 0 else "AWAITING_REVIEWED_DRILL_REQUEST")
-    )
+    if generation_count < 2 or objective_count == 0:
+        expected_decision = "BLOCKED_NO_REGISTERED_GENERATION_OR_APPROVED_OBJECTIVE"
+    elif executable_count > 0:
+        expected_decision = "ADMITTED_REQUEST_AVAILABLE"
+    elif request_count > 0:
+        expected_decision = "AWAITING_CURRENT_EXECUTABLE_DRILL_REQUEST"
+    else:
+        expected_decision = "AWAITING_REVIEWED_DRILL_REQUEST"
     require(state.get("admissionDecision") == expected_decision, "contract admissionDecision drift")
     require(state.get("productionEvidence") is False and state.get("productionReady") is False and state.get("productionDecision") == "NO_GO", "contract production boundary drift")
     require(readiness.get("environmentGenerationAvailable") is (generation_count >= 2), "readiness environment generation drift")
@@ -181,6 +184,7 @@ def main() -> int:
     print(f"approved recovery objectives: {objective_count}")
     print(f"registered drill requests: {request_count}")
     print(f"currently executable requests: {executable_count}")
+    print("historical admitted requests survive later generation/objective supersession: true")
     print("planning authority only: true")
     print("production evidence: false")
     print("production decision: NO_GO")
