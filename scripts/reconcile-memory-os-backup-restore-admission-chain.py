@@ -12,6 +12,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/backup-restore-admission-chain-contract.v1.json"
+PREFLIGHT = ROOT / "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
 DRILL_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 TYPED_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
@@ -48,17 +49,37 @@ def load_generation_writer():
 
 def main() -> int:
     contract = load(CONTRACT)
+    preflight_contract = load(PREFLIGHT)
     drill_registry = load(DRILL_REGISTRY)
     gen_registry = load(GEN_REGISTRY)
     typed_registry = load(TYPED_REGISTRY)
     status = load(STATUS)
     gen_writer = load_generation_writer()
 
+    preflight = preflight_contract.get("currentState")
+    require(isinstance(preflight, dict), "preflight currentState missing")
+    preflight_decision = preflight.get("preflightDecision")
+    preflight_eligible = preflight.get("eligibleToSubmitReviewedDrillRequest")
+    preflight_pair_count = preflight.get("eligibleDirectedSourceTargetPairCount")
+    require(isinstance(preflight_decision, str) and preflight_decision, "preflight decision invalid")
+    require(isinstance(preflight_eligible, bool), "preflight eligibility invalid")
+    require(isinstance(preflight_pair_count, int) and preflight_pair_count >= 0, "preflight pair count invalid")
+    require(all(preflight.get(field) is False for field in ("requestCreated", "backupExecuted", "restoreExecuted", "productionTrafficChanged", "productionEvidence", "productionReady")), "preflight execution boundary drift")
+    require(preflight.get("productionDecision") == "NO_GO", "preflight production decision drift")
+
     drill_rows = drill_registry.get("requests")
     drill_count = drill_registry.get("registeredRequestCount")
     current_drill_count = drill_registry.get("currentExecutableRequestCount")
     require(isinstance(drill_rows, list) and isinstance(drill_count, int) and drill_count == len(drill_rows), "drill request registry count drift")
     require(isinstance(current_drill_count, int) and 0 <= current_drill_count <= drill_count, "current drill request count invalid")
+    require(preflight.get("reviewedDrillRequestCount") == drill_count, "preflight reviewed request count drift")
+    require(preflight.get("currentExecutableDrillRequestCount") == current_drill_count, "preflight current request count drift")
+    if current_drill_count > 0:
+        require(preflight_eligible is True and preflight_decision == "READY_EXISTING_EXECUTABLE_DRILL_REQUEST" and preflight_pair_count > 0, "current request/preflight state mismatch")
+    elif preflight_eligible:
+        require(preflight_decision == "READY_FOR_REVIEWED_DRILL_REQUEST_SUBMISSION" and preflight_pair_count > 0, "eligible preflight state mismatch")
+    else:
+        require(preflight_decision.startswith("BLOCKED_") and current_drill_count == 0, "blocked preflight/current request mismatch")
 
     gen_rows = gen_registry.get("records")
     gen_count = gen_registry.get("registeredEvidenceCount")
@@ -79,6 +100,9 @@ def main() -> int:
 
     boundary = contract.get("currentBoundary")
     require(isinstance(boundary, dict), "chain currentBoundary missing")
+    boundary["preflightDecision"] = preflight_decision
+    boundary["preflightEligibleToSubmitReviewedDrillRequest"] = preflight_eligible
+    boundary["preflightEligibleDirectedSourceTargetPairCount"] = preflight_pair_count
     boundary["reviewedDrillRequestCount"] = drill_count
     boundary["currentExecutableDrillRequestCount"] = current_drill_count
     boundary["generationEvidenceCount"] = gen_count
@@ -98,9 +122,11 @@ def main() -> int:
     require(isinstance(missing, list) and len(missing) == 6, "canonical OPS-P0-007 six-blocker boundary drift")
 
     completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-    require(completed.returncode == 0, f"post-reconcile admission-chain validator failed:\n{completed.stdout[-6000:]}{completed.stderr[-6000:]}")
+    require(completed.returncode == 0, f"post-reconcile admission-chain validator failed:\n{completed.stdout[-8000:]}{completed.stderr[-8000:]}")
 
     print("Memory OS backup/restore admission chain reconciliation PASS")
+    print(f"preflight: {preflight_decision}")
+    print(f"preflight eligible pairs: {preflight_pair_count}")
     print(f"reviewed/current drill requests: {drill_count}/{current_drill_count}")
     print(f"generation/drill-bound evidence: {gen_count}/{bound_count}")
     print(f"complete typed records/final candidates: {typed_complete_count}/{candidate_count}")
