@@ -96,11 +96,14 @@
       "authority": "contracts/operations/backup-restore-generation-evidence-contract.v1.json",
       "secondaryAuthority": "contracts/operations/backup-restore-generation-binding-contract.v1.json",
       "tertiaryAuthority": "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json",
+      "quaternaryAuthority": "contracts/operations/backup-restore-drill-request-contract.v1.json",
       "foundationImplemented": true,
       "admittedEvidenceCount": 0,
       "dependencyCounts": {
         "environmentGenerations": 0,
         "approvedRecoveryObjectives": 0,
+        "reviewedRestoreDrillRequests": 0,
+        "currentExecutableRestoreDrillRequests": 0,
         "generationBoundBackups": 0,
         "generationBoundRestores": 0,
         "typedNonResurrectionRecords": 0,
@@ -109,7 +112,7 @@
         "typedCoveredRecoveryCandidates": 0,
         "productionEquivalentRecoveryCandidates": 0
       },
-      "nextGate": "explicitly approve RPO/RTO/object-database skew without defaults, register a reviewed production-equivalent environment generation, admit generation-bound PITR/independent-object/cross-cluster restore evidence within those objectives, then bind all eight typed non-resurrection domains before any final production-equivalent recovery candidate exists",
+      "nextGate": "explicitly approve RPO/RTO/object-database skew without defaults, register two distinct reviewed production-equivalent environment generations, admit a planning-only cross-environment restore drill request, then admit generation-bound PITR/independent-object/cross-cluster restore evidence within those objectives and bind all eight typed non-resurrection domains before any final production-equivalent recovery candidate exists",
       "status": "PARTIAL_FOUNDATIONS_ONLY",
       "blocking": true,
       "missingEvidenceCount": 6,
@@ -155,6 +158,8 @@
   ],
   "productionEquivalentEnvironmentGenerationCount": 0,
   "approvedRecoveryObjectiveCount": 0,
+  "reviewedBackupRestoreDrillRequestCount": 0,
+  "currentExecutableBackupRestoreDrillRequestCount": 0,
   "approvedReleaseCompatibilityPairCount": 0,
   "typedNonResurrectionRecordCount": 0,
   "completeTypedNonResurrectionRecordCount": 0,
@@ -167,6 +172,7 @@
     "candidate/local evidence is not counted as production admission unless its owning authority explicitly admits it",
     "local repeated soak evidence is tracked separately from independent leak proof and production-shaped soak evidence",
     "recovery-objective values are never defaulted by this inventory; zero approved objectives means RPO/RTO/skew remain intentionally undefined",
+    "backup/restore drill requests are planning authority only; historical requests remain auditable after supersession while current executable count requires immediate generation/objective revalidation",
     "a generic generation recovery nonResurrectionVerification PASS cannot create a final recovery candidate; complete typed coverage of all eight non-resurrection domains is independently required",
     "candidate/local mixed-version execution remains separate from the approved release-pair registry and can never create an approved predecessor/successor pair"
   ]
