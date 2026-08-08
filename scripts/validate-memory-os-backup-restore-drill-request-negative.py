@@ -153,6 +153,7 @@ def main() -> int:
 
         valid = base_request(contract)
         writer.validate_request(valid)
+        writer.validate_request(valid, require_current=False)
         require(writer.request_currently_executable(valid) is True, "valid synthetic request should be current in isolated negative fixture")
         print("PASS accept: fully bound isolated planning request")
 
@@ -170,7 +171,9 @@ def main() -> int:
         old_objective = copy.deepcopy(valid)
         old_objective["requestId"] = "brrq_old_objective"
         old_objective["recoveryObjectivesId"] = "recovery_objectives_old"
-        expect_rejected("historical non-current recovery objective", lambda: writer.validate_request(old_objective))
+        expect_rejected("historical non-current recovery objective for new request", lambda: writer.validate_request(old_objective))
+        writer.validate_request(old_objective, require_current=False)
+        print("PASS history: registered historical objective remains structurally valid")
 
         missing_domain = copy.deepcopy(valid)
         missing_domain["requestId"] = "brrq_missing_domain"
@@ -232,12 +235,17 @@ def main() -> int:
         write_json(generation_registry, superseded_registry)
         superseded = copy.deepcopy(valid)
         superseded["requestId"] = "brrq_superseded_source"
-        expect_rejected("superseded source generation", lambda: writer.validate_request(superseded))
+        expect_rejected("superseded source generation for new/current execution", lambda: writer.validate_request(superseded))
+        writer.validate_request(superseded, require_current=False)
+        require(writer.request_currently_executable(superseded) is False, "superseded historical request must not remain executable")
+        print("PASS history: superseded generation request remains auditable but non-executable")
 
         writer.repo_ref = real_repo_ref
 
     print("Memory OS production-equivalent backup/restore drill request negative suite PASS")
     print("canonical request registry mutated: false")
+    print("historical authority preserved across supersession: true")
+    print("current execution revalidation preserved: true")
     print("production traffic: false")
     print("automatic promotion: false")
     print("production evidence: false")
