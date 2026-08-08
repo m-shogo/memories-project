@@ -1,0 +1,164 @@
+name: Backup Restore Admission Chain
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/backup-restore-admission-chain.yml"
+      - "contracts/operations/backup-restore-admission-chain-contract.v1.json"
+      - "contracts/operations/backup-restore-drill-request-contract.v1.json"
+      - "contracts/operations/backup-restore-drill-request-registry.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+      - "contracts/operations/operability-admission-inventory.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "scripts/request-memory-os-backup-restore-drill.py"
+      - "scripts/register-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-admission-chain.py"
+      - "scripts/reconcile-memory-os-backup-restore-admission-chain.py"
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/backup-restore-admission-chain.yml"
+      - "contracts/operations/backup-restore-admission-chain-contract.v1.json"
+      - "contracts/operations/backup-restore-drill-request-contract.v1.json"
+      - "contracts/operations/backup-restore-drill-request-registry.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+      - "contracts/operations/operability-admission-inventory.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "scripts/request-memory-os-backup-restore-drill.py"
+      - "scripts/register-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-admission-chain.py"
+      - "scripts/reconcile-memory-os-backup-restore-admission-chain.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: backup-restore-admission-chain-${{ github.event.pull_request.number || 'so' }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate end-to-end recovery admission chain
+        id: chain
+        run: |
+          set +e
+          log=/tmp/backup-restore-admission-chain.log
+          : > "$log"
+          code=0
+          python -m py_compile \
+            scripts/request-memory-os-backup-restore-drill.py \
+            scripts/register-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-admission-chain.py \
+            scripts/reconcile-memory-os-backup-restore-admission-chain.py \
+            >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            python scripts/reconcile-memory-os-backup-restore-admission-chain.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-backup-restore-admission-chain.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-backup-restore-drill-request.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-operability-admission-inventory.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?
+          fi
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          cat "$log"
+          exit 0
+
+      - name: Commit bounded chain authority
+        if: steps.chain.outputs.exit_code == '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        run: |
+          set -euo pipefail
+          git rm -f docs/fixtures/memory-os-operability/backup-restore-admission-chain-diagnostic.last.json 2>/dev/null || true
+          git add contracts/operations/backup-restore-admission-chain-contract.v1.json
+          git add -u docs/fixtures/memory-os-operability/backup-restore-admission-chain-diagnostic.last.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git diff --cached --check
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(restore): reconcile end-to-end admission chain"
+            for attempt in 1 2 3 4; do
+              git pull --rebase origin so
+              if git push origin HEAD:so; then exit 0; fi
+              sleep 2
+            done
+            exit 1
+          fi
+
+      - name: Record privacy-safe chain diagnostic
+        if: steps.chain.outputs.exit_code != '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        env:
+          CHAIN_EXIT_CODE: ${{ steps.chain.outputs.exit_code }}
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          git reset --hard origin/so
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          text = Path('/tmp/backup-restore-admission-chain.log').read_text(encoding='utf-8', errors='replace')
+          value = {
+              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'workflow': 'backup-restore-admission-chain',
+              'result': 'FAIL',
+              'exitCode': int(os.environ['CHAIN_EXIT_CODE']),
+              'output': text[-12000:],
+              'containsSecrets': False,
+              'drillRequestCreated': False,
+              'generationEvidenceCreated': False,
+              'typedEvidenceCreated': False,
+              'restoreExecuted': False,
+              'productionEvidence': False,
+              'productionReady': False,
+          }
+          path = Path('docs/fixtures/memory-os-operability/backup-restore-admission-chain-diagnostic.last.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          PY
+          git add docs/fixtures/memory-os-operability/backup-restore-admission-chain-diagnostic.last.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --cached --quiet; then
+            git commit -m "test(restore): record end-to-end admission chain diagnostic"
+            for attempt in 1 2 3; do
+              git pull --rebase origin so
+              if git push origin HEAD:so; then exit 0; fi
+              sleep 2
+            done
+          fi
+
+      - name: Enforce recovery admission chain
+        run: test "${{ steps.chain.outputs.exit_code }}" = "0"
