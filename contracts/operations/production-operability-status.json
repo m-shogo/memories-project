@@ -646,8 +646,6 @@
         "production-shaped cross-cluster isolated restore drill with an approved recovery owner, coherent PostgreSQL and exact object-version recovery points, and an explicit promotion decision",
         "production deletion, expired/revoked-session, replay, idempotency and lease non-resurrection verification after restore",
         "independent review of generation-bound recovery evidence, security/privacy invariants, measured objectives and the restore promotion decision",
-        "production independent object backup retention, deletion protection, immutability and lifecycle verification",
-        "production-shaped cross-cluster isolated restore drill with approved recovery owner and promotion decision",
         "production-shaped correlated PostgreSQL/object recovery with temporal recovery-point skew measurement, an approved skew bound and independent review"
       ],
       "evidenceRefs": [
