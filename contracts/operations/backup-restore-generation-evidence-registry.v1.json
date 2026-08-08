@@ -16,6 +16,8 @@
     "new generation evidence must bind one currently executable reviewed restore drill request; historical evidence remains auditable if that request later becomes stale",
     "a generation record that passes all pre-overlay recovery controls still remains a non-candidate until complete typed non-resurrection coverage is registered separately",
     "local PostgreSQL and MinIO restore evidence cannot be relabeled into this registry or into typed production-equivalent non-resurrection evidence",
-    "this registry never establishes production evidence or application production readiness"
+    "this registry never establishes production evidence or application production readiness",
+    "new generation evidence requires one currently executable reviewed restore drill request with matching source, target and recovery objective",
+    "historical generation evidence remains auditable after its drill request becomes stale, but it immediately stops qualifying as a current recovery candidate"
   ]
 }

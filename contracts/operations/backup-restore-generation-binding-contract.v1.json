@@ -67,7 +67,7 @@
   "limitations": [
     "the existing exact-source local PostgreSQL and MinIO restore proofs remain local-only",
     "no production-equivalent environment generation or generation-bound recovery evidence is currently registered",
-    "recovery objectives remain separately governed and cannot be invented by restore evidence",
+    "recovery objectives and reviewed restore drill requests remain separately governed and cannot be invented by restore evidence",
     "production traffic and production credentials remain unnecessary and forbidden as automatic promotion shortcuts"
   ]
 }
