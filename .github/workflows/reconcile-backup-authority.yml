@@ -7,10 +7,13 @@ on:
     paths:
       - ".github/workflows/reconcile-backup-authority.yml"
       - "contracts/operations/backup-local-foundation-evidence.v1.json"
+      - "contracts/operations/local-coherent-recovery-set-contract.v1.json"
       - "contracts/operations/production-operability-status.json"
       - "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/local-object-version-restore-results.sample.v1.json"
+      - "docs/fixtures/memory-os-operability/local-coherent-recovery-set-results.sample.v1.json"
       - "scripts/validate-memory-os-backup-local-foundations.py"
+      - "scripts/validate-memory-os-local-coherent-recovery-set.py"
       - "scripts/reconcile-memory-os-backup-authority.py"
       - "scripts/reconcile-memory-os-backup-semantic-overlay.py"
   schedule:
@@ -51,11 +54,13 @@ jobs:
           python -m py_compile \
             scripts/validate-memory-os-local-logical-restore.py \
             scripts/validate-memory-os-local-object-version-restore.py \
+            scripts/validate-memory-os-local-coherent-recovery-set.py \
             scripts/validate-memory-os-backup-local-foundations.py \
             scripts/reconcile-memory-os-backup-authority.py \
             scripts/reconcile-memory-os-backup-semantic-overlay.py
           python scripts/validate-memory-os-local-logical-restore.py
           python scripts/validate-memory-os-local-object-version-restore.py
+          python scripts/validate-memory-os-local-coherent-recovery-set.py
           python scripts/validate-memory-os-backup-local-foundations.py
 
       - name: Normalize policy and local restore authority
@@ -65,6 +70,7 @@ jobs:
           python scripts/reconcile-memory-os-backup-semantic-overlay.py
           python scripts/reconcile-memory-os-backup-semantic-overlay.py --check
           python scripts/validate-memory-os-backup-restore.py
+          python scripts/validate-memory-os-local-coherent-recovery-set.py
           python scripts/validate-memory-os-backup-local-foundations.py
           python scripts/validate-memory-os-operability.py
 
