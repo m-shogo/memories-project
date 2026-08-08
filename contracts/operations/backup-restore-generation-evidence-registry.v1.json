@@ -4,6 +4,7 @@
   "appendOnly": true,
   "productionEvidence": false,
   "registeredEvidenceCount": 0,
+  "drillRequestBoundEvidenceCount": 0,
   "completeGenerationBoundBackupCount": 0,
   "completeGenerationBoundRestoreCount": 0,
   "productionEquivalentRecoveryCandidateCount": 0,
@@ -12,7 +13,8 @@
   "limitations": [
     "no generation-bound backup/restore evidence has been registered",
     "an empty environment-generation registry prevents production-equivalent recovery admission",
-    "a generation record that passes all pre-overlay controls still remains a non-candidate until complete typed non-resurrection coverage is registered separately",
+    "new generation evidence must bind one currently executable reviewed restore drill request; historical evidence remains auditable if that request later becomes stale",
+    "a generation record that passes all pre-overlay recovery controls still remains a non-candidate until complete typed non-resurrection coverage is registered separately",
     "local PostgreSQL and MinIO restore evidence cannot be relabeled into this registry or into typed production-equivalent non-resurrection evidence",
     "this registry never establishes production evidence or application production readiness"
   ]
