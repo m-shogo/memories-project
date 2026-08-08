@@ -83,21 +83,36 @@ def generation_is_unsuperseded(rows: list[dict[str, Any]], generation_id: str) -
     return not any(row.get("supersedesGenerationId") == generation_id for row in rows)
 
 
-def current_objective() -> dict[str, Any]:
+def objective_registry() -> tuple[list[dict[str, Any]], str | None]:
     registry = load(OBJECTIVES_REGISTRY)
     require(registry.get("appendOnly") is True and registry.get("productionEvidence") is False and registry.get("productionReady") is False, "recovery objective registry boundary drift")
-    objective_id = registry.get("currentObjectiveId")
     rows = registry.get("records")
     count = registry.get("approvedObjectiveCount")
+    current = registry.get("currentObjectiveId")
     require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "recovery objective registry invalid")
     require(isinstance(count, int) and count == len(rows), "recovery objective registry count drift")
-    require(isinstance(objective_id, str) and objective_id, "no current approved recovery objective")
+    if count == 0:
+        require(current is None, "empty recovery objective registry cannot have currentObjectiveId")
+    else:
+        require(isinstance(current, str) and sum(1 for row in rows if row.get("objectiveId") == current) == 1, "current recovery objective is not uniquely registered")
+    return rows, current
+
+
+def objective_by_id(rows: list[dict[str, Any]], objective_id: Any) -> dict[str, Any]:
+    require(isinstance(objective_id, str) and objective_id, "recoveryObjectivesId required")
     matches = [row for row in rows if row.get("objectiveId") == objective_id]
-    require(len(matches) == 1, "current recovery objective is not uniquely registered")
+    require(len(matches) == 1, "recoveryObjectivesId is not uniquely registered")
     return matches[0]
 
 
-def validate_request(record: dict[str, Any]) -> None:
+def validate_request(record: dict[str, Any], *, require_current: bool = True) -> None:
+    """Validate an admitted request.
+
+    `require_current=True` is the registration/execution-time gate. Historical
+    append-only rows use `False`: immutable generation/objective references must
+    still exist and match, but later supersession or objective replacement must
+    not invalidate the historical admission record itself.
+    """
     contract = load(CONTRACT)
     required = set(contract.get("requiredRequestFields", []))
     require(required and set(record) == required, f"request field set drift: {sorted(set(record) ^ required)}")
@@ -111,8 +126,9 @@ def validate_request(record: dict[str, Any]) -> None:
     target = generation_by_id(rows, record.get("restoreTargetEnvironmentGenerationId"), "restoreTargetEnvironmentGenerationId")
     require(source.get("generationId") != target.get("generationId"), "source and restore-target generation IDs must differ")
     require(source.get("environmentId") != target.get("environmentId"), "source and restore-target environment IDs must differ")
-    require(generation_is_unsuperseded(rows, source["generationId"]), "source generation has been superseded")
-    require(generation_is_unsuperseded(rows, target["generationId"]), "restore-target generation has been superseded")
+    if require_current:
+        require(generation_is_unsuperseded(rows, source["generationId"]), "source generation has been superseded")
+        require(generation_is_unsuperseded(rows, target["generationId"]), "restore-target generation has been superseded")
     for value, field in (
         (record.get("sourceEnvironmentManifestSha256"), "sourceEnvironmentManifestSha256"),
         (record.get("restoreTargetManifestSha256"), "restoreTargetManifestSha256"),
@@ -121,8 +137,10 @@ def validate_request(record: dict[str, Any]) -> None:
     require(record["sourceEnvironmentManifestSha256"] == source.get("environmentManifestSha256"), "source environment manifest digest mismatch")
     require(record["restoreTargetManifestSha256"] == target.get("environmentManifestSha256"), "restore-target environment manifest digest mismatch")
 
-    objective = current_objective()
-    require(record.get("recoveryObjectivesId") == objective.get("objectiveId"), "request must bind current approved recovery objective")
+    objective_rows, current_objective_id = objective_registry()
+    objective_by_id(objective_rows, record.get("recoveryObjectivesId"))
+    if require_current:
+        require(record.get("recoveryObjectivesId") == current_objective_id, "request must bind current approved recovery objective")
 
     isolation = record.get("isolationPolicy")
     require(isinstance(isolation, dict) and set(isolation) == {"environmentClass", "networkIsolated", "productionRoutingForbidden", "syntheticOrApprovedSanitizedDataOnly"}, "isolationPolicy field drift")
@@ -184,7 +202,7 @@ def validate_request(record: dict[str, Any]) -> None:
 
 def request_currently_executable(record: dict[str, Any]) -> bool:
     try:
-        validate_request(record)
+        validate_request(record, require_current=True)
     except Fail:
         return False
     return True
@@ -219,7 +237,7 @@ def main() -> int:
         raise Fail("drill request input must be external to repository")
     require(git("status", "--porcelain") == "", "working tree must be clean")
     record = load(input_path)
-    validate_request(record)
+    validate_request(record, require_current=True)
 
     try:
         lock_fd = os.open(LOCK, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
