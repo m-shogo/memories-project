@@ -92,6 +92,16 @@ def main() -> int:
     if generation_count < 2 or objective_count == 0:
         require(drill_request_count == 0 and executable_drill_request_count == 0, "drill request cannot exist before two generations and an approved objective")
 
+    generation_evidence_count = backup_recovery.get("registeredEvidenceCount")
+    drill_bound_generation_evidence_count = backup_recovery.get("drillRequestBoundEvidenceCount")
+    require(isinstance(generation_evidence_count, int) and generation_evidence_count >= 0, "generation recovery evidence count invalid")
+    require(isinstance(drill_bound_generation_evidence_count, int) and drill_bound_generation_evidence_count >= 0, "drill-bound generation evidence count invalid")
+    require(drill_bound_generation_evidence_count == generation_evidence_count, "every generation recovery evidence record must remain drill-request-bound")
+    require(inventory.get("generationRecoveryEvidenceRecordCount") == generation_evidence_count, "inventory generation recovery evidence count drift")
+    require(inventory.get("drillRequestBoundGenerationEvidenceCount") == drill_bound_generation_evidence_count, "inventory drill-bound generation evidence count drift")
+    if drill_request_count == 0:
+        require(generation_evidence_count == 0, "generation recovery evidence cannot exist without reviewed drill request history")
+
     typed_record_count = non_resurrection_registry.get("registeredRecordCount")
     typed_complete_count = non_resurrection_registry.get("completeRecordCount")
     typed_covered_count = non_resurrection_registry.get("candidateCoveredCount")
@@ -106,12 +116,14 @@ def main() -> int:
     pending_typed = typed_boundary.get("preOverlayEligiblePendingTypedCoverageCount")
     final_candidate_count = backup_recovery.get("productionEquivalentRecoveryCandidateCount")
     require(isinstance(pending_typed, int) and pending_typed >= 0, "pending typed coverage count invalid")
-    require(isinstance(final_candidate_count, int) and final_candidate_count >= 0, "final recovery candidate count invalid")
+    require(isinstance(final_candidate_count, int) and 0 <= final_candidate_count <= generation_evidence_count, "final recovery candidate count invalid")
     require(typed_boundary.get("productionEquivalentRecoveryCandidateCount") == final_candidate_count, "typed boundary final candidate count drift")
     require(typed_boundary.get("candidateCoveredCount") == typed_covered_count, "typed boundary covered candidate count drift")
     require(final_candidate_count == typed_covered_count, "final recovery candidate must equal complete typed coverage of pre-overlay eligible records")
     require(typed_boundary.get("productionEvidence") is False and typed_boundary.get("productionReady") is False, "typed boundary cannot promote production")
     require(typed_boundary.get("productionDecision") == "NO_GO", "typed boundary production decision drift")
+    if executable_drill_request_count == 0:
+        require(final_candidate_count == 0, "final recovery candidate cannot survive without executable restore drill request")
 
     backup_boundary = backup_binding.get("currentBoundary")
     require(isinstance(backup_boundary, dict), "backup generation boundary missing")
@@ -129,6 +141,8 @@ def main() -> int:
         "approvedRecoveryObjectives": objective_count,
         "reviewedRestoreDrillRequests": drill_request_count,
         "currentExecutableRestoreDrillRequests": executable_drill_request_count,
+        "generationRecoveryEvidenceRecords": generation_evidence_count,
+        "drillRequestBoundGenerationEvidence": drill_bound_generation_evidence_count,
         "generationBoundBackups": backup_boundary.get("generationBoundBackupCount"),
         "generationBoundRestores": backup_boundary.get("generationBoundRestoreCount"),
         "typedNonResurrectionRecords": typed_record_count,
@@ -141,6 +155,7 @@ def main() -> int:
     require(backup_row.get("admittedEvidenceCount") == backup_boundary.get("generationBoundRestoreCount"), "OPS-P0-007 admitted restore count drift")
     next_gate = backup_row.get("nextGate", "")
     require("planning-only cross-environment restore drill request" in next_gate, "OPS-P0-007 nextGate must preserve drill planning admission")
+    require("request-bound generation" in next_gate, "OPS-P0-007 nextGate must preserve request-bound generation evidence")
     require("all eight typed non-resurrection domains" in next_gate, "OPS-P0-007 nextGate must preserve typed non-resurrection requirement")
 
     if typed_record_count == 0:
@@ -154,8 +169,10 @@ def main() -> int:
     print(f"approved recovery objectives: {objective_count}")
     print(f"reviewed restore drill requests: {drill_request_count}")
     print(f"current executable restore drill requests: {executable_drill_request_count}")
+    print(f"generation/drill-bound recovery evidence: {generation_evidence_count}/{drill_bound_generation_evidence_count}")
     print(f"typed non-resurrection records: {typed_record_count}")
     print(f"final recovery candidates: {final_candidate_count}")
+    print("unbound generation recovery evidence accepted: false")
     print("drill planning request implies execution: false")
     print("generic non-resurrection PASS bypass: false")
     print("production decision: NO_GO")
