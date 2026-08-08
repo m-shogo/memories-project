@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Reconcile generation-bound backup/restore evidence without promoting production readiness."""
+"""Reconcile drill-bound generation recovery evidence without promoting production readiness."""
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -13,17 +15,24 @@ CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contr
 REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 OBJECTIVES_REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
+DRILL_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
 BINDING = ROOT / "contracts/operations/backup-restore-generation-binding-contract.v1.json"
+WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence.py"
 BINDING_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-binding.py"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 REFS = (
     "contracts/operations/backup-restore-generation-evidence-contract.v1.json",
     "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
+    "contracts/operations/backup-restore-drill-request-contract.v1.json",
+    "contracts/operations/backup-restore-drill-request-registry.v1.json",
     "contracts/operations/recovery-objectives-admission-contract.v1.json",
     "contracts/operations/recovery-objectives-registry.v1.json",
+    "scripts/request-memory-os-backup-restore-drill.py",
+    "scripts/validate-memory-os-backup-restore-drill-request.py",
     "scripts/register-memory-os-backup-restore-generation-evidence.py",
     "scripts/validate-memory-os-backup-restore-generation-evidence.py",
+    "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py",
     "scripts/reconcile-memory-os-backup-restore-generation-evidence.py",
     ".github/workflows/backup-restore-generation-evidence.yml",
 )
@@ -45,6 +54,14 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def load_writer():
+    spec = importlib.util.spec_from_file_location("memory_os_backup_restore_generation_reconcile_writer", WRITER)
+    require(spec is not None and spec.loader is not None, "cannot load generation evidence writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def append_once(values: list[Any], value: str) -> None:
     if value not in values:
         values.append(value)
@@ -55,28 +72,63 @@ def main() -> int:
     registry = load(REGISTRY)
     gen_registry = load(GEN_REGISTRY)
     objectives_registry = load(OBJECTIVES_REGISTRY)
+    drill_registry = load(DRILL_REGISTRY)
     binding = load(BINDING)
+    writer = load_writer()
+
     rows = registry.get("records")
     count = registry.get("registeredEvidenceCount")
-    backup_count = registry.get("completeGenerationBoundBackupCount")
-    restore_count = registry.get("completeGenerationBoundRestoreCount")
-    candidate_count = registry.get("productionEquivalentRecoveryCandidateCount")
     generation_count = gen_registry.get("registeredGenerationCount")
     objective_count = objectives_registry.get("approvedObjectiveCount")
     current_objective_id = objectives_registry.get("currentObjectiveId")
+    drill_rows = drill_registry.get("requests")
+    drill_count = drill_registry.get("registeredRequestCount")
+    current_drill_count = drill_registry.get("currentExecutableRequestCount")
     require(isinstance(rows, list) and isinstance(count, int) and len(rows) == count, "recovery evidence registry count drift")
-    require(all(isinstance(value, int) for value in (backup_count, restore_count, candidate_count, generation_count, objective_count)), "recovery/generation/objective counts invalid")
-    require(0 <= candidate_count <= restore_count <= backup_count <= count, "recovery evidence count ordering invalid")
-    if generation_count == 0:
-        require(count == 0, "recovery evidence cannot exist without registered environment generations")
+    require(all(isinstance(value, int) and value >= 0 for value in (generation_count, objective_count, drill_count, current_drill_count)), "recovery dependency counts invalid")
+    require(isinstance(drill_rows, list) and drill_count == len(drill_rows), "drill request registry count drift")
+    require(current_drill_count <= drill_count, "current drill request count invalid")
+
+    # Re-derive every mutable counter from immutable append-only evidence.
+    for row in rows:
+        writer.validate_record(row, require_current_drill_request=False)
+    bound_count = len(rows)
+    backup_count = sum(1 for row in rows if row.get("evidenceComplete") is True)
+    restore_count = sum(
+        1 for row in rows
+        if row.get("evidenceComplete") is True
+        and row.get("isolatedRestoreVerified") is True
+        and row.get("restoredBackupArtifactSha256") == row.get("backupArtifactSha256")
+    )
+    candidate_count = sum(1 for row in rows if writer.candidate(row))
+    require(0 <= candidate_count <= restore_count <= backup_count <= bound_count <= count, "rederived recovery evidence count ordering invalid")
+    if generation_count == 0 or drill_count == 0:
+        require(count == 0, "recovery evidence cannot exist without registered generations and reviewed drill request")
     if objective_count == 0:
         require(current_objective_id is None, "empty objective registry requires null currentObjectiveId")
-        require(candidate_count == 0, "recovery candidate cannot exist without approved recovery objectives")
+    if objective_count == 0 or current_drill_count == 0:
+        require(candidate_count == 0, "current candidate cannot survive without current objective and executable drill request")
+
+    registry["drillRequestBoundEvidenceCount"] = bound_count
+    registry["completeGenerationBoundBackupCount"] = backup_count
+    registry["completeGenerationBoundRestoreCount"] = restore_count
+    registry["productionEquivalentRecoveryCandidateCount"] = candidate_count
+    registry["productionEvidence"] = False
+    registry["productionReady"] = False
+    limitations = registry.get("limitations")
+    require(isinstance(limitations, list), "recovery evidence limitations missing")
+    for text in (
+        "new generation evidence requires one currently executable reviewed restore drill request with matching source, target and recovery objective",
+        "historical generation evidence remains auditable after its drill request becomes stale, but it immediately stops qualifying as a current recovery candidate",
+    ):
+        append_once(limitations, text)
+    REGISTRY.write_text(json.dumps(registry, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     boundary = contract.get("currentBoundary")
     readiness = contract.get("readiness")
     require(isinstance(boundary, dict) and isinstance(readiness, dict), "generation recovery contract authority missing")
     boundary["registeredEvidenceCount"] = count
+    boundary["drillRequestBoundEvidenceCount"] = bound_count
     boundary["completeGenerationBoundBackupCount"] = backup_count
     boundary["completeGenerationBoundRestoreCount"] = restore_count
     boundary["productionEquivalentRecoveryCandidateCount"] = candidate_count
@@ -92,6 +144,7 @@ def main() -> int:
     readiness["automaticWorkflowImplemented"] = True
     readiness["environmentGenerationAvailable"] = generation_count > 0
     readiness["approvedRecoveryObjectivesAvailable"] = objective_count > 0
+    readiness["drillRequestAvailable"] = drill_count > 0
     readiness["generationBoundBackupAvailable"] = backup_count > 0
     readiness["generationBoundRestoreAvailable"] = restore_count > 0
     readiness["productionEquivalentRecoveryCandidateAvailable"] = candidate_count > 0
@@ -123,20 +176,24 @@ def main() -> int:
         binding["limitations"] = [
             "the existing exact-source local PostgreSQL and MinIO restore proofs remain local-only",
             "no production-equivalent environment generation or generation-bound recovery evidence is currently registered",
-            "recovery objectives remain separately governed and cannot be invented by restore evidence",
+            "recovery objectives and reviewed restore drill requests remain separately governed and cannot be invented by restore evidence",
             "production traffic and production credentials remain unnecessary and forbidden as automatic promotion shortcuts"
         ]
     else:
         binding["limitations"] = [
             "registered environment generations and generation-bound recovery records remain non-production evidence",
-            "a production-equivalent recovery candidate also requires the current approved recovery objective ID and measured RPO/RTO/object-database skew within target",
+            "new generation recovery evidence requires a currently executable reviewed restore drill request",
+            "a production-equivalent recovery candidate also requires the current approved recovery objective ID, measured RPO/RTO/object-database skew within target and complete typed non-resurrection coverage",
             "production promotion remains a separate human-reviewed decision",
             "local restore foundations cannot be relabeled into generation-bound evidence"
         ]
     BINDING.write_text(json.dumps(binding, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    subprocess.run(["python", str(BINDING_VALIDATOR)], cwd=ROOT, check=True)
-    subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=True)
+    # Validate after deterministic re-derivation.
+    completed = subprocess.run([sys.executable, str(BINDING_VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    require(completed.returncode == 0, f"generation binding validator failed:\n{completed.stdout[-5000:]}{completed.stderr[-5000:]}")
+    completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    require(completed.returncode == 0, f"generation evidence validator failed:\n{completed.stdout[-7000:]}{completed.stderr[-7000:]}")
 
     status = load(STATUS)
     require(status.get("productionDecision") == "NO_GO", "productionDecision must remain NO_GO")
@@ -149,7 +206,7 @@ def main() -> int:
     require(isinstance(existing, list) and isinstance(refs, list) and isinstance(missing, list), "OPS-P0-007 authority arrays missing")
     existing[:] = [item for item in existing if not (isinstance(item, str) and item.startswith(EVIDENCE_PREFIX))]
     append_once(existing, (
-        f"{EVIDENCE_PREFIX} registered environment generations={generation_count}, approved recovery objectives={objective_count}, current objectiveId={current_objective_id or 'none'}, recovery records={count}, complete generation-bound restores={restore_count}, production-equivalent recovery candidates={candidate_count}; candidate admission requires exact generation/manifest/artifact hashes, current objective binding, measured RPO/RTO/object-database skew within approved targets, isolated restore, PITR, independent object retention, recovery coherence, non-resurrection and distinct security/operability review, while productionEvidence and productionReady remain false"
+        f"{EVIDENCE_PREFIX} registered environment generations={generation_count}, approved recovery objectives={objective_count}, reviewed/current restore drill requests={drill_count}/{current_drill_count}, recovery records={count}, drill-request-bound records={bound_count}, complete generation-bound restores={restore_count}, production-equivalent recovery candidates={candidate_count}; immutable history is preserved after request supersession but current candidate derivation is recomputed fail-closed from the current request/objective/typed-evidence state, while productionEvidence and productionReady remain false"
     ))
     for ref in REFS:
         require((ROOT / ref).is_file(), f"generation recovery evidence ref missing: {ref}")
@@ -159,11 +216,11 @@ def main() -> int:
         require(phrase in joined, f"production backup/restore blocker must remain: {phrase}")
     STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    print("Memory OS generation-bound backup/restore authority reconciliation PASS")
-    print(f"registered environment generations: {generation_count}")
-    print(f"approved recovery objectives: {objective_count}")
-    print(f"registered recovery evidence: {count}")
+    print("Memory OS drill-bound generation recovery authority reconciliation PASS")
+    print(f"registered/current drill requests: {drill_count}/{current_drill_count}")
+    print(f"registered/drill-bound recovery evidence: {count}/{bound_count}")
     print(f"production-equivalent recovery candidates: {candidate_count}")
+    print("candidate counters rederived from append-only records: true")
     print("production evidence: false")
     print("OPS-P0-007: incomplete")
     print("productionDecision: NO_GO")
@@ -174,5 +231,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except Fail as exc:
-        print(f"BACKUP RESTORE GENERATION EVIDENCE RECONCILE FAILED: {exc}")
+        print(f"BACKUP RESTORE GENERATION EVIDENCE RECONCILE FAILED: {exc}", file=sys.stderr)
         raise SystemExit(1)
