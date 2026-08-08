@@ -529,7 +529,8 @@
         "mixed-version failure drill",
         "database loss or failover drill",
         "object-store outage drill",
-        "in-flight parser cancellation latency and process-group termination proof while the worker is blocked"
+        "in-flight parser cancellation latency and process-group termination proof while the worker is blocked",
+        "expanded parser restart matrix across timeout, CPU, memory, cancellation, process-group and host-restart failures"
       ],
       "evidenceRefs": [
         "contracts/operations/chaos-failure-drill-contract.v1.json",
