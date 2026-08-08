@@ -83,6 +83,8 @@ def main() -> int:
     pending_typed_count = non_resurrection_boundary.get("preOverlayEligiblePendingTypedCoverageCount")
     drill_request_count = backup_drill_requests.get("registeredRequestCount")
     executable_drill_request_count = backup_drill_requests.get("currentExecutableRequestCount")
+    generation_evidence_count = backup_recovery.get("registeredEvidenceCount")
+    drill_bound_generation_evidence_count = backup_recovery.get("drillRequestBoundEvidenceCount")
     for value, field in (
         (typed_record_count, "typed non-resurrection record"),
         (typed_complete_count, "complete typed non-resurrection"),
@@ -90,6 +92,8 @@ def main() -> int:
         (pending_typed_count, "pending typed coverage"),
         (drill_request_count, "backup/restore drill request"),
         (executable_drill_request_count, "current executable backup/restore drill request"),
+        (generation_evidence_count, "generation recovery evidence"),
+        (drill_bound_generation_evidence_count, "drill-request-bound generation recovery evidence"),
     ):
         if not isinstance(value, int) or value < 0:
             raise SystemExit(f"{field} count invalid")
@@ -97,16 +101,15 @@ def main() -> int:
         raise SystemExit("typed non-resurrection count ordering invalid")
     if executable_drill_request_count > drill_request_count:
         raise SystemExit("drill request executable count exceeds request history")
+    if drill_bound_generation_evidence_count != generation_evidence_count:
+        raise SystemExit("every generation recovery evidence row must be drill-request-bound")
     if drill_request_state.get("registeredRequestCount") != drill_request_count:
         raise SystemExit("drill request contract/registry request count drift")
     if drill_request_state.get("currentExecutableRequestCount") != executable_drill_request_count:
         raise SystemExit("drill request contract/registry executable count drift")
     if drill_request_state.get("productionEvidence") is not False or drill_request_state.get("productionReady") is not False:
         raise SystemExit("drill request authority cannot promote production")
-    local_soak_complete = bool(
-        load_ready.get("localLongSoakRunCount", 0) >= 2
-        and load_ready.get("localSustainedSoakEvidence") is True
-    )
+    local_soak_complete = bool(load_ready.get("localLongSoakRunCount", 0) >= 2 and load_ready.get("localSustainedSoakEvidence") is True)
 
     areas: list[dict[str, Any]] = [
         {
@@ -220,6 +223,8 @@ def main() -> int:
                 "approvedRecoveryObjectives": objective_count,
                 "reviewedRestoreDrillRequests": drill_request_count,
                 "currentExecutableRestoreDrillRequests": executable_drill_request_count,
+                "generationRecoveryEvidenceRecords": generation_evidence_count,
+                "drillRequestBoundGenerationEvidence": drill_bound_generation_evidence_count,
                 "generationBoundBackups": backup_boundary.get("generationBoundBackupCount", 0),
                 "generationBoundRestores": backup_boundary.get("generationBoundRestoreCount", 0),
                 "typedNonResurrectionRecords": typed_record_count,
@@ -228,7 +233,7 @@ def main() -> int:
                 "typedCoveredRecoveryCandidates": typed_covered_count,
                 "productionEquivalentRecoveryCandidates": backup_recovery.get("productionEquivalentRecoveryCandidateCount", 0),
             },
-            "nextGate": "explicitly approve RPO/RTO/object-database skew without defaults, register two distinct reviewed production-equivalent environment generations, admit a planning-only cross-environment restore drill request, then admit generation-bound PITR/independent-object/cross-cluster restore evidence within those objectives and bind all eight typed non-resurrection domains before any final production-equivalent recovery candidate exists",
+            "nextGate": "explicitly approve RPO/RTO/object-database skew without defaults, register two distinct reviewed production-equivalent environment generations, admit a planning-only cross-environment restore drill request, then admit request-bound generation PITR/independent-object/cross-cluster restore evidence within those objectives and bind all eight typed non-resurrection domains before any final production-equivalent recovery candidate exists",
         },
         {
             "id": "OPS-P0-008",
@@ -281,6 +286,8 @@ def main() -> int:
         "approvedRecoveryObjectiveCount": objective_count,
         "reviewedBackupRestoreDrillRequestCount": drill_request_count,
         "currentExecutableBackupRestoreDrillRequestCount": executable_drill_request_count,
+        "generationRecoveryEvidenceRecordCount": generation_evidence_count,
+        "drillRequestBoundGenerationEvidenceCount": drill_bound_generation_evidence_count,
         "approvedReleaseCompatibilityPairCount": release_pair_count,
         "typedNonResurrectionRecordCount": typed_record_count,
         "completeTypedNonResurrectionRecordCount": typed_complete_count,
@@ -294,6 +301,7 @@ def main() -> int:
             "local repeated soak evidence is tracked separately from independent leak proof and production-shaped soak evidence",
             "recovery-objective values are never defaulted by this inventory; zero approved objectives means RPO/RTO/skew remain intentionally undefined",
             "backup/restore drill requests are planning authority only; historical requests remain auditable after supersession while current executable count requires immediate generation/objective revalidation",
+            "every generation recovery evidence record must remain bound to one admitted restore drill request; an unbound record is an inventory validation failure",
             "a generic generation recovery nonResurrectionVerification PASS cannot create a final recovery candidate; complete typed coverage of all eight non-resurrection domains is independently required",
             "candidate/local mixed-version execution remains separate from the approved release-pair registry and can never create an approved predecessor/successor pair"
         ]
@@ -305,6 +313,7 @@ def main() -> int:
     print(f"approved recovery objectives: {objective_count}")
     print(f"reviewed backup/restore drill requests: {drill_request_count}")
     print(f"currently executable backup/restore drill requests: {executable_drill_request_count}")
+    print(f"generation/drill-bound recovery evidence: {generation_evidence_count}/{drill_bound_generation_evidence_count}")
     print(f"typed non-resurrection records: {typed_record_count}")
     print(f"final recovery candidates: {backup_recovery.get('productionEquivalentRecoveryCandidateCount', 0)}")
     print(f"approved release compatibility pairs: {release_pair_count}")
