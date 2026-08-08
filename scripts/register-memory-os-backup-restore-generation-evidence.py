@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Append one reviewed generation-bound backup/restore evidence record."""
+"""Append one reviewed, drill-request-bound backup/restore evidence record."""
 
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import re
@@ -18,6 +19,11 @@ REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-regis
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 CANONICAL_OBJECTIVES_REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
 OBJECTIVES_REGISTRY = CANONICAL_OBJECTIVES_REGISTRY
+CANONICAL_DRILL_REQUEST_CONTRACT = ROOT / "contracts/operations/backup-restore-drill-request-contract.v1.json"
+DRILL_REQUEST_CONTRACT = CANONICAL_DRILL_REQUEST_CONTRACT
+CANONICAL_DRILL_REQUEST_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
+DRILL_REQUEST_REGISTRY = CANONICAL_DRILL_REQUEST_REGISTRY
+DRILL_REQUEST_WRITER = ROOT / "scripts/request-memory-os-backup-restore-drill.py"
 CANONICAL_NON_RESURRECTION_CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
 NON_RESURRECTION_CONTRACT = CANONICAL_NON_RESURRECTION_CONTRACT
 CANONICAL_NON_RESURRECTION_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
@@ -26,6 +32,7 @@ LOCK = ROOT / "contracts/operations/.backup-restore-generation-evidence.lock"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
 EVIDENCE_ID = re.compile(r"^brge_[a-z0-9][a-z0-9_-]{7,63}$")
+REQUEST_ID = re.compile(r"^brrq_[a-z0-9][a-z0-9_-]{7,63}$")
 
 
 class Fail(RuntimeError):
@@ -100,13 +107,55 @@ def measurements_meet_objective(record: dict[str, Any], objective: dict[str, Any
     )
 
 
+def load_drill_writer():
+    spec = importlib.util.spec_from_file_location("memory_os_restore_drill_request_writer_for_generation_evidence", DRILL_REQUEST_WRITER)
+    require(spec is not None and spec.loader is not None, "cannot load restore drill request writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.CONTRACT = DRILL_REQUEST_CONTRACT
+    module.GEN_REGISTRY = GEN_REGISTRY
+    module.OBJECTIVES_REGISTRY = OBJECTIVES_REGISTRY
+    return module
+
+
+def drill_request_for_record(record: dict[str, Any], *, require_current: bool) -> dict[str, Any]:
+    request_id = record.get("drillRequestId")
+    require(isinstance(request_id, str) and REQUEST_ID.fullmatch(request_id), "drillRequestId invalid")
+    registry = load(DRILL_REQUEST_REGISTRY)
+    require(registry.get("schemaVersion") == "memory-os-backup-restore-drill-request-registry.v1", "drill request registry schema drift")
+    require(registry.get("appendOnly") is True, "drill request registry must remain append-only")
+    require(registry.get("productionEvidence") is False and registry.get("productionReady") is False, "drill request registry production boundary drift")
+    rows = registry.get("requests")
+    require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "drill request registry rows invalid")
+    matches = [row for row in rows if row.get("requestId") == request_id]
+    require(len(matches) == 1, "drillRequestId is not uniquely registered")
+    request = matches[0]
+    drill_writer = load_drill_writer()
+    drill_writer.validate_request(request, require_current=require_current)
+    require(request.get("sourceEnvironmentGenerationId") == record.get("sourceEnvironmentGenerationId"), "drill request source generation mismatch")
+    require(request.get("sourceEnvironmentManifestSha256") == record.get("sourceEnvironmentManifestSha256"), "drill request source manifest mismatch")
+    require(request.get("restoreTargetEnvironmentGenerationId") == record.get("restoreTargetGenerationId"), "drill request restore target generation mismatch")
+    require(request.get("restoreTargetManifestSha256") == record.get("restoreTargetManifestSha256"), "drill request restore target manifest mismatch")
+    require(request.get("recoveryObjectivesId") == record.get("recoveryObjectivesId"), "drill request recovery objective mismatch")
+    return request
+
+
+def drill_request_current(record: dict[str, Any]) -> bool:
+    try:
+        drill_request_for_record(record, require_current=True)
+    except Fail:
+        return False
+    return True
+
+
 def base_candidate(record: dict[str, Any]) -> bool:
     """Return whether generation evidence satisfies every pre-overlay candidate gate."""
     objective = objective_for_record(record)
     objectives_registry = load(OBJECTIVES_REGISTRY)
     current_objective_id = objectives_registry.get("currentObjectiveId")
     return (
-        objective is not None
+        drill_request_current(record)
+        and objective is not None
         and record.get("recoveryObjectivesId") == current_objective_id
         and measurements_meet_objective(record, objective)
         and record.get("evidenceComplete") is True
@@ -175,14 +224,24 @@ def candidate(record: dict[str, Any]) -> bool:
     return base_candidate(record) and typed_non_resurrection_covered(record.get("evidenceId"))
 
 
-def validate_record(record: dict[str, Any]) -> None:
+def validate_record(record: dict[str, Any], *, require_current_drill_request: bool = True) -> None:
+    """Validate a recovery evidence record.
+
+    Registration uses the default current-request gate. Canonical history audits
+    pass `False` so a once-admitted immutable evidence row stays auditable after
+    later generation/objective supersession; it simply stops being a current
+    production-equivalent recovery candidate.
+    """
     contract = load(CONTRACT)
     required = set(contract.get("requiredRecordFields", []))
     require(set(record) == required, f"record field set drift: {sorted(set(record) ^ required)}")
     require(record.get("schemaVersion") == contract.get("recordSchemaVersion"), "record schemaVersion drift")
     require(contract.get("recoveryObjectivesRegistry") == str(CANONICAL_OBJECTIVES_REGISTRY.relative_to(ROOT)), "recoveryObjectivesRegistry ref drift")
+    require(contract.get("drillRequestContract") == str(CANONICAL_DRILL_REQUEST_CONTRACT.relative_to(ROOT)), "drillRequestContract ref drift")
+    require(contract.get("drillRequestRegistry") == str(CANONICAL_DRILL_REQUEST_REGISTRY.relative_to(ROOT)), "drillRequestRegistry ref drift")
     require(contract.get("typedNonResurrectionAdmissionContract") == str(CANONICAL_NON_RESURRECTION_CONTRACT.relative_to(ROOT)), "typed non-resurrection contract ref drift")
     require(contract.get("typedNonResurrectionAdmissionRegistry") == str(CANONICAL_NON_RESURRECTION_REGISTRY.relative_to(ROOT)), "typed non-resurrection registry ref drift")
+    require(CANONICAL_DRILL_REQUEST_CONTRACT.is_file() and DRILL_REQUEST_REGISTRY.is_file() and DRILL_REQUEST_WRITER.is_file(), "drill request admission foundation missing")
     require(CANONICAL_NON_RESURRECTION_CONTRACT.is_file() and NON_RESURRECTION_REGISTRY.is_file(), "typed non-resurrection admission foundation missing")
     require(isinstance(record.get("evidenceId"), str) and EVIDENCE_ID.fullmatch(record["evidenceId"]), "evidenceId invalid")
     source_commit = record.get("sourceCommitSha")
@@ -213,6 +272,7 @@ def validate_record(record: dict[str, Any]) -> None:
         require(isinstance(record.get(field), bool), f"{field} must be boolean")
     require(record.get("nonResurrectionVerification") in {"PASS", "FAIL", "NOT_RUN"}, "nonResurrectionVerification invalid")
     objective_for_record(record)
+    drill_request_for_record(record, require_current=require_current_drill_request)
 
     source_id = record["sourceEnvironmentGenerationId"]
     target_id = record["restoreTargetGenerationId"]
@@ -270,7 +330,7 @@ def main() -> int:
         raise Fail("input recovery evidence record must be outside repository")
     require(git("status", "--porcelain") == "", "working tree must be clean")
     record = load(input_path)
-    validate_record(record)
+    validate_record(record, require_current_drill_request=True)
 
     try:
         lock_fd = os.open(LOCK, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -286,6 +346,7 @@ def main() -> int:
         require(all(row.get("evidenceId") != record["evidenceId"] for row in rows), "evidenceId already registered")
         rows.append(record)
         registry["registeredEvidenceCount"] = len(rows)
+        registry["drillRequestBoundEvidenceCount"] = sum(1 for row in rows if isinstance(row.get("drillRequestId"), str))
         registry["completeGenerationBoundBackupCount"] = sum(1 for row in rows if row.get("evidenceComplete") is True)
         registry["completeGenerationBoundRestoreCount"] = sum(1 for row in rows if row.get("evidenceComplete") is True and row.get("isolatedRestoreVerified") is True and row.get("restoredBackupArtifactSha256") == row.get("backupArtifactSha256"))
         registry["productionEquivalentRecoveryCandidateCount"] = sum(1 for row in rows if candidate(row))
@@ -293,10 +354,12 @@ def main() -> int:
         registry["productionReady"] = False
         registry["limitations"] = [
             "generation-bound recovery evidence remains non-production evidence",
+            "every admitted recovery evidence row must bind an already admitted restore drill request with the same source generation, restore target generation and recovery objective",
+            "new evidence registration requires that drill request to still be currently executable; later supersession preserves historical evidence but removes current candidate eligibility",
             "a generation record can satisfy all pre-overlay recovery controls without becoming a production-equivalent recovery candidate until complete typed non-resurrection evidence is separately registered",
-            "historical evidence remains valid against the approved objective ID recorded at execution time, but only evidence bound to the current objective ID can become a current production-equivalent recovery candidate",
+            "historical evidence remains valid against the approved objective ID recorded at execution time, but only evidence bound to the current objective ID and a currently executable drill request can become a current production-equivalent recovery candidate",
             "failed RPO/RTO/object-database-skew measurements remain admissible evidence but cannot become production-equivalent recovery candidates",
-            "production-equivalent recovery candidates require current approved recovery objectives, all fail-closed controls, complete typed non-resurrection coverage and independent reviews",
+            "production-equivalent recovery candidates require current approved recovery objectives, a current drill request, all fail-closed controls, complete typed non-resurrection coverage and independent reviews",
             "this registry never establishes application production readiness"
         ]
         atomic_write(registry)
@@ -308,6 +371,8 @@ def main() -> int:
             pass
 
     print(f"Registered generation-bound backup/restore evidence: {record['evidenceId']}")
+    print(f"drill request bound: {record['drillRequestId']}")
+    print(f"drill request currently executable: {str(drill_request_current(record)).lower()}")
     print(f"pre-overlay recovery gates complete: {str(base_candidate(record)).lower()}")
     print(f"typed non-resurrection coverage present: {str(typed_non_resurrection_covered(record['evidenceId'])).lower()}")
     print(f"production-equivalent recovery candidate: {str(candidate(record)).lower()}")
