@@ -26,9 +26,16 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def path_label(path: Path) -> str:
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
 def load(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
-    require(isinstance(value, dict), f"root must be object: {path}")
+    require(isinstance(value, dict), f"root must be object: {path_label(path)}")
     return value
 
 
@@ -149,13 +156,20 @@ def main() -> int:
         writer.GEN_REGISTRY = generation_registry
         writer.OBJECTIVES_REGISTRY = objectives_registry
         real_repo_ref = writer.repo_ref
+        real_eligibility_guard = writer.require_preflight_eligible_generation
         writer.repo_ref = lambda value, field: value if isinstance(value, str) and value else (_ for _ in ()).throw(writer.Fail(f"{field} invalid"))
+        writer.require_preflight_eligible_generation = lambda generation_id, field: None if generation_id in {"pegen_source", "pegen_target"} else (_ for _ in ()).throw(writer.Fail(f"{field} synthetic generation not eligible"))
 
         valid = base_request(contract)
         writer.validate_request(valid)
         writer.validate_request(valid, require_current=False)
         require(writer.request_currently_executable(valid) is True, "valid synthetic request should be current in isolated negative fixture")
-        print("PASS accept: fully bound isolated planning request")
+        print("PASS accept: fully bound isolated planning request with semantic generation gate invoked")
+
+        real_guard_for_probe = writer.require_preflight_eligible_generation
+        writer.require_preflight_eligible_generation = lambda generation_id, field: (_ for _ in ()).throw(writer.Fail(f"{field} not semantically eligible"))
+        expect_rejected("semantically ineligible source/target generation", lambda: writer.validate_request(valid))
+        writer.require_preflight_eligible_generation = real_guard_for_probe
 
         same_generation = copy.deepcopy(valid)
         same_generation["requestId"] = "brrq_same_generation"
@@ -241,9 +255,11 @@ def main() -> int:
         print("PASS history: superseded generation request remains auditable but non-executable")
 
         writer.repo_ref = real_repo_ref
+        writer.require_preflight_eligible_generation = real_eligibility_guard
 
     print("Memory OS production-equivalent backup/restore drill request negative suite PASS")
     print("canonical request registry mutated: false")
+    print("semantic generation eligibility bypass: false")
     print("historical authority preserved across supersession: true")
     print("current execution revalidation preserved: true")
     print("production traffic: false")
