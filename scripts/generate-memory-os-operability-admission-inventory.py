@@ -48,6 +48,8 @@ def main() -> int:
     recovery_objectives = load("contracts/operations/recovery-objectives-registry.v1.json")
     backup_binding = load("contracts/operations/backup-restore-generation-binding-contract.v1.json")
     backup_recovery = load("contracts/operations/backup-restore-generation-evidence-registry.v1.json")
+    backup_non_resurrection_contract = load("contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json")
+    backup_non_resurrection = load("contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json")
     releases = load("contracts/operations/release-baseline-registry.v1.json")
     release_pairs = load("contracts/operations/release-compatibility-pair-registry.v1.json")
     clients = load("contracts/operations/client-baseline-registry.v1.json")
@@ -61,12 +63,29 @@ def main() -> int:
     backup_boundary = backup_binding.get("currentBoundary")
     if not isinstance(backup_boundary, dict):
         raise SystemExit("backup generation boundary missing")
+    non_resurrection_boundary = backup_non_resurrection_contract.get("currentBoundary")
+    if not isinstance(non_resurrection_boundary, dict):
+        raise SystemExit("backup typed non-resurrection boundary missing")
     objective_count = recovery_objectives.get("approvedObjectiveCount")
     if not isinstance(objective_count, int) or objective_count < 0:
         raise SystemExit("approved recovery objective count invalid")
     release_pair_count = release_pairs.get("approvedPairCount")
     if not isinstance(release_pair_count, int) or release_pair_count < 0:
         raise SystemExit("approved release pair count invalid")
+    typed_record_count = backup_non_resurrection.get("registeredRecordCount")
+    typed_complete_count = backup_non_resurrection.get("completeRecordCount")
+    typed_covered_count = backup_non_resurrection.get("candidateCoveredCount")
+    pending_typed_count = non_resurrection_boundary.get("preOverlayEligiblePendingTypedCoverageCount")
+    for value, field in (
+        (typed_record_count, "typed non-resurrection record"),
+        (typed_complete_count, "complete typed non-resurrection"),
+        (typed_covered_count, "typed candidate coverage"),
+        (pending_typed_count, "pending typed coverage"),
+    ):
+        if not isinstance(value, int) or value < 0:
+            raise SystemExit(f"{field} count invalid")
+    if not (typed_covered_count <= typed_complete_count <= typed_record_count):
+        raise SystemExit("typed non-resurrection count ordering invalid")
     local_soak_complete = bool(
         load_ready.get("localLongSoakRunCount", 0) >= 2
         and load_ready.get("localSustainedSoakEvidence") is True
@@ -153,25 +172,36 @@ def main() -> int:
             "id": "OPS-P0-007",
             "authority": "contracts/operations/backup-restore-generation-evidence-contract.v1.json",
             "secondaryAuthority": "contracts/operations/backup-restore-generation-binding-contract.v1.json",
+            "tertiaryAuthority": "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json",
             "foundationImplemented": all(exists(path) for path in (
                 "contracts/operations/backup-restore-generation-evidence-contract.v1.json",
                 "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
                 "contracts/operations/recovery-objectives-admission-contract.v1.json",
                 "contracts/operations/recovery-objectives-registry.v1.json",
+                "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json",
+                "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json",
                 "scripts/register-memory-os-backup-restore-generation-evidence.py",
                 "scripts/validate-memory-os-backup-restore-generation-evidence.py",
                 "scripts/validate-memory-os-recovery-objectives.py",
+                "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py",
+                "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py",
                 ".github/workflows/backup-restore-generation-evidence.yml",
                 ".github/workflows/recovery-objectives-admission.yml",
+                ".github/workflows/backup-restore-non-resurrection-admission.yml",
             )),
             "admittedEvidenceCount": backup_boundary.get("generationBoundRestoreCount", 0),
             "dependencyCounts": {
                 "environmentGenerations": generations.get("registeredGenerationCount", 0),
                 "approvedRecoveryObjectives": objective_count,
                 "generationBoundBackups": backup_boundary.get("generationBoundBackupCount", 0),
+                "generationBoundRestores": backup_boundary.get("generationBoundRestoreCount", 0),
+                "typedNonResurrectionRecords": typed_record_count,
+                "completeTypedNonResurrectionRecords": typed_complete_count,
+                "preOverlayEligiblePendingTypedCoverage": pending_typed_count,
+                "typedCoveredRecoveryCandidates": typed_covered_count,
                 "productionEquivalentRecoveryCandidates": backup_recovery.get("productionEquivalentRecoveryCandidateCount", 0),
             },
-            "nextGate": "explicitly approve RPO/RTO/object-database skew without defaults, register a reviewed production-equivalent environment generation, then admit generation-bound PITR, independent object retention and isolated restore evidence whose measured objectives pass current targets plus non-resurrection review",
+            "nextGate": "explicitly approve RPO/RTO/object-database skew without defaults, register a reviewed production-equivalent environment generation, admit generation-bound PITR/independent-object/cross-cluster restore evidence within those objectives, then bind all eight typed non-resurrection domains before any final production-equivalent recovery candidate exists",
         },
         {
             "id": "OPS-P0-008",
@@ -223,6 +253,8 @@ def main() -> int:
         "productionEquivalentEnvironmentGenerationCount": generations.get("registeredGenerationCount", 0),
         "approvedRecoveryObjectiveCount": objective_count,
         "approvedReleaseCompatibilityPairCount": release_pair_count,
+        "typedNonResurrectionRecordCount": typed_record_count,
+        "completeTypedNonResurrectionRecordCount": typed_complete_count,
         "productionEvidence": False,
         "productionReady": False,
         "productionDecision": "NO_GO",
@@ -232,6 +264,7 @@ def main() -> int:
             "candidate/local evidence is not counted as production admission unless its owning authority explicitly admits it",
             "local repeated soak evidence is tracked separately from independent leak proof and production-shaped soak evidence",
             "recovery-objective values are never defaulted by this inventory; zero approved objectives means RPO/RTO/skew remain intentionally undefined",
+            "a generic generation recovery nonResurrectionVerification PASS cannot create a final recovery candidate; complete typed coverage of all eight non-resurrection domains is independently required",
             "candidate/local mixed-version execution remains separate from the approved release-pair registry and can never create an approved predecessor/successor pair"
         ]
     }
@@ -240,6 +273,8 @@ def main() -> int:
     print(f"P0 areas inventoried: {len(areas)}")
     print(f"production-equivalent generations: {document['productionEquivalentEnvironmentGenerationCount']}")
     print(f"approved recovery objectives: {objective_count}")
+    print(f"typed non-resurrection records: {typed_record_count}")
+    print(f"final recovery candidates: {backup_recovery.get('productionEquivalentRecoveryCandidateCount', 0)}")
     print(f"approved release compatibility pairs: {release_pair_count}")
     print(f"local repeated soak complete: {str(local_soak_complete).lower()}")
     print("production decision: NO_GO")
