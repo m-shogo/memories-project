@@ -626,7 +626,8 @@
         "future production-equivalent restore promotion is generation-bound: backup artifact/manifest hashes, source environment generation/manifest, source commit, restore target generation/manifest and restore evidence bundle must match append-only registered generations; legacy local restore evidence cannot be relabeled and cross-generation restores require material-delta review",
         "recovery objectives approval is append-only: approval registry exists but contains 0 records, so RPO/RTO/object-database skew remain intentionally undefined and restore evidence is forbidden from inventing targets",
         "generation-bound backup/restore evidence admission is append-only and fail-closed: registered environment generations=0, approved recovery objectives=0, current objectiveId=none, recovery records=0, complete generation-bound restores=0, production-equivalent recovery candidates=0; candidate admission requires exact generation/manifest/artifact hashes, current objective binding, measured RPO/RTO/object-database skew within approved targets, isolated restore, PITR, independent object retention, recovery coherence, non-resurrection and distinct security/operability review, while productionEvidence and productionReady remain false",
-        "synthetic expired-active and revoked-unexpired session rows preserve their terminal authorization semantics after restore and both remain non-resolvable through memory_auth_runtime"
+        "synthetic expired-active and revoked-unexpired session rows preserve their terminal authorization semantics after restore and both remain non-resolvable through memory_auth_runtime",
+        "exact-source local PostgreSQL plus MinIO coherent recovery-set drill destroys source database state and source object versions, restores both into separate targets, independently re-derives one shared opaque recovery-set digest from restored database and object state, verifies exact backup-object checksum, and rejects a deliberate one-sided digest mismatch; this proves local shared recovery-set binding only, not temporal recovery-point skew, PITR or production-equivalent recovery"
       ],
       "missingEvidence": [
         "production PostgreSQL backup and PITR schedule with encrypted independent retention, WAL continuity and tested point-in-time recovery selection",
@@ -639,10 +640,10 @@
         "production-shaped cross-cluster isolated restore drill with approved recovery owner and promotion decision",
         "production PostgreSQL backup schedule, encrypted independent retention and WAL/PITR configuration",
         "production object-store TLS, restore-only credential separation and provider durability evidence",
-        "coherent PostgreSQL and exact object-version recovery-point selection with measured skew",
         "approved and measured RPO/RTO and backup freshness monitoring",
         "production deletion, expired/revoked-session, replay and lease non-resurrection verification after restore",
-        "restore promotion rehearsal and independent security/privacy review"
+        "restore promotion rehearsal and independent security/privacy review",
+        "production-shaped correlated PostgreSQL/object recovery with temporal recovery-point skew measurement, an approved skew bound and independent review"
       ],
       "evidenceRefs": [
         "contracts/operations/local-logical-restore-contract.v1.json",
@@ -679,7 +680,13 @@
         "scripts/register-memory-os-recovery-objectives.py",
         "scripts/validate-memory-os-recovery-objectives.py",
         "scripts/reconcile-memory-os-recovery-objectives.py",
-        ".github/workflows/recovery-objectives-admission.yml"
+        ".github/workflows/recovery-objectives-admission.yml",
+        "contracts/operations/local-coherent-recovery-set-contract.v1.json",
+        "docs/fixtures/memory-os-operability/local-coherent-recovery-set-results.sample.v1.json",
+        "scripts/run-memory-os-local-coherent-recovery-set.py",
+        "scripts/validate-memory-os-local-coherent-recovery-set.py",
+        "scripts/reconcile-memory-os-backup-coherent-authority.py",
+        ".github/workflows/local-coherent-recovery-set.yml"
       ]
     },
     {
