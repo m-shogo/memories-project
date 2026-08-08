@@ -1,0 +1,58 @@
+{
+  "contractId": "memory-os.operability.production-equivalent-environment-eligibility.v1",
+  "schemaVersion": "memory-os-production-equivalent-environment-eligibility-contract.v1",
+  "description": "Read-only fail-closed authority separating append-only production-equivalent environment generation history from generations that are currently eligible for restore-drill preflight. Eligibility requires full generation-record validation, full environment semantic validation, unsuperseded status, production-equivalent dependency evidence and independent review. Registration alone never creates eligibility.",
+  "generationContract": "contracts/operations/production-equivalent-environment-generation-contract.v1.json",
+  "generationRegistry": "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+  "environmentRecordSchema": "contracts/operations/production-equivalent-environment-record.v1.schema.json",
+  "environmentSemanticValidator": "scripts/validate-memory-os-production-equivalent-environment-record.py",
+  "generationEligibilityHelper": "scripts/memory_os_environment_generation_eligibility.py",
+  "validator": "scripts/validate-memory-os-production-equivalent-environment-eligibility.py",
+  "reconcile": "scripts/reconcile-memory-os-production-equivalent-environment-eligibility.py",
+  "workflow": ".github/workflows/production-equivalent-environment-eligibility.yml",
+  "rules": {
+    "registeredGenerationHistoryMayContainNonEligibleStates": true,
+    "registrationAloneCannotCreateEligibility": true,
+    "semanticEnvironmentValidationRequired": true,
+    "productionEquivalentDependenciesRequired": true,
+    "independentReviewRequired": true,
+    "repositoryResolvableEvidenceRequired": true,
+    "supersededGenerationCannotBeCurrentlyEligible": true,
+    "restorePairRequiresTwoEligibleGenerations": true,
+    "restorePairRequiresDistinctGenerationIds": true,
+    "restorePairRequiresDistinctEnvironmentIds": true,
+    "productionTrafficForbidden": true,
+    "productionCredentialsForbidden": true,
+    "productionEvidenceForbidden": true,
+    "productionReadyForbidden": true
+  },
+  "currentBoundary": {
+    "registeredGenerationCount": 0,
+    "unsupersededGenerationCount": 0,
+    "preflightEligibleGenerationCount": 0,
+    "unsupersededPreflightEligibleGenerationCount": 0,
+    "distinctPreflightEligibleEnvironmentCount": 0,
+    "eligibleDirectedRestorePairCount": 0,
+    "productionEvidence": false,
+    "productionReady": false,
+    "productionDecision": "NO_GO"
+  },
+  "readiness": {
+    "contractDefined": true,
+    "helperImplemented": true,
+    "validatorImplemented": true,
+    "reconcileImplemented": true,
+    "automaticWorkflowImplemented": true,
+    "eligibleGenerationAvailable": false,
+    "twoDistinctEligibleEnvironmentsAvailable": false,
+    "eligibleDirectedRestorePairAvailable": false,
+    "productionReady": false
+  },
+  "limitations": [
+    "this authority never provisions or registers an environment generation",
+    "PLANNED, provisioned-but-unvalidated, validation-in-progress and rejected generations may remain in append-only history but are not restore-preflight eligible",
+    "eligibility is re-derived from canonical generation and environment evidence on every validation",
+    "eligible restore pairs are directed source-target pairs and require distinct environment identities",
+    "eligibility never establishes production evidence or application production readiness"
+  ]
+}
