@@ -1,7 +1,7 @@
 {
   "contractId": "memory-os.operability.backup-local-foundation-evidence.v1",
   "schemaVersion": "memory-os-backup-local-foundation-evidence.v1",
-  "description": "Machine-readable index of completed local backup/restore foundations. These drills are exact-source executable evidence but are not PostgreSQL PITR, independent provider retention, coherent database/object recovery, approved RPO/RTO or production disaster-recovery evidence.",
+  "description": "Machine-readable index of completed local backup/restore foundations. These drills are exact-source executable evidence, including a shared PostgreSQL/object recovery-set binding, but are not PostgreSQL PITR, independent provider retention, temporal recovery-point skew measurement, approved RPO/RTO or production disaster-recovery evidence.",
   "productionEvidence": false,
   "productionDecision": "NO_GO",
   "evidenceClass": "LOCAL_CI_FOUNDATION",
@@ -55,11 +55,38 @@
         "coherent PostgreSQL and object recovery point",
         "approved RPO or RTO"
       ]
+    },
+    {
+      "id": "LOCAL_COHERENT_DATABASE_OBJECT_RECOVERY_SET",
+      "status": "PASS_EVIDENCE_COMMITTED",
+      "contract": "contracts/operations/local-coherent-recovery-set-contract.v1.json",
+      "result": "docs/fixtures/memory-os-operability/local-coherent-recovery-set-results.sample.v1.json",
+      "validator": "scripts/validate-memory-os-local-coherent-recovery-set.py",
+      "workflow": ".github/workflows/local-coherent-recovery-set.yml",
+      "proves": [
+        "one opaque synthetic recovery-set digest is persisted in PostgreSQL state and exact-version object metadata before backup",
+        "source PostgreSQL database and source object versions are destroyed before recovery verification",
+        "database logical backup and exact object backup restore into separate targets",
+        "restored PostgreSQL state independently yields the expected recovery-set digest",
+        "restored object metadata independently yields the expected recovery-set digest",
+        "restored database and object recovery-set digests are identical",
+        "exact backup object checksum survives restore",
+        "a deliberately one-sided recovery-set digest mismatch is rejected fail-closed"
+      ],
+      "doesNotProve": [
+        "PostgreSQL WAL/PITR or physical backup",
+        "temporal recovery-point skew measurement",
+        "independent provider object retention",
+        "production TLS or restore-only credential separation",
+        "production-equivalent or production disaster recovery"
+      ]
     }
   ],
   "combinedBoundary": {
     "bothExactSourceResultsCommitted": true,
-    "coherentDatabaseObjectRestoreCompleted": false,
+    "coherentDatabaseObjectRestoreCompleted": true,
+    "coherentDatabaseObjectRestoreScope": "LOCAL_SHARED_RECOVERY_SET_DIGEST_BINDING_ONLY",
+    "recoveryPointTimeSkewMeasured": false,
     "postgresPitrConfigured": false,
     "independentObjectRetentionConfigured": false,
     "productionTlsAndCredentialSeparationVerified": false,
@@ -74,10 +101,14 @@
     "contracts/operations/backup-local-foundation-evidence.v1.json",
     "contracts/operations/local-logical-restore-contract.v1.json",
     "contracts/operations/local-object-version-restore-contract.v1.json",
+    "contracts/operations/local-coherent-recovery-set-contract.v1.json",
     "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json",
     "docs/fixtures/memory-os-operability/local-object-version-restore-results.sample.v1.json",
+    "docs/fixtures/memory-os-operability/local-coherent-recovery-set-results.sample.v1.json",
     "scripts/validate-memory-os-backup-local-foundations.py",
+    "scripts/validate-memory-os-local-coherent-recovery-set.py",
     "scripts/reconcile-memory-os-backup-authority.py",
+    ".github/workflows/local-coherent-recovery-set.yml",
     ".github/workflows/reconcile-backup-authority.yml"
   ]
 }
