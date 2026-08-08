@@ -36,7 +36,7 @@
   "currentState": {
     "registeredGenerationCount": 0,
     "unsupersededGenerationCount": 0,
-    "distinctUnsuperseededEnvironmentCount": 0,
+    "distinctUnsupersededEnvironmentCount": 0,
     "eligibleDirectedSourceTargetPairCount": 0,
     "approvedRecoveryObjectiveCount": 0,
     "currentObjectiveId": null,
