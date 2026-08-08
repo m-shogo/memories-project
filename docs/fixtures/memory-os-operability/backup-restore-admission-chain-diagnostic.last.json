@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "backup-restore-admission-chain",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "Memory OS production-equivalent restore drill preflight PASS\nregistered/unsuperseded generations: 0/0\ndistinct unsuperseded environments: 0\neligible directed source-target pairs: 0\napproved recovery objectives: 0\nreviewed/current drill requests: 0/0\npreflight decision: BLOCKED_NEEDS_TWO_UNSUPERSEDED_DISTINCT_ENVIRONMENT_GENERATIONS\nautomatic request creation: false\nrestore executed: false\nproduction evidence: false\nproduction decision: NO_GO\nMemory OS backup/restore admission chain reconciliation PASS\nreviewed/current drill requests: 0/0\ngeneration/drill-bound evidence: 0/0\ncomplete typed records/final candidates: 0/0\ncanonical OPS-P0-007 blockers preserved: 6\nproduction evidence: false\nproduction decision: NO_GO\nMemory OS backup/restore end-to-end admission chain PASS\nreviewed/current drill requests: 0/0\ngeneration/drill-bound evidence: 0/0\ncomplete typed non-resurrection records: 0\nfinal production-equivalent recovery candidates: 0\nrequest bypass to generation evidence: false\ngeneric non-resurrection PASS bypass: false\ncanonical OPS-P0-007 blockers preserved: 6\nproduction evidence: false\nproduction decision: NO_GO\nMemory OS production-equivalent backup/restore drill request validation PASS\nregistered environment generations: 0\napproved recovery objectives: 0\nregistered drill requests: 0\ncurrently executable requests: 0\nhistorical admitted requests survive later generation/objective supersession: true\nplanning authority only: true\nproduction evidence: false\nproduction decision: NO_GO\nMemory OS drill-bound generation backup/restore evidence validation PASS\nregistered/current drill requests: 0/0\nregistered/drill-bound recovery evidence: 0/0\ncomplete generation-bound restores: 0\nproduction-equivalent recovery candidates: 0\nhistorical evidence audit after request supersession: allowed\nnew evidence without current drill request: forbidden\nnegative admission suite: PASS\nproduction evidence: false\nproduction decision: NO_GO\nMemory OS backup/restore typed non-resurrection admission validation PASS\npre-overlay eligible generation records: 0\ntyped records: 0\nfinal production-equivalent recovery candidates: 0\npending typed coverage: 0\ngeneric PASS candidate bypass: false\nproduction evidence: false\nproduction decision: NO_GO\nOPERABILITY ADMISSION INVENTORY FAILED: OPS-P0-008.missingEvidenceCount drift\n",
+  "containsSecrets": false,
+  "preflightCreatedPrerequisite": false,
+  "drillRequestCreated": false,
+  "generationEvidenceCreated": false,
+  "typedEvidenceCreated": false,
+  "restoreExecuted": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
