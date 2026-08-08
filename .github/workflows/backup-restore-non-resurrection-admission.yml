@@ -14,6 +14,7 @@ on:
       - "contracts/operations/recovery-objectives-registry.v1.json"
       - "contracts/operations/local-apple-replay-restore-contract.v1.json"
       - "contracts/operations/local-coherent-recovery-set-contract.v1.json"
+      - "contracts/operations/backup-local-foundation-evidence.v1.json"
       - "docs/fixtures/memory-os-operability/local-apple-replay-restore-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/local-coherent-recovery-set-results.sample.v1.json"
       - "docs/evidence/backup-restore/non-resurrection/**"
@@ -24,6 +25,7 @@ on:
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-binding.py"
       - "scripts/validate-memory-os-local-apple-replay-restore.py"
       - "scripts/validate-memory-os-local-coherent-recovery-set.py"
   workflow_dispatch:
@@ -62,6 +64,7 @@ jobs:
             scripts/register-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-backup-restore-generation-evidence.py \
             scripts/reconcile-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-generation-binding.py \
             scripts/validate-memory-os-local-apple-replay-restore.py \
             scripts/validate-memory-os-local-coherent-recovery-set.py \
             >> "$log" 2>&1 || code=$?
