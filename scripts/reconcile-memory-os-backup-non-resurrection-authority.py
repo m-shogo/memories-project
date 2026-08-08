@@ -93,7 +93,7 @@ def main() -> int:
     boundary["completeTypedRecordCount"] = registry["completeRecordCount"]
     boundary["productionEquivalentRecoveryCandidateCount"] = len(final_candidate_ids)
     boundary["candidateCoveredCount"] = len(covered_base_ids)
-    boundary["uncoveredCandidateCount"] = len(pending_typed_ids)
+    boundary["preOverlayEligiblePendingTypedCoverageCount"] = len(pending_typed_ids)
     boundary["productionEquivalentNonResurrectionEvidence"] = len(final_candidate_ids) > 0
     boundary["productionEvidence"] = False
     boundary["productionReady"] = False
