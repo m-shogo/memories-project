@@ -14,6 +14,7 @@ on:
       - "contracts/operations/recovery-objectives-registry.v1.json"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
       - "scripts/validate-memory-os-recovery-objectives.py"
@@ -44,6 +45,7 @@ jobs:
           python -m py_compile \
             scripts/register-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-generation-evidence-negative.py \
             scripts/reconcile-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-backup-restore-generation-binding.py \
             scripts/validate-memory-os-recovery-objectives.py
