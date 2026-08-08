@@ -28,7 +28,7 @@ def require(condition: bool, message: str) -> None:
 
 def load(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+    require(isinstance(value, dict), f"root must be object: {path}")
     return value
 
 
