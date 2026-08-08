@@ -1,10 +1,10 @@
 {
   "schemaVersion": "memory-os-local-apple-replay-restore-results.v1",
-  "commitSha": "d1e98e78176e74add3470dafae19523cf9c9ba38",
-  "generatedAt": "2026-08-08T02:34:19.227591Z",
+  "commitSha": "1b8064d18a6a0ba5a9548e014558ff8d856e7fe0",
+  "generatedAt": "2026-08-08T03:04:38.235213Z",
   "environment": {
     "databaseMode": "EPHEMERAL_POSTGRESQL_16_SAME_CLUSTER_LOGICAL_RESTORE",
-    "databaseIdentityDigest": "d05e5307553b8f0347d0d661ef7b608950436afdffaf0255717a174736f7f15b",
+    "databaseIdentityDigest": "130a34eb41ae997a381fcd1caa448fcb8bdced082b3bc3b685b1058ecd7592e3",
     "productionTraffic": false,
     "productionCredentials": false,
     "productionEvidence": false,
@@ -12,8 +12,8 @@
   },
   "scenario": {
     "scenarioId": "apple-live-replay-guard-logical-restore",
-    "startedAt": "2026-08-08T02:34:17.416068Z",
-    "completedAt": "2026-08-08T02:34:19.227591Z",
+    "startedAt": "2026-08-08T03:04:36.377949Z",
+    "completedAt": "2026-08-08T03:04:38.235213Z",
     "durationSeconds": 1,
     "migrationFilesApplied": 11,
     "databaseDumpBytes": 123069,
