@@ -1,0 +1,118 @@
+name: Backup Restore Preflight Generation Eligibility Consistency
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/backup-restore-preflight-generation-eligibility-consistency.yml"
+      - "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/recovery-objectives-registry.v1.json"
+      - "contracts/operations/backup-restore-drill-request-registry.v1.json"
+      - "scripts/memory_os_environment_generation_eligibility.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-record.py"
+      - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-eligibility.py"
+      - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py"
+      - "scripts/request-memory-os-backup-restore-drill.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: backup-restore-preflight-generation-eligibility-consistency-so
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate strict generation eligibility boundary
+        id: validation
+        run: |
+          set +e
+          log=/tmp/backup-restore-preflight-generation-eligibility-consistency.log
+          : > "$log"
+          code=0
+          python -m py_compile \
+            scripts/validate-memory-os-production-equivalent-environment-record.py \
+            scripts/register-memory-os-production-equivalent-environment-generation.py \
+            scripts/memory_os_environment_generation_eligibility.py \
+            scripts/validate-memory-os-production-equivalent-environment-eligibility.py \
+            scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py \
+            scripts/request-memory-os-backup-restore-drill.py \
+            >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-equivalent-environment-eligibility.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py >> "$log" 2>&1 || code=$?; fi
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          cat "$log"
+          exit 0
+      - name: Remove stale consistency diagnostic
+        if: steps.validation.outputs.exit_code == '0'
+        run: |
+          set -euo pipefail
+          git rm -f docs/fixtures/memory-os-operability/backup-restore-preflight-generation-eligibility-consistency-diagnostic.last.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "test(restore): clear generation eligibility consistency diagnostic"
+            for attempt in 1 2 3; do
+              git pull --rebase origin so
+              if git push origin HEAD:so; then exit 0; fi
+              sleep 2
+            done
+          fi
+      - name: Record privacy-safe consistency diagnostic
+        if: steps.validation.outputs.exit_code != '0'
+        env:
+          VALIDATION_EXIT_CODE: ${{ steps.validation.outputs.exit_code }}
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          git reset --hard origin/so
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          text = Path('/tmp/backup-restore-preflight-generation-eligibility-consistency.log').read_text(encoding='utf-8', errors='replace')
+          value = {
+              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'workflow': 'backup-restore-preflight-generation-eligibility-consistency',
+              'result': 'FAIL',
+              'exitCode': int(os.environ['VALIDATION_EXIT_CODE']),
+              'output': text[-12000:],
+              'containsSecrets': False,
+              'generationCreated': False,
+              'requestCreated': False,
+              'restoreExecuted': False,
+              'productionEvidence': False,
+              'productionReady': False,
+          }
+          path = Path('docs/fixtures/memory-os-operability/backup-restore-preflight-generation-eligibility-consistency-diagnostic.last.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          PY
+          git add docs/fixtures/memory-os-operability/backup-restore-preflight-generation-eligibility-consistency-diagnostic.last.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --cached --quiet; then
+            git commit -m "test(restore): record generation eligibility consistency diagnostic"
+            for attempt in 1 2 3; do
+              git pull --rebase origin so
+              if git push origin HEAD:so; then exit 0; fi
+              sleep 2
+            done
+          fi
+      - name: Enforce strict generation eligibility boundary
+        run: test "${{ steps.validation.outputs.exit_code }}" = "0"
