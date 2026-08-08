@@ -96,7 +96,8 @@
   "limitations": [
     "no production-equivalent environment generation is registered",
     "this contract prevents cross-generation evidence reuse but does not provision infrastructure",
-    "a registered generation and hash match do not by themselves prove environment equivalence or production readiness",
+    "a registered generation and hash match do not by themselves prove environment equivalence or restore-drill preflight eligibility",
+    "preflight eligibility additionally requires a fully validated environment record, production-equivalent dependency controls, repository-resolvable evidence references and independent review evidence",
     "production traffic and production credentials remain outside automatic evidence generation"
   ]
 }

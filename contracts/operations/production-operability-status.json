@@ -355,7 +355,7 @@
         "two-run local controlled-saturation repeatability authority classifies a throughput/latency degradation knee or actual failure signal on independent PostgreSQL+MinIO runners; even a repeatable local signal remains non-production and cannot itself establish a capacity boundary or approve an operating threshold",
         "2 exact-source LOCAL_LONG_SOAK run document(s) satisfy the per-run validator; production evidence and leak proof remain false",
         "repeated LOCAL_LONG_SOAK runs plus cross-run trend review are registered as local-only sustained-soak evidence; this is not leak proof or production-shaped evidence",
-        "production-equivalent environment generation admission is machine-readable and append-only: load, restore, failure-drill and review evidence must bind immutable generation, environment/dependency/evidence/material-delta hashes and source commit; registry count is 0, current generation is none, and production-equivalent dependencies remain false"
+        "production-equivalent environment generation admission is machine-readable and append-only: load, restore, failure-drill and review evidence must bind immutable generation, environment/dependency/evidence/material-delta hashes and source commit; registered generations=0, preflight-eligible generations=0, current generation=none, and current production-equivalent dependencies=false; registration alone never creates preflight eligibility"
       ],
       "missingEvidence": [
         "capacity boundary, saturation report and load-calibrated operational thresholds",
@@ -489,7 +489,9 @@
         "contracts/operations/production-equivalent-environment-record.v1.schema.json",
         "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json",
         "scripts/register-memory-os-production-equivalent-environment-generation.py",
-        "scripts/reconcile-memory-os-production-equivalent-generation-status.py"
+        "scripts/reconcile-memory-os-production-equivalent-generation-status.py",
+        "scripts/validate-memory-os-production-equivalent-environment-record.py",
+        "scripts/validate-memory-os-production-equivalent-environment-generation-negative.py"
       ]
     },
     {
