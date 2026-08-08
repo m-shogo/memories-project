@@ -2,8 +2,8 @@
 """Prove fail-closed negative cases for generation-bound backup/restore admission.
 
 This validator never mutates the canonical registries. It imports the canonical
-writer and redirects only its generation/objective lookups to temporary fixtures
-so rejection boundaries can be exercised deterministically in CI.
+writer and redirects generation/objective/typed-overlay lookups to temporary
+fixtures so rejection and two-phase candidate boundaries are deterministic.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from typing import Any, Callable
 ROOT = Path(__file__).resolve().parents[1]
 WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
 CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
+NON_RESURRECTION_CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
 DIGEST_A = "a" * 64
 DIGEST_B = "b" * 64
 DIGEST_C = "c" * 64
@@ -121,12 +122,34 @@ def base_record(commit_sha: str) -> dict[str, Any]:
     return record
 
 
+def typed_overlay_record(evidence_id: str) -> dict[str, Any]:
+    contract = load(NON_RESURRECTION_CONTRACT)
+    domains = {
+        name: {"result": "PASS", "evidenceRef": f"docs/evidence/backup-restore/non-resurrection/{name}.json"}
+        for name in contract["requiredDomains"]
+    }
+    return {
+        "schemaVersion": contract["recordSchemaVersion"],
+        "recordId": "brnr_negative_overlay",
+        "generationEvidenceId": evidence_id,
+        "sourceCommitSha": "0" * 40,
+        "domains": domains,
+        "securityReviewRef": "SECURITY.md",
+        "operabilityReviewRef": "README.md",
+        "unresolvedFindings": [],
+        "evidenceComplete": True,
+        "productionTraffic": False,
+        "productionCredentials": False,
+        "productionEvidence": False,
+        "productionReady": False,
+    }
+
+
 def main() -> int:
-    require(WRITER.is_file() and CONTRACT.is_file(), "generation evidence foundation missing")
+    require(WRITER.is_file() and CONTRACT.is_file() and NON_RESURRECTION_CONTRACT.is_file(), "generation evidence foundation missing")
     writer = load_writer()
     commit_sha = head_sha()
 
-    # This remains a rejection even after real generations are registered later.
     unregistered_case = base_record(commit_sha)
     unregistered_case["evidenceId"] = "brge_no_generation"
     unregistered_case["sourceEnvironmentGenerationId"] = "pegen_negative_unregistered_source"
@@ -137,6 +160,7 @@ def main() -> int:
         tmp_path = Path(tmp)
         generation_registry = tmp_path / "generations.json"
         objectives_registry = tmp_path / "objectives.json"
+        overlay_registry = tmp_path / "typed-overlay.json"
         write_json(
             generation_registry,
             {
@@ -146,16 +170,8 @@ def main() -> int:
                 "currentGenerationId": "pegen_target",
                 "productionEvidence": False,
                 "generations": [
-                    {
-                        "generationId": "pegen_source",
-                        "environmentManifestSha256": DIGEST_A,
-                        "sourceCommitSha": commit_sha,
-                    },
-                    {
-                        "generationId": "pegen_target",
-                        "environmentManifestSha256": DIGEST_B,
-                        "sourceCommitSha": commit_sha,
-                    },
+                    {"generationId": "pegen_source", "environmentManifestSha256": DIGEST_A, "sourceCommitSha": commit_sha},
+                    {"generationId": "pegen_target", "environmentManifestSha256": DIGEST_B, "sourceCommitSha": commit_sha},
                 ],
             },
         )
@@ -167,29 +183,52 @@ def main() -> int:
                 "approvedObjectiveCount": 2,
                 "currentObjectiveId": "recovery_objectives_ci",
                 "records": [
-                    {
-                        "objectiveId": "recovery_objectives_old",
-                        "rpoSeconds": 120,
-                        "rtoSeconds": 300,
-                        "maximumObjectDatabaseSkewSeconds": 30,
-                    },
-                    {
-                        "objectiveId": "recovery_objectives_ci",
-                        "rpoSeconds": 60,
-                        "rtoSeconds": 120,
-                        "maximumObjectDatabaseSkewSeconds": 10,
-                    },
+                    {"objectiveId": "recovery_objectives_old", "rpoSeconds": 120, "rtoSeconds": 300, "maximumObjectDatabaseSkewSeconds": 30},
+                    {"objectiveId": "recovery_objectives_ci", "rpoSeconds": 60, "rtoSeconds": 120, "maximumObjectDatabaseSkewSeconds": 10},
                 ],
+            },
+        )
+        write_json(
+            overlay_registry,
+            {
+                "schemaVersion": "memory-os-backup-restore-non-resurrection-admission-registry.v1",
+                "appendOnly": True,
+                "registeredRecordCount": 0,
+                "completeRecordCount": 0,
+                "candidateCoveredCount": 0,
+                "records": [],
+                "productionEvidence": False,
+                "productionReady": False,
             },
         )
 
         writer.GEN_REGISTRY = generation_registry
         writer.OBJECTIVES_REGISTRY = objectives_registry
+        writer.NON_RESURRECTION_REGISTRY = overlay_registry
 
         valid = base_record(commit_sha)
         writer.validate_record(valid)
-        require(writer.candidate(valid) is True, "synthetic complete reviewed record must satisfy candidate predicate")
-        print("PASS accept: complete reviewed synthetic candidate")
+        require(writer.base_candidate(valid) is True, "synthetic complete reviewed record must satisfy pre-overlay gates")
+        require(writer.candidate(valid) is False, "generic non-resurrection PASS without typed overlay must not become candidate")
+        print("PASS non-candidate: generic PASS lacks typed non-resurrection coverage")
+
+        overlay = typed_overlay_record(valid["evidenceId"])
+        overlay["sourceCommitSha"] = commit_sha
+        write_json(
+            overlay_registry,
+            {
+                "schemaVersion": "memory-os-backup-restore-non-resurrection-admission-registry.v1",
+                "appendOnly": True,
+                "registeredRecordCount": 1,
+                "completeRecordCount": 1,
+                "candidateCoveredCount": 1,
+                "records": [overlay],
+                "productionEvidence": False,
+                "productionReady": False,
+            },
+        )
+        require(writer.candidate(valid) is True, "complete typed overlay must unlock final candidate predicate")
+        print("PASS candidate: complete typed non-resurrection coverage present")
 
         same_review = copy.deepcopy(valid)
         same_review["evidenceId"] = "brge_same_review"
@@ -225,21 +264,19 @@ def main() -> int:
         old_objective["evidenceId"] = "brge_old_objective"
         old_objective["recoveryObjectivesId"] = "recovery_objectives_old"
         writer.validate_record(old_objective)
-        require(writer.candidate(old_objective) is False, "non-current objective must not produce candidate")
+        require(writer.base_candidate(old_objective) is False, "non-current objective must fail pre-overlay gates")
         print("PASS non-candidate: historical approved objective")
 
         missed_rpo = copy.deepcopy(valid)
         missed_rpo["evidenceId"] = "brge_missed_rpo"
         missed_rpo["measuredRpoSeconds"] = 61
         writer.validate_record(missed_rpo)
-        require(writer.candidate(missed_rpo) is False, "missed RPO must not produce candidate")
+        require(writer.base_candidate(missed_rpo) is False, "missed RPO must fail pre-overlay gates")
         print("PASS non-candidate: measured RPO exceeds approved target")
 
         unsafe_finding = copy.deepcopy(valid)
         unsafe_finding["evidenceId"] = "brge_high_finding"
-        unsafe_finding["unresolvedFindings"] = [
-            {"findingId": "finding_high", "severity": "HIGH", "status": "OPEN"}
-        ]
+        unsafe_finding["unresolvedFindings"] = [{"findingId": "finding_high", "severity": "HIGH", "status": "OPEN"}]
         expect_rejected("HIGH unresolved finding", lambda: writer.validate_record(unsafe_finding))
 
         mutable_alias = copy.deepcopy(valid)
@@ -253,6 +290,7 @@ def main() -> int:
 
     print("Memory OS generation-bound backup/restore negative admission suite PASS")
     print("canonical registries mutated: false")
+    print("generic non-resurrection PASS creates candidate: false")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
