@@ -61,8 +61,8 @@ jobs:
             scripts/validate-memory-os-backup-restore-non-resurrection-negative.py \
             scripts/reconcile-memory-os-backup-non-resurrection-authority.py
           python scripts/validate-memory-os-recovery-objectives.py
-          python scripts/reconcile-memory-os-backup-restore-generation-evidence.py
           python scripts/reconcile-memory-os-backup-non-resurrection-authority.py
+          python scripts/reconcile-memory-os-backup-restore-generation-evidence.py
           python scripts/validate-memory-os-backup-restore-generation-evidence.py
           python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py
           python scripts/validate-memory-os-backup-restore-generation-binding.py
@@ -72,6 +72,7 @@ jobs:
           set -euo pipefail
           git add \
             contracts/operations/backup-restore-generation-evidence-contract.v1.json \
+            contracts/operations/backup-restore-generation-evidence-registry.v1.json \
             contracts/operations/backup-restore-generation-binding-contract.v1.json \
             contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json \
             contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json \
