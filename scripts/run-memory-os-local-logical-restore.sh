@@ -96,17 +96,27 @@ done
 SYNTHETIC_ACCOUNT="acct_restore_deleted_0001"
 SYNTHETIC_SESSION="ses_restore_deleted_0001"
 SYNTHETIC_DIGEST="dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+SESSION_OWNER="acct_restore_session_owner_0001"
+EXPIRED_SESSION="ses_restore_expired_0001"
+EXPIRED_DIGEST="eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+REVOKED_SESSION="ses_restore_revoked_0001"
+REVOKED_DIGEST="ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
 
 psql --dbname "$SOURCE_DB" --set=ON_ERROR_STOP=1 --quiet <<SQL
 INSERT INTO memory_os.account_control
   (account_id, account_epoch, state, created_at, updated_at)
 VALUES
-  ('$SYNTHETIC_ACCOUNT', 1, 'active', now(), now());
+  ('$SYNTHETIC_ACCOUNT', 1, 'active', now(), now()),
+  ('$SESSION_OWNER', 1, 'active', now(), now());
 INSERT INTO memory_os.account_session
   (id, token_digest, owner_account_id, account_epoch, authority, state, created_at, expires_at)
 VALUES
   ('$SYNTHETIC_SESSION', '$SYNTHETIC_DIGEST', '$SYNTHETIC_ACCOUNT', 1,
-   'ios_device_session', 'active', now(), now() + interval '1 hour');
+   'ios_device_session', 'active', now(), now() + interval '1 hour'),
+  ('$EXPIRED_SESSION', '$EXPIRED_DIGEST', '$SESSION_OWNER', 1,
+   'ios_device_session', 'active', now() - interval '2 hours', now() - interval '1 hour'),
+  ('$REVOKED_SESSION', '$REVOKED_DIGEST', '$SESSION_OWNER', 1,
+   'ios_device_session', 'revoked', now() - interval '10 minutes', now() + interval '1 hour');
 DELETE FROM memory_os.account_session WHERE id = '$SYNTHETIC_SESSION';
 DELETE FROM memory_os.account_control WHERE account_id = '$SYNTHETIC_ACCOUNT';
 SQL
@@ -115,8 +125,14 @@ SOURCE_ACCOUNT_COUNT="$(psql --dbname "$SOURCE_DB" --tuples-only --no-align --co
   "SELECT count(*) FROM memory_os.account_control WHERE account_id = '$SYNTHETIC_ACCOUNT';")"
 SOURCE_SESSION_COUNT="$(psql --dbname "$SOURCE_DB" --tuples-only --no-align --command \
   "SELECT count(*) FROM memory_os.account_session WHERE token_digest = '$SYNTHETIC_DIGEST';")"
+SOURCE_EXPIRED_COUNT="$(psql --dbname "$SOURCE_DB" --tuples-only --no-align --command \
+  "SELECT count(*) FROM memory_os.account_session WHERE token_digest = '$EXPIRED_DIGEST' AND state = 'active' AND expires_at <= now();")"
+SOURCE_REVOKED_COUNT="$(psql --dbname "$SOURCE_DB" --tuples-only --no-align --command \
+  "SELECT count(*) FROM memory_os.account_session WHERE token_digest = '$REVOKED_DIGEST' AND state = 'revoked';")"
 [[ "$SOURCE_ACCOUNT_COUNT" == "0" && "$SOURCE_SESSION_COUNT" == "0" ]] || \
   fail "synthetic deletion did not complete before dump"
+[[ "$SOURCE_EXPIRED_COUNT" == "1" && "$SOURCE_REVOKED_COUNT" == "1" ]] || \
+  fail "expired/revoked synthetic session setup is invalid before dump"
 
 pg_dump --format=custom --compress=6 --no-comments --file "$DUMP_FILE" "$SOURCE_DB"
 [[ -s "$DUMP_FILE" ]] || fail "logical dump is empty"
@@ -147,6 +163,10 @@ TARGET_ACCOUNT_COUNT="$(psql --dbname "$TARGET_DB" --tuples-only --no-align --co
   "SELECT count(*) FROM memory_os.account_control WHERE account_id = '$SYNTHETIC_ACCOUNT';")"
 TARGET_SESSION_COUNT="$(psql --dbname "$TARGET_DB" --tuples-only --no-align --command \
   "SELECT count(*) FROM memory_os.account_session WHERE token_digest = '$SYNTHETIC_DIGEST';")"
+TARGET_EXPIRED_COUNT="$(psql --dbname "$TARGET_DB" --tuples-only --no-align --command \
+  "SELECT count(*) FROM memory_os.account_session WHERE token_digest = '$EXPIRED_DIGEST' AND state = 'active' AND expires_at <= now();")"
+TARGET_REVOKED_COUNT="$(psql --dbname "$TARGET_DB" --tuples-only --no-align --command \
+  "SELECT count(*) FROM memory_os.account_session WHERE token_digest = '$REVOKED_DIGEST' AND state = 'revoked';")"
 RESOLVED_SESSION_OUTPUT="$(psql --dbname "$TARGET_DB" --tuples-only --no-align --quiet <<SQL
 SET ROLE memory_auth_runtime;
 SELECT count(*) FROM memory_os.resolve_account_session('$SYNTHETIC_DIGEST');
@@ -154,7 +174,22 @@ RESET ROLE;
 SQL
 )"
 RESOLVED_SESSION_COUNT="$(printf '%s\n' "$RESOLVED_SESSION_OUTPUT" | grep -E '^[0-9]+$' | tail -n 1)"
-[[ -n "$RESOLVED_SESSION_COUNT" ]] || fail "deleted synthetic token resolution count was not numeric"
+RESOLVED_EXPIRED_OUTPUT="$(psql --dbname "$TARGET_DB" --tuples-only --no-align --quiet <<SQL
+SET ROLE memory_auth_runtime;
+SELECT count(*) FROM memory_os.resolve_account_session('$EXPIRED_DIGEST');
+RESET ROLE;
+SQL
+)"
+RESOLVED_EXPIRED_COUNT="$(printf '%s\n' "$RESOLVED_EXPIRED_OUTPUT" | grep -E '^[0-9]+$' | tail -n 1)"
+RESOLVED_REVOKED_OUTPUT="$(psql --dbname "$TARGET_DB" --tuples-only --no-align --quiet <<SQL
+SET ROLE memory_auth_runtime;
+SELECT count(*) FROM memory_os.resolve_account_session('$REVOKED_DIGEST');
+RESET ROLE;
+SQL
+)"
+RESOLVED_REVOKED_COUNT="$(printf '%s\n' "$RESOLVED_REVOKED_OUTPUT" | grep -E '^[0-9]+$' | tail -n 1)"
+[[ -n "$RESOLVED_SESSION_COUNT" && -n "$RESOLVED_EXPIRED_COUNT" && -n "$RESOLVED_REVOKED_COUNT" ]] || \
+  fail "synthetic session resolution count was not numeric"
 
 [[ "$ROLE_COUNT" == "4" ]] || fail "runtime role verification failed: $ROLE_COUNT"
 [[ "$FORCE_RLS_COUNT" =~ ^[0-9]+$ && "$FORCE_RLS_COUNT" -gt 0 ]] || \
@@ -162,6 +197,10 @@ RESOLVED_SESSION_COUNT="$(printf '%s\n' "$RESOLVED_SESSION_OUTPUT" | grep -E '^[
 [[ "$TARGET_ACCOUNT_COUNT" == "0" ]] || fail "deleted synthetic account resurrected"
 [[ "$TARGET_SESSION_COUNT" == "0" ]] || fail "deleted synthetic session digest resurrected"
 [[ "$RESOLVED_SESSION_COUNT" == "0" ]] || fail "deleted synthetic token resolved after restore"
+[[ "$TARGET_EXPIRED_COUNT" == "1" ]] || fail "expired synthetic session state was lost or changed during restore"
+[[ "$TARGET_REVOKED_COUNT" == "1" ]] || fail "revoked synthetic session state was lost or changed during restore"
+[[ "$RESOLVED_EXPIRED_COUNT" == "0" ]] || fail "expired synthetic token resolved after restore"
+[[ "$RESOLVED_REVOKED_COUNT" == "0" ]] || fail "revoked synthetic token resolved after restore"
 
 for test_file in "${SQL_TESTS[@]}"; do
   psql --dbname "$TARGET_DB" --set=ON_ERROR_STOP=1 --file "$test_file" >/dev/null
@@ -187,6 +226,10 @@ FORCE_RLS_COUNT="$FORCE_RLS_COUNT" \
 TARGET_ACCOUNT_COUNT="$TARGET_ACCOUNT_COUNT" \
 TARGET_SESSION_COUNT="$TARGET_SESSION_COUNT" \
 RESOLVED_SESSION_COUNT="$RESOLVED_SESSION_COUNT" \
+TARGET_EXPIRED_COUNT="$TARGET_EXPIRED_COUNT" \
+TARGET_REVOKED_COUNT="$TARGET_REVOKED_COUNT" \
+RESOLVED_EXPIRED_COUNT="$RESOLVED_EXPIRED_COUNT" \
+RESOLVED_REVOKED_COUNT="$RESOLVED_REVOKED_COUNT" \
 RESULT_PATH="$RESULT_PATH" \
 python - <<'PY'
 import datetime as dt
@@ -218,6 +261,10 @@ result = {
             "deletedSyntheticAccountsAfterRestore": int(os.environ["TARGET_ACCOUNT_COUNT"]),
             "deletedSyntheticSessionDigestsAfterRestore": int(os.environ["TARGET_SESSION_COUNT"]),
             "deletedSyntheticSessionsResolvedAfterRestore": int(os.environ["RESOLVED_SESSION_COUNT"]),
+            "expiredSyntheticSessionRowsAfterRestore": int(os.environ["TARGET_EXPIRED_COUNT"]),
+            "revokedSyntheticSessionRowsAfterRestore": int(os.environ["TARGET_REVOKED_COUNT"]),
+            "expiredSyntheticSessionsResolvedAfterRestore": int(os.environ["RESOLVED_EXPIRED_COUNT"]),
+            "revokedSyntheticSessionsResolvedAfterRestore": int(os.environ["RESOLVED_REVOKED_COUNT"]),
         },
         "integrityResult": "PASS",
         "result": "PASS",
@@ -227,7 +274,7 @@ result = {
         "not PITR or physical backup evidence",
         "not object-store restore evidence",
         "not approved RPO or RTO evidence",
-        "synthetic deletion non-resurrection scope only",
+        "synthetic deletion and expired/revoked session non-resurrection scope only",
     ],
 }
 Path(os.environ["RESULT_PATH"]).write_text(
@@ -239,4 +286,6 @@ PY
 printf 'Memory OS local logical restore PASS\n'
 printf 'migrations: %s  SQL tests: %s  FORCE RLS tables: %s\n' \
   "${#MIGRATIONS[@]}" "${#SQL_TESTS[@]}" "$FORCE_RLS_COUNT"
+printf 'expired/revoked session resolution after restore: %s/%s\n' \
+  "$RESOLVED_EXPIRED_COUNT" "$RESOLVED_REVOKED_COUNT"
 printf 'result: %s\n' "$RESULT_PATH"
