@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"io"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 )
@@ -64,6 +65,28 @@ func RunWorker(mode string, input io.Reader, output io.Writer) int {
 		}
 		time.Sleep(time.Hour)
 		return 0
+	case "frame_child_then_sleep":
+		executable, err := os.Executable()
+		if err != nil {
+			return 10
+		}
+		child := exec.Command(executable)
+		child.Env = workerEnvWithMode(os.Environ(), "sleep")
+		child.Stdout = io.Discard
+		child.Stderr = io.Discard
+		if err := child.Start(); err != nil {
+			return 11
+		}
+		if err := writeFrame(output, frameTagAccepted, []byte(`{"title":"child-started"}`)); err != nil {
+			_ = child.Process.Kill()
+			_ = child.Wait()
+			return 4
+		}
+		// Do not Wait here. The supervision drill intentionally terminates the
+		// complete process group and independently proves that this child does
+		// not survive or remain as an unreaped /proc entry after Parse returns.
+		time.Sleep(time.Hour)
+		return 0
 	case "garbage":
 		junk := make([]byte, 1<<20)
 		for i := range junk {
@@ -99,4 +122,21 @@ func RunWorker(mode string, input io.Reader, output io.Writer) int {
 	default:
 		return 8
 	}
+}
+
+func workerEnvWithMode(environment []string, mode string) []string {
+	updated := make([]string, 0, len(environment)+1)
+	replaced := false
+	for _, entry := range environment {
+		if strings.HasPrefix(entry, WorkerModeEnv+"=") {
+			updated = append(updated, WorkerModeEnv+"="+mode)
+			replaced = true
+			continue
+		}
+		updated = append(updated, entry)
+	}
+	if !replaced {
+		updated = append(updated, WorkerModeEnv+"="+mode)
+	}
+	return updated
 }
