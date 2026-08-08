@@ -8,7 +8,9 @@ on:
       - ".github/workflows/backup-restore-non-resurrection-admission.yml"
       - "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
       - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
       - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "contracts/operations/backup-restore-generation-binding-contract.v1.json"
       - "contracts/operations/recovery-objectives-registry.v1.json"
       - "contracts/operations/local-apple-replay-restore-contract.v1.json"
       - "contracts/operations/local-coherent-recovery-set-contract.v1.json"
@@ -20,6 +22,8 @@ on:
       - "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
       - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-local-apple-replay-restore.py"
       - "scripts/validate-memory-os-local-coherent-recovery-set.py"
   workflow_dispatch:
@@ -51,11 +55,16 @@ jobs:
             scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-negative.py \
             scripts/reconcile-memory-os-backup-non-resurrection-authority.py \
+            scripts/register-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-generation-evidence.py \
+            scripts/reconcile-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-local-apple-replay-restore.py \
             scripts/validate-memory-os-local-coherent-recovery-set.py
           python scripts/reconcile-memory-os-backup-non-resurrection-authority.py
+          python scripts/reconcile-memory-os-backup-restore-generation-evidence.py
           python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py
           python scripts/validate-memory-os-backup-restore-generation-evidence.py
+          python scripts/validate-memory-os-backup-restore-generation-binding.py
           python scripts/validate-memory-os-operability.py
       - name: Commit bounded non-resurrection authority
         run: |
@@ -63,6 +72,9 @@ jobs:
           git add \
             contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json \
             contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json \
+            contracts/operations/backup-restore-generation-evidence-contract.v1.json \
+            contracts/operations/backup-restore-generation-evidence-registry.v1.json \
+            contracts/operations/backup-restore-generation-binding-contract.v1.json \
             contracts/operations/production-operability-status.json
           if ! git diff --cached --quiet; then
             git diff --cached --check
