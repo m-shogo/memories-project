@@ -61,6 +61,8 @@ def main() -> int:
     backup_recovery = load(ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json")
     non_resurrection_contract = load(ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json")
     non_resurrection_registry = load(ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json")
+    drill_request_contract = load(ROOT / "contracts/operations/backup-restore-drill-request-contract.v1.json")
+    drill_request_registry = load(ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json")
 
     generation_count = generations.get("registeredGenerationCount")
     objective_count = recovery_objectives.get("approvedObjectiveCount")
@@ -68,6 +70,27 @@ def main() -> int:
     require(isinstance(objective_count, int) and objective_count >= 0, "recovery objective count invalid")
     require(inventory.get("productionEquivalentEnvironmentGenerationCount") == generation_count, "environment generation count drift")
     require(inventory.get("approvedRecoveryObjectiveCount") == objective_count, "approved recovery objective count drift")
+
+    drill_request_count = drill_request_registry.get("registeredRequestCount")
+    executable_drill_request_count = drill_request_registry.get("currentExecutableRequestCount")
+    require(isinstance(drill_request_count, int) and drill_request_count >= 0, "drill request count invalid")
+    require(isinstance(executable_drill_request_count, int) and 0 <= executable_drill_request_count <= drill_request_count, "executable drill request count invalid")
+    require(drill_request_registry.get("appendOnly") is True, "drill request registry must remain append-only")
+    require(drill_request_registry.get("productionEvidence") is False and drill_request_registry.get("productionReady") is False, "drill request registry cannot promote production")
+    require(inventory.get("reviewedBackupRestoreDrillRequestCount") == drill_request_count, "inventory drill request count drift")
+    require(inventory.get("currentExecutableBackupRestoreDrillRequestCount") == executable_drill_request_count, "inventory executable drill request count drift")
+    drill_state = drill_request_contract.get("currentAdmissionState")
+    drill_execution = drill_request_contract.get("executionBoundary")
+    require(isinstance(drill_state, dict) and isinstance(drill_execution, dict), "drill request contract authority state missing")
+    require(drill_state.get("registeredEnvironmentGenerationCount") == generation_count, "drill request generation count drift")
+    require(drill_state.get("approvedRecoveryObjectiveCount") == objective_count, "drill request objective count drift")
+    require(drill_state.get("registeredRequestCount") == drill_request_count, "drill request contract request count drift")
+    require(drill_state.get("currentExecutableRequestCount") == executable_drill_request_count, "drill request contract executable count drift")
+    require(drill_state.get("productionEvidence") is False and drill_state.get("productionReady") is False and drill_state.get("productionDecision") == "NO_GO", "drill request contract cannot promote production")
+    require(drill_execution.get("planningAuthorityOnly") is True and drill_execution.get("requestAloneMayExecuteDrill") is False, "drill request execution boundary drift")
+    require(drill_execution.get("backupExecuted") is False and drill_execution.get("restoreExecuted") is False, "planning authority cannot claim drill execution")
+    if generation_count < 2 or objective_count == 0:
+        require(drill_request_count == 0 and executable_drill_request_count == 0, "drill request cannot exist before two generations and an approved objective")
 
     typed_record_count = non_resurrection_registry.get("registeredRecordCount")
     typed_complete_count = non_resurrection_registry.get("completeRecordCount")
@@ -97,12 +120,15 @@ def main() -> int:
     require(backup_row.get("authority") == "contracts/operations/backup-restore-generation-evidence-contract.v1.json", "OPS-P0-007 authority drift")
     require(backup_row.get("secondaryAuthority") == "contracts/operations/backup-restore-generation-binding-contract.v1.json", "OPS-P0-007 secondary authority drift")
     require(backup_row.get("tertiaryAuthority") == "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json", "OPS-P0-007 typed authority drift")
+    require(backup_row.get("quaternaryAuthority") == "contracts/operations/backup-restore-drill-request-contract.v1.json", "OPS-P0-007 drill request authority drift")
     require(backup_row.get("foundationImplemented") is True, "OPS-P0-007 admission foundation incomplete")
     deps = backup_row.get("dependencyCounts")
     require(isinstance(deps, dict), "OPS-P0-007 dependencyCounts missing")
     expected_dependencies = {
         "environmentGenerations": generation_count,
         "approvedRecoveryObjectives": objective_count,
+        "reviewedRestoreDrillRequests": drill_request_count,
+        "currentExecutableRestoreDrillRequests": executable_drill_request_count,
         "generationBoundBackups": backup_boundary.get("generationBoundBackupCount"),
         "generationBoundRestores": backup_boundary.get("generationBoundRestoreCount"),
         "typedNonResurrectionRecords": typed_record_count,
@@ -113,7 +139,9 @@ def main() -> int:
     }
     require(deps == expected_dependencies, f"OPS-P0-007 dependencyCounts drift: {deps}")
     require(backup_row.get("admittedEvidenceCount") == backup_boundary.get("generationBoundRestoreCount"), "OPS-P0-007 admitted restore count drift")
-    require("all eight typed non-resurrection domains" in backup_row.get("nextGate", ""), "OPS-P0-007 nextGate must preserve typed non-resurrection requirement")
+    next_gate = backup_row.get("nextGate", "")
+    require("planning-only cross-environment restore drill request" in next_gate, "OPS-P0-007 nextGate must preserve drill planning admission")
+    require("all eight typed non-resurrection domains" in next_gate, "OPS-P0-007 nextGate must preserve typed non-resurrection requirement")
 
     if typed_record_count == 0:
         require(final_candidate_count == 0, "final recovery candidate cannot exist without typed non-resurrection record")
@@ -124,8 +152,11 @@ def main() -> int:
     print("P0 areas: 9")
     print(f"production-equivalent generations: {generation_count}")
     print(f"approved recovery objectives: {objective_count}")
+    print(f"reviewed restore drill requests: {drill_request_count}")
+    print(f"current executable restore drill requests: {executable_drill_request_count}")
     print(f"typed non-resurrection records: {typed_record_count}")
     print(f"final recovery candidates: {final_candidate_count}")
+    print("drill planning request implies execution: false")
     print("generic non-resurrection PASS bypass: false")
     print("production decision: NO_GO")
     return 0
