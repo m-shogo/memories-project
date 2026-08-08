@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "memory-os-parser-process-group-reaping-results.v1",
+  "commitSha": "9d767ade5fb07eab8b5dbcbf087fe59eb46aeb4d",
+  "generatedAt": "2026-08-08T03:03:16.682872Z",
+  "environment": {
+    "mode": "GITHUB_ACTIONS_UBUNTU_LINUX",
+    "productionEvidence": false,
+    "syntheticDataOnly": true,
+    "containsSecrets": false
+  },
+  "result": "PASS",
+  "integrityResult": "PASS",
+  "exitCode": 0,
+  "durationSeconds": 0.637946,
+  "assertions": {
+    "workerFrameObservedBeforeCancel": true,
+    "trackedProcessCountBeforeCancel": 2,
+    "returnedContextCanceled": true,
+    "cancellationLatencyMilliseconds": 0,
+    "trackedProcessCountAfterCancel": 0,
+    "allCapturedProcEntriesGone": true,
+    "spoolResidueAbsent": true
+  },
+  "limitations": [
+    "host or container restart not executed",
+    "production artifact not exercised",
+    "production-equivalent environment not exercised",
+    "not production chaos evidence",
+    "one synthetic child process is created by the test worker",
+    "Linux GitHub Actions CI only"
+  ]
+}
