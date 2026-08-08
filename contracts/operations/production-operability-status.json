@@ -648,11 +648,6 @@
         "independent review of generation-bound recovery evidence, security/privacy invariants, measured objectives and the restore promotion decision",
         "production independent object backup retention, deletion protection, immutability and lifecycle verification",
         "production-shaped cross-cluster isolated restore drill with approved recovery owner and promotion decision",
-        "production PostgreSQL backup schedule, encrypted independent retention and WAL/PITR configuration",
-        "production object-store TLS, restore-only credential separation and provider durability evidence",
-        "approved and measured RPO/RTO and backup freshness monitoring",
-        "production deletion, expired/revoked-session, replay and lease non-resurrection verification after restore",
-        "restore promotion rehearsal and independent security/privacy review",
         "production-shaped correlated PostgreSQL/object recovery with temporal recovery-point skew measurement, an approved skew bound and independent review"
       ],
       "evidenceRefs": [
