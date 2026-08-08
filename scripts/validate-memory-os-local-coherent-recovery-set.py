@@ -22,6 +22,7 @@ EXPECTED_REFS = {
     "scripts/run-memory-os-local-coherent-recovery-set.py",
     "scripts/validate-memory-os-local-coherent-recovery-set.py",
     ".github/workflows/local-coherent-recovery-set.yml",
+    "docs/fixtures/memory-os-operability/local-coherent-recovery-set-results.sample.v1.json",
 }
 
 
@@ -156,6 +157,8 @@ def main() -> int:
     require(isinstance(readiness, dict), "readiness missing")
     for key in ("contractDefined", "runnerImplemented", "validatorImplemented", "automaticWorkflowImplemented"):
         require(readiness.get(key) is True, f"readiness foundation false: {key}")
+    for key in ("exactSourcePassResultCommitted", "deliberateSkewRejected", "coherentLocalRecoverySetBindingProven"):
+        require(readiness.get(key) is RESULT_PATH.is_file(), f"readiness/result drift: {key}")
     for key in ("productionEquivalentRestoreEvidence", "productionReady"):
         require(readiness.get(key) is False, f"local coherence cannot promote {key}")
 
@@ -174,6 +177,8 @@ def main() -> int:
     print("Memory OS local coherent recovery-set validation PASS")
     print(f"canonical migrations: {migration_count}")
     print(f"result present: {RESULT_PATH.is_file()}")
+    print(f"coherent local recovery-set binding proven: {RESULT_PATH.is_file()}")
+    print("temporal recovery-point skew measured: false")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
