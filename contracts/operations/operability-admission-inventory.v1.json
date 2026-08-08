@@ -87,7 +87,7 @@
       "nextGate": "local repeated 60-minute soak and descriptive trend review are complete; next require independent leak/stability criteria plus generation-bound production-equivalent capacity, dependency and host-failure evidence",
       "status": "PARTIAL",
       "blocking": true,
-      "missingEvidenceCount": 6,
+      "missingEvidenceCount": 8,
       "productionEvidence": false,
       "productionReady": false
     },
@@ -106,7 +106,7 @@
       "nextGate": "explicitly approve RPO/RTO/object-database skew without defaults, register a reviewed production-equivalent environment generation, then admit generation-bound PITR, independent object retention and isolated restore evidence whose measured objectives pass current targets plus non-resurrection review",
       "status": "PARTIAL_FOUNDATIONS_ONLY",
       "blocking": true,
-      "missingEvidenceCount": 6,
+      "missingEvidenceCount": 9,
       "productionEvidence": false,
       "productionReady": false
     },
@@ -125,7 +125,7 @@
       "nextGate": "approve two release baselines and their rolling/rollback compatibility pair, then admit an immutable client baseline and reviewed retained parser artifact before production release compatibility; candidate/local execution remains separate non-release evidence",
       "status": "PARTIAL",
       "blocking": true,
-      "missingEvidenceCount": 10,
+      "missingEvidenceCount": 15,
       "productionEvidence": false,
       "productionReady": false
     },
@@ -142,7 +142,7 @@
       "nextGate": "generation-bound multi-instance, object-store, PostgreSQL failover and parser durable-spool restart drills; mixed-version failure evidence additionally requires an approved release pair",
       "status": "PARTIAL",
       "blocking": true,
-      "missingEvidenceCount": 8,
+      "missingEvidenceCount": 12,
       "productionEvidence": false,
       "productionReady": false
     }
