@@ -9,6 +9,7 @@
   "generationBindingContract": "contracts/operations/backup-restore-generation-binding-contract.v1.json",
   "writer": "scripts/register-memory-os-backup-restore-generation-evidence.py",
   "validator": "scripts/validate-memory-os-backup-restore-generation-evidence.py",
+  "negativeAdmissionValidator": "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py",
   "reconcile": "scripts/reconcile-memory-os-backup-restore-generation-evidence.py",
   "workflow": ".github/workflows/backup-restore-generation-evidence.yml",
   "requiredRecordFields": [
@@ -75,6 +76,20 @@
     "mutableLatestAliasForbidden": true,
     "rawUrlsSecretsTokensAccountAndSessionIdentifiersForbidden": true
   },
+  "negativeAdmissionCases": [
+    "no registered production-equivalent generation",
+    "security and operability review reuse",
+    "missing review evidence path",
+    "cross-generation restore without material-delta review",
+    "unregistered restore target generation",
+    "generation manifest digest mismatch",
+    "restored artifact differs from exact backup artifact",
+    "historical approved recovery objective cannot become current candidate",
+    "measured RPO exceeding approved target cannot become candidate",
+    "HIGH or CRITICAL unresolved finding",
+    "mutable latest alias",
+    "production evidence relabel"
+  ],
   "promotionBoundary": {
     "productionEquivalentRecoveryCandidateMayBeDerivedFromCompleteReviewedRecord": true,
     "productionEvidenceMayBeDerived": false,
@@ -96,6 +111,7 @@
     "registryDefined": true,
     "writerImplemented": true,
     "validatorImplemented": true,
+    "negativeAdmissionSuiteImplemented": true,
     "reconcileImplemented": true,
     "automaticWorkflowImplemented": true,
     "environmentGenerationAvailable": false,
