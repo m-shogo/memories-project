@@ -10,8 +10,10 @@ on:
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
       - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
+      - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-generation-negative.py"
       - "scripts/reconcile-memory-os-production-equivalent-generation-status.py"
   workflow_dispatch:
 
@@ -25,7 +27,7 @@ concurrency:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,27 +36,85 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Validate immutable generation binding
+      - name: Validate immutable semantic generation binding
+        id: validation
         run: |
-          set -euo pipefail
+          set +e
+          log=/tmp/production-equivalent-environment-generation.log
+          : > "$log"
+          code=0
           python -m py_compile \
+            scripts/validate-memory-os-production-equivalent-environment-record.py \
             scripts/register-memory-os-production-equivalent-environment-generation.py \
             scripts/validate-memory-os-production-equivalent-environment-generation.py \
-            scripts/reconcile-memory-os-production-equivalent-generation-status.py
-          python scripts/reconcile-memory-os-production-equivalent-generation-status.py
-          python scripts/validate-memory-os-production-equivalent-environment-generation.py
-          python scripts/validate-memory-os-operability.py
+            scripts/validate-memory-os-production-equivalent-environment-generation-negative.py \
+            scripts/reconcile-memory-os-production-equivalent-generation-status.py \
+            >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-production-equivalent-generation-status.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-equivalent-environment-generation.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?; fi
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          cat "$log"
+          exit 0
       - name: Commit bounded generation authority
+        if: steps.validation.outputs.exit_code == '0'
         run: |
           set -euo pipefail
+          git rm -f docs/fixtures/memory-os-operability/production-equivalent-environment-generation-diagnostic.last.json 2>/dev/null || true
           git add \
             contracts/operations/production-equivalent-environment-generation-contract.v1.json \
             contracts/operations/production-operability-status.json
+          git add -u docs/fixtures/memory-os-operability/production-equivalent-environment-generation-diagnostic.last.json 2>/dev/null || true
           if ! git diff --cached --quiet; then
             git diff --cached --check
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(load): reconcile environment generation authority"
-            git pull --rebase origin so
-            git push origin HEAD:so
+            for attempt in 1 2 3 4; do
+              git pull --rebase origin so
+              if git push origin HEAD:so; then exit 0; fi
+              sleep 2
+            done
+            exit 1
           fi
+      - name: Record privacy-safe generation diagnostic
+        if: steps.validation.outputs.exit_code != '0'
+        env:
+          VALIDATION_EXIT_CODE: ${{ steps.validation.outputs.exit_code }}
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          git reset --hard origin/so
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          text = Path('/tmp/production-equivalent-environment-generation.log').read_text(encoding='utf-8', errors='replace')
+          value = {
+              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'workflow': 'production-equivalent-environment-generation',
+              'result': 'FAIL',
+              'exitCode': int(os.environ['VALIDATION_EXIT_CODE']),
+              'output': text[-12000:],
+              'containsSecrets': False,
+              'generationCreated': False,
+              'preflightEligibilityFabricated': False,
+              'productionEvidence': False,
+              'productionReady': False,
+          }
+          path = Path('docs/fixtures/memory-os-operability/production-equivalent-environment-generation-diagnostic.last.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          PY
+          git add docs/fixtures/memory-os-operability/production-equivalent-environment-generation-diagnostic.last.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --cached --quiet; then
+            git commit -m "test(ops): record environment generation admission diagnostic"
+            for attempt in 1 2 3; do
+              git pull --rebase origin so
+              if git push origin HEAD:so; then exit 0; fi
+              sleep 2
+            done
+          fi
+      - name: Enforce environment generation admission
+        run: test "${{ steps.validation.outputs.exit_code }}" = "0"
