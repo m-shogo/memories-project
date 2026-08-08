@@ -5,7 +5,8 @@ Individual evidence workflows may complete in any order. This reconciler is the
 single convergence point: older workflows cannot permanently re-add coarse gaps
 that newer exact-source results have closed. It remains conservative when only a
 legacy database result exists and upgrades to same-spool resume only after that
-new result is committed.
+new result is committed. Completed in-flight cancellation, parser restart-matrix
+and process-group reaping foundations must never be reintroduced as open gaps.
 """
 
 from __future__ import annotations
@@ -45,19 +46,22 @@ COARSE_GAPS = (
     "object-store outage drill",
     "database loss or failover drill",
     "expanded parser restart matrix across timeout, CPU, memory, cancellation, process-group and host-restart failures",
+    "in-flight parser cancellation latency and process-group termination proof while the worker is blocked",
+    "independent child-process orphan/reaping scan after parser process-group termination",
+    "mixed-version failure drill",
 )
 DIRECT_RESUME_GAP = "direct commit resume from the preserved sealed spool without re-fetching and re-parsing the source"
 CANONICAL_GAPS = (
-    "mixed-version failure drill",
     "production multi-instance interruption, dependency and recovery drills with independent review",
     "production-shaped object-store process outage or network-partition drill with TLS, scoped credentials, lifecycle controls and recovery verification",
     "production-shaped PostgreSQL process loss, connection-pool disruption and replication failover drill",
     "database recovery verification for expired sessions, deleted accounts, leases and duplicate effects under failover",
-    "in-flight parser cancellation latency and process-group termination proof while the worker is blocked",
-    "independent child-process orphan/reaping scan after parser process-group termination",
     "parser host or container restart recovery using a reviewed production artifact",
 )
 HOST_RESUME_GAP = "host or container restart between spool seal and ResumeCommit with durable spool remount verification"
+APPROVED_MIXED_VERSION_GAP = (
+    "approved predecessor/current production-shaped mixed-version failure and rollback drill with release-authority binding, connection drain, rollback timing, dependency recovery and independent review"
+)
 
 OBJECT_REFS = (
     "contracts/operations/chaos-failure-drill-contract.v2.json",
@@ -106,7 +110,7 @@ def load(path: Path) -> dict[str, Any]:
         raise ReconcileFailure(f"missing file: {path.relative_to(ROOT)}") from exc
     except json.JSONDecodeError as exc:
         raise ReconcileFailure(f"invalid JSON in {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be an object: {path.relative_to(ROOT)}")
+    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
     return value
 
 
@@ -231,6 +235,7 @@ def normalized_status(status: dict[str, Any]) -> dict[str, Any]:
     append_all(existing, OBJECT_EVIDENCE)
     append_all(existing, PARSER_EVIDENCE)
     append_all(missing, CANONICAL_GAPS)
+    append_all(missing, (APPROVED_MIXED_VERSION_GAP,))
 
     remove_all(existing, DATABASE_LEGACY_EVIDENCE + DATABASE_RESUME_EVIDENCE)
     if modern_database:
@@ -249,6 +254,9 @@ def normalized_status(status: dict[str, Any]) -> dict[str, Any]:
     gate["existingEvidence"] = unique(existing)
     gate["missingEvidence"] = unique(missing)
     gate["evidenceRefs"] = unique(refs)
+    for stale in COARSE_GAPS:
+        require(stale not in gate["missingEvidence"],
+                f"completed/coarse chaos gap remained stale: {stale}")
     require(gate.get("status") == "PARTIAL", "OPS-P0-009 readiness changed unexpectedly")
     require(status.get("productionDecision") == "NO_GO",
             "production decision changed unexpectedly")
@@ -281,7 +289,7 @@ def main() -> int:
         json.dumps(candidate, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
-    print("Normalized OPS-P0-009 across object, parser and database evidence generations")
+    print("Normalized OPS-P0-009 across object, parser, database and completed parser-control evidence")
     return 0
 
 
