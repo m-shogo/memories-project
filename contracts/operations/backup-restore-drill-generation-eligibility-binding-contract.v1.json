@@ -1,0 +1,35 @@
+{
+  "contractId": "memory-os.operability.backup-restore-drill-generation-eligibility-binding.v1",
+  "schemaVersion": "memory-os-backup-restore-drill-generation-eligibility-binding-contract.v1",
+  "description": "Fail-closed binding authority proving that new and currently executable backup/restore drill requests can reference only unsuperseded, semantically validated, restore-preflight-eligible environment generations. Historical requests remain auditable after a generation becomes superseded or ineligible, but cannot remain currently executable.",
+  "drillRequestContract": "contracts/operations/backup-restore-drill-request-contract.v1.json",
+  "drillRequestRegistry": "contracts/operations/backup-restore-drill-request-registry.v1.json",
+  "drillRequestWriter": "scripts/request-memory-os-backup-restore-drill.py",
+  "drillRequestNegativeValidator": "scripts/validate-memory-os-backup-restore-drill-request-negative.py",
+  "generationEligibilityContract": "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json",
+  "generationEligibilityHelper": "scripts/memory_os_environment_generation_eligibility.py",
+  "validator": "scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding.py",
+  "workflow": ".github/workflows/backup-restore-drill-generation-eligibility-binding.yml",
+  "rules": {
+    "newRequestSourceGenerationMustBeSemanticallyEligible": true,
+    "newRequestTargetGenerationMustBeSemanticallyEligible": true,
+    "newRequestSourceGenerationMustBeUnsuperseded": true,
+    "newRequestTargetGenerationMustBeUnsuperseded": true,
+    "newRequestSourceAndTargetEnvironmentMustDiffer": true,
+    "currentExecutableRequestMustRevalidateGenerationEligibility": true,
+    "historicalRequestMayRemainAuditableAfterGenerationLosesEligibility": true,
+    "historicalRequestMayNotRemainCurrentExecutableAfterGenerationLosesEligibility": true,
+    "generationRegistrationAloneIsInsufficient": true,
+    "productionEvidenceForbidden": true,
+    "productionReadyForbidden": true
+  },
+  "currentBoundary": {
+    "eligibleDirectedRestorePairCount": 0,
+    "reviewedDrillRequestCount": 0,
+    "currentExecutableDrillRequestCount": 0,
+    "historicalAuditableRequestCount": 0,
+    "productionEvidence": false,
+    "productionReady": false,
+    "productionDecision": "NO_GO"
+  }
+}
