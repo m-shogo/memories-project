@@ -17,6 +17,8 @@ CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contr
 REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 OBJECTIVES_REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
+NON_RESURRECTION_CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
+NON_RESURRECTION_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
 LOCK = ROOT / "contracts/operations/.backup-restore-generation-evidence.lock"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
@@ -95,7 +97,8 @@ def measurements_meet_objective(record: dict[str, Any], objective: dict[str, Any
     )
 
 
-def candidate(record: dict[str, Any]) -> bool:
+def base_candidate(record: dict[str, Any]) -> bool:
+    """Return whether generation evidence satisfies every pre-overlay candidate gate."""
     objective = objective_for_record(record)
     objectives_registry = load(OBJECTIVES_REGISTRY)
     current_objective_id = objectives_registry.get("currentObjectiveId")
@@ -118,12 +121,66 @@ def candidate(record: dict[str, Any]) -> bool:
     )
 
 
+def typed_non_resurrection_covered(evidence_id: Any) -> bool:
+    """Fail closed unless one complete typed overlay covers this generation record."""
+    if not isinstance(evidence_id, str) or not evidence_id:
+        return False
+    try:
+        contract = load(NON_RESURRECTION_CONTRACT)
+        registry = load(NON_RESURRECTION_REGISTRY)
+    except Fail:
+        return False
+    required_domains = contract.get("requiredDomains")
+    if not isinstance(required_domains, list) or len(required_domains) != 8 or len(required_domains) != len(set(required_domains)):
+        return False
+    if registry.get("schemaVersion") != "memory-os-backup-restore-non-resurrection-admission-registry.v1":
+        return False
+    if registry.get("appendOnly") is not True or registry.get("productionEvidence") is not False or registry.get("productionReady") is not False:
+        return False
+    rows = registry.get("records")
+    if not isinstance(rows, list):
+        return False
+    matches = [row for row in rows if isinstance(row, dict) and row.get("generationEvidenceId") == evidence_id]
+    if len(matches) != 1:
+        return False
+    row = matches[0]
+    if row.get("evidenceComplete") is not True:
+        return False
+    for field in ("productionTraffic", "productionCredentials", "productionEvidence", "productionReady"):
+        if row.get(field) is not False:
+            return False
+    if row.get("unresolvedFindings") != []:
+        return False
+    security = row.get("securityReviewRef")
+    operability = row.get("operabilityReviewRef")
+    if not isinstance(security, str) or not isinstance(operability, str) or security == operability:
+        return False
+    domains = row.get("domains")
+    if not isinstance(domains, dict) or set(domains) != set(required_domains):
+        return False
+    for name in required_domains:
+        entry = domains.get(name)
+        if not isinstance(entry, dict) or set(entry) != {"result", "evidenceRef"}:
+            return False
+        if entry.get("result") != "PASS" or not isinstance(entry.get("evidenceRef"), str):
+            return False
+    return True
+
+
+def candidate(record: dict[str, Any]) -> bool:
+    """Final production-equivalent recovery candidate predicate."""
+    return base_candidate(record) and typed_non_resurrection_covered(record.get("evidenceId"))
+
+
 def validate_record(record: dict[str, Any]) -> None:
     contract = load(CONTRACT)
     required = set(contract.get("requiredRecordFields", []))
     require(set(record) == required, f"record field set drift: {sorted(set(record) ^ required)}")
     require(record.get("schemaVersion") == contract.get("recordSchemaVersion"), "record schemaVersion drift")
     require(contract.get("recoveryObjectivesRegistry") == str(OBJECTIVES_REGISTRY.relative_to(ROOT)), "recoveryObjectivesRegistry ref drift")
+    require(contract.get("typedNonResurrectionAdmissionContract") == str(NON_RESURRECTION_CONTRACT.relative_to(ROOT)), "typed non-resurrection contract ref drift")
+    require(contract.get("typedNonResurrectionAdmissionRegistry") == str(NON_RESURRECTION_REGISTRY.relative_to(ROOT)), "typed non-resurrection registry ref drift")
+    require(NON_RESURRECTION_CONTRACT.is_file() and NON_RESURRECTION_REGISTRY.is_file(), "typed non-resurrection admission foundation missing")
     require(isinstance(record.get("evidenceId"), str) and EVIDENCE_ID.fullmatch(record["evidenceId"]), "evidenceId invalid")
     source_commit = record.get("sourceCommitSha")
     require(isinstance(source_commit, str) and SHA40.fullmatch(source_commit), "sourceCommitSha invalid")
@@ -135,7 +192,7 @@ def validate_record(record: dict[str, Any]) -> None:
     source_generation = generation_by_id(generations, record.get("sourceEnvironmentGenerationId"), "sourceEnvironmentGenerationId")
     target_generation = generation_by_id(generations, record.get("restoreTargetGenerationId"), "restoreTargetGenerationId")
     require(record.get("sourceEnvironmentManifestSha256") == source_generation.get("environmentManifestSha256"), "source environment manifest digest mismatch")
-    require(record.get("restoreTargetManifestSha256") == target_generation.get("environmentManifestSha256"), "restore target manifest digest mismatch")
+    require(record.get("restoreTargetManifestSha256") == target_generation.get("environmentManifestSha256"), "restore target environment manifest digest mismatch")
     require(source_commit == target_generation.get("sourceCommitSha"), "sourceCommitSha must match restore target generation source commit")
 
     for field in (
@@ -233,9 +290,10 @@ def main() -> int:
         registry["productionReady"] = False
         registry["limitations"] = [
             "generation-bound recovery evidence remains non-production evidence",
+            "a generation record can satisfy all pre-overlay recovery controls without becoming a production-equivalent recovery candidate until complete typed non-resurrection evidence is separately registered",
             "historical evidence remains valid against the approved objective ID recorded at execution time, but only evidence bound to the current objective ID can become a current production-equivalent recovery candidate",
             "failed RPO/RTO/object-database-skew measurements remain admissible evidence but cannot become production-equivalent recovery candidates",
-            "production-equivalent recovery candidates require current approved recovery objectives, all fail-closed controls and independent reviews",
+            "production-equivalent recovery candidates require current approved recovery objectives, all fail-closed controls, complete typed non-resurrection coverage and independent reviews",
             "this registry never establishes application production readiness"
         ]
         atomic_write(registry)
@@ -247,6 +305,8 @@ def main() -> int:
             pass
 
     print(f"Registered generation-bound backup/restore evidence: {record['evidenceId']}")
+    print(f"pre-overlay recovery gates complete: {str(base_candidate(record)).lower()}")
+    print(f"typed non-resurrection coverage present: {str(typed_non_resurrection_covered(record['evidenceId'])).lower()}")
     print(f"production-equivalent recovery candidate: {str(candidate(record)).lower()}")
     print("production evidence: false")
     print("application production readiness: false")
