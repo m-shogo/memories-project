@@ -2,7 +2,7 @@
   "contractId": "memory-os.operability.local-logical-restore.v1",
   "schemaVersion": "memory-os-local-logical-restore.v1",
   "resultsSchemaVersion": "memory-os-local-logical-restore-results.v1",
-  "description": "Executable local PostgreSQL logical dump/restore drill. It applies the complete canonical migration sequence to an ephemeral source database, creates and removes synthetic account/session state, performs pg_dump and pg_restore into an isolated database, rechecks FORCE RLS/runtime roles/non-resurrection and executes every SQL integration suite. It is not PITR, production backup, cross-cluster restore or object-store recovery evidence.",
+  "description": "Executable local PostgreSQL logical dump/restore drill. It applies the complete canonical migration sequence to an ephemeral source database, creates deleted plus expired/revoked synthetic session state, performs pg_dump and pg_restore into an isolated database, rechecks FORCE RLS/runtime roles/non-resurrection and executes every SQL integration suite. It is not PITR, production backup, cross-cluster restore or object-store recovery evidence.",
   "sourceMigrationContract": "contracts/operations/migration-lifecycle-contract.v1.json",
   "runner": "scripts/run-memory-os-local-logical-restore.sh",
   "validator": "scripts/validate-memory-os-local-logical-restore.py",
@@ -18,12 +18,15 @@
       "create clean source and restore databases",
       "apply complete canonical migration sequence to source",
       "create then fully remove synthetic account and session state",
-      "create custom-format logical dump after deletion",
+      "create synthetic expired active session and revoked unexpired session state",
+      "create custom-format logical dump after deletion and session-state setup",
       "restore dump into separate empty database",
       "verify canonical schema and migration-owned runtime roles",
       "verify FORCE RLS remains enabled",
       "verify deleted synthetic account and token digest remain absent",
       "verify missing token cannot resolve through memory_auth_runtime",
+      "verify expired and revoked synthetic session rows retain their states after restore",
+      "verify expired and revoked token digests cannot resolve through memory_auth_runtime",
       "execute every canonical SQL integration test against restored database",
       "write exact-source machine-readable result"
     ],
@@ -35,6 +38,9 @@
       "at least one tenant table retains FORCE RLS",
       "synthetic deleted account and token digest counts are zero",
       "memory_auth_runtime cannot resolve the deleted token digest",
+      "one synthetic expired active session row remains expired after restore",
+      "one synthetic revoked session row remains revoked after restore",
+      "memory_auth_runtime cannot resolve either expired or revoked token digest",
       "result integrity is PASS"
     ],
     "abortCriteria": [
@@ -42,6 +48,7 @@
       "any migration, dump, restore, assertion or SQL integration test fails",
       "a secret or database URL would be written to evidence",
       "synthetic deleted state appears after restore",
+      "expired or revoked session becomes resolvable after restore",
       "runtime role or FORCE RLS verification fails"
     ]
   },
@@ -53,8 +60,8 @@
     "objectStoreRestoreEvidence": false,
     "rpoMeasured": false,
     "rtoMeasured": false,
-    "deletionNonResurrectionScope": "synthetic account_control row and account_session token digest absent at dump time",
-    "note": "A successful local logical restore closes only the clean logical dump/restore blind spot. It does not establish production backup configuration, PITR, independent retention, coherent database/object recovery, approved RPO/RTO or full deletion/session non-resurrection."
+    "deletionNonResurrectionScope": "synthetic account_control row and deleted account_session token digest absent at dump time; separate synthetic expired-active and revoked-unexpired account_session rows retained but non-resolvable after restore",
+    "note": "A successful local logical restore closes only the clean logical dump/restore plus synthetic deleted/expired/revoked-session non-resurrection blind spots. It does not establish production backup configuration, PITR, independent retention, coherent database/object recovery, approved RPO/RTO or production deletion/session non-resurrection."
   },
   "privacy": {
     "syntheticDataOnly": true,
@@ -70,6 +77,7 @@
     "validatorImplemented": true,
     "automaticWorkflowImplemented": true,
     "exactSourcePassResultTrackedInStatus": true,
+    "expiredRevokedSessionChecksImplemented": true,
     "productionBackupConfigured": false,
     "pitrConfigured": false,
     "independentObjectRetentionConfigured": false,
