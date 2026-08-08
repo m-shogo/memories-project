@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "memory-os-backup-restore-non-resurrection-admission-registry.v1",
+  "appendOnly": true,
+  "registeredRecordCount": 0,
+  "completeRecordCount": 0,
+  "candidateCoveredCount": 0,
+  "records": [],
+  "productionEvidence": false,
+  "productionReady": false,
+  "limitations": [
+    "a generic nonResurrectionVerification PASS claim in generation recovery evidence is insufficient for production-equivalent admission",
+    "typed coverage requires every required non-resurrection domain and existing repository evidence references",
+    "local PostgreSQL or MinIO restore evidence cannot be relabeled as production-equivalent typed evidence",
+    "this registry never establishes production evidence or application production readiness"
+  ]
+}
