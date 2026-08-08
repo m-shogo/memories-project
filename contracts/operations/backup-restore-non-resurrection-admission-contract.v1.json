@@ -2,7 +2,7 @@
   "contractId": "memory-os.operability.backup-restore-non-resurrection-admission.v1",
   "schemaVersion": "memory-os-backup-restore-non-resurrection-admission.v1",
   "recordSchemaVersion": "memory-os-backup-restore-non-resurrection-record.v1",
-  "description": "Typed fail-closed overlay for generation-bound backup/restore admission. A generic nonResurrectionVerification=PASS claim is insufficient: every production-equivalent recovery candidate must bind distinct evidence for deleted-account/session absence, expired and revoked session terminal semantics, Apple nonce/code replay rejection, deletion-lease continuity and idempotent restore effects. This overlay can cover a production-equivalent recovery candidate but cannot derive production evidence or application production readiness.",
+  "description": "Typed fail-closed overlay for generation-bound backup/restore admission. A generic nonResurrectionVerification=PASS claim is insufficient: every final production-equivalent recovery candidate must bind distinct evidence for deleted-account/session absence, expired and revoked session terminal semantics, Apple nonce/code replay rejection, deletion-lease continuity and idempotent restore effects. A generation record may satisfy all pre-overlay gates while remaining a non-candidate pending typed coverage. This overlay cannot derive production evidence or application production readiness.",
   "registry": "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json",
   "generationEvidenceRegistry": "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
   "writer": "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py",
@@ -52,8 +52,9 @@
   },
   "candidateCoverageRule": {
     "genericNonResurrectionPassAloneIsInsufficient": true,
+    "preOverlayEligibleRecordMayRemainPendingWithoutBecomingCandidate": true,
     "everyProductionEquivalentRecoveryCandidateRequiresOneCompleteTypedRecord": true,
-    "typedRecordWithoutGenerationCandidateDoesNotCreateCandidate": true,
+    "typedRecordWithoutPreOverlayEligibilityDoesNotCreateCandidate": true,
     "productionPromotionStillRequiresSeparateHumanDecision": true
   },
   "localFoundationEvidence": {
@@ -74,14 +75,14 @@
     "duplicate generation coverage",
     "production evidence relabel",
     "mutable latest alias",
-    "generic generation candidate without typed overlay coverage"
+    "generic generation record passing pre-overlay gates without typed overlay remains non-candidate"
   ],
   "currentBoundary": {
     "registeredTypedRecordCount": 0,
     "completeTypedRecordCount": 0,
     "productionEquivalentRecoveryCandidateCount": 0,
     "candidateCoveredCount": 0,
-    "uncoveredCandidateCount": 0,
+    "preOverlayEligiblePendingTypedCoverageCount": 0,
     "productionEquivalentNonResurrectionEvidence": false,
     "productionEvidence": false,
     "productionReady": false,
