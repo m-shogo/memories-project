@@ -17,6 +17,10 @@ CONTRACT = ROOT / "contracts/operations/recovery-objectives-admission-contract.v
 REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
 LOCK = ROOT / "contracts/operations/.recovery-objectives.lock"
 OBJECTIVE_ID = re.compile(r"^ro_[a-z0-9][a-z0-9_-]{7,63}$")
+PLACEHOLDER_METHODS = {
+    "tbd", "todo", "unknown", "default", "n/a", "na", "later", "pending",
+    "none", "not defined", "not_defined",
+}
 
 
 class Fail(RuntimeError):
@@ -34,13 +38,26 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def repo_ref(value: Any, field: str) -> str:
+    require(isinstance(value, str) and value and not Path(value).is_absolute(), f"{field} invalid")
+    path = Path(value)
+    require(".." not in path.parts, f"{field} invalid")
+    require((ROOT / path).is_file(), f"{field} evidence missing: {value}")
+    return value
+
+
 def evidence_refs(value: Any) -> list[str]:
     require(isinstance(value, list) and len(value) >= 2, "at least two approvalEvidenceRefs required")
     require(len(value) == len(set(value)), "approvalEvidenceRefs must be distinct")
-    for ref in value:
-        require(isinstance(ref, str) and ref and not Path(ref).is_absolute() and ".." not in Path(ref).parts, "approvalEvidenceRefs invalid")
-        require((ROOT / ref).is_file(), f"approval evidence missing: {ref}")
-    return value
+    return [repo_ref(ref, "approvalEvidenceRefs") for ref in value]
+
+
+def measurement_method(value: Any, field: str) -> str:
+    require(isinstance(value, str), f"{field} invalid")
+    normalized = " ".join(value.strip().split())
+    require(1 <= len(normalized) <= 240, f"{field} invalid")
+    require(normalized.casefold() not in PLACEHOLDER_METHODS, f"{field} cannot be placeholder text")
+    return normalized
 
 
 def validate_record(record: dict[str, Any]) -> None:
@@ -56,21 +73,29 @@ def validate_record(record: dict[str, Any]) -> None:
         require(isinstance(value, int) and not isinstance(value, bool) and value > 0, f"{field} must be positive integer")
     skew = record.get("maximumObjectDatabaseSkewSeconds")
     require(isinstance(skew, int) and not isinstance(skew, bool) and skew >= 0, "maximumObjectDatabaseSkewSeconds invalid")
-    for field in ("rpoMeasurementMethod", "rtoMeasurementMethod", "skewMeasurementMethod", "ownerRef"):
-        value = record.get(field)
-        require(isinstance(value, str) and 1 <= len(value) <= 240, f"{field} invalid")
-    evidence_refs(record.get("approvalEvidenceRefs"))
+
+    for field in ("rpoMeasurementMethod", "rtoMeasurementMethod", "skewMeasurementMethod"):
+        measurement_method(record.get(field), field)
+    owner_ref = repo_ref(record.get("ownerRef"), "ownerRef")
+    approvals = evidence_refs(record.get("approvalEvidenceRefs"))
+    require(owner_ref not in approvals, "ownerRef must be distinct from approvalEvidenceRefs")
+
     approved_at = record.get("approvedAt")
-    require(isinstance(approved_at, str), "approvedAt required")
+    require(isinstance(approved_at, str) and approved_at.endswith("Z"), "approvedAt must be UTC RFC3339 ending in Z")
     try:
-        datetime.fromisoformat(approved_at.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(approved_at[:-1] + "+00:00")
     except ValueError as exc:
-        raise Fail("approvedAt must be ISO-8601 date-time") from exc
+        raise Fail("approvedAt must be UTC RFC3339 date-time") from exc
+    require(parsed.utcoffset() is not None and parsed.utcoffset().total_seconds() == 0, "approvedAt must be UTC")
+
     supersedes = record.get("supersedesObjectiveId")
     require(supersedes is None or (isinstance(supersedes, str) and OBJECTIVE_ID.fullmatch(supersedes)), "supersedesObjectiveId invalid")
     require(record.get("productionEvidence") is False and record.get("productionReady") is False, "objective approval cannot promote production")
     serialized = json.dumps(record, ensure_ascii=False).lower()
-    for forbidden in ("http://", "https://", "password", "private_key", "access_key", "authorization: bearer", "account_id", "session_id", "@"):
+    for forbidden in (
+        "http://", "https://", "password", "private_key", "access_key", "authorization: bearer",
+        "account_id", "session_id", "@", "latest",
+    ):
         require(forbidden not in serialized, f"record contains forbidden material: {forbidden}")
 
 
@@ -123,6 +148,8 @@ def main() -> int:
         registry["productionReady"] = False
         registry["limitations"] = [
             "approved objectives are policy targets, not restore evidence",
+            "objective values are supplied by reviewed human authority and are never chosen or defaulted by this writer",
+            "measurement methods must be concrete non-placeholder descriptions and approval/owner evidence must resolve to distinct repository artifacts",
             "measured recovery evidence must reference the exact current objectiveId",
             "objective approval does not establish production readiness"
         ]
@@ -134,6 +161,7 @@ def main() -> int:
         except FileNotFoundError:
             pass
     print(f"Registered recovery objectives: {record['objectiveId']}")
+    print("Objective values chosen by writer: false")
     print("Production evidence: false")
     print("Production readiness: false")
     return 0
