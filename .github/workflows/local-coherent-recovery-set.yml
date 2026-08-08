@@ -1,0 +1,165 @@
+name: Local Coherent Recovery-Set Drill
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/local-coherent-recovery-set.yml"
+      - "contracts/operations/local-coherent-recovery-set-contract.v1.json"
+      - "contracts/operations/migration-lifecycle-contract.v1.json"
+      - "infra/postgresql/security/**"
+      - "scripts/run-memory-os-local-coherent-recovery-set.py"
+      - "scripts/validate-memory-os-local-coherent-recovery-set.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: local-coherent-recovery-set-so
+  cancel-in-progress: false
+
+jobs:
+  coherent-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      MEMORY_OS_ALLOW_EPHEMERAL_DATABASE_DROP: "1"
+      MEMORY_OS_TEST_S3_ENDPOINT: http://127.0.0.1:9000
+      MEMORY_OS_TEST_S3_ACCESS_KEY: minioadmin
+      MEMORY_OS_TEST_S3_SECRET_KEY: minioadmin
+      MEMORY_OS_ALLOW_EPHEMERAL_OBJECT_DELETE: "1"
+      MEMORY_OS_LOCAL_COHERENT_RECOVERY_RESULTS_PATH: ${{ github.workspace }}/docs/fixtures/memory-os-operability/local-coherent-recovery-set-results.sample.v1.json
+    steps:
+      - name: Checkout latest so
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install drill dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+          python -m pip install --disable-pip-version-check 'boto3>=1.34,<2'
+
+      - name: Capture exact source state
+        run: |
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Start local MinIO harness
+        run: |
+          docker run -d --name memory-os-coherent-recovery-minio \
+            -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio server /data
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --show-error http://127.0.0.1:9000/minio/health/live >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs memory-os-coherent-recovery-minio
+          exit 1
+
+      - name: Validate static coherent recovery contract
+        run: |
+          python -m py_compile \
+            scripts/run-memory-os-local-coherent-recovery-set.py \
+            scripts/validate-memory-os-local-coherent-recovery-set.py
+          python scripts/validate-memory-os-local-coherent-recovery-set.py
+
+      - name: Execute coherent recovery drill
+        id: drill
+        env:
+          MEMORY_OS_COMMIT_SHA: ${{ env.SOURCE_SHA }}
+        run: |
+          set +e
+          python scripts/run-memory-os-local-coherent-recovery-set.py > /tmp/local-coherent-recovery.log 2>&1
+          code=$?
+          set -e
+          DRILL_EXIT_CODE="$code" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          output = Path('/tmp/local-coherent-recovery.log').read_text(encoding='utf-8', errors='replace')[-4000:]
+          diagnostic = {
+              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'workflow': 'local-coherent-recovery-set',
+              'sourceCommitSha': os.environ['SOURCE_SHA'],
+              'result': 'PASS' if os.environ['DRILL_EXIT_CODE'] == '0' else 'FAIL',
+              'exitCode': int(os.environ['DRILL_EXIT_CODE']),
+              'output': output,
+              'containsSecrets': False,
+              'productionEvidence': False,
+          }
+          path = Path('docs/fixtures/memory-os-operability/local-coherent-recovery-set-diagnostic.last.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(diagnostic, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+          PY
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+
+      - name: Validate exact-source coherent recovery result
+        id: validation
+        if: steps.drill.outputs.exit_code == '0'
+        env:
+          EXPECTED_COMMIT_SHA: ${{ env.SOURCE_SHA }}
+        run: |
+          set +e
+          python scripts/validate-memory-os-local-coherent-recovery-set.py > /tmp/local-coherent-recovery-validation.log 2>&1
+          code=$?
+          set -e
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          cat /tmp/local-coherent-recovery-validation.log
+
+      - name: Commit result or bounded diagnostic
+        run: |
+          git add docs/fixtures/memory-os-operability/local-coherent-recovery-set-diagnostic.last.json
+          if [ "${{ steps.drill.outputs.exit_code }}" = "0" ] && \
+             [ "${{ steps.validation.outputs.exit_code }}" = "0" ]; then
+            git add docs/fixtures/memory-os-operability/local-coherent-recovery-set-results.sample.v1.json
+          fi
+          if git diff --cached --quiet; then
+            echo "Coherent recovery evidence is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            if [ "${{ steps.drill.outputs.exit_code }}" = "0" ] && \
+               [ "${{ steps.validation.outputs.exit_code }}" = "0" ]; then
+              git commit -m "test(backup): record coherent local recovery-set evidence"
+            else
+              git commit -m "test(backup): record coherent recovery failure diagnostic"
+            fi
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+
+      - name: Fail after preserving diagnostic
+        if: steps.drill.outputs.exit_code != '0' || steps.validation.outputs.exit_code != '0'
+        run: exit 1
