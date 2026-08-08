@@ -752,7 +752,11 @@
         "destructive contract-migration and downgrade compatibility proof with an explicit irreversible rollback boundary",
         "reviewed PostgreSQL support window plus production-shaped blue-green or in-place upgrade rehearsal with connection-pool drain, physical replication, WAL continuity, replication slots, failover and rollback decision evidence",
         "independent review of integrated compatibility controls with zero unresolved Critical or High findings",
-        "full old/current backend mixed-version route, mutation, persisted-state and rollback coverage beyond the proven session/authentication slice"
+        "full old/current backend mixed-version route, mutation, persisted-state and rollback coverage beyond the proven session/authentication slice",
+        "reviewed production parser artifact record with exact bytes, build provenance, Security, Runtime and Release Owner approvals",
+        "exact registered old parser artifact replay test with deterministic accepted/rejected accounting and protocol binding",
+        "independent immutable retention evidence for every parser artifact required by a rollback-eligible approved release",
+        "approved release artifact-set digest binding and retirement proof that no rollback release depends on a deleted artifact"
       ],
       "evidenceRefs": [
         ".github/workflows/security-contracts.yml",
