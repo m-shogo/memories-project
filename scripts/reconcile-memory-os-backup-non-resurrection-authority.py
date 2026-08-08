@@ -65,28 +65,36 @@ def main() -> int:
     generation_rows = generation_registry.get("records")
     require(isinstance(typed_rows, list) and all(isinstance(row, dict) for row in typed_rows), "typed registry rows invalid")
     require(isinstance(generation_rows, list) and all(isinstance(row, dict) for row in generation_rows), "generation recovery rows invalid")
-    candidate_ids = {row.get("evidenceId") for row in generation_rows if generation_writer.candidate(row)}
+
+    base_candidate_ids = {row.get("evidenceId") for row in generation_rows if generation_writer.base_candidate(row)}
     complete_typed_ids = {row.get("generationEvidenceId") for row in typed_rows if row.get("evidenceComplete") is True}
-    covered_ids = candidate_ids & complete_typed_ids
-    uncovered_ids = candidate_ids - complete_typed_ids
-    require(not uncovered_ids, "cannot reconcile: production-equivalent recovery candidate lacks typed non-resurrection coverage")
+    covered_base_ids = base_candidate_ids & complete_typed_ids
+    pending_typed_ids = base_candidate_ids - complete_typed_ids
+    final_candidate_ids = {row.get("evidenceId") for row in generation_rows if generation_writer.candidate(row)}
+    require(None not in base_candidate_ids and None not in final_candidate_ids, "candidate evidenceId missing")
+    require(final_candidate_ids == covered_base_ids, "final candidate derivation bypasses typed non-resurrection coverage")
 
     registry["registeredRecordCount"] = len(typed_rows)
     registry["completeRecordCount"] = sum(1 for row in typed_rows if row.get("evidenceComplete") is True)
-    registry["candidateCoveredCount"] = len(covered_ids)
+    registry["candidateCoveredCount"] = len(covered_base_ids)
     registry["productionEvidence"] = False
     registry["productionReady"] = False
     REGISTRY.write_text(json.dumps(registry, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    generation_registry["productionEquivalentRecoveryCandidateCount"] = len(final_candidate_ids)
+    generation_registry["productionEvidence"] = False
+    generation_registry["productionReady"] = False
+    GEN_REGISTRY.write_text(json.dumps(generation_registry, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     boundary = contract.get("currentBoundary")
     readiness = contract.get("readiness")
     require(isinstance(boundary, dict) and isinstance(readiness, dict), "contract authority state missing")
     boundary["registeredTypedRecordCount"] = len(typed_rows)
     boundary["completeTypedRecordCount"] = registry["completeRecordCount"]
-    boundary["productionEquivalentRecoveryCandidateCount"] = len(candidate_ids)
-    boundary["candidateCoveredCount"] = len(covered_ids)
-    boundary["uncoveredCandidateCount"] = 0
-    boundary["productionEquivalentNonResurrectionEvidence"] = len(candidate_ids) > 0
+    boundary["productionEquivalentRecoveryCandidateCount"] = len(final_candidate_ids)
+    boundary["candidateCoveredCount"] = len(covered_base_ids)
+    boundary["uncoveredCandidateCount"] = len(pending_typed_ids)
+    boundary["productionEquivalentNonResurrectionEvidence"] = len(final_candidate_ids) > 0
     boundary["productionEvidence"] = False
     boundary["productionReady"] = False
     boundary["productionDecision"] = "NO_GO"
@@ -99,10 +107,10 @@ def main() -> int:
     readiness["automaticWorkflowImplemented"] = True
     readiness["localAppleReplayRestoreProven"] = True
     readiness["localCoherentRecoverySetProven"] = True
-    readiness["productionEquivalentCandidateAvailable"] = len(candidate_ids) > 0
-    readiness["productionEquivalentCandidateTypedCoverageComplete"] = len(candidate_ids) > 0
-    readiness["independentReviewCompleted"] = len(candidate_ids) > 0
-    readiness["productionEquivalentNonResurrectionEvidence"] = len(candidate_ids) > 0
+    readiness["productionEquivalentCandidateAvailable"] = len(final_candidate_ids) > 0
+    readiness["productionEquivalentCandidateTypedCoverageComplete"] = len(final_candidate_ids) > 0
+    readiness["independentReviewCompleted"] = len(final_candidate_ids) > 0
+    readiness["productionEquivalentNonResurrectionEvidence"] = len(final_candidate_ids) > 0
     readiness["productionReady"] = False
     CONTRACT.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
@@ -119,7 +127,7 @@ def main() -> int:
     require(isinstance(existing, list) and isinstance(missing, list) and isinstance(refs, list), "OPS-P0-007 authority arrays missing")
     existing[:] = [item for item in existing if not (isinstance(item, str) and item.startswith(EVIDENCE_PREFIX))]
     append_once(existing, LOCAL_APPLE_EVIDENCE)
-    append_once(existing, f"{EVIDENCE_PREFIX} generation recovery candidates={len(candidate_ids)}, typed records={len(typed_rows)}, complete typed records={registry['completeRecordCount']}, covered candidates={len(covered_ids)}, uncovered candidates=0; a generic nonResurrectionVerification PASS is insufficient and every future candidate must separately bind deleted-account/session, expired/revoked-session, Apple nonce/code replay, deletion-lease and idempotent-effect evidence with distinct security/operability review; productionEvidence and productionReady remain false")
+    append_once(existing, f"{EVIDENCE_PREFIX} pre-overlay eligible generation records={len(base_candidate_ids)}, typed records={len(typed_rows)}, complete typed records={registry['completeRecordCount']}, final production-equivalent recovery candidates={len(final_candidate_ids)}, pending typed coverage={len(pending_typed_ids)}; a generic nonResurrectionVerification PASS is insufficient and final candidate derivation requires separate deleted-account/session, expired/revoked-session, Apple nonce/code replay, deletion-lease and idempotent-effect evidence with distinct security/operability review; productionEvidence and productionReady remain false")
     for ref in REFS:
         require((ROOT / ref).is_file(), f"non-resurrection authority evidence ref missing: {ref}")
         append_once(refs, ref)
@@ -129,9 +137,9 @@ def main() -> int:
     STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     print("Memory OS backup/restore typed non-resurrection authority reconciliation PASS")
-    print(f"production-equivalent recovery candidates: {len(candidate_ids)}")
-    print(f"typed coverage records: {len(typed_rows)}")
-    print("uncovered candidates: 0")
+    print(f"pre-overlay eligible generation records: {len(base_candidate_ids)}")
+    print(f"final production-equivalent recovery candidates: {len(final_candidate_ids)}")
+    print(f"pending typed coverage: {len(pending_typed_ids)}")
     print("OPS-P0-007: incomplete")
     print("production evidence: false")
     print("productionDecision: NO_GO")
