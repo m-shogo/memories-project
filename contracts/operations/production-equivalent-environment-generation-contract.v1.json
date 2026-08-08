@@ -1,12 +1,14 @@
 {
   "contractId": "memory-os.operability.production-equivalent-environment-generation.v1",
   "schemaVersion": "memory-os-production-equivalent-environment-generation.v1",
-  "description": "Fail-closed generation-binding authority for future production-equivalent environments. An environment identifier may be reused across rebuilds, but every material rebuild must create a new immutable generation identifier and evidence generated for one generation may never be reused for another.",
+  "description": "Fail-closed generation-binding authority for future production-equivalent environments. An environment identifier may be reused across rebuilds, but every material rebuild must create a new immutable generation identifier and evidence generated for one generation may never be reused for another. Registration preserves append-only environment history; restore-drill preflight eligibility is a stricter derived property requiring full semantic validation, equivalent dependency evidence and independent review.",
   "environmentRecordSchema": "contracts/operations/production-equivalent-environment-record.v1.schema.json",
+  "environmentRecordSemanticValidator": "scripts/validate-memory-os-production-equivalent-environment-record.py",
   "generationRegistryRecordSchema": "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json",
   "registry": "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
   "writer": "scripts/register-memory-os-production-equivalent-environment-generation.py",
   "validator": "scripts/validate-memory-os-production-equivalent-environment-generation.py",
+  "negativeAdmissionValidator": "scripts/validate-memory-os-production-equivalent-environment-generation-negative.py",
   "workflow": ".github/workflows/production-equivalent-environment-generation.yml",
   "bindingRules": {
     "generationIdRequired": true,
@@ -16,6 +18,9 @@
     "sourceCommitShaRequired": true,
     "materialDeltaLedgerSha256Required": true,
     "environmentRecordSha256Required": true,
+    "environmentRecordFullSemanticValidationRequired": true,
+    "allNonNullEnvironmentEvidenceRefsMustResolveInRepository": true,
+    "equivalentEnvironmentRequiresIndependentReviewEvidence": true,
     "restoreEvidenceGenerationMustMatch": true,
     "loadEvidenceGenerationMustMatch": true,
     "failureDrillGenerationMustMatch": true,
@@ -24,7 +29,9 @@
     "mutableLatestAliasForbiddenAsEvidenceKey": true,
     "unknownGenerationFailsClosed": true,
     "appendOnlyRegistrationRequired": true,
-    "supersededGenerationChainRequiredPerEnvironment": true
+    "supersededGenerationChainRequiredPerEnvironment": true,
+    "registrationDoesNotImplyPreflightEligibility": true,
+    "preflightEligibilityRequiresValidatedEquivalentDependenciesAndIndependentReview": true
   },
   "materialChangeRules": {
     "postgresqlVersionOrTopologyChangeCreatesNewGeneration": true,
@@ -45,8 +52,23 @@
     "resultCreatedBeforeGenerationRegistrationRejected": true,
     "supersededGenerationEvidenceMayRemainHistoricalButCannotPromoteCurrentGeneration": true
   },
+  "negativeAdmissionCases": [
+    "environment record missing required nested section",
+    "environment record unknown nested field",
+    "environment record production traffic or credentials enabled",
+    "environment record contains secret material",
+    "productionEquivalentDependencies true with incomplete dependency controls",
+    "productionEquivalentDependencies true with missing evidence ref",
+    "independent review completed without review evidence ref",
+    "accepted material delta without independent review evidence",
+    "mutable generation alias",
+    "environment record digest mismatch",
+    "missing environment record path",
+    "production evidence relabel"
+  ],
   "currentBoundary": {
     "registeredGenerationCount": 0,
+    "preflightEligibleGenerationCount": 0,
     "currentGenerationId": null,
     "environmentProvisioned": false,
     "environmentValidated": false,
@@ -59,10 +81,13 @@
     "contractDefined": true,
     "registryDefined": true,
     "registryRecordSchemaDefined": true,
+    "environmentRecordSemanticValidatorImplemented": true,
     "writerImplemented": true,
     "validatorImplemented": true,
+    "negativeAdmissionSuiteImplemented": true,
     "automaticWorkflowImplemented": true,
     "generationRegistered": false,
+    "preflightEligibleGenerationAvailable": false,
     "generationEvidenceBound": false,
     "independentReviewCompleted": false,
     "productionEquivalentDependencies": false,
@@ -71,7 +96,8 @@
   "limitations": [
     "no production-equivalent environment generation is registered",
     "this contract prevents cross-generation evidence reuse but does not provision infrastructure",
-    "a registered generation and hash match do not by themselves prove environment equivalence or production readiness",
+    "a registered generation and hash match do not by themselves prove environment equivalence or restore-drill preflight eligibility",
+    "preflight eligibility additionally requires a fully validated environment record, production-equivalent dependency controls, repository-resolvable evidence references and independent review evidence",
     "production traffic and production credentials remain outside automatic evidence generation"
   ]
 }
