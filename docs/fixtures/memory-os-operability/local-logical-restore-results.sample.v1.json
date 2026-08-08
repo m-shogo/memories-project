@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-local-logical-restore-results.v1",
-  "commitSha": "73cc9f42c2ade752fcf8accfaae328d8101ad2b1",
-  "generatedAt": "2026-08-06T09:14:44.953779Z",
+  "commitSha": "75168798b44f0a4e824911e595a8dcf306ec0eb1",
+  "generatedAt": "2026-08-08T02:19:06.504415Z",
   "environment": {
     "databaseMode": "EPHEMERAL_POSTGRESQL_16_SAME_CLUSTER_LOGICAL_RESTORE",
     "productionEvidence": false,
@@ -10,18 +10,22 @@
   },
   "scenario": {
     "scenarioId": "postgresql-logical-dump-isolated-restore-smoke",
-    "startedAt": "2026-08-06T09:14:41Z",
-    "completedAt": "2026-08-06T09:14:44Z",
-    "durationSeconds": 3,
+    "startedAt": "2026-08-08T02:19:02Z",
+    "completedAt": "2026-08-08T02:19:06Z",
+    "durationSeconds": 4,
     "migrationFilesApplied": 11,
     "sqlIntegrationTestsExecuted": 11,
-    "dumpBytes": 122965,
+    "dumpBytes": 123170,
     "assertions": {
       "runtimeRolesWithoutBypassRls": 4,
       "forceRlsTables": 14,
       "deletedSyntheticAccountsAfterRestore": 0,
       "deletedSyntheticSessionDigestsAfterRestore": 0,
-      "deletedSyntheticSessionsResolvedAfterRestore": 0
+      "deletedSyntheticSessionsResolvedAfterRestore": 0,
+      "expiredSyntheticSessionRowsAfterRestore": 1,
+      "revokedSyntheticSessionRowsAfterRestore": 1,
+      "expiredSyntheticSessionsResolvedAfterRestore": 0,
+      "revokedSyntheticSessionsResolvedAfterRestore": 0
     },
     "integrityResult": "PASS",
     "result": "PASS"
@@ -31,6 +35,6 @@
     "not PITR or physical backup evidence",
     "not object-store restore evidence",
     "not approved RPO or RTO evidence",
-    "synthetic deletion non-resurrection scope only"
+    "synthetic deletion and expired/revoked session non-resurrection scope only"
   ]
 }
