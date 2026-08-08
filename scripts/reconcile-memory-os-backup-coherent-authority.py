@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Register local coherent DB/object recovery-set evidence without promoting production."""
+"""Register local coherent DB/object recovery-set evidence without duplicating production gaps."""
 
 from __future__ import annotations
 
@@ -31,13 +31,14 @@ REFS = (
     "scripts/reconcile-memory-os-backup-coherent-authority.py",
     ".github/workflows/local-coherent-recovery-set.yml",
 )
-OLD_GAPS = {
+LEGACY_COHERENCE_GAPS = {
     "coherent PostgreSQL and exact object-version recovery-point selection with measured skew",
     "coherent PostgreSQL and object-version recovery-point selection",
     "coherent PostgreSQL and exact object-version restore with measured skew",
+    "production-shaped correlated PostgreSQL/object recovery with temporal recovery-point skew measurement, an approved skew bound and independent review",
 }
-PRECISE_GAP = (
-    "production-shaped correlated PostgreSQL/object recovery with temporal recovery-point skew measurement, an approved skew bound and independent review"
+CANONICAL_OBJECTIVES_GAP_FRAGMENT = (
+    "coherent PostgreSQL/object recovery-point skew measurement"
 )
 
 
@@ -113,8 +114,15 @@ def normalized(status: dict[str, Any]) -> dict[str, Any]:
             "OPS-P0-007 evidence arrays missing")
     for item in EVIDENCE:
         append_once(existing, item)
-    next_missing = [item for item in missing if item not in OLD_GAPS]
-    append_once(next_missing, PRECISE_GAP)
+
+    # The canonical recovery-objectives blocker already requires production-
+    # shaped PostgreSQL/object skew measurement. Local coherence evidence should
+    # remove older duplicate wording, never append a second equivalent blocker.
+    next_missing = [item for item in missing if item not in LEGACY_COHERENCE_GAPS]
+    require(any(CANONICAL_OBJECTIVES_GAP_FRAGMENT in item for item in next_missing),
+            "canonical production recovery-point skew blocker missing")
+    require(any("independent review" in item for item in next_missing),
+            "canonical independent recovery review blocker missing")
     for ref in REFS:
         require((ROOT / ref).is_file(), f"coherent evidence path missing: {ref}")
         append_once(refs, ref)
