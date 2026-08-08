@@ -50,6 +50,8 @@ def main() -> int:
     backup_recovery = load("contracts/operations/backup-restore-generation-evidence-registry.v1.json")
     backup_non_resurrection_contract = load("contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json")
     backup_non_resurrection = load("contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json")
+    backup_drill_request_contract = load("contracts/operations/backup-restore-drill-request-contract.v1.json")
+    backup_drill_requests = load("contracts/operations/backup-restore-drill-request-registry.v1.json")
     releases = load("contracts/operations/release-baseline-registry.v1.json")
     release_pairs = load("contracts/operations/release-compatibility-pair-registry.v1.json")
     clients = load("contracts/operations/client-baseline-registry.v1.json")
@@ -66,6 +68,9 @@ def main() -> int:
     non_resurrection_boundary = backup_non_resurrection_contract.get("currentBoundary")
     if not isinstance(non_resurrection_boundary, dict):
         raise SystemExit("backup typed non-resurrection boundary missing")
+    drill_request_state = backup_drill_request_contract.get("currentAdmissionState")
+    if not isinstance(drill_request_state, dict):
+        raise SystemExit("backup drill request admission state missing")
     objective_count = recovery_objectives.get("approvedObjectiveCount")
     if not isinstance(objective_count, int) or objective_count < 0:
         raise SystemExit("approved recovery objective count invalid")
@@ -76,16 +81,28 @@ def main() -> int:
     typed_complete_count = backup_non_resurrection.get("completeRecordCount")
     typed_covered_count = backup_non_resurrection.get("candidateCoveredCount")
     pending_typed_count = non_resurrection_boundary.get("preOverlayEligiblePendingTypedCoverageCount")
+    drill_request_count = backup_drill_requests.get("registeredRequestCount")
+    executable_drill_request_count = backup_drill_requests.get("currentExecutableRequestCount")
     for value, field in (
         (typed_record_count, "typed non-resurrection record"),
         (typed_complete_count, "complete typed non-resurrection"),
         (typed_covered_count, "typed candidate coverage"),
         (pending_typed_count, "pending typed coverage"),
+        (drill_request_count, "backup/restore drill request"),
+        (executable_drill_request_count, "current executable backup/restore drill request"),
     ):
         if not isinstance(value, int) or value < 0:
             raise SystemExit(f"{field} count invalid")
     if not (typed_covered_count <= typed_complete_count <= typed_record_count):
         raise SystemExit("typed non-resurrection count ordering invalid")
+    if executable_drill_request_count > drill_request_count:
+        raise SystemExit("drill request executable count exceeds request history")
+    if drill_request_state.get("registeredRequestCount") != drill_request_count:
+        raise SystemExit("drill request contract/registry request count drift")
+    if drill_request_state.get("currentExecutableRequestCount") != executable_drill_request_count:
+        raise SystemExit("drill request contract/registry executable count drift")
+    if drill_request_state.get("productionEvidence") is not False or drill_request_state.get("productionReady") is not False:
+        raise SystemExit("drill request authority cannot promote production")
     local_soak_complete = bool(
         load_ready.get("localLongSoakRunCount", 0) >= 2
         and load_ready.get("localSustainedSoakEvidence") is True
@@ -173,6 +190,7 @@ def main() -> int:
             "authority": "contracts/operations/backup-restore-generation-evidence-contract.v1.json",
             "secondaryAuthority": "contracts/operations/backup-restore-generation-binding-contract.v1.json",
             "tertiaryAuthority": "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json",
+            "quaternaryAuthority": "contracts/operations/backup-restore-drill-request-contract.v1.json",
             "foundationImplemented": all(exists(path) for path in (
                 "contracts/operations/backup-restore-generation-evidence-contract.v1.json",
                 "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
@@ -180,19 +198,28 @@ def main() -> int:
                 "contracts/operations/recovery-objectives-registry.v1.json",
                 "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json",
                 "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json",
+                "contracts/operations/backup-restore-drill-request-contract.v1.json",
+                "contracts/operations/backup-restore-drill-request-registry.v1.json",
+                "docs/runbooks/memory-os-production-equivalent-backup-restore-drill.md",
                 "scripts/register-memory-os-backup-restore-generation-evidence.py",
                 "scripts/validate-memory-os-backup-restore-generation-evidence.py",
                 "scripts/validate-memory-os-recovery-objectives.py",
                 "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py",
                 "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py",
+                "scripts/request-memory-os-backup-restore-drill.py",
+                "scripts/validate-memory-os-backup-restore-drill-request.py",
+                "scripts/reconcile-memory-os-backup-restore-drill-request.py",
                 ".github/workflows/backup-restore-generation-evidence.yml",
                 ".github/workflows/recovery-objectives-admission.yml",
                 ".github/workflows/backup-restore-non-resurrection-admission.yml",
+                ".github/workflows/backup-restore-drill-request.yml",
             )),
             "admittedEvidenceCount": backup_boundary.get("generationBoundRestoreCount", 0),
             "dependencyCounts": {
                 "environmentGenerations": generations.get("registeredGenerationCount", 0),
                 "approvedRecoveryObjectives": objective_count,
+                "reviewedRestoreDrillRequests": drill_request_count,
+                "currentExecutableRestoreDrillRequests": executable_drill_request_count,
                 "generationBoundBackups": backup_boundary.get("generationBoundBackupCount", 0),
                 "generationBoundRestores": backup_boundary.get("generationBoundRestoreCount", 0),
                 "typedNonResurrectionRecords": typed_record_count,
@@ -201,7 +228,7 @@ def main() -> int:
                 "typedCoveredRecoveryCandidates": typed_covered_count,
                 "productionEquivalentRecoveryCandidates": backup_recovery.get("productionEquivalentRecoveryCandidateCount", 0),
             },
-            "nextGate": "explicitly approve RPO/RTO/object-database skew without defaults, register a reviewed production-equivalent environment generation, admit generation-bound PITR/independent-object/cross-cluster restore evidence within those objectives, then bind all eight typed non-resurrection domains before any final production-equivalent recovery candidate exists",
+            "nextGate": "explicitly approve RPO/RTO/object-database skew without defaults, register two distinct reviewed production-equivalent environment generations, admit a planning-only cross-environment restore drill request, then admit generation-bound PITR/independent-object/cross-cluster restore evidence within those objectives and bind all eight typed non-resurrection domains before any final production-equivalent recovery candidate exists",
         },
         {
             "id": "OPS-P0-008",
@@ -252,6 +279,8 @@ def main() -> int:
         "areas": areas,
         "productionEquivalentEnvironmentGenerationCount": generations.get("registeredGenerationCount", 0),
         "approvedRecoveryObjectiveCount": objective_count,
+        "reviewedBackupRestoreDrillRequestCount": drill_request_count,
+        "currentExecutableBackupRestoreDrillRequestCount": executable_drill_request_count,
         "approvedReleaseCompatibilityPairCount": release_pair_count,
         "typedNonResurrectionRecordCount": typed_record_count,
         "completeTypedNonResurrectionRecordCount": typed_complete_count,
@@ -264,6 +293,7 @@ def main() -> int:
             "candidate/local evidence is not counted as production admission unless its owning authority explicitly admits it",
             "local repeated soak evidence is tracked separately from independent leak proof and production-shaped soak evidence",
             "recovery-objective values are never defaulted by this inventory; zero approved objectives means RPO/RTO/skew remain intentionally undefined",
+            "backup/restore drill requests are planning authority only; historical requests remain auditable after supersession while current executable count requires immediate generation/objective revalidation",
             "a generic generation recovery nonResurrectionVerification PASS cannot create a final recovery candidate; complete typed coverage of all eight non-resurrection domains is independently required",
             "candidate/local mixed-version execution remains separate from the approved release-pair registry and can never create an approved predecessor/successor pair"
         ]
@@ -273,6 +303,8 @@ def main() -> int:
     print(f"P0 areas inventoried: {len(areas)}")
     print(f"production-equivalent generations: {document['productionEquivalentEnvironmentGenerationCount']}")
     print(f"approved recovery objectives: {objective_count}")
+    print(f"reviewed backup/restore drill requests: {drill_request_count}")
+    print(f"currently executable backup/restore drill requests: {executable_drill_request_count}")
     print(f"typed non-resurrection records: {typed_record_count}")
     print(f"final recovery candidates: {backup_recovery.get('productionEquivalentRecoveryCandidateCount', 0)}")
     print(f"approved release compatibility pairs: {release_pair_count}")
