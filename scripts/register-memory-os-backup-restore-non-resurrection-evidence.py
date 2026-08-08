@@ -104,9 +104,10 @@ def load_generation_writer():
     return module
 
 def candidate_complete(record: dict[str, Any]) -> bool:
+    """Return whether this typed record covers a generation record that passed all pre-overlay gates."""
     generation = generation_record(record.get("generationEvidenceId"))
     generation_writer = load_generation_writer()
-    return record.get("evidenceComplete") is True and generation_writer.candidate(generation)
+    return record.get("evidenceComplete") is True and generation_writer.base_candidate(generation)
 
 def atomic_write(value: dict[str, Any]) -> None:
     fd, temp_name = tempfile.mkstemp(prefix=".backup-restore-non-resurrection.", suffix=".tmp", dir=REGISTRY.parent)
@@ -163,7 +164,7 @@ def main() -> int:
         except FileNotFoundError:
             pass
     print(f"Registered backup/restore non-resurrection evidence: {record['recordId']}")
-    print(f"production-equivalent candidate covered: {str(candidate_complete(record)).lower()}")
+    print(f"pre-overlay candidate covered: {str(candidate_complete(record)).lower()}")
     print("production evidence: false")
     print("production ready: false")
     return 0
