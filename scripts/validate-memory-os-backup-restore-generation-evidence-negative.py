@@ -126,10 +126,12 @@ def main() -> int:
     writer = load_writer()
     commit_sha = head_sha()
 
-    # Canonical empty registries must reject any attempt to relabel local evidence.
-    empty_case = base_record(commit_sha)
-    empty_case["evidenceId"] = "brge_no_generation"
-    expect_rejected("no registered production-equivalent generation", lambda: writer.validate_record(empty_case))
+    # This remains a rejection even after real generations are registered later.
+    unregistered_case = base_record(commit_sha)
+    unregistered_case["evidenceId"] = "brge_no_generation"
+    unregistered_case["sourceEnvironmentGenerationId"] = "pegen_negative_unregistered_source"
+    unregistered_case["restoreTargetGenerationId"] = "pegen_negative_unregistered_target"
+    expect_rejected("no registered production-equivalent generation", lambda: writer.validate_record(unregistered_case))
 
     with tempfile.TemporaryDirectory(prefix="memory-os-restore-negative-") as tmp:
         tmp_path = Path(tmp)
