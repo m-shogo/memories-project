@@ -32,6 +32,8 @@ func TestSupervisorReapsChildProcessGroupAfterCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	source := sourceFile(t, "a:{\"title\":\"source\"}\n")
+	seal := testSealInput()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	result := make(chan error, 1)
@@ -39,8 +41,8 @@ func TestSupervisorReapsChildProcessGroupAfterCancellation(t *testing.T) {
 		_, parseErr := supervisor.Parse(ctx, ParseRequest{
 			Manager: manager,
 			SpoolID: testSpoolID,
-			Source:  sourceFile(t, "a:{\"title\":\"source\"}\n"),
-			Seal:    testSealInput(),
+			Source:  source,
+			Seal:    seal,
 		})
 		result <- parseErr
 	}()
