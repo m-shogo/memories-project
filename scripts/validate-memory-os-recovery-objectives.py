@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/recovery-objectives-admission-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-recovery-objectives.py"
+NEGATIVE = ROOT / "scripts/validate-memory-os-recovery-objectives-negative.py"
 
 
 class Fail(RuntimeError):
@@ -41,18 +43,41 @@ def load_writer():
     return module
 
 
+def run_negative() -> None:
+    completed = subprocess.run([sys.executable, str(NEGATIVE)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    require(completed.returncode == 0, f"recovery objective negative admission suite failed:\n{completed.stdout[-6000:]}{completed.stderr[-6000:]}")
+
+
 def main() -> int:
     contract = load(CONTRACT)
     registry = load(REGISTRY)
     writer = load_writer()
     require(contract.get("schemaVersion") == "memory-os-recovery-objectives-admission.v1", "contract schema drift")
-    require(contract.get("registry") == str(REGISTRY.relative_to(ROOT)), "registry ref drift")
-    require(contract.get("writer") == str(WRITER.relative_to(ROOT)) and WRITER.is_file(), "writer ref drift")
-    for field in ("validator", "workflow"):
+    expected_refs = {
+        "registry": REGISTRY,
+        "writer": WRITER,
+        "negativeAdmissionValidator": NEGATIVE,
+    }
+    for field, path in expected_refs.items():
+        require(contract.get(field) == str(path.relative_to(ROOT)), f"contract ref drift: {field}")
+        require(path.is_file(), f"contract artifact missing: {field}")
+    for field in ("validator", "reconcile", "workflow"):
         ref = contract.get(field)
         require(isinstance(ref, str) and ref and (ROOT / ref).is_file(), f"contract artifact missing: {field}")
     rules = contract.get("rules")
     require(isinstance(rules, dict) and rules and all(value is True for value in rules.values()), "recovery-objective rules must remain fail-closed")
+    for key in (
+        "measurementMethodsCannotBePlaceholderText",
+        "ownerRefMustExistInRepository",
+        "ownerRefMustBeDistinctFromApprovalEvidenceRefs",
+        "approvedAtMustBeUtcRfc3339Z",
+        "implicitDefaultsForbidden",
+        "mutableLatestAliasForbidden",
+        "rawUrlsSecretsAccountAndSessionIdentifiersForbidden",
+    ):
+        require(rules.get(key) is True, f"required recovery-objective rule missing: {key}")
+    negative_cases = contract.get("negativeAdmissionCases")
+    require(isinstance(negative_cases, list) and len(negative_cases) >= 10 and len(negative_cases) == len(set(negative_cases)), "negative admission cases incomplete or duplicated")
 
     require(registry.get("schemaVersion") == "memory-os-recovery-objectives-registry.v1", "registry schema drift")
     require(registry.get("appendOnly") is True, "objectives registry must remain append-only")
@@ -84,10 +109,14 @@ def main() -> int:
     require(authority.get("productionEvidence") is False and authority.get("productionReady") is False, "objective authority cannot promote production")
     require(authority.get("productionDecision") == "NO_GO", "production decision must remain NO_GO")
 
+    run_negative()
+
     print("Memory OS recovery objectives validation PASS")
     print(f"approved objective records: {count}")
     print(f"current objective: {current_id or 'none'}")
     print(f"RPO/RTO defined: {str(defined).lower()}")
+    print("objective values chosen/defaulted by validator: false")
+    print("negative admission suite: PASS")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
