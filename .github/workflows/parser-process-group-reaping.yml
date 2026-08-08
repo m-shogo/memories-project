@@ -1,0 +1,222 @@
+name: Parser Process Group Reaping
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/parser-process-group-reaping.yml"
+      - "contracts/operations/parser-process-group-reaping-contract.v1.json"
+      - "services/import-api/internal/parsersup/supervisor_linux.go"
+      - "services/import-api/internal/parsersup/worker.go"
+      - "services/import-api/internal/parsersup/process_group_reaping_drill_linux_test.go"
+      - "scripts/validate-memory-os-parser-process-group-reaping.py"
+      - "scripts/reconcile-memory-os-parser-process-group-reaping.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: parser-process-group-reaping-so
+  cancel-in-progress: false
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout latest so
+        uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: services/import-api/go.sum
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm exact clean source
+        run: |
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+
+      - name: Compile validator and check formatting
+        run: |
+          python -m py_compile \
+            scripts/validate-memory-os-parser-process-group-reaping.py \
+            scripts/reconcile-memory-os-parser-process-group-reaping.py
+          test -z "$(gofmt -l \
+            services/import-api/internal/parsersup/worker.go \
+            services/import-api/internal/parsersup/process_group_reaping_drill_linux_test.go)"
+          python scripts/validate-memory-os-parser-process-group-reaping.py
+
+      - name: Execute exact-source process-group reaping drill
+        id: drill
+        run: |
+          python - <<'PY'
+          import datetime as dt
+          import json
+          import os
+          import re
+          import subprocess
+          import time
+          from pathlib import Path
+
+          root = Path.cwd()
+          workdir = root / "services/import-api"
+          source_sha = subprocess.check_output(
+              ["git", "rev-parse", "HEAD"], cwd=root, text=True
+          ).strip()
+          command = [
+              "go", "test", "-v", "./internal/parsersup",
+              "-run", "^TestSupervisorReapsChildProcessGroupAfterCancellation$", "-count=1",
+          ]
+          started = time.monotonic()
+          completed = subprocess.run(
+              command,
+              cwd=workdir,
+              text=True,
+              stdout=subprocess.PIPE,
+              stderr=subprocess.STDOUT,
+              check=False,
+          )
+          duration = round(time.monotonic() - started, 6)
+          before_match = re.search(
+              r"MEMORY_OS_TRACKED_PROCESS_COUNT_BEFORE_CANCEL=(\d+)", completed.stdout
+          )
+          latency_match = re.search(
+              r"MEMORY_OS_REAP_CANCELLATION_LATENCY_MS=(\d+)", completed.stdout
+          )
+          after_marker = "MEMORY_OS_TRACKED_PROCESS_COUNT_AFTER_CANCEL=0" in completed.stdout
+          before = int(before_match.group(1)) if before_match else None
+          latency_ms = int(latency_match.group(1)) if latency_match else None
+          success = (
+              completed.returncode == 0
+              and before is not None and before >= 2
+              and latency_ms is not None and 0 <= latency_ms < 1000
+              and after_marker
+          )
+          generated_at = dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z")
+
+          diagnostic = {
+              "schemaVersion": "memory-os-validator-diagnostic.v1",
+              "workflow": "parser-process-group-reaping",
+              "sourceCommitSha": source_sha,
+              "result": "PASS" if success else "FAIL",
+              "exitCode": completed.returncode,
+              "durationSeconds": duration,
+              "trackedProcessCountBeforeCancel": before,
+              "cancellationLatencyMilliseconds": latency_ms,
+              "trackedProcessCountAfterCancel": 0 if after_marker else None,
+              "output": completed.stdout[-5000:],
+              "containsSecrets": False,
+              "productionEvidence": False,
+          }
+          diagnostic_path = root / "docs/fixtures/memory-os-operability/parser-process-group-reaping-diagnostic.last.json"
+          diagnostic_path.parent.mkdir(parents=True, exist_ok=True)
+          diagnostic_path.write_text(
+              json.dumps(diagnostic, indent=2, ensure_ascii=False) + "\n",
+              encoding="utf-8",
+          )
+
+          if success:
+              result = {
+                  "schemaVersion": "memory-os-parser-process-group-reaping-results.v1",
+                  "commitSha": source_sha,
+                  "generatedAt": generated_at,
+                  "environment": {
+                      "mode": "GITHUB_ACTIONS_UBUNTU_LINUX",
+                      "productionEvidence": False,
+                      "syntheticDataOnly": True,
+                      "containsSecrets": False,
+                  },
+                  "result": "PASS",
+                  "integrityResult": "PASS",
+                  "exitCode": 0,
+                  "durationSeconds": duration,
+                  "assertions": {
+                      "workerFrameObservedBeforeCancel": True,
+                      "trackedProcessCountBeforeCancel": before,
+                      "returnedContextCanceled": True,
+                      "cancellationLatencyMilliseconds": latency_ms,
+                      "trackedProcessCountAfterCancel": 0,
+                      "allCapturedProcEntriesGone": True,
+                      "spoolResidueAbsent": True,
+                  },
+                  "limitations": [
+                      "host or container restart not executed",
+                      "production artifact not exercised",
+                      "production-equivalent environment not exercised",
+                      "not production chaos evidence",
+                      "one synthetic child process is created by the test worker",
+                      "Linux GitHub Actions CI only",
+                  ],
+              }
+              result_path = root / "docs/fixtures/memory-os-operability/parser-process-group-reaping-results.sample.v1.json"
+              result_path.write_text(
+                  json.dumps(result, indent=2, ensure_ascii=False) + "\n",
+                  encoding="utf-8",
+              )
+
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"source_sha={source_sha}\n")
+              output.write(f"success={'true' if success else 'false'}\n")
+          PY
+
+      - name: Validate generated exact-source evidence
+        if: steps.drill.outputs.success == 'true'
+        env:
+          EXPECTED_COMMIT_SHA: ${{ steps.drill.outputs.source_sha }}
+        run: python scripts/validate-memory-os-parser-process-group-reaping.py
+
+      - name: Commit result or bounded diagnostic
+        run: |
+          git add docs/fixtures/memory-os-operability/parser-process-group-reaping-diagnostic.last.json
+          if [ "${{ steps.drill.outputs.success }}" = "true" ]; then
+            git add docs/fixtures/memory-os-operability/parser-process-group-reaping-results.sample.v1.json
+          fi
+          if git diff --cached --quiet; then
+            echo "Process-group reaping evidence is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            if [ "${{ steps.drill.outputs.success }}" = "true" ]; then
+              git commit -m "test(chaos): record parser process-group reaping evidence"
+            else
+              git commit -m "test(chaos): record parser process-group reaping diagnostic"
+            fi
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+
+      - name: Reconcile process-group reaping authority
+        if: steps.drill.outputs.success == 'true'
+        run: |
+          python scripts/reconcile-memory-os-parser-process-group-reaping.py
+          python scripts/validate-memory-os-parser-process-group-reaping.py
+          python scripts/validate-memory-os-operability.py
+          git add \
+            contracts/operations/parser-process-group-reaping-contract.v1.json \
+            contracts/operations/production-operability-status.json
+          if git diff --cached --quiet; then
+            echo "Process-group reaping authority is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(chaos): reconcile parser process-group reaping evidence"
+            git pull --rebase origin so
+            git push origin HEAD:so
+          fi
+
+      - name: Fail when process-group reaping drill failed
+        if: steps.drill.outputs.success != 'true'
+        run: exit 1
