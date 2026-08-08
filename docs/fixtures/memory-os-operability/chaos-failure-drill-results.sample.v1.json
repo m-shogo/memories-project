@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-chaos-failure-drill-results.v1",
-  "commitSha": "d2aea4a33eca361b580a94f2772c7fa2bc1ae160",
-  "generatedAt": "2026-08-07T19:36:14.693280Z",
+  "commitSha": "d76a0f8983aa40813acc3eabe7aa163868412f22",
+  "generatedAt": "2026-08-08T03:00:30.023523Z",
   "environment": {
     "mode": "GITHUB_ACTIONS_UBUNTU_LINUX",
     "productionEvidence": false,
@@ -14,14 +14,14 @@
       "result": "PASS",
       "integrityResult": "PASS",
       "exitCode": 0,
-      "durationSeconds": 1.903397
+      "durationSeconds": 1.901162
     },
     {
       "scenarioId": "parser-restart-after-protocol-failure",
       "result": "PASS",
       "integrityResult": "PASS",
       "exitCode": 0,
-      "durationSeconds": 0.233315
+      "durationSeconds": 0.241826
     },
     {
       "scenarioId": "database-loss-or-failover",
