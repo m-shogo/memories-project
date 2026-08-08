@@ -16,6 +16,11 @@ GENERATION = ROOT / "contracts/operations/production-equivalent-environment-gene
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 EVIDENCE_CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
 EVIDENCE_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+REQUIRED_LOCAL_FOUNDATIONS = {
+    "LOCAL_POSTGRESQL_LOGICAL_RESTORE",
+    "LOCAL_EXACT_OBJECT_VERSION_RESTORE",
+    "LOCAL_COHERENT_DATABASE_OBJECT_RECOVERY_SET",
+}
 
 
 class Fail(RuntimeError):
@@ -84,14 +89,18 @@ def main() -> int:
     require(local.get("schemaVersion") == "memory-os-backup-local-foundation-evidence.v1", "local foundation schema drift")
     require(local.get("productionEvidence") is False and local.get("productionDecision") == "NO_GO", "local foundation evidence boundary drift")
     foundations = local.get("foundations")
-    require(isinstance(foundations, list) and len(foundations) == 2, "two local restore foundations required")
-    by_id = {item.get("id"): item for item in foundations if isinstance(item, dict)}
-    require(set(by_id) == {"LOCAL_POSTGRESQL_LOGICAL_RESTORE", "LOCAL_EXACT_OBJECT_VERSION_RESTORE"}, "local foundation set drift")
+    require(isinstance(foundations, list) and all(isinstance(item, dict) for item in foundations), "local restore foundations invalid")
+    by_id = {item.get("id"): item for item in foundations}
+    require(len(by_id) == len(foundations), "local foundation IDs must be unique")
+    require(REQUIRED_LOCAL_FOUNDATIONS.issubset(set(by_id)), f"required local foundation missing: {sorted(REQUIRED_LOCAL_FOUNDATIONS - set(by_id))}")
     for foundation_id, item in by_id.items():
+        require(isinstance(foundation_id, str) and foundation_id, "local foundation ID invalid")
         require(item.get("status") == "PASS_EVIDENCE_COMMITTED", f"local foundation not committed PASS: {foundation_id}")
         for field in ("contract", "result", "validator", "workflow"):
             ref = item.get(field)
             require(isinstance(ref, str) and (ROOT / ref).is_file(), f"local foundation ref missing: {foundation_id}.{field}")
+    coherent = by_id["LOCAL_COHERENT_DATABASE_OBJECT_RECOVERY_SET"]
+    require(any("recovery-set" in str(value) for value in coherent.get("proves", [])), "coherent local recovery-set proof drift")
 
     generation_count = gen_registry.get("registeredGenerationCount")
     generations = gen_registry.get("generations")
@@ -152,8 +161,10 @@ def main() -> int:
     require(readiness.get("productionReady") is False, "restore generation foundation cannot make application production ready")
 
     print("Memory OS backup/restore generation binding PASS")
-    print("local PostgreSQL restore foundation: committed PASS")
-    print("local exact object-version restore foundation: committed PASS")
+    print(f"local restore foundations validated: {len(foundations)}")
+    print("required PostgreSQL logical restore foundation: committed PASS")
+    print("required exact object-version restore foundation: committed PASS")
+    print("required coherent database/object recovery-set foundation: committed PASS")
     print(f"registered production-equivalent generations: {generation_count}")
     print(f"generation-bound backups/restores: {backup_count}/{restore_count}")
     print(f"production-equivalent recovery candidates: {candidate_count}")
