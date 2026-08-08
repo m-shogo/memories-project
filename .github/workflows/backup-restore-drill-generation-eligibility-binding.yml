@@ -1,0 +1,124 @@
+name: Backup Restore Drill Generation Eligibility Binding
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/backup-restore-drill-generation-eligibility-binding.yml"
+      - "contracts/operations/backup-restore-drill-generation-eligibility-binding-contract.v1.json"
+      - "contracts/operations/backup-restore-drill-request-contract.v1.json"
+      - "contracts/operations/backup-restore-drill-request-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "scripts/validate-memory-os-production-equivalent-environment-record.py"
+      - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/memory_os_environment_generation_eligibility.py"
+      - "scripts/request-memory-os-backup-restore-drill.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request-negative.py"
+      - "scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding.py"
+      - "scripts/reconcile-memory-os-backup-restore-drill-generation-eligibility-binding.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: backup-restore-drill-generation-eligibility-binding-so
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Reconcile and validate semantic generation binding
+        id: validation
+        run: |
+          set +e
+          log=/tmp/backup-restore-drill-generation-eligibility-binding.log
+          : > "$log"
+          code=0
+          python -m py_compile \
+            scripts/validate-memory-os-production-equivalent-environment-record.py \
+            scripts/register-memory-os-production-equivalent-environment-generation.py \
+            scripts/memory_os_environment_generation_eligibility.py \
+            scripts/request-memory-os-backup-restore-drill.py \
+            scripts/validate-memory-os-backup-restore-drill-request-negative.py \
+            scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding.py \
+            scripts/reconcile-memory-os-backup-restore-drill-generation-eligibility-binding.py \
+            >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-backup-restore-drill-generation-eligibility-binding.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding.py >> "$log" 2>&1 || code=$?; fi
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          cat "$log"
+          exit 0
+      - name: Commit bounded semantic binding authority
+        if: steps.validation.outputs.exit_code == '0'
+        run: |
+          set -euo pipefail
+          git rm -f docs/fixtures/memory-os-operability/backup-restore-drill-generation-eligibility-binding-diagnostic.last.json 2>/dev/null || true
+          git add contracts/operations/backup-restore-drill-generation-eligibility-binding-contract.v1.json
+          git add -u docs/fixtures/memory-os-operability/backup-restore-drill-generation-eligibility-binding-diagnostic.last.json 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git diff --cached --check
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(restore): reconcile drill generation eligibility binding"
+            for attempt in 1 2 3 4; do
+              git pull --rebase origin so
+              if git push origin HEAD:so; then exit 0; fi
+              sleep 2
+            done
+            exit 1
+          fi
+      - name: Record privacy-safe semantic binding diagnostic
+        if: steps.validation.outputs.exit_code != '0'
+        env:
+          VALIDATION_EXIT_CODE: ${{ steps.validation.outputs.exit_code }}
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          git reset --hard origin/so
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          text = Path('/tmp/backup-restore-drill-generation-eligibility-binding.log').read_text(encoding='utf-8', errors='replace')
+          value = {
+              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'workflow': 'backup-restore-drill-generation-eligibility-binding',
+              'result': 'FAIL',
+              'exitCode': int(os.environ['VALIDATION_EXIT_CODE']),
+              'output': text[-12000:],
+              'containsSecrets': False,
+              'requestCreated': False,
+              'generationCreated': False,
+              'restoreExecuted': False,
+              'productionEvidence': False,
+              'productionReady': False,
+          }
+          path = Path('docs/fixtures/memory-os-operability/backup-restore-drill-generation-eligibility-binding-diagnostic.last.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          PY
+          git add docs/fixtures/memory-os-operability/backup-restore-drill-generation-eligibility-binding-diagnostic.last.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --cached --quiet; then
+            git commit -m "test(restore): record drill generation eligibility binding diagnostic"
+            for attempt in 1 2 3; do
+              git pull --rebase origin so
+              if git push origin HEAD:so; then exit 0; fi
+              sleep 2
+            done
+          fi
+      - name: Enforce semantic generation binding
+        run: test "${{ steps.validation.outputs.exit_code }}" = "0"
