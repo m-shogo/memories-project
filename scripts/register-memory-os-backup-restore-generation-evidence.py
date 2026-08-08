@@ -16,9 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
-OBJECTIVES_REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
-NON_RESURRECTION_CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
-NON_RESURRECTION_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+CANONICAL_OBJECTIVES_REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
+OBJECTIVES_REGISTRY = CANONICAL_OBJECTIVES_REGISTRY
+CANONICAL_NON_RESURRECTION_CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
+NON_RESURRECTION_CONTRACT = CANONICAL_NON_RESURRECTION_CONTRACT
+CANONICAL_NON_RESURRECTION_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+NON_RESURRECTION_REGISTRY = CANONICAL_NON_RESURRECTION_REGISTRY
 LOCK = ROOT / "contracts/operations/.backup-restore-generation-evidence.lock"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
@@ -177,10 +180,10 @@ def validate_record(record: dict[str, Any]) -> None:
     required = set(contract.get("requiredRecordFields", []))
     require(set(record) == required, f"record field set drift: {sorted(set(record) ^ required)}")
     require(record.get("schemaVersion") == contract.get("recordSchemaVersion"), "record schemaVersion drift")
-    require(contract.get("recoveryObjectivesRegistry") == str(OBJECTIVES_REGISTRY.relative_to(ROOT)), "recoveryObjectivesRegistry ref drift")
-    require(contract.get("typedNonResurrectionAdmissionContract") == str(NON_RESURRECTION_CONTRACT.relative_to(ROOT)), "typed non-resurrection contract ref drift")
-    require(contract.get("typedNonResurrectionAdmissionRegistry") == str(NON_RESURRECTION_REGISTRY.relative_to(ROOT)), "typed non-resurrection registry ref drift")
-    require(NON_RESURRECTION_CONTRACT.is_file() and NON_RESURRECTION_REGISTRY.is_file(), "typed non-resurrection admission foundation missing")
+    require(contract.get("recoveryObjectivesRegistry") == str(CANONICAL_OBJECTIVES_REGISTRY.relative_to(ROOT)), "recoveryObjectivesRegistry ref drift")
+    require(contract.get("typedNonResurrectionAdmissionContract") == str(CANONICAL_NON_RESURRECTION_CONTRACT.relative_to(ROOT)), "typed non-resurrection contract ref drift")
+    require(contract.get("typedNonResurrectionAdmissionRegistry") == str(CANONICAL_NON_RESURRECTION_REGISTRY.relative_to(ROOT)), "typed non-resurrection registry ref drift")
+    require(CANONICAL_NON_RESURRECTION_CONTRACT.is_file() and NON_RESURRECTION_REGISTRY.is_file(), "typed non-resurrection admission foundation missing")
     require(isinstance(record.get("evidenceId"), str) and EVIDENCE_ID.fullmatch(record["evidenceId"]), "evidenceId invalid")
     source_commit = record.get("sourceCommitSha")
     require(isinstance(source_commit, str) and SHA40.fullmatch(source_commit), "sourceCommitSha invalid")
