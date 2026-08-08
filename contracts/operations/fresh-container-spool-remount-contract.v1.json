@@ -1,0 +1,68 @@
+{
+  "contractId": "memory-os.operability.fresh-container-spool-remount.v1",
+  "schemaVersion": "memory-os-fresh-container-spool-remount.v1",
+  "resultsSchemaVersion": "memory-os-fresh-container-spool-remount-results.v1",
+  "description": "Linux CI drill proving a sealed Preview spool survives the original manager lifetime and can be bind-mounted into a fresh Docker container that reopens the spool and executes ResumeCommit using only PostgreSQL. The producer remains the host test process, so this is a durable-remount foundation and not a producer-container or host restart proof.",
+  "runnerCommand": "MEMORY_OS_RUN_DOCKER_SPOOL_REMOUNT=1 CGO_ENABLED=0 go test ./internal/importflow -run ^TestFlowResumesSealedSpoolInFreshContainer$ -count=1",
+  "workingDirectory": "services/import-api",
+  "validator": "scripts/validate-memory-os-fresh-container-spool-remount.py",
+  "resultPath": "docs/fixtures/memory-os-operability/fresh-container-spool-remount-results.sample.v1.json",
+  "requiredAssertions": [
+    "source fetch and parser seal complete before the forced PostgreSQL commit outage",
+    "failed commit leaves zero durable Preview rows",
+    "sealed spool exists after the failed commit",
+    "the original spool manager is closed before the recovery container starts",
+    "a fresh Docker container bind-mounts the same spool directory",
+    "the recovery container constructs Flow with Spool and Committer only",
+    "ResumeCommit succeeds without object-store or parser access",
+    "the first successful recovery is not mislabeled as a replay",
+    "the exact same spool ID is independently verified after remount",
+    "exactly one Preview with two candidates and one rejection is committed"
+  ],
+  "implementationGuards": [
+    "Docker execution is explicitly gated and skipped in ordinary unit/race suites",
+    "the helper test binary is built with CGO disabled for container portability",
+    "PostgreSQL is reached through host.docker.internal host-gateway mapping",
+    "database URLs are sanitized from any persisted diagnostic output",
+    "request and spool mounts contain only synthetic test data",
+    "raw database URL and MinIO credentials are never written to result evidence"
+  ],
+  "privacy": {
+    "syntheticDataOnly": true,
+    "productionEvidence": false,
+    "productionCredentials": false,
+    "databaseUrlInEvidenceForbidden": true,
+    "objectStoreCredentialsInEvidenceForbidden": true,
+    "hostPathInEvidenceForbidden": true,
+    "userContentInEvidenceForbidden": true
+  },
+  "limitations": [
+    "producer remains the host Go test process",
+    "producer host or container is not terminated and restarted",
+    "fresh container performs only spool reopen, independent verification and ResumeCommit",
+    "ephemeral PostgreSQL 16 and MinIO dependencies only",
+    "not a reviewed production parser artifact",
+    "not a production-equivalent environment generation",
+    "not production chaos evidence"
+  ],
+  "readiness": {
+    "contractDefined": true,
+    "testImplemented": true,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": true,
+    "exactSourcePassResultCommitted": false,
+    "originalSpoolManagerClosed": false,
+    "freshContainerRemountCompleted": false,
+    "resumeWithoutObjectStoreOrParser": false,
+    "producerRestartExecuted": false,
+    "productionReady": false
+  },
+  "evidenceRefs": [
+    "contracts/operations/fresh-container-spool-remount-contract.v1.json",
+    "services/import-api/internal/importflow/docker_spool_remount_drill_linux_test.go",
+    "services/import-api/internal/importflow/resume.go",
+    "scripts/validate-memory-os-fresh-container-spool-remount.py",
+    "scripts/reconcile-memory-os-fresh-container-spool-remount.py",
+    ".github/workflows/fresh-container-spool-remount.yml"
+  ]
+}
