@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import re
@@ -18,6 +19,7 @@ CONTRACT = ROOT / "contracts/operations/backup-restore-drill-request-contract.v1
 REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 OBJECTIVES_REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
+ELIGIBILITY_HELPER = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
 LOCK = ROOT / "contracts/operations/.backup-restore-drill-request.lock"
 REQUEST_ID = re.compile(r"^brrq_[a-z0-9][a-z0-9_-]{7,63}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
@@ -62,6 +64,14 @@ def parse_timestamp(value: Any) -> None:
         raise Fail("requestedAt invalid") from exc
 
 
+def load_eligibility_helper():
+    spec = importlib.util.spec_from_file_location("memory_os_generation_eligibility_for_restore_request", ELIGIBILITY_HELPER)
+    require(spec is not None and spec.loader is not None, "cannot load environment generation eligibility helper")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def generations() -> list[dict[str, Any]]:
     registry = load(GEN_REGISTRY)
     require(registry.get("appendOnly") is True and registry.get("productionEvidence") is False, "environment generation registry boundary drift")
@@ -83,36 +93,35 @@ def generation_is_unsuperseded(rows: list[dict[str, Any]], generation_id: str) -
     return not any(row.get("supersedesGenerationId") == generation_id for row in rows)
 
 
-def objective_registry() -> tuple[list[dict[str, Any]], str | None]:
+def require_preflight_eligible_generation(generation_id: str, field: str) -> None:
+    helper = load_eligibility_helper()
+    try:
+        helper.eligible_generation_by_id(generation_id, registry_path=GEN_REGISTRY)
+    except Exception as exc:
+        raise Fail(f"{field} is not an unsuperseded restore-preflight-eligible generation: {exc}") from exc
+
+
+def objective_by_id(objective_id: Any) -> dict[str, Any]:
     registry = load(OBJECTIVES_REGISTRY)
     require(registry.get("appendOnly") is True and registry.get("productionEvidence") is False and registry.get("productionReady") is False, "recovery objective registry boundary drift")
     rows = registry.get("records")
     count = registry.get("approvedObjectiveCount")
-    current = registry.get("currentObjectiveId")
     require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "recovery objective registry invalid")
     require(isinstance(count, int) and count == len(rows), "recovery objective registry count drift")
-    if count == 0:
-        require(current is None, "empty recovery objective registry cannot have currentObjectiveId")
-    else:
-        require(isinstance(current, str) and sum(1 for row in rows if row.get("objectiveId") == current) == 1, "current recovery objective is not uniquely registered")
-    return rows, current
-
-
-def objective_by_id(rows: list[dict[str, Any]], objective_id: Any) -> dict[str, Any]:
     require(isinstance(objective_id, str) and objective_id, "recoveryObjectivesId required")
     matches = [row for row in rows if row.get("objectiveId") == objective_id]
     require(len(matches) == 1, "recoveryObjectivesId is not uniquely registered")
     return matches[0]
 
 
-def validate_request(record: dict[str, Any], *, require_current: bool = True) -> None:
-    """Validate an admitted request.
+def current_objective() -> dict[str, Any]:
+    registry = load(OBJECTIVES_REGISTRY)
+    objective_id = registry.get("currentObjectiveId")
+    require(isinstance(objective_id, str) and objective_id, "no current approved recovery objective")
+    return objective_by_id(objective_id)
 
-    `require_current=True` is the registration/execution-time gate. Historical
-    append-only rows use `False`: immutable generation/objective references must
-    still exist and match, but later supersession or objective replacement must
-    not invalidate the historical admission record itself.
-    """
+
+def validate_request(record: dict[str, Any], *, require_current: bool = True) -> None:
     contract = load(CONTRACT)
     required = set(contract.get("requiredRequestFields", []))
     require(required and set(record) == required, f"request field set drift: {sorted(set(record) ^ required)}")
@@ -129,6 +138,8 @@ def validate_request(record: dict[str, Any], *, require_current: bool = True) ->
     if require_current:
         require(generation_is_unsuperseded(rows, source["generationId"]), "source generation has been superseded")
         require(generation_is_unsuperseded(rows, target["generationId"]), "restore-target generation has been superseded")
+        require_preflight_eligible_generation(source["generationId"], "sourceEnvironmentGenerationId")
+        require_preflight_eligible_generation(target["generationId"], "restoreTargetEnvironmentGenerationId")
     for value, field in (
         (record.get("sourceEnvironmentManifestSha256"), "sourceEnvironmentManifestSha256"),
         (record.get("restoreTargetManifestSha256"), "restoreTargetManifestSha256"),
@@ -137,10 +148,11 @@ def validate_request(record: dict[str, Any], *, require_current: bool = True) ->
     require(record["sourceEnvironmentManifestSha256"] == source.get("environmentManifestSha256"), "source environment manifest digest mismatch")
     require(record["restoreTargetManifestSha256"] == target.get("environmentManifestSha256"), "restore-target environment manifest digest mismatch")
 
-    objective_rows, current_objective_id = objective_registry()
-    objective_by_id(objective_rows, record.get("recoveryObjectivesId"))
     if require_current:
-        require(record.get("recoveryObjectivesId") == current_objective_id, "request must bind current approved recovery objective")
+        objective = current_objective()
+        require(record.get("recoveryObjectivesId") == objective.get("objectiveId"), "request must bind current approved recovery objective")
+    else:
+        objective_by_id(record.get("recoveryObjectivesId"))
 
     isolation = record.get("isolationPolicy")
     require(isinstance(isolation, dict) and set(isolation) == {"environmentClass", "networkIsolated", "productionRoutingForbidden", "syntheticOrApprovedSanitizedDataOnly"}, "isolationPolicy field drift")
@@ -203,7 +215,7 @@ def validate_request(record: dict[str, Any], *, require_current: bool = True) ->
 def request_currently_executable(record: dict[str, Any]) -> bool:
     try:
         validate_request(record, require_current=True)
-    except Fail:
+    except Exception:
         return False
     return True
 
@@ -277,6 +289,7 @@ def main() -> int:
             pass
 
     print(f"Registered production-equivalent backup/restore drill request: {record['requestId']}")
+    print("source/target semantically preflight eligible: true")
     print("planning authority only: true")
     print("execution-time revalidation required: true")
     print("production evidence: false")
