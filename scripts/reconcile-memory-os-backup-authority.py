@@ -2,9 +2,10 @@
 """Normalize OPS-P0-007 from committed policy and local restore evidence.
 
 The PostgreSQL and object restore workflows can complete in either order. This
-is the single convergence point: it validates both exact-source PASS results,
-registers only local CI foundations, removes coarse stale gaps and preserves all
-production PITR, independent-retention, coherence, RPO/RTO and promotion gates.
+is the local-foundation convergence point: it validates both exact-source PASS
+results, registers only local CI foundations, and converges on the same six
+production blockers used by generation-bound recovery admission. Local evidence
+must never re-expand an older duplicate blocker vocabulary or promote readiness.
 """
 
 from __future__ import annotations
@@ -46,14 +47,12 @@ OBJECT_EVIDENCE = (
     "privacy-safe exact-source object recovery result storing only SHA-256 digests of bucket, key and provider version identifiers",
 )
 CANONICAL_GAPS = (
-    "production PostgreSQL backup schedule, encrypted independent retention and WAL/PITR configuration",
-    "production-shaped cross-cluster isolated restore with approved recovery owner and promotion decision",
-    "production object backup with independently owned retention, deletion protection, immutability and lifecycle verification",
-    "production object-store TLS, restore-only credential separation and provider durability evidence",
-    "coherent PostgreSQL and exact object-version recovery-point selection with measured skew",
-    "approved and measured RPO/RTO and backup freshness monitoring",
-    "production deletion, expired/revoked-session, replay and lease non-resurrection verification after restore",
-    "restore promotion rehearsal and independent security/privacy review",
+    "production PostgreSQL backup and PITR schedule with encrypted independent retention, WAL continuity and tested point-in-time recovery selection",
+    "production independent object backup retention with TLS, restore-only credential separation, deletion protection, immutability, lifecycle controls and provider durability evidence",
+    "approved and measured RPO and RTO under production-shaped recovery, with coherent PostgreSQL/object recovery-point skew measurement plus backup monitoring, freshness enforcement and paging",
+    "production-shaped cross-cluster isolated restore drill with an approved recovery owner, coherent PostgreSQL and exact object-version recovery points, and an explicit promotion decision",
+    "production deletion, expired/revoked-session, replay, idempotency and lease non-resurrection verification after restore",
+    "independent review of generation-bound recovery evidence, security/privacy invariants, measured objectives and the restore promotion decision",
 )
 MANAGED_OLD_GAPS = (
     "PostgreSQL backup and PITR configuration",
@@ -69,6 +68,21 @@ MANAGED_OLD_GAPS = (
     "production object backup with independently owned retention, deletion protection and lifecycle verification",
     "production object-store TLS, restore-only credential separation and provider durability evidence",
     "coherent PostgreSQL and exact object-version restore with measured skew",
+    "production PostgreSQL backup schedule, encrypted independent retention and WAL/PITR configuration",
+    "production-shaped cross-cluster isolated restore with approved recovery owner and promotion decision",
+    "production object backup with independently owned retention, deletion protection, immutability and lifecycle verification",
+    "coherent PostgreSQL and exact object-version recovery-point selection with measured skew",
+    "approved and measured RPO/RTO and backup freshness monitoring",
+    "production deletion, expired/revoked-session, replay and lease non-resurrection verification after restore",
+    "restore promotion rehearsal and independent security/privacy review",
+    "production independent object backup retention, deletion protection, immutability and lifecycle verification",
+    "production-shaped cross-cluster isolated restore drill with approved recovery owner and promotion decision",
+    "production PostgreSQL backup schedule, encrypted independent retention and WAL/PITR configuration",
+    "production object-store TLS, restore-only credential separation and provider durability evidence",
+    "approved and measured RPO/RTO and backup freshness monitoring",
+    "production deletion, expired/revoked-session, replay and lease non-resurrection verification after restore",
+    "restore promotion rehearsal and independent security/privacy review",
+    "production-shaped correlated PostgreSQL/object recovery with temporal recovery-point skew measurement, an approved skew bound and independent review",
 )
 EVIDENCE_REFS = (
     "contracts/operations/backup-restore-contract.v1.json",
@@ -248,6 +262,8 @@ def normalize(status: dict[str, Any]) -> dict[str, Any]:
     gate["existingEvidence"] = unique(existing)
     gate["missingEvidence"] = unique(missing)
     gate["evidenceRefs"] = unique(refs)
+    require(gate.get("missingEvidence") == list(CANONICAL_GAPS),
+            "backup blocker convergence drift: only the canonical six production blockers may remain")
     require(gate.get("status") == "PARTIAL_FOUNDATIONS_ONLY",
             "local foundations cannot advance backup readiness beyond partial")
     require(status.get("productionDecision") == "NO_GO",
@@ -280,7 +296,7 @@ def main() -> int:
         json.dumps(candidate, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
-    print("Normalized OPS-P0-007 across policy, logical restore and object restore evidence")
+    print("Normalized OPS-P0-007 across local foundations and canonical production blockers")
     return 0
 
 
