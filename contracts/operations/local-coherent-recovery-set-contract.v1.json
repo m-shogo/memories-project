@@ -1,0 +1,80 @@
+{
+  "contractId": "memory-os.operability.local-coherent-recovery-set.v1",
+  "schemaVersion": "memory-os-local-coherent-recovery-set.v1",
+  "resultsSchemaVersion": "memory-os-local-coherent-recovery-set-results.v1",
+  "description": "Local-only PostgreSQL plus MinIO recovery-set drill proving that one opaque synthetic recovery-set digest is captured in both database state and exact-version object backup metadata, then restored into separate targets and verified equal. A deliberate one-sided digest mismatch must fail closed. This is not PITR, time-skew measurement, independent provider retention or production-equivalent recovery evidence.",
+  "runner": "scripts/run-memory-os-local-coherent-recovery-set.py",
+  "validator": "scripts/validate-memory-os-local-coherent-recovery-set.py",
+  "workflow": ".github/workflows/local-coherent-recovery-set.yml",
+  "resultPath": "docs/fixtures/memory-os-operability/local-coherent-recovery-set-results.sample.v1.json",
+  "diagnosticPath": "docs/fixtures/memory-os-operability/local-coherent-recovery-set-diagnostic.last.json",
+  "dependencyMode": "EPHEMERAL_POSTGRESQL_16_PLUS_LOCAL_MINIO_COHERENT_RECOVERY_SET",
+  "scenario": {
+    "scenarioId": "postgres-object-shared-recovery-set-local",
+    "requiredSteps": [
+      "create clean source and target PostgreSQL databases",
+      "apply complete canonical migration sequence to source database",
+      "create one opaque synthetic recovery-set digest",
+      "persist a synthetic account-control marker derived from the recovery-set digest",
+      "create versioned source backup and restore MinIO buckets",
+      "write a synthetic object carrying the same recovery-set digest in metadata",
+      "create a PostgreSQL logical dump and copy the exact selected object version into backup storage",
+      "destroy the source database marker and all source object versions before restore verification",
+      "restore the PostgreSQL dump into the separate target database",
+      "restore the exact backup object version into the restore bucket",
+      "derive the recovery-set digest independently from restored database and object state",
+      "require restored database and object recovery-set digests to be identical",
+      "run a deliberate one-sided digest mismatch comparison and require fail-closed rejection",
+      "write privacy-safe exact-source evidence containing only digests and bounded counts"
+    ],
+    "successCriteria": [
+      "canonical migration count matches the migration lifecycle contract",
+      "database dump and restore complete without ignored errors",
+      "source object is explicitly version-addressed and source versions are removed before recovery",
+      "exact backup object version checksum survives restore",
+      "restored database marker maps to the expected recovery-set digest",
+      "restored object metadata carries the expected recovery-set digest",
+      "database and object recovery-set digests are equal",
+      "deliberate one-sided digest mismatch is rejected",
+      "no production credentials traffic or evidence are used",
+      "result integrity is PASS"
+    ],
+    "abortCriteria": [
+      "PostgreSQL or object endpoint is non-local",
+      "source and target database identity are ambiguous",
+      "migration dump restore or object-version operation fails",
+      "database or object recovery-set binding is missing",
+      "database and object recovery-set digests differ",
+      "deliberate mismatch is accepted",
+      "raw database URL credential bucket object key version identifier or synthetic marker would enter evidence"
+    ]
+  },
+  "evidenceBoundary": {
+    "productionEvidence": false,
+    "productionEquivalentDependencies": false,
+    "postgresPitrEvidence": false,
+    "independentObjectRetentionEvidence": false,
+    "crossClusterEvidence": false,
+    "recoveryPointTimeSkewMeasured": false,
+    "coherentLocalRecoverySetBindingEvidence": true,
+    "approvedRpoRtoEvidence": false,
+    "productionReady": false
+  },
+  "readiness": {
+    "contractDefined": true,
+    "runnerImplemented": true,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": true,
+    "exactSourcePassResultCommitted": false,
+    "deliberateSkewRejected": false,
+    "coherentLocalRecoverySetBindingProven": false,
+    "productionEquivalentRestoreEvidence": false,
+    "productionReady": false
+  },
+  "evidenceRefs": [
+    "contracts/operations/local-coherent-recovery-set-contract.v1.json",
+    "scripts/run-memory-os-local-coherent-recovery-set.py",
+    "scripts/validate-memory-os-local-coherent-recovery-set.py",
+    ".github/workflows/local-coherent-recovery-set.yml"
+  ]
+}
