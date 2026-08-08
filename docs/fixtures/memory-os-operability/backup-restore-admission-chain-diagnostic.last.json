@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "backup-restore-admission-chain",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "BACKUP RESTORE ADMISSION CHAIN RECONCILE FAILED: every generation evidence row must be drill-request-bound\n",
+  "containsSecrets": false,
+  "drillRequestCreated": false,
+  "generationEvidenceCreated": false,
+  "typedEvidenceCreated": false,
+  "restoreExecuted": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
