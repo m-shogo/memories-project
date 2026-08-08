@@ -14,7 +14,18 @@ on:
       - "contracts/operations/operability-admission-inventory.v1.json"
       - "contracts/operations/production-operability-status.json"
       - "scripts/request-memory-os-backup-restore-drill.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request-negative.py"
+      - "scripts/reconcile-memory-os-backup-restore-drill-request.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
+      - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
+      - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
+      - "scripts/validate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
       - "scripts/reconcile-memory-os-backup-restore-admission-chain.py"
   push:
@@ -32,7 +43,18 @@ on:
       - "contracts/operations/operability-admission-inventory.v1.json"
       - "contracts/operations/production-operability-status.json"
       - "scripts/request-memory-os-backup-restore-drill.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request-negative.py"
+      - "scripts/reconcile-memory-os-backup-restore-drill-request.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
+      - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
+      - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
+      - "scripts/validate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
       - "scripts/reconcile-memory-os-backup-restore-admission-chain.py"
   workflow_dispatch:
@@ -69,7 +91,15 @@ jobs:
           code=0
           python -m py_compile \
             scripts/request-memory-os-backup-restore-drill.py \
+            scripts/validate-memory-os-backup-restore-drill-request.py \
+            scripts/validate-memory-os-backup-restore-drill-request-negative.py \
             scripts/register-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-generation-evidence-negative.py \
+            scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-negative.py \
+            scripts/validate-memory-os-operability-admission-inventory.py \
             scripts/validate-memory-os-backup-restore-admission-chain.py \
             scripts/reconcile-memory-os-backup-restore-admission-chain.py \
             >> "$log" 2>&1 || code=$?
