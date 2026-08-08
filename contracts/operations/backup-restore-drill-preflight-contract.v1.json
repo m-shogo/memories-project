@@ -17,6 +17,7 @@
     "sourceAndTargetGenerationIdsMustDiffer": true,
     "currentApprovedRecoveryObjectiveRequired": true,
     "eligiblePairMustUseRegisteredImmutableGenerations": true,
+    "allMissingPrerequisitesMustBeEnumerated": true,
     "reviewedRequestStillRequiredAfterReady": true,
     "requestMustStillPassExecutionTimeRevalidation": true,
     "productionTrafficForbidden": true,
@@ -27,6 +28,10 @@
     "productionEvidenceForbidden": true,
     "productionReadyForbidden": true
   },
+  "blockingPrerequisiteKinds": [
+    "TWO_UNSUPERSEDED_DISTINCT_ENVIRONMENT_GENERATIONS",
+    "CURRENT_APPROVED_RECOVERY_OBJECTIVE"
+  ],
   "decisionStates": [
     "BLOCKED_NEEDS_TWO_UNSUPERSEDED_DISTINCT_ENVIRONMENT_GENERATIONS",
     "BLOCKED_NEEDS_CURRENT_APPROVED_RECOVERY_OBJECTIVE",
@@ -42,6 +47,11 @@
     "currentObjectiveId": null,
     "reviewedDrillRequestCount": 0,
     "currentExecutableDrillRequestCount": 0,
+    "blockingPrerequisites": [
+      "TWO_UNSUPERSEDED_DISTINCT_ENVIRONMENT_GENERATIONS",
+      "CURRENT_APPROVED_RECOVERY_OBJECTIVE"
+    ],
+    "blockingPrerequisiteCount": 2,
     "eligibleToSubmitReviewedDrillRequest": false,
     "preflightDecision": "BLOCKED_NEEDS_TWO_UNSUPERSEDED_DISTINCT_ENVIRONMENT_GENERATIONS",
     "requestCreated": false,
@@ -67,6 +77,7 @@
   },
   "limitations": [
     "preflight is read-only admission guidance and never provisions an environment",
+    "preflight enumerates all missing prerequisites but never creates any of them",
     "preflight never invents RPO, RTO or object/database skew targets",
     "preflight READY still requires an external reviewed drill request submitted through the fail-closed request writer",
     "a reviewed drill request is planning authority only and still requires immediate revalidation before any execution",
