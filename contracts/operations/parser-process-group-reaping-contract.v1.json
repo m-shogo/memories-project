@@ -1,0 +1,65 @@
+{
+  "contractId": "memory-os.operability.parser-process-group-reaping.v1",
+  "schemaVersion": "memory-os-parser-process-group-reaping.v1",
+  "resultsSchemaVersion": "memory-os-parser-process-group-reaping-results.v1",
+  "description": "Linux CI drill proving the parser supervisor terminates and reaps more than the direct worker: a test worker starts one child in the same process group, both are independently discovered through /proc before cancellation, context cancellation returns promptly, and every captured /proc process entry disappears after Parse returns. This remains synthetic local CI evidence and is not host/container restart or reviewed production-artifact evidence.",
+  "runnerCommand": "go test ./internal/parsersup -run ^TestSupervisorReapsChildProcessGroupAfterCancellation$ -count=1",
+  "workingDirectory": "services/import-api",
+  "validator": "scripts/validate-memory-os-parser-process-group-reaping.py",
+  "resultPath": "docs/fixtures/memory-os-operability/parser-process-group-reaping-results.sample.v1.json",
+  "requiredAssertions": [
+    "worker emits a complete frame before cancellation",
+    "at least two marked processes are visible in /proc before cancellation",
+    "the child inherits the supervised worker process group",
+    "cancellation returns context.Canceled within one second",
+    "Parse returns only after the direct worker wait path has run",
+    "every captured worker or child /proc entry disappears within three seconds after Parse returns",
+    "partial spool state is removed",
+    "raw process identifiers are not persisted in evidence"
+  ],
+  "implementationGuards": [
+    "supervisor starts workers with Setpgid true",
+    "supervisor cancellation kills negative worker pid with SIGKILL",
+    "supervisor executes command.Wait before returning",
+    "test child is started without a new process group and therefore inherits the worker group",
+    "test captures process identifiers only in memory and emits aggregate counts only"
+  ],
+  "privacy": {
+    "syntheticDataOnly": true,
+    "productionEvidence": false,
+    "processIdentifiersInEvidenceForbidden": true,
+    "workerPathInEvidenceForbidden": true,
+    "spoolPathInEvidenceForbidden": true,
+    "secretsInEvidenceForbidden": true,
+    "userContentInEvidenceForbidden": true
+  },
+  "limitations": [
+    "Linux GitHub Actions CI only",
+    "one synthetic child process is created by the test worker",
+    "the drill verifies process-group termination and /proc disappearance but not a host or container restart",
+    "the test harness binary is not a reviewed production parser artifact",
+    "production-equivalent environment generation is not required or claimed",
+    "not production chaos evidence"
+  ],
+  "readiness": {
+    "contractDefined": true,
+    "workerHarnessImplemented": true,
+    "testImplemented": true,
+    "validatorImplemented": true,
+    "automaticWorkflowImplemented": true,
+    "exactSourcePassResultCommitted": false,
+    "childProcessOrphanScanCompleted": false,
+    "hostRestartExecuted": false,
+    "productionArtifactExecuted": false,
+    "productionReady": false
+  },
+  "evidenceRefs": [
+    "contracts/operations/parser-process-group-reaping-contract.v1.json",
+    "services/import-api/internal/parsersup/supervisor_linux.go",
+    "services/import-api/internal/parsersup/worker.go",
+    "services/import-api/internal/parsersup/process_group_reaping_drill_linux_test.go",
+    "scripts/validate-memory-os-parser-process-group-reaping.py",
+    "scripts/reconcile-memory-os-parser-process-group-reaping.py",
+    ".github/workflows/parser-process-group-reaping.yml"
+  ]
+}
