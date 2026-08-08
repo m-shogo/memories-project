@@ -789,7 +789,12 @@
         "simultaneous old/current application traffic against the same production-shaped database",
         "rolling deployment order, connection drain, failure injection and application rollback rehearsal",
         "destructive contract-migration and downgrade compatibility proof",
-        "production-shaped mixed-version review with zero unresolved Critical or High findings"
+        "production-shaped mixed-version review with zero unresolved Critical or High findings",
+        "approved predecessor and successor release pair despite candidate-only mixed-version evidence",
+        "production rolling traffic, connection drain and application rollback rehearsal using rollback-eligible approved releases",
+        "reviewed production parser artifact with exact-byte replay and immutable rollback retention evidence",
+        "implemented client/server support windows and client/server skew tests",
+        "production-shaped PostgreSQL blue-green cutover with connection-pool drain, replication, failover and irreversible rollback-boundary review"
       ],
       "evidenceRefs": [
         ".github/workflows/security-contracts.yml",
