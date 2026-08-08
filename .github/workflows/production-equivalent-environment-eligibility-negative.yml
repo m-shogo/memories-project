@@ -1,0 +1,34 @@
+name: Production Equivalent Environment Eligibility Negative
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/production-equivalent-environment-eligibility-negative.yml"
+      - "scripts/memory_os_environment_generation_eligibility.py"
+      - "scripts/validate-memory-os-environment-generation-eligibility-negative.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Prove strict pair derivation
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/memory_os_environment_generation_eligibility.py \
+            scripts/validate-memory-os-environment-generation-eligibility-negative.py
+          python scripts/validate-memory-os-environment-generation-eligibility-negative.py
