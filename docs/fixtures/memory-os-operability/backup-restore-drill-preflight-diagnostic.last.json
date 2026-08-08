@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "backup-restore-drill-preflight",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "BACKUP RESTORE DRILL PREFLIGHT RECONCILE FAILED: post-reconcile preflight validator failed:\nBACKUP RESTORE DRILL PREFLIGHT FAILED: environment generation validator failed:\nPRODUCTION-EQUIVALENT GENERATION FAILED: generation artifact missing: negativeAdmissionValidator\n\n\n",
+  "containsSecrets": false,
+  "requestCreated": false,
+  "generationCreated": false,
+  "recoveryObjectiveCreated": false,
+  "restoreExecuted": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
