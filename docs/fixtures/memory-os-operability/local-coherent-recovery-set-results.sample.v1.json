@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "memory-os-local-coherent-recovery-set-results.v1",
+  "commitSha": "bfe9ad1cff82554439e5d9b15823767101c7ef95",
+  "generatedAt": "2026-08-08T02:25:28.691253Z",
+  "environment": {
+    "dependencyMode": "EPHEMERAL_POSTGRESQL_16_PLUS_LOCAL_MINIO_COHERENT_RECOVERY_SET",
+    "databaseEndpointDigest": "43d712e32e4893f2fd7a8b12a32b8be7093d6d05aa7f74da6b596f0182ad8454",
+    "objectEndpointDigest": "67d8ea34d836dea3b3e8169cb1f45896da25cc2d456769adb7ecc68dbba21c27",
+    "productionTraffic": false,
+    "productionCredentials": false,
+    "productionEvidence": false,
+    "containsSecrets": false
+  },
+  "scenario": {
+    "scenarioId": "postgres-object-shared-recovery-set-local",
+    "startedAt": "2026-08-08T02:25:26.622471Z",
+    "completedAt": "2026-08-08T02:25:28.691253Z",
+    "durationSeconds": 2,
+    "migrationFilesApplied": 11,
+    "databaseDumpBytes": 123134,
+    "recoverySetDigest": "43b22cba470314e6e971dcf56da9661be2e712209d1c3d29c97d662f1ce59f6b",
+    "databaseRecoverySetDigest": "43b22cba470314e6e971dcf56da9661be2e712209d1c3d29c97d662f1ce59f6b",
+    "objectRecoverySetDigest": "43b22cba470314e6e971dcf56da9661be2e712209d1c3d29c97d662f1ce59f6b",
+    "objectChecksumSha256": "ff3039989f037438a79b56969eb8a35f23285bcb8bbeffe9809267338bbb48b4",
+    "sourceObjectVersionDigest": "08a13c532f9db288f3da4e0d514b8895639e47691b84d1b6f0685b1ccbe6dc51",
+    "backupObjectVersionDigest": "a651ab8d860f981c20f775b27d2dd0f1d5ee58e816e15e273a4e3af6695381a6",
+    "restoreObjectVersionDigest": "e8e156870250ac0d4726d3dfdc5a21b737a4640cc04b0a3cd7d5a9841318d647",
+    "assertions": {
+      "sourceDatabaseDestroyedBeforeRestore": true,
+      "sourceObjectVersionsDestroyedBeforeRestore": true,
+      "databaseRecoverySetBindingMatched": true,
+      "objectRecoverySetBindingMatched": true,
+      "databaseObjectRecoverySetMatched": true,
+      "exactBackupObjectChecksumMatched": true,
+      "deliberateOneSidedSkewRejected": true
+    },
+    "integrityResult": "PASS",
+    "result": "PASS"
+  },
+  "limitations": [
+    "same local PostgreSQL instance and local MinIO process",
+    "logical dump rather than PostgreSQL WAL/PITR",
+    "shared digest proves recovery-set binding but does not measure temporal recovery-point skew",
+    "not independent provider retention TLS credential separation or durability evidence",
+    "not production or production-equivalent recovery evidence"
+  ]
+}
