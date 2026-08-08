@@ -20,6 +20,8 @@ CHAIN_CONTRACT = ROOT / "contracts/operations/backup-restore-admission-chain-con
 GEN_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-generation.py"
 OBJECTIVE_VALIDATOR = ROOT / "scripts/validate-memory-os-recovery-objectives.py"
 DRILL_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-request.py"
+GEN_BLOCKER = "TWO_UNSUPERSEDED_DISTINCT_ENVIRONMENT_GENERATIONS"
+OBJECTIVE_BLOCKER = "CURRENT_APPROVED_RECOVERY_OBJECTIVE"
 
 
 class Fail(RuntimeError):
@@ -84,7 +86,13 @@ def derive_state(generations: dict[str, Any], objectives: dict[str, Any], drill_
     require(isinstance(current_request_count, int) and 0 <= current_request_count <= request_count, "current executable drill request count invalid")
 
     pair_available = pair_count > 0
-    eligible = pair_available and current_objective_available
+    blocking_prerequisites: list[str] = []
+    if not pair_available:
+        blocking_prerequisites.append(GEN_BLOCKER)
+    if not current_objective_available:
+        blocking_prerequisites.append(OBJECTIVE_BLOCKER)
+    eligible = len(blocking_prerequisites) == 0
+
     if not pair_available:
         decision = "BLOCKED_NEEDS_TWO_UNSUPERSEDED_DISTINCT_ENVIRONMENT_GENERATIONS"
     elif not current_objective_available:
@@ -105,6 +113,8 @@ def derive_state(generations: dict[str, Any], objectives: dict[str, Any], drill_
         "currentObjectiveId": current_objective_id,
         "reviewedDrillRequestCount": request_count,
         "currentExecutableDrillRequestCount": current_request_count,
+        "blockingPrerequisites": blocking_prerequisites,
+        "blockingPrerequisiteCount": len(blocking_prerequisites),
         "eligibleToSubmitReviewedDrillRequest": eligible,
         "preflightDecision": decision,
     }
@@ -137,6 +147,9 @@ def main() -> int:
 
     rules = contract.get("preflightRules")
     require(isinstance(rules, dict) and rules and all(value is True for value in rules.values()), "preflight rules must remain fail-closed")
+    require(rules.get("allMissingPrerequisitesMustBeEnumerated") is True, "preflight blocker enumeration rule missing")
+    blocker_kinds = contract.get("blockingPrerequisiteKinds")
+    require(isinstance(blocker_kinds, list) and blocker_kinds == [GEN_BLOCKER, OBJECTIVE_BLOCKER], "preflight blocker kind/order drift")
     decisions = contract.get("decisionStates")
     expected_decisions = {
         "BLOCKED_NEEDS_TWO_UNSUPERSEDED_DISTINCT_ENVIRONMENT_GENERATIONS",
@@ -159,6 +172,12 @@ def main() -> int:
     require(isinstance(canonical, dict) and isinstance(readiness, dict), "preflight authority state missing")
     for field, value in state.items():
         require(canonical.get(field) == value, f"preflight state drift: {field}")
+    blockers = canonical.get("blockingPrerequisites")
+    blocker_count = canonical.get("blockingPrerequisiteCount")
+    require(isinstance(blockers, list) and len(blockers) == len(set(blockers)), "preflight blockers invalid/duplicated")
+    require(all(blocker in blocker_kinds for blocker in blockers), "preflight blocker outside canonical kind set")
+    require(isinstance(blocker_count, int) and blocker_count == len(blockers), "preflight blocker count drift")
+    require((blocker_count == 0) is state["eligibleToSubmitReviewedDrillRequest"], "preflight blocker/eligibility contradiction")
     for field in ("requestCreated", "backupExecuted", "restoreExecuted", "productionTrafficChanged", "productionEvidence", "productionReady"):
         require(canonical.get(field) is False, f"preflight must keep {field}=false")
     require(canonical.get("productionDecision") == "NO_GO", "preflight production decision must remain NO_GO")
@@ -172,7 +191,6 @@ def main() -> int:
     require(readiness.get("currentExecutableDrillRequestAvailable") is (state["currentExecutableDrillRequestCount"] > 0), "preflight current request readiness drift")
     require(readiness.get("drillExecuted") is False and readiness.get("productionReady") is False, "preflight cannot claim execution or production readiness")
 
-    # Underlying canonical authorities must independently validate too.
     run_validator(GEN_VALIDATOR, "environment generation")
     run_validator(OBJECTIVE_VALIDATOR, "recovery objectives")
     run_validator(DRILL_VALIDATOR, "restore drill request")
@@ -183,8 +201,9 @@ def main() -> int:
     print(f"eligible directed source-target pairs: {state['eligibleDirectedSourceTargetPairCount']}")
     print(f"approved recovery objectives: {state['approvedRecoveryObjectiveCount']}")
     print(f"reviewed/current drill requests: {state['reviewedDrillRequestCount']}/{state['currentExecutableDrillRequestCount']}")
+    print(f"blocking prerequisites ({state['blockingPrerequisiteCount']}): {','.join(state['blockingPrerequisites']) if state['blockingPrerequisites'] else 'none'}")
     print(f"preflight decision: {state['preflightDecision']}")
-    print("automatic request creation: false")
+    print("automatic prerequisite/request creation: false")
     print("restore executed: false")
     print("production evidence: false")
     print("production decision: NO_GO")
