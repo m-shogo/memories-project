@@ -22,6 +22,7 @@ EXPECTED_REFS = {
     "scripts/run-memory-os-local-apple-replay-restore.py",
     "scripts/validate-memory-os-local-apple-replay-restore.py",
     ".github/workflows/local-apple-replay-restore.yml",
+    "docs/fixtures/memory-os-operability/local-apple-replay-restore-results.sample.v1.json",
 }
 
 
