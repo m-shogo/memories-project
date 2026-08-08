@@ -95,18 +95,24 @@
       "id": "OPS-P0-007",
       "authority": "contracts/operations/backup-restore-generation-evidence-contract.v1.json",
       "secondaryAuthority": "contracts/operations/backup-restore-generation-binding-contract.v1.json",
+      "tertiaryAuthority": "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json",
       "foundationImplemented": true,
       "admittedEvidenceCount": 0,
       "dependencyCounts": {
         "environmentGenerations": 0,
         "approvedRecoveryObjectives": 0,
         "generationBoundBackups": 0,
+        "generationBoundRestores": 0,
+        "typedNonResurrectionRecords": 0,
+        "completeTypedNonResurrectionRecords": 0,
+        "preOverlayEligiblePendingTypedCoverage": 0,
+        "typedCoveredRecoveryCandidates": 0,
         "productionEquivalentRecoveryCandidates": 0
       },
-      "nextGate": "explicitly approve RPO/RTO/object-database skew without defaults, register a reviewed production-equivalent environment generation, then admit generation-bound PITR, independent object retention and isolated restore evidence whose measured objectives pass current targets plus non-resurrection review",
+      "nextGate": "explicitly approve RPO/RTO/object-database skew without defaults, register a reviewed production-equivalent environment generation, admit generation-bound PITR/independent-object/cross-cluster restore evidence within those objectives, then bind all eight typed non-resurrection domains before any final production-equivalent recovery candidate exists",
       "status": "PARTIAL_FOUNDATIONS_ONLY",
       "blocking": true,
-      "missingEvidenceCount": 9,
+      "missingEvidenceCount": 6,
       "productionEvidence": false,
       "productionReady": false
     },
@@ -142,7 +148,7 @@
       "nextGate": "generation-bound multi-instance, object-store, PostgreSQL failover and parser durable-spool restart drills; mixed-version failure evidence additionally requires an approved release pair",
       "status": "PARTIAL",
       "blocking": true,
-      "missingEvidenceCount": 12,
+      "missingEvidenceCount": 8,
       "productionEvidence": false,
       "productionReady": false
     }
@@ -150,6 +156,8 @@
   "productionEquivalentEnvironmentGenerationCount": 0,
   "approvedRecoveryObjectiveCount": 0,
   "approvedReleaseCompatibilityPairCount": 0,
+  "typedNonResurrectionRecordCount": 0,
+  "completeTypedNonResurrectionRecordCount": 0,
   "productionEvidence": false,
   "productionReady": false,
   "productionDecision": "NO_GO",
@@ -159,6 +167,7 @@
     "candidate/local evidence is not counted as production admission unless its owning authority explicitly admits it",
     "local repeated soak evidence is tracked separately from independent leak proof and production-shaped soak evidence",
     "recovery-objective values are never defaulted by this inventory; zero approved objectives means RPO/RTO/skew remain intentionally undefined",
+    "a generic generation recovery nonResurrectionVerification PASS cannot create a final recovery candidate; complete typed coverage of all eight non-resurrection domains is independently required",
     "candidate/local mixed-version execution remains separate from the approved release-pair registry and can never create an approved predecessor/successor pair"
   ]
 }
