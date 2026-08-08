@@ -14,21 +14,27 @@ ROOT = Path(__file__).resolve().parents[1]
 INDEX_PATH = ROOT / "contracts/operations/backup-local-foundation-evidence.v1.json"
 LOGICAL_RESULT = ROOT / "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json"
 OBJECT_RESULT = ROOT / "docs/fixtures/memory-os-operability/local-object-version-restore-results.sample.v1.json"
+COHERENT_RESULT = ROOT / "docs/fixtures/memory-os-operability/local-coherent-recovery-set-results.sample.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 EXPECTED_IDS = {
     "LOCAL_POSTGRESQL_LOGICAL_RESTORE",
     "LOCAL_EXACT_OBJECT_VERSION_RESTORE",
+    "LOCAL_COHERENT_DATABASE_OBJECT_RECOVERY_SET",
 }
 EXPECTED_REFS = {
     "contracts/operations/backup-local-foundation-evidence.v1.json",
     "contracts/operations/local-logical-restore-contract.v1.json",
     "contracts/operations/local-object-version-restore-contract.v1.json",
+    "contracts/operations/local-coherent-recovery-set-contract.v1.json",
     "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json",
     "docs/fixtures/memory-os-operability/local-object-version-restore-results.sample.v1.json",
+    "docs/fixtures/memory-os-operability/local-coherent-recovery-set-results.sample.v1.json",
     "scripts/validate-memory-os-backup-local-foundations.py",
+    "scripts/validate-memory-os-local-coherent-recovery-set.py",
     "scripts/reconcile-memory-os-backup-authority.py",
+    ".github/workflows/local-coherent-recovery-set.yml",
     ".github/workflows/reconcile-backup-authority.yml",
 }
 
@@ -162,6 +168,50 @@ def validate_object(result: dict[str, Any]) -> None:
             "object restore contains a failed assertion")
 
 
+def validate_coherent(result: dict[str, Any]) -> None:
+    require(result.get("schemaVersion") == "memory-os-local-coherent-recovery-set-results.v1",
+            "coherent recovery result schema drift")
+    require(source_is_ancestor(result.get("commitSha")),
+            "coherent recovery result SHA is not an ancestor of current HEAD")
+    environment = result.get("environment")
+    require(isinstance(environment, dict), "coherent recovery environment missing")
+    require(environment.get("dependencyMode") ==
+            "EPHEMERAL_POSTGRESQL_16_PLUS_LOCAL_MINIO_COHERENT_RECOVERY_SET",
+            "coherent recovery dependency mode drift")
+    for field in ("productionTraffic", "productionCredentials", "productionEvidence", "containsSecrets"):
+        require(environment.get(field) is False,
+                f"coherent recovery evidence boundary drift: {field}")
+    scenario = result.get("scenario")
+    require(isinstance(scenario, dict), "coherent recovery scenario missing")
+    require(scenario.get("result") == "PASS" and scenario.get("integrityResult") == "PASS",
+            "coherent recovery is not PASS")
+    require(scenario.get("migrationFilesApplied") == 11,
+            "coherent recovery did not apply canonical migration sequence")
+    recovery = scenario.get("recoverySetDigest")
+    db_recovery = scenario.get("databaseRecoverySetDigest")
+    object_recovery = scenario.get("objectRecoverySetDigest")
+    for name, value in (("recoverySetDigest", recovery), ("databaseRecoverySetDigest", db_recovery),
+                        ("objectRecoverySetDigest", object_recovery)):
+        require(isinstance(value, str) and DIGEST_RE.fullmatch(value) is not None,
+                f"coherent recovery {name} must be a digest")
+    require(recovery == db_recovery == object_recovery,
+            "coherent database/object recovery-set digests do not match")
+    assertions = scenario.get("assertions")
+    require(isinstance(assertions, dict) and assertions,
+            "coherent recovery assertions missing")
+    for key in (
+        "sourceDatabaseDestroyedBeforeRestore",
+        "sourceObjectVersionsDestroyedBeforeRestore",
+        "databaseRecoverySetBindingMatched",
+        "objectRecoverySetBindingMatched",
+        "databaseObjectRecoverySetMatched",
+        "exactBackupObjectChecksumMatched",
+        "deliberateOneSidedSkewRejected",
+    ):
+        require(assertions.get(key) is True,
+                f"coherent recovery assertion failed: {key}")
+
+
 def main() -> int:
     index = load(INDEX_PATH)
     require(index.get("schemaVersion") ==
@@ -197,14 +247,25 @@ def main() -> int:
         strings(item.get("doesNotProve"), f"{foundation_id}.doesNotProve", 5)
     logical_proves = "\n".join(by_id["LOCAL_POSTGRESQL_LOGICAL_RESTORE"]["proves"])
     for phrase in ("expired active session", "revoked unexpired session", "cannot resolve"):
-        require(phrase in logical_proves, f"logical foundation index omits terminal-session proof: {phrase}")
+        require(phrase in logical_proves,
+                f"logical foundation index omits terminal-session proof: {phrase}")
+    coherent_proves = "\n".join(by_id["LOCAL_COHERENT_DATABASE_OBJECT_RECOVERY_SET"]["proves"])
+    for phrase in ("recovery-set digest", "destroyed before recovery", "identical", "mismatch is rejected"):
+        require(phrase in coherent_proves,
+                f"coherent foundation index omits proof: {phrase}")
 
     boundary = index.get("combinedBoundary")
     require(isinstance(boundary, dict), "combinedBoundary must be an object")
     require(boundary.get("bothExactSourceResultsCommitted") is True,
             "combined local results are not marked committed")
+    require(boundary.get("coherentDatabaseObjectRestoreCompleted") is True,
+            "coherent local database/object recovery-set evidence must be registered")
+    require(boundary.get("coherentDatabaseObjectRestoreScope") ==
+            "LOCAL_SHARED_RECOVERY_SET_DIGEST_BINDING_ONLY",
+            "coherent recovery scope drift")
+    require(boundary.get("recoveryPointTimeSkewMeasured") is False,
+            "local shared digest does not measure temporal recovery-point skew")
     for unproven in (
-        "coherentDatabaseObjectRestoreCompleted",
         "postgresPitrConfigured",
         "independentObjectRetentionConfigured",
         "productionTlsAndCredentialSeparationVerified",
@@ -216,13 +277,14 @@ def main() -> int:
         require(boundary.get(unproven) is False,
                 f"local foundation index cannot claim {unproven}")
 
-    refs = strings(index.get("evidenceRefs"), "evidenceRefs", 8)
+    refs = strings(index.get("evidenceRefs"), "evidenceRefs", 12)
     require(set(refs) == EXPECTED_REFS, f"local foundation evidenceRefs drift: {refs}")
     for ref in refs:
         require((ROOT / ref).is_file(), f"local foundation evidence missing: {ref}")
 
     validate_logical(load(LOGICAL_RESULT))
     validate_object(load(OBJECT_RESULT))
+    validate_coherent(load(COHERENT_RESULT))
 
     status = load(STATUS_PATH)
     require(status.get("productionDecision") == "NO_GO",
@@ -234,8 +296,10 @@ def main() -> int:
             "local backup foundations cannot make OPS-P0-007 READY")
 
     print("Memory OS local backup/restore foundation validation PASS")
-    print("committed foundations: 2")
+    print("committed foundations: 3")
     print("expired/revoked session restore semantics: PASS")
+    print("coherent local database/object recovery-set binding: PASS")
+    print("temporal recovery-point skew measured: false")
     print(f"OPS-P0-007 status: {gate.get('status')}")
     print("production decision: NO_GO")
     return 0
