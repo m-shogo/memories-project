@@ -65,9 +65,9 @@
     "runnerImplemented": true,
     "validatorImplemented": true,
     "automaticWorkflowImplemented": true,
-    "exactSourcePassResultCommitted": false,
-    "deliberateSkewRejected": false,
-    "coherentLocalRecoverySetBindingProven": false,
+    "exactSourcePassResultCommitted": true,
+    "deliberateSkewRejected": true,
+    "coherentLocalRecoverySetBindingProven": true,
     "productionEquivalentRestoreEvidence": false,
     "productionReady": false
   },
@@ -75,6 +75,7 @@
     "contracts/operations/local-coherent-recovery-set-contract.v1.json",
     "scripts/run-memory-os-local-coherent-recovery-set.py",
     "scripts/validate-memory-os-local-coherent-recovery-set.py",
-    ".github/workflows/local-coherent-recovery-set.yml"
+    ".github/workflows/local-coherent-recovery-set.yml",
+    "docs/fixtures/memory-os-operability/local-coherent-recovery-set-results.sample.v1.json"
   ]
 }
