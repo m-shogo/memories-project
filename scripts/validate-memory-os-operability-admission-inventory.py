@@ -63,6 +63,7 @@ def main() -> int:
     non_resurrection_registry = load(ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json")
     drill_request_contract = load(ROOT / "contracts/operations/backup-restore-drill-request-contract.v1.json")
     drill_request_registry = load(ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json")
+    preflight_contract = load(ROOT / "contracts/operations/backup-restore-drill-preflight-contract.v1.json")
 
     generation_count = generations.get("registeredGenerationCount")
     objective_count = recovery_objectives.get("approvedObjectiveCount")
@@ -91,6 +92,28 @@ def main() -> int:
     require(drill_execution.get("backupExecuted") is False and drill_execution.get("restoreExecuted") is False, "planning authority cannot claim drill execution")
     if generation_count < 2 or objective_count == 0:
         require(drill_request_count == 0 and executable_drill_request_count == 0, "drill request cannot exist before two generations and an approved objective")
+
+    preflight_state = preflight_contract.get("currentState")
+    require(isinstance(preflight_state, dict), "restore drill preflight state missing")
+    unsuperseded_generation_count = preflight_state.get("unsupersededGenerationCount")
+    distinct_unsuperseded_environment_count = preflight_state.get("distinctUnsupersededEnvironmentCount")
+    eligible_pair_count = preflight_state.get("eligibleDirectedSourceTargetPairCount")
+    preflight_eligible = preflight_state.get("eligibleToSubmitReviewedDrillRequest")
+    preflight_decision = preflight_state.get("preflightDecision")
+    require(all(isinstance(value, int) and not isinstance(value, bool) and value >= 0 for value in (unsuperseded_generation_count, distinct_unsuperseded_environment_count, eligible_pair_count)), "restore drill preflight counts invalid")
+    require(isinstance(preflight_eligible, bool), "restore drill preflight eligibility invalid")
+    require(isinstance(preflight_decision, str) and preflight_decision, "restore drill preflight decision invalid")
+    require(preflight_state.get("registeredGenerationCount") == generation_count, "preflight generation count drift")
+    require(preflight_state.get("approvedRecoveryObjectiveCount") == objective_count, "preflight objective count drift")
+    require(preflight_state.get("reviewedDrillRequestCount") == drill_request_count, "preflight request count drift")
+    require(preflight_state.get("currentExecutableDrillRequestCount") == executable_drill_request_count, "preflight executable request count drift")
+    require(all(preflight_state.get(field) is False for field in ("requestCreated", "backupExecuted", "restoreExecuted", "productionTrafficChanged", "productionEvidence", "productionReady")), "preflight execution/production boundary drift")
+    require(preflight_state.get("productionDecision") == "NO_GO", "preflight production decision drift")
+    require(inventory.get("backupRestoreUnsupersededEnvironmentGenerationCount") == unsuperseded_generation_count, "inventory unsuperseded generation count drift")
+    require(inventory.get("backupRestoreDistinctUnsupersededEnvironmentCount") == distinct_unsuperseded_environment_count, "inventory distinct unsuperseded environment count drift")
+    require(inventory.get("backupRestoreEligibleDirectedPairCount") == eligible_pair_count, "inventory eligible restore pair count drift")
+    require(inventory.get("backupRestoreDrillPreflightEligible") is preflight_eligible, "inventory preflight eligibility drift")
+    require(inventory.get("backupRestoreDrillPreflightDecision") == preflight_decision, "inventory preflight decision drift")
 
     generation_evidence_count = backup_recovery.get("registeredEvidenceCount")
     drill_bound_generation_evidence_count = backup_recovery.get("drillRequestBoundEvidenceCount")
@@ -133,11 +156,17 @@ def main() -> int:
     require(backup_row.get("secondaryAuthority") == "contracts/operations/backup-restore-generation-binding-contract.v1.json", "OPS-P0-007 secondary authority drift")
     require(backup_row.get("tertiaryAuthority") == "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json", "OPS-P0-007 typed authority drift")
     require(backup_row.get("quaternaryAuthority") == "contracts/operations/backup-restore-drill-request-contract.v1.json", "OPS-P0-007 drill request authority drift")
+    require(backup_row.get("quinaryAuthority") == "contracts/operations/backup-restore-drill-preflight-contract.v1.json", "OPS-P0-007 preflight authority drift")
     require(backup_row.get("foundationImplemented") is True, "OPS-P0-007 admission foundation incomplete")
+    require(backup_row.get("preflightDecision") == preflight_decision, "OPS-P0-007 preflight decision drift")
+    require(backup_row.get("preflightEligible") is preflight_eligible, "OPS-P0-007 preflight eligibility drift")
     deps = backup_row.get("dependencyCounts")
     require(isinstance(deps, dict), "OPS-P0-007 dependencyCounts missing")
     expected_dependencies = {
         "environmentGenerations": generation_count,
+        "unsupersededEnvironmentGenerations": unsuperseded_generation_count,
+        "distinctUnsupersededEnvironments": distinct_unsuperseded_environment_count,
+        "eligibleDirectedRestorePairs": eligible_pair_count,
         "approvedRecoveryObjectives": objective_count,
         "reviewedRestoreDrillRequests": drill_request_count,
         "currentExecutableRestoreDrillRequests": executable_drill_request_count,
@@ -153,10 +182,18 @@ def main() -> int:
     }
     require(deps == expected_dependencies, f"OPS-P0-007 dependencyCounts drift: {deps}")
     require(backup_row.get("admittedEvidenceCount") == backup_boundary.get("generationBoundRestoreCount"), "OPS-P0-007 admitted restore count drift")
-    next_gate = backup_row.get("nextGate", "")
-    require("planning-only cross-environment restore drill request" in next_gate, "OPS-P0-007 nextGate must preserve drill planning admission")
-    require("request-bound generation" in next_gate, "OPS-P0-007 nextGate must preserve request-bound generation evidence")
-    require("all eight typed non-resurrection domains" in next_gate, "OPS-P0-007 nextGate must preserve typed non-resurrection requirement")
+
+    if preflight_decision == "BLOCKED_NEEDS_TWO_UNSUPERSEDED_DISTINCT_ENVIRONMENT_GENERATIONS":
+        expected_next_gate = "register two distinct reviewed production-equivalent environment generations that are both unsuperseded; then approve explicit recovery objectives before submitting any restore drill request"
+    elif preflight_decision == "BLOCKED_NEEDS_CURRENT_APPROVED_RECOVERY_OBJECTIVE":
+        expected_next_gate = "approve explicit RPO, RTO and maximum object/database skew for the current recovery objective; then submit a planning-only cross-environment restore drill request for review"
+    elif preflight_decision == "READY_FOR_REVIEWED_DRILL_REQUEST_SUBMISSION":
+        expected_next_gate = "submit an external reviewed planning-only restore drill request bound to one eligible source/target generation pair and the current recovery objective; do not execute from preflight alone"
+    elif preflight_decision == "READY_EXISTING_EXECUTABLE_DRILL_REQUEST":
+        expected_next_gate = "immediately revalidate the existing reviewed drill request before any isolated restore execution, then admit request-bound generation recovery evidence and all eight typed non-resurrection domains"
+    else:
+        raise Fail(f"unknown restore drill preflight decision: {preflight_decision}")
+    require(backup_row.get("nextGate") == expected_next_gate, "OPS-P0-007 dynamic nextGate drift")
 
     if typed_record_count == 0:
         require(final_candidate_count == 0, "final recovery candidate cannot exist without typed non-resurrection record")
@@ -166,12 +203,15 @@ def main() -> int:
     print("Memory OS operability admission inventory validation PASS")
     print("P0 areas: 9")
     print(f"production-equivalent generations: {generation_count}")
+    print(f"restore preflight decision: {preflight_decision}")
+    print(f"restore preflight eligible pairs: {eligible_pair_count}")
     print(f"approved recovery objectives: {objective_count}")
     print(f"reviewed restore drill requests: {drill_request_count}")
     print(f"current executable restore drill requests: {executable_drill_request_count}")
     print(f"generation/drill-bound recovery evidence: {generation_evidence_count}/{drill_bound_generation_evidence_count}")
     print(f"typed non-resurrection records: {typed_record_count}")
     print(f"final recovery candidates: {final_candidate_count}")
+    print("preflight auto-creates prerequisites: false")
     print("unbound generation recovery evidence accepted: false")
     print("drill planning request implies execution: false")
     print("generic non-resurrection PASS bypass: false")
