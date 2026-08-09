@@ -47,6 +47,7 @@ on:
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py"
       - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
       - "scripts/reconcile-memory-os-backup-restore-admission-chain.py"
@@ -99,6 +100,7 @@ on:
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py"
       - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
       - "scripts/reconcile-memory-os-backup-restore-admission-chain.py"
@@ -157,6 +159,7 @@ jobs:
             scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-negative.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py \
             scripts/validate-memory-os-backup-restore-admission-chain.py \
             scripts/reconcile-memory-os-backup-restore-admission-chain.py \
             scripts/validate-memory-os-operability.py \
@@ -196,6 +199,9 @@ jobs:
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-backup-restore-generation-binding-negative.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py >> "$log" 2>&1 || code=$?
