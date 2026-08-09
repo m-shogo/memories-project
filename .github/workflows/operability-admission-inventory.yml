@@ -29,6 +29,8 @@ on:
       - "contracts/operations/parser-artifact-registry.v1.json"
       - "contracts/operations/production-shaped-failure-drill-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
+      - "docs/evidence/backup-restore/**"
+      - "docs/fixtures/memory-os-operability/backup-restore-generation-evidence/**"
       - "docs/runbooks/memory-os-production-equivalent-backup-restore-drill.md"
       - "scripts/generate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-operability-admission-inventory.py"
@@ -41,6 +43,7 @@ on:
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
+      - "scripts/validate-memory-os-backup-restore-semantic-generation-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
@@ -94,6 +97,7 @@ jobs:
             scripts/register-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-negative.py \
+            scripts/validate-memory-os-backup-restore-semantic-generation-negative.py \
             scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-negative.py \
