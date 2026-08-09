@@ -98,7 +98,7 @@ def main() -> int:
     preflight_eligible_generation_count = preflight_state.get("preflightEligibleGenerationCount")
     unsuperseded_generation_count = preflight_state.get("unsupersededGenerationCount")
     unsuperseded_preflight_eligible_generation_count = preflight_state.get("unsupersededPreflightEligibleGenerationCount")
-    distinct_unsuperseded_environment_count = preflight_state.get("distinctUnsupersededEnvironmentCount")
+    distinct_unsuperseded_preflight_eligible_environment_count = preflight_state.get("distinctUnsupersededPreflightEligibleEnvironmentCount")
     eligible_pair_count = preflight_state.get("eligibleDirectedSourceTargetPairCount")
     preflight_eligible = preflight_state.get("eligibleToSubmitReviewedDrillRequest")
     preflight_decision = preflight_state.get("preflightDecision")
@@ -106,11 +106,12 @@ def main() -> int:
         preflight_eligible_generation_count,
         unsuperseded_generation_count,
         unsuperseded_preflight_eligible_generation_count,
-        distinct_unsuperseded_environment_count,
+        distinct_unsuperseded_preflight_eligible_environment_count,
         eligible_pair_count,
     )), "restore drill preflight counts invalid")
     require(preflight_eligible_generation_count <= generation_count, "semantic preflight-eligible generation count exceeds registered inventory")
     require(unsuperseded_preflight_eligible_generation_count <= unsuperseded_generation_count, "unsuperseded semantic generation count exceeds unsuperseded inventory")
+    require(distinct_unsuperseded_preflight_eligible_environment_count <= unsuperseded_preflight_eligible_generation_count, "distinct semantic preflight-eligible environment count exceeds eligible generation inventory")
     require(isinstance(preflight_eligible, bool), "restore drill preflight eligibility invalid")
     require(isinstance(preflight_decision, str) and preflight_decision, "restore drill preflight decision invalid")
     require(preflight_state.get("registeredGenerationCount") == generation_count, "preflight generation count drift")
@@ -124,7 +125,7 @@ def main() -> int:
     require(inventory.get("backupRestorePreflightEligibleEnvironmentGenerationCount") == preflight_eligible_generation_count, "inventory semantic preflight-eligible generation count drift")
     require(inventory.get("backupRestoreUnsupersededEnvironmentGenerationCount") == unsuperseded_generation_count, "inventory unsuperseded generation count drift")
     require(inventory.get("backupRestoreUnsupersededPreflightEligibleEnvironmentGenerationCount") == unsuperseded_preflight_eligible_generation_count, "inventory unsuperseded semantic generation count drift")
-    require(inventory.get("backupRestoreDistinctUnsupersededEnvironmentCount") == distinct_unsuperseded_environment_count, "inventory distinct unsuperseded environment count drift")
+    require(inventory.get("backupRestoreDistinctUnsupersededPreflightEligibleEnvironmentCount") == distinct_unsuperseded_preflight_eligible_environment_count, "inventory distinct semantic unsuperseded environment count drift")
     require(inventory.get("backupRestoreEligibleDirectedPairCount") == eligible_pair_count, "inventory eligible restore pair count drift")
     require(inventory.get("backupRestoreDrillPreflightEligible") is preflight_eligible, "inventory preflight eligibility drift")
     require(inventory.get("backupRestoreDrillPreflightDecision") == preflight_decision, "inventory preflight decision drift")
@@ -196,7 +197,7 @@ def main() -> int:
         "preflightEligibleEnvironmentGenerations": preflight_eligible_generation_count,
         "unsupersededEnvironmentGenerations": unsuperseded_generation_count,
         "unsupersededPreflightEligibleEnvironmentGenerations": unsuperseded_preflight_eligible_generation_count,
-        "distinctUnsupersededEnvironments": distinct_unsuperseded_environment_count,
+        "distinctUnsupersededPreflightEligibleEnvironments": distinct_unsuperseded_preflight_eligible_environment_count,
         "eligibleDirectedRestorePairs": eligible_pair_count,
         "approvedRecoveryObjectives": objective_count,
         "reviewedRestoreDrillRequests": drill_request_count,
@@ -235,6 +236,7 @@ def main() -> int:
     print("P0 areas: 9")
     print(f"production-equivalent generations: {generation_count}")
     print(f"restore preflight semantic/unsuperseded-semantic generations: {preflight_eligible_generation_count}/{unsuperseded_preflight_eligible_generation_count}")
+    print(f"restore preflight distinct semantic unsuperseded environments: {distinct_unsuperseded_preflight_eligible_environment_count}")
     print(f"restore preflight decision: {preflight_decision}")
     print(f"restore preflight eligible pairs: {eligible_pair_count}")
     print(f"approved recovery objectives: {objective_count}")
