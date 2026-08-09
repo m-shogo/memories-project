@@ -21,6 +21,23 @@ PLACEHOLDER_METHODS = {
     "tbd", "todo", "unknown", "default", "n/a", "na", "later", "pending",
     "none", "not defined", "not_defined",
 }
+APPROVAL_SCHEMA = "memory-os-recovery-objectives-approval.v1"
+APPROVAL_ROLES = {"RECOVERY_OWNER", "OPERABILITY"}
+APPROVAL_FIELDS = {
+    "schemaVersion",
+    "objectiveId",
+    "reviewRole",
+    "decision",
+    "scope",
+    "rpoSeconds",
+    "rtoSeconds",
+    "maximumObjectDatabaseSkewSeconds",
+    "reviewedAt",
+    "reviewerPseudonym",
+    "productionTraffic",
+    "productionCredentials",
+    "automaticPromotion",
+}
 
 
 class Fail(RuntimeError):
@@ -38,6 +55,16 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def parse_utc_timestamp(value: Any, field: str) -> datetime:
+    require(isinstance(value, str) and value.endswith("Z"), f"{field} must be UTC RFC3339 ending in Z")
+    try:
+        parsed = datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError as exc:
+        raise Fail(f"{field} must be UTC RFC3339 date-time") from exc
+    require(parsed.utcoffset() is not None and parsed.utcoffset().total_seconds() == 0, f"{field} must be UTC")
+    return parsed
+
+
 def repo_ref(value: Any, field: str) -> str:
     require(isinstance(value, str) and value and not Path(value).is_absolute(), f"{field} invalid")
     path = Path(value)
@@ -46,10 +73,34 @@ def repo_ref(value: Any, field: str) -> str:
     return value
 
 
-def evidence_refs(value: Any) -> list[str]:
-    require(isinstance(value, list) and len(value) >= 2, "at least two approvalEvidenceRefs required")
+def approval_document(ref: str, record: dict[str, Any], approved_at: datetime) -> dict[str, Any]:
+    document = load(ROOT / ref)
+    require(set(document) == APPROVAL_FIELDS, "approval evidence field drift")
+    require(document.get("schemaVersion") == APPROVAL_SCHEMA, "approval evidence schemaVersion drift")
+    require(document.get("decision") == "APPROVED", "approval evidence decision must be APPROVED")
+    role = document.get("reviewRole")
+    require(role in APPROVAL_ROLES, "approval evidence reviewRole invalid")
+    reviewer = document.get("reviewerPseudonym")
+    require(isinstance(reviewer, str) and reviewer.strip(), "approval evidence reviewerPseudonym required")
+    reviewed_at = parse_utc_timestamp(document.get("reviewedAt"), "approval evidence reviewedAt")
+    require(reviewed_at <= approved_at, "approval evidence cannot post-date objective approval")
+    for field in ("objectiveId", "scope", "rpoSeconds", "rtoSeconds", "maximumObjectDatabaseSkewSeconds"):
+        require(document.get(field) == record.get(field), f"approval evidence {field} binding mismatch")
+    for field in ("productionTraffic", "productionCredentials", "automaticPromotion"):
+        require(document.get(field) is False, f"approval evidence {field} must remain false")
+    return document
+
+
+def evidence_refs(value: Any, record: dict[str, Any], approved_at: datetime) -> list[str]:
+    require(isinstance(value, list) and len(value) == 2, "exactly two typed approvalEvidenceRefs required")
     require(len(value) == len(set(value)), "approvalEvidenceRefs must be distinct")
-    return [repo_ref(ref, "approvalEvidenceRefs") for ref in value]
+    refs = [repo_ref(ref, "approvalEvidenceRefs") for ref in value]
+    approvals = [approval_document(ref, record, approved_at) for ref in refs]
+    roles = [approval.get("reviewRole") for approval in approvals]
+    require(set(roles) == APPROVAL_ROLES, "Recovery Owner and Operability approvals are both required")
+    reviewers = [approval.get("reviewerPseudonym") for approval in approvals]
+    require(len(set(reviewers)) == 2, "Recovery Owner and Operability reviewers must be distinct")
+    return refs
 
 
 def measurement_method(value: Any, field: str) -> str:
@@ -76,17 +127,11 @@ def validate_record(record: dict[str, Any]) -> None:
 
     for field in ("rpoMeasurementMethod", "rtoMeasurementMethod", "skewMeasurementMethod"):
         measurement_method(record.get(field), field)
-    owner_ref = repo_ref(record.get("ownerRef"), "ownerRef")
-    approvals = evidence_refs(record.get("approvalEvidenceRefs"))
-    require(owner_ref not in approvals, "ownerRef must be distinct from approvalEvidenceRefs")
 
-    approved_at = record.get("approvedAt")
-    require(isinstance(approved_at, str) and approved_at.endswith("Z"), "approvedAt must be UTC RFC3339 ending in Z")
-    try:
-        parsed = datetime.fromisoformat(approved_at[:-1] + "+00:00")
-    except ValueError as exc:
-        raise Fail("approvedAt must be UTC RFC3339 date-time") from exc
-    require(parsed.utcoffset() is not None and parsed.utcoffset().total_seconds() == 0, "approvedAt must be UTC")
+    approved_at = parse_utc_timestamp(record.get("approvedAt"), "approvedAt")
+    owner_ref = repo_ref(record.get("ownerRef"), "ownerRef")
+    approvals = evidence_refs(record.get("approvalEvidenceRefs"), record, approved_at)
+    require(owner_ref not in approvals, "ownerRef must be distinct from approvalEvidenceRefs")
 
     supersedes = record.get("supersedesObjectiveId")
     require(supersedes is None or (isinstance(supersedes, str) and OBJECTIVE_ID.fullmatch(supersedes)), "supersedesObjectiveId invalid")
@@ -149,6 +194,7 @@ def main() -> int:
         registry["limitations"] = [
             "approved objectives are policy targets, not restore evidence",
             "objective values are supplied by reviewed human authority and are never chosen or defaulted by this writer",
+            "the current objective requires distinct typed Recovery Owner and Operability approvals bound to the exact objectiveId and RPO/RTO/skew values",
             "measurement methods must be concrete non-placeholder descriptions and approval/owner evidence must resolve to distinct repository artifacts",
             "measured recovery evidence must reference the exact current objectiveId",
             "objective approval does not establish production readiness"
@@ -161,6 +207,7 @@ def main() -> int:
         except FileNotFoundError:
             pass
     print(f"Registered recovery objectives: {record['objectiveId']}")
+    print("Typed Recovery Owner/Operability approvals bound to objective: true")
     print("Objective values chosen by writer: false")
     print("Production evidence: false")
     print("Production readiness: false")
