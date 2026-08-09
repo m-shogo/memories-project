@@ -20,6 +20,7 @@ STATUS = ROOT / "contracts/operations/production-operability-status.json"
 REFS = (
     "contracts/operations/backup-restore-drill-preflight-contract.v1.json",
     "scripts/validate-memory-os-backup-restore-drill-preflight.py",
+    "scripts/validate-memory-os-backup-restore-drill-preflight-negative.py",
     "scripts/reconcile-memory-os-backup-restore-drill-preflight.py",
     ".github/workflows/backup-restore-drill-preflight.yml",
 )
