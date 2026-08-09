@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "operability-admission-inventory",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "Memory OS production-equivalent restore drill preflight PASS\nregistered/preflight-eligible generations: 0/0\nunsuperseded/preflight-eligible unsuperseded generations: 0/0\ndistinct eligible unsuperseded environments: 0\neligible directed source-target pairs: 0\napproved recovery objectives: 0\nreviewed/current drill requests: 0/0\nblocking prerequisites (2): TWO_UNSUPERSEDED_DISTINCT_ENVIRONMENT_GENERATIONS,CURRENT_APPROVED_RECOVERY_OBJECTIVE\npreflight decision: BLOCKED_NEEDS_TWO_UNSUPERSEDED_DISTINCT_ENVIRONMENT_GENERATIONS\nautomatic prerequisite/request creation: false\nrestore executed: false\nproduction evidence: false\nproduction decision: NO_GO\nMemory OS backup/restore drill request authority reconciliation PASS\nregistered environment generations: 0\napproved recovery objectives: 0\nregistered planning requests: 0\ncurrently executable requests: 0\nadmission decision: BLOCKED_NO_REGISTERED_GENERATION_OR_APPROVED_OBJECTIVE\ncanonical OPS-P0-007 blockers preserved: 6\nrestore executed: false\nproduction evidence: false\nproduction decision: NO_GO\nMemory OS drill-bound generation backup/restore evidence validation PASS\nregistered/current drill requests: 0/0\nregistered/drill-bound recovery evidence: 0/0\ncomplete generation-bound restores: 0\nproduction-equivalent recovery candidates: 0\nhistorical evidence audit after request supersession: allowed\nnew evidence without current drill request: forbidden\nnegative admission suite: PASS\nsemantic generation negative admission suite: PASS\nproduction evidence: false\nproduction decision: NO_GO\nBACKUP RESTORE NON-RESURRECTION VALIDATION FAILED: non-resurrection negative admission suite failed:\nTraceback (most recent call last):\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-backup-restore-non-resurrection-negative.py\", line 210, in <module>\n    raise SystemExit(main())\n                     ^^^^^^\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-backup-restore-non-resurrection-negative.py\", line 124, in main\n    writer.validate_record(valid)\n  File \"/home/runner/work/memories-project/memories-project/scripts/register-memory-os-backup-restore-non-resurrection-evidence.py\", line 126, in validate_record\n    require(isinstance(review_prefixes, dict) and set(review_prefixes) == {\"SECURITY\", \"OPERABILITY\"}, \"reviewEvidencePathPrefixes drift\")\n  File \"/home/runner/work/memories-project/memories-project/scripts/register-memory-os-backup-restore-non-resurrection-evidence.py\", line 40, in require\n    raise Fail(message)\nmemory_os_non_resurrection_writer_negative.Fail: reviewEvidencePathPrefixes drift\n\n",
+  "containsSecrets": false,
+  "preflightCreatedPrerequisite": false,
+  "drillRequestCreated": false,
+  "generationEvidenceCreated": false,
+  "typedEvidenceCreated": false,
+  "restoreExecuted": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
