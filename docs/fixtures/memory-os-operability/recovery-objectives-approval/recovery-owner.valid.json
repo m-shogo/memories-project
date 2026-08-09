@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "memory-os-recovery-objectives-approval.v1",
+  "objectiveId": "ro_negative_base",
+  "reviewRole": "RECOVERY_OWNER",
+  "decision": "APPROVED",
+  "scope": "PRODUCTION_RECOVERY_OBJECTIVES",
+  "rpoSeconds": 60,
+  "rtoSeconds": 120,
+  "maximumObjectDatabaseSkewSeconds": 10,
+  "reviewedAt": "2026-08-08T00:00:00Z",
+  "reviewerPseudonym": "fixture_recovery_owner",
+  "productionTraffic": false,
+  "productionCredentials": false,
+  "automaticPromotion": false
+}
