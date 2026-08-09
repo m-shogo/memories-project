@@ -12,6 +12,7 @@ on:
       - "scripts/validate-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-recovery-objectives-negative.py"
       - "scripts/reconcile-memory-os-recovery-objectives.py"
+      - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
 
 permissions:
