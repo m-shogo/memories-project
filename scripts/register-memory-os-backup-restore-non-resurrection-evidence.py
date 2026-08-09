@@ -19,11 +19,18 @@ GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-eviden
 LOCK = ROOT / "contracts/operations/.backup-restore-non-resurrection-admission.lock"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 RECORD_ID = re.compile(r"^brnr_[a-z0-9][a-z0-9_-]{7,63}$")
+REVIEWER_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{2,63}$")
 DOMAIN_EVIDENCE_FIELDS = {
     "schemaVersion", "generationEvidenceId", "sourceCommitSha", "domain", "result",
     "productionTraffic", "productionCredentials", "productionEvidence", "productionReady",
 }
 DOMAIN_EVIDENCE_SCHEMA = "memory-os-backup-restore-non-resurrection-domain-evidence.v1"
+REVIEW_EVIDENCE_FIELDS = {
+    "schemaVersion", "generationEvidenceId", "sourceCommitSha", "typedRecordId", "reviewType",
+    "reviewerPseudonym", "reviewedDomainEvidenceRefs", "result", "productionTraffic",
+    "productionCredentials", "productionEvidence", "productionReady",
+}
+REVIEW_EVIDENCE_SCHEMA = "memory-os-backup-restore-non-resurrection-review-evidence.v1"
 
 class Fail(RuntimeError):
     pass
@@ -67,6 +74,24 @@ def domain_evidence(ref: str, *, domain: str, generation_evidence_id: str, sourc
         require(payload.get(field) is False, f"domain {domain} evidence {field} must remain false")
     return payload
 
+def review_evidence(ref: str, *, review_type: str, record_id: str, generation_evidence_id: str, source_commit_sha: str, domain_refs: set[str]) -> dict[str, Any]:
+    payload = load(ROOT / ref)
+    require(set(payload) == REVIEW_EVIDENCE_FIELDS, f"{review_type} review field set drift: {sorted(set(payload) ^ REVIEW_EVIDENCE_FIELDS)}")
+    require(payload.get("schemaVersion") == REVIEW_EVIDENCE_SCHEMA, f"{review_type} review schemaVersion drift")
+    require(payload.get("generationEvidenceId") == generation_evidence_id, f"{review_type} review generation binding mismatch")
+    require(payload.get("sourceCommitSha") == source_commit_sha, f"{review_type} review source commit binding mismatch")
+    require(payload.get("typedRecordId") == record_id, f"{review_type} review typed record binding mismatch")
+    require(payload.get("reviewType") == review_type, f"{review_type} review type mismatch")
+    reviewer = payload.get("reviewerPseudonym")
+    require(isinstance(reviewer, str) and REVIEWER_ID.fullmatch(reviewer), f"{review_type} reviewerPseudonym invalid")
+    reviewed_refs = payload.get("reviewedDomainEvidenceRefs")
+    require(isinstance(reviewed_refs, list) and len(reviewed_refs) == len(set(reviewed_refs)), f"{review_type} reviewedDomainEvidenceRefs invalid")
+    require(set(reviewed_refs) == domain_refs, f"{review_type} review does not bind exact typed domain bundle")
+    require(payload.get("result") == "APPROVED", f"{review_type} review must be APPROVED")
+    for field in ("productionTraffic", "productionCredentials", "productionEvidence", "productionReady"):
+        require(payload.get(field) is False, f"{review_type} review {field} must remain false")
+    return payload
+
 def validate_record(record: dict[str, Any]) -> None:
     contract = load(CONTRACT)
     required_fields = set(contract.get("requiredRecordFields", []))
@@ -94,17 +119,20 @@ def validate_record(record: dict[str, Any]) -> None:
         require(isinstance(prefix, str) and evidence_ref.startswith(prefix) and evidence_ref.endswith(".json"), f"domain {name} evidence path is not typed")
         require(evidence_ref not in refs_seen, f"domain {name} evidenceRef must be distinct")
         refs_seen.add(evidence_ref)
-        payload = domain_evidence(
-            evidence_ref,
-            domain=name,
-            generation_evidence_id=record["generationEvidenceId"],
-            source_commit_sha=source_sha,
-        )
+        payload = domain_evidence(evidence_ref, domain=name, generation_evidence_id=record["generationEvidenceId"], source_commit_sha=source_sha)
         require(payload.get("result") == entry.get("result"), f"domain {name} evidence result binding mismatch")
 
+    review_prefixes = contract.get("reviewEvidencePathPrefixes")
+    require(isinstance(review_prefixes, dict) and set(review_prefixes) == {"SECURITY", "OPERABILITY"}, "reviewEvidencePathPrefixes drift")
     security = repo_ref(record.get("securityReviewRef"), "securityReviewRef")
     operability = repo_ref(record.get("operabilityReviewRef"), "operabilityReviewRef")
     require(security != operability, "security and operability reviews must be distinct")
+    require(security.startswith(review_prefixes["SECURITY"]) and security.endswith(".json"), "security review path is not typed")
+    require(operability.startswith(review_prefixes["OPERABILITY"]) and operability.endswith(".json"), "operability review path is not typed")
+    security_payload = review_evidence(security, review_type="SECURITY", record_id=record["recordId"], generation_evidence_id=record["generationEvidenceId"], source_commit_sha=source_sha, domain_refs=refs_seen)
+    operability_payload = review_evidence(operability, review_type="OPERABILITY", record_id=record["recordId"], generation_evidence_id=record["generationEvidenceId"], source_commit_sha=source_sha, domain_refs=refs_seen)
+    require(security_payload["reviewerPseudonym"] != operability_payload["reviewerPseudonym"], "security and operability reviewers must be independent")
+
     findings = record.get("unresolvedFindings")
     require(isinstance(findings, list), "unresolvedFindings must be list")
     for index, finding in enumerate(findings):
@@ -128,7 +156,6 @@ def load_generation_writer():
     return module
 
 def candidate_complete(record: dict[str, Any]) -> bool:
-    """Return whether this typed record covers a generation record that passed all pre-overlay gates."""
     generation = generation_record(record.get("generationEvidenceId"))
     generation_writer = load_generation_writer()
     return record.get("evidenceComplete") is True and generation_writer.base_candidate(generation)
