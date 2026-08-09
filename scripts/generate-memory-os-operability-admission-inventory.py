@@ -93,7 +93,7 @@ def main() -> int:
     preflight_eligible_generation_count = preflight_state.get("preflightEligibleGenerationCount")
     unsuperseded_generation_count = preflight_state.get("unsupersededGenerationCount")
     unsuperseded_preflight_eligible_generation_count = preflight_state.get("unsupersededPreflightEligibleGenerationCount")
-    distinct_unsuperseded_environment_count = preflight_state.get("distinctUnsupersededEnvironmentCount")
+    distinct_unsuperseded_preflight_eligible_environment_count = preflight_state.get("distinctUnsupersededPreflightEligibleEnvironmentCount")
     eligible_pair_count = preflight_state.get("eligibleDirectedSourceTargetPairCount")
     preflight_eligible = preflight_state.get("eligibleToSubmitReviewedDrillRequest")
     preflight_decision = preflight_state.get("preflightDecision")
@@ -113,7 +113,7 @@ def main() -> int:
         (preflight_eligible_generation_count, "preflight-eligible environment generation"),
         (unsuperseded_generation_count, "unsuperseded environment generation"),
         (unsuperseded_preflight_eligible_generation_count, "unsuperseded preflight-eligible environment generation"),
-        (distinct_unsuperseded_environment_count, "distinct unsuperseded environment"),
+        (distinct_unsuperseded_preflight_eligible_environment_count, "distinct unsuperseded preflight-eligible environment"),
         (eligible_pair_count, "eligible restore drill source-target pair"),
     ):
         if not isinstance(value, int) or isinstance(value, bool) or value < 0:
@@ -294,7 +294,7 @@ def main() -> int:
                 "preflightEligibleEnvironmentGenerations": preflight_eligible_generation_count,
                 "unsupersededEnvironmentGenerations": unsuperseded_generation_count,
                 "unsupersededPreflightEligibleEnvironmentGenerations": unsuperseded_preflight_eligible_generation_count,
-                "distinctUnsupersededEnvironments": distinct_unsuperseded_environment_count,
+                "distinctUnsupersededPreflightEligibleEnvironments": distinct_unsuperseded_preflight_eligible_environment_count,
                 "eligibleDirectedRestorePairs": eligible_pair_count,
                 "approvedRecoveryObjectives": objective_count,
                 "reviewedRestoreDrillRequests": drill_request_count,
@@ -362,7 +362,7 @@ def main() -> int:
         "backupRestorePreflightEligibleEnvironmentGenerationCount": preflight_eligible_generation_count,
         "backupRestoreUnsupersededEnvironmentGenerationCount": unsuperseded_generation_count,
         "backupRestoreUnsupersededPreflightEligibleEnvironmentGenerationCount": unsuperseded_preflight_eligible_generation_count,
-        "backupRestoreDistinctUnsupersededEnvironmentCount": distinct_unsuperseded_environment_count,
+        "backupRestoreDistinctUnsupersededPreflightEligibleEnvironmentCount": distinct_unsuperseded_preflight_eligible_environment_count,
         "backupRestoreEligibleDirectedPairCount": eligible_pair_count,
         "backupRestoreDrillPreflightEligible": preflight_eligible,
         "backupRestoreDrillPreflightDecision": preflight_decision,
@@ -400,6 +400,7 @@ def main() -> int:
     print(f"P0 areas inventoried: {len(areas)}")
     print(f"production-equivalent generations: {document['productionEquivalentEnvironmentGenerationCount']}")
     print(f"restore preflight semantic/unsuperseded-semantic generations: {preflight_eligible_generation_count}/{unsuperseded_preflight_eligible_generation_count}")
+    print(f"restore preflight distinct semantic unsuperseded environments: {distinct_unsuperseded_preflight_eligible_environment_count}")
     print(f"restore preflight decision: {preflight_decision}")
     print(f"restore preflight eligible pairs: {eligible_pair_count}")
     print(f"approved recovery objectives: {objective_count}")
