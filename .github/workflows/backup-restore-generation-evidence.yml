@@ -42,6 +42,7 @@ on:
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py"
       - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
       - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
@@ -94,6 +95,7 @@ jobs:
             scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-negative.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py \
             scripts/reconcile-memory-os-backup-non-resurrection-authority.py \
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
@@ -103,6 +105,7 @@ jobs:
           if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-backup-non-resurrection-authority.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py >> "$log" 2>&1 || code=$?; fi
