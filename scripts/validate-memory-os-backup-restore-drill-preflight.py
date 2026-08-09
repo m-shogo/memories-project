@@ -137,7 +137,7 @@ def derive_state(generations: dict[str, Any], objectives: dict[str, Any], drill_
         "preflightEligibleGenerationCount": len(preflight_eligible),
         "unsupersededGenerationCount": len(unsuperseded),
         "unsupersededPreflightEligibleGenerationCount": len(unsuperseded_preflight_eligible),
-        "distinctUnsupersededEnvironmentCount": len(environments),
+        "distinctUnsupersededPreflightEligibleEnvironmentCount": len(environments),
         "eligibleDirectedSourceTargetPairCount": pair_count,
         "approvedRecoveryObjectiveCount": objective_count,
         "currentObjectiveId": current_objective_id,
@@ -221,7 +221,7 @@ def main() -> int:
 
     pair_available = state["eligibleDirectedSourceTargetPairCount"] > 0
     objective_available = state["currentObjectiveId"] is not None
-    require(readiness.get("twoDistinctUnsupersededEnvironmentGenerationsAvailable") is pair_available, "preflight generation readiness drift")
+    require(readiness.get("twoDistinctUnsupersededPreflightEligibleEnvironmentsAvailable") is pair_available, "preflight semantic generation readiness drift")
     require(readiness.get("currentRecoveryObjectiveAvailable") is objective_available, "preflight objective readiness drift")
     require(readiness.get("eligibleSourceTargetPairAvailable") is pair_available, "preflight pair readiness drift")
     require(readiness.get("reviewedDrillRequestSubmissionEligible") is state["eligibleToSubmitReviewedDrillRequest"], "preflight submission readiness drift")
@@ -235,7 +235,7 @@ def main() -> int:
     print("Memory OS production-equivalent restore drill preflight PASS")
     print(f"registered/preflight-eligible generations: {state['registeredGenerationCount']}/{state['preflightEligibleGenerationCount']}")
     print(f"unsuperseded/preflight-eligible unsuperseded generations: {state['unsupersededGenerationCount']}/{state['unsupersededPreflightEligibleGenerationCount']}")
-    print(f"distinct eligible unsuperseded environments: {state['distinctUnsupersededEnvironmentCount']}")
+    print(f"distinct eligible unsuperseded environments: {state['distinctUnsupersededPreflightEligibleEnvironmentCount']}")
     print(f"eligible directed source-target pairs: {state['eligibleDirectedSourceTargetPairCount']}")
     print(f"approved recovery objectives: {state['approvedRecoveryObjectiveCount']}")
     print(f"reviewed/current drill requests: {state['reviewedDrillRequestCount']}/{state['currentExecutableDrillRequestCount']}")
