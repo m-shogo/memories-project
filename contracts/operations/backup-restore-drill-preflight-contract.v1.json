@@ -63,7 +63,8 @@
     "productionTrafficChanged": false,
     "productionEvidence": false,
     "productionReady": false,
-    "productionDecision": "NO_GO"
+    "productionDecision": "NO_GO",
+    "distinctUnsupersededEnvironmentCount": 0
   },
   "readiness": {
     "contractDefined": true,
@@ -76,7 +77,8 @@
     "reviewedDrillRequestSubmissionEligible": false,
     "currentExecutableDrillRequestAvailable": false,
     "drillExecuted": false,
-    "productionReady": false
+    "productionReady": false,
+    "twoDistinctUnsupersededEnvironmentGenerationsAvailable": false
   },
   "limitations": [
     "preflight is read-only admission guidance and never provisions an environment",
