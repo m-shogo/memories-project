@@ -20,6 +20,7 @@ DRILL_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-regis
 GEN_BINDING = ROOT / "contracts/operations/backup-restore-generation-binding-contract.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
 NEGATIVE_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
+SEMANTIC_NEGATIVE_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-semantic-generation-negative.py"
 
 
 class Fail(RuntimeError):
@@ -48,14 +49,10 @@ def load_writer():
     return module
 
 
-def validate_negative_admission_suite(contract: dict[str, Any]) -> None:
-    expected_ref = str(NEGATIVE_VALIDATOR.relative_to(ROOT))
-    require(contract.get("negativeAdmissionValidator") == expected_ref, "negative admission validator ref drift")
-    require(NEGATIVE_VALIDATOR.is_file(), "negative admission validator missing")
-    cases = contract.get("negativeAdmissionCases")
-    require(isinstance(cases, list) and len(cases) >= 15 and len(cases) == len(set(cases)), "negative admission cases incomplete or duplicated")
+def run_validator(path: Path, label: str) -> None:
+    require(path.is_file(), f"{label} missing")
     completed = subprocess.run(
-        [sys.executable, str(NEGATIVE_VALIDATOR)],
+        [sys.executable, str(path)],
         cwd=ROOT,
         text=True,
         stdout=subprocess.PIPE,
@@ -64,8 +61,18 @@ def validate_negative_admission_suite(contract: dict[str, Any]) -> None:
     )
     require(
         completed.returncode == 0,
-        "negative admission suite failed:\n" + completed.stdout[-6000:] + completed.stderr[-6000:],
+        f"{label} failed:\n" + completed.stdout[-6000:] + completed.stderr[-6000:],
     )
+
+
+def validate_negative_admission_suite(contract: dict[str, Any]) -> None:
+    expected_ref = str(NEGATIVE_VALIDATOR.relative_to(ROOT))
+    require(contract.get("negativeAdmissionValidator") == expected_ref, "negative admission validator ref drift")
+    require(NEGATIVE_VALIDATOR.is_file(), "negative admission validator missing")
+    cases = contract.get("negativeAdmissionCases")
+    require(isinstance(cases, list) and len(cases) >= 15 and len(cases) == len(set(cases)), "negative admission cases incomplete or duplicated")
+    run_validator(NEGATIVE_VALIDATOR, "negative admission suite")
+    run_validator(SEMANTIC_NEGATIVE_VALIDATOR, "semantic generation negative admission suite")
 
 
 def main() -> int:
@@ -91,6 +98,7 @@ def main() -> int:
     for field, path in expected_refs.items():
         require(contract.get(field) == str(path.relative_to(ROOT)), f"contract ref drift: {field}")
         require(path.is_file(), f"contract artifact missing: {field}")
+    require(SEMANTIC_NEGATIVE_VALIDATOR.is_file(), "semantic generation negative admission validator missing")
     for field in ("validator", "reconcile", "workflow", "typedNonResurrectionAdmissionContract", "typedNonResurrectionAdmissionRegistry"):
         ref = contract.get(field)
         require(isinstance(ref, str) and ref and (ROOT / ref).is_file(), f"contract artifact missing: {field}")
@@ -137,7 +145,6 @@ def main() -> int:
         evidence_id = row.get("evidenceId")
         require(isinstance(evidence_id, str) and evidence_id not in ids, f"duplicate evidenceId: {evidence_id}")
         ids.add(evidence_id)
-        # Immutable historical rows stay auditable after their request/objective/generation becomes stale.
         writer.validate_record(row, require_current_drill_request=False)
         derived_bound += 1
     derived_backup = sum(1 for row in rows if row.get("evidenceComplete") is True)
@@ -212,6 +219,7 @@ def main() -> int:
     print("historical evidence audit after request supersession: allowed")
     print("new evidence without current drill request: forbidden")
     print("negative admission suite: PASS")
+    print("semantic generation negative admission suite: PASS")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
