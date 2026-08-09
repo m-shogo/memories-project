@@ -52,7 +52,8 @@ def candidate_state(module) -> dict[Path, dict[str, Any]]:
         "generationBoundRestoreCount": 1,
         "productionEquivalentRecoveryCandidateCount": 1,
         "productionEquivalentRestoreEvidence": True,
-        "independentReviewCompleted": False,
+        "independentReviewCompleted": True,
+        "humanProductionPromotionReviewCompleted": False,
         "humanProductionPromotionAuthorized": False,
         "productionEvidence": False,
         "productionReady": False,
@@ -63,7 +64,8 @@ def candidate_state(module) -> dict[Path, dict[str, Any]]:
         "generationBoundBackupAvailable": True,
         "generationBoundRestoreAvailable": True,
         "productionEquivalentRecoveryCandidateAvailable": True,
-        "independentReviewCompleted": False,
+        "independentReviewCompleted": True,
+        "humanProductionPromotionReviewCompleted": False,
         "humanProductionPromotionAuthorized": False,
         "productionEquivalentRestoreEvidence": True,
         "productionReady": False,
@@ -120,15 +122,15 @@ def main() -> int:
     module = load_module()
     state = candidate_state(module)
 
-    require(run_with_state(module, state) == 0, "candidate baseline must validate without completing promotion review")
-    print("PASS baseline: recovery candidate exists while independent review and production promotion remain false")
+    require(run_with_state(module, state) == 0, "candidate baseline must validate with evidence review but without human promotion review")
+    print("PASS baseline: recovery candidate includes independent evidence review while human promotion review remains false")
 
-    reviewed = copy.deepcopy(state)
-    reviewed[module.CONTRACT]["currentBoundary"]["independentReviewCompleted"] = True
-    reviewed[module.CONTRACT]["readiness"]["independentReviewCompleted"] = True
+    promotion_reviewed = copy.deepcopy(state)
+    promotion_reviewed[module.CONTRACT]["currentBoundary"]["humanProductionPromotionReviewCompleted"] = True
+    promotion_reviewed[module.CONTRACT]["readiness"]["humanProductionPromotionReviewCompleted"] = True
     expect_rejected(
-        "recovery candidate cannot automatically complete independent review",
-        lambda: run_with_state(module, reviewed),
+        "recovery candidate cannot automatically complete human production-promotion review",
+        lambda: run_with_state(module, promotion_reviewed),
     )
 
     promoted = copy.deepcopy(state)
@@ -139,15 +141,23 @@ def main() -> int:
         lambda: run_with_state(module, promoted),
     )
 
-    automatic_rule = copy.deepcopy(state)
-    automatic_rule[module.CONTRACT]["promotionRules"]["recoveryCandidateAutomaticallyAuthorizesProductionPromotion"] = True
+    automatic_review_rule = copy.deepcopy(state)
+    automatic_review_rule[module.CONTRACT]["promotionRules"]["recoveryCandidateAutomaticallyCompletesHumanProductionPromotionReview"] = True
     expect_rejected(
-        "automatic candidate-to-promotion rule",
-        lambda: run_with_state(module, automatic_rule),
+        "automatic candidate-to-human-promotion-review rule",
+        lambda: run_with_state(module, automatic_review_rule),
+    )
+
+    automatic_promotion_rule = copy.deepcopy(state)
+    automatic_promotion_rule[module.CONTRACT]["promotionRules"]["recoveryCandidateAutomaticallyAuthorizesProductionPromotion"] = True
+    expect_rejected(
+        "automatic candidate-to-production-promotion rule",
+        lambda: run_with_state(module, automatic_promotion_rule),
     )
 
     print("Memory OS backup/restore generation binding negative suite PASS")
-    print("candidate implies independent review: false")
+    print("candidate requires independent evidence review: true")
+    print("candidate implies human production-promotion review: false")
     print("candidate implies production promotion: false")
     print("production evidence: false")
     print("production decision: NO_GO")
