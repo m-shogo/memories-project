@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-operability-status-hygiene.py"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 INVENTORY = ROOT / "contracts/operations/operability-admission-inventory.v1.json"
+TEMP_PARENT = ROOT / "contracts/operations"
 
 
 class Fail(RuntimeError):
@@ -43,10 +44,10 @@ def load_validator():
     return module
 
 
-def expect_rejected(name: str, action: Callable[[], Any]) -> None:
+def expect_rejected(expected_exception: type[Exception], name: str, action: Callable[[], Any]) -> None:
     try:
         action()
-    except Exception:
+    except expected_exception:
         print(f"PASS reject: {name}")
         return
     raise Fail(f"negative case unexpectedly accepted: {name}")
@@ -63,12 +64,13 @@ def area(value: dict[str, Any], area_id: str) -> dict[str, Any]:
 def main() -> int:
     for path in (VALIDATOR, STATUS, INVENTORY):
         require(path.is_file(), f"negative foundation missing: {path}")
+    require(TEMP_PARENT.is_dir(), "repo-local negative temp parent missing")
 
     canonical_status = load(STATUS)
     canonical_inventory = load(INVENTORY)
     validator = load_validator()
 
-    with tempfile.TemporaryDirectory(prefix="memory-os-operability-status-hygiene-negative-") as tmp:
+    with tempfile.TemporaryDirectory(prefix=".memory-os-operability-status-hygiene-negative-", dir=TEMP_PARENT) as tmp:
         tmp_path = Path(tmp)
         status_path = tmp_path / "status.json"
         inventory_path = tmp_path / "inventory.json"
@@ -86,6 +88,7 @@ def main() -> int:
         promoted = copy.deepcopy(canonical_inventory)
         promoted["humanProductionPromotionAuthorized"] = True
         expect_rejected(
+            validator.Fail,
             "top-level inventory cannot manufacture production promotion",
             lambda: validate(copy.deepcopy(canonical_status), promoted),
         )
@@ -93,6 +96,7 @@ def main() -> int:
         reviewed = copy.deepcopy(canonical_inventory)
         area(reviewed, "OPS-P0-007")["humanProductionPromotionReviewCompleted"] = True
         expect_rejected(
+            validator.Fail,
             "OPS-P0-007 inventory cannot manufacture human promotion review",
             lambda: validate(copy.deepcopy(canonical_status), reviewed),
         )
@@ -101,6 +105,7 @@ def main() -> int:
         counts = area(semantic_overflow, "OPS-P0-007")["dependencyCounts"]
         counts["preflightEligibleEnvironmentGenerations"] = counts["environmentGenerations"] + 1
         expect_rejected(
+            validator.Fail,
             "semantic preflight eligibility cannot exceed registered generation inventory",
             lambda: validate(copy.deepcopy(canonical_status), semantic_overflow),
         )
@@ -112,6 +117,7 @@ def main() -> int:
             if not (isinstance(item, str) and "registered generation inventory alone" in item and "restore-planning authority" in item)
         ]
         expect_rejected(
+            validator.Fail,
             "canonical status cannot imply registered generation inventory creates restore authority",
             lambda: validate(authority_text_removed, copy.deepcopy(canonical_inventory)),
         )
@@ -123,6 +129,7 @@ def main() -> int:
             if not (isinstance(item, str) and "human production-promotion review" in item and "separate non-automatic decision" in item)
         ]
         expect_rejected(
+            validator.Fail,
             "canonical status cannot collapse candidate review into human production promotion",
             lambda: validate(promotion_text_removed, copy.deepcopy(canonical_inventory)),
         )
@@ -130,6 +137,7 @@ def main() -> int:
     print("Memory OS operability status hygiene negative suite PASS")
     print("registered inventory alone creates restore-planning authority: false")
     print("candidate evidence creates human production promotion: false")
+    print("unexpected exception accepted as a valid rejection: false")
     print("canonical files mutated: false")
     print("production evidence: false")
     print("production decision: NO_GO")
