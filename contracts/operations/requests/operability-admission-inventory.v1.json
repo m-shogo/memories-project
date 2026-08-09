@@ -10,6 +10,7 @@
     "canonicalRegistryCountsOnly": true,
     "foundationImplementationMustNotEqualProductionEvidence": true,
     "productionDecisionMustRemainNoGo": true,
+    "registeredGenerationCountMustRemainDistinctFromSemanticPreflightEligibility": true,
     "recoveryCandidateRequiresIndependentEvidenceReview": true,
     "recoveryCandidateMustNotImplyHumanProductionPromotionReview": true,
     "recoveryCandidateMustNotAuthorizeProductionPromotion": true,
