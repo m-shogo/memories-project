@@ -36,9 +36,11 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def finite(value: Any, field: str) -> None:
+def finite(value: Any, field: str) -> float:
     require(isinstance(value, (int, float)) and not isinstance(value, bool), f"{field} must be numeric")
-    require(math.isfinite(float(value)), f"{field} must be finite")
+    number = float(value)
+    require(math.isfinite(number), f"{field} must be finite")
+    return number
 
 
 def validate_run(path: Path) -> dict[str, Any]:
@@ -55,6 +57,80 @@ def validate_run(path: Path) -> dict[str, Any]:
     return load(path)
 
 
+def run_trend_projection(run: dict[str, Any], path: Path) -> dict[str, Any]:
+    scenario = run.get("scenario")
+    require(isinstance(scenario, dict), f"{path.name}: scenario missing")
+    trends = scenario.get("trends")
+    assertions = scenario.get("assertions")
+    require(isinstance(trends, dict), f"{path.name}: trends missing")
+    require(isinstance(assertions, dict), f"{path.name}: assertions missing")
+    projected = {
+        "runId": run.get("runId"),
+        "sourceCommitSha": run.get("commitSha"),
+        "durationSeconds": scenario.get("durationSeconds"),
+        "rssSlopeBytesPerMinute": trends.get("rssSlopeBytesPerMinute"),
+        "heapAllocSlopeBytesPerMinute": trends.get("heapAllocSlopeBytesPerMinute"),
+        "heapInuseSlopeBytesPerMinute": trends.get("heapInuseSlopeBytesPerMinute"),
+        "goroutineSlopePerMinute": trends.get("goroutineSlopePerMinute"),
+        "latencyTrendBySurface": trends.get("latencyTrendBySurface"),
+        "errorRateTrendBySurface": trends.get("errorRateTrendBySurface"),
+        "dbConnectionTrend": trends.get("dbConnectionTrend"),
+        "scanQueueTrend": trends.get("scanQueueTrend"),
+        "deletionBacklogTrend": trends.get("deletionBacklogTrend"),
+        "postRunRecoveryProbePassed": assertions.get("postRunRecoveryProbePassed"),
+    }
+    finite(projected["durationSeconds"], f"{path.name}.scenario.durationSeconds")
+    for field in (
+        "rssSlopeBytesPerMinute",
+        "heapAllocSlopeBytesPerMinute",
+        "heapInuseSlopeBytesPerMinute",
+        "goroutineSlopePerMinute",
+    ):
+        finite(projected[field], f"{path.name}.scenario.trends.{field}")
+    for field in (
+        "latencyTrendBySurface", "errorRateTrendBySurface",
+        "dbConnectionTrend", "scanQueueTrend", "deletionBacklogTrend",
+    ):
+        require(isinstance(projected[field], dict), f"{path.name}.scenario.trends.{field} missing")
+    require(projected["postRunRecoveryProbePassed"] is True,
+            f"{path.name}: post-run recovery probe not passed")
+    return projected
+
+
+def review_trend_projection(trend: dict[str, Any], index: int) -> dict[str, Any]:
+    projected = {
+        "runId": trend.get("runId"),
+        "sourceCommitSha": trend.get("sourceCommitSha"),
+        "durationSeconds": trend.get("durationSeconds"),
+        "rssSlopeBytesPerMinute": trend.get("rssSlopeBytesPerMinute"),
+        "heapAllocSlopeBytesPerMinute": trend.get("heapAllocSlopeBytesPerMinute"),
+        "heapInuseSlopeBytesPerMinute": trend.get("heapInuseSlopeBytesPerMinute"),
+        "goroutineSlopePerMinute": trend.get("goroutineSlopePerMinute"),
+        "latencyTrendBySurface": trend.get("latencyTrendBySurface"),
+        "errorRateTrendBySurface": trend.get("errorRateTrendBySurface"),
+        "dbConnectionTrend": trend.get("dbConnectionTrend"),
+        "scanQueueTrend": trend.get("scanQueueTrend"),
+        "deletionBacklogTrend": trend.get("deletionBacklogTrend"),
+        "postRunRecoveryProbePassed": trend.get("postRunRecoveryProbePassed"),
+    }
+    finite(projected["durationSeconds"], f"runTrends[{index}].durationSeconds")
+    for field in (
+        "rssSlopeBytesPerMinute",
+        "heapAllocSlopeBytesPerMinute",
+        "heapInuseSlopeBytesPerMinute",
+        "goroutineSlopePerMinute",
+    ):
+        finite(projected[field], f"runTrends[{index}].{field}")
+    for field in (
+        "latencyTrendBySurface", "errorRateTrendBySurface",
+        "dbConnectionTrend", "scanQueueTrend", "deletionBacklogTrend",
+    ):
+        require(isinstance(projected[field], dict), f"runTrends[{index}].{field} missing")
+    require(projected["postRunRecoveryProbePassed"] is True,
+            f"runTrends[{index}] recovery probe not passed")
+    return projected
+
+
 def main() -> int:
     contract = load(CONTRACT_PATH)
     paths = sorted(RESULT_DIR.glob(RESULT_GLOB))
@@ -64,6 +140,11 @@ def main() -> int:
     runs = [validate_run(path) for path in paths]
     run_ids = sorted(str(run["runId"]) for run in runs)
     commits = sorted({str(run["commitSha"]) for run in runs})
+    expected_trends = sorted(
+        (run_trend_projection(run, path) for run, path in zip(runs, paths)),
+        key=lambda item: str(item["runId"]),
+    )
+    expected_by_id = {str(item["runId"]): item for item in expected_trends}
 
     review = load(REVIEW_PATH)
     require(review.get("schemaVersion") == "memory-os-sustained-local-soak-trend-review.v1",
@@ -88,35 +169,38 @@ def main() -> int:
     trends = review.get("runTrends")
     require(isinstance(trends, list) and len(trends) == len(paths),
             "runTrends must cover every run")
-    trend_ids = sorted(str(item.get("runId")) for item in trends if isinstance(item, dict))
-    require(trend_ids == run_ids, "runTrends run IDs drift")
+    projected_review_trends: list[dict[str, Any]] = []
     for index, trend in enumerate(trends):
         require(isinstance(trend, dict), f"runTrends[{index}] must be object")
-        for field in (
-            "rssSlopeBytesPerMinute",
-            "heapAllocSlopeBytesPerMinute",
-            "heapInuseSlopeBytesPerMinute",
-            "goroutineSlopePerMinute",
-        ):
-            finite(trend.get(field), f"runTrends[{index}].{field}")
-        for field in (
-            "latencyTrendBySurface", "errorRateTrendBySurface",
-            "dbConnectionTrend", "scanQueueTrend", "deletionBacklogTrend",
-        ):
-            require(isinstance(trend.get(field), dict), f"runTrends[{index}].{field} missing")
-        require(trend.get("postRunRecoveryProbePassed") is True,
-                f"runTrends[{index}] recovery probe not passed")
+        projected_review_trends.append(review_trend_projection(trend, index))
+    projected_review_trends.sort(key=lambda item: str(item["runId"]))
+    require(projected_review_trends == expected_trends,
+            "runTrends must be re-derived exactly from validated run documents")
 
     latest_pair = review.get("latestPair")
     require(isinstance(latest_pair, dict), "latestPair missing")
-    require(latest_pair.get("runA") in run_ids and latest_pair.get("runB") in run_ids and
-            latest_pair.get("runA") != latest_pair.get("runB"),
+    run_a = latest_pair.get("runA")
+    run_b = latest_pair.get("runB")
+    require(run_a in expected_by_id and run_b in expected_by_id and run_a != run_b,
             "latestPair run IDs invalid")
-    for field in (
-        "rssSlopeDeltaBytesPerMinute", "heapAllocSlopeDeltaBytesPerMinute",
-        "heapInuseSlopeDeltaBytesPerMinute", "goroutineSlopeDeltaPerMinute",
-    ):
-        finite(latest_pair.get(field), f"latestPair.{field}")
+    expected_deltas = {
+        "rssSlopeDeltaBytesPerMinute":
+            float(expected_by_id[str(run_b)]["rssSlopeBytesPerMinute"]) -
+            float(expected_by_id[str(run_a)]["rssSlopeBytesPerMinute"]),
+        "heapAllocSlopeDeltaBytesPerMinute":
+            float(expected_by_id[str(run_b)]["heapAllocSlopeBytesPerMinute"]) -
+            float(expected_by_id[str(run_a)]["heapAllocSlopeBytesPerMinute"]),
+        "heapInuseSlopeDeltaBytesPerMinute":
+            float(expected_by_id[str(run_b)]["heapInuseSlopeBytesPerMinute"]) -
+            float(expected_by_id[str(run_a)]["heapInuseSlopeBytesPerMinute"]),
+        "goroutineSlopeDeltaPerMinute":
+            float(expected_by_id[str(run_b)]["goroutineSlopePerMinute"]) -
+            float(expected_by_id[str(run_a)]["goroutineSlopePerMinute"]),
+    }
+    for field, expected in expected_deltas.items():
+        actual = finite(latest_pair.get(field), f"latestPair.{field}")
+        require(actual == expected,
+                f"latestPair.{field} must be derived from validated run trends")
 
     findings = review.get("reviewFindings")
     require(isinstance(findings, list) and len(findings) >= 5 and
@@ -148,6 +232,8 @@ def main() -> int:
 
     print("Memory OS sustained local soak trend review validation PASS")
     print(f"reviewed runs: {len(paths)}")
+    print("review trends re-derived from validated run documents: true")
+    print("latest pair deltas re-derived from validated run trends: true")
     print("local-only evidence eligible: true")
     print("leak proof: false")
     print("production evidence: false")
