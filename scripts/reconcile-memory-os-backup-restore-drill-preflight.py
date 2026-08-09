@@ -84,7 +84,7 @@ def main() -> int:
     readiness["validatorImplemented"] = True
     readiness["reconcileImplemented"] = True
     readiness["automaticWorkflowImplemented"] = True
-    readiness["twoDistinctUnsupersededEnvironmentGenerationsAvailable"] = pair_available
+    readiness["twoDistinctUnsupersededPreflightEligibleEnvironmentsAvailable"] = pair_available
     readiness["currentRecoveryObjectiveAvailable"] = objective_available
     readiness["eligibleSourceTargetPairAvailable"] = pair_available
     readiness["reviewedDrillRequestSubmissionEligible"] = state["eligibleToSubmitReviewedDrillRequest"]
@@ -107,7 +107,7 @@ def main() -> int:
     blockers = state["blockingPrerequisites"]
     blocker_text = ",".join(blockers) if blockers else "none"
     append_once(existing, (
-        f"{EVIDENCE_PREFIX} registered/preflight-eligible generations={state['registeredGenerationCount']}/{state['preflightEligibleGenerationCount']}, unsuperseded/preflight-eligible unsuperseded generations={state['unsupersededGenerationCount']}/{state['unsupersededPreflightEligibleGenerationCount']}, distinct semantic preflight-eligible unsuperseded environments={state['distinctUnsupersededEnvironmentCount']}, eligible directed source-target pairs={state['eligibleDirectedSourceTargetPairCount']}, approved recovery objectives={state['approvedRecoveryObjectiveCount']}, reviewed/current drill requests={state['reviewedDrillRequestCount']}/{state['currentExecutableDrillRequestCount']}, blocking prerequisites={state['blockingPrerequisiteCount']}[{blocker_text}], decision={state['preflightDecision']}; registered generation inventory alone never creates restore-planning authority; READY authorizes only external reviewed request submission, never prerequisite/request creation, backup/restore execution, production traffic or promotion"
+        f"{EVIDENCE_PREFIX} registered/preflight-eligible generations={state['registeredGenerationCount']}/{state['preflightEligibleGenerationCount']}, unsuperseded/preflight-eligible unsuperseded generations={state['unsupersededGenerationCount']}/{state['unsupersededPreflightEligibleGenerationCount']}, distinct semantic preflight-eligible unsuperseded environments={state['distinctUnsupersededPreflightEligibleEnvironmentCount']}, eligible directed source-target pairs={state['eligibleDirectedSourceTargetPairCount']}, approved recovery objectives={state['approvedRecoveryObjectiveCount']}, reviewed/current drill requests={state['reviewedDrillRequestCount']}/{state['currentExecutableDrillRequestCount']}, blocking prerequisites={state['blockingPrerequisiteCount']}[{blocker_text}], decision={state['preflightDecision']}; registered generation inventory alone never creates restore-planning authority; READY authorizes only external reviewed request submission, never prerequisite/request creation, backup/restore execution, production traffic or promotion"
     ))
     for ref in REFS:
         require((ROOT / ref).is_file(), f"preflight evidence ref missing: {ref}")
@@ -123,7 +123,7 @@ def main() -> int:
     print("Memory OS production-equivalent restore drill preflight reconciliation PASS")
     print(f"registered/preflight-eligible generations: {state['registeredGenerationCount']}/{state['preflightEligibleGenerationCount']}")
     print(f"unsuperseded/preflight-eligible unsuperseded generations: {state['unsupersededGenerationCount']}/{state['unsupersededPreflightEligibleGenerationCount']}")
-    print(f"distinct semantic preflight-eligible unsuperseded environments: {state['distinctUnsupersededEnvironmentCount']}")
+    print(f"distinct semantic preflight-eligible unsuperseded environments: {state['distinctUnsupersededPreflightEligibleEnvironmentCount']}")
     print(f"preflight decision: {state['preflightDecision']}")
     print(f"blocking prerequisites ({state['blockingPrerequisiteCount']}): {blocker_text}")
     print(f"eligible directed source-target pairs: {state['eligibleDirectedSourceTargetPairCount']}")
