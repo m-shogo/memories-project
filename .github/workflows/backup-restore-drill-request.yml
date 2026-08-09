@@ -8,6 +8,7 @@ on:
       - "contracts/operations/backup-restore-drill-request-registry.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/recovery-objectives-admission-contract.v1.json"
       - "contracts/operations/recovery-objectives-registry.v1.json"
       - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
       - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
@@ -32,6 +33,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
+      - "scripts/validate-memory-os-operability.py"
   push:
     branches:
       - so
@@ -41,6 +43,7 @@ on:
       - "contracts/operations/backup-restore-drill-request-registry.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/recovery-objectives-admission-contract.v1.json"
       - "contracts/operations/recovery-objectives-registry.v1.json"
       - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
       - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
@@ -65,6 +68,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
+      - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
 
 permissions:
