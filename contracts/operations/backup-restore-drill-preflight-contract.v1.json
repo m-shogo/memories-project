@@ -9,6 +9,7 @@
   "drillRequestRegistry": "contracts/operations/backup-restore-drill-request-registry.v1.json",
   "admissionChainContract": "contracts/operations/backup-restore-admission-chain-contract.v1.json",
   "validator": "scripts/validate-memory-os-backup-restore-drill-preflight.py",
+  "negativeAdmissionValidator": "scripts/validate-memory-os-backup-restore-drill-preflight-negative.py",
   "reconcile": "scripts/reconcile-memory-os-backup-restore-drill-preflight.py",
   "workflow": ".github/workflows/backup-restore-drill-preflight.yml",
   "preflightRules": {
