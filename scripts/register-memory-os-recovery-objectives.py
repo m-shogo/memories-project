@@ -16,6 +16,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/recovery-objectives-admission-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
 LOCK = ROOT / "contracts/operations/.recovery-objectives.lock"
+CANONICAL_APPROVAL_DIR = ROOT / "docs/evidence/recovery-objectives/approvals"
+APPROVAL_DIR = CANONICAL_APPROVAL_DIR
 OBJECTIVE_ID = re.compile(r"^ro_[a-z0-9][a-z0-9_-]{7,63}$")
 PLACEHOLDER_METHODS = {
     "tbd", "todo", "unknown", "default", "n/a", "na", "later", "pending",
@@ -73,6 +75,14 @@ def repo_ref(value: Any, field: str) -> str:
     return value
 
 
+def approval_ref(value: Any) -> str:
+    ref = repo_ref(value, "approvalEvidenceRefs")
+    path = (ROOT / ref).resolve()
+    approval_root = APPROVAL_DIR.resolve()
+    require(path.is_relative_to(approval_root), "approvalEvidenceRefs must use the dedicated recovery-objective approval authority directory")
+    return ref
+
+
 def approval_document(ref: str, record: dict[str, Any], approved_at: datetime) -> dict[str, Any]:
     document = load(ROOT / ref)
     require(set(document) == APPROVAL_FIELDS, "approval evidence field drift")
@@ -94,7 +104,7 @@ def approval_document(ref: str, record: dict[str, Any], approved_at: datetime) -
 def evidence_refs(value: Any, record: dict[str, Any], approved_at: datetime) -> list[str]:
     require(isinstance(value, list) and len(value) == 2, "exactly two typed approvalEvidenceRefs required")
     require(len(value) == len(set(value)), "approvalEvidenceRefs must be distinct")
-    refs = [repo_ref(ref, "approvalEvidenceRefs") for ref in value]
+    refs = [approval_ref(ref) for ref in value]
     approvals = [approval_document(ref, record, approved_at) for ref in refs]
     roles = [approval.get("reviewRole") for approval in approvals]
     require(set(roles) == APPROVAL_ROLES, "Recovery Owner and Operability approvals are both required")
@@ -195,7 +205,8 @@ def main() -> int:
             "approved objectives are policy targets, not restore evidence",
             "objective values are supplied by reviewed human authority and are never chosen or defaulted by this writer",
             "the current objective requires distinct typed Recovery Owner and Operability approvals bound to the exact objectiveId and RPO/RTO/skew values",
-            "measurement methods must be concrete non-placeholder descriptions and approval/owner evidence must resolve to distinct repository artifacts",
+            "production approval evidence is accepted only from the dedicated recovery-objective approval authority directory; arbitrary repository files are forbidden",
+            "measurement methods must be concrete non-placeholder descriptions and owner evidence must remain distinct from approval evidence",
             "measured recovery evidence must reference the exact current objectiveId",
             "objective approval does not establish production readiness"
         ]
@@ -208,6 +219,7 @@ def main() -> int:
             pass
     print(f"Registered recovery objectives: {record['objectiveId']}")
     print("Typed Recovery Owner/Operability approvals bound to objective: true")
+    print("Arbitrary repository approval files accepted: false")
     print("Objective values chosen by writer: false")
     print("Production evidence: false")
     print("Production readiness: false")
