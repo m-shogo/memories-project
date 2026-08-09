@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-database-commit-outage-results.v1",
-  "commitSha": "a6614bc1e1712727e3f090447bf0062bb2ba36f6",
-  "generatedAt": "2026-08-08T20:45:48.544878Z",
+  "commitSha": "46c82ad151e26da096e09085068762e157cf0862",
+  "generatedAt": "2026-08-09T20:49:30.295139Z",
   "environment": {
     "mode": "GITHUB_ACTIONS_UBUNTU_POSTGRES16_MINIO_UNREACHABLE_COMMIT_POOL",
     "productionEvidence": false,
@@ -11,7 +11,7 @@
   "result": "PASS",
   "integrityResult": "PASS",
   "exitCode": 0,
-  "durationSeconds": 1.363187,
+  "durationSeconds": 1.379221,
   "assertions": {
     "previewRowsDuringOutage": 0,
     "jobStateDuringOutage": "preview_building",
