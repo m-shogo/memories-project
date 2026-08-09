@@ -14,12 +14,12 @@
   "allReviewedRunsPassedPerRunValidator": true,
   "allReviewedRunsPostRecoveryProbePassed": true,
   "latestPair": {
-    "runA": "gha-31157909318-1-a",
-    "runB": "gha-31157909318-1-b",
-    "rssSlopeDeltaBytesPerMinute": 8252.15203609358,
-    "heapAllocSlopeDeltaBytesPerMinute": 370.6688884588243,
-    "heapInuseSlopeDeltaBytesPerMinute": 1157.1926257618143,
-    "goroutineSlopeDeltaPerMinute": 2.5440428469412556e-16
+    "runA": "gha-31157909318-1-b",
+    "runB": "gha-31157909318-1-a",
+    "rssSlopeDeltaBytesPerMinute": -8252.15203609358,
+    "heapAllocSlopeDeltaBytesPerMinute": -370.6688884588243,
+    "heapInuseSlopeDeltaBytesPerMinute": -1157.1926257618143,
+    "goroutineSlopeDeltaPerMinute": -2.5440428469412556e-16
   },
   "runTrends": [
     {
