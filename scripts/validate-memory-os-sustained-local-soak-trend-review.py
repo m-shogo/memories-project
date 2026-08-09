@@ -17,6 +17,8 @@ RESULT_DIR = ROOT / "docs/fixtures/memory-os-operability"
 RESULT_GLOB = "sustained-local-soak-results.run-*.v1.json"
 REVIEW_PATH = RESULT_DIR / "sustained-local-soak-trend-review.v1.json"
 RESULT_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak-result.py"
+TIMESTAMP_DURATION_TOLERANCE_SECONDS = 2.0
+GENERATION_LAG_LIMIT_SECONDS = 120.0
 
 
 class Fail(RuntimeError):
@@ -72,10 +74,17 @@ def validate_run(path: Path) -> dict[str, Any]:
 def run_trend_projection(run: dict[str, Any], path: Path) -> tuple[datetime, dict[str, Any]]:
     scenario = run.get("scenario")
     require(isinstance(scenario, dict), f"{path.name}: scenario missing")
+    started_at = utc_timestamp(scenario.get("startedAt"), f"{path.name}.scenario.startedAt")
     completed_at = utc_timestamp(scenario.get("completedAt"), f"{path.name}.scenario.completedAt")
     generated_at = utc_timestamp(run.get("generatedAt"), f"{path.name}.generatedAt")
-    require(generated_at >= completed_at,
-            f"{path.name}: generatedAt cannot precede scenario.completedAt")
+    duration_seconds = finite(scenario.get("durationSeconds"), f"{path.name}.scenario.durationSeconds")
+    wall_duration = (completed_at - started_at).total_seconds()
+    require(wall_duration >= 0, f"{path.name}: scenario.completedAt cannot precede scenario.startedAt")
+    require(abs(wall_duration - duration_seconds) <= TIMESTAMP_DURATION_TOLERANCE_SECONDS,
+            f"{path.name}: scenario timestamps must agree with durationSeconds")
+    generation_lag = (generated_at - completed_at).total_seconds()
+    require(0 <= generation_lag <= GENERATION_LAG_LIMIT_SECONDS,
+            f"{path.name}: generatedAt must follow completion within bounded evidence-write lag")
     trends = scenario.get("trends")
     assertions = scenario.get("assertions")
     require(isinstance(trends, dict), f"{path.name}: trends missing")
@@ -83,7 +92,7 @@ def run_trend_projection(run: dict[str, Any], path: Path) -> tuple[datetime, dic
     projected = {
         "runId": run.get("runId"),
         "sourceCommitSha": run.get("commitSha"),
-        "durationSeconds": scenario.get("durationSeconds"),
+        "durationSeconds": duration_seconds,
         "rssSlopeBytesPerMinute": trends.get("rssSlopeBytesPerMinute"),
         "heapAllocSlopeBytesPerMinute": trends.get("heapAllocSlopeBytesPerMinute"),
         "heapInuseSlopeBytesPerMinute": trends.get("heapInuseSlopeBytesPerMinute"),
@@ -95,7 +104,6 @@ def run_trend_projection(run: dict[str, Any], path: Path) -> tuple[datetime, dic
         "deletionBacklogTrend": trends.get("deletionBacklogTrend"),
         "postRunRecoveryProbePassed": assertions.get("postRunRecoveryProbePassed"),
     }
-    finite(projected["durationSeconds"], f"{path.name}.scenario.durationSeconds")
     for field in (
         "rssSlopeBytesPerMinute",
         "heapAllocSlopeBytesPerMinute",
@@ -253,6 +261,7 @@ def main() -> int:
     print("Memory OS sustained local soak trend review validation PASS")
     print(f"reviewed runs: {len(paths)}")
     print("review trends re-derived from validated run documents: true")
+    print("run chronology bound to UTC timestamps and measured duration: true")
     print("latest pair selected by validated scenario completion chronology: true")
     print("latest pair deltas re-derived from validated run trends: true")
     print("local-only evidence eligible: true")
