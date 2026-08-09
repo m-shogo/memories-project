@@ -31,12 +31,32 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def safe_repo_ref(value: Any, field: str) -> Path:
+    require(isinstance(value, str) and value, f"{field} missing")
+    relative = Path(value)
+    require(not relative.is_absolute() and ".." not in relative.parts, f"{field} must be repository-relative")
+    path = ROOT / relative
+    require(path.is_file(), f"{field} artifact missing: {value}")
+    return path
+
+
 def main() -> int:
     contract = load(CONTRACT)
     result = load(RESULT)
     require(contract.get("schemaVersion") == "memory-os-controlled-saturation-repeatability.v1", "contract schema drift")
+    source_ramp_path = safe_repo_ref(contract.get("sourceRampContract"), "sourceRampContract")
+    source_ramp = load(source_ramp_path)
+    require(source_ramp.get("schemaVersion") == "memory-os-controlled-saturation-ramp.v1", "source ramp schema drift")
+    require(contract.get("sourceScenarioId") == source_ramp.get("scenarioId"), "source ramp scenario binding drift")
+    require(contract.get("dependencyMode") == source_ramp.get("dependencyMode") == "LOCAL_POSTGRES_MINIO", "source ramp dependency mode drift")
     require(contract.get("requiredIndependentRuns") == 2, "required run count drift")
-    require(contract.get("concurrencySteps") == STEPS and contract.get("requestsPerStep") == 64, "source ramp binding drift")
+    require(contract.get("concurrencySteps") == source_ramp.get("concurrencySteps") == STEPS, "source ramp concurrency binding drift")
+    require(contract.get("requestsPerStep") == source_ramp.get("requestsPerStep") == 64, "source ramp request-count binding drift")
+    source_boundary = source_ramp.get("evidenceBoundary")
+    require(isinstance(source_boundary, dict), "source ramp evidence boundary missing")
+    for key in ("productionTraffic", "productionCredentials", "productionEvidence", "productionEquivalentDependencies", "capacityBoundaryEstablished", "operationalThresholdApproved", "independentReviewCompleted", "productionReady"):
+        require(source_boundary.get(key) is False, f"source ramp cannot enable {key}")
+
     signal = contract.get("signalPolicy")
     require(isinstance(signal, dict), "signal policy missing")
     require(signal.get("maximumThroughputGainFromPreviousStep") == 0.05, "throughput knee rule drift")
@@ -57,7 +77,12 @@ def main() -> int:
         require(isinstance(ref, str) and not Path(ref).is_absolute() and ".." not in Path(ref).parts and (ROOT / ref).is_file(), f"runRef invalid: {ref}")
         run = load(ROOT / ref)
         require(run.get("commitSha") == source, f"run source mismatch: {ref}")
-        require(run.get("environment", {}).get("productionEvidence") is False, f"run cannot be production evidence: {ref}")
+        environment = run.get("environment")
+        require(isinstance(environment, dict), f"run environment missing: {ref}")
+        require(environment.get("dependencyMode") == contract.get("dependencyMode"), f"run dependency mode mismatch: {ref}")
+        require(environment.get("classification") == "BOUNDED_LOCAL_CAPACITY_RAMP", f"run classification mismatch: {ref}")
+        for key in ("productionTraffic", "productionCredentials", "productionEvidence", "productionEquivalentDependencies"):
+            require(environment.get(key) is False, f"run cannot enable {key}: {ref}")
     require(result.get("independentRunCount") == 2, "independentRunCount drift")
     signals = result.get("signals")
     require(isinstance(signals, dict) and set(signals) == {"a", "b"}, "signals missing")
@@ -85,6 +110,7 @@ def main() -> int:
         require(forbidden not in serialized, f"result contains forbidden runtime material: {forbidden}")
 
     print("Memory OS controlled saturation repeatability validation PASS")
+    print("source ramp semantic binding: true")
     print(f"repeatable local degradation: {expected_repeatable}")
     print("capacity boundary established: false")
     print("operational threshold approved: false")
