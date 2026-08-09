@@ -9,13 +9,19 @@ on:
       - "contracts/operations/operability-admission-inventory.v1.json"
       - "contracts/operations/backup-restore-generation-binding-contract.v1.json"
       - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
       - "scripts/generate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-operability-admission-inventory.py"
+      - "scripts/memory_os_environment_generation_eligibility.py"
+      - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding-negative.py"
+      - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
       - ".github/workflows/backup-restore-generation-binding.yml"
+      - ".github/workflows/backup-restore-drill-preflight.yml"
       - ".github/workflows/operability-admission-request-authority.yml"
   pull_request:
     paths:
@@ -23,13 +29,19 @@ on:
       - "contracts/operations/operability-admission-inventory.v1.json"
       - "contracts/operations/backup-restore-generation-binding-contract.v1.json"
       - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
       - "scripts/generate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-operability-admission-inventory.py"
+      - "scripts/memory_os_environment_generation_eligibility.py"
+      - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding-negative.py"
+      - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
       - ".github/workflows/backup-restore-generation-binding.yml"
+      - ".github/workflows/backup-restore-drill-preflight.yml"
       - ".github/workflows/operability-admission-request-authority.yml"
   workflow_dispatch:
 
@@ -65,6 +77,8 @@ jobs:
           inventory = load("contracts/operations/operability-admission-inventory.v1.json")
           binding = load("contracts/operations/backup-restore-generation-binding-contract.v1.json")
           recovery = load("contracts/operations/backup-restore-generation-evidence-registry.v1.json")
+          preflight = load("contracts/operations/backup-restore-drill-preflight-contract.v1.json")
+          generations = load("contracts/operations/production-equivalent-environment-generation-registry.v1.json")
           status = load("contracts/operations/production-operability-status.json")
 
           constraints = request.get("constraints")
@@ -75,6 +89,7 @@ jobs:
               "canonicalRegistryCountsOnly",
               "foundationImplementationMustNotEqualProductionEvidence",
               "productionDecisionMustRemainNoGo",
+              "registeredGenerationCountMustRemainDistinctFromSemanticPreflightEligibility",
               "recoveryCandidateRequiresIndependentEvidenceReview",
               "recoveryCandidateMustNotImplyHumanProductionPromotionReview",
               "recoveryCandidateMustNotAuthorizeProductionPromotion",
@@ -93,6 +108,44 @@ jobs:
           for path in required_binding_foundation:
               if not Path(path).is_file():
                   raise SystemExit(f"OPS-P0-007 generation-binding foundation missing: {path}")
+
+          preflight_state = preflight.get("currentState")
+          if not isinstance(preflight_state, dict):
+              raise SystemExit("restore preflight currentState missing")
+          registered_count = generations.get("registeredGenerationCount")
+          state_registered_count = preflight_state.get("registeredGenerationCount")
+          semantic_eligible_count = preflight_state.get("preflightEligibleGenerationCount")
+          unsuperseded_count = preflight_state.get("unsupersededGenerationCount")
+          unsuperseded_semantic_count = preflight_state.get("unsupersededPreflightEligibleGenerationCount")
+          eligible_pair_count = preflight_state.get("eligibleDirectedSourceTargetPairCount")
+          for value, field in (
+              (registered_count, "registered generation"),
+              (state_registered_count, "preflight registered generation"),
+              (semantic_eligible_count, "semantic preflight-eligible generation"),
+              (unsuperseded_count, "unsuperseded generation"),
+              (unsuperseded_semantic_count, "unsuperseded semantic preflight-eligible generation"),
+              (eligible_pair_count, "eligible directed restore pair"),
+          ):
+              if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                  raise SystemExit(f"{field} count invalid")
+          if state_registered_count != registered_count:
+              raise SystemExit("preflight registered generation count drift")
+          if semantic_eligible_count > registered_count:
+              raise SystemExit("semantic preflight eligibility cannot exceed registered generations")
+          if unsuperseded_count > registered_count:
+              raise SystemExit("unsuperseded generation count cannot exceed registered generations")
+          if unsuperseded_semantic_count > semantic_eligible_count or unsuperseded_semantic_count > unsuperseded_count:
+              raise SystemExit("unsuperseded semantic eligibility count drift")
+          if unsuperseded_semantic_count < 2 and eligible_pair_count != 0:
+              raise SystemExit("eligible restore pair requires at least two unsuperseded semantically eligible generations")
+          if registered_count == 0 and any((semantic_eligible_count, unsuperseded_count, unsuperseded_semantic_count, eligible_pair_count)):
+              raise SystemExit("empty generation registry cannot create semantic eligibility")
+          if inventory.get("productionEquivalentEnvironmentGenerationCount") != registered_count:
+              raise SystemExit("inventory registered generation count drift")
+          if inventory.get("backupRestoreUnsupersededEnvironmentGenerationCount") != unsuperseded_count:
+              raise SystemExit("inventory unsuperseded generation count drift")
+          if inventory.get("backupRestoreEligibleDirectedPairCount") != eligible_pair_count:
+              raise SystemExit("inventory eligible restore pair count drift")
 
           rules = binding.get("promotionRules")
           boundary = binding.get("currentBoundary")
@@ -136,6 +189,12 @@ jobs:
           dependencies = backup_inventory.get("dependencyCounts")
           if not isinstance(dependencies, dict):
               raise SystemExit("OPS-P0-007 inventory dependencyCounts missing")
+          if dependencies.get("environmentGenerations") != registered_count:
+              raise SystemExit("OPS-P0-007 inventory registered generation count drift")
+          if dependencies.get("unsupersededEnvironmentGenerations") != unsuperseded_count:
+              raise SystemExit("OPS-P0-007 inventory unsuperseded generation count drift")
+          if dependencies.get("eligibleDirectedRestorePairs") != eligible_pair_count:
+              raise SystemExit("OPS-P0-007 inventory eligible restore pair count drift")
           if dependencies.get("productionEquivalentRecoveryCandidates") != candidate_count:
               raise SystemExit("OPS-P0-007 inventory recovery candidate count drift")
           if backup_inventory.get("productionEvidence") is not False or backup_inventory.get("productionReady") is not False:
@@ -155,6 +214,8 @@ jobs:
               raise SystemExit("OPS-P0-007 must remain a canonical blocker")
 
           print("Memory OS operability admission request authority PASS")
+          print(f"registered/semantic-preflight-eligible generations: {registered_count}/{semantic_eligible_count}")
+          print(f"unsuperseded/semantic-unsuperseded generations: {unsuperseded_count}/{unsuperseded_semantic_count}")
           print(f"production-equivalent recovery candidates: {candidate_count}")
           print(f"candidate-level independent evidence review completed: {str(expected_independent_review).lower()}")
           print("generation-binding foundation complete: true")
