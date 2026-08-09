@@ -90,11 +90,16 @@ def main() -> int:
     executable_drill_request_count = backup_drill_requests.get("currentExecutableRequestCount")
     generation_evidence_count = backup_recovery.get("registeredEvidenceCount")
     drill_bound_generation_evidence_count = backup_recovery.get("drillRequestBoundEvidenceCount")
+    preflight_eligible_generation_count = preflight_state.get("preflightEligibleGenerationCount")
     unsuperseded_generation_count = preflight_state.get("unsupersededGenerationCount")
+    unsuperseded_preflight_eligible_generation_count = preflight_state.get("unsupersededPreflightEligibleGenerationCount")
     distinct_unsuperseded_environment_count = preflight_state.get("distinctUnsupersededEnvironmentCount")
     eligible_pair_count = preflight_state.get("eligibleDirectedSourceTargetPairCount")
     preflight_eligible = preflight_state.get("eligibleToSubmitReviewedDrillRequest")
     preflight_decision = preflight_state.get("preflightDecision")
+    independent_evidence_review_completed = backup_boundary.get("independentReviewCompleted")
+    human_promotion_review_completed = backup_boundary.get("humanProductionPromotionReviewCompleted")
+    human_promotion_authorized = backup_boundary.get("humanProductionPromotionAuthorized")
 
     for value, field in (
         (typed_record_count, "typed non-resurrection record"),
@@ -105,12 +110,23 @@ def main() -> int:
         (executable_drill_request_count, "current executable backup/restore drill request"),
         (generation_evidence_count, "generation recovery evidence"),
         (drill_bound_generation_evidence_count, "drill-request-bound generation recovery evidence"),
+        (preflight_eligible_generation_count, "preflight-eligible environment generation"),
         (unsuperseded_generation_count, "unsuperseded environment generation"),
+        (unsuperseded_preflight_eligible_generation_count, "unsuperseded preflight-eligible environment generation"),
         (distinct_unsuperseded_environment_count, "distinct unsuperseded environment"),
         (eligible_pair_count, "eligible restore drill source-target pair"),
     ):
         if not isinstance(value, int) or isinstance(value, bool) or value < 0:
             raise SystemExit(f"{field} count invalid")
+    for value, field in (
+        (independent_evidence_review_completed, "independent evidence review completed"),
+        (human_promotion_review_completed, "human production-promotion review completed"),
+        (human_promotion_authorized, "human production-promotion authorized"),
+    ):
+        if not isinstance(value, bool):
+            raise SystemExit(f"{field} invalid")
+    if human_promotion_authorized and not human_promotion_review_completed:
+        raise SystemExit("production promotion cannot be authorized without completed human promotion review")
     if not isinstance(preflight_eligible, bool):
         raise SystemExit("restore drill preflight eligibility invalid")
     if not isinstance(preflight_decision, str) or not preflight_decision:
@@ -125,6 +141,10 @@ def main() -> int:
         raise SystemExit("drill request contract/registry request count drift")
     if drill_request_state.get("currentExecutableRequestCount") != executable_drill_request_count:
         raise SystemExit("drill request contract/registry executable count drift")
+    if drill_request_state.get("preflightEligibleEnvironmentGenerationCount") != preflight_eligible_generation_count:
+        raise SystemExit("drill request/preflight semantic generation count drift")
+    if drill_request_state.get("unsupersededPreflightEligibleEnvironmentGenerationCount") != unsuperseded_preflight_eligible_generation_count:
+        raise SystemExit("drill request/preflight unsuperseded semantic generation count drift")
     if drill_request_state.get("productionEvidence") is not False or drill_request_state.get("productionReady") is not False:
         raise SystemExit("drill request authority cannot promote production")
     if preflight_state.get("registeredGenerationCount") != generations.get("registeredGenerationCount"):
@@ -142,7 +162,7 @@ def main() -> int:
 
     local_soak_complete = bool(load_ready.get("localLongSoakRunCount", 0) >= 2 and load_ready.get("localSustainedSoakEvidence") is True)
     if preflight_decision == "BLOCKED_NEEDS_TWO_UNSUPERSEDED_DISTINCT_ENVIRONMENT_GENERATIONS":
-        backup_next_gate = "register two distinct reviewed production-equivalent environment generations that are both unsuperseded; then approve explicit recovery objectives before submitting any restore drill request"
+        backup_next_gate = "register two distinct reviewed production-equivalent environment generations that independently revalidate as unsuperseded and semantically restore-preflight eligible; then approve explicit recovery objectives before submitting any restore drill request"
     elif preflight_decision == "BLOCKED_NEEDS_CURRENT_APPROVED_RECOVERY_OBJECTIVE":
         backup_next_gate = "approve explicit RPO, RTO and maximum object/database skew for the current recovery objective; then submit a planning-only cross-environment restore drill request for review"
     elif preflight_decision == "READY_FOR_REVIEWED_DRILL_REQUEST_SUBMISSION":
@@ -266,9 +286,14 @@ def main() -> int:
             "admittedEvidenceCount": backup_boundary.get("generationBoundRestoreCount", 0),
             "preflightDecision": preflight_decision,
             "preflightEligible": preflight_eligible,
+            "independentEvidenceReviewCompleted": independent_evidence_review_completed,
+            "humanProductionPromotionReviewCompleted": human_promotion_review_completed,
+            "humanProductionPromotionAuthorized": human_promotion_authorized,
             "dependencyCounts": {
                 "environmentGenerations": generations.get("registeredGenerationCount", 0),
+                "preflightEligibleEnvironmentGenerations": preflight_eligible_generation_count,
                 "unsupersededEnvironmentGenerations": unsuperseded_generation_count,
+                "unsupersededPreflightEligibleEnvironmentGenerations": unsuperseded_preflight_eligible_generation_count,
                 "distinctUnsupersededEnvironments": distinct_unsuperseded_environment_count,
                 "eligibleDirectedRestorePairs": eligible_pair_count,
                 "approvedRecoveryObjectives": objective_count,
@@ -334,7 +359,9 @@ def main() -> int:
         "deterministic": True,
         "areas": areas,
         "productionEquivalentEnvironmentGenerationCount": generations.get("registeredGenerationCount", 0),
+        "backupRestorePreflightEligibleEnvironmentGenerationCount": preflight_eligible_generation_count,
         "backupRestoreUnsupersededEnvironmentGenerationCount": unsuperseded_generation_count,
+        "backupRestoreUnsupersededPreflightEligibleEnvironmentGenerationCount": unsuperseded_preflight_eligible_generation_count,
         "backupRestoreDistinctUnsupersededEnvironmentCount": distinct_unsuperseded_environment_count,
         "backupRestoreEligibleDirectedPairCount": eligible_pair_count,
         "backupRestoreDrillPreflightEligible": preflight_eligible,
@@ -347,6 +374,9 @@ def main() -> int:
         "approvedReleaseCompatibilityPairCount": release_pair_count,
         "typedNonResurrectionRecordCount": typed_record_count,
         "completeTypedNonResurrectionRecordCount": typed_complete_count,
+        "backupRestoreIndependentEvidenceReviewCompleted": independent_evidence_review_completed,
+        "humanProductionPromotionReviewCompleted": human_promotion_review_completed,
+        "humanProductionPromotionAuthorized": human_promotion_authorized,
         "productionEvidence": False,
         "productionReady": False,
         "productionDecision": "NO_GO",
@@ -356,10 +386,12 @@ def main() -> int:
             "candidate/local evidence is not counted as production admission unless its owning authority explicitly admits it",
             "local repeated soak evidence is tracked separately from independent leak proof and production-shaped soak evidence",
             "recovery-objective values are never defaulted by this inventory; zero approved objectives means RPO/RTO/skew remain intentionally undefined",
+            "registered production-equivalent generations are inventory only; restore planning additionally requires independent semantic preflight eligibility, unsuperseded state and a distinct-environment eligible directed pair",
             "restore drill preflight is read-only: READY authorizes only external reviewed request submission and BLOCKED never creates missing generations or recovery objectives",
             "backup/restore drill requests are planning authority only; historical requests remain auditable after supersession while current executable count requires immediate generation/objective revalidation",
             "every generation recovery evidence record must remain bound to one admitted restore drill request; an unbound record is an inventory validation failure",
             "a generic generation recovery nonResurrectionVerification PASS cannot create a final recovery candidate; complete typed coverage of all eight non-resurrection domains is independently required",
+            "candidate-level independent evidence review is separate from human production-promotion review; neither a recovery candidate nor this inventory may complete or authorize promotion",
             "candidate/local mixed-version execution remains separate from the approved release-pair registry and can never create an approved predecessor/successor pair"
         ]
     }
@@ -367,6 +399,7 @@ def main() -> int:
     print("Memory OS operability admission inventory generated")
     print(f"P0 areas inventoried: {len(areas)}")
     print(f"production-equivalent generations: {document['productionEquivalentEnvironmentGenerationCount']}")
+    print(f"restore preflight semantic/unsuperseded-semantic generations: {preflight_eligible_generation_count}/{unsuperseded_preflight_eligible_generation_count}")
     print(f"restore preflight decision: {preflight_decision}")
     print(f"restore preflight eligible pairs: {eligible_pair_count}")
     print(f"approved recovery objectives: {objective_count}")
@@ -375,6 +408,7 @@ def main() -> int:
     print(f"generation/drill-bound recovery evidence: {generation_evidence_count}/{drill_bound_generation_evidence_count}")
     print(f"typed non-resurrection records: {typed_record_count}")
     print(f"final recovery candidates: {backup_recovery.get('productionEquivalentRecoveryCandidateCount', 0)}")
+    print(f"candidate evidence review/human promotion review/authorization: {str(independent_evidence_review_completed).lower()}/{str(human_promotion_review_completed).lower()}/{str(human_promotion_authorized).lower()}")
     print(f"approved release compatibility pairs: {release_pair_count}")
     print(f"local repeated soak complete: {str(local_soak_complete).lower()}")
     print("production decision: NO_GO")
