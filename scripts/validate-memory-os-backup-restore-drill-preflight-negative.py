@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove restore drill preflight rejects stale or unexpected authority-state fields."""
+"""Prove restore drill preflight rejects stale or semantically weakened authority."""
 
 from __future__ import annotations
 
@@ -94,9 +94,35 @@ def main() -> int:
         "unexpected future readiness field",
         lambda value: value["readiness"].__setitem__("unexpectedReadinessAlias", False),
     )
+    expect_rejected(
+        validator,
+        canonical,
+        "generation blocker without semantic preflight eligibility",
+        lambda value: value["blockingPrerequisiteSemantics"][validator.GEN_BLOCKER].__setitem__("requiresSemanticPreflightEligibility", False),
+    )
+    expect_rejected(
+        validator,
+        canonical,
+        "generation blocker without distinct environment binding",
+        lambda value: value["blockingPrerequisiteSemantics"][validator.GEN_BLOCKER].__setitem__("requiresDistinctEnvironmentId", False),
+    )
+    expect_rejected(
+        validator,
+        canonical,
+        "generation blocker weakened to one generation",
+        lambda value: value["blockingPrerequisiteSemantics"][validator.GEN_BLOCKER].__setitem__("minimumEnvironmentGenerationCount", 1),
+    )
+    expect_rejected(
+        validator,
+        canonical,
+        "objective blocker without current approved objective binding",
+        lambda value: value["blockingPrerequisiteSemantics"][validator.OBJECTIVE_BLOCKER].__setitem__("requiresCurrentApprovedRecoveryObjective", False),
+    )
 
     print("Memory OS restore drill preflight negative authority-shape suite PASS")
     print("negative validator contract binding: true")
+    print("stable blocker ids require semantic preflight gates: true")
+    print("registered generation count alone satisfies blocker: false")
     print("stale state aliases accepted: false")
     print("unexpected readiness aliases accepted: false")
     print("canonical authority mutated: false")
