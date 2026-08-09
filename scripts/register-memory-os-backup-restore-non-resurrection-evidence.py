@@ -19,6 +19,11 @@ GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-eviden
 LOCK = ROOT / "contracts/operations/.backup-restore-non-resurrection-admission.lock"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 RECORD_ID = re.compile(r"^brnr_[a-z0-9][a-z0-9_-]{7,63}$")
+DOMAIN_EVIDENCE_FIELDS = {
+    "schemaVersion", "generationEvidenceId", "sourceCommitSha", "domain", "result",
+    "productionTraffic", "productionCredentials", "productionEvidence", "productionReady",
+}
+DOMAIN_EVIDENCE_SCHEMA = "memory-os-backup-restore-non-resurrection-domain-evidence.v1"
 
 class Fail(RuntimeError):
     pass
@@ -50,6 +55,18 @@ def generation_record(evidence_id: Any) -> dict[str, Any]:
     require(len(matches) == 1, "generationEvidenceId is not uniquely registered")
     return matches[0]
 
+def domain_evidence(ref: str, *, domain: str, generation_evidence_id: str, source_commit_sha: str) -> dict[str, Any]:
+    payload = load(ROOT / ref)
+    require(set(payload) == DOMAIN_EVIDENCE_FIELDS, f"domain {domain} evidence field set drift: {sorted(set(payload) ^ DOMAIN_EVIDENCE_FIELDS)}")
+    require(payload.get("schemaVersion") == DOMAIN_EVIDENCE_SCHEMA, f"domain {domain} evidence schemaVersion drift")
+    require(payload.get("generationEvidenceId") == generation_evidence_id, f"domain {domain} evidence generation binding mismatch")
+    require(payload.get("sourceCommitSha") == source_commit_sha, f"domain {domain} evidence source commit binding mismatch")
+    require(payload.get("domain") == domain, f"domain {domain} evidence domain binding mismatch")
+    require(payload.get("result") in {"PASS", "FAIL", "NOT_RUN"}, f"domain {domain} evidence result invalid")
+    for field in ("productionTraffic", "productionCredentials", "productionEvidence", "productionReady"):
+        require(payload.get(field) is False, f"domain {domain} evidence {field} must remain false")
+    return payload
+
 def validate_record(record: dict[str, Any]) -> None:
     contract = load(CONTRACT)
     required_fields = set(contract.get("requiredRecordFields", []))
@@ -77,6 +94,13 @@ def validate_record(record: dict[str, Any]) -> None:
         require(isinstance(prefix, str) and evidence_ref.startswith(prefix) and evidence_ref.endswith(".json"), f"domain {name} evidence path is not typed")
         require(evidence_ref not in refs_seen, f"domain {name} evidenceRef must be distinct")
         refs_seen.add(evidence_ref)
+        payload = domain_evidence(
+            evidence_ref,
+            domain=name,
+            generation_evidence_id=record["generationEvidenceId"],
+            source_commit_sha=source_sha,
+        )
+        require(payload.get("result") == entry.get("result"), f"domain {name} evidence result binding mismatch")
 
     security = repo_ref(record.get("securityReviewRef"), "securityReviewRef")
     operability = repo_ref(record.get("operabilityReviewRef"), "operabilityReviewRef")
