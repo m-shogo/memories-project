@@ -10,7 +10,25 @@ on:
       - "contracts/operations/backup-restore-drill-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "contracts/operations/backup-restore-drill-request-contract.v1.json"
+      - "contracts/operations/backup-restore-drill-request-registry.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+      - "contracts/operations/recovery-objectives-registry.v1.json"
       - "contracts/operations/requests/backup-restore-generation-reconcile.v1.json"
+      - "docs/evidence/backup-restore/**"
+      - "docs/fixtures/memory-os-operability/backup-restore-generation-evidence/**"
+      - "scripts/memory_os_environment_generation_eligibility.py"
+      - "scripts/request-memory-os-backup-restore-drill.py"
+      - "scripts/register-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
+      - "scripts/validate-memory-os-backup-restore-semantic-generation-negative.py"
+      - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-status.py"
   workflow_dispatch:
@@ -42,9 +60,20 @@ jobs:
           : > "$log"
           code=0
           python -m py_compile \
+            scripts/request-memory-os-backup-restore-drill.py \
+            scripts/register-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-generation-evidence-negative.py \
+            scripts/validate-memory-os-backup-restore-semantic-generation-negative.py \
+            scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-negative.py \
             scripts/validate-memory-os-backup-restore-generation-binding.py \
             scripts/reconcile-memory-os-backup-restore-generation-status.py \
             >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1 || code=$?
+          fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-backup-restore-generation-binding.py >> "$log" 2>&1 || code=$?
           fi
