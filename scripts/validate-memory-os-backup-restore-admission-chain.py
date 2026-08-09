@@ -93,6 +93,10 @@ def main() -> int:
         "generationEvidenceRequiresRegisteredDrillRequest",
         "staleRequestEvidenceCannotRemainCurrentCandidate",
         "finalCandidateRequiresCompleteTypedEightDomainCoverage",
+        "finalCandidateRequiresIndependentEvidenceReview",
+        "finalCandidateCannotCompleteHumanProductionPromotionReview",
+        "finalCandidateCannotAuthorizeProductionPromotion",
+        "humanProductionPromotionReviewRemainsSeparate",
         "chainCannotDeriveProductionEvidence",
         "chainCannotDeriveProductionReady",
     ):
@@ -203,6 +207,9 @@ def main() -> int:
         "drillRequestBoundGenerationEvidenceCount": bound_count,
         "completeTypedNonResurrectionRecordCount": typed_complete_count,
         "finalProductionEquivalentRecoveryCandidateCount": candidate_count,
+        "independentEvidenceReviewCompleted": candidate_count > 0,
+        "humanProductionPromotionReviewCompleted": False,
+        "humanProductionPromotionAuthorized": False,
     }
     for field, value in expected.items():
         require(chain_boundary.get(field) == value, f"chain boundary drift: {field}")
@@ -239,6 +246,9 @@ def main() -> int:
     print(f"generation/drill-bound evidence: {gen_count}/{bound_count}")
     print(f"complete typed non-resurrection records: {typed_complete_count}")
     print(f"final production-equivalent recovery candidates: {candidate_count}")
+    print(f"candidate-level independent evidence review completed: {str(candidate_count > 0).lower()}")
+    print("human production-promotion review completed: false")
+    print("human production-promotion authorized: false")
     print("preflight prerequisite/request auto-creation: false")
     print("request bypass to generation evidence: false")
     print("generic non-resurrection PASS bypass: false")
