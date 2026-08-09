@@ -23,8 +23,9 @@ GEN_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environ
 OBJECTIVE_VALIDATOR = ROOT / "scripts/validate-memory-os-recovery-objectives.py"
 DRILL_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-request.py"
 NEGATIVE_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight-negative.py"
-GEN_BLOCKER = "TWO_UNSUPERSEDED_DISTINCT_ENVIRONMENT_GENERATIONS"
+GEN_BLOCKER = "TWO_UNSUPERSEDED_DISTINCT_SEMANTICALLY_PREFLIGHT_ELIGIBLE_ENVIRONMENT_GENERATIONS"
 OBJECTIVE_BLOCKER = "CURRENT_APPROVED_RECOVERY_OBJECTIVE"
+GEN_BLOCKED_DECISION = "BLOCKED_NEEDS_TWO_UNSUPERSEDED_DISTINCT_SEMANTICALLY_PREFLIGHT_ELIGIBLE_ENVIRONMENT_GENERATIONS"
 STATE_FIELDS = {
     "registeredGenerationCount",
     "preflightEligibleGenerationCount",
@@ -159,7 +160,7 @@ def derive_state(generations: dict[str, Any], objectives: dict[str, Any], drill_
     eligible = len(blocking_prerequisites) == 0
 
     if not pair_available:
-        decision = "BLOCKED_NEEDS_TWO_UNSUPERSEDED_DISTINCT_ENVIRONMENT_GENERATIONS"
+        decision = GEN_BLOCKED_DECISION
     elif not current_objective_available:
         decision = "BLOCKED_NEEDS_CURRENT_APPROVED_RECOVERY_OBJECTIVE"
     elif current_request_count > 0:
@@ -227,7 +228,7 @@ def main() -> int:
     require(isinstance(blocker_kinds, list) and blocker_kinds == [GEN_BLOCKER, OBJECTIVE_BLOCKER], "preflight blocker kind/order drift")
     decisions = contract.get("decisionStates")
     expected_decisions = {
-        "BLOCKED_NEEDS_TWO_UNSUPERSEDED_DISTINCT_ENVIRONMENT_GENERATIONS",
+        GEN_BLOCKED_DECISION,
         "BLOCKED_NEEDS_CURRENT_APPROVED_RECOVERY_OBJECTIVE",
         "READY_FOR_REVIEWED_DRILL_REQUEST_SUBMISSION",
         "READY_EXISTING_EXECUTABLE_DRILL_REQUEST",
