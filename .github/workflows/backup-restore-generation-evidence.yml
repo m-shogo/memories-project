@@ -17,6 +17,7 @@ on:
       - "contracts/operations/recovery-objectives-admission-contract.v1.json"
       - "contracts/operations/recovery-objectives-registry.v1.json"
       - "docs/evidence/backup-restore/non-resurrection/**"
+      - "docs/fixtures/memory-os-operability/backup-restore-generation-evidence/**"
       - "scripts/request-memory-os-backup-restore-drill.py"
       - "scripts/validate-memory-os-backup-restore-drill-request.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-negative.py"
@@ -24,6 +25,7 @@ on:
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
+      - "scripts/validate-memory-os-backup-restore-semantic-generation-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
@@ -69,6 +71,7 @@ jobs:
             scripts/register-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-negative.py \
+            scripts/validate-memory-os-backup-restore-semantic-generation-negative.py \
             scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py \
             scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py \
             scripts/reconcile-memory-os-backup-restore-generation-evidence.py \
