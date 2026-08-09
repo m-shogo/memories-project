@@ -23,6 +23,26 @@ ELIGIBILITY_HELPER = ROOT / "scripts/memory_os_environment_generation_eligibilit
 LOCK = ROOT / "contracts/operations/.backup-restore-drill-request.lock"
 REQUEST_ID = re.compile(r"^brrq_[a-z0-9][a-z0-9_-]{7,63}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
+APPROVAL_SCHEMA = "memory-os-backup-restore-drill-request-approval.v1"
+APPROVAL_ROLES = {
+    "recoveryOwner": "RECOVERY_OWNER",
+    "securityReview": "SECURITY",
+    "operabilityReview": "OPERABILITY",
+}
+APPROVAL_FIELDS = {
+    "schemaVersion",
+    "requestId",
+    "reviewRole",
+    "decision",
+    "sourceEnvironmentGenerationId",
+    "restoreTargetEnvironmentGenerationId",
+    "recoveryObjectivesId",
+    "approvedAt",
+    "reviewerPseudonym",
+    "productionTraffic",
+    "productionCredentials",
+    "automaticPromotion",
+}
 
 
 class Fail(RuntimeError):
@@ -121,6 +141,33 @@ def current_objective() -> dict[str, Any]:
     return objective_by_id(objective_id)
 
 
+def approval_document(ref: Any, field: str) -> dict[str, Any]:
+    relative = repo_ref(ref, field)
+    document = load(ROOT / relative)
+    require(set(document) == APPROVAL_FIELDS, f"{field} approval field drift")
+    require(document.get("schemaVersion") == APPROVAL_SCHEMA, f"{field} approval schemaVersion drift")
+    parse_timestamp(document.get("approvedAt"))
+    reviewer = document.get("reviewerPseudonym")
+    require(isinstance(reviewer, str) and reviewer.strip(), f"{field} reviewerPseudonym required")
+    require(document.get("decision") == "APPROVED", f"{field} approval decision must be APPROVED")
+    for boundary in ("productionTraffic", "productionCredentials", "automaticPromotion"):
+        require(document.get(boundary) is False, f"{field} approval {boundary} must remain false")
+    return document
+
+
+def validate_request_approval(document: dict[str, Any], record: dict[str, Any], approval_key: str) -> str:
+    field = f"approvalRefs.{approval_key}"
+    require(document.get("reviewRole") == APPROVAL_ROLES[approval_key], f"{field} reviewRole mismatch")
+    for approval_field, request_field in (
+        ("requestId", "requestId"),
+        ("sourceEnvironmentGenerationId", "sourceEnvironmentGenerationId"),
+        ("restoreTargetEnvironmentGenerationId", "restoreTargetEnvironmentGenerationId"),
+        ("recoveryObjectivesId", "recoveryObjectivesId"),
+    ):
+        require(document.get(approval_field) == record.get(request_field), f"{field} {approval_field} binding mismatch")
+    return str(document["reviewerPseudonym"])
+
+
 def validate_request(record: dict[str, Any], *, require_current: bool = True) -> None:
     contract = load(CONTRACT)
     required = set(contract.get("requiredRequestFields", []))
@@ -183,9 +230,11 @@ def validate_request(record: dict[str, Any], *, require_current: bool = True) ->
         repo_ref(ref, f"entryCriteriaRefs[{index}]")
 
     approvals = record.get("approvalRefs")
-    require(isinstance(approvals, dict) and set(approvals) == {"recoveryOwner", "securityReview", "operabilityReview"}, "approvalRefs field drift")
-    approval_values = [repo_ref(approvals[key], f"approvalRefs.{key}") for key in ("recoveryOwner", "securityReview", "operabilityReview")]
+    require(isinstance(approvals, dict) and set(approvals) == set(APPROVAL_ROLES), "approvalRefs field drift")
+    approval_values = [repo_ref(approvals[key], f"approvalRefs.{key}") for key in APPROVAL_ROLES]
     require(len(set(approval_values)) == 3, "recovery owner, security and operability approvals must be distinct")
+    reviewers = [validate_request_approval(approval_document(approvals[key], f"approvalRefs.{key}"), record, key) for key in APPROVAL_ROLES]
+    require(len(set(reviewers)) == 3, "recovery owner, security and operability reviewers must be distinct")
 
     stops = record.get("stopConditions")
     required_stops = contract.get("requiredStopConditions")
@@ -290,6 +339,7 @@ def main() -> int:
 
     print(f"Registered production-equivalent backup/restore drill request: {record['requestId']}")
     print("source/target semantically preflight eligible: true")
+    print("typed human approvals bound to request: true")
     print("planning authority only: true")
     print("execution-time revalidation required: true")
     print("production evidence: false")
