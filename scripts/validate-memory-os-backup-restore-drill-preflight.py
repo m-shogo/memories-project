@@ -24,6 +24,42 @@ OBJECTIVE_VALIDATOR = ROOT / "scripts/validate-memory-os-recovery-objectives.py"
 DRILL_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-request.py"
 GEN_BLOCKER = "TWO_UNSUPERSEDED_DISTINCT_ENVIRONMENT_GENERATIONS"
 OBJECTIVE_BLOCKER = "CURRENT_APPROVED_RECOVERY_OBJECTIVE"
+STATE_FIELDS = {
+    "registeredGenerationCount",
+    "preflightEligibleGenerationCount",
+    "unsupersededGenerationCount",
+    "unsupersededPreflightEligibleGenerationCount",
+    "distinctUnsupersededPreflightEligibleEnvironmentCount",
+    "eligibleDirectedSourceTargetPairCount",
+    "approvedRecoveryObjectiveCount",
+    "currentObjectiveId",
+    "reviewedDrillRequestCount",
+    "currentExecutableDrillRequestCount",
+    "blockingPrerequisites",
+    "blockingPrerequisiteCount",
+    "eligibleToSubmitReviewedDrillRequest",
+    "preflightDecision",
+    "requestCreated",
+    "backupExecuted",
+    "restoreExecuted",
+    "productionTrafficChanged",
+    "productionEvidence",
+    "productionReady",
+    "productionDecision",
+}
+READINESS_FIELDS = {
+    "contractDefined",
+    "validatorImplemented",
+    "reconcileImplemented",
+    "automaticWorkflowImplemented",
+    "twoDistinctUnsupersededPreflightEligibleEnvironmentsAvailable",
+    "currentRecoveryObjectiveAvailable",
+    "eligibleSourceTargetPairAvailable",
+    "reviewedDrillRequestSubmissionEligible",
+    "currentExecutableDrillRequestAvailable",
+    "drillExecuted",
+    "productionReady",
+}
 
 
 class Fail(RuntimeError):
@@ -207,6 +243,8 @@ def main() -> int:
     canonical = contract.get("currentState")
     readiness = contract.get("readiness")
     require(isinstance(canonical, dict) and isinstance(readiness, dict), "preflight authority state missing")
+    require(set(canonical) == STATE_FIELDS, "preflight currentState field drift")
+    require(set(readiness) == READINESS_FIELDS, "preflight readiness field drift")
     for field, value in state.items():
         require(canonical.get(field) == value, f"preflight state drift: {field}")
     blockers = canonical.get("blockingPrerequisites")
