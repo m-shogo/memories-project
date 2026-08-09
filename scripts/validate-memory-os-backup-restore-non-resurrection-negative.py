@@ -43,64 +43,44 @@ def expect_rejected(name: str, action: Callable[[], Any]) -> None:
 
 def base_record(contract: dict[str, Any]) -> dict[str, Any]:
     prefixes = contract["domainEvidencePathPrefixes"]
-    domains = {
-        name: {"result": "PASS", "evidenceRef": prefixes[name] + "synthetic.json"}
-        for name in contract["requiredDomains"]
-    }
+    review_prefixes = contract["reviewEvidencePathPrefixes"]
     return {
         "schemaVersion": contract["recordSchemaVersion"],
         "recordId": "brnr_negative_base",
         "generationEvidenceId": "brge_negative_generation",
         "sourceCommitSha": SHA,
-        "domains": domains,
-        "securityReviewRef": "SECURITY.md",
-        "operabilityReviewRef": "README.md",
+        "domains": {name: {"result": "PASS", "evidenceRef": prefixes[name] + "synthetic.json"} for name in contract["requiredDomains"]},
+        "securityReviewRef": review_prefixes["SECURITY"] + "synthetic.json",
+        "operabilityReviewRef": review_prefixes["OPERABILITY"] + "synthetic.json",
         "unresolvedFindings": [],
         "evidenceComplete": True,
-        "productionTraffic": False,
-        "productionCredentials": False,
-        "productionEvidence": False,
-        "productionReady": False
-    }
-
-def domain_payload(*, generation_evidence_id: str, source_commit_sha: str, domain: str, result: str = "PASS") -> dict[str, Any]:
-    return {
-        "schemaVersion": "memory-os-backup-restore-non-resurrection-domain-evidence.v1",
-        "generationEvidenceId": generation_evidence_id,
-        "sourceCommitSha": source_commit_sha,
-        "domain": domain,
-        "result": result,
         "productionTraffic": False,
         "productionCredentials": False,
         "productionEvidence": False,
         "productionReady": False,
     }
 
+def domain_payload(generation: str, source_sha: str, domain: str, result: str) -> dict[str, Any]:
+    return {"schemaVersion": "memory-os-backup-restore-non-resurrection-domain-evidence.v1", "generationEvidenceId": generation, "sourceCommitSha": source_sha, "domain": domain, "result": result, "productionTraffic": False, "productionCredentials": False, "productionEvidence": False, "productionReady": False}
+
+def review_payload(*, generation: str, source_sha: str, record_id: str, review_type: str, reviewer: str, refs: list[str], result: str = "APPROVED") -> dict[str, Any]:
+    return {"schemaVersion": "memory-os-backup-restore-non-resurrection-review-evidence.v1", "generationEvidenceId": generation, "sourceCommitSha": source_sha, "typedRecordId": record_id, "reviewType": review_type, "reviewerPseudonym": reviewer, "reviewedDomainEvidenceRefs": refs, "result": result, "productionTraffic": False, "productionCredentials": False, "productionEvidence": False, "productionReady": False}
+
 def main() -> int:
-    require(WRITER.is_file() and CONTRACT.is_file(), "typed non-resurrection foundation missing")
     contract = load(CONTRACT)
     writer = load_writer()
-
     with tempfile.TemporaryDirectory(prefix="memory-os-non-resurrection-negative-") as tmp:
-        tmp_path = Path(tmp)
-        generation_registry = tmp_path / "generation-evidence.json"
-        generation_registry.write_text(json.dumps({
-            "schemaVersion": "memory-os-backup-restore-generation-evidence-registry.v1",
-            "records": [{"evidenceId": "brge_negative_generation", "sourceCommitSha": SHA}]
-        }) + "\n", encoding="utf-8")
+        generation_registry = Path(tmp) / "generation-evidence.json"
+        generation_registry.write_text(json.dumps({"schemaVersion": "memory-os-backup-restore-generation-evidence-registry.v1", "records": [{"evidenceId": "brge_negative_generation", "sourceCommitSha": SHA}]}) + "\n", encoding="utf-8")
         writer.GEN_EVIDENCE_REGISTRY = generation_registry
-
-        real_repo_ref = writer.repo_ref
-        real_load = writer.load
+        real_repo_ref, real_load = writer.repo_ref, writer.load
         writer.repo_ref = lambda value, field: value if isinstance(value, str) and value else (_ for _ in ()).throw(writer.Fail(f"{field} invalid"))
-
         prefixes = contract["domainEvidencePathPrefixes"]
-        synthetic_state: dict[str, Any] = {
-            "generationEvidenceId": "brge_negative_generation",
-            "sourceCommitSha": SHA,
-            "domainOverride": None,
-            "result": "PASS",
-        }
+        review_prefixes = contract["reviewEvidencePathPrefixes"]
+        state: dict[str, Any] = {"generation": "brge_negative_generation", "sha": SHA, "domain": None, "domainResult": "PASS", "recordId": "brnr_negative_base", "securityReviewer": "reviewer_security", "operabilityReviewer": "reviewer_operability", "reviewGeneration": "brge_negative_generation", "reviewSha": SHA, "reviewRecordId": "brnr_negative_base", "reviewRefsDropOne": False, "reviewResult": "APPROVED"}
+
+        valid = base_record(contract)
+        refs = [valid["domains"][name]["evidenceRef"] for name in contract["requiredDomains"]]
 
         def fake_load(path: Path) -> dict[str, Any]:
             if path == generation_registry:
@@ -110,96 +90,53 @@ def main() -> int:
             except ValueError:
                 return real_load(path)
             matched = next((name for name, prefix in prefixes.items() if ref.startswith(prefix)), None)
-            if matched is not None:
-                return domain_payload(
-                    generation_evidence_id=synthetic_state["generationEvidenceId"],
-                    source_commit_sha=synthetic_state["sourceCommitSha"],
-                    domain=synthetic_state["domainOverride"] or matched,
-                    result=synthetic_state["result"],
-                )
+            if matched:
+                return domain_payload(state["generation"], state["sha"], state["domain"] or matched, state["domainResult"])
+            for review_type, prefix in review_prefixes.items():
+                if ref.startswith(prefix):
+                    reviewed = refs[:-1] if state["reviewRefsDropOne"] else refs
+                    reviewer = state["securityReviewer"] if review_type == "SECURITY" else state["operabilityReviewer"]
+                    return review_payload(generation=state["reviewGeneration"], source_sha=state["reviewSha"], record_id=state["reviewRecordId"], review_type=review_type, reviewer=reviewer, refs=reviewed, result=state["reviewResult"])
             return real_load(path)
 
         writer.load = fake_load
-        valid = base_record(contract)
         writer.validate_record(valid)
-        print("PASS accept: structurally complete and generation-bound typed record")
+        print("PASS accept: complete typed record with independently bound reviews")
 
-        unregistered = copy.deepcopy(valid)
-        unregistered["recordId"] = "brnr_unregistered_generation"
-        unregistered["generationEvidenceId"] = "brge_missing_generation"
-        expect_rejected("unregistered generation evidence", lambda: writer.validate_record(unregistered))
+        def reject_variant(name: str, mutate: Callable[[dict[str, Any]], None]) -> None:
+            item = copy.deepcopy(valid); mutate(item); expect_rejected(name, lambda: writer.validate_record(item))
 
-        sha_mismatch = copy.deepcopy(valid)
-        sha_mismatch["recordId"] = "brnr_sha_mismatch"
-        sha_mismatch["sourceCommitSha"] = "b" * 40
-        expect_rejected("source commit mismatch", lambda: writer.validate_record(sha_mismatch))
-
-        missing_domain = copy.deepcopy(valid)
-        missing_domain["recordId"] = "brnr_missing_domain"
-        missing_domain["domains"].pop(contract["requiredDomains"][0])
-        expect_rejected("missing required domain", lambda: writer.validate_record(missing_domain))
-
-        bad_path = copy.deepcopy(valid)
-        bad_path["recordId"] = "brnr_bad_domain_path"
+        reject_variant("unregistered generation evidence", lambda r: r.update(generationEvidenceId="brge_missing_generation"))
+        reject_variant("source commit mismatch", lambda r: r.update(sourceCommitSha="b" * 40))
+        reject_variant("missing required domain", lambda r: r["domains"].pop(contract["requiredDomains"][0]))
         domain_name = contract["requiredDomains"][0]
-        bad_path["domains"][domain_name]["evidenceRef"] = "SECURITY.md"
-        expect_rejected("domain evidence path is not typed", lambda: writer.validate_record(bad_path))
-
-        failed_domain = copy.deepcopy(valid)
-        failed_domain["recordId"] = "brnr_failed_domain"
-        failed_domain["domains"][domain_name]["result"] = "FAIL"
-        expect_rejected("failed domain cannot claim evidenceComplete", lambda: writer.validate_record(failed_domain))
-
-        same_review = copy.deepcopy(valid)
-        same_review["recordId"] = "brnr_same_review"
-        same_review["operabilityReviewRef"] = same_review["securityReviewRef"]
-        expect_rejected("security and operability review reuse", lambda: writer.validate_record(same_review))
-
-        high_finding = copy.deepcopy(valid)
-        high_finding["recordId"] = "brnr_high_finding"
-        high_finding["unresolvedFindings"] = [{"findingId": "finding_high", "severity": "HIGH", "status": "OPEN"}]
-        expect_rejected("HIGH unresolved finding", lambda: writer.validate_record(high_finding))
-
-        prod_flag = copy.deepcopy(valid)
-        prod_flag["recordId"] = "brnr_prod_flag"
-        prod_flag["productionEvidence"] = True
-        expect_rejected("production evidence relabel", lambda: writer.validate_record(prod_flag))
-
-        mutable_alias = copy.deepcopy(valid)
-        mutable_alias["recordId"] = "brnr_latest_alias"
-        mutable_alias["domains"][domain_name]["evidenceRef"] = contract["domainEvidencePathPrefixes"][domain_name] + "latest.json"
-        expect_rejected("mutable latest alias", lambda: writer.validate_record(mutable_alias))
-
-        duplicate_ref = copy.deepcopy(valid)
-        duplicate_ref["recordId"] = "brnr_duplicate_domain_ref"
+        reject_variant("domain evidence path is not typed", lambda r: r["domains"][domain_name].update(evidenceRef="SECURITY.md"))
+        reject_variant("failed domain cannot claim evidenceComplete", lambda r: r["domains"][domain_name].update(result="FAIL"))
+        reject_variant("security and operability review reuse", lambda r: r.update(operabilityReviewRef=r["securityReviewRef"]))
+        reject_variant("HIGH unresolved finding", lambda r: r.update(unresolvedFindings=[{"findingId": "finding_high", "severity": "HIGH", "status": "OPEN"}]))
+        reject_variant("production evidence relabel", lambda r: r.update(productionEvidence=True))
+        reject_variant("mutable latest alias", lambda r: r["domains"][domain_name].update(evidenceRef=prefixes[domain_name] + "latest.json"))
         first, second = contract["requiredDomains"][:2]
-        duplicate_ref["domains"][second]["evidenceRef"] = duplicate_ref["domains"][first]["evidenceRef"]
-        expect_rejected("domain evidence references must be distinct", lambda: writer.validate_record(duplicate_ref))
+        reject_variant("domain evidence references must be distinct", lambda r: r["domains"][second].update(evidenceRef=r["domains"][first]["evidenceRef"]))
 
-        synthetic_state["generationEvidenceId"] = "brge_other_generation"
-        expect_rejected("domain evidence generation binding mismatch", lambda: writer.validate_record(valid))
-        synthetic_state["generationEvidenceId"] = "brge_negative_generation"
+        state["generation"] = "brge_other_generation"; expect_rejected("domain evidence generation binding mismatch", lambda: writer.validate_record(valid)); state["generation"] = "brge_negative_generation"
+        state["sha"] = "b" * 40; expect_rejected("domain evidence source commit binding mismatch", lambda: writer.validate_record(valid)); state["sha"] = SHA
+        state["domain"] = "wrongDomain"; expect_rejected("domain evidence domain binding mismatch", lambda: writer.validate_record(valid)); state["domain"] = None
+        state["domainResult"] = "FAIL"; expect_rejected("domain evidence result binding mismatch", lambda: writer.validate_record(valid)); state["domainResult"] = "PASS"
 
-        synthetic_state["sourceCommitSha"] = "b" * 40
-        expect_rejected("domain evidence source commit binding mismatch", lambda: writer.validate_record(valid))
-        synthetic_state["sourceCommitSha"] = SHA
+        state["reviewGeneration"] = "brge_other_generation"; expect_rejected("review generation binding mismatch", lambda: writer.validate_record(valid)); state["reviewGeneration"] = "brge_negative_generation"
+        state["reviewSha"] = "b" * 40; expect_rejected("review source commit binding mismatch", lambda: writer.validate_record(valid)); state["reviewSha"] = SHA
+        state["reviewRecordId"] = "brnr_other_record"; expect_rejected("review typed record binding mismatch", lambda: writer.validate_record(valid)); state["reviewRecordId"] = "brnr_negative_base"
+        state["reviewRefsDropOne"] = True; expect_rejected("review exact domain bundle mismatch", lambda: writer.validate_record(valid)); state["reviewRefsDropOne"] = False
+        state["operabilityReviewer"] = "reviewer_security"; expect_rejected("security and operability reviewer identity reuse", lambda: writer.validate_record(valid)); state["operabilityReviewer"] = "reviewer_operability"
+        state["reviewResult"] = "REJECTED"; expect_rejected("review result not APPROVED", lambda: writer.validate_record(valid)); state["reviewResult"] = "APPROVED"
 
-        synthetic_state["domainOverride"] = "wrongDomain"
-        expect_rejected("domain evidence domain binding mismatch", lambda: writer.validate_record(valid))
-        synthetic_state["domainOverride"] = None
-
-        synthetic_state["result"] = "FAIL"
-        expect_rejected("domain evidence result binding mismatch", lambda: writer.validate_record(valid))
-        synthetic_state["result"] = "PASS"
-
-        writer.repo_ref = real_repo_ref
-        writer.load = real_load
-        missing_file = copy.deepcopy(valid)
-        missing_file["recordId"] = "brnr_missing_evidence_file"
+        writer.repo_ref, writer.load = real_repo_ref, real_load
+        missing_file = copy.deepcopy(valid); missing_file["recordId"] = "brnr_missing_evidence_file"
         expect_rejected("typed evidence file must exist", lambda: writer.validate_record(missing_file))
 
     print("Memory OS backup/restore non-resurrection negative admission suite PASS")
-    print("typed domain evidence must bind generation, commit, domain and result: true")
+    print("typed domain and independent review evidence are generation/commit/bundle bound: true")
     print("canonical registries mutated: false")
     print("production evidence: false")
     print("production decision: NO_GO")
