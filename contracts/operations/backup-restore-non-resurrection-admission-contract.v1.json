@@ -12,8 +12,31 @@
   "negativeAdmissionValidator": "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py",
   "reconcile": "scripts/reconcile-memory-os-backup-non-resurrection-authority.py",
   "workflow": ".github/workflows/backup-restore-non-resurrection-admission.yml",
-  "requiredRecordFields": ["schemaVersion", "recordId", "generationEvidenceId", "sourceCommitSha", "domains", "securityReviewRef", "operabilityReviewRef", "unresolvedFindings", "evidenceComplete", "productionTraffic", "productionCredentials", "productionEvidence", "productionReady"],
-  "requiredDomains": ["deletedAccountNonResurrection", "deletedSessionNonResolution", "expiredSessionTerminalSemantics", "revokedSessionTerminalSemantics", "appleNonceReplayRejected", "appleAuthorizationCodeReplayRejected", "deletionLeaseContinuity", "idempotentRestoreEffects"],
+  "requiredRecordFields": [
+    "schemaVersion",
+    "recordId",
+    "generationEvidenceId",
+    "sourceCommitSha",
+    "domains",
+    "securityReviewRef",
+    "operabilityReviewRef",
+    "unresolvedFindings",
+    "evidenceComplete",
+    "productionTraffic",
+    "productionCredentials",
+    "productionEvidence",
+    "productionReady"
+  ],
+  "requiredDomains": [
+    "deletedAccountNonResurrection",
+    "deletedSessionNonResolution",
+    "expiredSessionTerminalSemantics",
+    "revokedSessionTerminalSemantics",
+    "appleNonceReplayRejected",
+    "appleAuthorizationCodeReplayRejected",
+    "deletionLeaseContinuity",
+    "idempotentRestoreEffects"
+  ],
   "recordRules": {
     "generationEvidenceMustExist": true,
     "sourceCommitMustMatchGenerationEvidence": true,
@@ -59,7 +82,27 @@
     "localEvidenceMaySatisfyProductionEquivalentTypedRecord": false
   },
   "negativeAdmissionCases": [
-    "unregistered generation evidence", "source commit mismatch", "missing required domain", "domain without evidence path", "domain result not PASS while evidenceComplete true", "security and operability review reuse", "security review generation binding mismatch", "operability review source commit binding mismatch", "review typed record binding mismatch", "review exact domain bundle mismatch", "security and operability reviewer identity reuse", "review result not APPROVED", "HIGH or CRITICAL unresolved finding", "duplicate generation coverage", "production evidence relabel", "mutable latest alias", "domain evidence generation binding mismatch", "domain evidence source commit binding mismatch", "domain evidence domain binding mismatch", "domain evidence result binding mismatch", "generic generation record passing pre-overlay gates without typed overlay remains non-candidate"
+    "unregistered generation evidence",
+    "source commit mismatch",
+    "missing required domain",
+    "domain without evidence path",
+    "domain result not PASS while evidenceComplete true",
+    "security and operability review reuse",
+    "security review generation binding mismatch",
+    "operability review source commit binding mismatch",
+    "review typed record binding mismatch",
+    "review exact domain bundle mismatch",
+    "security and operability reviewer identity reuse",
+    "review result not APPROVED",
+    "HIGH or CRITICAL unresolved finding",
+    "duplicate generation coverage",
+    "production evidence relabel",
+    "mutable latest alias",
+    "domain evidence generation binding mismatch",
+    "domain evidence source commit binding mismatch",
+    "domain evidence domain binding mismatch",
+    "domain evidence result binding mismatch",
+    "generic generation record passing pre-overlay gates without typed overlay remains non-candidate"
   ],
   "currentBoundary": {
     "registeredTypedRecordCount": 0,
