@@ -95,12 +95,22 @@ def main() -> int:
 
     preflight_state = preflight_contract.get("currentState")
     require(isinstance(preflight_state, dict), "restore drill preflight state missing")
+    preflight_eligible_generation_count = preflight_state.get("preflightEligibleGenerationCount")
     unsuperseded_generation_count = preflight_state.get("unsupersededGenerationCount")
+    unsuperseded_preflight_eligible_generation_count = preflight_state.get("unsupersededPreflightEligibleGenerationCount")
     distinct_unsuperseded_environment_count = preflight_state.get("distinctUnsupersededEnvironmentCount")
     eligible_pair_count = preflight_state.get("eligibleDirectedSourceTargetPairCount")
     preflight_eligible = preflight_state.get("eligibleToSubmitReviewedDrillRequest")
     preflight_decision = preflight_state.get("preflightDecision")
-    require(all(isinstance(value, int) and not isinstance(value, bool) and value >= 0 for value in (unsuperseded_generation_count, distinct_unsuperseded_environment_count, eligible_pair_count)), "restore drill preflight counts invalid")
+    require(all(isinstance(value, int) and not isinstance(value, bool) and value >= 0 for value in (
+        preflight_eligible_generation_count,
+        unsuperseded_generation_count,
+        unsuperseded_preflight_eligible_generation_count,
+        distinct_unsuperseded_environment_count,
+        eligible_pair_count,
+    )), "restore drill preflight counts invalid")
+    require(preflight_eligible_generation_count <= generation_count, "semantic preflight-eligible generation count exceeds registered inventory")
+    require(unsuperseded_preflight_eligible_generation_count <= unsuperseded_generation_count, "unsuperseded semantic generation count exceeds unsuperseded inventory")
     require(isinstance(preflight_eligible, bool), "restore drill preflight eligibility invalid")
     require(isinstance(preflight_decision, str) and preflight_decision, "restore drill preflight decision invalid")
     require(preflight_state.get("registeredGenerationCount") == generation_count, "preflight generation count drift")
@@ -109,7 +119,11 @@ def main() -> int:
     require(preflight_state.get("currentExecutableDrillRequestCount") == executable_drill_request_count, "preflight executable request count drift")
     require(all(preflight_state.get(field) is False for field in ("requestCreated", "backupExecuted", "restoreExecuted", "productionTrafficChanged", "productionEvidence", "productionReady")), "preflight execution/production boundary drift")
     require(preflight_state.get("productionDecision") == "NO_GO", "preflight production decision drift")
+    require(drill_state.get("preflightEligibleEnvironmentGenerationCount") == preflight_eligible_generation_count, "drill/preflight semantic generation count drift")
+    require(drill_state.get("unsupersededPreflightEligibleEnvironmentGenerationCount") == unsuperseded_preflight_eligible_generation_count, "drill/preflight unsuperseded semantic generation count drift")
+    require(inventory.get("backupRestorePreflightEligibleEnvironmentGenerationCount") == preflight_eligible_generation_count, "inventory semantic preflight-eligible generation count drift")
     require(inventory.get("backupRestoreUnsupersededEnvironmentGenerationCount") == unsuperseded_generation_count, "inventory unsuperseded generation count drift")
+    require(inventory.get("backupRestoreUnsupersededPreflightEligibleEnvironmentGenerationCount") == unsuperseded_preflight_eligible_generation_count, "inventory unsuperseded semantic generation count drift")
     require(inventory.get("backupRestoreDistinctUnsupersededEnvironmentCount") == distinct_unsuperseded_environment_count, "inventory distinct unsuperseded environment count drift")
     require(inventory.get("backupRestoreEligibleDirectedPairCount") == eligible_pair_count, "inventory eligible restore pair count drift")
     require(inventory.get("backupRestoreDrillPreflightEligible") is preflight_eligible, "inventory preflight eligibility drift")
@@ -150,6 +164,18 @@ def main() -> int:
 
     backup_boundary = backup_binding.get("currentBoundary")
     require(isinstance(backup_boundary, dict), "backup generation boundary missing")
+    independent_review_completed = backup_boundary.get("independentReviewCompleted")
+    human_promotion_review_completed = backup_boundary.get("humanProductionPromotionReviewCompleted")
+    human_promotion_authorized = backup_boundary.get("humanProductionPromotionAuthorized")
+    require(all(isinstance(value, bool) for value in (independent_review_completed, human_promotion_review_completed, human_promotion_authorized)), "backup promotion boundary flags invalid")
+    require(not human_promotion_authorized or human_promotion_review_completed, "human production promotion cannot be authorized before human review")
+    require(inventory.get("backupRestoreIndependentEvidenceReviewCompleted") is independent_review_completed, "inventory independent evidence review drift")
+    require(inventory.get("humanProductionPromotionReviewCompleted") is human_promotion_review_completed, "inventory human promotion review drift")
+    require(inventory.get("humanProductionPromotionAuthorized") is human_promotion_authorized, "inventory human promotion authorization drift")
+    if final_candidate_count > 0:
+        require(independent_review_completed is True, "recovery candidate requires independent evidence review")
+    require(human_promotion_review_completed is False and human_promotion_authorized is False, "current automated backup/restore authority cannot complete or authorize human production promotion")
+
     backup_row = inventory_rows.get("OPS-P0-007")
     require(isinstance(backup_row, dict), "OPS-P0-007 inventory row missing")
     require(backup_row.get("authority") == "contracts/operations/backup-restore-generation-evidence-contract.v1.json", "OPS-P0-007 authority drift")
@@ -160,11 +186,16 @@ def main() -> int:
     require(backup_row.get("foundationImplemented") is True, "OPS-P0-007 admission foundation incomplete")
     require(backup_row.get("preflightDecision") == preflight_decision, "OPS-P0-007 preflight decision drift")
     require(backup_row.get("preflightEligible") is preflight_eligible, "OPS-P0-007 preflight eligibility drift")
+    require(backup_row.get("independentEvidenceReviewCompleted") is independent_review_completed, "OPS-P0-007 independent evidence review drift")
+    require(backup_row.get("humanProductionPromotionReviewCompleted") is human_promotion_review_completed, "OPS-P0-007 human promotion review drift")
+    require(backup_row.get("humanProductionPromotionAuthorized") is human_promotion_authorized, "OPS-P0-007 human promotion authorization drift")
     deps = backup_row.get("dependencyCounts")
     require(isinstance(deps, dict), "OPS-P0-007 dependencyCounts missing")
     expected_dependencies = {
         "environmentGenerations": generation_count,
+        "preflightEligibleEnvironmentGenerations": preflight_eligible_generation_count,
         "unsupersededEnvironmentGenerations": unsuperseded_generation_count,
+        "unsupersededPreflightEligibleEnvironmentGenerations": unsuperseded_preflight_eligible_generation_count,
         "distinctUnsupersededEnvironments": distinct_unsuperseded_environment_count,
         "eligibleDirectedRestorePairs": eligible_pair_count,
         "approvedRecoveryObjectives": objective_count,
@@ -184,7 +215,7 @@ def main() -> int:
     require(backup_row.get("admittedEvidenceCount") == backup_boundary.get("generationBoundRestoreCount"), "OPS-P0-007 admitted restore count drift")
 
     if preflight_decision == "BLOCKED_NEEDS_TWO_UNSUPERSEDED_DISTINCT_ENVIRONMENT_GENERATIONS":
-        expected_next_gate = "register two distinct reviewed production-equivalent environment generations that are both unsuperseded; then approve explicit recovery objectives before submitting any restore drill request"
+        expected_next_gate = "register two distinct reviewed production-equivalent environment generations that independently revalidate as unsuperseded and semantically restore-preflight eligible; then approve explicit recovery objectives before submitting any restore drill request"
     elif preflight_decision == "BLOCKED_NEEDS_CURRENT_APPROVED_RECOVERY_OBJECTIVE":
         expected_next_gate = "approve explicit RPO, RTO and maximum object/database skew for the current recovery objective; then submit a planning-only cross-environment restore drill request for review"
     elif preflight_decision == "READY_FOR_REVIEWED_DRILL_REQUEST_SUBMISSION":
@@ -203,6 +234,7 @@ def main() -> int:
     print("Memory OS operability admission inventory validation PASS")
     print("P0 areas: 9")
     print(f"production-equivalent generations: {generation_count}")
+    print(f"restore preflight semantic/unsuperseded-semantic generations: {preflight_eligible_generation_count}/{unsuperseded_preflight_eligible_generation_count}")
     print(f"restore preflight decision: {preflight_decision}")
     print(f"restore preflight eligible pairs: {eligible_pair_count}")
     print(f"approved recovery objectives: {objective_count}")
@@ -211,6 +243,7 @@ def main() -> int:
     print(f"generation/drill-bound recovery evidence: {generation_evidence_count}/{drill_bound_generation_evidence_count}")
     print(f"typed non-resurrection records: {typed_record_count}")
     print(f"final recovery candidates: {final_candidate_count}")
+    print(f"candidate evidence review/human promotion review/authorization: {str(independent_review_completed).lower()}/{str(human_promotion_review_completed).lower()}/{str(human_promotion_authorized).lower()}")
     print("preflight auto-creates prerequisites: false")
     print("unbound generation recovery evidence accepted: false")
     print("drill planning request implies execution: false")
