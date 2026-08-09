@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "backup-restore-drill-preflight",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "PASS baseline: canonical preflight negative authority and field sets are exact\nPASS reject: legacy distinct unsuperseded environment alias\nPASS reject: legacy two-generation readiness alias\nPASS reject: unexpected future currentState field\nPASS reject: unexpected future readiness field\nMemory OS restore drill preflight negative authority-shape suite PASS\nnegative validator contract binding: true\nstale state aliases accepted: false\nunexpected readiness aliases accepted: false\ncanonical authority mutated: false\nproduction evidence: false\nproduction decision: NO_GO\nBACKUP RESTORE DRILL PREFLIGHT RECONCILE FAILED: post-reconcile preflight validator failed:\nBACKUP RESTORE DRILL PREFLIGHT FAILED: preflight blocker kind/order drift\n\n",
+  "containsSecrets": false,
+  "requestCreated": false,
+  "generationCreated": false,
+  "recoveryObjectiveCreated": false,
+  "restoreExecuted": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
