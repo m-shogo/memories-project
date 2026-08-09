@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import subprocess
 import sys
 from pathlib import Path
@@ -55,7 +56,43 @@ def run_validator(command: list[str], label: str) -> None:
         )
 
 
-def validate_run(path: Path) -> tuple[str, str]:
+def finite_number(value: Any, field: str) -> float:
+    require(isinstance(value, (int, float)) and not isinstance(value, bool), f"{field} must be numeric")
+    number = float(value)
+    require(math.isfinite(number), f"{field} must be finite")
+    return number
+
+
+def trend_summary(value: dict[str, Any], path: Path) -> dict[str, Any]:
+    scenario = value.get("scenario")
+    require(isinstance(scenario, dict), f"{path.name}: scenario missing")
+    trends = scenario.get("trends")
+    require(isinstance(trends, dict), f"{path.name}: trends missing")
+    summary = {
+        "runId": value.get("runId"),
+        "sourceCommitSha": value.get("commitSha"),
+        "rssSlopeBytesPerMinute": finite_number(trends.get("rssSlopeBytesPerMinute"), f"{path.name} rss slope"),
+        "heapAllocSlopeBytesPerMinute": finite_number(trends.get("heapAllocSlopeBytesPerMinute"), f"{path.name} heap alloc slope"),
+        "heapInuseSlopeBytesPerMinute": finite_number(trends.get("heapInuseSlopeBytesPerMinute"), f"{path.name} heap inuse slope"),
+        "goroutineSlopePerMinute": finite_number(trends.get("goroutineSlopePerMinute"), f"{path.name} goroutine slope"),
+        "latencyTrendBySurface": trends.get("latencyTrendBySurface"),
+        "errorRateTrendBySurface": trends.get("errorRateTrendBySurface"),
+        "dbConnectionTrend": trends.get("dbConnectionTrend"),
+        "scanQueueTrend": trends.get("scanQueueTrend"),
+        "deletionBacklogTrend": trends.get("deletionBacklogTrend"),
+    }
+    for field in (
+        "latencyTrendBySurface",
+        "errorRateTrendBySurface",
+        "dbConnectionTrend",
+        "scanQueueTrend",
+        "deletionBacklogTrend",
+    ):
+        require(isinstance(summary[field], dict), f"{path.name}: {field} missing")
+    return summary
+
+
+def validate_run(path: Path) -> tuple[str, str, dict[str, Any]]:
     run_validator([sys.executable, str(RESULT_VALIDATOR), str(path)],
                   f"single-run validator for {path.relative_to(ROOT)}")
     value = load(path)
@@ -63,7 +100,27 @@ def validate_run(path: Path) -> tuple[str, str]:
     commit_sha = value.get("commitSha")
     require(isinstance(run_id, str) and run_id, f"{path.name}: runId required")
     require(isinstance(commit_sha, str) and len(commit_sha) == 40, f"{path.name}: commitSha required")
-    return run_id, commit_sha
+    return run_id, commit_sha, trend_summary(value, path)
+
+
+def review_trend_projection(value: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "runId": value.get("runId"),
+        "sourceCommitSha": value.get("sourceCommitSha"),
+        "rssSlopeBytesPerMinute": value.get("rssSlopeBytesPerMinute"),
+        "heapAllocSlopeBytesPerMinute": value.get("heapAllocSlopeBytesPerMinute"),
+        "heapInuseSlopeBytesPerMinute": value.get("heapInuseSlopeBytesPerMinute"),
+        "goroutineSlopePerMinute": value.get("goroutineSlopePerMinute"),
+        "latencyTrendBySurface": value.get("latencyTrendBySurface"),
+        "errorRateTrendBySurface": value.get("errorRateTrendBySurface"),
+        "dbConnectionTrend": value.get("dbConnectionTrend"),
+        "scanQueueTrend": value.get("scanQueueTrend"),
+        "deletionBacklogTrend": value.get("deletionBacklogTrend"),
+    }
+
+
+def pair_delta(a: dict[str, Any], b: dict[str, Any], field: str) -> float:
+    return float(b[field]) - float(a[field])
 
 
 def main() -> int:
@@ -85,11 +142,14 @@ def main() -> int:
 
     run_ids: set[str] = set()
     commits: set[str] = set()
+    expected_trends: list[dict[str, Any]] = []
     for path in paths:
-        run_id, commit = validate_run(path)
+        run_id, commit, summary = validate_run(path)
         require(run_id not in run_ids, f"duplicate long-soak runId: {run_id}")
         run_ids.add(run_id)
         commits.add(commit)
+        expected_trends.append(summary)
+    expected_trends.sort(key=lambda item: item["runId"])
 
     aggregate = load(AGGREGATE_PATH)
     require(aggregate.get("schemaVersion") == "memory-os-sustained-local-soak-aggregate.v1", "aggregate schema drift")
@@ -108,7 +168,9 @@ def main() -> int:
     require(review.get("automaticLeakConclusionForbidden") is True, "automatic leak conclusion must remain forbidden")
     require(review.get("automaticOperatingThresholdApprovalForbidden") is True, "automatic operating-threshold approval must remain forbidden")
     run_trends = review.get("runTrends")
-    require(isinstance(run_trends, list) and len(run_trends) == len(paths), "trend summary must cover every committed run")
+    require(isinstance(run_trends, list), "aggregate trend summary missing")
+    require(run_trends == expected_trends,
+            "aggregate trend summary must be re-derived exactly from validated run documents")
 
     local_evidence = aggregate.get("localSustainedSoakEvidence")
     trend_review_completed = aggregate.get("trendReviewCompleted")
@@ -137,6 +199,36 @@ def main() -> int:
         require(review_doc.get("productionEvidence") is False and
                 review_doc.get("productionReady") is False,
                 "trend review cannot be production evidence")
+
+        review_trends = review_doc.get("runTrends")
+        require(isinstance(review_trends, list) and len(review_trends) == len(expected_trends),
+                "trend-review runTrends coverage drift")
+        projected_review_trends = sorted(
+            (review_trend_projection(item) for item in review_trends if isinstance(item, dict)),
+            key=lambda item: str(item.get("runId")),
+        )
+        require(projected_review_trends == expected_trends,
+                "trend-review values must be re-derived exactly from validated run documents")
+
+        latest_pair = review_doc.get("latestPair")
+        require(isinstance(latest_pair, dict), "trend-review latestPair missing")
+        expected_by_id = {item["runId"]: item for item in expected_trends}
+        run_a = latest_pair.get("runA")
+        run_b = latest_pair.get("runB")
+        require(run_a in expected_by_id and run_b in expected_by_id and run_a != run_b,
+                "trend-review latestPair run IDs invalid")
+        a = expected_by_id[str(run_a)]
+        b = expected_by_id[str(run_b)]
+        expected_deltas = {
+            "rssSlopeDeltaBytesPerMinute": pair_delta(a, b, "rssSlopeBytesPerMinute"),
+            "heapAllocSlopeDeltaBytesPerMinute": pair_delta(a, b, "heapAllocSlopeBytesPerMinute"),
+            "heapInuseSlopeDeltaBytesPerMinute": pair_delta(a, b, "heapInuseSlopeBytesPerMinute"),
+            "goroutineSlopeDeltaPerMinute": pair_delta(a, b, "goroutineSlopePerMinute"),
+        }
+        for field, expected in expected_deltas.items():
+            actual = finite_number(latest_pair.get(field), f"trend-review latestPair.{field}")
+            require(actual == expected,
+                    f"trend-review latestPair.{field} must be derived from validated run trends")
     else:
         require(review_ref is None, "pending aggregate cannot reference completed trend review")
         require(review.get("status") in {"PENDING", "WAITING_FOR_REPEATED_RUNS"},
@@ -170,6 +262,7 @@ def main() -> int:
     print(f"committed long runs: {len(paths)}")
     print(f"minimum independent runs satisfied: {str(enough_runs).lower()}")
     print(f"trend review completed: {str(trend_review_completed).lower()}")
+    print("aggregate/review trends re-derived from run documents: true")
     print(f"local sustained soak evidence: {str(local_evidence).lower()}")
     print("production sustained soak evidence: false")
     print("leak proof: false")
