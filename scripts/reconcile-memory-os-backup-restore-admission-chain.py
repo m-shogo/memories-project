@@ -109,6 +109,9 @@ def main() -> int:
     boundary["drillRequestBoundGenerationEvidenceCount"] = bound_count
     boundary["completeTypedNonResurrectionRecordCount"] = typed_complete_count
     boundary["finalProductionEquivalentRecoveryCandidateCount"] = candidate_count
+    boundary["independentEvidenceReviewCompleted"] = candidate_count > 0
+    boundary["humanProductionPromotionReviewCompleted"] = False
+    boundary["humanProductionPromotionAuthorized"] = False
     boundary["productionEvidence"] = False
     boundary["productionReady"] = False
     boundary["productionDecision"] = "NO_GO"
@@ -130,6 +133,9 @@ def main() -> int:
     print(f"reviewed/current drill requests: {drill_count}/{current_drill_count}")
     print(f"generation/drill-bound evidence: {gen_count}/{bound_count}")
     print(f"complete typed records/final candidates: {typed_complete_count}/{candidate_count}")
+    print(f"candidate-level independent evidence review completed: {str(candidate_count > 0).lower()}")
+    print("human production-promotion review completed: false")
+    print("human production-promotion authorized: false")
     print("canonical OPS-P0-007 blockers preserved: 6")
     print("production evidence: false")
     print("production decision: NO_GO")
