@@ -16,7 +16,7 @@ on:
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "contracts/operations/recovery-objectives-admission-contract.v1.json"
       - "contracts/operations/recovery-objectives-registry.v1.json"
-      - "docs/evidence/backup-restore/non-resurrection/**"
+      - "docs/evidence/backup-restore/**"
       - "docs/fixtures/memory-os-operability/backup-restore-generation-evidence/**"
       - "scripts/request-memory-os-backup-restore-drill.py"
       - "scripts/validate-memory-os-backup-restore-drill-request.py"
