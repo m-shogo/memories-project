@@ -1,0 +1,149 @@
+name: Reconcile Controlled Saturation Repeatability Authority
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/reconcile-controlled-saturation-repeatability-authority.yml"
+      - "contracts/operations/controlled-saturation-ramp-contract.v1.json"
+      - "contracts/operations/controlled-saturation-repeatability-contract.v1.json"
+      - "contracts/operations/load-test-scenario-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "docs/fixtures/memory-os-operability/controlled-saturation-repeatability-results.v1.json"
+      - "docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.repeat-*.v1.json"
+      - "scripts/validate-memory-os-controlled-saturation-repeatability.py"
+      - "scripts/reconcile-memory-os-controlled-saturation-repeatability.py"
+      - "scripts/validate-memory-os-load.py"
+      - "scripts/validate-memory-os-operability.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reconcile-controlled-saturation-repeatability-authority-so
+  cancel-in-progress: true
+
+jobs:
+  reconcile:
+    if: >-
+      github.event_name != 'push' ||
+      (!contains(github.event.head_commit.message, 'docs(load): reconcile saturation repeatability authority') &&
+       !contains(github.event.head_commit.message, 'test(load): record saturation repeatability authority diagnostic'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Revalidate existing repeatability authority
+        id: authority
+        run: |
+          set +e
+          log=/tmp/memory-os-controlled-saturation-repeatability-authority.log
+          : > "$log"
+          code=0
+          stage=compile
+          echo "STAGE: compile" >> "$log"
+          python -m py_compile \
+            scripts/validate-memory-os-controlled-saturation-repeatability.py \
+            scripts/reconcile-memory-os-controlled-saturation-repeatability.py \
+            scripts/validate-memory-os-load.py \
+            scripts/validate-memory-os-operability.py \
+            >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            stage=repeatability-validation
+            echo "STAGE: repeatability-validation" >> "$log"
+            python scripts/validate-memory-os-controlled-saturation-repeatability.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            stage=authority-reconcile
+            echo "STAGE: authority-reconcile" >> "$log"
+            python scripts/reconcile-memory-os-controlled-saturation-repeatability.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            stage=combined-validation
+            echo "STAGE: combined-validation" >> "$log"
+            python scripts/validate-memory-os-controlled-saturation-repeatability.py >> "$log" 2>&1 || code=$?
+            python scripts/validate-memory-os-load.py >> "$log" 2>&1 || code=$?
+            python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?
+          fi
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          echo "failure_stage=$stage" >> "$GITHUB_OUTPUT"
+          cat "$log"
+          exit 0
+      - name: Commit reconciled repeatability authority
+        if: steps.authority.outputs.exit_code == '0'
+        run: |
+          set -euo pipefail
+          git rm -f docs/fixtures/memory-os-operability/controlled-saturation-repeatability-authority-diagnostic.last.json 2>/dev/null || true
+          git add \
+            contracts/operations/controlled-saturation-repeatability-contract.v1.json \
+            contracts/operations/load-test-scenario-contract.v1.json \
+            contracts/operations/production-operability-status.json
+          git add -u docs/fixtures/memory-os-operability/controlled-saturation-repeatability-authority-diagnostic.last.json 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "Controlled saturation repeatability authority already current."
+            exit 0
+          fi
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs(load): reconcile saturation repeatability authority"
+          for attempt in 1 2 3 4; do
+            git pull --rebase origin so
+            if git push origin HEAD:so; then exit 0; fi
+            sleep 2
+          done
+          exit 1
+      - name: Record privacy-safe repeatability diagnostic
+        if: steps.authority.outputs.exit_code != '0'
+        env:
+          AUTHORITY_EXIT_CODE: ${{ steps.authority.outputs.exit_code }}
+          FAILURE_STAGE: ${{ steps.authority.outputs.failure_stage }}
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          git reset --hard origin/so
+          python - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          text = Path('/tmp/memory-os-controlled-saturation-repeatability-authority.log').read_text(encoding='utf-8', errors='replace')
+          text = re.sub(r'postgres(?:ql)?://[^\s]+', '<redacted-database-url>', text)
+          text = re.sub(r'https?://[^\s]+', '<redacted-url>', text)
+          text = re.sub(r'Bearer\s+\S+', 'Bearer <redacted>', text, flags=re.I)
+          value = {
+              'schemaVersion': 'memory-os-validator-diagnostic.v1',
+              'workflow': 'reconcile-controlled-saturation-repeatability-authority',
+              'failureStage': os.environ.get('FAILURE_STAGE', 'unknown'),
+              'result': 'FAIL',
+              'exitCode': int(os.environ['AUTHORITY_EXIT_CODE']),
+              'output': text[-12000:],
+              'containsSecrets': False,
+              'capacityBoundaryEstablished': False,
+              'operationalThresholdApproved': False,
+              'productionEvidence': False,
+              'productionReady': False,
+          }
+          path = Path('docs/fixtures/memory-os-operability/controlled-saturation-repeatability-authority-diagnostic.last.json')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          PY
+          git add docs/fixtures/memory-os-operability/controlled-saturation-repeatability-authority-diagnostic.last.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --cached --quiet; then
+            git commit -m "test(load): record saturation repeatability authority diagnostic"
+            for attempt in 1 2 3; do
+              git pull --rebase origin so
+              if git push origin HEAD:so; then exit 0; fi
+              sleep 2
+            done
+          fi
+      - name: Enforce repeatability authority
+        run: test "${{ steps.authority.outputs.exit_code }}" = "0"
