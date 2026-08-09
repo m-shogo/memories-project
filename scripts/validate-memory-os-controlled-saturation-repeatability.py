@@ -46,6 +46,8 @@ def main() -> int:
     require(contract.get("schemaVersion") == "memory-os-controlled-saturation-repeatability.v1", "contract schema drift")
     source_ramp_path = safe_repo_ref(contract.get("sourceRampContract"), "sourceRampContract")
     source_ramp = load(source_ramp_path)
+    for field in ("analyzer", "validator", "reconcile", "workflow", "reconcileWorkflow"):
+        safe_repo_ref(contract.get(field), field)
     require(source_ramp.get("schemaVersion") == "memory-os-controlled-saturation-ramp.v1", "source ramp schema drift")
     require(contract.get("sourceScenarioId") == source_ramp.get("scenarioId"), "source ramp scenario binding drift")
     require(contract.get("dependencyMode") == source_ramp.get("dependencyMode") == "LOCAL_POSTGRES_MINIO", "source ramp dependency mode drift")
@@ -115,6 +117,7 @@ def main() -> int:
 
     print("Memory OS controlled saturation repeatability validation PASS")
     print("source ramp semantic binding: true")
+    print("execution/reconcile workflow binding: true")
     print(f"repeatable local degradation: {expected_repeatable}")
     print("capacity boundary established: false")
     print("operational threshold approved: false")
