@@ -1,7 +1,7 @@
 {
   "contractId": "memory-os.operability.backup-restore-generation-binding.v1",
   "schemaVersion": "memory-os-backup-restore-generation-binding.v1",
-  "description": "Fail-closed admission authority for promoting backup/restore evidence into a production-equivalent environment generation. Existing exact-source local PostgreSQL and object-version restore foundations remain local-only and cannot be relabeled.",
+  "description": "Fail-closed admission authority for promoting backup/restore evidence into a production-equivalent environment generation. Existing exact-source local PostgreSQL and object-version restore foundations remain local-only and cannot be relabeled. A production-equivalent recovery candidate is evidence eligibility only and never completes independent human promotion review.",
   "backupRestorePolicyContract": "contracts/operations/backup-restore-contract.v1.json",
   "localFoundationEvidence": "contracts/operations/backup-local-foundation-evidence.v1.json",
   "environmentGenerationContract": "contracts/operations/production-equivalent-environment-generation-contract.v1.json",
@@ -37,7 +37,10 @@
     "restoreIntoProductionRequired": false,
     "productionCredentialsRequired": false,
     "isolatedRestoreRequired": true,
-    "independentReviewRequired": true
+    "independentReviewRequired": true,
+    "recoveryCandidateAutomaticallyCompletesIndependentReview": false,
+    "recoveryCandidateAutomaticallyAuthorizesProductionPromotion": false,
+    "humanProductionPromotionReviewRemainsSeparate": true
   },
   "currentBoundary": {
     "registeredProductionEquivalentGenerationCount": 0,
@@ -45,6 +48,8 @@
     "generationBoundRestoreCount": 0,
     "productionEquivalentRecoveryCandidateCount": 0,
     "productionEquivalentRestoreEvidence": false,
+    "independentReviewCompleted": false,
+    "humanProductionPromotionAuthorized": false,
     "productionEvidence": false,
     "productionReady": false,
     "productionDecision": "NO_GO"
@@ -61,6 +66,7 @@
     "generationBoundRestoreAvailable": false,
     "productionEquivalentRecoveryCandidateAvailable": false,
     "independentReviewCompleted": false,
+    "humanProductionPromotionAuthorized": false,
     "productionEquivalentRestoreEvidence": false,
     "productionReady": false
   },
@@ -68,6 +74,8 @@
     "the existing exact-source local PostgreSQL and MinIO restore proofs remain local-only",
     "no production-equivalent environment generation or generation-bound recovery evidence is currently registered",
     "recovery objectives and reviewed restore drill requests remain separately governed and cannot be invented by restore evidence",
+    "a production-equivalent recovery candidate does not complete independent review or authorize production promotion",
+    "human production-promotion review remains a separate non-automatic decision authority",
     "production traffic and production credentials remain unnecessary and forbidden as automatic promotion shortcuts"
   ]
 }
