@@ -13,6 +13,7 @@ from typing import Any, Callable
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight.py"
 CONTRACT = ROOT / "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
+TEMP_PARENT = ROOT / "contracts/operations"
 
 
 class Fail(RuntimeError):
@@ -41,7 +42,7 @@ def load_validator():
 def expect_rejected(validator: Any, canonical: dict[str, Any], name: str, mutate: Callable[[dict[str, Any]], None]) -> None:
     bad = copy.deepcopy(canonical)
     mutate(bad)
-    with tempfile.TemporaryDirectory(prefix="memory-os-preflight-negative-") as tmp:
+    with tempfile.TemporaryDirectory(prefix=".memory-os-preflight-negative-", dir=TEMP_PARENT) as tmp:
         path = Path(tmp) / "contract.json"
         path.write_text(json.dumps(bad, indent=2) + "\n", encoding="utf-8")
         original = validator.CONTRACT
@@ -57,7 +58,7 @@ def expect_rejected(validator: Any, canonical: dict[str, Any], name: str, mutate
 
 
 def main() -> int:
-    require(VALIDATOR.is_file() and CONTRACT.is_file(), "preflight negative foundation missing")
+    require(VALIDATOR.is_file() and CONTRACT.is_file() and TEMP_PARENT.is_dir(), "preflight negative foundation missing")
     validator = load_validator()
     canonical = load(CONTRACT)
     current_state = canonical.get("currentState")
