@@ -86,18 +86,29 @@ def main() -> int:
     review_completed = False
     local_evidence = False
     review_ref: str | None = None
+    stale_review_ignored = False
     if enough_runs and REVIEW_PATH.is_file():
-        validate(REVIEW_PATH, REVIEW_VALIDATOR)
         review = load(REVIEW_PATH)
-        review_completed = review.get("trendReviewCompleted") is True
-        local_evidence = (
-            review_completed and
-            review.get("localSustainedSoakEvidenceEligible") is True and
-            review.get("leakProof") is False and
-            review.get("productionEvidence") is False and
-            review.get("productionReady") is False
+        current_run_ids = sorted(run_ids)
+        current_source_shas = sorted(set(source_shas))
+        review_is_current = (
+            review.get("reviewedRunIds") == current_run_ids
+            and review.get("reviewedSourceCommitShas") == current_source_shas
+            and review.get("reviewedRunCount") == len(paths)
         )
-        review_ref = str(REVIEW_PATH.relative_to(ROOT))
+        if review_is_current:
+            validate(REVIEW_PATH, REVIEW_VALIDATOR)
+            review_completed = review.get("trendReviewCompleted") is True
+            local_evidence = (
+                review_completed and
+                review.get("localSustainedSoakEvidenceEligible") is True and
+                review.get("leakProof") is False and
+                review.get("productionEvidence") is False and
+                review.get("productionReady") is False
+            )
+            review_ref = str(REVIEW_PATH.relative_to(ROOT))
+        else:
+            stale_review_ignored = True
 
     aggregate = {
         "schemaVersion": "memory-os-sustained-local-soak-aggregate.v1",
@@ -133,6 +144,7 @@ def main() -> int:
     print("Memory OS sustained local soak aggregate updated")
     print(f"run count: {len(paths)}")
     print(f"minimum independent runs satisfied: {str(enough_runs).lower()}")
+    print(f"stale trend review ignored pending regeneration: {str(stale_review_ignored).lower()}")
     print(f"trend review completed: {str(review_completed).lower()}")
     print(f"local sustained soak evidence: {str(local_evidence).lower()}")
     print("leak proof: false")
