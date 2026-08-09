@@ -25,6 +25,7 @@ EVIDENCE_CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evide
 NON_RESURRECTION_CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
 SOURCE_ENV_FIXTURE = ROOT / "docs/fixtures/memory-os-operability/backup-restore-generation-evidence/source-environment-record.valid.json"
 TARGET_ENV_FIXTURE = ROOT / "docs/fixtures/memory-os-operability/backup-restore-generation-evidence/target-environment-record.valid.json"
+DRILL_APPROVAL_FIXTURE_DIR = "docs/fixtures/memory-os-operability/backup-restore-generation-evidence"
 DIGEST_A = "a" * 64
 DIGEST_B = "b" * 64
 DIGEST_C = "c" * 64
@@ -114,7 +115,7 @@ def drill_request() -> dict[str, Any]:
     operability_ref = "contracts/operations/backup-restore-drill-request-contract.v1.json"
     return {
         "schemaVersion": contract["recordSchemaVersion"],
-        "requestId": "brrq_semantic_negative",
+        "requestId": "brrq_negative_base",
         "requestedAt": "2026-08-08T00:00:00Z",
         "sourceEnvironmentGenerationId": "pegen_source",
         "sourceEnvironmentManifestSha256": DIGEST_A,
@@ -144,9 +145,9 @@ def drill_request() -> dict[str, Any]:
         "requiredEvidenceDomains": list(contract["requiredEvidenceDomains"]),
         "entryCriteriaRefs": ["SECURITY.md", "README.md", operability_ref],
         "approvalRefs": {
-            "recoveryOwner": "README.md",
-            "securityReview": "SECURITY.md",
-            "operabilityReview": operability_ref,
+            "recoveryOwner": f"{DRILL_APPROVAL_FIXTURE_DIR}/drill-request-recovery-owner-approval.valid.json",
+            "securityReview": f"{DRILL_APPROVAL_FIXTURE_DIR}/drill-request-security-approval.valid.json",
+            "operabilityReview": f"{DRILL_APPROVAL_FIXTURE_DIR}/drill-request-operability-approval.valid.json",
         },
         "stopConditions": list(contract["requiredStopConditions"]),
         "openRisks": [],
@@ -164,7 +165,7 @@ def evidence_record(commit_sha: str) -> dict[str, Any]:
     record.update({
         "schemaVersion": contract["recordSchemaVersion"],
         "evidenceId": "brge_semantic_negative",
-        "drillRequestId": "brrq_semantic_negative",
+        "drillRequestId": "brrq_negative_base",
         "sourceCommitSha": commit_sha,
         "sourceEnvironmentGenerationId": "pegen_source",
         "sourceEnvironmentManifestSha256": DIGEST_A,
