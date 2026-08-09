@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import sys
@@ -13,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
 GEN_CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+GEN_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
 OBJECTIVES = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
 DRILL_CONTRACT = ROOT / "contracts/operations/backup-restore-drill-request-contract.v1.json"
 DRILL_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
@@ -42,6 +44,14 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def load_generation_writer():
+    spec = importlib.util.spec_from_file_location("memory_os_environment_generation_writer_for_restore_preflight", GEN_WRITER)
+    require(spec is not None and spec.loader is not None, "cannot load environment generation writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def run_validator(path: Path, name: str) -> None:
     completed = subprocess.run([sys.executable, str(path)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     require(completed.returncode == 0, f"{name} validator failed:\n{completed.stdout[-4000:]}{completed.stderr[-4000:]}")
@@ -54,13 +64,31 @@ def derive_state(generations: dict[str, Any], objectives: dict[str, Any], drill_
     require(isinstance(generation_count, int) and generation_count == len(rows), "generation registry count drift")
     ids = [row.get("generationId") for row in rows]
     require(all(isinstance(value, str) and value for value in ids) and len(set(ids)) == len(ids), "generation IDs invalid or duplicated")
+
+    writer = load_generation_writer()
+    eligibility_by_id: dict[str, bool] = {}
+    for row in rows:
+        generation_id = row.get("generationId")
+        try:
+            eligible = writer.validate_record(row)
+        except Exception as exc:
+            raise Fail(f"generation semantic validation failed for {generation_id}: {exc}") from exc
+        require(isinstance(eligible, bool), "generation semantic eligibility predicate invalid")
+        eligibility_by_id[generation_id] = eligible
+
     superseded_ids = {row.get("supersedesGenerationId") for row in rows if isinstance(row.get("supersedesGenerationId"), str)}
     unsuperseded = [row for row in rows if row.get("generationId") not in superseded_ids]
-    environments = {row.get("environmentId") for row in unsuperseded if isinstance(row.get("environmentId"), str) and row.get("environmentId")}
+    preflight_eligible = [row for row in rows if eligibility_by_id.get(row.get("generationId")) is True]
+    unsuperseded_preflight_eligible = [row for row in unsuperseded if eligibility_by_id.get(row.get("generationId")) is True]
+    environments = {
+        row.get("environmentId")
+        for row in unsuperseded_preflight_eligible
+        if isinstance(row.get("environmentId"), str) and row.get("environmentId")
+    }
     pair_count = sum(
         1
-        for source in unsuperseded
-        for target in unsuperseded
+        for source in unsuperseded_preflight_eligible
+        for target in unsuperseded_preflight_eligible
         if source.get("generationId") != target.get("generationId")
         and source.get("environmentId") != target.get("environmentId")
     )
@@ -106,7 +134,9 @@ def derive_state(generations: dict[str, Any], objectives: dict[str, Any], drill_
 
     return {
         "registeredGenerationCount": generation_count,
+        "preflightEligibleGenerationCount": len(preflight_eligible),
         "unsupersededGenerationCount": len(unsuperseded),
+        "unsupersededPreflightEligibleGenerationCount": len(unsuperseded_preflight_eligible),
         "distinctUnsupersededEnvironmentCount": len(environments),
         "eligibleDirectedSourceTargetPairCount": pair_count,
         "approvedRecoveryObjectiveCount": objective_count,
@@ -122,6 +152,7 @@ def derive_state(generations: dict[str, Any], objectives: dict[str, Any], drill_
 
 def main() -> int:
     contract = load(CONTRACT)
+    generation_contract = load(GEN_CONTRACT)
     generations = load(GEN_REGISTRY)
     objectives = load(OBJECTIVES)
     drill_contract = load(DRILL_CONTRACT)
@@ -145,9 +176,15 @@ def main() -> int:
         require(contract.get(field) == expected, f"preflight ref drift: {field}")
         require((ROOT / expected).is_file(), f"preflight artifact missing: {expected}")
 
+    generation_bindings = generation_contract.get("bindingRules")
+    require(isinstance(generation_bindings, dict), "environment generation binding rules missing")
+    require(generation_bindings.get("registrationDoesNotImplyPreflightEligibility") is True, "generation registration/preflight separation rule missing")
+    require(generation_bindings.get("preflightEligibilityRequiresValidatedEquivalentDependenciesAndIndependentReview") is True, "generation semantic preflight eligibility rule missing")
+
     rules = contract.get("preflightRules")
     require(isinstance(rules, dict) and rules and all(value is True for value in rules.values()), "preflight rules must remain fail-closed")
     require(rules.get("allMissingPrerequisitesMustBeEnumerated") is True, "preflight blocker enumeration rule missing")
+    require(rules.get("onlySemanticallyPreflightEligibleGenerationsMayFormPairs") is True, "semantic generation eligibility rule missing")
     blocker_kinds = contract.get("blockingPrerequisiteKinds")
     require(isinstance(blocker_kinds, list) and blocker_kinds == [GEN_BLOCKER, OBJECTIVE_BLOCKER], "preflight blocker kind/order drift")
     decisions = contract.get("decisionStates")
@@ -196,8 +233,9 @@ def main() -> int:
     run_validator(DRILL_VALIDATOR, "restore drill request")
 
     print("Memory OS production-equivalent restore drill preflight PASS")
-    print(f"registered/unsuperseded generations: {state['registeredGenerationCount']}/{state['unsupersededGenerationCount']}")
-    print(f"distinct unsuperseded environments: {state['distinctUnsupersededEnvironmentCount']}")
+    print(f"registered/preflight-eligible generations: {state['registeredGenerationCount']}/{state['preflightEligibleGenerationCount']}")
+    print(f"unsuperseded/preflight-eligible unsuperseded generations: {state['unsupersededGenerationCount']}/{state['unsupersededPreflightEligibleGenerationCount']}")
+    print(f"distinct eligible unsuperseded environments: {state['distinctUnsupersededEnvironmentCount']}")
     print(f"eligible directed source-target pairs: {state['eligibleDirectedSourceTargetPairCount']}")
     print(f"approved recovery objectives: {state['approvedRecoveryObjectiveCount']}")
     print(f"reviewed/current drill requests: {state['reviewedDrillRequestCount']}/{state['currentExecutableDrillRequestCount']}")
