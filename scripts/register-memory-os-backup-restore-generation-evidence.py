@@ -28,6 +28,7 @@ CANONICAL_NON_RESURRECTION_CONTRACT = ROOT / "contracts/operations/backup-restor
 NON_RESURRECTION_CONTRACT = CANONICAL_NON_RESURRECTION_CONTRACT
 CANONICAL_NON_RESURRECTION_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
 NON_RESURRECTION_REGISTRY = CANONICAL_NON_RESURRECTION_REGISTRY
+NON_RESURRECTION_WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
 LOCK = ROOT / "contracts/operations/.backup-restore-generation-evidence.lock"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
@@ -118,6 +119,15 @@ def load_drill_writer():
     return module
 
 
+def load_non_resurrection_writer():
+    spec = importlib.util.spec_from_file_location("memory_os_non_resurrection_writer_for_generation_evidence", NON_RESURRECTION_WRITER)
+    require(spec is not None and spec.loader is not None, "cannot load typed non-resurrection writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.CONTRACT = NON_RESURRECTION_CONTRACT
+    return module
+
+
 def drill_request_for_record(record: dict[str, Any], *, require_current: bool) -> dict[str, Any]:
     request_id = record.get("drillRequestId")
     require(isinstance(request_id, str) and REQUEST_ID.fullmatch(request_id), "drillRequestId invalid")
@@ -196,6 +206,21 @@ def typed_non_resurrection_covered(evidence_id: Any) -> bool:
     if len(matches) != 1:
         return False
     row = matches[0]
+
+    # Canonical candidate derivation must re-run the typed writer's complete
+    # evidence validation. This prevents an already-registered overlay from
+    # remaining candidate-eligible after any domain/review payload is replaced
+    # in place. Non-canonical registries are used only by isolated negative
+    # harnesses; those continue to exercise the generation layer without
+    # mutating canonical evidence files.
+    if NON_RESURRECTION_REGISTRY == CANONICAL_NON_RESURRECTION_REGISTRY:
+        try:
+            overlay_writer = load_non_resurrection_writer()
+            overlay_writer.GEN_EVIDENCE_REGISTRY = REGISTRY
+            overlay_writer.validate_record(row)
+        except Exception:
+            return False
+
     if row.get("evidenceComplete") is not True:
         return False
     for field in ("productionTraffic", "productionCredentials", "productionEvidence", "productionReady"):
@@ -242,7 +267,7 @@ def validate_record(record: dict[str, Any], *, require_current_drill_request: bo
     require(contract.get("typedNonResurrectionAdmissionContract") == str(CANONICAL_NON_RESURRECTION_CONTRACT.relative_to(ROOT)), "typed non-resurrection contract ref drift")
     require(contract.get("typedNonResurrectionAdmissionRegistry") == str(CANONICAL_NON_RESURRECTION_REGISTRY.relative_to(ROOT)), "typed non-resurrection registry ref drift")
     require(CANONICAL_DRILL_REQUEST_CONTRACT.is_file() and DRILL_REQUEST_REGISTRY.is_file() and DRILL_REQUEST_WRITER.is_file(), "drill request admission foundation missing")
-    require(CANONICAL_NON_RESURRECTION_CONTRACT.is_file() and NON_RESURRECTION_REGISTRY.is_file(), "typed non-resurrection admission foundation missing")
+    require(CANONICAL_NON_RESURRECTION_CONTRACT.is_file() and NON_RESURRECTION_REGISTRY.is_file() and NON_RESURRECTION_WRITER.is_file(), "typed non-resurrection admission foundation missing")
     require(isinstance(record.get("evidenceId"), str) and EVIDENCE_ID.fullmatch(record["evidenceId"]), "evidenceId invalid")
     source_commit = record.get("sourceCommitSha")
     require(isinstance(source_commit, str) and SHA40.fullmatch(source_commit), "sourceCommitSha invalid")
