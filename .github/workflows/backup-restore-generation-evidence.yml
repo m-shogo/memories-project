@@ -38,6 +38,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
       - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
+      - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
 
 permissions:
