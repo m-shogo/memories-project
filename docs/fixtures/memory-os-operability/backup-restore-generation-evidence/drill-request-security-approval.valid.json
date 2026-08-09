@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "memory-os-backup-restore-drill-request-approval.v1",
+  "requestId": "brrq_negative_base",
+  "reviewRole": "SECURITY",
+  "decision": "APPROVED",
+  "sourceEnvironmentGenerationId": "pegen_source",
+  "restoreTargetEnvironmentGenerationId": "pegen_target",
+  "recoveryObjectivesId": "recovery_objectives_ci",
+  "approvedAt": "2026-08-08T00:01:30Z",
+  "reviewerPseudonym": "fixture_security",
+  "productionTraffic": false,
+  "productionCredentials": false,
+  "automaticPromotion": false
+}
