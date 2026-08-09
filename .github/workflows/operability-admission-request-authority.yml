@@ -1,0 +1,112 @@
+name: Operability Admission Request Authority
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - "contracts/operations/requests/operability-admission-inventory.v1.json"
+      - "contracts/operations/operability-admission-inventory.v1.json"
+      - "contracts/operations/backup-restore-generation-binding-contract.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - ".github/workflows/operability-admission-request-authority.yml"
+  pull_request:
+    paths:
+      - "contracts/operations/requests/operability-admission-inventory.v1.json"
+      - "contracts/operations/operability-admission-inventory.v1.json"
+      - "contracts/operations/backup-restore-generation-binding-contract.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - ".github/workflows/operability-admission-request-authority.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate request and promotion separation
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          def load(path):
+              value = json.loads(Path(path).read_text(encoding="utf-8"))
+              if not isinstance(value, dict):
+                  raise SystemExit(f"root must be object: {path}")
+              return value
+
+          request = load("contracts/operations/requests/operability-admission-inventory.v1.json")
+          inventory = load("contracts/operations/operability-admission-inventory.v1.json")
+          binding = load("contracts/operations/backup-restore-generation-binding-contract.v1.json")
+          recovery = load("contracts/operations/backup-restore-generation-evidence-registry.v1.json")
+          status = load("contracts/operations/production-operability-status.json")
+
+          constraints = request.get("constraints")
+          if not isinstance(constraints, dict):
+              raise SystemExit("operability inventory request constraints missing")
+          required_true = (
+              "deterministicOutputRequired",
+              "canonicalRegistryCountsOnly",
+              "foundationImplementationMustNotEqualProductionEvidence",
+              "productionDecisionMustRemainNoGo",
+              "recoveryCandidateMustNotImplyHumanProductionPromotionReview",
+              "recoveryCandidateMustNotAuthorizeProductionPromotion",
+              "humanProductionPromotionAuthorityMustRemainSeparate",
+          )
+          for field in required_true:
+              if constraints.get(field) is not True:
+                  raise SystemExit(f"request constraint must remain true: {field}")
+
+          rules = binding.get("promotionRules")
+          boundary = binding.get("currentBoundary")
+          if not isinstance(rules, dict) or not isinstance(boundary, dict):
+              raise SystemExit("generation binding promotion authority missing")
+          if rules.get("recoveryCandidateAutomaticallyCompletesHumanProductionPromotionReview") is not False:
+              raise SystemExit("recovery candidate cannot complete human promotion review")
+          if rules.get("recoveryCandidateAutomaticallyAuthorizesProductionPromotion") is not False:
+              raise SystemExit("recovery candidate cannot authorize production promotion")
+          if rules.get("humanProductionPromotionReviewRemainsSeparate") is not True:
+              raise SystemExit("human production promotion review must remain separate")
+          if boundary.get("humanProductionPromotionReviewCompleted") is not False:
+              raise SystemExit("human production promotion review must remain unclaimed")
+          if boundary.get("humanProductionPromotionAuthorized") is not False:
+              raise SystemExit("human production promotion authorization must remain unclaimed")
+          if boundary.get("productionDecision") != "NO_GO":
+              raise SystemExit("generation binding production decision must remain NO_GO")
+
+          candidate_count = recovery.get("productionEquivalentRecoveryCandidateCount")
+          if not isinstance(candidate_count, int) or isinstance(candidate_count, bool) or candidate_count < 0:
+              raise SystemExit("recovery candidate count invalid")
+          if boundary.get("productionEquivalentRecoveryCandidateCount") != candidate_count:
+              raise SystemExit("candidate count drift between recovery registry and binding authority")
+
+          if inventory.get("productionEvidence") is not False or inventory.get("productionReady") is not False:
+              raise SystemExit("operability inventory cannot claim production evidence/readiness")
+          if inventory.get("productionDecision") != "NO_GO":
+              raise SystemExit("operability inventory production decision must remain NO_GO")
+          if status.get("productionDecision") != "NO_GO":
+              raise SystemExit("production operability status must remain NO_GO")
+          rows = status.get("areas")
+          if not isinstance(rows, list):
+              raise SystemExit("production operability status areas missing")
+          backup_rows = [row for row in rows if isinstance(row, dict) and row.get("id") == "OPS-P0-007"]
+          if len(backup_rows) != 1 or backup_rows[0].get("blocking") is not True:
+              raise SystemExit("OPS-P0-007 must remain a canonical blocker")
+
+          print("Memory OS operability admission request authority PASS")
+          print(f"production-equivalent recovery candidates: {candidate_count}")
+          print("candidate implies human promotion review: false")
+          print("candidate authorizes production promotion: false")
+          print("human promotion authority remains separate: true")
+          print("production decision: NO_GO")
+          PY
