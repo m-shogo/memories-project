@@ -23,9 +23,19 @@ GEN_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environ
 OBJECTIVE_VALIDATOR = ROOT / "scripts/validate-memory-os-recovery-objectives.py"
 DRILL_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-request.py"
 NEGATIVE_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight-negative.py"
-GEN_BLOCKER = "TWO_UNSUPERSEDED_DISTINCT_SEMANTICALLY_PREFLIGHT_ELIGIBLE_ENVIRONMENT_GENERATIONS"
+GEN_BLOCKER = "TWO_UNSUPERSEDED_DISTINCT_ENVIRONMENT_GENERATIONS"
 OBJECTIVE_BLOCKER = "CURRENT_APPROVED_RECOVERY_OBJECTIVE"
-GEN_BLOCKED_DECISION = "BLOCKED_NEEDS_TWO_UNSUPERSEDED_DISTINCT_SEMANTICALLY_PREFLIGHT_ELIGIBLE_ENVIRONMENT_GENERATIONS"
+GEN_BLOCKED_DECISION = "BLOCKED_NEEDS_TWO_UNSUPERSEDED_DISTINCT_ENVIRONMENT_GENERATIONS"
+GEN_BLOCKER_SEMANTICS = {
+    "requiresRegisteredGeneration": True,
+    "requiresUnsupersededGeneration": True,
+    "requiresSemanticPreflightEligibility": True,
+    "requiresDistinctEnvironmentId": True,
+    "minimumEnvironmentGenerationCount": 2,
+}
+OBJECTIVE_BLOCKER_SEMANTICS = {
+    "requiresCurrentApprovedRecoveryObjective": True,
+}
 STATE_FIELDS = {
     "registeredGenerationCount",
     "preflightEligibleGenerationCount",
@@ -226,6 +236,10 @@ def main() -> int:
     require(rules.get("onlySemanticallyPreflightEligibleGenerationsMayFormPairs") is True, "semantic generation eligibility rule missing")
     blocker_kinds = contract.get("blockingPrerequisiteKinds")
     require(isinstance(blocker_kinds, list) and blocker_kinds == [GEN_BLOCKER, OBJECTIVE_BLOCKER], "preflight blocker kind/order drift")
+    blocker_semantics = contract.get("blockingPrerequisiteSemantics")
+    require(isinstance(blocker_semantics, dict) and set(blocker_semantics) == {GEN_BLOCKER, OBJECTIVE_BLOCKER}, "preflight blocker semantics key drift")
+    require(blocker_semantics.get(GEN_BLOCKER) == GEN_BLOCKER_SEMANTICS, "generation blocker semantic authority drift")
+    require(blocker_semantics.get(OBJECTIVE_BLOCKER) == OBJECTIVE_BLOCKER_SEMANTICS, "objective blocker semantic authority drift")
     decisions = contract.get("decisionStates")
     expected_decisions = {
         GEN_BLOCKED_DECISION,
@@ -282,6 +296,7 @@ def main() -> int:
     print(f"reviewed/current drill requests: {state['reviewedDrillRequestCount']}/{state['currentExecutableDrillRequestCount']}")
     print(f"blocking prerequisites ({state['blockingPrerequisiteCount']}): {','.join(state['blockingPrerequisites']) if state['blockingPrerequisites'] else 'none'}")
     print(f"preflight decision: {state['preflightDecision']}")
+    print("registered generation blocker semantically requires eligible distinct environments: true")
     print("automatic prerequisite/request creation: false")
     print("restore executed: false")
     print("production evidence: false")
