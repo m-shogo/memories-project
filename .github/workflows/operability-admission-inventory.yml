@@ -57,6 +57,8 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
       - "scripts/validate-memory-os-backup-restore-semantic-generation-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-binding.py"
+      - "scripts/validate-memory-os-backup-restore-generation-binding-negative.py"
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
@@ -68,6 +70,7 @@ on:
       - ".github/workflows/backup-restore-drill-preflight.yml"
       - ".github/workflows/backup-restore-drill-request.yml"
       - ".github/workflows/backup-restore-generation-evidence.yml"
+      - ".github/workflows/backup-restore-generation-binding.yml"
       - ".github/workflows/backup-restore-non-resurrection-admission.yml"
       - ".github/workflows/backup-restore-admission-chain.yml"
   workflow_dispatch:
@@ -113,6 +116,8 @@ jobs:
             scripts/validate-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-negative.py \
             scripts/validate-memory-os-backup-restore-semantic-generation-negative.py \
+            scripts/validate-memory-os-backup-restore-generation-binding.py \
+            scripts/validate-memory-os-backup-restore-generation-binding-negative.py \
             scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-negative.py \
@@ -130,6 +135,12 @@ jobs:
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-backup-restore-generation-binding.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-backup-restore-generation-binding-negative.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py >> "$log" 2>&1 || code=$?
