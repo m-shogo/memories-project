@@ -426,16 +426,18 @@ func TestMixedImportLifecycleLocalLongSoak(t *testing.T) {
 	}
 
 	// The production session TTL is one hour, exactly the minimum evidence
-	// duration. Prove the original session expires normally, then re-authenticate
-	// the same still-active account and verify the long-lived server/parser can
-	// accept fresh work. Extending the original token would hide a real boundary.
-	expiredSession := runDeletionExactHTTPBatch(1, 1, func(int) (*http.Request, error) {
-		return liveRequest(http.MethodGet, previewPath, token, nil)
-	})
-	if expiredSession.StatusCodeCounts["401"] != 1 ||
-		expiredSession.Summary.StatusClassCounts["5xx"] != 0 ||
-		expiredSession.Summary.StatusClassCounts["transport_error"] != 0 {
-		t.Fatalf("long-soak original session did not expire cleanly: %+v", expiredSession)
+	// duration. Evidence-length runs must prove the original session expires
+	// normally. Compressed smoke runs are deliberately shorter than the TTL, so
+	// they skip only the expiry assertion while retaining fresh-session recovery.
+	if configuredDuration >= sustainedMinimumEvidenceDurationSec*time.Second {
+		expiredSession := runDeletionExactHTTPBatch(1, 1, func(int) (*http.Request, error) {
+			return liveRequest(http.MethodGet, previewPath, token, nil)
+		})
+		if expiredSession.StatusCodeCounts["401"] != 1 ||
+			expiredSession.Summary.StatusClassCounts["5xx"] != 0 ||
+			expiredSession.Summary.StatusClassCounts["transport_error"] != 0 {
+			t.Fatalf("long-soak original session did not expire cleanly: %+v", expiredSession)
+		}
 	}
 	recoveryToken := sustainedSoakRenewSession(t, server, owner)
 	recoveryPreview := runLiveHTTPBatch(1, 1, func(int) (*http.Request, error) {
