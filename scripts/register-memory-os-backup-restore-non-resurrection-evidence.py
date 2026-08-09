@@ -144,6 +144,14 @@ def validate_record(record: dict[str, Any]) -> None:
     security_payload = review_evidence(security, review_type="SECURITY", record_id=record["recordId"], generation_evidence_id=record["generationEvidenceId"], source_commit_sha=source_sha, domain_digests=domain_digests)
     operability_payload = review_evidence(operability, review_type="OPERABILITY", record_id=record["recordId"], generation_evidence_id=record["generationEvidenceId"], source_commit_sha=source_sha, domain_digests=domain_digests)
     require(security_payload["reviewerPseudonym"] != operability_payload["reviewerPseudonym"], "security and operability reviewers must be independent")
+    if "securityReviewSha256" in required_fields or "operabilityReviewSha256" in required_fields:
+        require({"securityReviewSha256", "operabilityReviewSha256"}.issubset(required_fields), "review digest field contract incomplete")
+        security_digest = record.get("securityReviewSha256")
+        operability_digest = record.get("operabilityReviewSha256")
+        require(isinstance(security_digest, str) and SHA256.fullmatch(security_digest), "securityReviewSha256 invalid")
+        require(isinstance(operability_digest, str) and SHA256.fullmatch(operability_digest), "operabilityReviewSha256 invalid")
+        require(security_digest == payload_sha256(security_payload), "security review payload digest binding mismatch")
+        require(operability_digest == payload_sha256(operability_payload), "operability review payload digest binding mismatch")
 
     findings = record.get("unresolvedFindings")
     require(isinstance(findings, list), "unresolvedFindings must be list")
