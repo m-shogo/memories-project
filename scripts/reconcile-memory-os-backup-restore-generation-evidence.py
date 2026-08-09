@@ -161,6 +161,9 @@ def main() -> int:
     binding_boundary["generationBoundRestoreCount"] = restore_count
     binding_boundary["productionEquivalentRecoveryCandidateCount"] = candidate_count
     binding_boundary["productionEquivalentRestoreEvidence"] = candidate_count > 0
+    binding_boundary["independentReviewCompleted"] = candidate_count > 0
+    binding_boundary["humanProductionPromotionReviewCompleted"] = False
+    binding_boundary["humanProductionPromotionAuthorized"] = False
     binding_boundary["productionEvidence"] = False
     binding_boundary["productionReady"] = False
     binding_boundary["productionDecision"] = "NO_GO"
@@ -170,6 +173,8 @@ def main() -> int:
     binding_readiness["generationBoundRestoreAvailable"] = restore_count > 0
     binding_readiness["productionEquivalentRecoveryCandidateAvailable"] = candidate_count > 0
     binding_readiness["independentReviewCompleted"] = candidate_count > 0
+    binding_readiness["humanProductionPromotionReviewCompleted"] = False
+    binding_readiness["humanProductionPromotionAuthorized"] = False
     binding_readiness["productionEquivalentRestoreEvidence"] = candidate_count > 0
     binding_readiness["productionReady"] = False
     if generation_count == 0:
@@ -177,14 +182,17 @@ def main() -> int:
             "the existing exact-source local PostgreSQL and MinIO restore proofs remain local-only",
             "no production-equivalent environment generation or generation-bound recovery evidence is currently registered",
             "recovery objectives and reviewed restore drill requests remain separately governed and cannot be invented by restore evidence",
+            "candidate-level independent evidence review is not human production-promotion review",
+            "a production-equivalent recovery candidate cannot complete or authorize the separate human production-promotion decision",
             "production traffic and production credentials remain unnecessary and forbidden as automatic promotion shortcuts"
         ]
     else:
         binding["limitations"] = [
             "registered environment generations and generation-bound recovery records remain non-production evidence",
             "new generation recovery evidence requires a currently executable reviewed restore drill request",
-            "a production-equivalent recovery candidate also requires the current approved recovery objective ID, measured RPO/RTO/object-database skew within target and complete typed non-resurrection coverage",
-            "production promotion remains a separate human-reviewed decision",
+            "a production-equivalent recovery candidate also requires the current approved recovery objective ID, measured RPO/RTO/object-database skew within target and complete typed non-resurrection coverage with independent evidence review",
+            "candidate-level independent evidence review does not complete human production-promotion review",
+            "production promotion remains a separate human-reviewed decision and is never authorized by candidate derivation",
             "local restore foundations cannot be relabeled into generation-bound evidence"
         ]
     BINDING.write_text(json.dumps(binding, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -206,7 +214,7 @@ def main() -> int:
     require(isinstance(existing, list) and isinstance(refs, list) and isinstance(missing, list), "OPS-P0-007 authority arrays missing")
     existing[:] = [item for item in existing if not (isinstance(item, str) and item.startswith(EVIDENCE_PREFIX))]
     append_once(existing, (
-        f"{EVIDENCE_PREFIX} registered environment generations={generation_count}, approved recovery objectives={objective_count}, reviewed/current restore drill requests={drill_count}/{current_drill_count}, recovery records={count}, drill-request-bound records={bound_count}, complete generation-bound restores={restore_count}, production-equivalent recovery candidates={candidate_count}; immutable history is preserved after request supersession but current candidate derivation is recomputed fail-closed from the current request/objective/typed-evidence state, while productionEvidence and productionReady remain false"
+        f"{EVIDENCE_PREFIX} registered environment generations={generation_count}, approved recovery objectives={objective_count}, reviewed/current restore drill requests={drill_count}/{current_drill_count}, recovery records={count}, drill-request-bound records={bound_count}, complete generation-bound restores={restore_count}, production-equivalent recovery candidates={candidate_count}; candidate-level independent evidence review={str(candidate_count > 0).lower()}, human production-promotion review/authorization=false/false; immutable history is preserved after request supersession but current candidate derivation is recomputed fail-closed from the current request/objective/typed-evidence state, while productionEvidence and productionReady remain false"
     ))
     for ref in REFS:
         require((ROOT / ref).is_file(), f"generation recovery evidence ref missing: {ref}")
@@ -220,6 +228,9 @@ def main() -> int:
     print(f"registered/current drill requests: {drill_count}/{current_drill_count}")
     print(f"registered/drill-bound recovery evidence: {count}/{bound_count}")
     print(f"production-equivalent recovery candidates: {candidate_count}")
+    print(f"candidate-level independent evidence review complete: {str(candidate_count > 0).lower()}")
+    print("human production-promotion review completed: false")
+    print("human production promotion authorized: false")
     print("candidate counters rederived from append-only records: true")
     print("production evidence: false")
     print("OPS-P0-007: incomplete")
