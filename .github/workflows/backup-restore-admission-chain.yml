@@ -39,6 +39,8 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
       - "scripts/validate-memory-os-backup-restore-semantic-generation-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding-negative.py"
@@ -89,6 +91,8 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
       - "scripts/validate-memory-os-backup-restore-semantic-generation-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding-negative.py"
@@ -146,6 +150,8 @@ jobs:
             scripts/validate-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-negative.py \
             scripts/validate-memory-os-backup-restore-semantic-generation-negative.py \
+            scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py \
+            scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py \
             scripts/validate-memory-os-backup-restore-generation-binding.py \
             scripts/validate-memory-os-backup-restore-generation-binding-negative.py \
             scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
@@ -178,6 +184,12 @@ jobs:
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-backup-restore-generation-binding.py >> "$log" 2>&1 || code=$?
