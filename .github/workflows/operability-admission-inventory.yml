@@ -40,6 +40,7 @@ on:
       - "docs/runbooks/memory-os-production-equivalent-backup-restore-drill.md"
       - "scripts/generate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-operability-admission-inventory.py"
+      - "scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py"
       - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
@@ -108,6 +109,7 @@ jobs:
           python -m py_compile \
             scripts/generate-memory-os-operability-admission-inventory.py \
             scripts/validate-memory-os-operability-admission-inventory.py \
+            scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py \
             scripts/register-memory-os-recovery-objectives.py \
             scripts/validate-memory-os-recovery-objectives.py \
             scripts/validate-memory-os-recovery-objectives-negative.py \
@@ -170,6 +172,9 @@ jobs:
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-operability-admission-inventory.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-backup-restore-drill-request.py >> "$log" 2>&1 || code=$?
