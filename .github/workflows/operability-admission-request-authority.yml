@@ -69,6 +69,7 @@ jobs:
               "canonicalRegistryCountsOnly",
               "foundationImplementationMustNotEqualProductionEvidence",
               "productionDecisionMustRemainNoGo",
+              "recoveryCandidateRequiresIndependentEvidenceReview",
               "recoveryCandidateMustNotImplyHumanProductionPromotionReview",
               "recoveryCandidateMustNotAuthorizeProductionPromotion",
               "humanProductionPromotionAuthorityMustRemainSeparate",
@@ -81,6 +82,8 @@ jobs:
           boundary = binding.get("currentBoundary")
           if not isinstance(rules, dict) or not isinstance(boundary, dict):
               raise SystemExit("generation binding promotion authority missing")
+          if rules.get("independentReviewRequired") is not True:
+              raise SystemExit("recovery candidate must require independent evidence review")
           if rules.get("recoveryCandidateAutomaticallyCompletesHumanProductionPromotionReview") is not False:
               raise SystemExit("recovery candidate cannot complete human promotion review")
           if rules.get("recoveryCandidateAutomaticallyAuthorizesProductionPromotion") is not False:
@@ -99,6 +102,9 @@ jobs:
               raise SystemExit("recovery candidate count invalid")
           if boundary.get("productionEquivalentRecoveryCandidateCount") != candidate_count:
               raise SystemExit("candidate count drift between recovery registry and binding authority")
+          expected_independent_review = candidate_count > 0
+          if boundary.get("independentReviewCompleted") is not expected_independent_review:
+              raise SystemExit("candidate-level independent evidence review state drift")
 
           if inventory.get("productionEvidence") is not False or inventory.get("productionReady") is not False:
               raise SystemExit("operability inventory cannot claim production evidence/readiness")
@@ -115,6 +121,7 @@ jobs:
 
           print("Memory OS operability admission request authority PASS")
           print(f"production-equivalent recovery candidates: {candidate_count}")
+          print(f"candidate-level independent evidence review completed: {str(expected_independent_review).lower()}")
           print("candidate implies human promotion review: false")
           print("candidate authorizes production promotion: false")
           print("human promotion authority remains separate: true")
