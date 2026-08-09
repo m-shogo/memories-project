@@ -21,6 +21,7 @@ on:
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py"
       - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
@@ -60,6 +61,7 @@ jobs:
             scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-negative.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py \
             scripts/reconcile-memory-os-backup-non-resurrection-authority.py \
             scripts/register-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-backup-restore-generation-evidence.py \
@@ -68,6 +70,9 @@ jobs:
             scripts/validate-memory-os-local-apple-replay-restore.py \
             scripts/validate-memory-os-local-coherent-recovery-set.py \
             >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py >> "$log" 2>&1 || code=$?
+          fi
           if [[ "$code" == "0" ]]; then
             python scripts/reconcile-memory-os-backup-non-resurrection-authority.py >> "$log" 2>&1 || code=$?
           fi
