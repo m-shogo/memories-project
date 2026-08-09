@@ -40,6 +40,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
       - "scripts/validate-memory-os-local-apple-replay-restore.py"
       - "scripts/validate-memory-os-local-coherent-recovery-set.py"
+      - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
 
 permissions:
