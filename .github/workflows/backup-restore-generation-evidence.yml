@@ -25,6 +25,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
       - "scripts/validate-memory-os-recovery-objectives.py"
@@ -69,6 +70,7 @@ jobs:
             scripts/validate-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-negative.py \
             scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py \
+            scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py \
             scripts/reconcile-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-backup-restore-generation-binding.py \
             scripts/validate-memory-os-recovery-objectives.py \
@@ -84,6 +86,7 @@ jobs:
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-binding.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?; fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
