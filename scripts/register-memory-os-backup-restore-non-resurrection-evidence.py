@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import os
@@ -18,6 +19,7 @@ GEN_EVIDENCE_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-e
 GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
 LOCK = ROOT / "contracts/operations/.backup-restore-non-resurrection-admission.lock"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
+SHA256 = re.compile(r"^[0-9a-f]{64}$")
 RECORD_ID = re.compile(r"^brnr_[a-z0-9][a-z0-9_-]{7,63}$")
 REVIEWER_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{2,63}$")
 DOMAIN_EVIDENCE_FIELDS = {
@@ -27,8 +29,8 @@ DOMAIN_EVIDENCE_FIELDS = {
 DOMAIN_EVIDENCE_SCHEMA = "memory-os-backup-restore-non-resurrection-domain-evidence.v1"
 REVIEW_EVIDENCE_FIELDS = {
     "schemaVersion", "generationEvidenceId", "sourceCommitSha", "typedRecordId", "reviewType",
-    "reviewerPseudonym", "reviewedDomainEvidenceRefs", "result", "productionTraffic",
-    "productionCredentials", "productionEvidence", "productionReady",
+    "reviewerPseudonym", "reviewedDomainEvidenceRefs", "reviewedDomainEvidenceSha256", "result",
+    "productionTraffic", "productionCredentials", "productionEvidence", "productionReady",
 }
 REVIEW_EVIDENCE_SCHEMA = "memory-os-backup-restore-non-resurrection-review-evidence.v1"
 
@@ -46,6 +48,10 @@ def load(path: Path) -> dict[str, Any]:
         raise Fail(f"cannot load {path}: {exc}") from exc
     require(isinstance(value, dict), f"root must be object: {path}")
     return value
+
+def payload_sha256(payload: dict[str, Any]) -> str:
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
 
 def repo_ref(value: Any, field: str) -> str:
     require(isinstance(value, str) and value and not Path(value).is_absolute(), f"{field} invalid")
@@ -74,7 +80,7 @@ def domain_evidence(ref: str, *, domain: str, generation_evidence_id: str, sourc
         require(payload.get(field) is False, f"domain {domain} evidence {field} must remain false")
     return payload
 
-def review_evidence(ref: str, *, review_type: str, record_id: str, generation_evidence_id: str, source_commit_sha: str, domain_refs: set[str]) -> dict[str, Any]:
+def review_evidence(ref: str, *, review_type: str, record_id: str, generation_evidence_id: str, source_commit_sha: str, domain_digests: dict[str, str]) -> dict[str, Any]:
     payload = load(ROOT / ref)
     require(set(payload) == REVIEW_EVIDENCE_FIELDS, f"{review_type} review field set drift: {sorted(set(payload) ^ REVIEW_EVIDENCE_FIELDS)}")
     require(payload.get("schemaVersion") == REVIEW_EVIDENCE_SCHEMA, f"{review_type} review schemaVersion drift")
@@ -86,7 +92,11 @@ def review_evidence(ref: str, *, review_type: str, record_id: str, generation_ev
     require(isinstance(reviewer, str) and REVIEWER_ID.fullmatch(reviewer), f"{review_type} reviewerPseudonym invalid")
     reviewed_refs = payload.get("reviewedDomainEvidenceRefs")
     require(isinstance(reviewed_refs, list) and len(reviewed_refs) == len(set(reviewed_refs)), f"{review_type} reviewedDomainEvidenceRefs invalid")
-    require(set(reviewed_refs) == domain_refs, f"{review_type} review does not bind exact typed domain bundle")
+    require(set(reviewed_refs) == set(domain_digests), f"{review_type} review does not bind exact typed domain bundle")
+    reviewed_digests = payload.get("reviewedDomainEvidenceSha256")
+    require(isinstance(reviewed_digests, dict) and set(reviewed_digests) == set(domain_digests), f"{review_type} reviewedDomainEvidenceSha256 coverage mismatch")
+    require(all(isinstance(value, str) and SHA256.fullmatch(value) for value in reviewed_digests.values()), f"{review_type} reviewedDomainEvidenceSha256 invalid")
+    require(reviewed_digests == domain_digests, f"{review_type} review domain evidence digest binding mismatch")
     require(payload.get("result") == "APPROVED", f"{review_type} review must be APPROVED")
     for field in ("productionTraffic", "productionCredentials", "productionEvidence", "productionReady"):
         require(payload.get(field) is False, f"{review_type} review {field} must remain false")
@@ -110,6 +120,7 @@ def validate_record(record: dict[str, Any]) -> None:
     domains = record.get("domains")
     require(isinstance(domains, dict) and set(domains) == set(required_domains), "domain coverage drift")
     refs_seen: set[str] = set()
+    domain_digests: dict[str, str] = {}
     for name in required_domains:
         entry = domains.get(name)
         require(isinstance(entry, dict) and set(entry) == {"result", "evidenceRef"}, f"domain {name} field drift")
@@ -121,6 +132,7 @@ def validate_record(record: dict[str, Any]) -> None:
         refs_seen.add(evidence_ref)
         payload = domain_evidence(evidence_ref, domain=name, generation_evidence_id=record["generationEvidenceId"], source_commit_sha=source_sha)
         require(payload.get("result") == entry.get("result"), f"domain {name} evidence result binding mismatch")
+        domain_digests[evidence_ref] = payload_sha256(payload)
 
     review_prefixes = contract.get("reviewEvidencePathPrefixes")
     require(isinstance(review_prefixes, dict) and set(review_prefixes) == {"SECURITY", "OPERABILITY"}, "reviewEvidencePathPrefixes drift")
@@ -129,8 +141,8 @@ def validate_record(record: dict[str, Any]) -> None:
     require(security != operability, "security and operability reviews must be distinct")
     require(security.startswith(review_prefixes["SECURITY"]) and security.endswith(".json"), "security review path is not typed")
     require(operability.startswith(review_prefixes["OPERABILITY"]) and operability.endswith(".json"), "operability review path is not typed")
-    security_payload = review_evidence(security, review_type="SECURITY", record_id=record["recordId"], generation_evidence_id=record["generationEvidenceId"], source_commit_sha=source_sha, domain_refs=refs_seen)
-    operability_payload = review_evidence(operability, review_type="OPERABILITY", record_id=record["recordId"], generation_evidence_id=record["generationEvidenceId"], source_commit_sha=source_sha, domain_refs=refs_seen)
+    security_payload = review_evidence(security, review_type="SECURITY", record_id=record["recordId"], generation_evidence_id=record["generationEvidenceId"], source_commit_sha=source_sha, domain_digests=domain_digests)
+    operability_payload = review_evidence(operability, review_type="OPERABILITY", record_id=record["recordId"], generation_evidence_id=record["generationEvidenceId"], source_commit_sha=source_sha, domain_digests=domain_digests)
     require(security_payload["reviewerPseudonym"] != operability_payload["reviewerPseudonym"], "security and operability reviewers must be independent")
 
     findings = record.get("unresolvedFindings")
