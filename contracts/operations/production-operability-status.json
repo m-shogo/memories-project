@@ -355,17 +355,18 @@
         "two-run local controlled-saturation repeatability authority classifies a throughput/latency degradation knee or actual failure signal on independent PostgreSQL+MinIO runners; even a repeatable local signal remains non-production and cannot itself establish a capacity boundary or approve an operating threshold",
         "2 exact-source LOCAL_LONG_SOAK run document(s) satisfy the per-run validator; production evidence and leak proof remain false",
         "repeated LOCAL_LONG_SOAK runs plus cross-run trend review are registered as local-only sustained-soak evidence; this is not leak proof or production-shaped evidence",
-        "production-equivalent environment generation admission is machine-readable and append-only: load, restore, failure-drill and review evidence must bind immutable generation, environment/dependency/evidence/material-delta hashes and source commit; registered generations=0, preflight-eligible generations=0, current generation=none, and current production-equivalent dependencies=false; registration alone never creates preflight eligibility"
+        "production-equivalent environment generation admission is machine-readable and append-only: load, restore, failure-drill and review evidence must bind immutable generation, environment/dependency/evidence/material-delta hashes and source commit; registered generations=0, preflight-eligible generations=0, current generation=none, and current production-equivalent dependencies=false; registration alone never creates preflight eligibility",
+        "repeated LOCAL_LONG_SOAK runs plus cross-run descriptive trend review are registered as local-only sustained-soak evidence; this is not leak proof or production-shaped evidence"
       ],
       "missingEvidence": [
         "capacity boundary, saturation report and load-calibrated operational thresholds",
-        "sustained soak with RSS/heap/goroutine-slope evidence (SOAK PROOF INSUFFICIENT)",
         "production-equivalent dependency behavior and real-Apple load evidence",
         "production object-store TLS, scoped credentials, retention and lifecycle evidence",
-        "60-minute-or-longer repeated soak over PostgreSQL, object storage, parser, queue, deletion and authentication paths with RSS/heap/goroutine slope review and independently approved leak/stability criteria",
         "physical deletion-worker host/node/AZ interruption recovery in a registered production-equivalent generation, plus production topology and independently reviewed deletion-load thresholds",
         "request-linearization proof for operations already in flight before the deletion fence plus multi-account worker saturation, production topology and independently reviewed deletion-load thresholds",
-        "deliberate local PostgreSQL plus MinIO saturation ramp with queue/backlog signals, first-failure transition, repeatability and independently reviewed safe operating thresholds"
+        "deliberate local PostgreSQL plus MinIO saturation ramp with queue/backlog signals, first-failure transition, repeatability and independently reviewed safe operating thresholds",
+        "independently approved leak/stability criteria and review over the repeated LOCAL_LONG_SOAK trends; descriptive cross-run review is complete but leakProof remains false",
+        "production-shaped sustained soak against registered production-equivalent dependencies with runtime topology, TLS, scoped credentials, dependency latency/failure behavior and independent review; LOCAL_LONG_SOAK remains local-only evidence"
       ],
       "evidenceRefs": [
         "services/import-api/internal/loadtest/harness.go",
@@ -491,7 +492,11 @@
         "scripts/register-memory-os-production-equivalent-environment-generation.py",
         "scripts/reconcile-memory-os-production-equivalent-generation-status.py",
         "scripts/validate-memory-os-production-equivalent-environment-record.py",
-        "scripts/validate-memory-os-production-equivalent-environment-generation-negative.py"
+        "scripts/validate-memory-os-production-equivalent-environment-generation-negative.py",
+        "scripts/review-memory-os-sustained-local-soak-trends.py",
+        "scripts/validate-memory-os-sustained-local-soak-trend-review.py",
+        ".github/workflows/reconcile-sustained-local-soak-authority.yml",
+        "docs/fixtures/memory-os-operability/sustained-local-soak-trend-review.v1.json"
       ]
     },
     {
