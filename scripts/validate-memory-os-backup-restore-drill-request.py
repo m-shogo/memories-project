@@ -17,6 +17,7 @@ GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-ge
 OBJECTIVES_REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
 GEN_RECOVERY_CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
 TYPED_CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
+ELIGIBILITY_HELPER = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
 WRITER = ROOT / "scripts/request-memory-os-backup-restore-drill.py"
 NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-drill-request-negative.py"
 
@@ -39,9 +40,9 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def load_writer():
-    spec = importlib.util.spec_from_file_location("memory_os_restore_drill_request_writer_validator", WRITER)
-    require(spec is not None and spec.loader is not None, "cannot load drill request writer")
+def load_module(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load {path.relative_to(ROOT)}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -52,6 +53,24 @@ def run_negative() -> None:
     require(completed.returncode == 0, f"drill request negative suite failed:\n{completed.stdout[-5000:]}{completed.stderr[-5000:]}")
 
 
+def expected_decision(
+    generation_count: int,
+    eligible_pair_count: int,
+    objective_count: int,
+    request_count: int,
+    executable_count: int,
+) -> str:
+    if generation_count < 2 or objective_count == 0:
+        return "BLOCKED_NO_REGISTERED_GENERATION_OR_APPROVED_OBJECTIVE"
+    if eligible_pair_count == 0:
+        return "BLOCKED_NO_SEMANTICALLY_ELIGIBLE_DISTINCT_ENVIRONMENT_PAIR"
+    if executable_count > 0:
+        return "ADMITTED_REQUEST_AVAILABLE"
+    if request_count > 0:
+        return "AWAITING_CURRENT_EXECUTABLE_DRILL_REQUEST"
+    return "AWAITING_REVIEWED_DRILL_REQUEST"
+
+
 def main() -> int:
     contract = load(CONTRACT)
     registry = load(REGISTRY)
@@ -59,7 +78,8 @@ def main() -> int:
     objectives = load(OBJECTIVES_REGISTRY)
     generation_recovery = load(GEN_RECOVERY_CONTRACT)
     typed_contract = load(TYPED_CONTRACT)
-    writer = load_writer()
+    writer = load_module(WRITER, "memory_os_restore_drill_request_writer_validator")
+    eligibility = load_module(ELIGIBILITY_HELPER, "memory_os_restore_generation_eligibility_validator")
 
     require(contract.get("schemaVersion") == "memory-os-backup-restore-drill-request-contract.v1", "contract schema drift")
     require(contract.get("recordSchemaVersion") == "memory-os-backup-restore-drill-request.v1", "record schema drift")
@@ -81,6 +101,7 @@ def main() -> int:
         expected = str(path.relative_to(ROOT)) if path.is_absolute() else str(path)
         require(contract.get(field) == expected, f"contract ref drift: {field}")
         require((ROOT / expected).is_file(), f"contract artifact missing: {expected}")
+    require(ELIGIBILITY_HELPER.is_file(), "semantic generation eligibility helper missing")
 
     required_fields = contract.get("requiredRequestFields")
     required_domains = contract.get("requiredEvidenceDomains")
@@ -90,6 +111,7 @@ def main() -> int:
     require(isinstance(required_domains, list) and len(required_domains) == 8 and len(required_domains) == len(set(required_domains)), "required evidence domains drift")
     require(isinstance(required_stops, list) and len(required_stops) >= 10 and len(required_stops) == len(set(required_stops)), "required stop conditions incomplete")
     require(isinstance(rules, dict) and rules and all(value is True for value in rules.values()), "admissionRules must remain fail-closed")
+    require(rules.get("registeredGenerationCountIsNotSemanticEligibility") is True, "registered generation count must remain distinct from semantic eligibility")
 
     environment_policy = contract.get("environmentPolicy")
     require(isinstance(environment_policy, dict), "environmentPolicy missing")
@@ -117,6 +139,25 @@ def main() -> int:
     require(generations.get("appendOnly") is True and generations.get("productionEvidence") is False, "generation registry boundary drift")
     require(isinstance(generation_rows, list) and all(isinstance(row, dict) for row in generation_rows), "generation registry rows invalid")
     require(isinstance(generation_count, int) and generation_count == len(generation_rows), "generation registry count drift")
+
+    semantic = eligibility.derive(GEN_REGISTRY)
+    require(semantic.get("registeredGenerationCount") == generation_count, "semantic eligibility registered count drift")
+    eligible_count = semantic.get("preflightEligibleGenerationCount")
+    unsuperseded_eligible_count = semantic.get("unsupersededPreflightEligibleGenerationCount")
+    distinct_eligible_environment_count = semantic.get("distinctPreflightEligibleEnvironmentCount")
+    eligible_pair_count = semantic.get("eligibleDirectedPairCount")
+    for value, field in (
+        (eligible_count, "preflightEligibleGenerationCount"),
+        (unsuperseded_eligible_count, "unsupersededPreflightEligibleGenerationCount"),
+        (distinct_eligible_environment_count, "distinctPreflightEligibleEnvironmentCount"),
+        (eligible_pair_count, "eligibleDirectedPairCount"),
+    ):
+        require(isinstance(value, int) and not isinstance(value, bool) and value >= 0, f"semantic eligibility {field} invalid")
+    require(eligible_count <= generation_count, "semantic eligible count cannot exceed registered count")
+    require(unsuperseded_eligible_count <= eligible_count, "unsuperseded semantic eligible count drift")
+    require(distinct_eligible_environment_count <= unsuperseded_eligible_count, "distinct semantic environment count drift")
+    if distinct_eligible_environment_count < 2:
+        require(eligible_pair_count == 0, "eligible directed pair requires two distinct semantic environments")
 
     objective_rows = objectives.get("records")
     objective_count = objectives.get("approvedObjectiveCount")
@@ -154,25 +195,25 @@ def main() -> int:
     require(isinstance(executable_count, int) and executable_count == derived_executable, "currentExecutableRequestCount drift")
     if generation_count < 2 or objective_count == 0:
         require(request_count == 0 and executable_count == 0, "drill request cannot exist without two registered generations and an approved objective")
+    if eligible_pair_count == 0:
+        require(executable_count == 0, "semantically blocked generation state cannot have current executable request")
 
     state = contract.get("currentAdmissionState")
     readiness = contract.get("readiness")
     require(isinstance(state, dict) and isinstance(readiness, dict), "contract authority state missing")
     require(state.get("registeredEnvironmentGenerationCount") == generation_count, "contract generation count drift")
+    require(state.get("preflightEligibleEnvironmentGenerationCount") == eligible_count, "contract semantic eligible count drift")
+    require(state.get("unsupersededPreflightEligibleEnvironmentGenerationCount") == unsuperseded_eligible_count, "contract unsuperseded semantic eligible count drift")
+    require(state.get("distinctPreflightEligibleEnvironmentCount") == distinct_eligible_environment_count, "contract distinct semantic environment count drift")
+    require(state.get("eligibleDirectedSourceTargetPairCount") == eligible_pair_count, "contract eligible source-target pair count drift")
     require(state.get("approvedRecoveryObjectiveCount") == objective_count, "contract objective count drift")
     require(state.get("registeredRequestCount") == request_count, "contract request count drift")
     require(state.get("currentExecutableRequestCount") == executable_count, "contract executable request count drift")
-    if generation_count < 2 or objective_count == 0:
-        expected_decision = "BLOCKED_NO_REGISTERED_GENERATION_OR_APPROVED_OBJECTIVE"
-    elif executable_count > 0:
-        expected_decision = "ADMITTED_REQUEST_AVAILABLE"
-    elif request_count > 0:
-        expected_decision = "AWAITING_CURRENT_EXECUTABLE_DRILL_REQUEST"
-    else:
-        expected_decision = "AWAITING_REVIEWED_DRILL_REQUEST"
-    require(state.get("admissionDecision") == expected_decision, "contract admissionDecision drift")
+    decision = expected_decision(generation_count, eligible_pair_count, objective_count, request_count, executable_count)
+    require(state.get("admissionDecision") == decision, "contract admissionDecision drift")
     require(state.get("productionEvidence") is False and state.get("productionReady") is False and state.get("productionDecision") == "NO_GO", "contract production boundary drift")
-    require(readiness.get("environmentGenerationAvailable") is (generation_count >= 2), "readiness environment generation drift")
+    require(readiness.get("environmentGenerationAvailable") is (generation_count >= 2), "readiness registered environment generation drift")
+    require(readiness.get("semanticallyEligibleDistinctEnvironmentPairAvailable") is (eligible_pair_count > 0), "readiness semantic environment pair drift")
     require(readiness.get("approvedRecoveryObjectivesAvailable") is (objective_count > 0), "readiness objective drift")
     require(readiness.get("drillRequested") is (request_count > 0), "readiness drillRequested drift")
     require(readiness.get("currentExecutableRequestAvailable") is (executable_count > 0), "readiness current executable request drift")
@@ -181,9 +222,15 @@ def main() -> int:
     run_negative()
     print("Memory OS production-equivalent backup/restore drill request validation PASS")
     print(f"registered environment generations: {generation_count}")
+    print(f"semantic preflight-eligible generations: {eligible_count}")
+    print(f"unsuperseded semantic preflight-eligible generations: {unsuperseded_eligible_count}")
+    print(f"distinct semantic preflight-eligible environments: {distinct_eligible_environment_count}")
+    print(f"eligible directed source-target pairs: {eligible_pair_count}")
     print(f"approved recovery objectives: {objective_count}")
     print(f"registered drill requests: {request_count}")
     print(f"currently executable requests: {executable_count}")
+    print(f"admission decision: {decision}")
+    print("registered generation count alone creates planning authority: false")
     print("historical admitted requests survive later generation/objective supersession: true")
     print("planning authority only: true")
     print("production evidence: false")
