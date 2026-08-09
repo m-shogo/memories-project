@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "memory-os-production-equivalent-environment-record.v1",
+  "environmentId": "pe_target",
+  "generationId": "pegen_target",
+  "status": "VALIDATED_LOCAL_NONPRODUCTION",
+  "topology": {
+    "regionClass": "ci-isolated-nonproduction",
+    "nonLoopback": true,
+    "productionTraffic": false,
+    "productionCredentials": false
+  },
+  "postgresql": {
+    "tlsVerified": true,
+    "runtimeRoleBypassRLS": false,
+    "forceRLSVerified": true,
+    "connectionBudgetDeclared": true,
+    "poolTelemetryVerified": true,
+    "restoreEvidenceRef": "SECURITY.md"
+  },
+  "objectStorage": {
+    "tlsVerified": true,
+    "scopedCredentialsVerified": true,
+    "versioningVerified": true,
+    "retentionLifecycleVerified": true,
+    "exactVersionDeleteVerified": true,
+    "restoreEvidenceRef": "SECURITY.md"
+  },
+  "queueWorkers": {
+    "boundedBackpressureVerified": true,
+    "queueTelemetryVerified": true,
+    "deletionBacklogTelemetryVerified": true,
+    "leaseRetryVerified": true
+  },
+  "network": {
+    "tlsVerificationRequired": true,
+    "latencyProfileRef": "README.md",
+    "failureInjectionRef": "README.md"
+  },
+  "identityAndSecrets": {
+    "dedicatedNonProductionCredentials": true,
+    "credentialScopeRef": "SECURITY.md",
+    "containsSecretMaterial": false
+  },
+  "backupRestore": {
+    "sameGenerationLinked": true,
+    "isolatedRestoreVerified": true,
+    "evidenceRef": "README.md"
+  },
+  "materialDeltas": [],
+  "evidenceBoundary": {
+    "productionEvidence": false,
+    "productionEquivalentDependencies": true,
+    "independentReviewCompleted": true,
+    "independentReviewRef": "SECURITY.md",
+    "productionReady": false
+  }
+}
