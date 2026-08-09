@@ -10,7 +10,9 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
+INVENTORY = ROOT / "contracts/operations/operability-admission-inventory.v1.json"
 CANONICAL_SCHEMA = "memory-os-operability-status.0.1"
+INVENTORY_SCHEMA = "memory-os-operability-admission-inventory.v1"
 
 
 class Fail(RuntimeError):
@@ -43,11 +45,14 @@ def main() -> int:
     require(isinstance(areas, list) and areas, "areas missing")
     ids: set[str] = set()
     p0_count = 0
+    p0_007: dict[str, Any] | None = None
     for index, area in enumerate(areas):
         require(isinstance(area, dict), f"areas[{index}] invalid")
         area_id = area.get("id")
         require(isinstance(area_id, str) and area_id and area_id not in ids, f"areas[{index}].id invalid/duplicate")
         ids.add(area_id)
+        if area_id == "OPS-P0-007":
+            p0_007 = area
         if not area_id.startswith("OPS-P0-"):
             continue
         p0_count += 1
@@ -68,10 +73,52 @@ def main() -> int:
             require(existing and refs, f"{area_id} READY requires named evidence")
         else:
             require(missing, f"{area_id} incomplete status requires missingEvidence")
+
     require(p0_count >= 9, "unexpected P0 area count")
+    require(p0_007 is not None, "OPS-P0-007 backup/restore area missing")
+
+    inventory = load(INVENTORY)
+    require(inventory.get("schemaVersion") == INVENTORY_SCHEMA, "operability admission inventory schema drift")
+    require(inventory.get("productionDecision") == "NO_GO", "inventory production decision must remain NO_GO")
+    require(inventory.get("productionEvidence") is False, "inventory productionEvidence must remain false")
+    require(inventory.get("productionReady") is False, "inventory productionReady must remain false")
+    require(inventory.get("humanProductionPromotionReviewCompleted") is False, "inventory cannot manufacture human production-promotion review")
+    require(inventory.get("humanProductionPromotionAuthorized") is False, "inventory cannot authorize human production promotion")
+
+    inventory_areas = inventory.get("areas")
+    require(isinstance(inventory_areas, list), "inventory areas missing")
+    inventory_p0_007 = next((area for area in inventory_areas if isinstance(area, dict) and area.get("id") == "OPS-P0-007"), None)
+    require(isinstance(inventory_p0_007, dict), "inventory OPS-P0-007 missing")
+    require(inventory_p0_007.get("humanProductionPromotionReviewCompleted") is False, "OPS-P0-007 inventory cannot manufacture promotion review")
+    require(inventory_p0_007.get("humanProductionPromotionAuthorized") is False, "OPS-P0-007 inventory cannot authorize promotion")
+    require(inventory_p0_007.get("blocking") is True, "OPS-P0-007 inventory must remain blocking")
+    require(inventory_p0_007.get("status") == p0_007.get("status"), "OPS-P0-007 status/inventory status drift")
+
+    counts = inventory_p0_007.get("dependencyCounts")
+    require(isinstance(counts, dict), "OPS-P0-007 inventory dependencyCounts missing")
+    registered = counts.get("environmentGenerations")
+    semantic = counts.get("preflightEligibleEnvironmentGenerations")
+    unsuperseded_registered = counts.get("unsupersededEnvironmentGenerations")
+    unsuperseded_semantic = counts.get("unsupersededPreflightEligibleEnvironmentGenerations")
+    distinct_semantic = counts.get("distinctUnsupersededPreflightEligibleEnvironments")
+    require(all(isinstance(value, int) and value >= 0 for value in (registered, semantic, unsuperseded_registered, unsuperseded_semantic, distinct_semantic)), "OPS-P0-007 generation dependency counts invalid")
+    require(semantic <= registered, "semantic preflight-eligible generation count exceeds registered count")
+    require(unsuperseded_registered <= registered, "unsuperseded generation count exceeds registered count")
+    require(unsuperseded_semantic <= semantic, "unsuperseded semantic generation count exceeds semantic count")
+    require(unsuperseded_semantic <= unsuperseded_registered, "unsuperseded semantic generation count exceeds unsuperseded registered count")
+    require(distinct_semantic <= unsuperseded_semantic, "distinct semantic environment count exceeds eligible generations")
+
+    existing = p0_007.get("existingEvidence")
+    require(isinstance(existing, list), "OPS-P0-007 existingEvidence missing")
+    require(any(isinstance(item, str) and "registered generation inventory alone" in item and "restore-planning authority" in item for item in existing), "OPS-P0-007 must state that registered generation inventory alone creates no restore-planning authority")
+    require(any(isinstance(item, str) and "human production-promotion review" in item and "separate non-automatic decision" in item for item in existing), "OPS-P0-007 must preserve separate non-automatic human promotion review")
+    require(any(isinstance(item, str) and "human production-promotion review/authorization=false/false" in item for item in existing), "OPS-P0-007 must expose current false/false human promotion authority")
+
     print("Memory OS operability status hygiene validation PASS")
     print(f"status schema: {CANONICAL_SCHEMA}")
     print(f"P0 areas checked: {p0_count}")
+    print("OPS-P0-007 semantic generation authority: bound to deterministic inventory")
+    print("OPS-P0-007 human production-promotion authority: separate and false")
     print("exact duplicate authority entries: none")
     print("failure diagnostics referenced as proof: none")
     print("production decision: NO_GO")
