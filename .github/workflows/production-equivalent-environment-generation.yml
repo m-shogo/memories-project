@@ -15,6 +15,7 @@ on:
       - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation-negative.py"
       - "scripts/reconcile-memory-os-production-equivalent-generation-status.py"
+      - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
 
 permissions:
