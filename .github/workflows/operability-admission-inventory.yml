@@ -16,6 +16,7 @@ on:
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
       - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
+      - "contracts/operations/recovery-objectives-admission-contract.v1.json"
       - "contracts/operations/recovery-objectives-registry.v1.json"
       - "contracts/operations/backup-restore-generation-binding-contract.v1.json"
       - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
@@ -33,13 +34,18 @@ on:
       - "contracts/operations/production-shaped-failure-drill-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
       - "docs/evidence/backup-restore/**"
+      - "docs/evidence/recovery-objectives/approvals/**"
       - "docs/fixtures/memory-os-operability/backup-restore-generation-evidence/**"
+      - "docs/fixtures/memory-os-operability/recovery-objectives-approval/**"
       - "docs/runbooks/memory-os-production-equivalent-backup-restore-drill.md"
       - "scripts/generate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-operability-admission-inventory.py"
       - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
+      - "scripts/register-memory-os-recovery-objectives.py"
+      - "scripts/validate-memory-os-recovery-objectives.py"
+      - "scripts/validate-memory-os-recovery-objectives-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
       - "scripts/reconcile-memory-os-backup-restore-drill-preflight.py"
       - "scripts/request-memory-os-backup-restore-drill.py"
@@ -95,6 +101,9 @@ jobs:
           python -m py_compile \
             scripts/generate-memory-os-operability-admission-inventory.py \
             scripts/validate-memory-os-operability-admission-inventory.py \
+            scripts/register-memory-os-recovery-objectives.py \
+            scripts/validate-memory-os-recovery-objectives.py \
+            scripts/validate-memory-os-recovery-objectives-negative.py \
             scripts/validate-memory-os-backup-restore-drill-preflight.py \
             scripts/request-memory-os-backup-restore-drill.py \
             scripts/validate-memory-os-backup-restore-drill-request.py \
@@ -110,6 +119,9 @@ jobs:
             scripts/validate-memory-os-backup-restore-admission-chain.py \
             scripts/validate-memory-os-operability-status-hygiene.py \
             >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1 || code=$?
+          fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-backup-restore-drill-preflight.py >> "$log" 2>&1 || code=$?
           fi
