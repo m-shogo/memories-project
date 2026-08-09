@@ -7,6 +7,7 @@ import json
 import math
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +44,17 @@ def finite(value: Any, field: str) -> float:
     return number
 
 
+def utc_timestamp(value: Any, field: str) -> datetime:
+    require(isinstance(value, str) and value.endswith("Z"), f"{field} must be UTC RFC3339 ending in Z")
+    try:
+        parsed = datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError as exc:
+        raise Fail(f"{field} must be valid RFC3339: {value}") from exc
+    require(parsed.tzinfo is not None and parsed.utcoffset() == timezone.utc.utcoffset(parsed),
+            f"{field} must resolve to UTC")
+    return parsed
+
+
 def validate_run(path: Path) -> dict[str, Any]:
     completed = subprocess.run(
         [sys.executable, str(RESULT_VALIDATOR), str(path)],
@@ -57,9 +69,13 @@ def validate_run(path: Path) -> dict[str, Any]:
     return load(path)
 
 
-def run_trend_projection(run: dict[str, Any], path: Path) -> dict[str, Any]:
+def run_trend_projection(run: dict[str, Any], path: Path) -> tuple[datetime, dict[str, Any]]:
     scenario = run.get("scenario")
     require(isinstance(scenario, dict), f"{path.name}: scenario missing")
+    completed_at = utc_timestamp(scenario.get("completedAt"), f"{path.name}.scenario.completedAt")
+    generated_at = utc_timestamp(run.get("generatedAt"), f"{path.name}.generatedAt")
+    require(generated_at >= completed_at,
+            f"{path.name}: generatedAt cannot precede scenario.completedAt")
     trends = scenario.get("trends")
     assertions = scenario.get("assertions")
     require(isinstance(trends, dict), f"{path.name}: trends missing")
@@ -94,7 +110,7 @@ def run_trend_projection(run: dict[str, Any], path: Path) -> dict[str, Any]:
         require(isinstance(projected[field], dict), f"{path.name}.scenario.trends.{field} missing")
     require(projected["postRunRecoveryProbePassed"] is True,
             f"{path.name}: post-run recovery probe not passed")
-    return projected
+    return completed_at, projected
 
 
 def review_trend_projection(trend: dict[str, Any], index: int) -> dict[str, Any]:
@@ -140,8 +156,12 @@ def main() -> int:
     runs = [validate_run(path) for path in paths]
     run_ids = sorted(str(run["runId"]) for run in runs)
     commits = sorted({str(run["commitSha"]) for run in runs})
+    chronological_expected = [run_trend_projection(run, path) for run, path in zip(runs, paths)]
+    chronological_expected.sort(key=lambda item: (item[0], str(item[1]["runId"])))
+    expected_latest_a = chronological_expected[-2][1]
+    expected_latest_b = chronological_expected[-1][1]
     expected_trends = sorted(
-        (run_trend_projection(run, path) for run, path in zip(runs, paths)),
+        (projected for _, projected in chronological_expected),
         key=lambda item: str(item["runId"]),
     )
     expected_by_id = {str(item["runId"]): item for item in expected_trends}
@@ -181,8 +201,8 @@ def main() -> int:
     require(isinstance(latest_pair, dict), "latestPair missing")
     run_a = latest_pair.get("runA")
     run_b = latest_pair.get("runB")
-    require(run_a in expected_by_id and run_b in expected_by_id and run_a != run_b,
-            "latestPair run IDs invalid")
+    require(run_a == expected_latest_a["runId"] and run_b == expected_latest_b["runId"],
+            "latestPair must name the two newest validated runs by scenario.completedAt chronology")
     expected_deltas = {
         "rssSlopeDeltaBytesPerMinute":
             float(expected_by_id[str(run_b)]["rssSlopeBytesPerMinute"]) -
@@ -233,6 +253,7 @@ def main() -> int:
     print("Memory OS sustained local soak trend review validation PASS")
     print(f"reviewed runs: {len(paths)}")
     print("review trends re-derived from validated run documents: true")
+    print("latest pair selected by validated scenario completion chronology: true")
     print("latest pair deltas re-derived from validated run trends: true")
     print("local-only evidence eligible: true")
     print("leak proof: false")
