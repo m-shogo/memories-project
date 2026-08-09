@@ -7,6 +7,7 @@ import json
 import math
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -43,7 +44,18 @@ def finite_number(value: Any, field: str) -> float:
     return number
 
 
-def summarize_run(path: Path) -> dict[str, Any]:
+def utc_timestamp(value: Any, field: str) -> datetime:
+    require(isinstance(value, str) and value.endswith("Z"), f"{field} must be UTC RFC3339 ending in Z")
+    try:
+        parsed = datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError as exc:
+        raise Fail(f"{field} must be valid RFC3339: {value}") from exc
+    require(parsed.tzinfo is not None and parsed.utcoffset() == timezone.utc.utcoffset(parsed),
+            f"{field} must resolve to UTC")
+    return parsed
+
+
+def summarize_run(path: Path) -> tuple[datetime, dict[str, Any]]:
     completed = subprocess.run(
         [sys.executable, str(RESULT_VALIDATOR), str(path)],
         cwd=ROOT,
@@ -59,6 +71,10 @@ def summarize_run(path: Path) -> dict[str, Any]:
     require(isinstance(scenario, dict), f"{path.name}: scenario missing")
     require(scenario.get("result") == "PASS" and scenario.get("integrityResult") == "PASS",
             f"{path.name}: result/integrity must PASS")
+    completed_at = utc_timestamp(scenario.get("completedAt"), f"{path.name}.scenario.completedAt")
+    generated_at = utc_timestamp(value.get("generatedAt"), f"{path.name}.generatedAt")
+    require(generated_at >= completed_at,
+            f"{path.name}: generatedAt cannot precede scenario.completedAt")
     trends = scenario.get("trends")
     require(isinstance(trends, dict), f"{path.name}: trends missing")
     assertions = scenario.get("assertions")
@@ -80,7 +96,7 @@ def summarize_run(path: Path) -> dict[str, Any]:
             isinstance(db, dict) and isinstance(queue, dict) and isinstance(deletion, dict),
             f"{path.name}: trend groups incomplete")
 
-    return {
+    return completed_at, {
         "runId": value["runId"],
         "sourceCommitSha": value["commitSha"],
         "durationSeconds": scenario["durationSeconds"],
@@ -107,7 +123,9 @@ def main() -> int:
     minimum_runs = int(contract.get("minimumIndependentRuns", 2))
     require(len(paths) >= minimum_runs,
             f"trend review requires at least {minimum_runs} committed long-soak runs")
-    runs = [summarize_run(path) for path in paths]
+    chronological_runs = [summarize_run(path) for path in paths]
+    chronological_runs.sort(key=lambda item: (item[0], str(item[1]["runId"])))
+    runs = [summary for _, summary in chronological_runs]
     run_ids = [run["runId"] for run in runs]
     require(len(run_ids) == len(set(run_ids)), "duplicate long-soak run IDs")
 
@@ -153,6 +171,7 @@ def main() -> int:
     REVIEW_PATH.write_text(json.dumps(review, indent=2) + "\n", encoding="utf-8")
     print("Memory OS sustained local soak descriptive trend review created")
     print(f"reviewed runs: {len(runs)}")
+    print("latest pair selected by validated scenario completion chronology: true")
     print("trend review completed: true")
     print("local sustained-soak evidence eligible: true")
     print("leak proof: false")
