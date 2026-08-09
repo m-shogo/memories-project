@@ -63,8 +63,8 @@ def base_record(contract: dict[str, Any]) -> dict[str, Any]:
 def domain_payload(generation: str, source_sha: str, domain: str, result: str) -> dict[str, Any]:
     return {"schemaVersion": "memory-os-backup-restore-non-resurrection-domain-evidence.v1", "generationEvidenceId": generation, "sourceCommitSha": source_sha, "domain": domain, "result": result, "productionTraffic": False, "productionCredentials": False, "productionEvidence": False, "productionReady": False}
 
-def review_payload(*, generation: str, source_sha: str, record_id: str, review_type: str, reviewer: str, refs: list[str], result: str = "APPROVED") -> dict[str, Any]:
-    return {"schemaVersion": "memory-os-backup-restore-non-resurrection-review-evidence.v1", "generationEvidenceId": generation, "sourceCommitSha": source_sha, "typedRecordId": record_id, "reviewType": review_type, "reviewerPseudonym": reviewer, "reviewedDomainEvidenceRefs": refs, "result": result, "productionTraffic": False, "productionCredentials": False, "productionEvidence": False, "productionReady": False}
+def review_payload(*, generation: str, source_sha: str, record_id: str, review_type: str, reviewer: str, refs: list[str], digests: dict[str, str], result: str = "APPROVED") -> dict[str, Any]:
+    return {"schemaVersion": "memory-os-backup-restore-non-resurrection-review-evidence.v1", "generationEvidenceId": generation, "sourceCommitSha": source_sha, "typedRecordId": record_id, "reviewType": review_type, "reviewerPseudonym": reviewer, "reviewedDomainEvidenceRefs": refs, "reviewedDomainEvidenceSha256": digests, "result": result, "productionTraffic": False, "productionCredentials": False, "productionEvidence": False, "productionReady": False}
 
 def main() -> int:
     contract = load(CONTRACT)
@@ -77,10 +77,14 @@ def main() -> int:
         writer.repo_ref = lambda value, field: value if isinstance(value, str) and value else (_ for _ in ()).throw(writer.Fail(f"{field} invalid"))
         prefixes = contract["domainEvidencePathPrefixes"]
         review_prefixes = contract["reviewEvidencePathPrefixes"]
-        state: dict[str, Any] = {"generation": "brge_negative_generation", "sha": SHA, "domain": None, "domainResult": "PASS", "recordId": "brnr_negative_base", "securityReviewer": "reviewer_security", "operabilityReviewer": "reviewer_operability", "reviewGeneration": "brge_negative_generation", "reviewSha": SHA, "reviewRecordId": "brnr_negative_base", "reviewRefsDropOne": False, "reviewResult": "APPROVED"}
+        state: dict[str, Any] = {"generation": "brge_negative_generation", "sha": SHA, "domain": None, "domainResult": "PASS", "securityReviewer": "reviewer_security", "operabilityReviewer": "reviewer_operability", "reviewGeneration": "brge_negative_generation", "reviewSha": SHA, "reviewRecordId": "brnr_negative_base", "reviewRefsDropOne": False, "reviewDigestMismatch": False, "reviewResult": "APPROVED"}
 
         valid = base_record(contract)
         refs = [valid["domains"][name]["evidenceRef"] for name in contract["requiredDomains"]]
+        expected_digests = {
+            valid["domains"][name]["evidenceRef"]: writer.payload_sha256(domain_payload("brge_negative_generation", SHA, name, "PASS"))
+            for name in contract["requiredDomains"]
+        }
 
         def fake_load(path: Path) -> dict[str, Any]:
             if path == generation_registry:
@@ -96,12 +100,15 @@ def main() -> int:
                 if ref.startswith(prefix):
                     reviewed = refs[:-1] if state["reviewRefsDropOne"] else refs
                     reviewer = state["securityReviewer"] if review_type == "SECURITY" else state["operabilityReviewer"]
-                    return review_payload(generation=state["reviewGeneration"], source_sha=state["reviewSha"], record_id=state["reviewRecordId"], review_type=review_type, reviewer=reviewer, refs=reviewed, result=state["reviewResult"])
+                    digests = dict(expected_digests)
+                    if state["reviewDigestMismatch"]:
+                        digests[refs[0]] = "0" * 64
+                    return review_payload(generation=state["reviewGeneration"], source_sha=state["reviewSha"], record_id=state["reviewRecordId"], review_type=review_type, reviewer=reviewer, refs=reviewed, digests=digests, result=state["reviewResult"])
             return real_load(path)
 
         writer.load = fake_load
         writer.validate_record(valid)
-        print("PASS accept: complete typed record with independently bound reviews")
+        print("PASS accept: complete typed record with independently bundle-and-digest-bound reviews")
 
         def reject_variant(name: str, mutate: Callable[[dict[str, Any]], None]) -> None:
             item = copy.deepcopy(valid); mutate(item); expect_rejected(name, lambda: writer.validate_record(item))
@@ -128,6 +135,7 @@ def main() -> int:
         state["reviewSha"] = "b" * 40; expect_rejected("review source commit binding mismatch", lambda: writer.validate_record(valid)); state["reviewSha"] = SHA
         state["reviewRecordId"] = "brnr_other_record"; expect_rejected("review typed record binding mismatch", lambda: writer.validate_record(valid)); state["reviewRecordId"] = "brnr_negative_base"
         state["reviewRefsDropOne"] = True; expect_rejected("review exact domain bundle mismatch", lambda: writer.validate_record(valid)); state["reviewRefsDropOne"] = False
+        state["reviewDigestMismatch"] = True; expect_rejected("review domain evidence digest binding mismatch", lambda: writer.validate_record(valid)); state["reviewDigestMismatch"] = False
         state["operabilityReviewer"] = "reviewer_security"; expect_rejected("security and operability reviewer identity reuse", lambda: writer.validate_record(valid)); state["operabilityReviewer"] = "reviewer_operability"
         state["reviewResult"] = "REJECTED"; expect_rejected("review result not APPROVED", lambda: writer.validate_record(valid)); state["reviewResult"] = "APPROVED"
 
@@ -136,7 +144,7 @@ def main() -> int:
         expect_rejected("typed evidence file must exist", lambda: writer.validate_record(missing_file))
 
     print("Memory OS backup/restore non-resurrection negative admission suite PASS")
-    print("typed domain and independent review evidence are generation/commit/bundle bound: true")
+    print("typed domain and independent review evidence are generation/commit/bundle/digest bound: true")
     print("canonical registries mutated: false")
     print("production evidence: false")
     print("production decision: NO_GO")
