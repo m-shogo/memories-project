@@ -69,6 +69,14 @@ def main() -> int:
     for key in (
         "measurementMethodsCannotBePlaceholderText",
         "ownerRefMustExistInRepository",
+        "exactlyTwoTypedApprovalEvidenceRefsRequired",
+        "approvalEvidenceMustUseDedicatedAuthorityDirectory",
+        "recoveryOwnerAndOperabilityApprovalRolesRequired",
+        "approvalReviewersMustBeDistinct",
+        "approvalDecisionMustBeApproved",
+        "approvalMustBindObjectiveIdScopeRpoRtoAndSkew",
+        "approvalCannotPostDateObjectiveApproval",
+        "approvalCannotAuthorizeProductionTrafficCredentialsOrAutomaticPromotion",
         "ownerRefMustBeDistinctFromApprovalEvidenceRefs",
         "approvedAtMustBeUtcRfc3339Z",
         "implicitDefaultsForbidden",
@@ -77,7 +85,7 @@ def main() -> int:
     ):
         require(rules.get(key) is True, f"required recovery-objective rule missing: {key}")
     negative_cases = contract.get("negativeAdmissionCases")
-    require(isinstance(negative_cases, list) and len(negative_cases) >= 10 and len(negative_cases) == len(set(negative_cases)), "negative admission cases incomplete or duplicated")
+    require(isinstance(negative_cases, list) and len(negative_cases) >= 13 and len(negative_cases) == len(set(negative_cases)), "negative admission cases incomplete or duplicated")
 
     require(registry.get("schemaVersion") == "memory-os-recovery-objectives-registry.v1", "registry schema drift")
     require(registry.get("appendOnly") is True, "objectives registry must remain append-only")
@@ -115,6 +123,8 @@ def main() -> int:
     print(f"approved objective records: {count}")
     print(f"current objective: {current_id or 'none'}")
     print(f"RPO/RTO defined: {str(defined).lower()}")
+    print("typed Recovery Owner/Operability approval binding: required")
+    print("arbitrary repository approval files accepted: false")
     print("objective values chosen/defaulted by validator: false")
     print("negative admission suite: PASS")
     print("production evidence: false")
