@@ -17,6 +17,7 @@
     "sourceAndTargetGenerationIdsMustDiffer": true,
     "currentApprovedRecoveryObjectiveRequired": true,
     "eligiblePairMustUseRegisteredImmutableGenerations": true,
+    "onlySemanticallyPreflightEligibleGenerationsMayFormPairs": true,
     "allMissingPrerequisitesMustBeEnumerated": true,
     "reviewedRequestStillRequiredAfterReady": true,
     "requestMustStillPassExecutionTimeRevalidation": true,
@@ -40,7 +41,9 @@
   ],
   "currentState": {
     "registeredGenerationCount": 0,
+    "preflightEligibleGenerationCount": 0,
     "unsupersededGenerationCount": 0,
+    "unsupersededPreflightEligibleGenerationCount": 0,
     "distinctUnsupersededEnvironmentCount": 0,
     "eligibleDirectedSourceTargetPairCount": 0,
     "approvedRecoveryObjectiveCount": 0,
@@ -78,6 +81,7 @@
   "limitations": [
     "preflight is read-only admission guidance and never provisions an environment",
     "preflight enumerates all missing prerequisites but never creates any of them",
+    "registered immutable generations are counted separately from semantic preflight eligibility; only unsuperseded generations that independently revalidate as preflight-eligible may form source/target pairs",
     "preflight never invents RPO, RTO or object/database skew targets",
     "preflight READY still requires an external reviewed drill request submitted through the fail-closed request writer",
     "a reviewed drill request is planning authority only and still requires immediate revalidation before any execution",
