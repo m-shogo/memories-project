@@ -102,9 +102,14 @@
       "admittedEvidenceCount": 0,
       "preflightDecision": "BLOCKED_NEEDS_TWO_UNSUPERSEDED_DISTINCT_ENVIRONMENT_GENERATIONS",
       "preflightEligible": false,
+      "independentEvidenceReviewCompleted": false,
+      "humanProductionPromotionReviewCompleted": false,
+      "humanProductionPromotionAuthorized": false,
       "dependencyCounts": {
         "environmentGenerations": 0,
+        "preflightEligibleEnvironmentGenerations": 0,
         "unsupersededEnvironmentGenerations": 0,
+        "unsupersededPreflightEligibleEnvironmentGenerations": 0,
         "distinctUnsupersededEnvironments": 0,
         "eligibleDirectedRestorePairs": 0,
         "approvedRecoveryObjectives": 0,
@@ -120,7 +125,7 @@
         "typedCoveredRecoveryCandidates": 0,
         "productionEquivalentRecoveryCandidates": 0
       },
-      "nextGate": "register two distinct reviewed production-equivalent environment generations that are both unsuperseded; then approve explicit recovery objectives before submitting any restore drill request",
+      "nextGate": "register two distinct reviewed production-equivalent environment generations that independently revalidate as unsuperseded and semantically restore-preflight eligible; then approve explicit recovery objectives before submitting any restore drill request",
       "status": "PARTIAL_FOUNDATIONS_ONLY",
       "blocking": true,
       "missingEvidenceCount": 6,
@@ -165,7 +170,9 @@
     }
   ],
   "productionEquivalentEnvironmentGenerationCount": 0,
+  "backupRestorePreflightEligibleEnvironmentGenerationCount": 0,
   "backupRestoreUnsupersededEnvironmentGenerationCount": 0,
+  "backupRestoreUnsupersededPreflightEligibleEnvironmentGenerationCount": 0,
   "backupRestoreDistinctUnsupersededEnvironmentCount": 0,
   "backupRestoreEligibleDirectedPairCount": 0,
   "backupRestoreDrillPreflightEligible": false,
@@ -178,6 +185,9 @@
   "approvedReleaseCompatibilityPairCount": 0,
   "typedNonResurrectionRecordCount": 0,
   "completeTypedNonResurrectionRecordCount": 0,
+  "backupRestoreIndependentEvidenceReviewCompleted": false,
+  "humanProductionPromotionReviewCompleted": false,
+  "humanProductionPromotionAuthorized": false,
   "productionEvidence": false,
   "productionReady": false,
   "productionDecision": "NO_GO",
@@ -187,10 +197,12 @@
     "candidate/local evidence is not counted as production admission unless its owning authority explicitly admits it",
     "local repeated soak evidence is tracked separately from independent leak proof and production-shaped soak evidence",
     "recovery-objective values are never defaulted by this inventory; zero approved objectives means RPO/RTO/skew remain intentionally undefined",
+    "registered production-equivalent generations are inventory only; restore planning additionally requires independent semantic preflight eligibility, unsuperseded state and a distinct-environment eligible directed pair",
     "restore drill preflight is read-only: READY authorizes only external reviewed request submission and BLOCKED never creates missing generations or recovery objectives",
     "backup/restore drill requests are planning authority only; historical requests remain auditable after supersession while current executable count requires immediate generation/objective revalidation",
     "every generation recovery evidence record must remain bound to one admitted restore drill request; an unbound record is an inventory validation failure",
     "a generic generation recovery nonResurrectionVerification PASS cannot create a final recovery candidate; complete typed coverage of all eight non-resurrection domains is independently required",
+    "candidate-level independent evidence review is separate from human production-promotion review; neither a recovery candidate nor this inventory may complete or authorize promotion",
     "candidate/local mixed-version execution remains separate from the approved release-pair registry and can never create an approved predecessor/successor pair"
   ]
 }
