@@ -39,6 +39,9 @@ REPEATED_SOAK_STALE_GAPS = {
 REMAINING_REVIEW_GAP = (
     "independently approved leak/stability criteria and review over the repeated LOCAL_LONG_SOAK trends; descriptive cross-run review is complete but leakProof remains false"
 )
+PRODUCTION_SOAK_GAP = (
+    "production-shaped sustained soak against registered production-equivalent dependencies with runtime topology, TLS, scoped credentials, dependency latency/failure behavior and independent review; LOCAL_LONG_SOAK remains local-only evidence"
+)
 
 
 class Fail(RuntimeError):
@@ -214,6 +217,7 @@ def main() -> int:
                 item.startswith(local_prefixes)
                 or item in REPEATED_SOAK_STALE_GAPS
                 or item == REMAINING_REVIEW_GAP
+                or item == PRODUCTION_SOAK_GAP
             )
         )
     ]
@@ -225,6 +229,7 @@ def main() -> int:
         missing.append("cross-run LOCAL_LONG_SOAK trend review before local-only sustained-soak evidence can be registered")
     else:
         missing.append(REMAINING_REVIEW_GAP)
+        missing.append(PRODUCTION_SOAK_GAP)
     load_status["missingEvidence"] = missing
     for ref in FOUNDATION_REFS:
         append_unique(refs, ref)
@@ -241,6 +246,8 @@ def main() -> int:
                     f"completed repeated-soak gap remained stale: {stale}")
         require(REMAINING_REVIEW_GAP in load_status["missingEvidence"],
                 "independent leak/stability review gap must remain explicit")
+        require(PRODUCTION_SOAK_GAP in load_status["missingEvidence"],
+                "production-shaped sustained soak gap must remain explicit")
 
     require(status.get("productionDecision") == "NO_GO", "production decision drift")
     require(load_status.get("status") == "PARTIAL", "OPS-P0-006 status drift")
@@ -255,6 +262,7 @@ def main() -> int:
     print(f"local sustained soak evidence: {str(readiness['localSustainedSoakEvidence']).lower()}")
     print("leak proof: false")
     print("independent leak/stability review: required")
+    print("production-shaped sustained soak: required")
     print("production sustained soak evidence: false")
     print("OPS-P0-006: PARTIAL")
     print("Production: NO_GO")
