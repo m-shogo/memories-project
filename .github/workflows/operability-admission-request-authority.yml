@@ -43,6 +43,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Regenerate deterministic inventory
+        run: |
+          python scripts/generate-memory-os-operability-admission-inventory.py
+          python scripts/validate-memory-os-operability-admission-inventory.py
       - name: Validate request and promotion separation
         run: |
           python - <<'PY'
