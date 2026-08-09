@@ -52,6 +52,7 @@
   "validator": "scripts/validate-memory-os-controlled-saturation-repeatability.py",
   "reconcile": "scripts/reconcile-memory-os-controlled-saturation-repeatability.py",
   "workflow": ".github/workflows/controlled-saturation-repeatability.yml",
+  "reconcileWorkflow": ".github/workflows/reconcile-controlled-saturation-repeatability-authority.yml",
   "readiness": {
     "contractDefined": true,
     "analyzerImplemented": true,
