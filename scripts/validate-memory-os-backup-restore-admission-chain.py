@@ -16,6 +16,7 @@ DRILL_CONTRACT = ROOT / "contracts/operations/backup-restore-drill-request-contr
 DRILL_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
 GEN_CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+BINDING_CONTRACT = ROOT / "contracts/operations/backup-restore-generation-binding-contract.v1.json"
 TYPED_CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
 TYPED_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
 INVENTORY = ROOT / "contracts/operations/operability-admission-inventory.v1.json"
@@ -56,6 +57,7 @@ def main() -> int:
     drill_registry = load(DRILL_REGISTRY)
     gen_contract = load(GEN_CONTRACT)
     gen_registry = load(GEN_REGISTRY)
+    binding_contract = load(BINDING_CONTRACT)
     typed_contract = load(TYPED_CONTRACT)
     typed_registry = load(TYPED_REGISTRY)
     inventory = load(INVENTORY)
@@ -69,6 +71,7 @@ def main() -> int:
         "drillRequestRegistry": DRILL_REGISTRY,
         "generationEvidenceContract": GEN_CONTRACT,
         "generationEvidenceRegistry": GEN_REGISTRY,
+        "generationBindingContract": BINDING_CONTRACT,
         "typedNonResurrectionContract": TYPED_CONTRACT,
         "typedNonResurrectionRegistry": TYPED_REGISTRY,
         "operabilityInventory": INVENTORY,
@@ -194,6 +197,19 @@ def main() -> int:
     }
     require(candidate_ids.issubset(complete_typed_ids), "final candidate bypasses complete typed non-resurrection evidence")
     require(typed_covered_count == candidate_count, "typed candidate coverage count must equal final candidate count")
+
+    binding_rules = binding_contract.get("promotionRules")
+    binding_boundary = binding_contract.get("currentBoundary")
+    require(isinstance(binding_rules, dict) and isinstance(binding_boundary, dict), "generation binding promotion authority missing")
+    require(binding_rules.get("independentReviewRequired") is True, "generation binding independent review gate missing")
+    require(binding_rules.get("recoveryCandidateAutomaticallyCompletesHumanProductionPromotionReview") is False, "candidate cannot complete human promotion review")
+    require(binding_rules.get("recoveryCandidateAutomaticallyAuthorizesProductionPromotion") is False, "candidate cannot authorize production promotion")
+    require(binding_rules.get("humanProductionPromotionReviewRemainsSeparate") is True, "human promotion review must remain separate")
+    require(binding_boundary.get("productionEquivalentRecoveryCandidateCount") == candidate_count, "generation binding candidate count drift")
+    require(binding_boundary.get("independentReviewCompleted") is (candidate_count > 0), "generation binding independent review state drift")
+    require(binding_boundary.get("humanProductionPromotionReviewCompleted") is False, "human production promotion review must remain unclaimed")
+    require(binding_boundary.get("humanProductionPromotionAuthorized") is False, "human production promotion authorization must remain unclaimed")
+    require(binding_boundary.get("productionEvidence") is False and binding_boundary.get("productionReady") is False and binding_boundary.get("productionDecision") == "NO_GO", "generation binding cannot promote production")
 
     chain_boundary = contract.get("currentBoundary")
     require(isinstance(chain_boundary, dict), "chain currentBoundary missing")
