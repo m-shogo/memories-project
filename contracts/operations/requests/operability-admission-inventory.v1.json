@@ -9,6 +9,9 @@
     "deterministicOutputRequired": true,
     "canonicalRegistryCountsOnly": true,
     "foundationImplementationMustNotEqualProductionEvidence": true,
-    "productionDecisionMustRemainNoGo": true
+    "productionDecisionMustRemainNoGo": true,
+    "recoveryCandidateMustNotImplyHumanProductionPromotionReview": true,
+    "recoveryCandidateMustNotAuthorizeProductionPromotion": true,
+    "humanProductionPromotionAuthorityMustRemainSeparate": true
   }
 }
