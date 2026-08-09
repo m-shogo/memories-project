@@ -85,6 +85,10 @@ def main() -> int:
             valid["domains"][name]["evidenceRef"]: writer.payload_sha256(domain_payload("brge_negative_generation", SHA, name, "PASS"))
             for name in contract["requiredDomains"]
         }
+        if "securityReviewSha256" in contract["requiredRecordFields"] or "operabilityReviewSha256" in contract["requiredRecordFields"]:
+            require({"securityReviewSha256", "operabilityReviewSha256"}.issubset(set(contract["requiredRecordFields"])), "review digest field contract incomplete")
+            valid["securityReviewSha256"] = writer.payload_sha256(review_payload(generation="brge_negative_generation", source_sha=SHA, record_id="brnr_negative_base", review_type="SECURITY", reviewer="reviewer_security", refs=refs, digests=expected_digests))
+            valid["operabilityReviewSha256"] = writer.payload_sha256(review_payload(generation="brge_negative_generation", source_sha=SHA, record_id="brnr_negative_base", review_type="OPERABILITY", reviewer="reviewer_operability", refs=refs, digests=expected_digests))
 
         def fake_load(path: Path) -> dict[str, Any]:
             if path == generation_registry:
@@ -125,6 +129,9 @@ def main() -> int:
         reject_variant("mutable latest alias", lambda r: r["domains"][domain_name].update(evidenceRef=prefixes[domain_name] + "latest.json"))
         first, second = contract["requiredDomains"][:2]
         reject_variant("domain evidence references must be distinct", lambda r: r["domains"][second].update(evidenceRef=r["domains"][first]["evidenceRef"]))
+        if "securityReviewSha256" in valid:
+            reject_variant("security review payload digest binding mismatch", lambda r: r.update(securityReviewSha256="0" * 64))
+            reject_variant("operability review payload digest binding mismatch", lambda r: r.update(operabilityReviewSha256="0" * 64))
 
         state["generation"] = "brge_other_generation"; expect_rejected("domain evidence generation binding mismatch", lambda: writer.validate_record(valid)); state["generation"] = "brge_negative_generation"
         state["sha"] = "b" * 40; expect_rejected("domain evidence source commit binding mismatch", lambda: writer.validate_record(valid)); state["sha"] = SHA
@@ -145,6 +152,7 @@ def main() -> int:
 
     print("Memory OS backup/restore non-resurrection negative admission suite PASS")
     print("typed domain and independent review evidence are generation/commit/bundle/digest bound: true")
+    print("typed record immutably binds review payload digests: true")
     print("canonical registries mutated: false")
     print("production evidence: false")
     print("production decision: NO_GO")
