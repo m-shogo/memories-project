@@ -11,6 +11,7 @@
     "foundationImplementationMustNotEqualProductionEvidence": true,
     "productionDecisionMustRemainNoGo": true,
     "registeredGenerationCountMustRemainDistinctFromSemanticPreflightEligibility": true,
+    "approvedRecoveryObjectiveCountMustDeriveFromTypedHumanApprovalAuthority": true,
     "recoveryCandidateRequiresIndependentEvidenceReview": true,
     "recoveryCandidateMustNotImplyHumanProductionPromotionReview": true,
     "recoveryCandidateMustNotAuthorizeProductionPromotion": true,
