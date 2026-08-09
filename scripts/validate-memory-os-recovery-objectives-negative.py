@@ -11,6 +11,7 @@ from typing import Any, Callable
 ROOT = Path(__file__).resolve().parents[1]
 WRITER = ROOT / "scripts/register-memory-os-recovery-objectives.py"
 CONTRACT = ROOT / "contracts/operations/recovery-objectives-admission-contract.v1.json"
+APPROVAL_FIXTURE_DIR = "docs/fixtures/memory-os-operability/recovery-objectives-approval"
 
 
 class Fail(RuntimeError):
@@ -51,7 +52,10 @@ def base_record() -> dict[str, Any]:
         "rtoMeasurementMethod": "measure drill start to validated recovery completion",
         "skewMeasurementMethod": "compare restored database and object recovery point timestamps",
         "ownerRef": "contracts/operations/recovery-objectives-admission-contract.v1.json",
-        "approvalEvidenceRefs": ["SECURITY.md", "README.md"],
+        "approvalEvidenceRefs": [
+            f"{APPROVAL_FIXTURE_DIR}/recovery-owner.valid.json",
+            f"{APPROVAL_FIXTURE_DIR}/operability.valid.json",
+        ],
         "approvedAt": "2026-08-08T00:00:00Z",
         "supersedesObjectiveId": None,
         "productionEvidence": False,
@@ -94,17 +98,23 @@ def main() -> int:
 
     reused_owner = copy.deepcopy(valid)
     reused_owner["objectiveId"] = "ro_negative_owner_reused"
-    reused_owner["approvalEvidenceRefs"] = [reused_owner["ownerRef"], "README.md"]
+    reused_owner["approvalEvidenceRefs"] = [reused_owner["ownerRef"], f"{APPROVAL_FIXTURE_DIR}/operability.valid.json"]
     expect_rejected("owner reused as independent approval evidence", lambda: writer.validate_record(reused_owner))
 
     duplicate_approval = copy.deepcopy(valid)
     duplicate_approval["objectiveId"] = "ro_negative_dup_approval"
-    duplicate_approval["approvalEvidenceRefs"] = ["SECURITY.md", "SECURITY.md"]
+    duplicate_approval["approvalEvidenceRefs"] = [
+        f"{APPROVAL_FIXTURE_DIR}/recovery-owner.valid.json",
+        f"{APPROVAL_FIXTURE_DIR}/recovery-owner.valid.json",
+    ]
     expect_rejected("duplicate approval evidence refs", lambda: writer.validate_record(duplicate_approval))
 
     missing_approval = copy.deepcopy(valid)
     missing_approval["objectiveId"] = "ro_negative_missing_approval"
-    missing_approval["approvalEvidenceRefs"] = ["SECURITY.md", "docs/evidence/does-not-exist-approval.json"]
+    missing_approval["approvalEvidenceRefs"] = [
+        f"{APPROVAL_FIXTURE_DIR}/recovery-owner.valid.json",
+        "docs/evidence/does-not-exist-approval.json",
+    ]
     expect_rejected("missing approval evidence path", lambda: writer.validate_record(missing_approval))
 
     non_utc = copy.deepcopy(valid)
