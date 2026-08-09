@@ -17,6 +17,8 @@ RESULT_DIR = ROOT / "docs/fixtures/memory-os-operability"
 RESULT_GLOB = "sustained-local-soak-results.run-*.v1.json"
 RESULT_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak-result.py"
 REVIEW_PATH = RESULT_DIR / "sustained-local-soak-trend-review.v1.json"
+TIMESTAMP_DURATION_TOLERANCE_SECONDS = 2.0
+GENERATION_LAG_LIMIT_SECONDS = 120.0
 
 
 class Fail(RuntimeError):
@@ -71,10 +73,17 @@ def summarize_run(path: Path) -> tuple[datetime, dict[str, Any]]:
     require(isinstance(scenario, dict), f"{path.name}: scenario missing")
     require(scenario.get("result") == "PASS" and scenario.get("integrityResult") == "PASS",
             f"{path.name}: result/integrity must PASS")
+    started_at = utc_timestamp(scenario.get("startedAt"), f"{path.name}.scenario.startedAt")
     completed_at = utc_timestamp(scenario.get("completedAt"), f"{path.name}.scenario.completedAt")
     generated_at = utc_timestamp(value.get("generatedAt"), f"{path.name}.generatedAt")
-    require(generated_at >= completed_at,
-            f"{path.name}: generatedAt cannot precede scenario.completedAt")
+    duration_seconds = finite_number(scenario.get("durationSeconds"), f"{path.name}.scenario.durationSeconds")
+    wall_duration = (completed_at - started_at).total_seconds()
+    require(wall_duration >= 0, f"{path.name}: scenario.completedAt cannot precede scenario.startedAt")
+    require(abs(wall_duration - duration_seconds) <= TIMESTAMP_DURATION_TOLERANCE_SECONDS,
+            f"{path.name}: scenario timestamps must agree with durationSeconds")
+    generation_lag = (generated_at - completed_at).total_seconds()
+    require(0 <= generation_lag <= GENERATION_LAG_LIMIT_SECONDS,
+            f"{path.name}: generatedAt must follow completion within bounded evidence-write lag")
     trends = scenario.get("trends")
     require(isinstance(trends, dict), f"{path.name}: trends missing")
     assertions = scenario.get("assertions")
@@ -99,7 +108,7 @@ def summarize_run(path: Path) -> tuple[datetime, dict[str, Any]]:
     return completed_at, {
         "runId": value["runId"],
         "sourceCommitSha": value["commitSha"],
-        "durationSeconds": scenario["durationSeconds"],
+        "durationSeconds": duration_seconds,
         "rssSlopeBytesPerMinute": finite_number(trends.get("rssSlopeBytesPerMinute"), "rss slope"),
         "heapAllocSlopeBytesPerMinute": finite_number(trends.get("heapAllocSlopeBytesPerMinute"), "heap alloc slope"),
         "heapInuseSlopeBytesPerMinute": finite_number(trends.get("heapInuseSlopeBytesPerMinute"), "heap inuse slope"),
@@ -171,6 +180,7 @@ def main() -> int:
     REVIEW_PATH.write_text(json.dumps(review, indent=2) + "\n", encoding="utf-8")
     print("Memory OS sustained local soak descriptive trend review created")
     print(f"reviewed runs: {len(runs)}")
+    print("run chronology bound to UTC timestamps and measured duration: true")
     print("latest pair selected by validated scenario completion chronology: true")
     print("trend review completed: true")
     print("local sustained-soak evidence eligible: true")
