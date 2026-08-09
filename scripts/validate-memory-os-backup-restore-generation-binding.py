@@ -71,12 +71,12 @@ def main() -> int:
         "environmentIdWithoutGenerationIsSufficient", "sameDatabaseEngineVersionAloneIsSufficient",
         "sameObjectStoreVendorAloneIsSufficient", "hashOnlyWithoutRegisteredGenerationIsSufficient",
         "restoreIntoProductionRequired", "productionCredentialsRequired",
-        "recoveryCandidateAutomaticallyCompletesIndependentReview",
+        "recoveryCandidateAutomaticallyCompletesHumanProductionPromotionReview",
         "recoveryCandidateAutomaticallyAuthorizesProductionPromotion",
     ):
         require(promotion.get(key) is False, f"unsafe restore promotion rule: {key}")
     require(promotion.get("isolatedRestoreRequired") is True, "isolated restore must remain required")
-    require(promotion.get("independentReviewRequired") is True, "independent review must remain required")
+    require(promotion.get("independentReviewRequired") is True, "candidate-level independent evidence review must remain required")
     require(promotion.get("humanProductionPromotionReviewRemainsSeparate") is True, "human production-promotion review must remain separate")
 
     backup_readiness = backup.get("readiness")
@@ -141,7 +141,8 @@ def main() -> int:
     for field, value in expected.items():
         require(boundary.get(field) == value, f"restore generation boundary drift: {field}")
     require(boundary.get("productionEquivalentRestoreEvidence") is (candidate_count > 0), "productionEquivalentRestoreEvidence derivation drift")
-    require(boundary.get("independentReviewCompleted") is False, "recovery candidate must not complete independent review")
+    require(boundary.get("independentReviewCompleted") is (candidate_count > 0), "candidate-level independent evidence review derivation drift")
+    require(boundary.get("humanProductionPromotionReviewCompleted") is False, "recovery candidate must not complete human production-promotion review")
     require(boundary.get("humanProductionPromotionAuthorized") is False, "recovery candidate must not authorize human production promotion")
     require(boundary.get("productionEvidence") is False and boundary.get("productionReady") is False, "restore generation foundation cannot promote production")
     require(boundary.get("productionDecision") == "NO_GO", "production decision must remain NO_GO")
@@ -158,11 +159,12 @@ def main() -> int:
         "generationBoundBackupAvailable": backup_count > 0,
         "generationBoundRestoreAvailable": restore_count > 0,
         "productionEquivalentRecoveryCandidateAvailable": candidate_count > 0,
+        "independentReviewCompleted": candidate_count > 0,
         "productionEquivalentRestoreEvidence": candidate_count > 0,
     }
     for field, value in derived.items():
         require(readiness.get(field) is value, f"restore generation readiness drift: {field}")
-    require(readiness.get("independentReviewCompleted") is False, "candidate availability must not imply independent review completion")
+    require(readiness.get("humanProductionPromotionReviewCompleted") is False, "candidate availability must not imply human promotion review completion")
     require(readiness.get("humanProductionPromotionAuthorized") is False, "candidate availability must not imply production promotion authority")
     require(readiness.get("productionReady") is False, "restore generation foundation cannot make application production ready")
 
@@ -174,7 +176,8 @@ def main() -> int:
     print(f"registered production-equivalent generations: {generation_count}")
     print(f"generation-bound backups/restores: {backup_count}/{restore_count}")
     print(f"production-equivalent recovery candidates: {candidate_count}")
-    print("independent review completed by recovery candidate: false")
+    print(f"candidate-level independent evidence review complete: {str(candidate_count > 0).lower()}")
+    print("human production-promotion review completed by recovery candidate: false")
     print("human production promotion authorized by recovery candidate: false")
     print("production evidence: false")
     print("production decision: NO_GO")
