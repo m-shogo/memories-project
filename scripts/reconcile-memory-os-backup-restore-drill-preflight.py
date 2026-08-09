@@ -107,7 +107,7 @@ def main() -> int:
     blockers = state["blockingPrerequisites"]
     blocker_text = ",".join(blockers) if blockers else "none"
     append_once(existing, (
-        f"{EVIDENCE_PREFIX} registered/unsuperseded generations={state['registeredGenerationCount']}/{state['unsupersededGenerationCount']}, distinct unsuperseded environments={state['distinctUnsupersededEnvironmentCount']}, eligible directed source-target pairs={state['eligibleDirectedSourceTargetPairCount']}, approved recovery objectives={state['approvedRecoveryObjectiveCount']}, reviewed/current drill requests={state['reviewedDrillRequestCount']}/{state['currentExecutableDrillRequestCount']}, blocking prerequisites={state['blockingPrerequisiteCount']}[{blocker_text}], decision={state['preflightDecision']}; READY authorizes only external reviewed request submission, never prerequisite/request creation, backup/restore execution, production traffic or promotion"
+        f"{EVIDENCE_PREFIX} registered/preflight-eligible generations={state['registeredGenerationCount']}/{state['preflightEligibleGenerationCount']}, unsuperseded/preflight-eligible unsuperseded generations={state['unsupersededGenerationCount']}/{state['unsupersededPreflightEligibleGenerationCount']}, distinct semantic preflight-eligible unsuperseded environments={state['distinctUnsupersededEnvironmentCount']}, eligible directed source-target pairs={state['eligibleDirectedSourceTargetPairCount']}, approved recovery objectives={state['approvedRecoveryObjectiveCount']}, reviewed/current drill requests={state['reviewedDrillRequestCount']}/{state['currentExecutableDrillRequestCount']}, blocking prerequisites={state['blockingPrerequisiteCount']}[{blocker_text}], decision={state['preflightDecision']}; registered generation inventory alone never creates restore-planning authority; READY authorizes only external reviewed request submission, never prerequisite/request creation, backup/restore execution, production traffic or promotion"
     ))
     for ref in REFS:
         require((ROOT / ref).is_file(), f"preflight evidence ref missing: {ref}")
@@ -121,10 +121,14 @@ def main() -> int:
     require(completed.returncode == 0, f"post-reconcile preflight validator failed:\n{completed.stdout[-8000:]}{completed.stderr[-8000:]}")
 
     print("Memory OS production-equivalent restore drill preflight reconciliation PASS")
+    print(f"registered/preflight-eligible generations: {state['registeredGenerationCount']}/{state['preflightEligibleGenerationCount']}")
+    print(f"unsuperseded/preflight-eligible unsuperseded generations: {state['unsupersededGenerationCount']}/{state['unsupersededPreflightEligibleGenerationCount']}")
+    print(f"distinct semantic preflight-eligible unsuperseded environments: {state['distinctUnsupersededEnvironmentCount']}")
     print(f"preflight decision: {state['preflightDecision']}")
     print(f"blocking prerequisites ({state['blockingPrerequisiteCount']}): {blocker_text}")
     print(f"eligible directed source-target pairs: {state['eligibleDirectedSourceTargetPairCount']}")
     print(f"reviewed/current drill requests: {state['reviewedDrillRequestCount']}/{state['currentExecutableDrillRequestCount']}")
+    print("registered generation inventory alone creates restore-planning authority: false")
     print("automatic prerequisite/request creation: false")
     print("restore executed: false")
     print("canonical OPS-P0-007 blockers preserved: 6")
