@@ -9,6 +9,7 @@ audit and candidate invalidation are deterministic.
 from __future__ import annotations
 
 import copy
+import hashlib
 import importlib.util
 import json
 import subprocess
@@ -21,6 +22,8 @@ WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.p
 CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
 DRILL_CONTRACT = ROOT / "contracts/operations/backup-restore-drill-request-contract.v1.json"
 NON_RESURRECTION_CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
+SOURCE_ENV_FIXTURE = ROOT / "docs/fixtures/memory-os-operability/backup-restore-generation-evidence/source-environment-record.valid.json"
+TARGET_ENV_FIXTURE = ROOT / "docs/fixtures/memory-os-operability/backup-restore-generation-evidence/target-environment-record.valid.json"
 DIGEST_A = "a" * 64
 DIGEST_B = "b" * 64
 DIGEST_C = "c" * 64
@@ -45,11 +48,26 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def head_sha() -> str:
-    completed = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    completed = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
     require(completed.returncode == 0, "cannot resolve HEAD")
     value = completed.stdout.strip()
     require(len(value) == 40, "HEAD must be full SHA")
     return value
+
+
+def sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def repo_ref(path: Path) -> str:
+    return str(path.relative_to(ROOT))
 
 
 def load_writer():
@@ -71,6 +89,34 @@ def expect_rejected(name: str, action: Callable[[], Any]) -> None:
         print(f"PASS reject: {name}")
         return
     raise Fail(f"negative case unexpectedly accepted: {name}")
+
+
+def generation_record(
+    *,
+    generation_id: str,
+    environment_id: str,
+    environment_manifest_sha256: str,
+    environment_record: Path,
+    commit_sha: str,
+) -> dict[str, Any]:
+    return {
+        "schemaVersion": "memory-os-production-equivalent-environment-generation-record.v1",
+        "environmentId": environment_id,
+        "generationId": generation_id,
+        "registeredAt": "2026-08-08T00:00:00Z",
+        "sourceCommitSha": commit_sha,
+        "environmentManifestSha256": environment_manifest_sha256,
+        "dependencyInventorySha256": DIGEST_C,
+        "evidenceBundleManifestSha256": DIGEST_D,
+        "materialDeltaLedgerSha256": DIGEST_E,
+        "environmentRecordRef": repo_ref(environment_record),
+        "environmentRecordSha256": sha256(environment_record),
+        "supersedesGenerationId": None,
+        "productionTraffic": False,
+        "productionCredentials": False,
+        "productionEvidence": False,
+        "productionReady": False,
+    }
 
 
 def base_record(commit_sha: str) -> dict[str, Any]:
@@ -188,7 +234,15 @@ def typed_overlay_record(evidence_id: str, commit_sha: str) -> dict[str, Any]:
 
 
 def main() -> int:
-    require(WRITER.is_file() and CONTRACT.is_file() and DRILL_CONTRACT.is_file() and NON_RESURRECTION_CONTRACT.is_file(), "generation evidence foundation missing")
+    require(
+        WRITER.is_file()
+        and CONTRACT.is_file()
+        and DRILL_CONTRACT.is_file()
+        and NON_RESURRECTION_CONTRACT.is_file()
+        and SOURCE_ENV_FIXTURE.is_file()
+        and TARGET_ENV_FIXTURE.is_file(),
+        "generation evidence foundation missing",
+    )
     writer = load_writer()
     commit_sha = head_sha()
 
@@ -203,16 +257,27 @@ def main() -> int:
         drill_registry = tmp_path / "drill-requests.json"
         overlay_registry = tmp_path / "typed-overlay.json"
 
+        source_generation = generation_record(
+            generation_id="pegen_source",
+            environment_id="pe_source",
+            environment_manifest_sha256=DIGEST_A,
+            environment_record=SOURCE_ENV_FIXTURE,
+            commit_sha=commit_sha,
+        )
+        target_generation = generation_record(
+            generation_id="pegen_target",
+            environment_id="pe_target",
+            environment_manifest_sha256=DIGEST_B,
+            environment_record=TARGET_ENV_FIXTURE,
+            commit_sha=commit_sha,
+        )
         write_json(generation_registry, {
             "schemaVersion": "memory-os-production-equivalent-environment-generation-registry.v1",
             "appendOnly": True,
             "registeredGenerationCount": 2,
             "currentGenerationId": "pegen_target",
             "productionEvidence": False,
-            "generations": [
-                {"generationId": "pegen_source", "environmentId": "pe_source", "environmentManifestSha256": DIGEST_A, "sourceCommitSha": commit_sha, "supersedesGenerationId": None},
-                {"generationId": "pegen_target", "environmentId": "pe_target", "environmentManifestSha256": DIGEST_B, "sourceCommitSha": commit_sha, "supersedesGenerationId": None},
-            ],
+            "generations": [source_generation, target_generation],
         })
         write_json(objectives_registry, {
             "schemaVersion": "memory-os-recovery-objectives-registry.v1",
@@ -336,7 +401,9 @@ def main() -> int:
         stale_objectives = load(objectives_registry)
         stale_objectives["approvedObjectiveCount"] = 3
         stale_objectives["currentObjectiveId"] = "recovery_objectives_new"
-        stale_objectives["records"].append({"objectiveId": "recovery_objectives_new", "rpoSeconds": 45, "rtoSeconds": 90, "maximumObjectDatabaseSkewSeconds": 8})
+        stale_objectives["records"].append(
+            {"objectiveId": "recovery_objectives_new", "rpoSeconds": 45, "rtoSeconds": 90, "maximumObjectDatabaseSkewSeconds": 8}
+        )
         write_json(objectives_registry, stale_objectives)
         expect_rejected("stale drill request for new evidence", lambda: writer.validate_record(valid))
         writer.validate_record(valid, require_current_drill_request=False)
