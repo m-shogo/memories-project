@@ -22,7 +22,8 @@ STATUS = ROOT / "contracts/operations/production-operability-status.json"
 EVIDENCE = (
     "future production-equivalent restore promotion is generation-bound: backup artifact/manifest hashes, source environment generation/manifest, "
     "source commit, restore target generation/manifest and restore evidence bundle must match append-only registered generations; legacy local restore "
-    "evidence cannot be relabeled and cross-generation restores require material-delta review"
+    "evidence cannot be relabeled, cross-generation restores require material-delta review, candidate-level independent evidence review remains required, "
+    "and human production-promotion review remains a separate non-automatic decision"
 )
 REFS = (
     "contracts/operations/backup-restore-generation-binding-contract.v1.json",
@@ -57,11 +58,25 @@ def main() -> int:
     subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=True)
     contract = load(CONTRACT)
     boundary = contract.get("currentBoundary", {})
-    if boundary.get("registeredProductionEquivalentGenerationCount") != 0:
-        raise SystemExit("production-equivalent generation unexpectedly registered")
-    if boundary.get("generationBoundBackupCount") != 0 or boundary.get("generationBoundRestoreCount") != 0:
-        raise SystemExit("generation-bound restore evidence unexpectedly exists")
-    for key in ("productionEquivalentRestoreEvidence", "productionEvidence", "productionReady"):
+    generation_count = boundary.get("registeredProductionEquivalentGenerationCount")
+    backup_count = boundary.get("generationBoundBackupCount")
+    restore_count = boundary.get("generationBoundRestoreCount")
+    candidate_count = boundary.get("productionEquivalentRecoveryCandidateCount")
+    for value, field in (
+        (generation_count, "registeredProductionEquivalentGenerationCount"),
+        (backup_count, "generationBoundBackupCount"),
+        (restore_count, "generationBoundRestoreCount"),
+        (candidate_count, "productionEquivalentRecoveryCandidateCount"),
+    ):
+        if not isinstance(value, int) or value < 0:
+            raise SystemExit(f"invalid restore generation boundary count: {field}")
+    if not (candidate_count <= restore_count <= backup_count):
+        raise SystemExit("restore generation boundary count ordering drift")
+    if boundary.get("productionEquivalentRestoreEvidence") is not (candidate_count > 0):
+        raise SystemExit("production-equivalent restore evidence derivation drift")
+    if boundary.get("independentReviewCompleted") is not (candidate_count > 0):
+        raise SystemExit("candidate-level independent evidence review derivation drift")
+    for key in ("humanProductionPromotionReviewCompleted", "humanProductionPromotionAuthorized", "productionEvidence", "productionReady"):
         if boundary.get(key) is not False:
             raise SystemExit(f"restore foundation cannot enable {key}")
     if boundary.get("productionDecision") != "NO_GO":
@@ -93,6 +108,9 @@ def main() -> int:
     refs = backup.get("evidenceRefs")
     if not isinstance(existing, list) or not isinstance(refs, list):
         raise SystemExit("OPS-P0-007 authority arrays missing")
+    # Replace older wording for this authority without touching unrelated evidence.
+    prefix = "future production-equivalent restore promotion is generation-bound:"
+    existing[:] = [item for item in existing if not (isinstance(item, str) and item.startswith(prefix))]
     append_once(existing, EVIDENCE)
     for ref in REFS:
         if not (ROOT / ref).is_file():
@@ -119,8 +137,11 @@ def main() -> int:
     print("Memory OS backup/restore generation status reconciliation PASS")
     print("misclassified OPS-P0-003 restore evidence: removed")
     print("generation binding foundation: registered under OPS-P0-007")
+    print(f"production-equivalent recovery candidates: {candidate_count}")
+    print(f"candidate-level independent evidence review complete: {str(candidate_count > 0).lower()}")
+    print("human production-promotion review completed: false")
+    print("human production promotion authorized: false")
     print("backup/restore blocker list: normalized")
-    print("production-equivalent restore evidence: false")
     print("OPS-P0-007: incomplete")
     print("productionDecision: NO_GO")
     return 0
