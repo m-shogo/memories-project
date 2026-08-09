@@ -4,7 +4,9 @@
 The canonical inventory and production status are never mutated. This harness
 loads the canonical inventory, writes isolated mutated copies under the
 repository, points the real inventory validator at each copy, and requires every
-promotion-authority mutation to fail closed.
+promotion-authority mutation to fail closed. It also composes the canonical
+status-hygiene mutation suite so inventory and status cannot diverge on the same
+authority boundary.
 """
 
 from __future__ import annotations
@@ -12,12 +14,14 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-operability-admission-inventory.py"
+STATUS_HYGIENE_NEGATIVE = ROOT / "scripts/validate-memory-os-operability-status-hygiene-negative.py"
 INVENTORY = ROOT / "contracts/operations/operability-admission-inventory.v1.json"
 TEMP_PARENT = ROOT / "contracts/operations"
 
@@ -81,7 +85,10 @@ def expect_rejected(
 
 
 def main() -> int:
-    require(VALIDATOR.is_file() and INVENTORY.is_file() and TEMP_PARENT.is_dir(), "inventory promotion negative foundation missing")
+    require(
+        VALIDATOR.is_file() and STATUS_HYGIENE_NEGATIVE.is_file() and INVENTORY.is_file() and TEMP_PARENT.is_dir(),
+        "inventory promotion negative foundation missing",
+    )
     canonical = load(INVENTORY)
     row = backup_row(canonical)
     require(canonical.get("productionDecision") == "NO_GO", "canonical inventory productionDecision drift")
@@ -117,9 +124,21 @@ def main() -> int:
         lambda value: backup_row(value).__setitem__("humanProductionPromotionAuthorized", True),
     )
 
+    completed = subprocess.run(
+        ["python", str(STATUS_HYGIENE_NEGATIVE)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    print(completed.stdout, end="")
+    require(completed.returncode == 0, "operability status hygiene negative suite failed")
+
     print("Memory OS operability inventory production-promotion negative suite PASS")
     print("candidate authority can manufacture human promotion review: false")
     print("candidate authority can manufacture human promotion authorization: false")
+    print("status/inventory promotion semantics diverge silently: false")
     print("canonical inventory mutated: false")
     print("production evidence: false")
     print("production decision: NO_GO")
