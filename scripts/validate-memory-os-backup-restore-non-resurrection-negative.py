@@ -63,6 +63,19 @@ def base_record(contract: dict[str, Any]) -> dict[str, Any]:
         "productionReady": False
     }
 
+def domain_payload(*, generation_evidence_id: str, source_commit_sha: str, domain: str, result: str = "PASS") -> dict[str, Any]:
+    return {
+        "schemaVersion": "memory-os-backup-restore-non-resurrection-domain-evidence.v1",
+        "generationEvidenceId": generation_evidence_id,
+        "sourceCommitSha": source_commit_sha,
+        "domain": domain,
+        "result": result,
+        "productionTraffic": False,
+        "productionCredentials": False,
+        "productionEvidence": False,
+        "productionReady": False,
+    }
+
 def main() -> int:
     require(WRITER.is_file() and CONTRACT.is_file(), "typed non-resurrection foundation missing")
     contract = load(CONTRACT)
@@ -78,11 +91,17 @@ def main() -> int:
         writer.GEN_EVIDENCE_REGISTRY = generation_registry
 
         real_repo_ref = writer.repo_ref
+        real_domain_evidence = writer.domain_evidence
         writer.repo_ref = lambda value, field: value if isinstance(value, str) and value else (_ for _ in ()).throw(writer.Fail(f"{field} invalid"))
+        writer.domain_evidence = lambda ref, *, domain, generation_evidence_id, source_commit_sha: domain_payload(
+            generation_evidence_id=generation_evidence_id,
+            source_commit_sha=source_commit_sha,
+            domain=domain,
+        )
 
         valid = base_record(contract)
         writer.validate_record(valid)
-        print("PASS accept: structurally complete typed record")
+        print("PASS accept: structurally complete and generation-bound typed record")
 
         unregistered = copy.deepcopy(valid)
         unregistered["recordId"] = "brnr_unregistered_generation"
@@ -136,12 +155,43 @@ def main() -> int:
         duplicate_ref["domains"][second]["evidenceRef"] = duplicate_ref["domains"][first]["evidenceRef"]
         expect_rejected("domain evidence references must be distinct", lambda: writer.validate_record(duplicate_ref))
 
+        writer.domain_evidence = lambda ref, *, domain, generation_evidence_id, source_commit_sha: domain_payload(
+            generation_evidence_id="brge_other_generation",
+            source_commit_sha=source_commit_sha,
+            domain=domain,
+        )
+        expect_rejected("domain evidence generation binding mismatch", lambda: writer.validate_record(valid))
+
+        writer.domain_evidence = lambda ref, *, domain, generation_evidence_id, source_commit_sha: domain_payload(
+            generation_evidence_id=generation_evidence_id,
+            source_commit_sha="b" * 40,
+            domain=domain,
+        )
+        expect_rejected("domain evidence source commit binding mismatch", lambda: writer.validate_record(valid))
+
+        writer.domain_evidence = lambda ref, *, domain, generation_evidence_id, source_commit_sha: domain_payload(
+            generation_evidence_id=generation_evidence_id,
+            source_commit_sha=source_commit_sha,
+            domain="wrongDomain",
+        )
+        expect_rejected("domain evidence domain binding mismatch", lambda: writer.validate_record(valid))
+
+        writer.domain_evidence = lambda ref, *, domain, generation_evidence_id, source_commit_sha: domain_payload(
+            generation_evidence_id=generation_evidence_id,
+            source_commit_sha=source_commit_sha,
+            domain=domain,
+            result="FAIL",
+        )
+        expect_rejected("domain evidence result binding mismatch", lambda: writer.validate_record(valid))
+
         writer.repo_ref = real_repo_ref
+        writer.domain_evidence = real_domain_evidence
         missing_file = copy.deepcopy(valid)
         missing_file["recordId"] = "brnr_missing_evidence_file"
         expect_rejected("typed evidence file must exist", lambda: writer.validate_record(missing_file))
 
     print("Memory OS backup/restore non-resurrection negative admission suite PASS")
+    print("typed domain evidence must bind generation, commit, domain and result: true")
     print("canonical registries mutated: false")
     print("production evidence: false")
     print("production decision: NO_GO")
