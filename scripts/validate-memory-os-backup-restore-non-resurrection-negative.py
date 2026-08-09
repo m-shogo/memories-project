@@ -91,14 +91,35 @@ def main() -> int:
         writer.GEN_EVIDENCE_REGISTRY = generation_registry
 
         real_repo_ref = writer.repo_ref
-        real_domain_evidence = writer.domain_evidence
+        real_load = writer.load
         writer.repo_ref = lambda value, field: value if isinstance(value, str) and value else (_ for _ in ()).throw(writer.Fail(f"{field} invalid"))
-        writer.domain_evidence = lambda ref, *, domain, generation_evidence_id, source_commit_sha: domain_payload(
-            generation_evidence_id=generation_evidence_id,
-            source_commit_sha=source_commit_sha,
-            domain=domain,
-        )
 
+        prefixes = contract["domainEvidencePathPrefixes"]
+        synthetic_state: dict[str, Any] = {
+            "generationEvidenceId": "brge_negative_generation",
+            "sourceCommitSha": SHA,
+            "domainOverride": None,
+            "result": "PASS",
+        }
+
+        def fake_load(path: Path) -> dict[str, Any]:
+            if path == generation_registry:
+                return real_load(path)
+            try:
+                ref = str(path.relative_to(ROOT))
+            except ValueError:
+                return real_load(path)
+            matched = next((name for name, prefix in prefixes.items() if ref.startswith(prefix)), None)
+            if matched is not None:
+                return domain_payload(
+                    generation_evidence_id=synthetic_state["generationEvidenceId"],
+                    source_commit_sha=synthetic_state["sourceCommitSha"],
+                    domain=synthetic_state["domainOverride"] or matched,
+                    result=synthetic_state["result"],
+                )
+            return real_load(path)
+
+        writer.load = fake_load
         valid = base_record(contract)
         writer.validate_record(valid)
         print("PASS accept: structurally complete and generation-bound typed record")
@@ -155,37 +176,24 @@ def main() -> int:
         duplicate_ref["domains"][second]["evidenceRef"] = duplicate_ref["domains"][first]["evidenceRef"]
         expect_rejected("domain evidence references must be distinct", lambda: writer.validate_record(duplicate_ref))
 
-        writer.domain_evidence = lambda ref, *, domain, generation_evidence_id, source_commit_sha: domain_payload(
-            generation_evidence_id="brge_other_generation",
-            source_commit_sha=source_commit_sha,
-            domain=domain,
-        )
+        synthetic_state["generationEvidenceId"] = "brge_other_generation"
         expect_rejected("domain evidence generation binding mismatch", lambda: writer.validate_record(valid))
+        synthetic_state["generationEvidenceId"] = "brge_negative_generation"
 
-        writer.domain_evidence = lambda ref, *, domain, generation_evidence_id, source_commit_sha: domain_payload(
-            generation_evidence_id=generation_evidence_id,
-            source_commit_sha="b" * 40,
-            domain=domain,
-        )
+        synthetic_state["sourceCommitSha"] = "b" * 40
         expect_rejected("domain evidence source commit binding mismatch", lambda: writer.validate_record(valid))
+        synthetic_state["sourceCommitSha"] = SHA
 
-        writer.domain_evidence = lambda ref, *, domain, generation_evidence_id, source_commit_sha: domain_payload(
-            generation_evidence_id=generation_evidence_id,
-            source_commit_sha=source_commit_sha,
-            domain="wrongDomain",
-        )
+        synthetic_state["domainOverride"] = "wrongDomain"
         expect_rejected("domain evidence domain binding mismatch", lambda: writer.validate_record(valid))
+        synthetic_state["domainOverride"] = None
 
-        writer.domain_evidence = lambda ref, *, domain, generation_evidence_id, source_commit_sha: domain_payload(
-            generation_evidence_id=generation_evidence_id,
-            source_commit_sha=source_commit_sha,
-            domain=domain,
-            result="FAIL",
-        )
+        synthetic_state["result"] = "FAIL"
         expect_rejected("domain evidence result binding mismatch", lambda: writer.validate_record(valid))
+        synthetic_state["result"] = "PASS"
 
         writer.repo_ref = real_repo_ref
-        writer.domain_evidence = real_domain_evidence
+        writer.load = real_load
         missing_file = copy.deepcopy(valid)
         missing_file["recordId"] = "brnr_missing_evidence_file"
         expect_rejected("typed evidence file must exist", lambda: writer.validate_record(missing_file))
