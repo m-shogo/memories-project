@@ -22,6 +22,7 @@ CHAIN_CONTRACT = ROOT / "contracts/operations/backup-restore-admission-chain-con
 GEN_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-generation.py"
 OBJECTIVE_VALIDATOR = ROOT / "scripts/validate-memory-os-recovery-objectives.py"
 DRILL_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-request.py"
+NEGATIVE_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight-negative.py"
 GEN_BLOCKER = "TWO_UNSUPERSEDED_DISTINCT_ENVIRONMENT_GENERATIONS"
 OBJECTIVE_BLOCKER = "CURRENT_APPROVED_RECOVERY_OBJECTIVE"
 STATE_FIELDS = {
@@ -204,6 +205,7 @@ def main() -> int:
         "drillRequestRegistry": DRILL_REGISTRY,
         "admissionChainContract": CHAIN_CONTRACT,
         "validator": Path("scripts/validate-memory-os-backup-restore-drill-preflight.py"),
+        "negativeAdmissionValidator": NEGATIVE_VALIDATOR,
         "reconcile": Path("scripts/reconcile-memory-os-backup-restore-drill-preflight.py"),
         "workflow": Path(".github/workflows/backup-restore-drill-preflight.yml"),
     }
