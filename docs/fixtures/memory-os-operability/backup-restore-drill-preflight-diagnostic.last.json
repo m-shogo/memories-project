@@ -3,7 +3,7 @@
   "workflow": "backup-restore-drill-preflight",
   "result": "FAIL",
   "exitCode": 1,
-  "output": "BACKUP RESTORE DRILL PREFLIGHT RECONCILE FAILED: post-reconcile preflight validator failed:\nBACKUP RESTORE DRILL PREFLIGHT FAILED: environment generation validator failed:\nPRODUCTION-EQUIVALENT GENERATION FAILED: generation artifact missing: negativeAdmissionValidator\n\n\n",
+  "output": "BACKUP RESTORE DRILL PREFLIGHT RECONCILE FAILED: post-reconcile preflight validator failed:\nBACKUP RESTORE DRILL PREFLIGHT FAILED: semantic generation eligibility rule missing\n\n",
   "containsSecrets": false,
   "requestCreated": false,
   "generationCreated": false,
