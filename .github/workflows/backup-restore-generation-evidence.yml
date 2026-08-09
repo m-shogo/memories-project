@@ -13,11 +13,14 @@ on:
       - "contracts/operations/backup-restore-drill-request-registry.v1.json"
       - "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
       - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "contracts/operations/recovery-objectives-admission-contract.v1.json"
       - "contracts/operations/recovery-objectives-registry.v1.json"
       - "docs/evidence/backup-restore/**"
       - "docs/fixtures/memory-os-operability/backup-restore-generation-evidence/**"
+      - "scripts/memory_os_environment_generation_eligibility.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
       - "scripts/request-memory-os-backup-restore-drill.py"
       - "scripts/validate-memory-os-backup-restore-drill-request.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-negative.py"
@@ -64,6 +67,8 @@ jobs:
           : > "$log"
           code=0
           python -m py_compile \
+            scripts/memory_os_environment_generation_eligibility.py \
+            scripts/validate-memory-os-production-equivalent-environment-generation.py \
             scripts/request-memory-os-backup-restore-drill.py \
             scripts/validate-memory-os-backup-restore-drill-request.py \
             scripts/validate-memory-os-backup-restore-drill-request-negative.py \
@@ -82,6 +87,7 @@ jobs:
             scripts/validate-memory-os-backup-restore-non-resurrection-negative.py \
             scripts/reconcile-memory-os-backup-non-resurrection-authority.py \
             >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-equivalent-environment-generation.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-request.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-backup-non-resurrection-authority.py >> "$log" 2>&1 || code=$?; fi
