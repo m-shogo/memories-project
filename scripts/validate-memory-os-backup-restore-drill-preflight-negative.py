@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight.py"
 CONTRACT = ROOT / "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
 TEMP_PARENT = ROOT / "contracts/operations"
+NEGATIVE_REF = "scripts/validate-memory-os-backup-restore-drill-preflight-negative.py"
 
 
 class Fail(RuntimeError):
@@ -61,11 +62,13 @@ def main() -> int:
     require(VALIDATOR.is_file() and CONTRACT.is_file() and TEMP_PARENT.is_dir(), "preflight negative foundation missing")
     validator = load_validator()
     canonical = load(CONTRACT)
+    require(canonical.get("negativeAdmissionValidator") == NEGATIVE_REF, "preflight contract negativeAdmissionValidator drift")
+    require((ROOT / NEGATIVE_REF).is_file(), "preflight negativeAdmissionValidator artifact missing")
     current_state = canonical.get("currentState")
     readiness = canonical.get("readiness")
     require(isinstance(current_state, dict) and set(current_state) == validator.STATE_FIELDS, "canonical preflight currentState is not exact")
     require(isinstance(readiness, dict) and set(readiness) == validator.READINESS_FIELDS, "canonical preflight readiness is not exact")
-    print("PASS baseline: canonical preflight authority field sets are exact")
+    print("PASS baseline: canonical preflight negative authority and field sets are exact")
 
     expect_rejected(
         validator,
@@ -93,6 +96,7 @@ def main() -> int:
     )
 
     print("Memory OS restore drill preflight negative authority-shape suite PASS")
+    print("negative validator contract binding: true")
     print("stale state aliases accepted: false")
     print("unexpected readiness aliases accepted: false")
     print("canonical authority mutated: false")
