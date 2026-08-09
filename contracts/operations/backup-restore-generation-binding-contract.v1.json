@@ -76,8 +76,6 @@
     "the existing exact-source local PostgreSQL and MinIO restore proofs remain local-only",
     "no production-equivalent environment generation or generation-bound recovery evidence is currently registered",
     "recovery objectives and reviewed restore drill requests remain separately governed and cannot be invented by restore evidence",
-    "candidate-level independent evidence review is not human production-promotion review",
-    "a production-equivalent recovery candidate cannot complete or authorize the separate human production-promotion decision",
     "production traffic and production credentials remain unnecessary and forbidden as automatic promotion shortcuts"
   ]
 }
