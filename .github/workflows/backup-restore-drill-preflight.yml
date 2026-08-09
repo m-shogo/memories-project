@@ -7,16 +7,21 @@ on:
       - "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/recovery-objectives-admission-contract.v1.json"
       - "contracts/operations/recovery-objectives-registry.v1.json"
       - "contracts/operations/backup-restore-drill-request-contract.v1.json"
       - "contracts/operations/backup-restore-drill-request-registry.v1.json"
       - "contracts/operations/backup-restore-admission-chain-contract.v1.json"
       - "contracts/operations/production-operability-status.json"
       - "docs/evidence/backup-restore/**"
+      - "docs/evidence/recovery-objectives/approvals/**"
       - "docs/fixtures/memory-os-operability/backup-restore-generation-evidence/**"
+      - "docs/fixtures/memory-os-operability/recovery-objectives-approval/**"
       - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-recovery-objectives.py"
+      - "scripts/validate-memory-os-recovery-objectives-negative.py"
       - "scripts/request-memory-os-backup-restore-drill.py"
       - "scripts/validate-memory-os-backup-restore-drill-request.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-negative.py"
@@ -31,16 +36,21 @@ on:
       - "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/recovery-objectives-admission-contract.v1.json"
       - "contracts/operations/recovery-objectives-registry.v1.json"
       - "contracts/operations/backup-restore-drill-request-contract.v1.json"
       - "contracts/operations/backup-restore-drill-request-registry.v1.json"
       - "contracts/operations/backup-restore-admission-chain-contract.v1.json"
       - "contracts/operations/production-operability-status.json"
       - "docs/evidence/backup-restore/**"
+      - "docs/evidence/recovery-objectives/approvals/**"
       - "docs/fixtures/memory-os-operability/backup-restore-generation-evidence/**"
+      - "docs/fixtures/memory-os-operability/recovery-objectives-approval/**"
       - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-recovery-objectives.py"
+      - "scripts/validate-memory-os-recovery-objectives-negative.py"
       - "scripts/request-memory-os-backup-restore-drill.py"
       - "scripts/validate-memory-os-backup-restore-drill-request.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-negative.py"
@@ -77,7 +87,9 @@ jobs:
           code=0
           python -m py_compile \
             scripts/validate-memory-os-production-equivalent-environment-generation.py \
+            scripts/register-memory-os-recovery-objectives.py \
             scripts/validate-memory-os-recovery-objectives.py \
+            scripts/validate-memory-os-recovery-objectives-negative.py \
             scripts/request-memory-os-backup-restore-drill.py \
             scripts/validate-memory-os-backup-restore-drill-request.py \
             scripts/validate-memory-os-backup-restore-drill-request-negative.py \
