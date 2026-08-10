@@ -18,6 +18,7 @@ from typing import Any, Callable
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
 CANONICAL_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+TEMP_PARENT = ROOT / "contracts/operations"
 
 
 class Fail(RuntimeError):
@@ -60,13 +61,14 @@ def expect_rejected(name: str, action: Callable[[], Any], expected_failure: type
 
 def main() -> int:
     require(VALIDATOR.is_file(), "typed non-resurrection admission validator missing")
+    require(TEMP_PARENT.is_dir(), "repo-local aggregate negative temp parent missing")
     canonical = load_json(CANONICAL_REGISTRY)
     require(canonical.get("productionEvidence") is False, "canonical registry productionEvidence drift")
     require(canonical.get("productionReady") is False, "canonical registry productionReady drift")
 
     validator = load_module(VALIDATOR, "memory_os_non_resurrection_aggregate_negative")
 
-    with tempfile.TemporaryDirectory(prefix="memory-os-nonres-aggregate-negative-") as tmp:
+    with tempfile.TemporaryDirectory(prefix=".memory-os-nonres-aggregate-negative-", dir=TEMP_PARENT) as tmp:
         tmp_path = Path(tmp)
         typed_registry = tmp_path / "typed-registry.json"
         generation_registry = tmp_path / "generation-registry.json"
@@ -122,6 +124,7 @@ def main() -> int:
     print("aggregate counters may not override row-derived authority: true")
     print("boolean aggregate counters accepted: false")
     print("unexpected exception accepted as valid rejection: false")
+    print("repo-local isolated mutation fixtures: true")
     print("canonical registries mutated: false")
     print("production evidence: false")
     print("production decision: NO_GO")
