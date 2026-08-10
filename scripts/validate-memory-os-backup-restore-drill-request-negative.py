@@ -21,6 +21,9 @@ class Fail(RuntimeError):
     pass
 
 
+EXPECTED_FAILURE: type[Exception] = Fail
+
+
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
@@ -54,7 +57,7 @@ def load_writer():
 def expect_rejected(name: str, action: Callable[[], Any]) -> None:
     try:
         action()
-    except Exception:
+    except EXPECTED_FAILURE:
         print(f"PASS reject: {name}")
         return
     raise Fail(f"negative case unexpectedly accepted: {name}")
@@ -136,9 +139,11 @@ def bind_approvals(tmp_path: Path, writer: Any, contract: dict[str, Any], reques
 
 
 def main() -> int:
+    global EXPECTED_FAILURE
     require(WRITER.is_file() and CONTRACT.is_file(), "drill request foundation missing")
     contract = load(CONTRACT)
     writer = load_writer()
+    EXPECTED_FAILURE = writer.Fail
     require(contract.get("approvalSchemaVersion") == "memory-os-backup-restore-drill-request-approval.v2", "approval schema must remain digest-bound v2")
     require("requestRecordSha256" in set(contract.get("requiredApprovalFields", [])), "approval requestRecordSha256 authority missing")
     require(contract.get("admissionRules", {}).get("approvalDocumentsMustBindCanonicalRequestRecordDigest") is True, "approval digest admission rule missing")
@@ -385,6 +390,7 @@ def main() -> int:
     print("independent reviewer pseudonyms enforced: true")
     print("historical authority preserved across supersession: true")
     print("current execution revalidation preserved: true")
+    print("unexpected exception accepted as a valid rejection: false")
     print("production traffic: false")
     print("automatic promotion: false")
     print("production evidence: false")
