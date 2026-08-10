@@ -16,6 +16,7 @@ on:
       - "docs/fixtures/memory-os-operability/sustained-local-soak-results.aggregate.v1.json"
       - "docs/fixtures/memory-os-operability/sustained-local-soak-trend-review.v1.json"
       - "scripts/validate-memory-os-sustained-local-soak.py"
+      - "scripts/register-memory-os-sustained-soak-independent-review.py"
       - "scripts/validate-memory-os-sustained-soak-independent-review.py"
       - "scripts/validate-memory-os-sustained-soak-independent-review-negative.py"
       - "scripts/validate-memory-os-sustained-local-soak-result.py"
@@ -75,6 +76,7 @@ jobs:
           echo "STAGE: compile" >> "$log"
           python -m py_compile \
             scripts/validate-memory-os-sustained-local-soak.py \
+            scripts/register-memory-os-sustained-soak-independent-review.py \
             scripts/validate-memory-os-sustained-soak-independent-review.py \
             scripts/validate-memory-os-sustained-soak-independent-review-negative.py \
             scripts/validate-memory-os-sustained-local-soak-result.py \
@@ -146,6 +148,7 @@ jobs:
             docs/fixtures/memory-os-operability/sustained-local-soak-results.aggregate.v1.json \
             docs/fixtures/memory-os-operability/sustained-local-soak-trend-review.v1.json \
             scripts/validate-memory-os-sustained-local-soak.py \
+            scripts/register-memory-os-sustained-soak-independent-review.py \
             scripts/validate-memory-os-sustained-soak-independent-review.py \
             scripts/validate-memory-os-sustained-soak-independent-review-negative.py \
             scripts/validate-memory-os-sustained-local-soak-result.py \
