@@ -3,8 +3,8 @@
 
 The canonical inventory and production status are never mutated. This harness
 uses repo-local temporary copies and the real validators to prove that candidate
-authority, semantic-generation count drift, or canonical status wording cannot
-silently create restore-planning or human production-promotion authority.
+authority, semantic-generation count drift, sustained-soak review authority, or
+canonical status wording cannot silently create production authority.
 """
 
 from __future__ import annotations
@@ -51,12 +51,20 @@ def load_module(path: Path, name: str):
     return module
 
 
-def backup_row(value: dict[str, Any]) -> dict[str, Any]:
+def area_row(value: dict[str, Any], area_id: str) -> dict[str, Any]:
     rows = value.get("areas")
     require(isinstance(rows, list), "inventory areas missing")
-    matches = [row for row in rows if isinstance(row, dict) and row.get("id") == "OPS-P0-007"]
-    require(len(matches) == 1, "OPS-P0-007 inventory row must be unique")
+    matches = [row for row in rows if isinstance(row, dict) and row.get("id") == area_id]
+    require(len(matches) == 1, f"{area_id} inventory row must be unique")
     return matches[0]
+
+
+def backup_row(value: dict[str, Any]) -> dict[str, Any]:
+    return area_row(value, "OPS-P0-007")
+
+
+def soak_row(value: dict[str, Any]) -> dict[str, Any]:
+    return area_row(value, "OPS-P0-006")
 
 
 def status_row(value: dict[str, Any]) -> dict[str, Any]:
@@ -157,19 +165,62 @@ def main() -> int:
     canonical_inventory = load(INVENTORY)
     canonical_status = load(STATUS)
     row = backup_row(canonical_inventory)
+    soak = soak_row(canonical_inventory)
     require(canonical_inventory.get("productionDecision") == "NO_GO", "canonical inventory productionDecision drift")
     require(canonical_inventory.get("humanProductionPromotionReviewCompleted") is False, "canonical top-level human promotion review drift")
     require(canonical_inventory.get("humanProductionPromotionAuthorized") is False, "canonical top-level human promotion authorization drift")
     require(row.get("humanProductionPromotionReviewCompleted") is False, "canonical OPS-P0-007 human promotion review drift")
     require(row.get("humanProductionPromotionAuthorized") is False, "canonical OPS-P0-007 human promotion authorization drift")
+    require(canonical_inventory.get("approvedLeakStabilityCriteriaCount") == 0, "canonical top-level sustained-soak approved criteria drift")
+    require(canonical_inventory.get("passingIndependentSustainedSoakReviewCount") == 0, "canonical top-level sustained-soak independent review drift")
+    require(canonical_inventory.get("sustainedSoakLeakProof") is False, "canonical top-level sustained-soak leak proof drift")
+    require(soak.get("approvedLeakStabilityCriteriaCount") == 0, "canonical OPS-P0-006 approved criteria drift")
+    require(soak.get("passingIndependentReviewCount") == 0, "canonical OPS-P0-006 independent review drift")
+    require(soak.get("leakProof") is False, "canonical OPS-P0-006 leak proof drift")
 
     inventory_validator = load_module(INVENTORY_VALIDATOR, "memory_os_operability_inventory_promotion_negative")
     status_validator = load_module(STATUS_VALIDATOR, "memory_os_operability_status_hygiene_negative")
 
     inventory_validator.main()
     status_validator.main()
-    print("PASS baseline: canonical inventory/status preserve backup/restore authority separation")
+    print("PASS baseline: canonical inventory/status preserve operability authority separation")
 
+    expect_inventory_rejected(
+        inventory_validator,
+        canonical_inventory,
+        "top-level sustained-soak approved criteria manufactured",
+        lambda value: value.__setitem__("approvedLeakStabilityCriteriaCount", 1),
+    )
+    expect_inventory_rejected(
+        inventory_validator,
+        canonical_inventory,
+        "top-level sustained-soak independent review manufactured",
+        lambda value: value.__setitem__("passingIndependentSustainedSoakReviewCount", 1),
+    )
+    expect_inventory_rejected(
+        inventory_validator,
+        canonical_inventory,
+        "top-level sustained-soak leak proof manufactured",
+        lambda value: value.__setitem__("sustainedSoakLeakProof", True),
+    )
+    expect_inventory_rejected(
+        inventory_validator,
+        canonical_inventory,
+        "OPS-P0-006 approved criteria manufactured",
+        lambda value: soak_row(value).__setitem__("approvedLeakStabilityCriteriaCount", 1),
+    )
+    expect_inventory_rejected(
+        inventory_validator,
+        canonical_inventory,
+        "OPS-P0-006 independent review manufactured",
+        lambda value: soak_row(value).__setitem__("passingIndependentReviewCount", 1),
+    )
+    expect_inventory_rejected(
+        inventory_validator,
+        canonical_inventory,
+        "OPS-P0-006 leak proof manufactured",
+        lambda value: soak_row(value).__setitem__("leakProof", True),
+    )
     expect_inventory_rejected(
         inventory_validator,
         canonical_inventory,
@@ -235,6 +286,9 @@ def main() -> int:
     )
 
     print("Memory OS operability inventory/status production-promotion negative suite PASS")
+    print("local sustained-soak evidence can manufacture approved criteria: false")
+    print("local sustained-soak evidence can manufacture independent review: false")
+    print("local sustained-soak evidence can manufacture leak proof: false")
     print("registered inventory alone creates restore-planning authority: false")
     print("candidate authority can manufacture human promotion review: false")
     print("candidate authority can manufacture human promotion authorization: false")
