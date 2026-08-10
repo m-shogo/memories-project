@@ -15,7 +15,8 @@
     "criteriaMustDeclareDirectionAndAcceptanceRule": true,
     "criteriaMustDeclareReviewScope": true,
     "criteriaMustPreexistIndependentReview": true,
-    "supersededCriteriaCannotRemainCurrentReviewAuthority": true
+    "supersededCriteriaCannotRemainCurrentReviewAuthority": true,
+    "supersedingCriteriaApprovalMustBeLater": true
   },
   "reviewAuthority": {
     "independentReviewerRequired": true,
