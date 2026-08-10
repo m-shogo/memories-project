@@ -20,6 +20,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from memory_os_backup_restore_blockers import CANONICAL_GAPS, require_canonical_gaps
+
 ROOT = Path(__file__).resolve().parents[1]
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 INDEX_PATH = ROOT / "contracts/operations/backup-local-foundation-evidence.v1.json"
@@ -45,14 +47,6 @@ OBJECT_EVIDENCE = (
     "executable local three-bucket MinIO exact-version recovery drill using explicit source and backup VersionIds",
     "complete simulated source-version loss before restore with backup checksum and source-version metadata binding preserved",
     "privacy-safe exact-source object recovery result storing only SHA-256 digests of bucket, key and provider version identifiers",
-)
-CANONICAL_GAPS = (
-    "production PostgreSQL backup and PITR schedule with encrypted independent retention, WAL continuity and tested point-in-time recovery selection",
-    "production independent object backup retention with TLS, restore-only credential separation, deletion protection, immutability, lifecycle controls and provider durability evidence",
-    "approved and measured RPO and RTO under production-shaped recovery, with coherent PostgreSQL/object recovery-point skew measurement plus backup monitoring, freshness enforcement and paging",
-    "production-shaped cross-cluster isolated restore drill with an approved recovery owner, coherent PostgreSQL and exact object-version recovery points, and an explicit promotion decision",
-    "production deletion, expired/revoked-session, replay, idempotency and lease non-resurrection verification after restore",
-    "independent review of generation-bound recovery evidence, security/privacy invariants, measured objectives and the restore promotion decision",
 )
 MANAGED_OLD_GAPS = (
     "PostgreSQL backup and PITR configuration",
@@ -92,6 +86,7 @@ EVIDENCE_REFS = (
     "docs/runbooks/memory-os-backup-restore.md",
     "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json",
     "docs/fixtures/memory-os-operability/local-object-version-restore-results.sample.v1.json",
+    "scripts/memory_os_backup_restore_blockers.py",
     "scripts/validate-memory-os-backup-restore.py",
     "scripts/validate-memory-os-backup-local-foundations.py",
     "scripts/validate-memory-os-local-logical-restore.py",
@@ -262,8 +257,7 @@ def normalize(status: dict[str, Any]) -> dict[str, Any]:
     gate["existingEvidence"] = unique(existing)
     gate["missingEvidence"] = unique(missing)
     gate["evidenceRefs"] = unique(refs)
-    require(gate.get("missingEvidence") == list(CANONICAL_GAPS),
-            "backup blocker convergence drift: only the canonical six production blockers may remain")
+    require_canonical_gaps(gate.get("missingEvidence"), ReconcileFailure)
     require(gate.get("status") == "PARTIAL_FOUNDATIONS_ONLY",
             "local foundations cannot advance backup readiness beyond partial")
     require(status.get("productionDecision") == "NO_GO",
