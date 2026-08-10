@@ -151,6 +151,23 @@ def main() -> int:
         lambda: module.load(outside_path),
     )
 
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        escaped_target = Path(temporary_directory) / "outside-local-foundation.json"
+        escaped_target.write_text("{}\n", encoding="utf-8")
+        link_path = ROOT / ".memory-os-generation-binding-outside-foundation"
+        require(not link_path.exists() and not link_path.is_symlink(), "temporary generation-binding symlink path already exists")
+        link_path.symlink_to(escaped_target)
+        try:
+            symlink_state = copy.deepcopy(state)
+            symlink_state[module.LOCAL_FOUNDATIONS]["foundations"][0]["contract"] = str(link_path.relative_to(ROOT))
+            expect_rejected(
+                module,
+                "local foundation evidence symlink escapes repository root",
+                lambda: run_with_state(module, symlink_state),
+            )
+        finally:
+            link_path.unlink(missing_ok=True)
+
     impossible_count_order = copy.deepcopy(state)
     impossible_count_order[module.EVIDENCE_REGISTRY]["completeGenerationBoundRestoreCount"] = 0
     expect_rejected(
@@ -275,6 +292,7 @@ def main() -> int:
 
     print("Memory OS backup/restore generation binding negative suite PASS")
     print("artifact path escape accepted: false")
+    print("local foundation evidence symlink escape accepted: false")
     print("candidate count may exceed complete restore count: false")
     print("generation-bound restore count may exceed backup count: false")
     print("backup aggregate without row-derived complete evidence accepted: false")
