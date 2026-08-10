@@ -9,11 +9,16 @@ on:
       - "contracts/operations/client-baseline-registry-contract.v1.json"
       - "contracts/operations/client-baseline-registry.v1.json"
       - "contracts/operations/client-server-support-window-contract.v1.json"
+      - "contracts/operations/client-server-skew-registry.v1.json"
       - "contracts/operations/release-baseline-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "contracts/operations/compatibility-admission-gaps.v1.json"
       - "scripts/register-memory-os-client-baseline.py"
       - "scripts/validate-memory-os-client-baseline-registry.py"
       - "scripts/reconcile-memory-os-client-baseline-registry.py"
+      - "scripts/validate-memory-os-client-server-support-window.py"
       - "scripts/update-memory-os-compatibility-admission-gaps.py"
+      - "scripts/validate-memory-os-operability.py"
       - "docs/evidence/clients/README.md"
   workflow_dispatch:
 
@@ -36,6 +41,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Capture exact client baseline authority source
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - name: Reconcile and validate client baseline authority
         id: authority
         run: |
@@ -48,7 +61,9 @@ jobs:
             scripts/register-memory-os-client-baseline.py \
             scripts/validate-memory-os-client-baseline-registry.py \
             scripts/reconcile-memory-os-client-baseline-registry.py \
+            scripts/validate-memory-os-client-server-support-window.py \
             scripts/update-memory-os-compatibility-admission-gaps.py \
+            scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then
             echo "STAGE: authority-reconcile" >> "$log"
@@ -77,6 +92,11 @@ jobs:
         if: steps.authority.outputs.exit_code == '0'
         run: |
           set -euo pipefail
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Client baseline authority source changed during reconciliation; refusing stale derived authority."
+            exit 75
+          fi
           git rm -f docs/fixtures/memory-os-operability/client-baseline-registry-diagnostic.last.json 2>/dev/null || true
           git add \
             contracts/operations/client-baseline-registry-contract.v1.json \
@@ -89,12 +109,12 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(compat): register reviewed client baseline authority"
-            for attempt in 1 2 3 4; do
-              git pull --rebase origin so
-              if git push origin HEAD:so; then exit 0; fi
-              sleep 2
-            done
-            exit 1
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              echo "Branch advanced after client baseline validation; refusing to rebase stale authority."
+              exit 75
+            fi
+            git push origin HEAD:so
           fi
       - name: Record privacy-safe diagnostic
         if: steps.authority.outputs.exit_code != '0'
@@ -103,7 +123,10 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin so
-          git reset --hard origin/so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Client baseline authority source changed after validation; refusing stale diagnostic."
+            exit 75
+          fi
           python - <<'PY'
           import json, os, re
           from pathlib import Path
@@ -135,8 +158,16 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --cached --quiet; then
             git commit -m "test(compat): record client baseline authority diagnostic"
-            git pull --rebase origin so
-            git push origin HEAD:so
+            for attempt in 1 2 3; do
+              git fetch origin so
+              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+                echo "Branch advanced before client baseline diagnostic push; refusing stale diagnostic."
+                exit 75
+              fi
+              if git push origin HEAD:so; then exit 0; fi
+              sleep 2
+            done
+            exit 1
           fi
       - name: Enforce authority result
         run: test "${{ steps.authority.outputs.exit_code }}" = "0"
