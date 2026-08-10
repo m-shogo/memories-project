@@ -46,6 +46,20 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def repo_file(ref: Any, field: str) -> Path:
+    require(isinstance(ref, str) and ref and ref == ref.strip(), f"generation artifact ref invalid: {field}")
+    candidate = Path(ref)
+    require(not candidate.is_absolute() and ".." not in candidate.parts, f"generation artifact ref must be canonical repository-relative path: {field}")
+    path = ROOT / candidate
+    try:
+        resolved = path.resolve(strict=True)
+        resolved.relative_to(ROOT.resolve())
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        raise Fail(f"generation artifact must resolve inside repository: {field}") from exc
+    require(resolved.is_file(), f"generation artifact missing: {field}")
+    return resolved
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -88,8 +102,7 @@ def main() -> int:
         require(contract.get(field) == str(path.relative_to(ROOT)), f"contract ref drift: {field}")
         require(path.is_file(), f"generation artifact missing: {field}")
     for field in ("validator", "workflow"):
-        ref = contract.get(field)
-        require(isinstance(ref, str) and ref and (ROOT / ref).is_file(), f"generation artifact missing: {field}")
+        repo_file(contract.get(field), field)
     require(env_schema.get("$schema") == "https://json-schema.org/draft/2020-12/schema", "environment schema draft drift")
     require(gen_schema.get("$schema") == "https://json-schema.org/draft/2020-12/schema", "generation record schema draft drift")
     evidence_boundary_schema = env_schema.get("properties", {}).get("evidenceBoundary", {})
@@ -147,8 +160,8 @@ def main() -> int:
         require(isinstance(eligible, bool), "generation semantic eligibility predicate invalid")
         eligibility_by_id[generation_id] = eligible
         env_ref = row.get("environmentRecordRef")
-        require(isinstance(env_ref, str) and (ROOT / env_ref).is_file(), "environment record ref missing after writer validation")
-        env_by_generation[generation_id] = load(ROOT / env_ref)
+        require(isinstance(env_ref, str), "environment record ref missing after writer validation")
+        env_by_generation[generation_id] = load(repo_file(env_ref, "environmentRecordRef"))
 
     current_id = registry.get("currentGenerationId")
     if count == 0:
