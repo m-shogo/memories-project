@@ -50,20 +50,38 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def repo_relative(path: Path) -> Path:
+    try:
+        return path.resolve(strict=False).relative_to(ROOT.resolve())
+    except (OSError, ValueError) as exc:
+        raise Fail(f"authority path escapes repository: {path}") from exc
+
+
+def require_repo_file(path: Path, message: str) -> Path:
+    relative = repo_relative(path)
+    require((ROOT / relative).is_file(), message)
+    return relative
+
+
 def load(path: Path) -> dict[str, Any]:
+    relative = repo_relative(path)
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
-        raise Fail(f"cannot load {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+    except (FileNotFoundError, json.JSONDecodeError, OSError) as exc:
+        raise Fail(f"cannot load {relative}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be object: {relative}")
     return value
 
 
 def load_module(path: Path, name: str):
+    relative = repo_relative(path)
     spec = importlib.util.spec_from_file_location(name, path)
-    require(spec is not None and spec.loader is not None, f"cannot load {path.relative_to(ROOT)}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    require(spec is not None and spec.loader is not None, f"cannot load {relative}")
+    try:
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except (FileNotFoundError, OSError) as exc:
+        raise Fail(f"cannot load {relative}: {exc}") from exc
     return module
 
 
@@ -91,10 +109,22 @@ def expected_decision(
 
 
 def main() -> int:
+    require_repo_file(CONTRACT, "drill request contract missing")
+    require_repo_file(REGISTRY, "drill request registry missing")
+    require_repo_file(STATUS, "operability status missing")
+    require_repo_file(VALIDATOR, "drill request validator missing")
+    require_repo_file(WRITER, "drill request writer missing")
+    require_repo_file(ELIGIBILITY_HELPER, "semantic generation eligibility helper missing")
+
+    original_contract_text = CONTRACT.read_text(encoding="utf-8")
+    original_registry_text = REGISTRY.read_text(encoding="utf-8")
+    original_status_text = STATUS.read_text(encoding="utf-8")
+
     contract = load(CONTRACT)
     registry = load(REGISTRY)
     generations = load(GEN_REGISTRY)
     objectives = load(OBJECTIVES_REGISTRY)
+    status = load(STATUS)
     writer = load_module(WRITER, "memory_os_restore_drill_request_writer_reconcile")
     eligibility = load_module(ELIGIBILITY_HELPER, "memory_os_restore_generation_eligibility_reconcile")
 
@@ -150,15 +180,27 @@ def main() -> int:
     if eligible_pair_count == 0 or not current_objective_available:
         require(executable_count == 0, "current executable request requires semantic preflight eligibility and a current approved recovery objective")
 
+    state = contract.get("currentAdmissionState")
+    readiness = contract.get("readiness")
+    require(isinstance(state, dict) and isinstance(readiness, dict), "drill request contract authority state missing")
+
+    require(status.get("productionDecision") == "NO_GO", "drill planning cannot change production decision")
+    gate = next((row for row in status.get("areas", []) if isinstance(row, dict) and row.get("id") == "OPS-P0-007"), None)
+    require(isinstance(gate, dict), "OPS-P0-007 missing")
+    require(gate.get("status") == "PARTIAL_FOUNDATIONS_ONLY" and gate.get("blocking") is True, "OPS-P0-007 must remain blocking foundation-only")
+    existing = gate.get("existingEvidence")
+    missing = gate.get("missingEvidence")
+    refs = gate.get("evidenceRefs")
+    require(isinstance(existing, list) and isinstance(missing, list) and isinstance(refs, list), "OPS-P0-007 authority arrays invalid")
+    require_canonical_gaps(missing, Fail)
+    for ref in REFS:
+        require_repo_file(ROOT / ref, f"drill request authority artifact missing: {ref}")
+
     registry["registeredRequestCount"] = request_count
     registry["currentExecutableRequestCount"] = executable_count
     registry["productionEvidence"] = False
     registry["productionReady"] = False
-    REGISTRY.write_text(json.dumps(registry, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    state = contract.get("currentAdmissionState")
-    readiness = contract.get("readiness")
-    require(isinstance(state, dict) and isinstance(readiness, dict), "drill request contract authority state missing")
     state["registeredEnvironmentGenerationCount"] = generation_count
     state["preflightEligibleEnvironmentGenerationCount"] = eligible_count
     state["unsupersededPreflightEligibleEnvironmentGenerationCount"] = unsuperseded_eligible_count
@@ -193,18 +235,6 @@ def main() -> int:
     readiness["drillExecuted"] = False
     readiness["independentReviewCompleted"] = False
     readiness["productionReady"] = False
-    CONTRACT.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-
-    status = load(STATUS)
-    require(status.get("productionDecision") == "NO_GO", "drill planning cannot change production decision")
-    gate = next((row for row in status.get("areas", []) if isinstance(row, dict) and row.get("id") == "OPS-P0-007"), None)
-    require(isinstance(gate, dict), "OPS-P0-007 missing")
-    require(gate.get("status") == "PARTIAL_FOUNDATIONS_ONLY" and gate.get("blocking") is True, "OPS-P0-007 must remain blocking foundation-only")
-    existing = gate.get("existingEvidence")
-    missing = gate.get("missingEvidence")
-    refs = gate.get("evidenceRefs")
-    require(isinstance(existing, list) and isinstance(missing, list) and isinstance(refs, list), "OPS-P0-007 authority arrays invalid")
-    require_canonical_gaps(missing, Fail)
 
     existing[:] = [item for item in existing if not (isinstance(item, str) and item.startswith(EVIDENCE_PREFIX))]
     append_once(
@@ -212,12 +242,21 @@ def main() -> int:
         f"{EVIDENCE_PREFIX} registered environment generations={generation_count}, semantic preflight-eligible generations={eligible_count}, unsuperseded semantic preflight-eligible generations={unsuperseded_eligible_count}, distinct semantic preflight-eligible environments={distinct_eligible_environment_count}, eligible directed source-target pairs={eligible_pair_count}, approved recovery objectives={objective_count}, current approved objective available={str(current_objective_available).lower()}, admitted planning requests={request_count}, currently executable requests={executable_count}, admissionDecision={state['admissionDecision']}; admission requires two distinct unsuperseded semantically restore-preflight-eligible registered production-equivalent generations from distinct environments, the current approved objective, PITR/WAL and exact object-version policies, all eight planned evidence domains, distinct Recovery Owner/Security/Operability approvals and mandatory stop conditions; registered generation count or historical objective count alone never creates planning authority, historical requests remain auditable after supersession but become non-executable, and request admission never executes a restore or creates production evidence",
     )
     for ref in REFS:
-        require((ROOT / ref).is_file(), f"drill request authority artifact missing: {ref}")
         append_once(refs, ref)
-    STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-    require(completed.returncode == 0, f"post-reconcile drill request validator failed:\n{completed.stdout[-5000:]}{completed.stderr[-5000:]}")
+    try:
+        REGISTRY.write_text(json.dumps(registry, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        CONTRACT.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+        completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        if completed.returncode != 0:
+            raise Fail(f"post-reconcile drill request validator failed:\n{completed.stdout[-5000:]}{completed.stderr[-5000:]}")
+    except Exception:
+        REGISTRY.write_text(original_registry_text, encoding="utf-8")
+        CONTRACT.write_text(original_contract_text, encoding="utf-8")
+        STATUS.write_text(original_status_text, encoding="utf-8")
+        raise
 
     print("Memory OS backup/restore drill request authority reconciliation PASS")
     print(f"registered environment generations: {generation_count}")
@@ -230,6 +269,8 @@ def main() -> int:
     print(f"registered planning requests: {request_count}")
     print(f"currently executable requests: {executable_count}")
     print(f"admission decision: {state['admissionDecision']}")
+    print("authority paths contained inside repository: true")
+    print("failed post-validation leaves registry/contract/status mutation behind: false")
     print("boolean generation/objective aggregate counts accepted: false")
     print("registered generation or historical objective count alone creates planning authority: false")
     print("canonical OPS-P0-007 blockers preserved: 6")
