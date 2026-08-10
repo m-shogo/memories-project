@@ -13,6 +13,12 @@ STATUS = ROOT / "contracts/operations/production-operability-status.json"
 INVENTORY = ROOT / "contracts/operations/operability-admission-inventory.v1.json"
 CANONICAL_SCHEMA = "memory-os-operability-status.0.1"
 INVENTORY_SCHEMA = "memory-os-operability-admission-inventory.v1"
+SOAK_REVIEW_REFS = {
+    "contracts/operations/sustained-soak-independent-review-contract.v1.json",
+    "contracts/operations/sustained-soak-independent-review-registry.v1.json",
+    "scripts/validate-memory-os-sustained-soak-independent-review.py",
+    "scripts/validate-memory-os-sustained-soak-independent-review-negative.py",
+}
 
 
 class Fail(RuntimeError):
@@ -115,8 +121,21 @@ def main() -> int:
     require(isinstance(soak_deps.get("localSustainedSoakEvidence"), bool), "OPS-P0-006 local sustained-soak flag invalid")
     if soak_deps.get("localSustainedSoakEvidence") is True and (approved_criteria == 0 or passing_reviews == 0):
         require(leak_proof is False, "local sustained-soak evidence alone cannot establish leak proof")
+
+    soak_existing = p0_006.get("existingEvidence")
     soak_missing = p0_006.get("missingEvidence")
+    soak_refs = p0_006.get("evidenceRefs")
+    require(isinstance(soak_existing, list), "OPS-P0-006 existingEvidence missing")
     require(isinstance(soak_missing, list), "OPS-P0-006 missingEvidence missing")
+    require(isinstance(soak_refs, list), "OPS-P0-006 evidenceRefs missing")
+    require(SOAK_REVIEW_REFS.issubset(set(soak_refs)), "OPS-P0-006 must retain independent sustained-soak review authority refs")
+    require(any(
+        isinstance(item, str)
+        and "append-only independent sustained-soak review authority" in item
+        and "automatic threshold selection" in item
+        and "registry is currently empty" in item
+        for item in soak_existing
+    ), "OPS-P0-006 must describe the independent review authority without claiming admitted human evidence")
     if approved_criteria == 0 or passing_reviews == 0:
         require(any(
             isinstance(item, str)
@@ -154,6 +173,7 @@ def main() -> int:
     print(f"status schema: {CANONICAL_SCHEMA}")
     print(f"P0 areas checked: {p0_count}")
     print(f"OPS-P0-006 approved criteria/independent review/leak proof: {approved_criteria}/{passing_reviews}/{str(leak_proof).lower()}")
+    print("OPS-P0-006 independent review authority refs: bound to canonical status")
     print("OPS-P0-006 local soak cannot manufacture independent leak proof: true")
     print("OPS-P0-007 semantic generation authority: bound to deterministic inventory")
     print("OPS-P0-007 human production-promotion authority: separate and false")
