@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "recovery-objectives-admission",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "Memory OS recovery objectives reconciliation PASS\napproved objective records: 0\ncurrent objective: none\ncanonical OPS-P0-007 blockers preserved: 6\nproduction evidence: false\nproductionDecision: NO_GO\nRECOVERY OBJECTIVES VALIDATION FAILED: negative admission case authority drift\n",
+  "containsSecrets": false,
+  "objectiveCreated": false,
+  "objectiveValueChosenOrDefaulted": false,
+  "restoreExecuted": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
