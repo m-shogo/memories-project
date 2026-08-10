@@ -56,11 +56,11 @@ def run_negative() -> None:
 def expected_decision(
     generation_count: int,
     eligible_pair_count: int,
-    objective_count: int,
+    current_objective_available: bool,
     request_count: int,
     executable_count: int,
 ) -> str:
-    if generation_count < 2 or objective_count == 0:
+    if generation_count < 2 or not current_objective_available:
         return "BLOCKED_NO_REGISTERED_GENERATION_OR_APPROVED_OBJECTIVE"
     if eligible_pair_count == 0:
         return "BLOCKED_NO_SEMANTICALLY_ELIGIBLE_DISTINCT_ENVIRONMENT_PAIR"
@@ -167,8 +167,10 @@ def main() -> int:
     require(isinstance(objective_count, int) and objective_count == len(objective_rows), "recovery objective count drift")
     if objective_count == 0:
         require(current_objective is None, "empty recovery objective registry cannot have currentObjectiveId")
+        current_objective_available = False
     else:
         require(isinstance(current_objective, str) and sum(1 for row in objective_rows if row.get("objectiveId") == current_objective) == 1, "current recovery objective invalid")
+        current_objective_available = True
 
     require(registry.get("schemaVersion") == "memory-os-backup-restore-drill-request-registry.v1", "request registry schema drift")
     require(registry.get("registryClass") == "PRODUCTION_EQUIVALENT_BACKUP_RESTORE_DRILL_REQUESTS", "request registry class drift")
@@ -193,10 +195,10 @@ def main() -> int:
         if writer.request_currently_executable(row):
             derived_executable += 1
     require(isinstance(executable_count, int) and executable_count == derived_executable, "currentExecutableRequestCount drift")
-    if generation_count < 2 or objective_count == 0:
-        require(request_count == 0 and executable_count == 0, "drill request cannot exist without two registered generations and an approved objective")
-    if eligible_pair_count == 0:
-        require(executable_count == 0, "semantically blocked generation state cannot have current executable request")
+    if generation_count < 2 or not current_objective_available:
+        require(request_count == 0 and executable_count == 0, "drill request cannot exist without two registered generations and a current approved objective")
+    if eligible_pair_count == 0 or not current_objective_available:
+        require(executable_count == 0, "current executable request requires semantic preflight eligibility and a current approved recovery objective")
 
     state = contract.get("currentAdmissionState")
     readiness = contract.get("readiness")
@@ -209,12 +211,12 @@ def main() -> int:
     require(state.get("approvedRecoveryObjectiveCount") == objective_count, "contract objective count drift")
     require(state.get("registeredRequestCount") == request_count, "contract request count drift")
     require(state.get("currentExecutableRequestCount") == executable_count, "contract executable request count drift")
-    decision = expected_decision(generation_count, eligible_pair_count, objective_count, request_count, executable_count)
+    decision = expected_decision(generation_count, eligible_pair_count, current_objective_available, request_count, executable_count)
     require(state.get("admissionDecision") == decision, "contract admissionDecision drift")
     require(state.get("productionEvidence") is False and state.get("productionReady") is False and state.get("productionDecision") == "NO_GO", "contract production boundary drift")
     require(readiness.get("environmentGenerationAvailable") is (generation_count >= 2), "readiness registered environment generation drift")
     require(readiness.get("semanticallyEligibleDistinctEnvironmentPairAvailable") is (eligible_pair_count > 0), "readiness semantic environment pair drift")
-    require(readiness.get("approvedRecoveryObjectivesAvailable") is (objective_count > 0), "readiness objective drift")
+    require(readiness.get("approvedRecoveryObjectivesAvailable") is current_objective_available, "readiness current objective drift")
     require(readiness.get("drillRequested") is (request_count > 0), "readiness drillRequested drift")
     require(readiness.get("currentExecutableRequestAvailable") is (executable_count > 0), "readiness current executable request drift")
     require(readiness.get("drillExecuted") is False and readiness.get("productionReady") is False, "planning authority cannot claim execution/production readiness")
@@ -227,10 +229,11 @@ def main() -> int:
     print(f"distinct semantic preflight-eligible environments: {distinct_eligible_environment_count}")
     print(f"eligible directed source-target pairs: {eligible_pair_count}")
     print(f"approved recovery objectives: {objective_count}")
+    print(f"current approved recovery objective available: {str(current_objective_available).lower()}")
     print(f"registered drill requests: {request_count}")
     print(f"currently executable requests: {executable_count}")
     print(f"admission decision: {decision}")
-    print("registered generation count alone creates planning authority: false")
+    print("registered generation or historical objective count alone creates planning authority: false")
     print("historical admitted requests survive later generation/objective supersession: true")
     print("planning authority only: true")
     print("production evidence: false")
