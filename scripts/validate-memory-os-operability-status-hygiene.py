@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from memory_os_backup_restore_blockers import require_canonical_gaps
+
 ROOT = Path(__file__).resolve().parents[1]
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 INVENTORY = ROOT / "contracts/operations/operability-admission-inventory.v1.json"
@@ -87,6 +89,7 @@ def main() -> int:
     require(p0_count >= 9, "unexpected P0 area count")
     require(p0_006 is not None, "OPS-P0-006 sustained-soak area missing")
     require(p0_007 is not None, "OPS-P0-007 backup/restore area missing")
+    require_canonical_gaps(p0_007.get("missingEvidence"), Fail)
 
     inventory = load(INVENTORY)
     require(inventory.get("schemaVersion") == INVENTORY_SCHEMA, "operability admission inventory schema drift")
@@ -185,6 +188,7 @@ def main() -> int:
     print("OPS-P0-006 independent review authority refs: bound to canonical status")
     print("OPS-P0-006 stale empty-registry authority text accepted: false")
     print("OPS-P0-006 local soak cannot manufacture independent leak proof: true")
+    print("OPS-P0-007 canonical production blockers: exact shared authority")
     print("OPS-P0-007 semantic generation authority: bound to deterministic inventory")
     print("OPS-P0-007 human production-promotion authority: separate and false")
     print("exact duplicate authority entries: none")
