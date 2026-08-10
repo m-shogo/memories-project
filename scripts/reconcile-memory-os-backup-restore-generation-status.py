@@ -3,7 +3,8 @@
 
 This also repairs historical misclassification where this reconciler appended
 restore-generation evidence to OPS-P0-003 (observability) instead of OPS-P0-007
-(backup_restore), and normalizes the duplicated backup/restore blocker list.
+(backup_restore). Canonical production blockers are validation-only authority
+here and are never rewritten by this generation-binding layer.
 """
 
 from __future__ import annotations
@@ -12,6 +13,8 @@ import json
 import subprocess
 from pathlib import Path
 from typing import Any
+
+from memory_os_backup_restore_blockers import require_canonical_gaps
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/backup-restore-generation-binding-contract.v1.json"
@@ -32,14 +35,6 @@ REFS = (
     "contracts/operations/production-equivalent-environment-generation-contract.v1.json",
     "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
 )
-CANONICAL_MISSING = [
-    "production PostgreSQL backup and PITR schedule with encrypted independent retention, WAL continuity and tested point-in-time recovery selection",
-    "production independent object backup retention with TLS, restore-only credential separation, deletion protection, immutability, lifecycle controls and provider durability evidence",
-    "approved and measured RPO and RTO under production-shaped recovery, with coherent PostgreSQL/object recovery-point skew measurement plus backup monitoring, freshness enforcement and paging",
-    "production-shaped cross-cluster isolated restore drill with an approved recovery owner, coherent PostgreSQL and exact object-version recovery points, and an explicit promotion decision",
-    "production deletion, expired/revoked-session, replay, idempotency and lease non-resurrection verification after restore",
-    "independent review of generation-bound recovery evidence, security/privacy invariants, measured objectives and the restore promotion decision",
-]
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -94,6 +89,7 @@ def main() -> int:
         raise SystemExit("OPS-P0-003 or OPS-P0-007 missing")
     if backup.get("status") not in {"PARTIAL_FOUNDATIONS_ONLY", "PARTIAL"} or backup.get("blocking") is not True:
         raise SystemExit("OPS-P0-007 must remain blocking and incomplete")
+    require_canonical_gaps(backup.get("missingEvidence"), SystemExit)
 
     # Repair historical misclassification if the old reconciler ever wrote to
     # observability. Do not remove any unrelated observability authority.
@@ -116,21 +112,12 @@ def main() -> int:
         if not (ROOT / ref).is_file():
             raise SystemExit(f"missing restore-generation ref: {ref}")
         append_once(refs, ref)
-    backup["missingEvidence"] = list(CANONICAL_MISSING)
 
-    joined = "\n".join(CANONICAL_MISSING)
-    for term in (
-        "PostgreSQL backup and PITR",
-        "independent object",
-        "RPO and RTO",
-        "isolated restore",
-        "non-resurrection",
-        "restore drill",
-        "backup monitoring",
-        "independent review",
-    ):
-        if term not in joined:
-            raise SystemExit(f"canonical backup blocker missing validator term: {term}")
+    # This layer may register generation-binding evidence, but it cannot create,
+    # normalize, rewrite, remove, merge, or otherwise reinterpret production gaps.
+    require_canonical_gaps(backup.get("missingEvidence"), SystemExit)
+    if status.get("productionDecision") != "NO_GO":
+        raise SystemExit("productionDecision changed unexpectedly")
 
     STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     subprocess.run(["python", str(BACKUP_VALIDATOR)], cwd=ROOT, check=True)
@@ -141,7 +128,7 @@ def main() -> int:
     print(f"candidate-level independent evidence review complete: {str(candidate_count > 0).lower()}")
     print("human production-promotion review completed: false")
     print("human production promotion authorized: false")
-    print("backup/restore blocker list: normalized")
+    print("canonical backup/restore blockers rewritten by this layer: false")
     print("OPS-P0-007: incomplete")
     print("productionDecision: NO_GO")
     return 0
