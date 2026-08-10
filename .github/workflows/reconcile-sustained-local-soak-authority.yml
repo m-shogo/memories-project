@@ -11,6 +11,7 @@ on:
       - "contracts/operations/sustained-soak-independent-review-registry.v1.json"
       - "contracts/operations/load-test-scenario-contract.v1.json"
       - "contracts/operations/production-operability-status.json"
+      - "docs/evidence/sustained-soak/**"
       - "docs/fixtures/memory-os-operability/sustained-local-soak-results.run-*.v1.json"
       - "docs/fixtures/memory-os-operability/sustained-local-soak-results.aggregate.v1.json"
       - "docs/fixtures/memory-os-operability/sustained-local-soak-trend-review.v1.json"
@@ -140,6 +141,7 @@ jobs:
             contracts/operations/sustained-soak-independent-review-registry.v1.json \
             contracts/operations/load-test-scenario-contract.v1.json \
             contracts/operations/production-operability-status.json \
+            'docs/evidence/sustained-soak/**' \
             'docs/fixtures/memory-os-operability/sustained-local-soak-results.run-*.v1.json' \
             docs/fixtures/memory-os-operability/sustained-local-soak-results.aggregate.v1.json \
             docs/fixtures/memory-os-operability/sustained-local-soak-trend-review.v1.json \
