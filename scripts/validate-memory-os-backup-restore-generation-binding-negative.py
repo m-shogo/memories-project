@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
@@ -143,6 +144,13 @@ def main() -> int:
     require(run_with_state(module, state) == 0, "candidate baseline must validate with evidence review but without human promotion review")
     print("PASS baseline: recovery candidate includes independently re-derived evidence review while human promotion review remains false")
 
+    outside_path = Path(tempfile.gettempdir()) / "memory-os-generation-binding-outside-root.json"
+    expect_rejected(
+        module,
+        "generation binding artifact path escapes repository root",
+        lambda: module.load(outside_path),
+    )
+
     impossible_count_order = copy.deepcopy(state)
     impossible_count_order[module.EVIDENCE_REGISTRY]["completeGenerationBoundRestoreCount"] = 0
     expect_rejected(
@@ -266,6 +274,7 @@ def main() -> int:
     )
 
     print("Memory OS backup/restore generation binding negative suite PASS")
+    print("artifact path escape accepted: false")
     print("candidate count may exceed complete restore count: false")
     print("generation-bound restore count may exceed backup count: false")
     print("backup aggregate without row-derived complete evidence accepted: false")
