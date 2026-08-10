@@ -165,6 +165,13 @@ def main() -> int:
         lambda: run_with_state(module, independent_review_rule),
     )
 
+    candidate_rederivation_rule = copy.deepcopy(state)
+    candidate_rederivation_rule[module.CONTRACT]["promotionRules"]["candidateCountMustBeRederivedFromCurrentExecutableReviewedEvidence"] = False
+    expect_rejected(
+        "recovery candidate aggregate re-derivation requirement disabled",
+        lambda: run_with_state(module, candidate_rederivation_rule),
+    )
+
     promotion_reviewed = copy.deepcopy(state)
     promotion_reviewed[module.CONTRACT]["currentBoundary"]["humanProductionPromotionReviewCompleted"] = True
     promotion_reviewed[module.CONTRACT]["readiness"]["humanProductionPromotionReviewCompleted"] = True
@@ -197,6 +204,7 @@ def main() -> int:
 
     print("Memory OS backup/restore generation binding negative suite PASS")
     print("candidate aggregate without current executable reviewed candidate evidence accepted: false")
+    print("candidate aggregate re-derivation contract can be disabled: false")
     print("candidate without independent evidence review accepted: false")
     print("candidate requires independent evidence review: true")
     print("candidate implies human production-promotion review: false")
