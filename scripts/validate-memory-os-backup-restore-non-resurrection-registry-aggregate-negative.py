@@ -47,12 +47,14 @@ def write_json(path: Path, value: dict[str, Any]) -> None:
     path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
-def expect_rejected(name: str, action: Callable[[], Any]) -> None:
+def expect_rejected(name: str, action: Callable[[], Any], expected_failure: type[BaseException]) -> None:
     try:
         action()
-    except Exception:
+    except expected_failure:
         print(f"PASS reject: {name}")
         return
+    except Exception as exc:
+        raise Fail(f"unexpected exception accepted as aggregate rejection for {name}: {type(exc).__name__}: {exc}") from exc
     raise Fail(f"aggregate mutation unexpectedly accepted: {name}")
 
 
@@ -79,7 +81,7 @@ def main() -> int:
             "productionEvidence": False,
             "productionReady": False,
         }
-        write_json(generation_registry, {
+        base_generation = {
             "schemaVersion": "memory-os-backup-restore-generation-evidence-registry.v1",
             "registeredEvidenceCount": 0,
             "drillRequestBoundEvidenceCount": 0,
@@ -89,24 +91,37 @@ def main() -> int:
             "records": [],
             "productionEvidence": False,
             "productionReady": False,
-        })
+        }
+        write_json(generation_registry, base_generation)
 
         validator.REGISTRY = typed_registry
         validator.GEN_REGISTRY = generation_registry
 
         cases = (
-            ("registeredRecordCount drift", "registeredRecordCount"),
-            ("completeRecordCount drift", "completeRecordCount"),
-            ("candidateCoveredCount drift", "candidateCoveredCount"),
+            ("registeredRecordCount drift", "registeredRecordCount", 1),
+            ("completeRecordCount drift", "completeRecordCount", 1),
+            ("candidateCoveredCount drift", "candidateCoveredCount", 1),
+            ("boolean registeredRecordCount", "registeredRecordCount", False),
+            ("boolean completeRecordCount", "completeRecordCount", False),
+            ("boolean candidateCoveredCount", "candidateCoveredCount", False),
         )
-        for name, field in cases:
+        for name, field, invalid_value in cases:
             mutated = copy.deepcopy(base_typed)
-            mutated[field] = 1
+            mutated[field] = invalid_value
             write_json(typed_registry, mutated)
-            expect_rejected(name, validator.main)
+            write_json(generation_registry, base_generation)
+            expect_rejected(name, validator.main, validator.Fail)
+
+        write_json(typed_registry, base_typed)
+        generation_mutated = copy.deepcopy(base_generation)
+        generation_mutated["productionEquivalentRecoveryCandidateCount"] = False
+        write_json(generation_registry, generation_mutated)
+        expect_rejected("boolean generation final candidate count", validator.main, validator.Fail)
 
     print("Memory OS typed non-resurrection registry aggregate negative suite PASS")
     print("aggregate counters may not override row-derived authority: true")
+    print("boolean aggregate counters accepted: false")
+    print("unexpected exception accepted as valid rejection: false")
     print("canonical registries mutated: false")
     print("production evidence: false")
     print("production decision: NO_GO")
