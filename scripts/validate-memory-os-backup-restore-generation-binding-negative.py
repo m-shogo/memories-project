@@ -151,6 +151,14 @@ def main() -> int:
         lambda: run_with_state(module, impossible_count_order),
     )
 
+    restore_without_backup = copy.deepcopy(state)
+    restore_without_backup[module.EVIDENCE_REGISTRY]["completeGenerationBoundBackupCount"] = 0
+    expect_rejected(
+        module,
+        "generation-bound restore count cannot exceed generation-bound backup count",
+        lambda: run_with_state(module, restore_without_backup),
+    )
+
     manufactured_backup_aggregate = copy.deepcopy(state)
     manufactured_backup_aggregate[module.EVIDENCE_REGISTRY]["records"][0]["evidenceComplete"] = False
     expect_rejected(
@@ -259,6 +267,7 @@ def main() -> int:
 
     print("Memory OS backup/restore generation binding negative suite PASS")
     print("candidate count may exceed complete restore count: false")
+    print("generation-bound restore count may exceed backup count: false")
     print("backup aggregate without row-derived complete evidence accepted: false")
     print("restore aggregate without row-derived isolated exact-artifact evidence accepted: false")
     print("backup/restore aggregate re-derivation contract can be disabled: false")
