@@ -22,6 +22,14 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def valid_count(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def require_count_match(value: Any, expected: int, message: str) -> None:
+    require(valid_count(value) and value == expected, message)
+
+
 def load(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
@@ -45,7 +53,7 @@ def main() -> int:
         area_id = row["id"]
         require(row.get("productionEvidence") is False and row.get("productionReady") is False, f"{area_id} inventory cannot promote production")
         require(isinstance(row.get("foundationImplemented"), bool), f"{area_id}.foundationImplemented invalid")
-        require(isinstance(row.get("admittedEvidenceCount"), int) and row["admittedEvidenceCount"] >= 0, f"{area_id}.admittedEvidenceCount invalid")
+        require(valid_count(row.get("admittedEvidenceCount")), f"{area_id}.admittedEvidenceCount invalid")
         require(isinstance(row.get("nextGate"), str) and row["nextGate"], f"{area_id}.nextGate missing")
         source = status_rows.get(area_id)
         require(isinstance(source, dict), f"status row missing: {area_id}")
@@ -53,7 +61,7 @@ def main() -> int:
         require(row.get("blocking") == source.get("blocking"), f"{area_id}.blocking drift")
         missing = source.get("missingEvidence")
         require(isinstance(missing, list), f"{area_id}.missingEvidence invalid")
-        require(row.get("missingEvidenceCount") == len(missing), f"{area_id}.missingEvidenceCount drift")
+        require_count_match(row.get("missingEvidenceCount"), len(missing), f"{area_id}.missingEvidenceCount drift")
 
     generations = load(ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json")
     soak_review = load(ROOT / "contracts/operations/sustained-soak-independent-review-registry.v1.json")
@@ -68,35 +76,35 @@ def main() -> int:
 
     generation_count = generations.get("registeredGenerationCount")
     objective_count = recovery_objectives.get("approvedObjectiveCount")
-    require(isinstance(generation_count, int) and generation_count >= 0, "environment generation count invalid")
-    require(isinstance(objective_count, int) and objective_count >= 0, "recovery objective count invalid")
-    require(inventory.get("productionEquivalentEnvironmentGenerationCount") == generation_count, "environment generation count drift")
-    require(inventory.get("approvedRecoveryObjectiveCount") == objective_count, "approved recovery objective count drift")
+    require(valid_count(generation_count), "environment generation count invalid")
+    require(valid_count(objective_count), "recovery objective count invalid")
+    require_count_match(inventory.get("productionEquivalentEnvironmentGenerationCount"), generation_count, "environment generation count drift")
+    require_count_match(inventory.get("approvedRecoveryObjectiveCount"), objective_count, "approved recovery objective count drift")
 
     soak_approved_criteria_count = soak_review.get("approvedLeakStabilityCriteriaCount")
     soak_passing_review_count = soak_review.get("passingIndependentReviewCount")
     soak_leak_proof = soak_review.get("leakProof")
-    require(isinstance(soak_approved_criteria_count, int) and not isinstance(soak_approved_criteria_count, bool) and soak_approved_criteria_count >= 0, "approved leak/stability criteria count invalid")
-    require(isinstance(soak_passing_review_count, int) and not isinstance(soak_passing_review_count, bool) and 0 <= soak_passing_review_count <= soak_approved_criteria_count, "passing independent sustained-soak review count invalid")
+    require(valid_count(soak_approved_criteria_count), "approved leak/stability criteria count invalid")
+    require(valid_count(soak_passing_review_count) and soak_passing_review_count <= soak_approved_criteria_count, "passing independent sustained-soak review count invalid")
     require(isinstance(soak_leak_proof, bool), "sustained-soak leak proof invalid")
     require(not soak_leak_proof or soak_passing_review_count > 0, "sustained-soak leak proof requires a passing independent review")
     require(soak_review.get("appendOnly") is True, "sustained-soak independent review registry must remain append-only")
     require(soak_review.get("productionEvidence") is False and soak_review.get("productionReady") is False, "sustained-soak independent review registry cannot promote production")
-    require(inventory.get("approvedLeakStabilityCriteriaCount") == soak_approved_criteria_count, "inventory approved leak/stability criteria count drift")
-    require(inventory.get("passingIndependentSustainedSoakReviewCount") == soak_passing_review_count, "inventory independent sustained-soak review count drift")
+    require_count_match(inventory.get("approvedLeakStabilityCriteriaCount"), soak_approved_criteria_count, "inventory approved leak/stability criteria count drift")
+    require_count_match(inventory.get("passingIndependentSustainedSoakReviewCount"), soak_passing_review_count, "inventory independent sustained-soak review count drift")
     require(inventory.get("sustainedSoakLeakProof") is soak_leak_proof, "inventory sustained-soak leak proof drift")
     soak_row = inventory_rows.get("OPS-P0-006")
     require(isinstance(soak_row, dict), "OPS-P0-006 inventory row missing")
     require(soak_row.get("authority") == "contracts/operations/load-test-scenario-contract.v1.json", "OPS-P0-006 authority drift")
     require(soak_row.get("secondaryAuthority") == "contracts/operations/sustained-soak-independent-review-registry.v1.json", "OPS-P0-006 independent review authority drift")
-    require(soak_row.get("approvedLeakStabilityCriteriaCount") == soak_approved_criteria_count, "OPS-P0-006 approved criteria count drift")
-    require(soak_row.get("passingIndependentReviewCount") == soak_passing_review_count, "OPS-P0-006 independent review count drift")
+    require_count_match(soak_row.get("approvedLeakStabilityCriteriaCount"), soak_approved_criteria_count, "OPS-P0-006 approved criteria count drift")
+    require_count_match(soak_row.get("passingIndependentReviewCount"), soak_passing_review_count, "OPS-P0-006 independent review count drift")
     require(soak_row.get("leakProof") is soak_leak_proof, "OPS-P0-006 leak proof drift")
     soak_deps = soak_row.get("dependencyCounts")
     require(isinstance(soak_deps, dict), "OPS-P0-006 dependencyCounts missing")
-    require(soak_deps.get("environmentGenerations") == generation_count, "OPS-P0-006 generation count drift")
-    require(soak_deps.get("approvedLeakStabilityCriteria") == soak_approved_criteria_count, "OPS-P0-006 criteria dependency drift")
-    require(soak_deps.get("passingIndependentReviews") == soak_passing_review_count, "OPS-P0-006 review dependency drift")
+    require_count_match(soak_deps.get("environmentGenerations"), generation_count, "OPS-P0-006 generation count drift")
+    require_count_match(soak_deps.get("approvedLeakStabilityCriteria"), soak_approved_criteria_count, "OPS-P0-006 criteria dependency drift")
+    require_count_match(soak_deps.get("passingIndependentReviews"), soak_passing_review_count, "OPS-P0-006 review dependency drift")
     require(isinstance(soak_deps.get("localSustainedSoakEvidence"), bool), "OPS-P0-006 local sustained-soak evidence flag invalid")
     require(isinstance(soak_deps.get("repeatableLocalDegradationSignalObserved"), bool), "OPS-P0-006 degradation signal flag invalid")
     if soak_approved_criteria_count == 0 or soak_passing_review_count == 0:
@@ -104,19 +112,19 @@ def main() -> int:
 
     drill_request_count = drill_request_registry.get("registeredRequestCount")
     executable_drill_request_count = drill_request_registry.get("currentExecutableRequestCount")
-    require(isinstance(drill_request_count, int) and drill_request_count >= 0, "drill request count invalid")
-    require(isinstance(executable_drill_request_count, int) and 0 <= executable_drill_request_count <= drill_request_count, "executable drill request count invalid")
+    require(valid_count(drill_request_count), "drill request count invalid")
+    require(valid_count(executable_drill_request_count) and executable_drill_request_count <= drill_request_count, "executable drill request count invalid")
     require(drill_request_registry.get("appendOnly") is True, "drill request registry must remain append-only")
     require(drill_request_registry.get("productionEvidence") is False and drill_request_registry.get("productionReady") is False, "drill request registry cannot promote production")
-    require(inventory.get("reviewedBackupRestoreDrillRequestCount") == drill_request_count, "inventory drill request count drift")
-    require(inventory.get("currentExecutableBackupRestoreDrillRequestCount") == executable_drill_request_count, "inventory executable drill request count drift")
+    require_count_match(inventory.get("reviewedBackupRestoreDrillRequestCount"), drill_request_count, "inventory drill request count drift")
+    require_count_match(inventory.get("currentExecutableBackupRestoreDrillRequestCount"), executable_drill_request_count, "inventory executable drill request count drift")
     drill_state = drill_request_contract.get("currentAdmissionState")
     drill_execution = drill_request_contract.get("executionBoundary")
     require(isinstance(drill_state, dict) and isinstance(drill_execution, dict), "drill request contract authority state missing")
-    require(drill_state.get("registeredEnvironmentGenerationCount") == generation_count, "drill request generation count drift")
-    require(drill_state.get("approvedRecoveryObjectiveCount") == objective_count, "drill request objective count drift")
-    require(drill_state.get("registeredRequestCount") == drill_request_count, "drill request contract request count drift")
-    require(drill_state.get("currentExecutableRequestCount") == executable_drill_request_count, "drill request contract executable count drift")
+    require_count_match(drill_state.get("registeredEnvironmentGenerationCount"), generation_count, "drill request generation count drift")
+    require_count_match(drill_state.get("approvedRecoveryObjectiveCount"), objective_count, "drill request objective count drift")
+    require_count_match(drill_state.get("registeredRequestCount"), drill_request_count, "drill request contract request count drift")
+    require_count_match(drill_state.get("currentExecutableRequestCount"), executable_drill_request_count, "drill request contract executable count drift")
     require(drill_state.get("productionEvidence") is False and drill_state.get("productionReady") is False and drill_state.get("productionDecision") == "NO_GO", "drill request contract cannot promote production")
     require(drill_execution.get("planningAuthorityOnly") is True and drill_execution.get("requestAloneMayExecuteDrill") is False, "drill request execution boundary drift")
     require(drill_execution.get("backupExecuted") is False and drill_execution.get("restoreExecuted") is False, "planning authority cannot claim drill execution")
@@ -132,7 +140,7 @@ def main() -> int:
     eligible_pair_count = preflight_state.get("eligibleDirectedSourceTargetPairCount")
     preflight_eligible = preflight_state.get("eligibleToSubmitReviewedDrillRequest")
     preflight_decision = preflight_state.get("preflightDecision")
-    require(all(isinstance(value, int) and not isinstance(value, bool) and value >= 0 for value in (
+    require(all(valid_count(value) for value in (
         preflight_eligible_generation_count,
         unsuperseded_generation_count,
         unsuperseded_preflight_eligible_generation_count,
@@ -144,49 +152,49 @@ def main() -> int:
     require(distinct_unsuperseded_preflight_eligible_environment_count <= unsuperseded_preflight_eligible_generation_count, "distinct semantic preflight-eligible environment count exceeds eligible generation inventory")
     require(isinstance(preflight_eligible, bool), "restore drill preflight eligibility invalid")
     require(isinstance(preflight_decision, str) and preflight_decision, "restore drill preflight decision invalid")
-    require(preflight_state.get("registeredGenerationCount") == generation_count, "preflight generation count drift")
-    require(preflight_state.get("approvedRecoveryObjectiveCount") == objective_count, "preflight objective count drift")
-    require(preflight_state.get("reviewedDrillRequestCount") == drill_request_count, "preflight request count drift")
-    require(preflight_state.get("currentExecutableDrillRequestCount") == executable_drill_request_count, "preflight executable request count drift")
+    require_count_match(preflight_state.get("registeredGenerationCount"), generation_count, "preflight generation count drift")
+    require_count_match(preflight_state.get("approvedRecoveryObjectiveCount"), objective_count, "preflight objective count drift")
+    require_count_match(preflight_state.get("reviewedDrillRequestCount"), drill_request_count, "preflight request count drift")
+    require_count_match(preflight_state.get("currentExecutableDrillRequestCount"), executable_drill_request_count, "preflight executable request count drift")
     require(all(preflight_state.get(field) is False for field in ("requestCreated", "backupExecuted", "restoreExecuted", "productionTrafficChanged", "productionEvidence", "productionReady")), "preflight execution/production boundary drift")
     require(preflight_state.get("productionDecision") == "NO_GO", "preflight production decision drift")
-    require(drill_state.get("preflightEligibleEnvironmentGenerationCount") == preflight_eligible_generation_count, "drill/preflight semantic generation count drift")
-    require(drill_state.get("unsupersededPreflightEligibleEnvironmentGenerationCount") == unsuperseded_preflight_eligible_generation_count, "drill/preflight unsuperseded semantic generation count drift")
-    require(inventory.get("backupRestorePreflightEligibleEnvironmentGenerationCount") == preflight_eligible_generation_count, "inventory semantic preflight-eligible generation count drift")
-    require(inventory.get("backupRestoreUnsupersededEnvironmentGenerationCount") == unsuperseded_generation_count, "inventory unsuperseded generation count drift")
-    require(inventory.get("backupRestoreUnsupersededPreflightEligibleEnvironmentGenerationCount") == unsuperseded_preflight_eligible_generation_count, "inventory unsuperseded semantic generation count drift")
-    require(inventory.get("backupRestoreDistinctUnsupersededPreflightEligibleEnvironmentCount") == distinct_unsuperseded_preflight_eligible_environment_count, "inventory distinct semantic unsuperseded environment count drift")
-    require(inventory.get("backupRestoreEligibleDirectedPairCount") == eligible_pair_count, "inventory eligible restore pair count drift")
+    require_count_match(drill_state.get("preflightEligibleEnvironmentGenerationCount"), preflight_eligible_generation_count, "drill/preflight semantic generation count drift")
+    require_count_match(drill_state.get("unsupersededPreflightEligibleEnvironmentGenerationCount"), unsuperseded_preflight_eligible_generation_count, "drill/preflight unsuperseded semantic generation count drift")
+    require_count_match(inventory.get("backupRestorePreflightEligibleEnvironmentGenerationCount"), preflight_eligible_generation_count, "inventory semantic preflight-eligible generation count drift")
+    require_count_match(inventory.get("backupRestoreUnsupersededEnvironmentGenerationCount"), unsuperseded_generation_count, "inventory unsuperseded generation count drift")
+    require_count_match(inventory.get("backupRestoreUnsupersededPreflightEligibleEnvironmentGenerationCount"), unsuperseded_preflight_eligible_generation_count, "inventory unsuperseded semantic generation count drift")
+    require_count_match(inventory.get("backupRestoreDistinctUnsupersededPreflightEligibleEnvironmentCount"), distinct_unsuperseded_preflight_eligible_environment_count, "inventory distinct semantic unsuperseded environment count drift")
+    require_count_match(inventory.get("backupRestoreEligibleDirectedPairCount"), eligible_pair_count, "inventory eligible restore pair count drift")
     require(inventory.get("backupRestoreDrillPreflightEligible") is preflight_eligible, "inventory preflight eligibility drift")
     require(inventory.get("backupRestoreDrillPreflightDecision") == preflight_decision, "inventory preflight decision drift")
 
     generation_evidence_count = backup_recovery.get("registeredEvidenceCount")
     drill_bound_generation_evidence_count = backup_recovery.get("drillRequestBoundEvidenceCount")
-    require(isinstance(generation_evidence_count, int) and generation_evidence_count >= 0, "generation recovery evidence count invalid")
-    require(isinstance(drill_bound_generation_evidence_count, int) and drill_bound_generation_evidence_count >= 0, "drill-bound generation evidence count invalid")
+    require(valid_count(generation_evidence_count), "generation recovery evidence count invalid")
+    require(valid_count(drill_bound_generation_evidence_count), "drill-bound generation evidence count invalid")
     require(drill_bound_generation_evidence_count == generation_evidence_count, "every generation recovery evidence record must remain drill-request-bound")
-    require(inventory.get("generationRecoveryEvidenceRecordCount") == generation_evidence_count, "inventory generation recovery evidence count drift")
-    require(inventory.get("drillRequestBoundGenerationEvidenceCount") == drill_bound_generation_evidence_count, "inventory drill-bound generation evidence count drift")
+    require_count_match(inventory.get("generationRecoveryEvidenceRecordCount"), generation_evidence_count, "inventory generation recovery evidence count drift")
+    require_count_match(inventory.get("drillRequestBoundGenerationEvidenceCount"), drill_bound_generation_evidence_count, "inventory drill-bound generation evidence count drift")
     if drill_request_count == 0:
         require(generation_evidence_count == 0, "generation recovery evidence cannot exist without reviewed drill request history")
 
     typed_record_count = non_resurrection_registry.get("registeredRecordCount")
     typed_complete_count = non_resurrection_registry.get("completeRecordCount")
     typed_covered_count = non_resurrection_registry.get("candidateCoveredCount")
-    require(all(isinstance(value, int) and value >= 0 for value in (typed_record_count, typed_complete_count, typed_covered_count)), "typed non-resurrection registry counts invalid")
+    require(all(valid_count(value) for value in (typed_record_count, typed_complete_count, typed_covered_count)), "typed non-resurrection registry counts invalid")
     require(typed_covered_count <= typed_complete_count <= typed_record_count, "typed non-resurrection registry count ordering invalid")
     require(non_resurrection_registry.get("productionEvidence") is False and non_resurrection_registry.get("productionReady") is False, "typed non-resurrection registry cannot promote production")
-    require(inventory.get("typedNonResurrectionRecordCount") == typed_record_count, "inventory typed record count drift")
-    require(inventory.get("completeTypedNonResurrectionRecordCount") == typed_complete_count, "inventory complete typed record count drift")
+    require_count_match(inventory.get("typedNonResurrectionRecordCount"), typed_record_count, "inventory typed record count drift")
+    require_count_match(inventory.get("completeTypedNonResurrectionRecordCount"), typed_complete_count, "inventory complete typed record count drift")
 
     typed_boundary = non_resurrection_contract.get("currentBoundary")
     require(isinstance(typed_boundary, dict), "typed non-resurrection currentBoundary missing")
     pending_typed = typed_boundary.get("preOverlayEligiblePendingTypedCoverageCount")
     final_candidate_count = backup_recovery.get("productionEquivalentRecoveryCandidateCount")
-    require(isinstance(pending_typed, int) and pending_typed >= 0, "pending typed coverage count invalid")
-    require(isinstance(final_candidate_count, int) and 0 <= final_candidate_count <= generation_evidence_count, "final recovery candidate count invalid")
-    require(typed_boundary.get("productionEquivalentRecoveryCandidateCount") == final_candidate_count, "typed boundary final candidate count drift")
-    require(typed_boundary.get("candidateCoveredCount") == typed_covered_count, "typed boundary covered candidate count drift")
+    require(valid_count(pending_typed), "pending typed coverage count invalid")
+    require(valid_count(final_candidate_count) and final_candidate_count <= generation_evidence_count, "final recovery candidate count invalid")
+    require_count_match(typed_boundary.get("productionEquivalentRecoveryCandidateCount"), final_candidate_count, "typed boundary final candidate count drift")
+    require_count_match(typed_boundary.get("candidateCoveredCount"), typed_covered_count, "typed boundary covered candidate count drift")
     require(final_candidate_count == typed_covered_count, "final recovery candidate must equal complete typed coverage of pre-overlay eligible records")
     require(typed_boundary.get("productionEvidence") is False and typed_boundary.get("productionReady") is False, "typed boundary cannot promote production")
     require(typed_boundary.get("productionDecision") == "NO_GO", "typed boundary production decision drift")
@@ -195,6 +203,14 @@ def main() -> int:
 
     backup_boundary = backup_binding.get("currentBoundary")
     require(isinstance(backup_boundary, dict), "backup generation boundary missing")
+    backup_count = backup_boundary.get("generationBoundBackupCount")
+    restore_count = backup_boundary.get("generationBoundRestoreCount")
+    binding_candidate_count = backup_boundary.get("productionEquivalentRecoveryCandidateCount")
+    require(valid_count(backup_count), "backup generation-bound backup count invalid")
+    require(valid_count(restore_count), "backup generation-bound restore count invalid")
+    require(valid_count(binding_candidate_count), "backup recovery candidate count invalid")
+    require(binding_candidate_count == final_candidate_count, "backup generation candidate count drift")
+    require(final_candidate_count <= restore_count <= backup_count <= generation_evidence_count, "backup recovery aggregate ordering drift")
     independent_review_completed = backup_boundary.get("independentReviewCompleted")
     human_promotion_review_completed = backup_boundary.get("humanProductionPromotionReviewCompleted")
     human_promotion_authorized = backup_boundary.get("humanProductionPromotionAuthorized")
@@ -222,6 +238,7 @@ def main() -> int:
     require(backup_row.get("humanProductionPromotionAuthorized") is human_promotion_authorized, "OPS-P0-007 human promotion authorization drift")
     deps = backup_row.get("dependencyCounts")
     require(isinstance(deps, dict), "OPS-P0-007 dependencyCounts missing")
+    require(all(valid_count(value) for value in deps.values()), "OPS-P0-007 dependency counts must be non-boolean counts")
     expected_dependencies = {
         "environmentGenerations": generation_count,
         "preflightEligibleEnvironmentGenerations": preflight_eligible_generation_count,
@@ -234,8 +251,8 @@ def main() -> int:
         "currentExecutableRestoreDrillRequests": executable_drill_request_count,
         "generationRecoveryEvidenceRecords": generation_evidence_count,
         "drillRequestBoundGenerationEvidence": drill_bound_generation_evidence_count,
-        "generationBoundBackups": backup_boundary.get("generationBoundBackupCount"),
-        "generationBoundRestores": backup_boundary.get("generationBoundRestoreCount"),
+        "generationBoundBackups": backup_count,
+        "generationBoundRestores": restore_count,
         "typedNonResurrectionRecords": typed_record_count,
         "completeTypedNonResurrectionRecords": typed_complete_count,
         "preOverlayEligiblePendingTypedCoverage": pending_typed,
@@ -243,7 +260,7 @@ def main() -> int:
         "productionEquivalentRecoveryCandidates": final_candidate_count,
     }
     require(deps == expected_dependencies, f"OPS-P0-007 dependencyCounts drift: {deps}")
-    require(backup_row.get("admittedEvidenceCount") == backup_boundary.get("generationBoundRestoreCount"), "OPS-P0-007 admitted restore count drift")
+    require_count_match(backup_row.get("admittedEvidenceCount"), restore_count, "OPS-P0-007 admitted restore count drift")
 
     if preflight_decision == "BLOCKED_NEEDS_TWO_UNSUPERSEDED_DISTINCT_ENVIRONMENT_GENERATIONS":
         expected_next_gate = "register two distinct reviewed production-equivalent environment generations that independently revalidate as unsuperseded and semantically restore-preflight eligible; then approve explicit recovery objectives before submitting any restore drill request"
@@ -278,6 +295,7 @@ def main() -> int:
     print(f"generation/drill-bound recovery evidence: {generation_evidence_count}/{drill_bound_generation_evidence_count}")
     print(f"typed non-resurrection records: {typed_record_count}")
     print(f"final recovery candidates: {final_candidate_count}")
+    print("boolean cross-authority counts accepted: false")
     print(f"candidate evidence review/human promotion review/authorization: {str(independent_review_completed).lower()}/{str(human_promotion_review_completed).lower()}/{str(human_promotion_authorized).lower()}")
     print("preflight auto-creates prerequisites: false")
     print("unbound generation recovery evidence accepted: false")
