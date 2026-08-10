@@ -51,6 +51,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py"
       - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
+      - "scripts/validate-memory-os-backup-restore-admission-chain-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-admission-chain.py"
       - "scripts/validate-memory-os-operability.py"
   push:
@@ -105,6 +106,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py"
       - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
+      - "scripts/validate-memory-os-backup-restore-admission-chain-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-admission-chain.py"
       - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
@@ -174,6 +176,7 @@ jobs:
             scripts/validate-memory-os-backup-restore-non-resurrection-negative.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py \
             scripts/validate-memory-os-backup-restore-admission-chain.py \
+            scripts/validate-memory-os-backup-restore-admission-chain-negative.py \
             scripts/reconcile-memory-os-backup-restore-admission-chain.py \
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
@@ -194,6 +197,9 @@ jobs:
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-backup-restore-admission-chain.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-backup-restore-admission-chain-negative.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-backup-restore-drill-request.py >> "$log" 2>&1 || code=$?
@@ -278,6 +284,7 @@ jobs:
             scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py \
             scripts/reconcile-memory-os-backup-non-resurrection-authority.py \
             scripts/validate-memory-os-backup-restore-admission-chain.py \
+            scripts/validate-memory-os-backup-restore-admission-chain-negative.py \
             scripts/reconcile-memory-os-backup-restore-admission-chain.py \
             scripts/validate-memory-os-operability.py; then
             echo "Recovery admission chain source changed during reconciliation; refusing stale derived authority."
