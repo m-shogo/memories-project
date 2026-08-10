@@ -128,7 +128,9 @@ def main() -> int:
         require(item.get("status") == "PASS_EVIDENCE_COMMITTED", f"local foundation not committed PASS: {foundation_id}")
         for field in ("contract", "result", "validator", "workflow"):
             ref = item.get(field)
-            require(isinstance(ref, str) and (ROOT / ref).is_file(), f"local foundation ref missing: {foundation_id}.{field}")
+            require(isinstance(ref, str) and ref, f"local foundation ref invalid: {foundation_id}.{field}")
+            relative = repo_relative(ROOT / ref)
+            require((ROOT / relative).is_file(), f"local foundation ref missing: {foundation_id}.{field}")
     coherent = by_id["LOCAL_COHERENT_DATABASE_OBJECT_RECOVERY_SET"]
     require(any("recovery-set" in str(value) for value in coherent.get("proves", [])), "coherent local recovery-set proof drift")
 
