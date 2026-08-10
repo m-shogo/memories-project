@@ -34,6 +34,10 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def valid_count(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -122,10 +126,11 @@ def main() -> int:
     generation_count = gen_registry.get("registeredGenerationCount")
     generations = gen_registry.get("generations")
     require(gen_registry.get("appendOnly") is True and gen_registry.get("productionEvidence") is False, "generation registry boundary drift")
-    require(isinstance(generation_count, int) and not isinstance(generation_count, bool) and generation_count >= 0, "registered generation count invalid")
+    require(valid_count(generation_count), "registered generation count invalid")
     require(isinstance(generations, list) and len(generations) == generation_count, "generation registry count drift")
     generation_boundary = generation.get("currentBoundary")
     require(isinstance(generation_boundary, dict), "generation boundary missing")
+    require(valid_count(generation_boundary.get("registeredGenerationCount")), "generation contract registeredGenerationCount must be a non-boolean count")
     require(generation_boundary.get("registeredGenerationCount") == generation_count, "generation contract count drift")
     require(generation_boundary.get("productionEvidence") is False and generation_boundary.get("productionReady") is False, "generation authority cannot promote production")
 
@@ -137,10 +142,10 @@ def main() -> int:
     restore_count = evidence_registry.get("completeGenerationBoundRestoreCount")
     candidate_count = evidence_registry.get("productionEquivalentRecoveryCandidateCount")
     evidence_rows = evidence_registry.get("records")
-    require(isinstance(evidence_count, int) and not isinstance(evidence_count, bool) and isinstance(evidence_rows, list) and len(evidence_rows) == evidence_count, "generation evidence count drift")
+    require(valid_count(evidence_count) and isinstance(evidence_rows, list) and len(evidence_rows) == evidence_count, "generation evidence count drift")
     require(all(isinstance(row, dict) for row in evidence_rows), "generation evidence rows invalid")
     for value, field in ((backup_count, "backup"), (restore_count, "restore"), (candidate_count, "candidate")):
-        require(isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= evidence_count, f"generation-bound {field} count invalid")
+        require(valid_count(value) and value <= evidence_count, f"generation-bound {field} count invalid")
     require(candidate_count <= restore_count <= backup_count, "generation recovery count ordering invalid")
     if generation_count == 0:
         require(evidence_count == 0, "recovery evidence cannot exist without registered environment generations")
@@ -174,6 +179,7 @@ def main() -> int:
         "productionEquivalentRecoveryCandidateCount": candidate_count,
     }
     for field, value in expected.items():
+        require(valid_count(boundary.get(field)), f"restore generation boundary {field} must be a non-boolean count")
         require(boundary.get(field) == value, f"restore generation boundary drift: {field}")
     require(boundary.get("productionEquivalentRestoreEvidence") is (candidate_count > 0), "productionEquivalentRestoreEvidence derivation drift")
     require(boundary.get("independentReviewCompleted") is (candidate_count > 0), "candidate-level independent evidence review derivation drift")
@@ -213,6 +219,7 @@ def main() -> int:
     print("backup/restore aggregates re-derived from immutable generation evidence: true")
     print(f"production-equivalent recovery candidates: {candidate_count}")
     print("recovery candidate aggregate re-derived from current executable reviewed evidence: true")
+    print("boolean generation/evidence/boundary counts accepted: false")
     print(f"candidate-level independent evidence review complete: {str(candidate_count > 0).lower()}")
     print("human production-promotion review completed by recovery candidate: false")
     print("human production promotion authorized by recovery candidate: false")
