@@ -59,7 +59,7 @@ def require(condition: bool, message: str) -> None:
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
+    except (FileNotFoundError, OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise Fail(f"cannot load {path}: {exc}") from exc
     require(isinstance(value, dict), f"root must be object: {path}")
     return value
@@ -166,7 +166,12 @@ def approval_document(ref: Any, field: str) -> dict[str, Any]:
     require(document.get("schemaVersion") == APPROVAL_SCHEMA, f"{field} approval schemaVersion drift")
     parse_timestamp(document.get("approvedAt"), f"{field}.approvedAt")
     reviewer = document.get("reviewerPseudonym")
-    require(isinstance(reviewer, str) and reviewer.strip(), f"{field} reviewerPseudonym required")
+    require(isinstance(reviewer, str), f"{field} reviewerPseudonym required")
+    canonical_reviewer = reviewer.strip()
+    require(
+        1 <= len(canonical_reviewer) <= 128 and reviewer == canonical_reviewer,
+        f"{field} reviewerPseudonym must be canonical non-empty text",
+    )
     require(document.get("decision") == "APPROVED", f"{field} approval decision must be APPROVED")
     for boundary in ("productionTraffic", "productionCredentials", "automaticPromotion"):
         require(document.get(boundary) is False, f"{field} approval {boundary} must remain false")
@@ -205,6 +210,7 @@ def validate_request(record: dict[str, Any], *, require_current: bool = True) ->
     require(rules.get("requestMustNotPredateSourceGenerationRegistration") is True, "source generation chronology rule missing")
     require(rules.get("requestMustNotPredateRestoreTargetGenerationRegistration") is True, "restore-target generation chronology rule missing")
     require(rules.get("requestMustNotPredateRecoveryObjectiveApproval") is True, "recovery objective chronology rule missing")
+    require(rules.get("approvalReviewerPseudonymsMustBeCanonicalNonEmptyText") is True, "canonical reviewer pseudonym rule missing")
     request_id = record.get("requestId")
     require(isinstance(request_id, str) and REQUEST_ID.fullmatch(request_id), "requestId invalid")
     requested_at = parse_timestamp(record.get("requestedAt"), "requestedAt")
