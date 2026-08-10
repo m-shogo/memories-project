@@ -45,6 +45,18 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def domain_validation_failure(exc: BaseException) -> bool:
+    """Recognize only explicit domain validation failures across dynamic modules."""
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, RuntimeError) and current.__class__.__name__ == "Fail":
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -153,8 +165,10 @@ def drill_request_for_record(record: dict[str, Any], *, require_current: bool) -
 def drill_request_current(record: dict[str, Any]) -> bool:
     try:
         drill_request_for_record(record, require_current=True)
-    except Exception:
-        return False
+    except Exception as exc:
+        if domain_validation_failure(exc):
+            return False
+        raise
     return True
 
 
@@ -218,8 +232,10 @@ def typed_non_resurrection_covered(evidence_id: Any) -> bool:
             overlay_writer = load_non_resurrection_writer()
             overlay_writer.GEN_EVIDENCE_REGISTRY = REGISTRY
             overlay_writer.validate_record(row)
-        except Exception:
-            return False
+        except Exception as exc:
+            if domain_validation_failure(exc):
+                return False
+            raise
 
     if row.get("evidenceComplete") is not True:
         return False
