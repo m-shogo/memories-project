@@ -16,6 +16,7 @@ INVENTORY_SCHEMA = "memory-os-operability-admission-inventory.v1"
 SOAK_REVIEW_REFS = {
     "contracts/operations/sustained-soak-independent-review-contract.v1.json",
     "contracts/operations/sustained-soak-independent-review-registry.v1.json",
+    "scripts/register-memory-os-sustained-soak-independent-review.py",
     "scripts/validate-memory-os-sustained-soak-independent-review.py",
     "scripts/validate-memory-os-sustained-soak-independent-review-negative.py",
 }
@@ -106,9 +107,10 @@ def main() -> int:
     passing_reviews = inventory.get("passingIndependentSustainedSoakReviewCount")
     leak_proof = inventory.get("sustainedSoakLeakProof")
     require(isinstance(approved_criteria, int) and not isinstance(approved_criteria, bool) and approved_criteria >= 0, "OPS-P0-006 approved criteria count invalid")
-    require(isinstance(passing_reviews, int) and not isinstance(passing_reviews, bool) and 0 <= passing_reviews <= approved_criteria, "OPS-P0-006 independent review count invalid")
+    require(isinstance(passing_reviews, int) and not isinstance(passing_reviews, bool) and 0 <= passing_reviews <= 1, "OPS-P0-006 current independent review count invalid")
+    require(passing_reviews <= approved_criteria, "OPS-P0-006 current independent review count exceeds approved criteria authority")
     require(isinstance(leak_proof, bool), "OPS-P0-006 leak proof invalid")
-    require(not leak_proof or passing_reviews > 0, "OPS-P0-006 leak proof requires passing independent review")
+    require(not leak_proof or passing_reviews > 0, "OPS-P0-006 leak proof requires a passing independent review")
     require(inventory_p0_006.get("approvedLeakStabilityCriteriaCount") == approved_criteria, "OPS-P0-006 row/top-level approved criteria drift")
     require(inventory_p0_006.get("passingIndependentReviewCount") == passing_reviews, "OPS-P0-006 row/top-level independent review drift")
     require(inventory_p0_006.get("leakProof") is leak_proof, "OPS-P0-006 row/top-level leak proof drift")
@@ -132,17 +134,24 @@ def main() -> int:
     require(any(
         isinstance(item, str)
         and "append-only independent sustained-soak review authority" in item
+        and "accepts only externally supplied human-approved" in item
         and "automatic threshold selection" in item
+        and "registry is currently empty" not in item
+        for item in soak_existing
+    ), "OPS-P0-006 must describe stable independent review authority without embedding transient registry emptiness")
+    require(not any(
+        isinstance(item, str)
+        and "append-only independent sustained-soak review authority" in item
         and "registry is currently empty" in item
         for item in soak_existing
-    ), "OPS-P0-006 must describe the independent review authority without claiming admitted human evidence")
+    ), "OPS-P0-006 cannot retain stale dynamic empty-registry evidence")
     if approved_criteria == 0 or passing_reviews == 0:
         require(any(
             isinstance(item, str)
             and "independently approved leak/stability criteria" in item
             and "leakProof remains false" in item
             for item in soak_missing
-        ), "OPS-P0-006 must preserve the independent leak/stability review blocker while review authority is absent")
+        ), "OPS-P0-006 must preserve the independent leak/stability review blocker while current review authority is absent")
 
     require(inventory_p0_007.get("humanProductionPromotionReviewCompleted") is False, "OPS-P0-007 inventory cannot manufacture promotion review")
     require(inventory_p0_007.get("humanProductionPromotionAuthorized") is False, "OPS-P0-007 inventory cannot authorize promotion")
@@ -172,8 +181,9 @@ def main() -> int:
     print("Memory OS operability status hygiene validation PASS")
     print(f"status schema: {CANONICAL_SCHEMA}")
     print(f"P0 areas checked: {p0_count}")
-    print(f"OPS-P0-006 approved criteria/independent review/leak proof: {approved_criteria}/{passing_reviews}/{str(leak_proof).lower()}")
+    print(f"OPS-P0-006 approved criteria/current independent review/leak proof: {approved_criteria}/{passing_reviews}/{str(leak_proof).lower()}")
     print("OPS-P0-006 independent review authority refs: bound to canonical status")
+    print("OPS-P0-006 stale empty-registry authority text accepted: false")
     print("OPS-P0-006 local soak cannot manufacture independent leak proof: true")
     print("OPS-P0-007 semantic generation authority: bound to deterministic inventory")
     print("OPS-P0-007 human production-promotion authority: separate and false")
