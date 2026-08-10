@@ -86,30 +86,55 @@ def main() -> int:
         require(contract.get(field) == expected, f"chain ref drift: {field}")
         require((ROOT / expected).is_file(), f"chain artifact missing: {expected}")
     require(BLOCKER_AUTHORITY.is_file(), "canonical OPS-P0-007 blocker authority missing")
+
+    expected_chain = [
+        "readOnlyDrillPreflight",
+        "reviewedDrillRequest",
+        "currentExecutableDrillRequestAtEvidenceAdmission",
+        "drillRequestBoundGenerationEvidence",
+        "generationBoundBackup",
+        "generationBoundRestore",
+        "preOverlayRecoveryGates",
+        "typedNonResurrectionEightDomainCoverage",
+        "finalProductionEquivalentRecoveryCandidate",
+        "separateHumanProductionPromotionDecision",
+    ]
     required_chain = contract.get("requiredChain")
-    require(isinstance(required_chain, list) and required_chain and required_chain[0] == "readOnlyDrillPreflight", "preflight must remain chain stage zero")
-    require(len(required_chain) == len(set(required_chain)), "chain stages must be unique")
-    invariants = contract.get("invariants")
-    require(isinstance(invariants, dict) and invariants and all(value is True for value in invariants.values()), "chain invariants must remain fail-closed")
-    for key in (
+    require(required_chain == expected_chain, "chain stage sequence drift")
+
+    expected_invariants = {
         "preflightNeverCreatesMissingPrerequisites",
         "preflightReadyNeverCreatesDrillRequest",
         "preflightBlockedCannotHaveCurrentExecutableDrillRequest",
         "currentExecutableDrillRequestRequiresReadyExistingPreflightDecision",
         "generationEvidenceRequiresRegisteredDrillRequest",
+        "generationEvidenceRequestSourceGenerationMustMatch",
+        "generationEvidenceRequestRestoreTargetGenerationMustMatch",
+        "generationEvidenceRequestRecoveryObjectiveMustMatch",
+        "newEvidenceRequiresCurrentlyExecutableDrillRequest",
+        "historicalEvidenceMayRemainAuditableAfterRequestStales",
         "staleRequestEvidenceCannotRemainCurrentCandidate",
         "generationBoundBackupCountMustMatchBindingAuthority",
         "generationBoundRestoreCountMustMatchBindingAuthority",
         "recoveryAggregateOrderingMustRemainMonotonic",
+        "genericNonResurrectionPassCannotCreateFinalCandidate",
         "finalCandidateRequiresCompleteTypedEightDomainCoverage",
+        "finalCandidateRequiresCurrentApprovedRecoveryObjective",
+        "finalCandidateRequiresMeasuredObjectivesToPass",
+        "finalCandidateRequiresIndependentSecurityAndOperabilityReview",
         "finalCandidateRequiresIndependentEvidenceReview",
         "finalCandidateCannotCompleteHumanProductionPromotionReview",
         "finalCandidateCannotAuthorizeProductionPromotion",
         "humanProductionPromotionReviewRemainsSeparate",
+        "planningRequestCannotExecuteRestore",
         "chainCannotDeriveProductionEvidence",
         "chainCannotDeriveProductionReady",
-    ):
-        require(invariants.get(key) is True, f"chain invariant missing: {key}")
+        "canonicalOpsP0007SixBlockersMustRemainUntilRealEvidenceExists",
+    }
+    invariants = contract.get("invariants")
+    require(isinstance(invariants, dict), "chain invariants missing")
+    require(set(invariants) == expected_invariants, "chain invariant key set drift")
+    require(all(invariants[key] is True for key in expected_invariants), "chain invariants must remain fail-closed")
 
     preflight = preflight_contract.get("currentState")
     require(isinstance(preflight, dict), "preflight currentState missing")
