@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import shutil
 import subprocess
 import tempfile
@@ -34,8 +35,9 @@ def load_reconciler() -> Any:
     return module
 
 
-def failed_post_validator(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
-    return subprocess.CompletedProcess(args=args[0] if args else [], returncode=23, stdout="synthetic post-validator failure\n", stderr="")
+def minify_json(path: Path) -> None:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    path.write_text(json.dumps(value, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
 
 
 def main() -> int:
@@ -55,9 +57,25 @@ def main() -> int:
         shutil.copy2(REGISTRY, registry)
         shutil.copy2(STATUS, status)
 
+        # Preserve semantically identical but byte-distinct inputs so the synthetic
+        # post-validator can prove reconciliation writes actually happened before it
+        # forces failure. This prevents a future pre-validation subprocess call from
+        # turning the rollback suite into a false positive.
+        for path in (contract, registry, status):
+            minify_json(path)
+
         original_contract = contract.read_bytes()
         original_registry = registry.read_bytes()
         original_status = status.read_bytes()
+        post_validator_observed_after_writes = False
+
+        def failed_post_validator(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            nonlocal post_validator_observed_after_writes
+            require(contract.read_bytes() != original_contract, "post-validator invoked before contract reconcile write")
+            require(registry.read_bytes() != original_registry, "post-validator invoked before registry reconcile write")
+            require(status.read_bytes() != original_status, "post-validator invoked before production status reconcile write")
+            post_validator_observed_after_writes = True
+            return subprocess.CompletedProcess(args=args[0] if args else [], returncode=23, stdout="synthetic post-validator failure\n", stderr="")
 
         reconciler.CONTRACT = contract
         reconciler.REGISTRY = registry
@@ -74,12 +92,14 @@ def main() -> int:
         finally:
             reconciler.subprocess.run = real_run
 
+        require(post_validator_observed_after_writes, "synthetic post-validator failure did not observe all authority writes")
         require(contract.read_bytes() == original_contract, "contract mutation survived failed post-validation")
         require(registry.read_bytes() == original_registry, "registry mutation survived failed post-validation")
         require(status.read_bytes() == original_status, "production status mutation survived failed post-validation")
 
     print("Memory OS backup/restore drill request reconcile rollback negative suite PASS")
     print("forced post-validator failure observed: true")
+    print("post-validator observed contract/registry/status writes: true")
     print("contract byte-for-byte rollback: true")
     print("registry byte-for-byte rollback: true")
     print("production status byte-for-byte rollback: true")
