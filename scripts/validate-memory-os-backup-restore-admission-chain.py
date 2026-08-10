@@ -117,6 +117,8 @@ def main() -> int:
         "newEvidenceRequiresCurrentlyExecutableDrillRequest",
         "historicalEvidenceMayRemainAuditableAfterRequestStales",
         "staleRequestEvidenceCannotRemainCurrentCandidate",
+        "generationBoundBackupCountMustBeRederivedFromImmutableEvidence",
+        "generationBoundRestoreCountMustBeRederivedFromImmutableEvidence",
         "generationBoundBackupCountMustMatchBindingAuthority",
         "generationBoundRestoreCountMustMatchBindingAuthority",
         "recoveryAggregateOrderingMustRemainMonotonic",
