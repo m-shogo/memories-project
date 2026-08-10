@@ -728,7 +728,8 @@
         "scripts/memory_os_environment_generation_eligibility.py",
         "scripts/validate-memory-os-backup-restore-drill-preflight-negative.py",
         "scripts/run-memory-os-local-object-version-restore.py",
-        "scripts/reconcile-memory-os-local-object-version-restore.py"
+        "scripts/reconcile-memory-os-local-object-version-restore.py",
+        "scripts/memory_os_backup_restore_blockers.py"
       ]
     },
     {
