@@ -212,6 +212,15 @@ def main() -> int:
         require(writer.request_currently_executable(valid) is True, "valid synthetic request should be current in isolated negative fixture")
         print("PASS accept: fully bound isolated planning request with digest-bound typed approvals and prerequisite chronology")
 
+        expect_rejected("absolute drill authority ref", lambda: writer.repo_ref(str((tmp_path / "SECURITY.md").resolve()), "negative.absolute"))
+        expect_rejected("parent-traversal drill authority ref", lambda: writer.repo_ref("nested/../SECURITY.md", "negative.parent"))
+        escaped_ref = tmp_path / "escaped-entry.md"
+        try:
+            escaped_ref.symlink_to(ROOT / "SECURITY.md")
+            expect_rejected("drill authority symlink escapes repository root", lambda: writer.repo_ref("escaped-entry.md", "negative.symlink"))
+        finally:
+            escaped_ref.unlink(missing_ok=True)
+
         predates_generation = copy.deepcopy(valid)
         predates_generation["requestId"] = "brrq_predates_generation"
         predates_generation["requestedAt"] = "2026-08-07T22:59:59Z"
@@ -383,6 +392,7 @@ def main() -> int:
     print("semantic generation eligibility bypass: false")
     print("request chronology predates generation/objective authority: false")
     print("arbitrary repository approval authority: false")
+    print("drill request authority refs escape repository: false")
     print("typed approval request/generation/objective binding enforced: true")
     print("typed approvals bind canonical request-record digest: true")
     print("approval chronology bound to request creation: true")
