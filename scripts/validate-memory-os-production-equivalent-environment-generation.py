@@ -18,6 +18,22 @@ GEN_SCHEMA = ROOT / "contracts/operations/production-equivalent-environment-gene
 ENV_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-record.py"
 WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
 NEGATIVE = ROOT / "scripts/validate-memory-os-production-equivalent-environment-generation-negative.py"
+EXPECTED_NEGATIVE_CASES = {
+    "environment record missing required nested section",
+    "environment record unknown nested field",
+    "environment record production traffic or credentials enabled",
+    "environment record contains secret material",
+    "productionEquivalentDependencies true with incomplete dependency controls",
+    "productionEquivalentDependencies true with missing evidence ref",
+    "independent review completed without review evidence ref",
+    "accepted material delta without independent review evidence",
+    "absolute, parent-traversal or symlinked environment record ref",
+    "semantic environment validator implementation exception",
+    "mutable generation alias",
+    "environment record digest mismatch",
+    "missing environment record path",
+    "production evidence relabel",
+}
 
 
 class Fail(RuntimeError):
@@ -82,6 +98,8 @@ def main() -> int:
     require(isinstance(bindings, dict) and bindings and all(value is True for value in bindings.values()), "generation binding rules must remain fail-closed")
     for key in (
         "environmentRecordFullSemanticValidationRequired",
+        "environmentRecordRefMustBeCanonicalRepositoryFile",
+        "semanticValidatorImplementationErrorsMustSurface",
         "allNonNullEnvironmentEvidenceRefsMustResolveInRepository",
         "equivalentEnvironmentRequiresIndependentReviewEvidence",
         "registrationDoesNotImplyPreflightEligibility",
@@ -93,7 +111,12 @@ def main() -> int:
     result_rules = contract.get("resultAdmissionRules")
     require(isinstance(result_rules, dict) and result_rules and all(value is True for value in result_rules.values()), "result admission rules must remain fail-closed")
     negative_cases = contract.get("negativeAdmissionCases")
-    require(isinstance(negative_cases, list) and len(negative_cases) >= 10 and len(negative_cases) == len(set(negative_cases)), "generation negative admission cases incomplete or duplicated")
+    require(
+        isinstance(negative_cases, list)
+        and len(negative_cases) == len(set(negative_cases))
+        and set(negative_cases) == EXPECTED_NEGATIVE_CASES,
+        "generation negative admission case authority drift",
+    )
 
     require(registry.get("schemaVersion") == "memory-os-production-equivalent-environment-generation-registry.v1", "registry schema drift")
     require(registry.get("appendOnly") is True, "generation registry must be append-only")
@@ -180,8 +203,11 @@ def main() -> int:
     print(f"current production-equivalent dependencies: {str(derived_equivalent).lower()}")
     print("registration implies preflight eligibility: false")
     print("boolean generation counts accepted: false")
+    print("canonical environmentRecordRef required: true")
+    print("semantic validator implementation exceptions surfaced: true")
     print("unexpected generation-writer exceptions normalized as expected rejection: false")
     print("cross-generation evidence reuse: forbidden")
+    print("negative admission case authority exact: true")
     print("negative admission suite: PASS")
     print("production evidence: false")
     print("production decision: NO_GO")
