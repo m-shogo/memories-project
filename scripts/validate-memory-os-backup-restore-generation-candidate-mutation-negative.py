@@ -259,6 +259,58 @@ def main() -> int:
             require(writer.candidate(valid) is True, "fully bound typed evidence must produce isolated test candidate")
             print("PASS candidate: full typed validator accepts intact bundle")
 
+            original_drill_request_for_record = writer.drill_request_for_record
+            try:
+                def reject_drill_request(*args: Any, **kwargs: Any) -> None:
+                    raise writer.Fail("synthetic domain rejection")
+
+                writer.drill_request_for_record = reject_drill_request
+                require(writer.drill_request_current(valid) is False, "explicit drill-request domain rejection must revoke candidate")
+                print("PASS reject: explicit drill-request domain failure returns false")
+
+                def break_drill_request(*args: Any, **kwargs: Any) -> None:
+                    raise TypeError("synthetic unexpected drill-request implementation error")
+
+                writer.drill_request_for_record = break_drill_request
+                try:
+                    writer.drill_request_current(valid)
+                except TypeError:
+                    pass
+                else:
+                    raise Fail("unexpected drill-request implementation exception was hidden as candidate rejection")
+                print("PASS surface: unexpected drill-request implementation exception propagates")
+            finally:
+                writer.drill_request_for_record = original_drill_request_for_record
+
+            original_overlay_loader = writer.load_non_resurrection_writer
+            try:
+                class RejectingOverlay:
+                    @staticmethod
+                    def validate_record(record: dict[str, Any]) -> None:
+                        raise writer.Fail("synthetic typed domain rejection")
+
+                writer.load_non_resurrection_writer = lambda: RejectingOverlay()
+                require(writer.typed_non_resurrection_covered(valid["evidenceId"]) is False, "explicit typed domain rejection must revoke coverage")
+                print("PASS reject: explicit typed domain failure returns false")
+
+                class BrokenOverlay:
+                    @staticmethod
+                    def validate_record(record: dict[str, Any]) -> None:
+                        raise TypeError("synthetic unexpected typed implementation error")
+
+                writer.load_non_resurrection_writer = lambda: BrokenOverlay()
+                try:
+                    writer.typed_non_resurrection_covered(valid["evidenceId"])
+                except TypeError:
+                    pass
+                else:
+                    raise Fail("unexpected typed implementation exception was hidden as coverage rejection")
+                print("PASS surface: unexpected typed implementation exception propagates")
+            finally:
+                writer.load_non_resurrection_writer = original_overlay_loader
+
+            require(writer.candidate(valid) is True, "candidate must recover after exception-boundary probes")
+
             domain = contract["requiredDomains"][0]
             original_domain = load_json(domain_paths[domain])
             mutated_domain = copy.deepcopy(original_domain)
@@ -282,6 +334,7 @@ def main() -> int:
         print("canonical registries mutated: false")
         print("domain payload stale reuse accepted: false")
         print("review payload stale reuse accepted: false")
+        print("unexpected candidate implementation exceptions hidden: false")
         print("production evidence: false")
         print("production decision: NO_GO")
         return 0
