@@ -203,6 +203,7 @@ def main() -> int:
                     "rpoSeconds": 60,
                     "rtoSeconds": 120,
                     "maximumObjectDatabaseSkewSeconds": 10,
+                    "approvedAt": "2026-08-07T23:55:00Z"
                 }],
                 "productionEvidence": False,
                 "productionReady": False,
