@@ -104,7 +104,9 @@ def approval_document(ref: str, record: dict[str, Any], approved_at: datetime) -
     role = document.get("reviewRole")
     require(role in APPROVAL_ROLES, "approval evidence reviewRole invalid")
     reviewer = document.get("reviewerPseudonym")
-    require(isinstance(reviewer, str) and reviewer.strip(), "approval evidence reviewerPseudonym required")
+    require(isinstance(reviewer, str), "approval evidence reviewerPseudonym required")
+    canonical_reviewer = reviewer.strip()
+    require(1 <= len(canonical_reviewer) <= 128 and reviewer == canonical_reviewer, "approval evidence reviewerPseudonym must be canonical non-empty text")
     reviewed_at = parse_utc_timestamp(document.get("reviewedAt"), "approval evidence reviewedAt")
     require(reviewed_at <= approved_at, "approval evidence cannot post-date objective approval")
     for field in ("objectiveId", "scope", "rpoSeconds", "rtoSeconds", "maximumObjectDatabaseSkewSeconds"):
