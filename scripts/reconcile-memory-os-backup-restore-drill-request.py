@@ -75,11 +75,11 @@ def append_once(items: list[Any], value: str) -> None:
 def expected_decision(
     generation_count: int,
     eligible_pair_count: int,
-    objective_count: int,
+    current_objective_available: bool,
     request_count: int,
     executable_count: int,
 ) -> str:
-    if generation_count < 2 or objective_count == 0:
+    if generation_count < 2 or not current_objective_available:
         return "BLOCKED_NO_REGISTERED_GENERATION_OR_APPROVED_OBJECTIVE"
     if eligible_pair_count == 0:
         return "BLOCKED_NO_SEMANTICALLY_ELIGIBLE_DISTINCT_ENVIRONMENT_PAIR"
@@ -125,9 +125,18 @@ def main() -> int:
 
     objective_rows = objectives.get("records")
     objective_count = objectives.get("approvedObjectiveCount")
+    current_objective_id = objectives.get("currentObjectiveId")
     require(isinstance(objective_rows, list) and all(isinstance(row, dict) for row in objective_rows), "recovery objective rows invalid")
     require(isinstance(objective_count, int) and objective_count == len(objective_rows), "recovery objective count drift")
     require(objectives.get("appendOnly") is True and objectives.get("productionEvidence") is False and objectives.get("productionReady") is False, "recovery objective boundary drift")
+    if objective_count == 0:
+        require(current_objective_id is None, "empty recovery objective registry cannot declare a current objective")
+        current_objective_available = False
+    else:
+        require(current_objective_id is None or isinstance(current_objective_id, str), "currentObjectiveId invalid")
+        current_matches = [row for row in objective_rows if row.get("objectiveId") == current_objective_id] if current_objective_id is not None else []
+        require(len(current_matches) <= 1, "current recovery objective must be unique")
+        current_objective_available = len(current_matches) == 1
 
     requests = registry.get("requests")
     require(registry.get("appendOnly") is True, "drill request registry must remain append-only")
@@ -138,8 +147,8 @@ def main() -> int:
     request_count = len(requests)
     if generation_count < 2 or objective_count == 0:
         require(request_count == 0, "request history cannot exist before prerequisite authorities")
-    if eligible_pair_count == 0:
-        require(executable_count == 0, "semantic preflight block cannot have a current executable request")
+    if eligible_pair_count == 0 or not current_objective_available:
+        require(executable_count == 0, "current executable request requires semantic preflight eligibility and a current approved recovery objective")
 
     registry["registeredRequestCount"] = request_count
     registry["currentExecutableRequestCount"] = executable_count
@@ -161,7 +170,7 @@ def main() -> int:
     state["admissionDecision"] = expected_decision(
         generation_count,
         eligible_pair_count,
-        objective_count,
+        current_objective_available,
         request_count,
         executable_count,
     )
@@ -178,7 +187,7 @@ def main() -> int:
     readiness["runbookDefined"] = True
     readiness["environmentGenerationAvailable"] = generation_count >= 2
     readiness["semanticallyEligibleDistinctEnvironmentPairAvailable"] = eligible_pair_count > 0
-    readiness["approvedRecoveryObjectivesAvailable"] = objective_count > 0
+    readiness["approvedRecoveryObjectivesAvailable"] = current_objective_available
     readiness["drillRequested"] = request_count > 0
     readiness["currentExecutableRequestAvailable"] = executable_count > 0
     readiness["drillExecuted"] = False
@@ -200,7 +209,7 @@ def main() -> int:
     existing[:] = [item for item in existing if not (isinstance(item, str) and item.startswith(EVIDENCE_PREFIX))]
     append_once(
         existing,
-        f"{EVIDENCE_PREFIX} registered environment generations={generation_count}, semantic preflight-eligible generations={eligible_count}, unsuperseded semantic preflight-eligible generations={unsuperseded_eligible_count}, distinct semantic preflight-eligible environments={distinct_eligible_environment_count}, eligible directed source-target pairs={eligible_pair_count}, approved recovery objectives={objective_count}, admitted planning requests={request_count}, currently executable requests={executable_count}, admissionDecision={state['admissionDecision']}; admission requires two distinct unsuperseded semantically restore-preflight-eligible registered production-equivalent generations from distinct environments, the current approved objective, PITR/WAL and exact object-version policies, all eight planned evidence domains, distinct Recovery Owner/Security/Operability approvals and mandatory stop conditions; registered generation count alone never creates planning authority, historical requests remain auditable after supersession but become non-executable, and request admission never executes a restore or creates production evidence",
+        f"{EVIDENCE_PREFIX} registered environment generations={generation_count}, semantic preflight-eligible generations={eligible_count}, unsuperseded semantic preflight-eligible generations={unsuperseded_eligible_count}, distinct semantic preflight-eligible environments={distinct_eligible_environment_count}, eligible directed source-target pairs={eligible_pair_count}, approved recovery objectives={objective_count}, current approved objective available={str(current_objective_available).lower()}, admitted planning requests={request_count}, currently executable requests={executable_count}, admissionDecision={state['admissionDecision']}; admission requires two distinct unsuperseded semantically restore-preflight-eligible registered production-equivalent generations from distinct environments, the current approved objective, PITR/WAL and exact object-version policies, all eight planned evidence domains, distinct Recovery Owner/Security/Operability approvals and mandatory stop conditions; registered generation count or historical objective count alone never creates planning authority, historical requests remain auditable after supersession but become non-executable, and request admission never executes a restore or creates production evidence",
     )
     for ref in REFS:
         require((ROOT / ref).is_file(), f"drill request authority artifact missing: {ref}")
@@ -217,10 +226,11 @@ def main() -> int:
     print(f"distinct semantic preflight-eligible environments: {distinct_eligible_environment_count}")
     print(f"eligible directed source-target pairs: {eligible_pair_count}")
     print(f"approved recovery objectives: {objective_count}")
+    print(f"current approved recovery objective available: {str(current_objective_available).lower()}")
     print(f"registered planning requests: {request_count}")
     print(f"currently executable requests: {executable_count}")
     print(f"admission decision: {state['admissionDecision']}")
-    print("registered generation count alone creates planning authority: false")
+    print("registered generation or historical objective count alone creates planning authority: false")
     print("canonical OPS-P0-007 blockers preserved: 6")
     print("restore executed: false")
     print("production evidence: false")
