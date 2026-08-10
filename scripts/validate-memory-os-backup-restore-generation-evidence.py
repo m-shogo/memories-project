@@ -43,6 +43,16 @@ def repo_relative(path: Path) -> Path:
         raise Fail(f"artifact path escapes repository root: {path}") from exc
 
 
+def canonical_contract_ref(ref: Any, field: str) -> Path:
+    require(isinstance(ref, str) and ref, f"contract artifact ref invalid: {field}")
+    ref_path = Path(ref)
+    require(not ref_path.is_absolute() and ".." not in ref_path.parts, f"contract artifact ref must be canonical repository-relative path: {field}")
+    relative = repo_relative(ROOT / ref_path)
+    require(relative == ref_path, f"contract artifact ref must remain canonical after resolution: {field}")
+    require((ROOT / relative).is_file(), f"contract artifact missing: {field}")
+    return relative
+
+
 def load(path: Path) -> dict[str, Any]:
     relative = repo_relative(path)
     try:
@@ -114,8 +124,7 @@ def main() -> int:
         require(path.is_file(), f"contract artifact missing: {field}")
     require(SEMANTIC_NEGATIVE_VALIDATOR.is_file(), "semantic generation negative admission validator missing")
     for field in ("validator", "reconcile", "workflow", "typedNonResurrectionAdmissionContract", "typedNonResurrectionAdmissionRegistry"):
-        ref = contract.get(field)
-        require(isinstance(ref, str) and ref and (ROOT / ref).is_file(), f"contract artifact missing: {field}")
+        canonical_contract_ref(contract.get(field), field)
 
     rules = contract.get("recordRules")
     require(isinstance(rules, dict) and rules and all(value is True for value in rules.values()), "recordRules must remain fail-closed")
@@ -260,6 +269,7 @@ def main() -> int:
     print(f"complete generation-bound restores: {derived_restore}")
     print(f"production-equivalent recovery candidates: {derived_candidates}")
     print("boolean registry/contract/binding counts accepted: false")
+    print("contract artifact refs canonical and repository-contained: true")
     print("candidate-level independent review cross-authority binding: enforced")
     print("human production-promotion separation cross-authority binding: enforced")
     print("historical evidence audit after request supersession: allowed")
