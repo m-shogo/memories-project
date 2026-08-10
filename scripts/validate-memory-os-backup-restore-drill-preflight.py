@@ -136,7 +136,7 @@ def derive_state(generations: dict[str, Any], objectives: dict[str, Any], drill_
     objective_count = objectives.get("approvedObjectiveCount")
     current_objective_id = objectives.get("currentObjectiveId")
     require(isinstance(objective_rows, list) and all(isinstance(row, dict) for row in objective_rows), "recovery objective rows invalid")
-    require(isinstance(objective_count, int) and objective_count == len(objective_rows), "recovery objective count drift")
+    require(isinstance(objective_count, int) and not isinstance(objective_count, bool) and objective_count == len(objective_rows), "recovery objective count drift")
     if objective_count == 0:
         require(current_objective_id is None, "empty recovery objective registry cannot have currentObjectiveId")
         current_objective_available = False
@@ -149,8 +149,8 @@ def derive_state(generations: dict[str, Any], objectives: dict[str, Any], drill_
     request_count = drill_registry.get("registeredRequestCount")
     current_request_count = drill_registry.get("currentExecutableRequestCount")
     require(isinstance(requests, list) and all(isinstance(row, dict) for row in requests), "drill request rows invalid")
-    require(isinstance(request_count, int) and request_count == len(requests), "drill request count drift")
-    require(isinstance(current_request_count, int) and 0 <= current_request_count <= request_count, "current executable drill request count invalid")
+    require(isinstance(request_count, int) and not isinstance(request_count, bool) and request_count == len(requests), "drill request count drift")
+    require(isinstance(current_request_count, int) and not isinstance(current_request_count, bool) and 0 <= current_request_count <= request_count, "current executable drill request count invalid")
 
     pair_available = pair_count > 0
     blocking_prerequisites: list[str] = []
@@ -260,7 +260,7 @@ def main() -> int:
     blocker_count = canonical.get("blockingPrerequisiteCount")
     require(isinstance(blockers, list) and len(blockers) == len(set(blockers)), "preflight blockers invalid/duplicated")
     require(all(blocker in blocker_kinds for blocker in blockers), "preflight blocker outside canonical kind set")
-    require(isinstance(blocker_count, int) and blocker_count == len(blockers), "preflight blocker count drift")
+    require(isinstance(blocker_count, int) and not isinstance(blocker_count, bool) and blocker_count == len(blockers), "preflight blocker count drift")
     require((blocker_count == 0) is state["eligibleToSubmitReviewedDrillRequest"], "preflight blocker/eligibility contradiction")
     for field in ("requestCreated", "backupExecuted", "restoreExecuted", "productionTrafficChanged", "productionEvidence", "productionReady"):
         require(canonical.get(field) is False, f"preflight must keep {field}=false")
@@ -290,6 +290,7 @@ def main() -> int:
     print(f"preflight decision: {state['preflightDecision']}")
     print("semantic generation authority shared with downstream admission: true")
     print("registered generation blocker semantically requires eligible distinct environments: true")
+    print("boolean objective/request/blocker counts accepted: false")
     print("automatic prerequisite/request creation: false")
     print("restore executed: false")
     print("production evidence: false")
