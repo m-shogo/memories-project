@@ -120,9 +120,14 @@ def main() -> int:
         write_json(generation_registry, generation_mutated)
         expect_rejected("boolean generation final candidate count", validator.main, validator.Fail)
 
+        validator.REGISTRY = Path(tempfile.gettempdir()) / "memory-os-outside-root-registry.json"
+        validator.GEN_REGISTRY = generation_registry
+        expect_rejected("typed registry path escapes repository root", validator.main, validator.Fail)
+
     print("Memory OS typed non-resurrection registry aggregate negative suite PASS")
     print("aggregate counters may not override row-derived authority: true")
     print("boolean aggregate counters accepted: false")
+    print("escaped registry path accepted: false")
     print("unexpected exception accepted as valid rejection: false")
     print("repo-local isolated mutation fixtures: true")
     print("canonical registries mutated: false")
