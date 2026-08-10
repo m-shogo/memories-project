@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from memory_os_backup_restore_blockers import require_canonical_gaps
+
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/backup-restore-contract.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
@@ -27,14 +29,6 @@ NEW_REFS = (
     "docs/runbooks/memory-os-backup-restore.md",
     "scripts/validate-memory-os-backup-restore.py",
     "scripts/reconcile-memory-os-backup-restore.py",
-)
-CANONICAL_GAP_FRAGMENTS = (
-    "production PostgreSQL backup and PITR schedule",
-    "production independent object backup retention",
-    "approved and measured RPO and RTO",
-    "production-shaped cross-cluster isolated restore drill",
-    "production deletion, expired/revoked-session, replay, idempotency and lease non-resurrection verification after restore",
-    "independent review of generation-bound recovery evidence",
 )
 
 
@@ -63,16 +57,6 @@ def append_once(items: list[Any], value: str) -> bool:
         return False
     items.append(value)
     return True
-
-
-def require_canonical_blockers(missing: list[Any]) -> None:
-    require(len(missing) == len(CANONICAL_GAP_FRAGMENTS),
-            "backup policy foundation reconciler cannot rewrite or expand the canonical OPS-P0-007 blocker set")
-    require(all(isinstance(item, str) for item in missing),
-            "OPS-P0-007 missingEvidence must contain only strings")
-    for fragment in CANONICAL_GAP_FRAGMENTS:
-        require(sum(fragment in item for item in missing) == 1,
-                f"canonical OPS-P0-007 blocker missing or duplicated: {fragment}")
 
 
 def main() -> int:
@@ -116,7 +100,7 @@ def main() -> int:
         refs = []
         gate["evidenceRefs"] = refs
     require(isinstance(refs, list), "OPS-P0-007 evidenceRefs must be a list")
-    require_canonical_blockers(missing)
+    require_canonical_gaps(missing, ReconcileFailure)
 
     changed = False
     if gate.get("status") == "NOT_IMPLEMENTED_OR_PROVEN":
@@ -131,7 +115,7 @@ def main() -> int:
     # Canonical production blockers are exclusively owned by
     # reconcile-memory-os-backup-authority.py. This policy-foundation layer may
     # add policy evidence, but it cannot manufacture, rewrite or duplicate gaps.
-    require_canonical_blockers(missing)
+    require_canonical_gaps(missing, ReconcileFailure)
     require(gate.get("status") != "READY",
             "policy foundations cannot make OPS-P0-007 READY")
     require(status.get("productionDecision") == "NO_GO",
