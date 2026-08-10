@@ -40,7 +40,7 @@ jobs:
       - name: Checkout exact source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -51,12 +51,10 @@ jobs:
       - name: Verify exact source and rollback proof
         run: |
           set -euo pipefail
-          if [[ "${{ github.event_name }}" == "push" ]]; then
-            git fetch origin so
-            test "$(git branch --show-current)" = "so"
-            test -z "$(git status --porcelain)"
-            test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
-          fi
+          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          test -n "$expected"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$expected"
           python -m py_compile \
             scripts/reconcile-memory-os-backup-restore-drill-request.py \
             scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py
