@@ -45,12 +45,15 @@ def main() -> int:
     require(isinstance(areas, list) and areas, "areas missing")
     ids: set[str] = set()
     p0_count = 0
+    p0_006: dict[str, Any] | None = None
     p0_007: dict[str, Any] | None = None
     for index, area in enumerate(areas):
         require(isinstance(area, dict), f"areas[{index}] invalid")
         area_id = area.get("id")
         require(isinstance(area_id, str) and area_id and area_id not in ids, f"areas[{index}].id invalid/duplicate")
         ids.add(area_id)
+        if area_id == "OPS-P0-006":
+            p0_006 = area
         if area_id == "OPS-P0-007":
             p0_007 = area
         if not area_id.startswith("OPS-P0-"):
@@ -75,6 +78,7 @@ def main() -> int:
             require(missing, f"{area_id} incomplete status requires missingEvidence")
 
     require(p0_count >= 9, "unexpected P0 area count")
+    require(p0_006 is not None, "OPS-P0-006 sustained-soak area missing")
     require(p0_007 is not None, "OPS-P0-007 backup/restore area missing")
 
     inventory = load(INVENTORY)
@@ -87,8 +91,40 @@ def main() -> int:
 
     inventory_areas = inventory.get("areas")
     require(isinstance(inventory_areas, list), "inventory areas missing")
+    inventory_p0_006 = next((area for area in inventory_areas if isinstance(area, dict) and area.get("id") == "OPS-P0-006"), None)
     inventory_p0_007 = next((area for area in inventory_areas if isinstance(area, dict) and area.get("id") == "OPS-P0-007"), None)
+    require(isinstance(inventory_p0_006, dict), "inventory OPS-P0-006 missing")
     require(isinstance(inventory_p0_007, dict), "inventory OPS-P0-007 missing")
+
+    approved_criteria = inventory.get("approvedLeakStabilityCriteriaCount")
+    passing_reviews = inventory.get("passingIndependentSustainedSoakReviewCount")
+    leak_proof = inventory.get("sustainedSoakLeakProof")
+    require(isinstance(approved_criteria, int) and not isinstance(approved_criteria, bool) and approved_criteria >= 0, "OPS-P0-006 approved criteria count invalid")
+    require(isinstance(passing_reviews, int) and not isinstance(passing_reviews, bool) and 0 <= passing_reviews <= approved_criteria, "OPS-P0-006 independent review count invalid")
+    require(isinstance(leak_proof, bool), "OPS-P0-006 leak proof invalid")
+    require(not leak_proof or passing_reviews > 0, "OPS-P0-006 leak proof requires passing independent review")
+    require(inventory_p0_006.get("approvedLeakStabilityCriteriaCount") == approved_criteria, "OPS-P0-006 row/top-level approved criteria drift")
+    require(inventory_p0_006.get("passingIndependentReviewCount") == passing_reviews, "OPS-P0-006 row/top-level independent review drift")
+    require(inventory_p0_006.get("leakProof") is leak_proof, "OPS-P0-006 row/top-level leak proof drift")
+    require(inventory_p0_006.get("blocking") is True, "OPS-P0-006 inventory must remain blocking")
+    require(inventory_p0_006.get("status") == p0_006.get("status"), "OPS-P0-006 status/inventory status drift")
+    soak_deps = inventory_p0_006.get("dependencyCounts")
+    require(isinstance(soak_deps, dict), "OPS-P0-006 inventory dependencyCounts missing")
+    require(soak_deps.get("approvedLeakStabilityCriteria") == approved_criteria, "OPS-P0-006 approved criteria dependency drift")
+    require(soak_deps.get("passingIndependentReviews") == passing_reviews, "OPS-P0-006 independent review dependency drift")
+    require(isinstance(soak_deps.get("localSustainedSoakEvidence"), bool), "OPS-P0-006 local sustained-soak flag invalid")
+    if soak_deps.get("localSustainedSoakEvidence") is True and (approved_criteria == 0 or passing_reviews == 0):
+        require(leak_proof is False, "local sustained-soak evidence alone cannot establish leak proof")
+    soak_missing = p0_006.get("missingEvidence")
+    require(isinstance(soak_missing, list), "OPS-P0-006 missingEvidence missing")
+    if approved_criteria == 0 or passing_reviews == 0:
+        require(any(
+            isinstance(item, str)
+            and "independently approved leak/stability criteria" in item
+            and "leakProof remains false" in item
+            for item in soak_missing
+        ), "OPS-P0-006 must preserve the independent leak/stability review blocker while review authority is absent")
+
     require(inventory_p0_007.get("humanProductionPromotionReviewCompleted") is False, "OPS-P0-007 inventory cannot manufacture promotion review")
     require(inventory_p0_007.get("humanProductionPromotionAuthorized") is False, "OPS-P0-007 inventory cannot authorize promotion")
     require(inventory_p0_007.get("blocking") is True, "OPS-P0-007 inventory must remain blocking")
@@ -117,6 +153,8 @@ def main() -> int:
     print("Memory OS operability status hygiene validation PASS")
     print(f"status schema: {CANONICAL_SCHEMA}")
     print(f"P0 areas checked: {p0_count}")
+    print(f"OPS-P0-006 approved criteria/independent review/leak proof: {approved_criteria}/{passing_reviews}/{str(leak_proof).lower()}")
+    print("OPS-P0-006 local soak cannot manufacture independent leak proof: true")
     print("OPS-P0-007 semantic generation authority: bound to deterministic inventory")
     print("OPS-P0-007 human production-promotion authority: separate and false")
     print("exact duplicate authority entries: none")
