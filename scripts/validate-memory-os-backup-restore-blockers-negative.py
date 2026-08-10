@@ -10,6 +10,7 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore.py"
+SEMANTIC_AUTHORITY = ROOT / "scripts/reconcile-memory-os-backup-semantic-overlay.py"
 
 
 class Fail(RuntimeError):
@@ -21,11 +22,9 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
-def load_module():
-    spec = importlib.util.spec_from_file_location(
-        "memory_os_backup_restore_blocker_negative_target", VALIDATOR
-    )
-    require(spec is not None and spec.loader is not None, "cannot load backup/restore validator")
+def load_module(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load module: {path.name}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -67,11 +66,24 @@ def run_with_status(module, status: dict[str, Any]) -> int:
         module.load = real_load
 
 
+def validate_semantic_status(module, status: dict[str, Any]) -> None:
+    module.validate(copy.deepcopy(status))
+
+
 def main() -> int:
-    module = load_module()
+    module = load_module(
+        VALIDATOR,
+        "memory_os_backup_restore_blocker_negative_target",
+    )
+    semantic = load_module(
+        SEMANTIC_AUTHORITY,
+        "memory_os_backup_restore_semantic_negative_target",
+    )
+
     baseline = copy.deepcopy(module.load(module.STATUS_PATH))
     require(run_with_status(module, baseline) == 0,
             "canonical six-blocker baseline must validate")
+    validate_semantic_status(semantic, baseline)
     print("PASS baseline: canonical six OPS-P0-007 production blockers")
 
     extra = status_with_mutation(
@@ -84,11 +96,19 @@ def main() -> int:
         "extra legacy production blocker cannot coexist with canonical six",
         lambda: run_with_status(module, extra),
     )
+    expect_rejected(
+        "semantic authority cannot repair an extra legacy blocker",
+        lambda: validate_semantic_status(semantic, extra),
+    )
 
     removed = status_with_mutation(module, lambda missing: missing.pop())
     expect_rejected(
         "canonical production blocker cannot disappear",
         lambda: run_with_status(module, removed),
+    )
+    expect_rejected(
+        "semantic authority cannot repair a missing canonical blocker",
+        lambda: validate_semantic_status(semantic, removed),
     )
 
     def replace_with_legacy(missing: list[str]) -> None:
@@ -98,6 +118,23 @@ def main() -> int:
     expect_rejected(
         "legacy blocker wording cannot substitute for canonical semantic authority",
         lambda: run_with_status(module, substituted),
+    )
+    expect_rejected(
+        "semantic authority cannot rewrite legacy blocker wording",
+        lambda: validate_semantic_status(semantic, substituted),
+    )
+
+    reordered = status_with_mutation(
+        module,
+        lambda missing: missing.__setitem__(slice(None), list(reversed(missing))),
+    )
+    expect_rejected(
+        "canonical production blockers cannot be reordered",
+        lambda: run_with_status(module, reordered),
+    )
+    expect_rejected(
+        "semantic authority cannot reorder canonical blockers",
+        lambda: validate_semantic_status(semantic, reordered),
     )
 
     def cross_domain_duplicate(missing: list[str]) -> None:
@@ -110,9 +147,14 @@ def main() -> int:
         "one blocker row cannot duplicate another canonical blocker domain",
         lambda: run_with_status(module, duplicated),
     )
+    expect_rejected(
+        "semantic authority cannot accept cross-domain blocker duplication",
+        lambda: validate_semantic_status(semantic, duplicated),
+    )
 
     print("Memory OS backup/restore canonical blocker negative suite PASS")
     print("canonical blocker count: 6")
+    print("semantic authority repair behavior: disabled")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
