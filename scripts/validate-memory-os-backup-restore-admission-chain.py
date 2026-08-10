@@ -147,7 +147,7 @@ def main() -> int:
     preflight_pair_count = preflight.get("eligibleDirectedSourceTargetPairCount")
     require(isinstance(preflight_decision, str) and preflight_decision, "preflight decision invalid")
     require(isinstance(preflight_eligible, bool), "preflight eligibility invalid")
-    require(isinstance(preflight_pair_count, int) and preflight_pair_count >= 0, "preflight eligible pair count invalid")
+    require(isinstance(preflight_pair_count, int) and not isinstance(preflight_pair_count, bool) and preflight_pair_count >= 0, "preflight eligible pair count invalid")
     require(all(preflight.get(field) is False for field in ("requestCreated", "backupExecuted", "restoreExecuted", "productionTrafficChanged", "productionEvidence", "productionReady")), "preflight may not create prerequisites, execute restore or promote production")
     require(preflight.get("productionDecision") == "NO_GO", "preflight production decision drift")
 
@@ -155,8 +155,8 @@ def main() -> int:
     drill_count = drill_registry.get("registeredRequestCount")
     current_drill_count = drill_registry.get("currentExecutableRequestCount")
     require(isinstance(drill_rows, list) and all(isinstance(row, dict) for row in drill_rows), "drill request rows invalid")
-    require(isinstance(drill_count, int) and drill_count == len(drill_rows), "drill request count drift")
-    require(isinstance(current_drill_count, int) and 0 <= current_drill_count <= drill_count, "current drill request count invalid")
+    require(isinstance(drill_count, int) and not isinstance(drill_count, bool) and drill_count == len(drill_rows), "drill request count drift")
+    require(isinstance(current_drill_count, int) and not isinstance(current_drill_count, bool) and 0 <= current_drill_count <= drill_count, "current drill request count invalid")
     require(drill_registry.get("productionEvidence") is False and drill_registry.get("productionReady") is False, "drill request registry production boundary drift")
     require(preflight.get("reviewedDrillRequestCount") == drill_count, "preflight reviewed request count drift")
     require(preflight.get("currentExecutableDrillRequestCount") == current_drill_count, "preflight current request count drift")
@@ -191,24 +191,40 @@ def main() -> int:
     gen_rows = gen_registry.get("records")
     gen_count = gen_registry.get("registeredEvidenceCount")
     bound_count = gen_registry.get("drillRequestBoundEvidenceCount")
+    registry_backup_count = gen_registry.get("completeGenerationBoundBackupCount")
+    registry_restore_count = gen_registry.get("completeGenerationBoundRestoreCount")
     candidate_count = gen_registry.get("productionEquivalentRecoveryCandidateCount")
     require(isinstance(gen_rows, list) and all(isinstance(row, dict) for row in gen_rows), "generation evidence rows invalid")
-    require(isinstance(gen_count, int) and gen_count == len(gen_rows), "generation evidence count drift")
-    require(isinstance(bound_count, int) and bound_count == gen_count, "every generation evidence row must be drill-request-bound")
-    require(isinstance(candidate_count, int) and 0 <= candidate_count <= gen_count, "candidate count invalid")
+    require(isinstance(gen_count, int) and not isinstance(gen_count, bool) and gen_count == len(gen_rows), "generation evidence count drift")
+    require(isinstance(bound_count, int) and not isinstance(bound_count, bool) and bound_count == gen_count, "every generation evidence row must be drill-request-bound")
+    for value, field in ((registry_backup_count, "backup"), (registry_restore_count, "restore"), (candidate_count, "candidate")):
+        require(isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= gen_count, f"generation evidence {field} count invalid")
+    require(candidate_count <= registry_restore_count <= registry_backup_count, "generation evidence recovery aggregate ordering drift")
     require(gen_registry.get("productionEvidence") is False and gen_registry.get("productionReady") is False, "generation evidence registry production boundary drift")
 
     drill_ids = {row.get("requestId") for row in drill_rows if isinstance(row.get("requestId"), str)}
     require(len(drill_ids) == drill_count, "drill request IDs must be unique")
     candidate_ids: set[str] = set()
+    derived_backup_count = 0
+    derived_restore_count = 0
     for row in gen_rows:
         gen_writer.validate_record(row, require_current_drill_request=False)
         request_id = row.get("drillRequestId")
         require(request_id in drill_ids, f"generation evidence references missing drill request: {request_id}")
+        if row.get("evidenceComplete") is True:
+            derived_backup_count += 1
+        if (
+            row.get("evidenceComplete") is True
+            and row.get("isolatedRestoreVerified") is True
+            and row.get("restoredBackupArtifactSha256") == row.get("backupArtifactSha256")
+        ):
+            derived_restore_count += 1
         if gen_writer.candidate(row):
             evidence_id = row.get("evidenceId")
             require(isinstance(evidence_id, str), "candidate evidenceId invalid")
             candidate_ids.add(evidence_id)
+    require(derived_backup_count == registry_backup_count, "generation-bound backup aggregate drift from revalidated immutable evidence rows")
+    require(derived_restore_count == registry_restore_count, "generation-bound restore aggregate drift from revalidated immutable evidence rows")
     require(len(candidate_ids) == candidate_count, "candidate derivation/count drift")
     if current_drill_count == 0:
         require(candidate_count == 0, "candidate cannot survive without current executable drill request")
@@ -221,9 +237,9 @@ def main() -> int:
     typed_complete_count = typed_registry.get("completeRecordCount")
     typed_covered_count = typed_registry.get("candidateCoveredCount")
     require(isinstance(typed_rows, list) and all(isinstance(row, dict) for row in typed_rows), "typed non-resurrection rows invalid")
-    require(isinstance(typed_count, int) and typed_count == len(typed_rows), "typed record count drift")
-    require(isinstance(typed_complete_count, int) and 0 <= typed_complete_count <= typed_count, "typed complete count invalid")
-    require(isinstance(typed_covered_count, int) and 0 <= typed_covered_count <= typed_complete_count, "typed candidate coverage count invalid")
+    require(isinstance(typed_count, int) and not isinstance(typed_count, bool) and typed_count == len(typed_rows), "typed record count drift")
+    require(isinstance(typed_complete_count, int) and not isinstance(typed_complete_count, bool) and 0 <= typed_complete_count <= typed_count, "typed complete count invalid")
+    require(isinstance(typed_covered_count, int) and not isinstance(typed_covered_count, bool) and 0 <= typed_covered_count <= typed_complete_count, "typed candidate coverage count invalid")
     require(typed_registry.get("productionEvidence") is False and typed_registry.get("productionReady") is False, "typed registry production boundary drift")
     complete_typed_ids: set[str] = set()
     derived_typed_complete_count = 0
@@ -251,9 +267,11 @@ def main() -> int:
     backup_count = binding_boundary.get("generationBoundBackupCount")
     restore_count = binding_boundary.get("generationBoundRestoreCount")
     binding_candidate_count = binding_boundary.get("productionEquivalentRecoveryCandidateCount")
-    require(isinstance(backup_count, int) and backup_count >= 0, "generation-bound backup count invalid")
-    require(isinstance(restore_count, int) and restore_count >= 0, "generation-bound restore count invalid")
-    require(isinstance(binding_candidate_count, int) and binding_candidate_count >= 0, "generation binding candidate count invalid")
+    require(isinstance(backup_count, int) and not isinstance(backup_count, bool) and backup_count >= 0, "generation-bound backup count invalid")
+    require(isinstance(restore_count, int) and not isinstance(restore_count, bool) and restore_count >= 0, "generation-bound restore count invalid")
+    require(isinstance(binding_candidate_count, int) and not isinstance(binding_candidate_count, bool) and binding_candidate_count >= 0, "generation binding candidate count invalid")
+    require(backup_count == derived_backup_count, "generation binding backup count drift from revalidated immutable evidence")
+    require(restore_count == derived_restore_count, "generation binding restore count drift from revalidated immutable evidence")
     require(binding_candidate_count == candidate_count, "generation binding candidate count drift")
     require(candidate_count <= restore_count <= backup_count <= gen_count, "recovery aggregate ordering drift")
     require(binding_boundary.get("independentReviewCompleted") is (candidate_count > 0), "generation binding independent review state drift")
@@ -311,6 +329,7 @@ def main() -> int:
     print(f"reviewed/current drill requests: {drill_count}/{current_drill_count}")
     print(f"generation/drill-bound evidence: {gen_count}/{bound_count}")
     print(f"generation-bound backup/restore: {backup_count}/{restore_count}")
+    print("backup/restore aggregates re-derived from immutable generation evidence: true")
     print(f"revalidated complete typed non-resurrection records: {typed_complete_count}")
     print(f"final production-equivalent recovery candidates: {candidate_count}")
     print(f"candidate-level independent evidence review completed: {str(candidate_count > 0).lower()}")
