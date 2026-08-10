@@ -223,9 +223,96 @@ jobs:
         if: steps.inventory.outputs.exit_code == '0'
         run: |
           set -euo pipefail
+          authority_paths=(
+            contracts/operations/requests/operability-admission-inventory.v1.json
+            contracts/operations/migration-production-shaped-admission-registry.v1.json
+            docs/evidence/incident-tabletops
+            contracts/operations/incident-contact-routing-admission-registry.v1.json
+            contracts/operations/observability-stack-deployment-registry.v1.json
+            contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json
+            contracts/operations/load-test-scenario-contract.v1.json
+            contracts/operations/sustained-soak-independent-review-contract.v1.json
+            contracts/operations/sustained-soak-independent-review-registry.v1.json
+            contracts/operations/production-equivalent-environment-generation-contract.v1.json
+            contracts/operations/production-equivalent-environment-generation-registry.v1.json
+            contracts/operations/production-equivalent-environment-record.v1.schema.json
+            contracts/operations/production-equivalent-environment-generation-record.v1.schema.json
+            contracts/operations/recovery-objectives-admission-contract.v1.json
+            contracts/operations/recovery-objectives-registry.v1.json
+            contracts/operations/backup-restore-generation-binding-contract.v1.json
+            contracts/operations/backup-restore-generation-evidence-contract.v1.json
+            contracts/operations/backup-restore-generation-evidence-registry.v1.json
+            contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json
+            contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json
+            contracts/operations/backup-restore-drill-request-contract.v1.json
+            contracts/operations/backup-restore-drill-request-registry.v1.json
+            contracts/operations/backup-restore-drill-preflight-contract.v1.json
+            contracts/operations/backup-restore-admission-chain-contract.v1.json
+            contracts/operations/release-baseline-registry.v1.json
+            contracts/operations/release-compatibility-pair-registry.v1.json
+            contracts/operations/client-baseline-registry.v1.json
+            contracts/operations/parser-artifact-registry.v1.json
+            contracts/operations/production-shaped-failure-drill-registry.v1.json
+            contracts/operations/production-operability-status.json
+            contracts/operations/operability-admission-inventory.v1.json
+            docs/evidence/backup-restore
+            docs/evidence/recovery-objectives/approvals
+            docs/evidence/sustained-soak
+            docs/fixtures/memory-os-operability/backup-restore-generation-evidence
+            docs/fixtures/memory-os-operability/recovery-objectives-approval
+            docs/fixtures/memory-os-operability/sustained-local-soak-results.run-*.v1.json
+            docs/fixtures/memory-os-operability/sustained-local-soak-trend-review.v1.json
+            docs/fixtures/memory-os-operability/operability-admission-inventory-diagnostic.last.json
+            docs/runbooks/memory-os-production-equivalent-backup-restore-drill.md
+            scripts/generate-memory-os-operability-admission-inventory.py
+            scripts/validate-memory-os-operability-admission-inventory.py
+            scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py
+            scripts/validate-memory-os-sustained-soak-independent-review.py
+            scripts/validate-memory-os-sustained-soak-independent-review-negative.py
+            scripts/validate-memory-os-sustained-local-soak-result.py
+            scripts/memory_os_environment_generation_eligibility.py
+            scripts/register-memory-os-production-equivalent-environment-generation.py
+            scripts/validate-memory-os-production-equivalent-environment-record.py
+            scripts/register-memory-os-recovery-objectives.py
+            scripts/validate-memory-os-recovery-objectives.py
+            scripts/validate-memory-os-recovery-objectives-negative.py
+            scripts/validate-memory-os-backup-restore-drill-preflight.py
+            scripts/validate-memory-os-backup-restore-drill-preflight-negative.py
+            scripts/reconcile-memory-os-backup-restore-drill-preflight.py
+            scripts/request-memory-os-backup-restore-drill.py
+            scripts/validate-memory-os-backup-restore-drill-request.py
+            scripts/validate-memory-os-backup-restore-drill-request-negative.py
+            scripts/reconcile-memory-os-backup-restore-drill-request.py
+            scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py
+            scripts/register-memory-os-backup-restore-generation-evidence.py
+            scripts/validate-memory-os-backup-restore-generation-evidence.py
+            scripts/validate-memory-os-backup-restore-generation-evidence-negative.py
+            scripts/validate-memory-os-backup-restore-semantic-generation-negative.py
+            scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py
+            scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py
+            scripts/reconcile-memory-os-backup-restore-generation-evidence.py
+            scripts/validate-memory-os-backup-restore-generation-binding.py
+            scripts/validate-memory-os-backup-restore-generation-binding-negative.py
+            scripts/register-memory-os-backup-restore-non-resurrection-evidence.py
+            scripts/validate-memory-os-backup-restore-non-resurrection-admission.py
+            scripts/validate-memory-os-backup-restore-non-resurrection-negative.py
+            scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py
+            scripts/reconcile-memory-os-backup-non-resurrection-authority.py
+            scripts/validate-memory-os-backup-restore-admission-chain.py
+            scripts/reconcile-memory-os-backup-restore-admission-chain.py
+            scripts/validate-memory-os-operability-status-hygiene.py
+            .github/workflows/operability-admission-inventory.yml
+            .github/workflows/backup-restore-drill-preflight.yml
+            .github/workflows/backup-restore-drill-request.yml
+            .github/workflows/backup-restore-drill-request-reconcile-rollback.yml
+            .github/workflows/backup-restore-generation-evidence.yml
+            .github/workflows/backup-restore-generation-binding.yml
+            .github/workflows/backup-restore-non-resurrection-admission.yml
+            .github/workflows/backup-restore-admission-chain.yml
+          )
           git fetch origin so
-          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
-            echo "Inventory source HEAD changed during reconciliation; refusing stale derived authority."
+          if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
+            echo "Inventory authority changed during reconciliation; refusing stale derived authority."
             exit 75
           fi
           git rm -f docs/fixtures/memory-os-operability/operability-admission-inventory-diagnostic.last.json 2>/dev/null || true
@@ -240,7 +327,18 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(ops): refresh operability admission inventory"
-            if git push origin HEAD:so; then exit 0; fi
+            for attempt in 1 2 3 4; do
+              git fetch origin so
+              if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
+                echo "Inventory authority changed after validation; refusing stale derived authority."
+                exit 75
+              fi
+              if [[ "$(git rev-parse origin/so)" != "$(git rev-parse HEAD^)" ]]; then
+                git rebase origin/so
+              fi
+              if git push origin HEAD:so; then exit 0; fi
+              sleep 2
+            done
             exit 1
           fi
       - name: Record privacy-safe inventory diagnostic
@@ -249,9 +347,96 @@ jobs:
           INVENTORY_EXIT_CODE: ${{ steps.inventory.outputs.exit_code }}
         run: |
           set -euo pipefail
+          authority_paths=(
+            contracts/operations/requests/operability-admission-inventory.v1.json
+            contracts/operations/migration-production-shaped-admission-registry.v1.json
+            docs/evidence/incident-tabletops
+            contracts/operations/incident-contact-routing-admission-registry.v1.json
+            contracts/operations/observability-stack-deployment-registry.v1.json
+            contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json
+            contracts/operations/load-test-scenario-contract.v1.json
+            contracts/operations/sustained-soak-independent-review-contract.v1.json
+            contracts/operations/sustained-soak-independent-review-registry.v1.json
+            contracts/operations/production-equivalent-environment-generation-contract.v1.json
+            contracts/operations/production-equivalent-environment-generation-registry.v1.json
+            contracts/operations/production-equivalent-environment-record.v1.schema.json
+            contracts/operations/production-equivalent-environment-generation-record.v1.schema.json
+            contracts/operations/recovery-objectives-admission-contract.v1.json
+            contracts/operations/recovery-objectives-registry.v1.json
+            contracts/operations/backup-restore-generation-binding-contract.v1.json
+            contracts/operations/backup-restore-generation-evidence-contract.v1.json
+            contracts/operations/backup-restore-generation-evidence-registry.v1.json
+            contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json
+            contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json
+            contracts/operations/backup-restore-drill-request-contract.v1.json
+            contracts/operations/backup-restore-drill-request-registry.v1.json
+            contracts/operations/backup-restore-drill-preflight-contract.v1.json
+            contracts/operations/backup-restore-admission-chain-contract.v1.json
+            contracts/operations/release-baseline-registry.v1.json
+            contracts/operations/release-compatibility-pair-registry.v1.json
+            contracts/operations/client-baseline-registry.v1.json
+            contracts/operations/parser-artifact-registry.v1.json
+            contracts/operations/production-shaped-failure-drill-registry.v1.json
+            contracts/operations/production-operability-status.json
+            contracts/operations/operability-admission-inventory.v1.json
+            docs/evidence/backup-restore
+            docs/evidence/recovery-objectives/approvals
+            docs/evidence/sustained-soak
+            docs/fixtures/memory-os-operability/backup-restore-generation-evidence
+            docs/fixtures/memory-os-operability/recovery-objectives-approval
+            docs/fixtures/memory-os-operability/sustained-local-soak-results.run-*.v1.json
+            docs/fixtures/memory-os-operability/sustained-local-soak-trend-review.v1.json
+            docs/fixtures/memory-os-operability/operability-admission-inventory-diagnostic.last.json
+            docs/runbooks/memory-os-production-equivalent-backup-restore-drill.md
+            scripts/generate-memory-os-operability-admission-inventory.py
+            scripts/validate-memory-os-operability-admission-inventory.py
+            scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py
+            scripts/validate-memory-os-sustained-soak-independent-review.py
+            scripts/validate-memory-os-sustained-soak-independent-review-negative.py
+            scripts/validate-memory-os-sustained-local-soak-result.py
+            scripts/memory_os_environment_generation_eligibility.py
+            scripts/register-memory-os-production-equivalent-environment-generation.py
+            scripts/validate-memory-os-production-equivalent-environment-record.py
+            scripts/register-memory-os-recovery-objectives.py
+            scripts/validate-memory-os-recovery-objectives.py
+            scripts/validate-memory-os-recovery-objectives-negative.py
+            scripts/validate-memory-os-backup-restore-drill-preflight.py
+            scripts/validate-memory-os-backup-restore-drill-preflight-negative.py
+            scripts/reconcile-memory-os-backup-restore-drill-preflight.py
+            scripts/request-memory-os-backup-restore-drill.py
+            scripts/validate-memory-os-backup-restore-drill-request.py
+            scripts/validate-memory-os-backup-restore-drill-request-negative.py
+            scripts/reconcile-memory-os-backup-restore-drill-request.py
+            scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py
+            scripts/register-memory-os-backup-restore-generation-evidence.py
+            scripts/validate-memory-os-backup-restore-generation-evidence.py
+            scripts/validate-memory-os-backup-restore-generation-evidence-negative.py
+            scripts/validate-memory-os-backup-restore-semantic-generation-negative.py
+            scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py
+            scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py
+            scripts/reconcile-memory-os-backup-restore-generation-evidence.py
+            scripts/validate-memory-os-backup-restore-generation-binding.py
+            scripts/validate-memory-os-backup-restore-generation-binding-negative.py
+            scripts/register-memory-os-backup-restore-non-resurrection-evidence.py
+            scripts/validate-memory-os-backup-restore-non-resurrection-admission.py
+            scripts/validate-memory-os-backup-restore-non-resurrection-negative.py
+            scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py
+            scripts/reconcile-memory-os-backup-non-resurrection-authority.py
+            scripts/validate-memory-os-backup-restore-admission-chain.py
+            scripts/reconcile-memory-os-backup-restore-admission-chain.py
+            scripts/validate-memory-os-operability-status-hygiene.py
+            .github/workflows/operability-admission-inventory.yml
+            .github/workflows/backup-restore-drill-preflight.yml
+            .github/workflows/backup-restore-drill-request.yml
+            .github/workflows/backup-restore-drill-request-reconcile-rollback.yml
+            .github/workflows/backup-restore-generation-evidence.yml
+            .github/workflows/backup-restore-generation-binding.yml
+            .github/workflows/backup-restore-non-resurrection-admission.yml
+            .github/workflows/backup-restore-admission-chain.yml
+          )
           git fetch origin so
-          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
-            echo "Inventory source HEAD changed after validation; refusing to attach a stale failure diagnostic."
+          if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
+            echo "Inventory authority changed after validation; refusing to attach a stale failure diagnostic."
             exit 75
           fi
           python - <<'PY'
@@ -284,13 +469,17 @@ jobs:
             git commit -m "test(ops): record admission inventory diagnostic"
             for attempt in 1 2 3; do
               git fetch origin so
-              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
-                echo "Branch advanced before inventory diagnostic push; refusing stale failure diagnostic."
+              if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
+                echo "Inventory authority changed after diagnostic capture; refusing stale failure diagnostic."
                 exit 75
+              fi
+              if [[ "$(git rev-parse origin/so)" != "$(git rev-parse HEAD^)" ]]; then
+                git rebase origin/so
               fi
               if git push origin HEAD:so; then exit 0; fi
               sleep 2
             done
+            exit 1
           fi
       - name: Enforce inventory generation
         run: test "${{ steps.inventory.outputs.exit_code }}" = "0"
