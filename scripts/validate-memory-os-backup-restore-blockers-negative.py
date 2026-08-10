@@ -11,6 +11,7 @@ from typing import Any, Callable
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore.py"
 SEMANTIC_AUTHORITY = ROOT / "scripts/reconcile-memory-os-backup-semantic-overlay.py"
+COHERENT_AUTHORITY = ROOT / "scripts/reconcile-memory-os-backup-coherent-authority.py"
 
 
 class Fail(RuntimeError):
@@ -70,6 +71,10 @@ def validate_semantic_status(module, status: dict[str, Any]) -> None:
     module.validate(copy.deepcopy(status))
 
 
+def validate_coherent_status(module, status: dict[str, Any]) -> None:
+    module.normalized(copy.deepcopy(status))
+
+
 def main() -> int:
     module = load_module(
         VALIDATOR,
@@ -79,11 +84,16 @@ def main() -> int:
         SEMANTIC_AUTHORITY,
         "memory_os_backup_restore_semantic_negative_target",
     )
+    coherent = load_module(
+        COHERENT_AUTHORITY,
+        "memory_os_backup_restore_coherent_negative_target",
+    )
 
     baseline = copy.deepcopy(module.load(module.STATUS_PATH))
     require(run_with_status(module, baseline) == 0,
             "canonical six-blocker baseline must validate")
     validate_semantic_status(semantic, baseline)
+    validate_coherent_status(coherent, baseline)
     print("PASS baseline: canonical six OPS-P0-007 production blockers")
 
     extra = status_with_mutation(
@@ -100,6 +110,10 @@ def main() -> int:
         "semantic authority cannot repair an extra legacy blocker",
         lambda: validate_semantic_status(semantic, extra),
     )
+    expect_rejected(
+        "coherent restore authority cannot repair an extra legacy blocker",
+        lambda: validate_coherent_status(coherent, extra),
+    )
 
     removed = status_with_mutation(module, lambda missing: missing.pop())
     expect_rejected(
@@ -109,6 +123,10 @@ def main() -> int:
     expect_rejected(
         "semantic authority cannot repair a missing canonical blocker",
         lambda: validate_semantic_status(semantic, removed),
+    )
+    expect_rejected(
+        "coherent restore authority cannot repair a missing canonical blocker",
+        lambda: validate_coherent_status(coherent, removed),
     )
 
     def replace_with_legacy(missing: list[str]) -> None:
@@ -123,6 +141,10 @@ def main() -> int:
         "semantic authority cannot rewrite legacy blocker wording",
         lambda: validate_semantic_status(semantic, substituted),
     )
+    expect_rejected(
+        "coherent restore authority cannot rewrite legacy blocker wording",
+        lambda: validate_coherent_status(coherent, substituted),
+    )
 
     reordered = status_with_mutation(
         module,
@@ -135,6 +157,10 @@ def main() -> int:
     expect_rejected(
         "semantic authority cannot reorder canonical blockers",
         lambda: validate_semantic_status(semantic, reordered),
+    )
+    expect_rejected(
+        "coherent restore authority cannot reorder canonical blockers",
+        lambda: validate_coherent_status(coherent, reordered),
     )
 
     def cross_domain_duplicate(missing: list[str]) -> None:
@@ -151,10 +177,15 @@ def main() -> int:
         "semantic authority cannot accept cross-domain blocker duplication",
         lambda: validate_semantic_status(semantic, duplicated),
     )
+    expect_rejected(
+        "coherent restore authority cannot accept cross-domain blocker duplication",
+        lambda: validate_coherent_status(coherent, duplicated),
+    )
 
     print("Memory OS backup/restore canonical blocker negative suite PASS")
     print("canonical blocker count: 6")
     print("semantic authority repair behavior: disabled")
+    print("coherent restore blocker repair behavior: disabled")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
