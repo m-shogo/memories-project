@@ -13,6 +13,7 @@ from memory_os_backup_restore_blockers import require_canonical_gaps
 ROOT = Path(__file__).resolve().parents[1]
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 INVENTORY = ROOT / "contracts/operations/operability-admission-inventory.v1.json"
+BACKUP_BINDING = ROOT / "contracts/operations/backup-restore-generation-binding-contract.v1.json"
 CANONICAL_SCHEMA = "memory-os-operability-status.0.1"
 INVENTORY_SCHEMA = "memory-os-operability-admission-inventory.v1"
 SOAK_REVIEW_REFS = {
@@ -92,12 +93,18 @@ def main() -> int:
     require_canonical_gaps(p0_007.get("missingEvidence"), Fail)
 
     inventory = load(INVENTORY)
+    backup_binding = load(BACKUP_BINDING)
     require(inventory.get("schemaVersion") == INVENTORY_SCHEMA, "operability admission inventory schema drift")
     require(inventory.get("productionDecision") == "NO_GO", "inventory production decision must remain NO_GO")
     require(inventory.get("productionEvidence") is False, "inventory productionEvidence must remain false")
     require(inventory.get("productionReady") is False, "inventory productionReady must remain false")
     backup_independent_review = inventory.get("backupRestoreIndependentEvidenceReviewCompleted")
     require(isinstance(backup_independent_review, bool), "inventory backup/restore independent evidence review flag invalid")
+    binding_boundary = backup_binding.get("currentBoundary")
+    require(isinstance(binding_boundary, dict), "backup/restore generation binding currentBoundary missing")
+    binding_independent_review = binding_boundary.get("independentReviewCompleted")
+    require(isinstance(binding_independent_review, bool), "backup/restore generation binding independent review flag invalid")
+    require(backup_independent_review is binding_independent_review, "inventory backup/restore independent evidence review drift from generation binding authority")
     require(inventory.get("humanProductionPromotionReviewCompleted") is False, "inventory cannot manufacture human production-promotion review")
     require(inventory.get("humanProductionPromotionAuthorized") is False, "inventory cannot authorize human production promotion")
 
@@ -193,7 +200,7 @@ def main() -> int:
     print("OPS-P0-006 local soak cannot manufacture independent leak proof: true")
     print("OPS-P0-007 canonical production blockers: exact shared authority")
     print("OPS-P0-007 semantic generation authority: bound to deterministic inventory")
-    print("OPS-P0-007 candidate independent-review authority: top-level and area row must agree")
+    print("OPS-P0-007 candidate independent-review authority: bound to generation binding, top-level inventory and area row")
     print("OPS-P0-007 human production-promotion authority: separate and false")
     print("exact duplicate authority entries: none")
     print("failure diagnostics referenced as proof: none")
