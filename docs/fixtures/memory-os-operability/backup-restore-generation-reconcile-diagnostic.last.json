@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "backup-restore-generation-binding",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "Memory OS recovery objectives validation PASS\napproved objective records: 0\ncurrent objective: none\nRPO/RTO defined: false\ntyped Recovery Owner/Operability approval binding: required\narbitrary repository approval files accepted: false\nobjective values chosen/defaulted by validator: false\nnegative admission suite: PASS\nproduction evidence: false\nproduction decision: NO_GO\nBACKUP RESTORE GENERATION EVIDENCE VALIDATION FAILED: semantic generation negative admission suite failed:\nTraceback (most recent call last):\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-backup-restore-semantic-generation-negative.py\", line 301, in <module>\n    raise SystemExit(main())\n                     ^^^^^^\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-backup-restore-semantic-generation-negative.py\", line 269, in main\n    drill_writer.validate_request(request, require_current=True)\n  File \"/home/runner/work/memories-project/memories-project/scripts/request-memory-os-backup-restore-drill.py\", line 223, in validate_request\n    require(requested_at >= parse_timestamp(objective.get(\"approvedAt\"), \"recovery objective approvedAt\"), \"request predates recovery objective approval\")\n                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/memories-project/memories-project/scripts/request-memory-os-backup-restore-drill.py\", line 87, in parse_timestamp\n    require(isinstance(value, str) and value.endswith(\"Z\"), f\"{field} must be UTC RFC3339 ending in Z\")\n  File \"/home/runner/work/memories-project/memories-project/scripts/request-memory-os-backup-restore-drill.py\", line 56, in require\n    raise Fail(message)\nmemory_os_restore_drill_semantic_negative.Fail: recovery objective approvedAt must be UTC RFC3339 ending in Z\n\n",
+  "containsSecrets": false,
+  "productionEquivalentRestoreEvidence": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
