@@ -76,13 +76,19 @@
     {
       "id": "OPS-P0-006",
       "authority": "contracts/operations/load-test-scenario-contract.v1.json",
+      "secondaryAuthority": "contracts/operations/sustained-soak-independent-review-registry.v1.json",
       "foundationImplemented": true,
       "admittedEvidenceCount": 2,
       "requiredEvidenceCount": 2,
+      "approvedLeakStabilityCriteriaCount": 0,
+      "passingIndependentReviewCount": 0,
+      "leakProof": false,
       "dependencyCounts": {
         "environmentGenerations": 0,
         "localSustainedSoakEvidence": true,
-        "repeatableLocalDegradationSignalObserved": true
+        "repeatableLocalDegradationSignalObserved": true,
+        "approvedLeakStabilityCriteria": 0,
+        "passingIndependentReviews": 0
       },
       "nextGate": "local repeated 60-minute soak and descriptive trend review are complete; next require independent leak/stability criteria plus generation-bound production-equivalent capacity, dependency and host-failure evidence",
       "status": "PARTIAL",
@@ -170,6 +176,9 @@
     }
   ],
   "productionEquivalentEnvironmentGenerationCount": 0,
+  "approvedLeakStabilityCriteriaCount": 0,
+  "passingIndependentSustainedSoakReviewCount": 0,
+  "sustainedSoakLeakProof": false,
   "backupRestorePreflightEligibleEnvironmentGenerationCount": 0,
   "backupRestoreUnsupersededEnvironmentGenerationCount": 0,
   "backupRestoreUnsupersededPreflightEligibleEnvironmentGenerationCount": 0,
@@ -195,7 +204,7 @@
     "foundationImplemented means the admission path exists; it does not mean runtime or production evidence exists",
     "admittedEvidenceCount is derived only from canonical append-only registries or accepted human tabletop ledger files",
     "candidate/local evidence is not counted as production admission unless its owning authority explicitly admits it",
-    "local repeated soak evidence is tracked separately from independent leak proof and production-shaped soak evidence",
+    "local repeated soak evidence is tracked separately from human-approved leak/stability criteria, independent review, leak proof and production-shaped soak evidence",
     "recovery-objective values are never defaulted by this inventory; zero approved objectives means RPO/RTO/skew remain intentionally undefined",
     "registered production-equivalent generations are inventory only; restore planning additionally requires independent semantic preflight eligibility, unsuperseded state and a distinct-environment eligible directed pair",
     "restore drill preflight is read-only: READY authorizes only external reviewed request submission and BLOCKED never creates missing generations or recovery objectives",
