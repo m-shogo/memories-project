@@ -185,67 +185,38 @@ def main() -> int:
     status_validator.main()
     print("PASS baseline: canonical inventory/status preserve operability authority separation")
 
-    expect_inventory_rejected(
-        inventory_validator,
-        canonical_inventory,
-        "top-level sustained-soak approved criteria manufactured",
-        lambda value: value.__setitem__("approvedLeakStabilityCriteriaCount", 1),
-    )
-    expect_inventory_rejected(
-        inventory_validator,
-        canonical_inventory,
-        "top-level sustained-soak independent review manufactured",
-        lambda value: value.__setitem__("passingIndependentSustainedSoakReviewCount", 1),
-    )
-    expect_inventory_rejected(
-        inventory_validator,
-        canonical_inventory,
-        "top-level sustained-soak leak proof manufactured",
-        lambda value: value.__setitem__("sustainedSoakLeakProof", True),
-    )
-    expect_inventory_rejected(
-        inventory_validator,
-        canonical_inventory,
-        "OPS-P0-006 approved criteria manufactured",
-        lambda value: soak_row(value).__setitem__("approvedLeakStabilityCriteriaCount", 1),
-    )
-    expect_inventory_rejected(
-        inventory_validator,
-        canonical_inventory,
-        "OPS-P0-006 independent review manufactured",
-        lambda value: soak_row(value).__setitem__("passingIndependentReviewCount", 1),
-    )
-    expect_inventory_rejected(
-        inventory_validator,
-        canonical_inventory,
-        "OPS-P0-006 leak proof manufactured",
-        lambda value: soak_row(value).__setitem__("leakProof", True),
-    )
-    expect_inventory_rejected(
-        inventory_validator,
-        canonical_inventory,
-        "top-level human promotion review manufactured",
-        lambda value: value.__setitem__("humanProductionPromotionReviewCompleted", True),
-    )
-    expect_inventory_rejected(
-        inventory_validator,
-        canonical_inventory,
-        "top-level human promotion authorization manufactured",
-        lambda value: value.__setitem__("humanProductionPromotionAuthorized", True),
-    )
-    expect_inventory_rejected(
-        inventory_validator,
-        canonical_inventory,
-        "OPS-P0-007 human promotion review manufactured",
-        lambda value: backup_row(value).__setitem__("humanProductionPromotionReviewCompleted", True),
-    )
-    expect_inventory_rejected(
-        inventory_validator,
-        canonical_inventory,
-        "OPS-P0-007 human promotion authorization manufactured",
-        lambda value: backup_row(value).__setitem__("humanProductionPromotionAuthorized", True),
-    )
+    expect_inventory_rejected(inventory_validator, canonical_inventory, "top-level sustained-soak approved criteria manufactured", lambda value: value.__setitem__("approvedLeakStabilityCriteriaCount", 1))
+    expect_inventory_rejected(inventory_validator, canonical_inventory, "top-level sustained-soak independent review manufactured", lambda value: value.__setitem__("passingIndependentSustainedSoakReviewCount", 1))
+    expect_inventory_rejected(inventory_validator, canonical_inventory, "top-level sustained-soak leak proof manufactured", lambda value: value.__setitem__("sustainedSoakLeakProof", True))
+    expect_inventory_rejected(inventory_validator, canonical_inventory, "OPS-P0-006 approved criteria manufactured", lambda value: soak_row(value).__setitem__("approvedLeakStabilityCriteriaCount", 1))
+    expect_inventory_rejected(inventory_validator, canonical_inventory, "OPS-P0-006 independent review manufactured", lambda value: soak_row(value).__setitem__("passingIndependentReviewCount", 1))
+    expect_inventory_rejected(inventory_validator, canonical_inventory, "OPS-P0-006 leak proof manufactured", lambda value: soak_row(value).__setitem__("leakProof", True))
+    expect_inventory_rejected(inventory_validator, canonical_inventory, "top-level human promotion review manufactured", lambda value: value.__setitem__("humanProductionPromotionReviewCompleted", True))
+    expect_inventory_rejected(inventory_validator, canonical_inventory, "top-level human promotion authorization manufactured", lambda value: value.__setitem__("humanProductionPromotionAuthorized", True))
+    expect_inventory_rejected(inventory_validator, canonical_inventory, "OPS-P0-007 human promotion review manufactured", lambda value: backup_row(value).__setitem__("humanProductionPromotionReviewCompleted", True))
+    expect_inventory_rejected(inventory_validator, canonical_inventory, "OPS-P0-007 human promotion authorization manufactured", lambda value: backup_row(value).__setitem__("humanProductionPromotionAuthorized", True))
 
+    expect_status_rejected(
+        status_validator,
+        canonical_status,
+        canonical_inventory,
+        "status layer rejects top-level sustained-soak leak proof manufacture",
+        mutate_inventory=lambda value: value.__setitem__("sustainedSoakLeakProof", True),
+    )
+    expect_status_rejected(
+        status_validator,
+        canonical_status,
+        canonical_inventory,
+        "status layer rejects OPS-P0-006 independent review manufacture",
+        mutate_inventory=lambda value: soak_row(value).__setitem__("passingIndependentReviewCount", 1),
+    )
+    expect_status_rejected(
+        status_validator,
+        canonical_status,
+        canonical_inventory,
+        "status layer rejects OPS-P0-006 leak proof manufacture",
+        mutate_inventory=lambda value: soak_row(value).__setitem__("leakProof", True),
+    )
     expect_status_rejected(
         status_validator,
         canonical_status,
@@ -289,6 +260,7 @@ def main() -> int:
     print("local sustained-soak evidence can manufacture approved criteria: false")
     print("local sustained-soak evidence can manufacture independent review: false")
     print("local sustained-soak evidence can manufacture leak proof: false")
+    print("status layer can accept manufactured sustained-soak review authority: false")
     print("registered inventory alone creates restore-planning authority: false")
     print("candidate authority can manufacture human promotion review: false")
     print("candidate authority can manufacture human promotion authorization: false")
