@@ -17,6 +17,8 @@ SHA = "a" * 40
 class Fail(RuntimeError):
     pass
 
+EXPECTED_FAILURE: type[Exception] = Fail
+
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
@@ -36,7 +38,7 @@ def load_writer():
 def expect_rejected(name: str, action: Callable[[], Any]) -> None:
     try:
         action()
-    except Exception:
+    except EXPECTED_FAILURE:
         print(f"PASS reject: {name}")
         return
     raise Fail(f"negative case unexpectedly accepted: {name}")
@@ -67,8 +69,10 @@ def review_payload(*, generation: str, source_sha: str, record_id: str, review_t
     return {"schemaVersion": "memory-os-backup-restore-non-resurrection-review-evidence.v1", "generationEvidenceId": generation, "sourceCommitSha": source_sha, "typedRecordId": record_id, "reviewType": review_type, "reviewerPseudonym": reviewer, "reviewedDomainEvidenceRefs": refs, "reviewedDomainEvidenceSha256": digests, "result": result, "productionTraffic": False, "productionCredentials": False, "productionEvidence": False, "productionReady": False}
 
 def main() -> int:
+    global EXPECTED_FAILURE
     contract = load(CONTRACT)
     writer = load_writer()
+    EXPECTED_FAILURE = writer.Fail
     with tempfile.TemporaryDirectory(prefix="memory-os-non-resurrection-negative-") as tmp:
         generation_registry = Path(tmp) / "generation-evidence.json"
         generation_registry.write_text(json.dumps({"schemaVersion": "memory-os-backup-restore-generation-evidence-registry.v1", "records": [{"evidenceId": "brge_negative_generation", "sourceCommitSha": SHA}]}) + "\n", encoding="utf-8")
@@ -153,6 +157,7 @@ def main() -> int:
     print("Memory OS backup/restore non-resurrection negative admission suite PASS")
     print("typed domain and independent review evidence are generation/commit/bundle/digest bound: true")
     print("typed record immutably binds review payload digests: true")
+    print("unexpected exception accepted as a valid rejection: false")
     print("canonical registries mutated: false")
     print("production evidence: false")
     print("production decision: NO_GO")
