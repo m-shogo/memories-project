@@ -11,6 +11,8 @@ on:
       - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
       - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
       - "contracts/operations/production-operability-status.json"
+      - "scripts/memory_os_environment_generation_eligibility.py"
+      - "scripts/validate-memory-os-environment-generation-eligibility-negative.py"
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
@@ -55,6 +57,8 @@ jobs:
           : > "$log"
           code=0
           python -m py_compile \
+            scripts/memory_os_environment_generation_eligibility.py \
+            scripts/validate-memory-os-environment-generation-eligibility-negative.py \
             scripts/validate-memory-os-production-equivalent-environment-record.py \
             scripts/register-memory-os-production-equivalent-environment-generation.py \
             scripts/validate-memory-os-production-equivalent-environment-generation.py \
@@ -63,6 +67,7 @@ jobs:
             scripts/reconcile-memory-os-production-equivalent-generation-status.py \
             >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-production-equivalent-generation-status.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-environment-generation-eligibility-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-equivalent-environment-generation-authority-path-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-equivalent-environment-generation.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?; fi
@@ -80,6 +85,8 @@ jobs:
             contracts/operations/production-equivalent-environment-record.v1.schema.json
             contracts/operations/production-equivalent-environment-generation-record.v1.schema.json
             contracts/operations/production-operability-status.json
+            scripts/memory_os_environment_generation_eligibility.py
+            scripts/validate-memory-os-environment-generation-eligibility-negative.py
             scripts/validate-memory-os-production-equivalent-environment-record.py
             scripts/register-memory-os-production-equivalent-environment-generation.py
             scripts/validate-memory-os-production-equivalent-environment-generation.py
@@ -130,6 +137,8 @@ jobs:
             contracts/operations/production-equivalent-environment-record.v1.schema.json
             contracts/operations/production-equivalent-environment-generation-record.v1.schema.json
             contracts/operations/production-operability-status.json
+            scripts/memory_os_environment_generation_eligibility.py
+            scripts/validate-memory-os-environment-generation-eligibility-negative.py
             scripts/validate-memory-os-production-equivalent-environment-record.py
             scripts/register-memory-os-production-equivalent-environment-generation.py
             scripts/validate-memory-os-production-equivalent-environment-generation.py
