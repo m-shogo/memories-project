@@ -39,20 +39,32 @@ def valid_count(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
+def repo_relative(path: Path) -> Path:
+    try:
+        return path.resolve(strict=False).relative_to(ROOT.resolve())
+    except (OSError, ValueError) as exc:
+        raise Fail(f"authority path escapes repository: {path}") from exc
+
+
 def load(path: Path) -> dict[str, Any]:
+    relative = repo_relative(path)
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
-        raise Fail(f"cannot load {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+    except (FileNotFoundError, json.JSONDecodeError, OSError) as exc:
+        raise Fail(f"cannot load {relative}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be object: {relative}")
     return value
 
 
 def load_module(path: Path, name: str):
+    relative = repo_relative(path)
     spec = importlib.util.spec_from_file_location(name, path)
-    require(spec is not None and spec.loader is not None, f"cannot load {path.relative_to(ROOT)}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    require(spec is not None and spec.loader is not None, f"cannot load {relative}")
+    try:
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except (FileNotFoundError, OSError) as exc:
+        raise Fail(f"cannot load {relative}: {exc}") from exc
     return module
 
 
@@ -88,7 +100,7 @@ def main() -> int:
         "workflow": Path(".github/workflows/backup-restore-admission-chain.yml"),
     }
     for field, path in refs.items():
-        expected = str(path.relative_to(ROOT)) if path.is_absolute() else str(path)
+        expected = str(repo_relative(path)) if path.is_absolute() else str(path)
         require(contract.get(field) == expected, f"chain ref drift: {field}")
         require((ROOT / expected).is_file(), f"chain artifact missing: {expected}")
     require(TYPED_WRITER.is_file(), "typed non-resurrection writer authority missing")
@@ -119,7 +131,7 @@ def main() -> int:
         "generationEvidenceRequestRestoreTargetGenerationMustMatch",
         "generationEvidenceRequestRecoveryObjectiveMustMatch",
         "newEvidenceRequiresCurrentlyExecutableDrillRequest",
-        "historicalEvidenceMayRemainAuditableAfterRequestStales",
+        "historicalEvidenceMayRemainAuditableAfterDrillRequestStales",
         "staleRequestEvidenceCannotRemainCurrentCandidate",
         "generationBoundBackupCountMustBeRederivedFromImmutableEvidence",
         "generationBoundRestoreCountMustBeRederivedFromImmutableEvidence",
