@@ -22,6 +22,53 @@ def write(path: Path, value: dict[str, Any]) -> None:
     path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
 
 
+def malformed_criteria(registry: dict[str, Any], *, schema: str, run_bindings: list[dict[str, Any]]) -> None:
+    registry["criteria"] = [
+        {
+            "schemaVersion": schema,
+            "criteriaId": "soakcrit_negative01",
+            "reviewScope": "LOCAL_LONG_SOAK_LEAK_STABILITY",
+            "runBindings": run_bindings,
+            "criteria": [
+                {
+                    "metric": "rssSlopeBytesPerMinute",
+                    "unit": "bytes/minute",
+                    "direction": "upper-bound",
+                    "acceptanceRule": "human supplied negative fixture only"
+                }
+            ],
+            "approvedAt": "2026-08-10T00:00:00Z",
+            "approverPseudonym": "review-owner-a",
+            "approvalEvidenceRef": "docs/evidence/sustained-soak/criteria-approvals/negative.json",
+            "supersedesCriteriaId": None,
+            "productionEvidence": False,
+            "productionReady": False
+        }
+    ]
+    registry["registeredCriteriaCount"] = 1
+    registry["approvedLeakStabilityCriteriaCount"] = 1
+
+
+def malformed_review(registry: dict[str, Any]) -> None:
+    registry["reviews"] = [
+        {
+            "schemaVersion": "memory-os-sustained-soak-independent-review-record.v1",
+            "reviewId": "soakrev_negative01",
+            "criteriaId": "soakcrit_missing01",
+            "runBindings": [],
+            "reviewedAt": "2026-08-10T00:01:00Z",
+            "reviewerPseudonym": "reviewer-b",
+            "outcome": "PASS",
+            "findings": [],
+            "reviewEvidenceRef": "docs/evidence/sustained-soak/independent-reviews/negative.json",
+            "productionEvidence": False,
+            "productionReady": False
+        }
+    ]
+    registry["registeredReviewCount"] = 1
+    registry["passingIndependentReviewCount"] = 1
+
+
 def main() -> int:
     spec = importlib.util.spec_from_file_location("soak_review_validator", VALIDATOR_PATH)
     if spec is None or spec.loader is None:
@@ -52,6 +99,20 @@ def main() -> int:
         ("reviewer independence disabled", lambda c, r, l, v: c["reviewAuthority"].__setitem__("independentReviewerRequired", False)),
         ("criteria approver reviewer separation disabled", lambda c, r, l, v: c["reviewAuthority"].__setitem__("criteriaApproverAndReviewerMustBeDistinct", False)),
         ("passing review promotes production", lambda c, r, l, v: c["reviewAuthority"].__setitem__("passingReviewDoesNotAuthorizeProductionPromotion", False)),
+        ("dedicated human evidence directory disabled", lambda c, r, l, v: c["recordAuthority"].__setitem__("humanEvidenceMustUseDedicatedDirectory", False)),
+        ("run digest binding disabled", lambda c, r, l, v: c["recordAuthority"].__setitem__("runEvidenceDigestMustMatchBytes", False)),
+        ("exact criteria/review run binding disabled", lambda c, r, l, v: c["recordAuthority"].__setitem__("reviewRunBindingsMustExactlyMatchCriteria", False)),
+        ("criteria/reviewer separation record gate disabled", lambda c, r, l, v: c["recordAuthority"].__setitem__("reviewerMustDifferFromCriteriaApprover", False)),
+        ("review chronology gate disabled", lambda c, r, l, v: c["recordAuthority"].__setitem__("reviewCannotPredateCriteriaApproval", False)),
+        (
+            "typed criteria row wrong schema",
+            lambda c, r, l, v: malformed_criteria(r, schema="memory-os-sustained-soak-leak-stability-criteria.v0", run_bindings=[]),
+        ),
+        (
+            "typed criteria row without minimum canonical runs",
+            lambda c, r, l, v: malformed_criteria(r, schema="memory-os-sustained-soak-leak-stability-criteria.v1", run_bindings=[]),
+        ),
+        ("typed review references missing criteria", lambda c, r, l, v: malformed_review(r)),
     ]
 
     with tempfile.TemporaryDirectory(prefix="soak-review-negative-", dir=ROOT) as tmp:
@@ -87,6 +148,9 @@ def main() -> int:
     print("automatic leak proof accepted: false")
     print("automatic independent review accepted: false")
     print("automatic threshold approval accepted: false")
+    print("typed criteria without canonical run binding accepted: false")
+    print("typed review without approved criteria binding accepted: false")
+    print("human evidence directory/digest/reviewer separation gates weaken silently: false")
     print("automatic production soak evidence accepted: false")
     print("automatic production readiness accepted: false")
     print("production evidence: false")
