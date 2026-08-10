@@ -22,11 +22,6 @@ NEW_EXISTING = (
     "complete simulated source-version loss before restore with backup checksum and source-version metadata binding preserved",
     "privacy-safe exact-source object recovery result storing only SHA-256 digests of bucket, key and provider version identifiers",
 )
-NEW_GAPS = (
-    "production object backup with independently owned retention, deletion protection and lifecycle verification",
-    "production object-store TLS, restore-only credential separation and provider durability evidence",
-    "coherent PostgreSQL and exact object-version restore with measured skew",
-)
 NEW_REFS = (
     "contracts/operations/local-object-version-restore-contract.v1.json",
     "scripts/run-memory-os-local-object-version-restore.py",
@@ -34,6 +29,14 @@ NEW_REFS = (
     "scripts/reconcile-memory-os-local-object-version-restore.py",
     "docs/fixtures/memory-os-operability/local-object-version-restore-results.sample.v1.json",
     ".github/workflows/local-object-version-restore.yml",
+)
+CANONICAL_GAP_FRAGMENTS = (
+    "production PostgreSQL backup and PITR schedule",
+    "production independent object backup retention",
+    "approved and measured RPO and RTO",
+    "production-shaped cross-cluster isolated restore drill",
+    "production deletion, expired/revoked-session, replay, idempotency and lease non-resurrection verification after restore",
+    "independent review of generation-bound recovery evidence",
 )
 
 
@@ -62,6 +65,16 @@ def append_once(items: list[Any], value: str) -> bool:
         return False
     items.append(value)
     return True
+
+
+def require_canonical_blockers(missing: list[Any]) -> None:
+    require(len(missing) == len(CANONICAL_GAP_FRAGMENTS),
+            "local object restore cannot rewrite or expand the canonical OPS-P0-007 blocker set")
+    require(all(isinstance(item, str) for item in missing),
+            "OPS-P0-007 missingEvidence must contain only strings")
+    for fragment in CANONICAL_GAP_FRAGMENTS:
+        require(sum(fragment in item for item in missing) == 1,
+                f"canonical OPS-P0-007 blocker missing or duplicated: {fragment}")
 
 
 def main() -> int:
@@ -105,6 +118,7 @@ def main() -> int:
         refs = []
         gate["evidenceRefs"] = refs
     require(isinstance(refs, list), "OPS-P0-007 evidenceRefs must be a list")
+    require_canonical_blockers(missing)
 
     changed = False
     if gate.get("status") == "NOT_IMPLEMENTED_OR_PROVEN":
@@ -112,21 +126,14 @@ def main() -> int:
         changed = True
     for item in NEW_EXISTING:
         changed = append_once(existing, item) or changed
-    for item in NEW_GAPS:
-        changed = append_once(missing, item) or changed
     for ref in NEW_REFS:
         require((ROOT / ref).is_file(), f"object restore evidence missing: {ref}")
         changed = append_once(refs, ref) or changed
 
-    for required_gap in (
-        "production object backup",
-        "production object-store TLS",
-        "coherent PostgreSQL and exact object-version restore",
-        "production PostgreSQL backup schedule",
-        "approved and measured RPO/RTO",
-    ):
-        require(any(required_gap in item for item in missing),
-                f"required OPS-P0-007 gap disappeared: {required_gap}")
+    # Local evidence can add local evidence only. The canonical production
+    # blocker set is owned by reconcile-memory-os-backup-authority.py and must
+    # never be expanded or rewritten by this per-drill reconciler.
+    require_canonical_blockers(missing)
     require(gate.get("status") != "READY",
             "local object restore cannot make OPS-P0-007 READY")
     require(status.get("productionDecision") == "NO_GO",
@@ -141,7 +148,7 @@ def main() -> int:
         json.dumps(status, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
-    print("Registered exact-source local object-version restore PASS; OPS-P0-007 remains non-ready")
+    print("Registered exact-source local object-version restore PASS; canonical production blockers unchanged")
     return 0
 
 
