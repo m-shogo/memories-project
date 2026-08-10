@@ -37,7 +37,7 @@ class Fail(RuntimeError):
     pass
 
 
-EXPECTED_FAILURE: type[Exception] = Fail
+EXPECTED_FAILURE: tuple[type[Exception], ...] = (Fail,)
 
 
 def require(condition: bool, message: str) -> None:
@@ -249,7 +249,7 @@ def main() -> int:
         "generation evidence foundation missing",
     )
     writer = load_writer()
-    EXPECTED_FAILURE = writer.Fail
+    EXPECTED_FAILURE = (writer.Fail, writer.load_drill_writer().Fail)
     commit_sha = head_sha()
 
     no_generation = base_record(commit_sha)
