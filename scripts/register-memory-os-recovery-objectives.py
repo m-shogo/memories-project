@@ -68,10 +68,20 @@ def parse_utc_timestamp(value: Any, field: str) -> datetime:
 
 
 def repo_ref(value: Any, field: str) -> str:
-    require(isinstance(value, str) and value and not Path(value).is_absolute(), f"{field} invalid")
-    path = Path(value)
-    require(".." not in path.parts, f"{field} invalid")
-    require((ROOT / path).is_file(), f"{field} evidence missing: {value}")
+    require(isinstance(value, str) and value, f"{field} invalid")
+    relative = Path(value)
+    require(
+        not relative.is_absolute()
+        and ".." not in relative.parts
+        and relative.as_posix() == value,
+        f"{field} must be a canonical repository-relative path",
+    )
+    path = ROOT / relative
+    try:
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise Fail(f"{field} evidence missing or escapes repository: {value}") from exc
+    require(resolved == relative and path.is_file(), f"{field} must resolve to the canonical repository file")
     return value
 
 
