@@ -48,6 +48,8 @@ jobs:
 
       - name: Capture exact source state
         run: |
+          set -euo pipefail
+          git fetch origin so
           test "$(git branch --show-current)" = "so"
           test -z "$(git status --porcelain)"
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
@@ -145,6 +147,12 @@ jobs:
 
       - name: Commit result or bounded failure diagnostic
         run: |
+          set -euo pipefail
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Branch advanced after restore execution; refusing stale object-version restore evidence."
+            exit 75
+          fi
           git add docs/fixtures/memory-os-operability/local-object-version-restore-diagnostic.last.json
           if [ "${{ steps.drill.outputs.exit_code }}" = "0" ] && \
              [ "${{ steps.validation.outputs.exit_code }}" = "0" ]; then
@@ -153,6 +161,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "Object restore evidence is already current."
           else
+            git diff --cached --check
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             if [ "${{ steps.drill.outputs.exit_code }}" = "0" ] && \
@@ -161,16 +170,30 @@ jobs:
             else
               git commit -m "test(backup): record object restore failure diagnostic"
             fi
-            git pull --rebase origin so
-            git push origin HEAD:so
+            for attempt in 1 2 3 4; do
+              git fetch origin so
+              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+                echo "Branch advanced after evidence capture; refusing stale object-version restore evidence."
+                exit 75
+              fi
+              if git push origin HEAD:so; then break; fi
+              if [[ "$attempt" == "4" ]]; then exit 1; fi
+              sleep 2
+            done
           fi
+          echo "EVIDENCE_COMMIT_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Reconcile exact-source PASS into status
         if: steps.drill.outputs.exit_code == '0' && steps.validation.outputs.exit_code == '0'
         env:
           EXPECTED_COMMIT_SHA: ${{ env.SOURCE_SHA }}
         run: |
-          git pull --rebase origin so
+          set -euo pipefail
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$EVIDENCE_COMMIT_SHA" ]]; then
+            echo "Branch advanced after evidence publication; refusing stale object-version restore status."
+            exit 75
+          fi
           python scripts/reconcile-memory-os-local-object-version-restore.py
           python scripts/validate-memory-os-local-object-version-restore.py
           python scripts/validate-memory-os-backup-restore.py
@@ -179,11 +202,20 @@ jobs:
           if git diff --cached --quiet; then
             echo "Object restore status is already current."
           else
+            git diff --cached --check
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(backup): register local object-version restore evidence"
-            git pull --rebase origin so
-            git push origin HEAD:so
+            for attempt in 1 2 3 4; do
+              git fetch origin so
+              if [[ "$(git rev-parse origin/so)" != "$EVIDENCE_COMMIT_SHA" ]]; then
+                echo "Branch advanced after status derivation; refusing stale object-version restore status."
+                exit 75
+              fi
+              if git push origin HEAD:so; then exit 0; fi
+              sleep 2
+            done
+            exit 1
           fi
 
       - name: Fail workflow after preserving diagnostic
