@@ -72,6 +72,18 @@ def main() -> int:
     require(run_with_overrides(module, {}) == 0, "canonical admission-chain baseline must validate")
     print("PASS baseline: canonical end-to-end admission chain validates")
 
+    escaped_authority = Path("/tmp/memory-os-backup-restore-admission-chain-escaped.json")
+    expect_rejected(
+        module,
+        "admission-chain JSON authority path escapes repository root",
+        lambda: module.load(escaped_authority),
+    )
+    expect_rejected(
+        module,
+        "admission-chain module authority path escapes repository root",
+        lambda: module.load_module(escaped_authority, "memory_os_escaped_admission_chain_authority"),
+    )
+
     missing_restore_stage = copy.deepcopy(contract)
     missing_restore_stage["requiredChain"].remove("generationBoundRestore")
     expect_rejected(
@@ -298,6 +310,7 @@ def main() -> int:
     )
 
     print("Memory OS backup/restore admission-chain negative suite PASS")
+    print("escaped JSON/module authority path accepted: false")
     print("chain stage deletion/reordering accepted: false")
     print("backup/restore aggregate rederivation downgrade accepted: false")
     print("typed eight-domain rederivation downgrade accepted: false")
