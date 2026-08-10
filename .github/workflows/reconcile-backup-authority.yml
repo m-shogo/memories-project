@@ -18,6 +18,7 @@ on:
       - "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/local-object-version-restore-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/local-coherent-recovery-set-results.sample.v1.json"
+      - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/validate-memory-os-backup-local-foundations.py"
       - "scripts/validate-memory-os-backup-restore.py"
       - "scripts/validate-memory-os-backup-restore-blockers-negative.py"
@@ -68,6 +69,7 @@ jobs:
       - name: Validate exact-source local foundations
         run: |
           python -m py_compile \
+            scripts/memory_os_backup_restore_blockers.py \
             scripts/validate-memory-os-local-apple-replay-restore.py \
             scripts/validate-memory-os-local-logical-restore.py \
             scripts/validate-memory-os-local-object-version-restore.py \
