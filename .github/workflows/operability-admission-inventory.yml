@@ -244,7 +244,10 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin so
-          git reset --hard origin/so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Inventory source HEAD changed after validation; refusing to attach a stale failure diagnostic."
+            exit 75
+          fi
           python - <<'PY'
           import json, os
           from pathlib import Path
@@ -274,7 +277,11 @@ jobs:
           if ! git diff --cached --quiet; then
             git commit -m "test(ops): record admission inventory diagnostic"
             for attempt in 1 2 3; do
-              git pull --rebase origin so
+              git fetch origin so
+              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+                echo "Branch advanced before inventory diagnostic push; refusing stale failure diagnostic."
+                exit 75
+              fi
               if git push origin HEAD:so; then exit 0; fi
               sleep 2
             done
