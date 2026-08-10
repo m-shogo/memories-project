@@ -10,6 +10,7 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-admission-chain.py"
+RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-admission-chain.py"
 
 
 class Fail(RuntimeError):
@@ -24,6 +25,14 @@ def require(condition: bool, message: str) -> None:
 def load_module():
     spec = importlib.util.spec_from_file_location("memory_os_backup_restore_admission_chain_negative_target", VALIDATOR)
     require(spec is not None and spec.loader is not None, "cannot load admission-chain validator")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def load_reconciler():
+    spec = importlib.util.spec_from_file_location("memory_os_backup_restore_admission_chain_reconcile_negative_target", RECONCILER)
+    require(spec is not None and spec.loader is not None, "cannot load admission-chain reconciler")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -240,6 +249,54 @@ def main() -> int:
         lambda: run_with_overrides(module, {module.CONTRACT: promoted}),
     )
 
+    reconciler = load_reconciler()
+    reconcile_load = reconciler.load
+    reconcile_preflight = copy.deepcopy(reconcile_load(reconciler.PREFLIGHT))
+    reconcile_drill = copy.deepcopy(reconcile_load(reconciler.DRILL_REGISTRY))
+    reconcile_generation = copy.deepcopy(reconcile_load(reconciler.GEN_REGISTRY))
+    reconcile_binding = copy.deepcopy(reconcile_load(reconciler.BINDING_CONTRACT))
+    reconcile_typed = copy.deepcopy(reconcile_load(reconciler.TYPED_REGISTRY))
+
+    reconcile_boolean_pair = copy.deepcopy(reconcile_preflight)
+    reconcile_boolean_pair["currentState"]["eligibleDirectedSourceTargetPairCount"] = False
+    expect_rejected(
+        reconciler,
+        "reconciler boolean preflight pair count",
+        lambda: run_with_overrides(reconciler, {reconciler.PREFLIGHT: reconcile_boolean_pair}),
+    )
+
+    reconcile_boolean_drill = copy.deepcopy(reconcile_drill)
+    reconcile_boolean_drill["registeredRequestCount"] = False
+    expect_rejected(
+        reconciler,
+        "reconciler boolean drill registry count",
+        lambda: run_with_overrides(reconciler, {reconciler.DRILL_REGISTRY: reconcile_boolean_drill}),
+    )
+
+    reconcile_boolean_generation = copy.deepcopy(reconcile_generation)
+    reconcile_boolean_generation["registeredEvidenceCount"] = False
+    expect_rejected(
+        reconciler,
+        "reconciler boolean generation evidence count",
+        lambda: run_with_overrides(reconciler, {reconciler.GEN_REGISTRY: reconcile_boolean_generation}),
+    )
+
+    reconcile_boolean_binding = copy.deepcopy(reconcile_binding)
+    reconcile_boolean_binding["currentBoundary"]["generationBoundBackupCount"] = False
+    expect_rejected(
+        reconciler,
+        "reconciler boolean generation-bound backup count",
+        lambda: run_with_overrides(reconciler, {reconciler.BINDING_CONTRACT: reconcile_boolean_binding}),
+    )
+
+    reconcile_boolean_typed = copy.deepcopy(reconcile_typed)
+    reconcile_boolean_typed["completeRecordCount"] = False
+    expect_rejected(
+        reconciler,
+        "reconciler boolean typed complete count",
+        lambda: run_with_overrides(reconciler, {reconciler.TYPED_REGISTRY: reconcile_boolean_typed}),
+    )
+
     print("Memory OS backup/restore admission-chain negative suite PASS")
     print("chain stage deletion/reordering accepted: false")
     print("backup/restore aggregate rederivation downgrade accepted: false")
@@ -248,6 +305,7 @@ def main() -> int:
     print("boolean-as-count authority accepted: false")
     print("integer-as-review/promotion-boolean authority accepted: false")
     print("inventory review/promotion projection accepted: false")
+    print("reconciler boolean aggregate authority accepted: false")
     print("candidate may authorize human production promotion: false")
     print("canonical files mutated: false")
     print("production evidence: false")
