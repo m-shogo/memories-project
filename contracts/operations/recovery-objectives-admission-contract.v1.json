@@ -56,6 +56,7 @@
     "typed approval bound to a different objectiveId",
     "typed approval bound to different RPO/RTO/skew values",
     "zero or negative RPO/RTO",
+    "boolean RPO/RTO/skew values",
     "negative object-database skew",
     "placeholder measurement method",
     "missing owner evidence path",
