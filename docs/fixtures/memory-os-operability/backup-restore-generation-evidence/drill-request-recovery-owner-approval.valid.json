@@ -1,6 +1,7 @@
 {
-  "schemaVersion": "memory-os-backup-restore-drill-request-approval.v1",
+  "schemaVersion": "memory-os-backup-restore-drill-request-approval.v2",
   "requestId": "brrq_negative_base",
+  "requestRecordSha256": "ba1dc2754c507c4680877a2614f01bc28b62bb5c0a95d174e315a9c30fb4e74b",
   "reviewRole": "RECOVERY_OWNER",
   "decision": "APPROVED",
   "sourceEnvironmentGenerationId": "pegen_source",
