@@ -143,6 +143,14 @@ def main() -> int:
     require(run_with_state(module, state) == 0, "candidate baseline must validate with evidence review but without human promotion review")
     print("PASS baseline: recovery candidate includes independently re-derived evidence review while human promotion review remains false")
 
+    impossible_count_order = copy.deepcopy(state)
+    impossible_count_order[module.EVIDENCE_REGISTRY]["completeGenerationBoundRestoreCount"] = 0
+    expect_rejected(
+        module,
+        "recovery candidate count cannot exceed complete generation-bound restore count",
+        lambda: run_with_state(module, impossible_count_order),
+    )
+
     manufactured_backup_aggregate = copy.deepcopy(state)
     manufactured_backup_aggregate[module.EVIDENCE_REGISTRY]["records"][0]["evidenceComplete"] = False
     expect_rejected(
@@ -250,6 +258,7 @@ def main() -> int:
     )
 
     print("Memory OS backup/restore generation binding negative suite PASS")
+    print("candidate count may exceed complete restore count: false")
     print("backup aggregate without row-derived complete evidence accepted: false")
     print("restore aggregate without row-derived isolated exact-artifact evidence accepted: false")
     print("backup/restore aggregate re-derivation contract can be disabled: false")
