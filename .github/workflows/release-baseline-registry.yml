@@ -48,8 +48,19 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Capture exact release authority source
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
       - name: Confirm clean source and compile tools
         run: |
+          set -euo pipefail
           test -z "$(git status --porcelain)"
           python -m py_compile \
             scripts/register-memory-os-release-baseline.py \
@@ -147,20 +158,32 @@ jobs:
       - name: Commit release-specific authority
         if: github.event_name != 'pull_request'
         run: |
+          set -euo pipefail
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Release baseline authority source changed during reconciliation; refusing stale derived authority."
+            exit 75
+          fi
           git add contracts/operations/production-operability-status.json
           if git diff --cached --quiet; then
             echo "Release baseline registry authority is already current."
           else
+            git diff --cached --check
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(version): register release baseline authority"
-            git pull --rebase origin so
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              echo "Branch advanced after release validation; refusing to rebase stale release authority."
+              exit 75
+            fi
             git push origin HEAD:so
           fi
 
       - name: Re-read committed authority and run aggregate checks
         if: github.event_name != 'pull_request'
         run: |
+          set -euo pipefail
           git fetch origin so
           git reset --hard origin/so
           python scripts/validate-memory-os-release-baseline-registry.py
