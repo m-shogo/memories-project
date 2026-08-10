@@ -88,6 +88,8 @@ def main() -> int:
         require(promotion.get(key) is False, f"unsafe restore promotion rule: {key}")
     require(promotion.get("isolatedRestoreRequired") is True, "isolated restore must remain required")
     require(promotion.get("independentReviewRequired") is True, "candidate-level independent evidence review must remain required")
+    require(promotion.get("backupCountMustBeRederivedFromImmutableEvidence") is True, "backup aggregate must be re-derived from immutable generation evidence")
+    require(promotion.get("restoreCountMustBeRederivedFromImmutableEvidence") is True, "restore aggregate must be re-derived from immutable generation evidence")
     require(promotion.get("candidateCountMustBeRederivedFromCurrentExecutableReviewedEvidence") is True, "candidate aggregate must be re-derived from current executable reviewed evidence")
     require(promotion.get("humanProductionPromotionReviewRemainsSeparate") is True, "human production-promotion review must remain separate")
 
@@ -144,11 +146,23 @@ def main() -> int:
         require(evidence_count == 0, "recovery evidence cannot exist without registered environment generations")
 
     evidence_writer = load_evidence_writer()
+    derived_backup_count = 0
+    derived_restore_count = 0
     derived_candidate_count = 0
     for row in evidence_rows:
         evidence_writer.validate_record(row, require_current_drill_request=False)
+        if row.get("evidenceComplete") is True:
+            derived_backup_count += 1
+        if (
+            row.get("evidenceComplete") is True
+            and row.get("isolatedRestoreVerified") is True
+            and row.get("restoredBackupArtifactSha256") == row.get("backupArtifactSha256")
+        ):
+            derived_restore_count += 1
         if evidence_writer.candidate(row):
             derived_candidate_count += 1
+    require(backup_count == derived_backup_count, "generation evidence registry backup aggregate drift from immutable evidence rows")
+    require(restore_count == derived_restore_count, "generation evidence registry restore aggregate drift from immutable evidence rows")
     require(candidate_count == derived_candidate_count, "generation evidence registry candidate aggregate drift from current executable reviewed evidence")
 
     boundary = contract.get("currentBoundary")
@@ -196,6 +210,7 @@ def main() -> int:
     print("required coherent database/object recovery-set foundation: committed PASS")
     print(f"registered production-equivalent generations: {generation_count}")
     print(f"generation-bound backups/restores: {backup_count}/{restore_count}")
+    print("backup/restore aggregates re-derived from immutable generation evidence: true")
     print(f"production-equivalent recovery candidates: {candidate_count}")
     print("recovery candidate aggregate re-derived from current executable reviewed evidence: true")
     print(f"candidate-level independent evidence review complete: {str(candidate_count > 0).lower()}")
