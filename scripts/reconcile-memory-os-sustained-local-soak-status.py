@@ -21,8 +21,12 @@ AGGREGATE_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak-ag
 
 FOUNDATION_REFS = (
     "contracts/operations/sustained-local-soak-contract.v1.json",
+    "contracts/operations/sustained-soak-independent-review-contract.v1.json",
+    "contracts/operations/sustained-soak-independent-review-registry.v1.json",
     "services/import-api/internal/httpserver/sustained_local_soak_test.go",
     "scripts/validate-memory-os-sustained-local-soak.py",
+    "scripts/validate-memory-os-sustained-soak-independent-review.py",
+    "scripts/validate-memory-os-sustained-soak-independent-review-negative.py",
     "scripts/validate-memory-os-sustained-local-soak-result.py",
     "scripts/validate-memory-os-sustained-local-soak-aggregate.py",
     "scripts/update-memory-os-sustained-local-soak-aggregate.py",
@@ -198,6 +202,10 @@ def main() -> int:
     append_unique(
         existing,
         "fail-closed LOCAL_LONG_SOAK foundation requires a long-lived API process plus PostgreSQL, MinIO, parser recovery, scan-queue observation and deletion-worker convergence across 12 windows, and physically refuses to publish result evidence for runs configured below 3600 seconds",
+    )
+    append_unique(
+        existing,
+        "append-only independent sustained-soak review authority is implemented for future human-approved leak/stability criteria and distinct independent review; automatic threshold selection, leak proof, capacity-boundary promotion and production promotion remain forbidden, and the registry is currently empty",
     )
     if run_count >= 1:
         append_unique(existing, f"{run_count} exact-source LOCAL_LONG_SOAK run document(s) satisfy the per-run validator; production evidence and leak proof remain false")
