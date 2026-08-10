@@ -67,6 +67,8 @@ jobs:
 
       - name: Capture exact source state
         run: |
+          set -euo pipefail
+          git fetch origin so
           test "$(git branch --show-current)" = "so"
           test -z "$(git status --porcelain)"
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
@@ -140,6 +142,12 @@ jobs:
 
       - name: Commit result or bounded diagnostic
         run: |
+          set -euo pipefail
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Branch advanced after coherent recovery execution; refusing stale evidence."
+            exit 75
+          fi
           git add docs/fixtures/memory-os-operability/local-coherent-recovery-set-diagnostic.last.json
           if [ "${{ steps.drill.outputs.exit_code }}" = "0" ] && \
              [ "${{ steps.validation.outputs.exit_code }}" = "0" ]; then
@@ -148,6 +156,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "Coherent recovery evidence is already current."
           else
+            git diff --cached --check
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             if [ "${{ steps.drill.outputs.exit_code }}" = "0" ] && \
@@ -156,8 +165,16 @@ jobs:
             else
               git commit -m "test(backup): record coherent recovery failure diagnostic"
             fi
-            git pull --rebase origin so
-            git push origin HEAD:so
+            for attempt in 1 2 3 4; do
+              git fetch origin so
+              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+                echo "Branch advanced after evidence capture; refusing stale coherent recovery evidence."
+                exit 75
+              fi
+              if git push origin HEAD:so; then exit 0; fi
+              sleep 2
+            done
+            exit 1
           fi
 
       - name: Fail after preserving diagnostic
