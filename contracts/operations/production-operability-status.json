@@ -662,7 +662,10 @@
         "cross-cluster isolated restore rehearsal with approved recovery owner and promotion decision",
         "coherent PostgreSQL and object-version recovery-point selection",
         "approved and measured RPO/RTO",
-        "production deletion and expired-session non-resurrection verification after restore"
+        "production deletion and expired-session non-resurrection verification after restore",
+        "production object backup with independently owned retention, deletion protection and lifecycle verification",
+        "production object-store TLS, restore-only credential separation and provider durability evidence",
+        "coherent PostgreSQL and exact object-version restore with measured skew"
       ],
       "evidenceRefs": [
         "contracts/operations/local-logical-restore-contract.v1.json",
@@ -731,7 +734,9 @@
         "scripts/reconcile-memory-os-backup-restore-drill-preflight.py",
         ".github/workflows/backup-restore-drill-preflight.yml",
         "scripts/memory_os_environment_generation_eligibility.py",
-        "scripts/validate-memory-os-backup-restore-drill-preflight-negative.py"
+        "scripts/validate-memory-os-backup-restore-drill-preflight-negative.py",
+        "scripts/run-memory-os-local-object-version-restore.py",
+        "scripts/reconcile-memory-os-local-object-version-restore.py"
       ]
     },
     {
