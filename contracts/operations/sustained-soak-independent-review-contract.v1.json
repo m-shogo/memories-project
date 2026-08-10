@@ -35,6 +35,8 @@
     "independentReviewEvidenceDirectory": "docs/evidence/sustained-soak/independent-reviews",
     "canonicalRunEvidenceDirectory": "docs/fixtures/memory-os-operability",
     "canonicalRunEvidenceGlob": "sustained-local-soak-results.run-*.v1.json",
+    "criteriaApprovalEvidenceSchemaVersion": "memory-os-sustained-soak-criteria-approval.v1",
+    "independentReviewEvidenceSchemaVersion": "memory-os-sustained-soak-independent-review-evidence.v1",
     "criteriaRequiredFields": [
       "schemaVersion",
       "criteriaId",
@@ -72,6 +74,27 @@
       "direction",
       "acceptanceRule"
     ],
+    "criteriaApprovalEvidenceRequiredFields": [
+      "schemaVersion",
+      "criteriaId",
+      "decision",
+      "approvedAt",
+      "approverPseudonym",
+      "productionTraffic",
+      "productionCredentials",
+      "automaticPromotion"
+    ],
+    "independentReviewEvidenceRequiredFields": [
+      "schemaVersion",
+      "reviewId",
+      "criteriaId",
+      "outcome",
+      "reviewedAt",
+      "reviewerPseudonym",
+      "productionTraffic",
+      "productionCredentials",
+      "automaticPromotion"
+    ],
     "minimumBoundRuns": 2,
     "criteriaReviewScope": "LOCAL_LONG_SOAK_LEAK_STABILITY",
     "humanEvidenceMustUseDedicatedDirectory": true,
@@ -79,7 +102,7 @@
     "runEvidenceDigestMustMatchBytes": true,
     "reviewRunBindingsMustExactlyMatchCriteria": true,
     "reviewerMustDifferFromCriteriaApprover": true,
-    "reviewCannotPostdateMissingEvidence": true,
+    "reviewCannotPredateCriteriaApproval": true,
     "productionEvidenceForbidden": true,
     "productionReadyForbidden": true
   },
