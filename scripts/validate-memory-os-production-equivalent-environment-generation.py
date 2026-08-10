@@ -27,6 +27,7 @@ EXPECTED_NEGATIVE_CASES = {
     "productionEquivalentDependencies true with missing evidence ref",
     "independent review completed without review evidence ref",
     "accepted material delta without independent review evidence",
+    "absolute, parent-traversal or symlinked environment evidence ref",
     "absolute, parent-traversal or symlinked environment record ref",
     "semantic environment validator implementation exception",
     "mutable generation alias",
@@ -204,6 +205,7 @@ def main() -> int:
     print("registration implies preflight eligibility: false")
     print("boolean generation counts accepted: false")
     print("canonical environmentRecordRef required: true")
+    print("semantic environment evidence refs canonical: true")
     print("semantic validator implementation exceptions surfaced: true")
     print("unexpected generation-writer exceptions normalized as expected rejection: false")
     print("cross-generation evidence reuse: forbidden")
