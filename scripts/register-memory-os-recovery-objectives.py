@@ -52,7 +52,10 @@ def require(condition: bool, message: str) -> None:
 
 
 def load(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise Fail(f"cannot load recovery-objective JSON authority: {path}") from exc
     require(isinstance(value, dict), f"root must be object: {path}")
     return value
 
