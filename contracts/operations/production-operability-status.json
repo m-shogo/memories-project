@@ -657,15 +657,7 @@
         "approved and measured RPO and RTO under production-shaped recovery, with coherent PostgreSQL/object recovery-point skew measurement plus backup monitoring, freshness enforcement and paging",
         "production-shaped cross-cluster isolated restore drill with an approved recovery owner, coherent PostgreSQL and exact object-version recovery points, and an explicit promotion decision",
         "production deletion, expired/revoked-session, replay, idempotency and lease non-resurrection verification after restore",
-        "independent review of generation-bound recovery evidence, security/privacy invariants, measured objectives and the restore promotion decision",
-        "production PostgreSQL backup schedule, independent retention and PITR configuration",
-        "cross-cluster isolated restore rehearsal with approved recovery owner and promotion decision",
-        "coherent PostgreSQL and object-version recovery-point selection",
-        "approved and measured RPO/RTO",
-        "production deletion and expired-session non-resurrection verification after restore",
-        "production object backup with independently owned retention, deletion protection and lifecycle verification",
-        "production object-store TLS, restore-only credential separation and provider durability evidence",
-        "coherent PostgreSQL and exact object-version restore with measured skew"
+        "independent review of generation-bound recovery evidence, security/privacy invariants, measured objectives and the restore promotion decision"
       ],
       "evidenceRefs": [
         "contracts/operations/local-logical-restore-contract.v1.json",
