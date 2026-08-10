@@ -71,6 +71,17 @@ def expect_reconciler_path_rejected(reconciler: Any, field: str, escaped: Path, 
         setattr(reconciler, field, original)
 
 
+def expect_reconciler_rejected_without_contract_write(
+    reconciler: Any,
+    name: str,
+    action: Callable[[], Any],
+) -> None:
+    before = reconciler.CONTRACT.read_text(encoding="utf-8")
+    expect_rejected(reconciler, name, action)
+    after = reconciler.CONTRACT.read_text(encoding="utf-8")
+    require(after == before, f"reconciler mutated admission-chain contract before rejecting: {name}")
+
+
 def main() -> int:
     module = load_module()
     real_load = module.load
@@ -292,6 +303,29 @@ def main() -> int:
         lambda: reconciler.load_generation_writer(),
     )
 
+    manufactured_reconcile_backup = copy.deepcopy(reconcile_generation)
+    manufactured_reconcile_backup["completeGenerationBoundBackupCount"] = 1
+    expect_reconciler_rejected_without_contract_write(
+        reconciler,
+        "reconciler manufactured generation-bound backup aggregate",
+        lambda: run_with_overrides(
+            reconciler,
+            {reconciler.GEN_REGISTRY: manufactured_reconcile_backup},
+        ),
+    )
+
+    manufactured_reconcile_recovery = copy.deepcopy(reconcile_generation)
+    manufactured_reconcile_recovery["completeGenerationBoundBackupCount"] = 1
+    manufactured_reconcile_recovery["completeGenerationBoundRestoreCount"] = 1
+    expect_reconciler_rejected_without_contract_write(
+        reconciler,
+        "reconciler coordinated manufactured backup/restore aggregates",
+        lambda: run_with_overrides(
+            reconciler,
+            {reconciler.GEN_REGISTRY: manufactured_reconcile_recovery},
+        ),
+    )
+
     reconcile_boolean_pair = copy.deepcopy(reconcile_preflight)
     reconcile_boolean_pair["currentState"]["eligibleDirectedSourceTargetPairCount"] = False
     expect_rejected(
@@ -335,6 +369,7 @@ def main() -> int:
     print("Memory OS backup/restore admission-chain negative suite PASS")
     print("escaped JSON/module authority path accepted: false")
     print("escaped reconciler contract/module authority path accepted: false")
+    print("reconciler manufactured recovery aggregates accepted before contract write: false")
     print("chain stage deletion/reordering accepted: false")
     print("backup/restore aggregate rederivation downgrade accepted: false")
     print("typed eight-domain rederivation downgrade accepted: false")
