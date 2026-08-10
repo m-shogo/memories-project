@@ -129,15 +129,23 @@ def main() -> int:
         ("automatic threshold selection enabled", lambda c, r, l, v: c["criteriaAuthority"].__setitem__("automaticThresholdSelectionForbidden", False)),
         ("criteria may be generated automatically", lambda c, r, l, v: c["criteriaAuthority"].__setitem__("automaticCriteriaGenerationForbidden", False)),
         ("superseded criteria may remain current authority", lambda c, r, l, v: c["criteriaAuthority"].__setitem__("supersededCriteriaCannotRemainCurrentReviewAuthority", False)),
+        ("criteria approval record digest binding disabled", lambda c, r, l, v: c["criteriaAuthority"].__setitem__("approvalEvidenceMustBindCriteriaRecordDigest", False)),
         ("reviewer independence disabled", lambda c, r, l, v: c["reviewAuthority"].__setitem__("independentReviewerRequired", False)),
         ("criteria approver reviewer separation disabled", lambda c, r, l, v: c["reviewAuthority"].__setitem__("criteriaApproverAndReviewerMustBeDistinct", False)),
         ("historical PASS may count as current review", lambda c, r, l, v: c["reviewAuthority"].__setitem__("onlyCurrentCriteriaPassCountsAsPassingIndependentReview", False)),
         ("passing review promotes production", lambda c, r, l, v: c["reviewAuthority"].__setitem__("passingReviewDoesNotAuthorizeProductionPromotion", False)),
+        ("independent review record digest binding disabled", lambda c, r, l, v: c["reviewAuthority"].__setitem__("independentReviewEvidenceMustBindReviewRecordDigest", False)),
         ("dedicated human evidence directory disabled", lambda c, r, l, v: c["recordAuthority"].__setitem__("humanEvidenceMustUseDedicatedDirectory", False)),
         ("run digest binding disabled", lambda c, r, l, v: c["recordAuthority"].__setitem__("runEvidenceDigestMustMatchBytes", False)),
         ("exact criteria/review run binding disabled", lambda c, r, l, v: c["recordAuthority"].__setitem__("reviewRunBindingsMustExactlyMatchCriteria", False)),
         ("criteria/reviewer separation record gate disabled", lambda c, r, l, v: c["recordAuthority"].__setitem__("reviewerMustDifferFromCriteriaApprover", False)),
         ("review chronology gate disabled", lambda c, r, l, v: c["recordAuthority"].__setitem__("reviewCannotPredateCriteriaApproval", False)),
+        ("criteria approval canonical digest gate disabled", lambda c, r, l, v: c["recordAuthority"].__setitem__("criteriaApprovalMustBindCanonicalRecordDigest", False)),
+        ("independent review canonical digest gate disabled", lambda c, r, l, v: c["recordAuthority"].__setitem__("independentReviewMustBindCanonicalRecordDigest", False)),
+        ("criteria approval evidence schema downgraded", lambda c, r, l, v: c["recordAuthority"].__setitem__("criteriaApprovalEvidenceSchemaVersion", "memory-os-sustained-soak-criteria-approval.v1")),
+        ("independent review evidence schema downgraded", lambda c, r, l, v: c["recordAuthority"].__setitem__("independentReviewEvidenceSchemaVersion", "memory-os-sustained-soak-independent-review-evidence.v1")),
+        ("criteria approval digest field removed", lambda c, r, l, v: c["recordAuthority"].__setitem__("criteriaApprovalEvidenceRequiredFields", [field for field in c["recordAuthority"]["criteriaApprovalEvidenceRequiredFields"] if field != "criteriaRecordSha256"])),
+        ("independent review digest field removed", lambda c, r, l, v: c["recordAuthority"].__setitem__("independentReviewEvidenceRequiredFields", [field for field in c["recordAuthority"]["independentReviewEvidenceRequiredFields"] if field != "reviewRecordSha256"])),
         (
             "typed criteria row wrong schema",
             lambda c, r, l, v: malformed_criteria(r, schema="memory-os-sustained-soak-leak-stability-criteria.v0", run_bindings=[]),
@@ -185,6 +193,7 @@ def main() -> int:
     print("automatic threshold approval accepted: false")
     print("typed criteria without canonical run binding accepted: false")
     print("typed review without approved criteria binding accepted: false")
+    print("human approval/review record-digest gates weaken silently: false")
     print("human evidence directory/digest/reviewer separation gates weaken silently: false")
     print("automatic production soak evidence accepted: false")
     print("automatic production readiness accepted: false")
