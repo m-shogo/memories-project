@@ -7,7 +7,7 @@ import importlib.util
 import json
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 HELPER = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
@@ -20,6 +20,15 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def expect_rejected(name: str, action: Callable[[], Any], failure_type: type[Exception]) -> None:
+    try:
+        action()
+    except failure_type:
+        print(f"PASS reject: {name}")
+        return
+    raise Fail(f"negative case unexpectedly accepted: {name}")
 
 
 def load_helper():
@@ -69,6 +78,15 @@ def derive(helper, rows: list[dict[str, Any]]) -> dict[str, Any]:
             return helper.derive(path)
         finally:
             helper.load_generation_writer = real_loader
+
+
+def derive_registry(helper, value: dict[str, Any]) -> dict[str, Any]:
+    real_loader = helper.load_generation_writer
+    helper.load_generation_writer = lambda: FakeWriter()
+    try:
+        return helper.derive_registry(value)
+    finally:
+        helper.load_generation_writer = real_loader
 
 
 def main() -> int:
@@ -133,11 +151,64 @@ def main() -> int:
     require(superseded_one_of_three["eligibleDirectedPairCount"] == 2, "superseded generation must not add extra restore pairs")
     print("PASS: superseded eligible history does not inflate current pairs")
 
+    cross_environment = registry([
+        row("pegen-a-v1", "env-a", True),
+        row("pegen-b-v1", "env-b", True, "pegen-a-v1"),
+    ])
+    expect_rejected(
+        "cross-environment generation supersedes",
+        lambda: derive_registry(helper, cross_environment),
+        helper.Fail,
+    )
+
+    skipped_predecessor = registry([
+        row("pegen-a-v1", "env-a", True),
+        row("pegen-a-v2", "env-a", True, "pegen-missing"),
+    ])
+    expect_rejected(
+        "same-environment generation skips canonical predecessor",
+        lambda: derive_registry(helper, skipped_predecessor),
+        helper.Fail,
+    )
+
+    current_pointer_drift = registry([
+        row("pegen-a-v1", "env-a", True),
+        row("pegen-b-v1", "env-b", True),
+    ])
+    current_pointer_drift["currentGenerationId"] = "pegen-a-v1"
+    expect_rejected(
+        "current generation pointer is not latest append-only row",
+        lambda: derive_registry(helper, current_pointer_drift),
+        helper.Fail,
+    )
+
+    empty_pointer_drift = registry([])
+    empty_pointer_drift["currentGenerationId"] = "pegen-a-v1"
+    expect_rejected(
+        "empty registry has non-null current generation",
+        lambda: derive_registry(helper, empty_pointer_drift),
+        helper.Fail,
+    )
+
+    boolean_count = registry([
+        row("pegen-a-v1", "env-a", True),
+    ])
+    boolean_count["registeredGenerationCount"] = True
+    expect_rejected(
+        "boolean registered generation count",
+        lambda: derive_registry(helper, boolean_count),
+        helper.Fail,
+    )
+
     print("Memory OS environment generation eligibility negative suite PASS")
     print("registered history discarded: false")
     print("ineligible generation counted as pair: false")
     print("superseded generation counted as current pair: false")
     print("same environment can restore-pair with itself: false")
+    print("cross-environment supersedes accepted: false")
+    print("same-environment predecessor skip accepted: false")
+    print("current generation pointer drift accepted: false")
+    print("boolean registered generation counts accepted: false")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
