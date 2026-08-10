@@ -1,0 +1,56 @@
+name: Backup Restore Non-Resurrection Path Negative
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/backup-restore-non-resurrection-path-negative.yml"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-restore-non-resurrection-path-negative-so
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: so
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Capture exact typed path-negative source
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Validate typed admission path negatives
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py
+          python scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py
+      - name: Refuse stale path-negative success
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse origin/so)" = "$SOURCE_SHA"
+          git diff --exit-code "$SOURCE_SHA" origin/so -- \
+            .github/workflows/backup-restore-non-resurrection-path-negative.yml \
+            scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py
