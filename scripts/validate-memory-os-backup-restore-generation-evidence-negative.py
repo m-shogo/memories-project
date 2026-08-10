@@ -286,8 +286,8 @@ def main() -> int:
             "approvedObjectiveCount": 2,
             "currentObjectiveId": "recovery_objectives_ci",
             "records": [
-                {"objectiveId": "recovery_objectives_old", "rpoSeconds": 120, "rtoSeconds": 300, "maximumObjectDatabaseSkewSeconds": 30},
-                {"objectiveId": "recovery_objectives_ci", "rpoSeconds": 60, "rtoSeconds": 120, "maximumObjectDatabaseSkewSeconds": 10},
+                {"objectiveId": "recovery_objectives_old", "rpoSeconds": 120, "rtoSeconds": 300, "maximumObjectDatabaseSkewSeconds": 30, "approvedAt": "2026-08-07T23:50:00Z"},
+                {"objectiveId": "recovery_objectives_ci", "rpoSeconds": 60, "rtoSeconds": 120, "maximumObjectDatabaseSkewSeconds": 10, "approvedAt": "2026-08-07T23:55:00Z"},
             ],
             "productionEvidence": False,
             "productionReady": False,
@@ -403,7 +403,7 @@ def main() -> int:
         stale_objectives["approvedObjectiveCount"] = 3
         stale_objectives["currentObjectiveId"] = "recovery_objectives_new"
         stale_objectives["records"].append(
-            {"objectiveId": "recovery_objectives_new", "rpoSeconds": 45, "rtoSeconds": 90, "maximumObjectDatabaseSkewSeconds": 8}
+            {"objectiveId": "recovery_objectives_new", "rpoSeconds": 45, "rtoSeconds": 90, "maximumObjectDatabaseSkewSeconds": 8, "approvedAt": "2026-08-08T00:10:00Z"}
         )
         write_json(objectives_registry, stale_objectives)
         expect_rejected("stale drill request for new evidence", lambda: writer.validate_record(valid))
