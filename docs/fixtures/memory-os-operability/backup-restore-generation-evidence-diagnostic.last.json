@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "backup-restore-generation-evidence",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "PRODUCTION-EQUIVALENT GENERATION FAILED: generation negative admission case authority drift\n",
+  "containsSecrets": false,
+  "drillRequestCreated": false,
+  "generationEvidenceCreated": false,
+  "restoreExecuted": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
