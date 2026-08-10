@@ -47,10 +47,34 @@ def derive_registry(registry: dict[str, Any]) -> dict[str, Any]:
     require(registry.get("appendOnly") is True and registry.get("productionEvidence") is False, "generation registry boundary drift")
     require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "generation registry rows invalid")
     require(isinstance(count, int) and not isinstance(count, bool) and count == len(rows), "generation registry count drift")
+
     generation_ids = [row.get("generationId") for row in rows]
     require(all(isinstance(value, str) and value for value in generation_ids), "generationId invalid")
     require(len(generation_ids) == len(set(generation_ids)), "generationId duplicate")
-    superseded_ids = {row.get("supersedesGenerationId") for row in rows if isinstance(row.get("supersedesGenerationId"), str)}
+
+    prior_by_environment: dict[str, str] = {}
+    for row in rows:
+        generation_id = row.get("generationId")
+        environment_id = row.get("environmentId")
+        require(isinstance(environment_id, str) and environment_id, "environmentId invalid")
+        expected_supersedes = prior_by_environment.get(environment_id)
+        require(
+            row.get("supersedesGenerationId") == expected_supersedes,
+            f"supersedes chain drift for environment {environment_id}",
+        )
+        prior_by_environment[environment_id] = generation_id
+
+    current_generation_id = registry.get("currentGenerationId")
+    if count == 0:
+        require(current_generation_id is None, "empty generation registry must have null currentGenerationId")
+    else:
+        require(current_generation_id == rows[-1].get("generationId"), "currentGenerationId must equal latest append-only registry record")
+
+    superseded_ids = {
+        row.get("supersedesGenerationId")
+        for row in rows
+        if isinstance(row.get("supersedesGenerationId"), str)
+    }
     unsuperseded_rows = [row for row in rows if row.get("generationId") not in superseded_ids]
 
     writer = load_generation_writer()
@@ -120,6 +144,9 @@ def main() -> int:
     print(f"unsuperseded preflight-eligible generations: {state['unsupersededPreflightEligibleGenerationCount']}")
     print(f"distinct preflight-eligible environments: {state['distinctPreflightEligibleEnvironmentCount']}")
     print(f"eligible directed restore pairs: {state['eligibleDirectedPairCount']}")
+    print("cross-environment supersedes accepted: false")
+    print("out-of-order same-environment supersedes accepted: false")
+    print("current generation pointer drift accepted: false")
     print("boolean registered-generation counts accepted: false")
     print("unexpected generation-validator exceptions normalized as semantic rejection: false")
     print("production evidence: false")
