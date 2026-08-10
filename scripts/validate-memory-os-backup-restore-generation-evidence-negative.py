@@ -348,6 +348,29 @@ def main() -> int:
         require(writer.candidate(valid) is False, "generic non-resurrection PASS without typed overlay must not become candidate")
         print("PASS non-candidate: request-bound record lacks typed coverage")
 
+        absolute_review = copy.deepcopy(valid)
+        absolute_review["evidenceId"] = "brge_absolute_review"
+        absolute_review["securityReviewRef"] = str((ROOT / "SECURITY.md").resolve())
+        expect_rejected("absolute generation review ref", lambda: writer.validate_record(absolute_review))
+
+        parent_alias_review = copy.deepcopy(valid)
+        parent_alias_review["evidenceId"] = "brge_parent_alias"
+        parent_alias_review["securityReviewRef"] = "scripts/../SECURITY.md"
+        expect_rejected("parent-traversal generation review ref", lambda: writer.validate_record(parent_alias_review))
+
+        outside_review = tmp_path / "outside-review.txt"
+        outside_review.write_text("external review\n", encoding="utf-8")
+        escape_link = ROOT / "docs/fixtures/memory-os-operability/.generation-evidence-review-escape"
+        try:
+            escape_link.unlink(missing_ok=True)
+            escape_link.symlink_to(outside_review)
+            escaped_review = copy.deepcopy(valid)
+            escaped_review["evidenceId"] = "brge_symlink_review"
+            escaped_review["securityReviewRef"] = repo_ref(escape_link)
+            expect_rejected("repo-local generation review symlink escapes repository", lambda: writer.validate_record(escaped_review))
+        finally:
+            escape_link.unlink(missing_ok=True)
+
         overlay = typed_overlay_record(valid["evidenceId"], commit_sha)
         write_json(overlay_registry, {
             "schemaVersion": "memory-os-backup-restore-non-resurrection-admission-registry.v1",
@@ -426,6 +449,7 @@ def main() -> int:
     print("request bypass to generation evidence: false")
     print("stale request creates current candidate: false")
     print("generic non-resurrection PASS creates candidate: false")
+    print("generation review refs escape repository: false")
     print("unexpected exception accepted as a valid rejection: false")
     print("production evidence: false")
     print("production decision: NO_GO")
