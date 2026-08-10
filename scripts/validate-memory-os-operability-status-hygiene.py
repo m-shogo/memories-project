@@ -87,7 +87,8 @@ def main() -> int:
         for ref in refs:
             relative = Path(ref)
             require(not relative.is_absolute() and ".." not in relative.parts, f"{area_id} unsafe evidence ref: {ref}")
-            require((ROOT / relative).is_file(), f"{area_id} evidence ref missing: {ref}")
+            resolved_relative = repo_relative(ROOT / relative)
+            require((ROOT / resolved_relative).is_file(), f"{area_id} evidence ref missing: {ref}")
             require("diagnostic.last.json" not in ref, f"{area_id} failure diagnostic cannot be canonical proof: {ref}")
         area_status = area.get("status")
         blocking = area.get("blocking")
