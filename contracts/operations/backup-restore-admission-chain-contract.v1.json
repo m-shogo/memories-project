@@ -38,6 +38,8 @@
     "newEvidenceRequiresCurrentlyExecutableDrillRequest": true,
     "historicalEvidenceMayRemainAuditableAfterRequestStales": true,
     "staleRequestEvidenceCannotRemainCurrentCandidate": true,
+    "generationBoundBackupCountMustBeRederivedFromImmutableEvidence": true,
+    "generationBoundRestoreCountMustBeRederivedFromImmutableEvidence": true,
     "generationBoundBackupCountMustMatchBindingAuthority": true,
     "generationBoundRestoreCountMustMatchBindingAuthority": true,
     "recoveryAggregateOrderingMustRemainMonotonic": true,
