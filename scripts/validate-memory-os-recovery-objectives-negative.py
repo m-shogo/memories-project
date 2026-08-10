@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
@@ -73,6 +74,22 @@ def main() -> int:
     valid = base_record()
     writer.validate_record(valid)
     print("PASS accept: explicit typed reviewed recovery objective")
+
+    real_root = writer.ROOT
+    with tempfile.TemporaryDirectory(prefix="memory-os-objective-ref-root-") as root_tmp, tempfile.TemporaryDirectory(prefix="memory-os-objective-ref-external-") as external_tmp:
+        root_path = Path(root_tmp)
+        external_path = Path(external_tmp) / "external-owner.json"
+        (root_path / "owner.json").write_text("{}\n", encoding="utf-8")
+        external_path.write_text("{}\n", encoding="utf-8")
+        writer.ROOT = root_path
+        try:
+            expect_rejected(writer, "absolute objective authority ref", lambda: writer.repo_ref(str((root_path / "owner.json").resolve()), "ownerRef"))
+            expect_rejected(writer, "parent-traversal objective authority ref", lambda: writer.repo_ref("nested/../owner.json", "ownerRef"))
+            escape_link = root_path / "escaped-owner.json"
+            escape_link.symlink_to(external_path)
+            expect_rejected(writer, "objective authority symlink escapes repository root", lambda: writer.repo_ref("escaped-owner.json", "ownerRef"))
+        finally:
+            writer.ROOT = real_root
 
     arbitrary_repo_files = copy.deepcopy(valid)
     arbitrary_repo_files["approvalEvidenceRefs"] = ["SECURITY.md", "README.md"]
@@ -152,6 +169,7 @@ def main() -> int:
     print("canonical registry mutated: false")
     print("objective values invented/defaulted: false")
     print("arbitrary repository file approval accepted: false")
+    print("objective authority refs escape repository: false")
     print("typed approval objective/value binding enforced: true")
     print("unexpected implementation exceptions accepted as rejection: false")
     print("boolean objective values accepted: false")
