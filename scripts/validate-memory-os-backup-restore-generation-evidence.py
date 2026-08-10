@@ -36,16 +36,25 @@ def valid_count(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
+def repo_relative(path: Path) -> Path:
+    try:
+        return path.resolve().relative_to(ROOT.resolve())
+    except ValueError as exc:
+        raise Fail(f"artifact path escapes repository root: {path}") from exc
+
+
 def load(path: Path) -> dict[str, Any]:
+    relative = repo_relative(path)
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError) as exc:
-        raise Fail(f"cannot load {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+        raise Fail(f"cannot load {relative}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be object: {relative}")
     return value
 
 
 def load_writer():
+    repo_relative(WRITER)
     spec = importlib.util.spec_from_file_location("memory_os_backup_restore_generation_writer", WRITER)
     require(spec is not None and spec.loader is not None, "cannot load generation evidence writer")
     module = importlib.util.module_from_spec(spec)
@@ -54,6 +63,7 @@ def load_writer():
 
 
 def run_validator(path: Path, label: str) -> None:
+    repo_relative(path)
     require(path.is_file(), f"{label} missing")
     completed = subprocess.run(
         [sys.executable, str(path)],
@@ -70,7 +80,7 @@ def run_validator(path: Path, label: str) -> None:
 
 
 def validate_negative_admission_suite(contract: dict[str, Any]) -> None:
-    expected_ref = str(NEGATIVE_VALIDATOR.relative_to(ROOT))
+    expected_ref = str(repo_relative(NEGATIVE_VALIDATOR))
     require(contract.get("negativeAdmissionValidator") == expected_ref, "negative admission validator ref drift")
     require(NEGATIVE_VALIDATOR.is_file(), "negative admission validator missing")
     cases = contract.get("negativeAdmissionCases")
@@ -100,7 +110,7 @@ def main() -> int:
         "negativeAdmissionValidator": NEGATIVE_VALIDATOR,
     }
     for field, path in expected_refs.items():
-        require(contract.get(field) == str(path.relative_to(ROOT)), f"contract ref drift: {field}")
+        require(contract.get(field) == str(repo_relative(path)), f"contract ref drift: {field}")
         require(path.is_file(), f"contract artifact missing: {field}")
     require(SEMANTIC_NEGATIVE_VALIDATOR.is_file(), "semantic generation negative admission validator missing")
     for field in ("validator", "reconcile", "workflow", "typedNonResurrectionAdmissionContract", "typedNonResurrectionAdmissionRegistry"):
