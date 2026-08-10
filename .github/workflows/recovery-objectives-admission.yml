@@ -8,6 +8,7 @@ on:
       - ".github/workflows/recovery-objectives-admission.yml"
       - "contracts/operations/recovery-objectives-admission-contract.v1.json"
       - "contracts/operations/recovery-objectives-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "docs/evidence/recovery-objectives/approvals/**"
       - "docs/fixtures/memory-os-operability/recovery-objectives-approval/**"
       - "scripts/register-memory-os-recovery-objectives.py"
@@ -36,6 +37,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Capture exact recovery objective authority source
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - name: Validate explicit recovery objectives authority
         id: validation
         run: |
@@ -60,6 +69,22 @@ jobs:
         if: steps.validation.outputs.exit_code == '0'
         run: |
           set -euo pipefail
+          git fetch origin so
+          if ! git diff --quiet "$SOURCE_SHA" origin/so -- \
+            .github/workflows/recovery-objectives-admission.yml \
+            contracts/operations/recovery-objectives-admission-contract.v1.json \
+            contracts/operations/recovery-objectives-registry.v1.json \
+            contracts/operations/production-operability-status.json \
+            'docs/evidence/recovery-objectives/approvals/**' \
+            'docs/fixtures/memory-os-operability/recovery-objectives-approval/**' \
+            scripts/register-memory-os-recovery-objectives.py \
+            scripts/validate-memory-os-recovery-objectives.py \
+            scripts/validate-memory-os-recovery-objectives-negative.py \
+            scripts/reconcile-memory-os-recovery-objectives.py \
+            scripts/validate-memory-os-operability.py; then
+            echo "Recovery objective authority source changed during reconciliation; refusing stale derived authority."
+            exit 75
+          fi
           git rm -f docs/fixtures/memory-os-operability/recovery-objectives-admission-diagnostic.last.json 2>/dev/null || true
           git add \
             contracts/operations/recovery-objectives-admission-contract.v1.json \
@@ -71,7 +96,11 @@ jobs:
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(backup): reconcile recovery objectives authority"
             for attempt in 1 2 3 4; do
-              git pull --rebase origin so
+              git fetch origin so
+              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+                echo "Branch advanced after validation; refusing to rebase stale recovery objective authority."
+                exit 75
+              fi
               if git push origin HEAD:so; then exit 0; fi
               sleep 2
             done
