@@ -27,6 +27,9 @@ def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
 
+def valid_count(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -90,7 +93,9 @@ def main() -> int:
     complete_count = registry.get("completeRecordCount")
     covered_count = registry.get("candidateCoveredCount")
     require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "typed registry records invalid")
-    require(isinstance(count, int) and count == len(rows), "registeredRecordCount drift")
+    require(valid_count(count) and count == len(rows), "registeredRecordCount drift")
+    require(valid_count(complete_count), "completeRecordCount invalid")
+    require(valid_count(covered_count), "candidateCoveredCount invalid")
     ids: set[str] = set()
     generation_ids: set[str] = set()
     for row in rows:
@@ -113,12 +118,22 @@ def main() -> int:
     covered_base_ids = base_candidate_ids & complete_typed_ids
     pending_typed_ids = base_candidate_ids - complete_typed_ids
     require(final_candidate_ids == covered_base_ids, "final candidate derivation bypasses typed non-resurrection coverage")
-    require(isinstance(covered_count, int) and covered_count == len(covered_base_ids), "candidateCoveredCount drift")
-    require(generation_registry.get("productionEquivalentRecoveryCandidateCount") == len(final_candidate_ids), "generation registry final candidate count drift")
+    require(covered_count == len(covered_base_ids), "candidateCoveredCount drift")
+    generation_candidate_count = generation_registry.get("productionEquivalentRecoveryCandidateCount")
+    require(valid_count(generation_candidate_count), "generation registry final candidate count invalid")
+    require(generation_candidate_count == len(final_candidate_ids), "generation registry final candidate count drift")
 
     boundary = contract.get("currentBoundary")
     readiness = contract.get("readiness")
     require(isinstance(boundary, dict) and isinstance(readiness, dict), "contract authority state missing")
+    for field in (
+        "registeredTypedRecordCount",
+        "completeTypedRecordCount",
+        "productionEquivalentRecoveryCandidateCount",
+        "candidateCoveredCount",
+        "preOverlayEligiblePendingTypedCoverageCount",
+    ):
+        require(valid_count(boundary.get(field)), f"contract {field} must be a non-boolean count")
     require(boundary.get("registeredTypedRecordCount") == count, "contract typed record count drift")
     require(boundary.get("completeTypedRecordCount") == derived_complete, "contract complete typed count drift")
     require(boundary.get("productionEquivalentRecoveryCandidateCount") == len(final_candidate_ids), "contract candidate count drift")
@@ -141,6 +156,7 @@ def main() -> int:
     print(f"typed records: {count}")
     print(f"final production-equivalent recovery candidates: {len(final_candidate_ids)}")
     print(f"pending typed coverage: {len(pending_typed_ids)}")
+    print("boolean typed/generation/boundary counts accepted: false")
     print("generic PASS candidate bypass: false")
     print("production evidence: false")
     print("production decision: NO_GO")
