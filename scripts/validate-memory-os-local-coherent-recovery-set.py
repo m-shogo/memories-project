@@ -6,9 +6,12 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+
+from memory_os_backup_restore_blockers import require_canonical_gaps
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/local-coherent-recovery-set-contract.v1.json"
@@ -44,10 +47,26 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def source_is_ancestor(value: Any) -> bool:
+    if not isinstance(value, str) or SHA40.fullmatch(value) is None:
+        return False
+    try:
+        return subprocess.run(
+            ["git", "merge-base", "--is-ancestor", value, "HEAD"],
+            cwd=ROOT,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ).returncode == 0
+    except OSError:
+        return False
+
+
 def validate_result(result: dict[str, Any], expected_sha: str | None, migration_count: int) -> None:
     require(result.get("schemaVersion") == "memory-os-local-coherent-recovery-set-results.v1", "result schema drift")
     commit_sha = result.get("commitSha")
     require(isinstance(commit_sha, str) and SHA40.fullmatch(commit_sha), "result commitSha invalid")
+    require(source_is_ancestor(commit_sha), "coherent recovery result source is not an ancestor of current HEAD")
     if expected_sha:
         require(commit_sha == expected_sha, "coherent recovery result is not exact-source")
     environment = result.get("environment")
@@ -173,6 +192,7 @@ def main() -> int:
     require(status.get("productionDecision") == "NO_GO", "local coherence cannot change production decision")
     gate = next((row for row in status.get("areas", []) if isinstance(row, dict) and row.get("id") == "OPS-P0-007"), None)
     require(isinstance(gate, dict) and gate.get("status") != "READY", "local coherence cannot make OPS-P0-007 READY")
+    require_canonical_gaps(gate.get("missingEvidence"), Fail)
 
     print("Memory OS local coherent recovery-set validation PASS")
     print(f"canonical migrations: {migration_count}")
