@@ -9,6 +9,7 @@ on:
       - "contracts/operations/local-logical-restore-contract.v1.json"
       - "contracts/operations/migration-lifecycle-contract.v1.json"
       - "infra/postgresql/security/**"
+      - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/run-memory-os-local-logical-restore.sh"
       - "scripts/validate-memory-os-local-logical-restore.py"
       - "scripts/reconcile-memory-os-local-logical-restore.py"
@@ -76,6 +77,7 @@ jobs:
         run: |
           bash -n scripts/run-memory-os-local-logical-restore.sh
           python -m py_compile \
+            scripts/memory_os_backup_restore_blockers.py \
             scripts/validate-memory-os-local-logical-restore.py \
             scripts/reconcile-memory-os-local-logical-restore.py
           python scripts/validate-memory-os-local-logical-restore.py
