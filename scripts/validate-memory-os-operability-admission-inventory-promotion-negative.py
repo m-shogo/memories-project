@@ -98,6 +98,33 @@ def expect_inventory_rejected(
     raise Fail(f"inventory mutation unexpectedly accepted: {name}")
 
 
+def expect_inventory_authority_path_rejected(
+    validator: Any,
+    canonical_inventory: dict[str, Any],
+    canonical_status: dict[str, Any],
+    field: str,
+) -> None:
+    with tempfile.TemporaryDirectory(prefix="memory-os-inventory-authority-escape-") as tmp:
+        tmp_path = Path(tmp)
+        inventory_path = tmp_path / "inventory.json"
+        status_path = tmp_path / "status.json"
+        write_json(inventory_path, canonical_inventory)
+        write_json(status_path, canonical_status)
+        original_inventory = validator.INVENTORY
+        original_status = validator.STATUS
+        validator.INVENTORY = inventory_path if field == "inventory" else original_inventory
+        validator.STATUS = status_path if field == "status" else original_status
+        try:
+            validator.main()
+        except validator.Fail:
+            print(f"PASS reject: escaped {field} authority path")
+            return
+        finally:
+            validator.INVENTORY = original_inventory
+            validator.STATUS = original_status
+    raise Fail(f"escaped {field} authority path unexpectedly accepted")
+
+
 def expect_status_rejected(
     validator: Any,
     canonical_status: dict[str, Any],
@@ -206,6 +233,9 @@ def main() -> int:
     inventory_validator.main()
     status_validator.main()
     print("PASS baseline: canonical inventory/status preserve operability authority separation")
+
+    expect_inventory_authority_path_rejected(inventory_validator, canonical_inventory, canonical_status, "inventory")
+    expect_inventory_authority_path_rejected(inventory_validator, canonical_inventory, canonical_status, "status")
 
     expect_inventory_rejected(inventory_validator, canonical_inventory, "top-level sustained-soak approved criteria manufactured", lambda value: value.__setitem__("approvedLeakStabilityCriteriaCount", 1))
     expect_inventory_rejected(inventory_validator, canonical_inventory, "top-level sustained-soak independent review manufactured", lambda value: value.__setitem__("passingIndependentSustainedSoakReviewCount", 1))
@@ -331,6 +361,7 @@ def main() -> int:
     )
 
     print("Memory OS operability inventory/status production-promotion negative suite PASS")
+    print("escaped inventory/status authority paths accepted: false")
     print("local sustained-soak evidence can manufacture approved criteria: false")
     print("local sustained-soak evidence can manufacture independent review: false")
     print("local sustained-soak evidence can manufacture leak proof: false")
