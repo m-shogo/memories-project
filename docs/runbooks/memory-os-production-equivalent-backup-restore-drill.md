@@ -33,6 +33,21 @@ A request must bind three distinct repository evidence references representing:
 
 The three approval references must be distinct. A single review artifact cannot satisfy multiple roles.
 
+Each approval must use `memory-os-backup-restore-drill-request-approval.v2` and bind the canonical SHA-256 of the **entire request record**, not only the request ID, generation pair and objective. This makes approval invalid if entry criteria, stop conditions, open risks, isolation/database/object policies, evidence-domain planning or any other request field changes after review.
+
+The canonical request digest is computed from UTF-8 JSON with keys sorted recursively and compact separators, matching `canonical_request_sha256()` in `scripts/request-memory-os-backup-restore-drill.py`:
+
+```bash
+python - <<'PY' /absolute/path/outside/repo/request.json
+import hashlib, json, pathlib, sys
+record = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+encoded = json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+print(hashlib.sha256(encoded).hexdigest())
+PY
+```
+
+Record that exact value as `requestRecordSha256` in each of the three typed approval documents. If the request changes after approval, recompute the digest and obtain three new human approvals; do not rewrite an old approval document to match a changed request.
+
 ## Entry criteria
 
 Before creating a request, verify all of the following from canonical append-only authorities:
