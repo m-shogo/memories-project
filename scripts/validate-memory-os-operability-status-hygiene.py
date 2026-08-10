@@ -96,6 +96,8 @@ def main() -> int:
     require(inventory.get("productionDecision") == "NO_GO", "inventory production decision must remain NO_GO")
     require(inventory.get("productionEvidence") is False, "inventory productionEvidence must remain false")
     require(inventory.get("productionReady") is False, "inventory productionReady must remain false")
+    backup_independent_review = inventory.get("backupRestoreIndependentEvidenceReviewCompleted")
+    require(isinstance(backup_independent_review, bool), "inventory backup/restore independent evidence review flag invalid")
     require(inventory.get("humanProductionPromotionReviewCompleted") is False, "inventory cannot manufacture human production-promotion review")
     require(inventory.get("humanProductionPromotionAuthorized") is False, "inventory cannot authorize human production promotion")
 
@@ -156,6 +158,7 @@ def main() -> int:
             for item in soak_missing
         ), "OPS-P0-006 must preserve the independent leak/stability review blocker while current review authority is absent")
 
+    require(inventory_p0_007.get("independentEvidenceReviewCompleted") is backup_independent_review, "OPS-P0-007 row/top-level independent evidence review drift")
     require(inventory_p0_007.get("humanProductionPromotionReviewCompleted") is False, "OPS-P0-007 inventory cannot manufacture promotion review")
     require(inventory_p0_007.get("humanProductionPromotionAuthorized") is False, "OPS-P0-007 inventory cannot authorize promotion")
     require(inventory_p0_007.get("blocking") is True, "OPS-P0-007 inventory must remain blocking")
@@ -190,6 +193,7 @@ def main() -> int:
     print("OPS-P0-006 local soak cannot manufacture independent leak proof: true")
     print("OPS-P0-007 canonical production blockers: exact shared authority")
     print("OPS-P0-007 semantic generation authority: bound to deterministic inventory")
+    print("OPS-P0-007 candidate independent-review authority: top-level and area row must agree")
     print("OPS-P0-007 human production-promotion authority: separate and false")
     print("exact duplicate authority entries: none")
     print("failure diagnostics referenced as proof: none")
