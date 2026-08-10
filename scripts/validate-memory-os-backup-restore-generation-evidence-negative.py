@@ -37,6 +37,9 @@ class Fail(RuntimeError):
     pass
 
 
+EXPECTED_FAILURE: type[Exception] = Fail
+
+
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
@@ -86,7 +89,7 @@ def write_json(path: Path, value: dict[str, Any]) -> None:
 def expect_rejected(name: str, action: Callable[[], Any]) -> None:
     try:
         action()
-    except Exception:
+    except EXPECTED_FAILURE:
         print(f"PASS reject: {name}")
         return
     raise Fail(f"negative case unexpectedly accepted: {name}")
@@ -235,6 +238,7 @@ def typed_overlay_record(evidence_id: str, commit_sha: str) -> dict[str, Any]:
 
 
 def main() -> int:
+    global EXPECTED_FAILURE
     require(
         WRITER.is_file()
         and CONTRACT.is_file()
@@ -245,6 +249,7 @@ def main() -> int:
         "generation evidence foundation missing",
     )
     writer = load_writer()
+    EXPECTED_FAILURE = writer.Fail
     commit_sha = head_sha()
 
     no_generation = base_record(commit_sha)
@@ -416,6 +421,7 @@ def main() -> int:
     print("request bypass to generation evidence: false")
     print("stale request creates current candidate: false")
     print("generic non-resurrection PASS creates candidate: false")
+    print("unexpected exception accepted as a valid rejection: false")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
