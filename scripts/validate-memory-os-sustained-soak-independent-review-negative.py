@@ -35,12 +35,23 @@ def main() -> int:
     canonical_review = load(ROOT / "docs/fixtures/memory-os-operability/sustained-local-soak-trend-review.v1.json")
 
     cases: list[tuple[str, Callable[[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]], None]]] = [
+        ("registry criteria count manufactured", lambda c, r, l, v: r.__setitem__("registeredCriteriaCount", 1)),
+        ("registry review count manufactured", lambda c, r, l, v: r.__setitem__("registeredReviewCount", 1)),
+        ("registry approved criteria count manufactured", lambda c, r, l, v: r.__setitem__("approvedLeakStabilityCriteriaCount", 1)),
         ("registry leakProof manufactured", lambda c, r, l, v: r.__setitem__("leakProof", True)),
         ("registry independent review count manufactured", lambda c, r, l, v: r.__setitem__("passingIndependentReviewCount", 1)),
+        ("registry capacity boundary manufactured", lambda c, r, l, v: r.__setitem__("capacityBoundaryEstablished", True)),
         ("registry threshold approval manufactured", lambda c, r, l, v: r.__setitem__("operationalThresholdApproved", True)),
+        ("registry production soak evidence manufactured", lambda c, r, l, v: r.__setitem__("productionSustainedSoakEvidence", True)),
+        ("registry production readiness manufactured", lambda c, r, l, v: r.__setitem__("productionReady", True)),
         ("local independent review manufactured", lambda c, r, l, v: l["readiness"].__setitem__("independentReviewCompleted", True)),
         ("descriptive review leakProof manufactured", lambda c, r, l, v: v.__setitem__("leakProof", True)),
+        ("descriptive review production evidence manufactured", lambda c, r, l, v: v.__setitem__("productionEvidence", True)),
         ("automatic threshold selection enabled", lambda c, r, l, v: c["criteriaAuthority"].__setitem__("automaticThresholdSelectionForbidden", False)),
+        ("criteria may be generated automatically", lambda c, r, l, v: c["criteriaAuthority"].__setitem__("automaticCriteriaGenerationForbidden", False)),
+        ("reviewer independence disabled", lambda c, r, l, v: c["reviewAuthority"].__setitem__("independentReviewerRequired", False)),
+        ("criteria approver reviewer separation disabled", lambda c, r, l, v: c["reviewAuthority"].__setitem__("criteriaApproverAndReviewerMustBeDistinct", False)),
+        ("passing review promotes production", lambda c, r, l, v: c["reviewAuthority"].__setitem__("passingReviewDoesNotAuthorizeProductionPromotion", False)),
     ]
 
     with tempfile.TemporaryDirectory(prefix="soak-review-negative-", dir=ROOT) as tmp:
@@ -76,6 +87,8 @@ def main() -> int:
     print("automatic leak proof accepted: false")
     print("automatic independent review accepted: false")
     print("automatic threshold approval accepted: false")
+    print("automatic production soak evidence accepted: false")
+    print("automatic production readiness accepted: false")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
