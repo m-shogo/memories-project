@@ -40,6 +40,14 @@ REQUIRED_STATUS_REFS = {
     "docs/runbooks/memory-os-backup-restore.md",
     "scripts/validate-memory-os-backup-restore.py",
 }
+CANONICAL_GAP_FRAGMENTS = (
+    "production PostgreSQL backup and PITR schedule",
+    "production independent object backup retention",
+    "approved and measured RPO and RTO",
+    "production-shaped cross-cluster isolated restore drill",
+    "production deletion, expired/revoked-session, replay, idempotency and lease non-resurrection verification after restore",
+    "independent review of generation-bound recovery evidence",
+)
 REQUIRED_RUNBOOK_HEADINGS = [
     "## Current state",
     "## Non-negotiable rules",
@@ -340,26 +348,22 @@ def main() -> int:
             require(readiness.get(requirement) is True,
                     f"OPS-P0-007 READY without readiness.{requirement}")
     else:
-        missing = area.get("missingEvidence")
-        require(isinstance(missing, list) and missing,
-                "incomplete OPS-P0-007 requires missingEvidence")
-        for required_gap in (
-            "PostgreSQL backup and PITR",
-            "independent object",
-            "RPO and RTO",
-            "isolated restore",
-            "non-resurrection",
-            "restore drill",
-            "backup monitoring",
-            "independent review",
-        ):
-            require(any(required_gap in item for item in missing),
-                    f"OPS-P0-007 missingEvidence must retain: {required_gap}")
+        missing = unique_strings(
+            area.get("missingEvidence"),
+            "OPS-P0-007.missingEvidence",
+            minimum=len(CANONICAL_GAP_FRAGMENTS),
+        )
+        require(len(missing) == len(CANONICAL_GAP_FRAGMENTS),
+                "OPS-P0-007 must retain exactly the six canonical production blockers")
+        for fragment in CANONICAL_GAP_FRAGMENTS:
+            require(sum(fragment in item for item in missing) == 1,
+                    f"canonical OPS-P0-007 blocker missing or duplicated: {fragment}")
 
     print("Memory OS backup/restore validation PASS")
     print(f"protected domains: {len(domains)}")
     print(f"required restore drills: {len(drills)}")
     print(f"OPS-P0-007 status: {area.get('status')}")
+    print("canonical production blockers: 6")
     print("production decision: NO_GO")
     return 0
 
