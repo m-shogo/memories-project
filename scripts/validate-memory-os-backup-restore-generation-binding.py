@@ -129,7 +129,10 @@ def main() -> int:
         for field in ("contract", "result", "validator", "workflow"):
             ref = item.get(field)
             require(isinstance(ref, str) and ref, f"local foundation ref invalid: {foundation_id}.{field}")
-            relative = repo_relative(ROOT / ref)
+            ref_path = Path(ref)
+            require(not ref_path.is_absolute() and ".." not in ref_path.parts, f"local foundation ref must be canonical repository-relative path: {foundation_id}.{field}")
+            relative = repo_relative(ROOT / ref_path)
+            require(relative == ref_path, f"local foundation ref must remain canonical after resolution: {foundation_id}.{field}")
             require((ROOT / relative).is_file(), f"local foundation ref missing: {foundation_id}.{field}")
     coherent = by_id["LOCAL_COHERENT_DATABASE_OBJECT_RECOVERY_SET"]
     require(any("recovery-set" in str(value) for value in coherent.get("proves", [])), "coherent local recovery-set proof drift")
