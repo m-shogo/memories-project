@@ -98,6 +98,9 @@ def main() -> int:
         "currentExecutableDrillRequestRequiresReadyExistingPreflightDecision",
         "generationEvidenceRequiresRegisteredDrillRequest",
         "staleRequestEvidenceCannotRemainCurrentCandidate",
+        "generationBoundBackupCountMustMatchBindingAuthority",
+        "generationBoundRestoreCountMustMatchBindingAuthority",
+        "recoveryAggregateOrderingMustRemainMonotonic",
         "finalCandidateRequiresCompleteTypedEightDomainCoverage",
         "finalCandidateRequiresIndependentEvidenceReview",
         "finalCandidateCannotCompleteHumanProductionPromotionReview",
@@ -205,10 +208,20 @@ def main() -> int:
     binding_boundary = binding_contract.get("currentBoundary")
     require(isinstance(binding_rules, dict) and isinstance(binding_boundary, dict), "generation binding promotion authority missing")
     require(binding_rules.get("independentReviewRequired") is True, "generation binding independent review gate missing")
+    require(binding_rules.get("backupCountMustBeRederivedFromImmutableEvidence") is True, "generation-bound backup rederivation gate missing")
+    require(binding_rules.get("restoreCountMustBeRederivedFromImmutableEvidence") is True, "generation-bound restore rederivation gate missing")
+    require(binding_rules.get("candidateCountMustBeRederivedFromCurrentExecutableReviewedEvidence") is True, "recovery candidate rederivation gate missing")
     require(binding_rules.get("recoveryCandidateAutomaticallyCompletesHumanProductionPromotionReview") is False, "candidate cannot complete human promotion review")
     require(binding_rules.get("recoveryCandidateAutomaticallyAuthorizesProductionPromotion") is False, "candidate cannot authorize production promotion")
     require(binding_rules.get("humanProductionPromotionReviewRemainsSeparate") is True, "human promotion review must remain separate")
-    require(binding_boundary.get("productionEquivalentRecoveryCandidateCount") == candidate_count, "generation binding candidate count drift")
+    backup_count = binding_boundary.get("generationBoundBackupCount")
+    restore_count = binding_boundary.get("generationBoundRestoreCount")
+    binding_candidate_count = binding_boundary.get("productionEquivalentRecoveryCandidateCount")
+    require(isinstance(backup_count, int) and backup_count >= 0, "generation-bound backup count invalid")
+    require(isinstance(restore_count, int) and restore_count >= 0, "generation-bound restore count invalid")
+    require(isinstance(binding_candidate_count, int) and binding_candidate_count >= 0, "generation binding candidate count invalid")
+    require(binding_candidate_count == candidate_count, "generation binding candidate count drift")
+    require(candidate_count <= restore_count <= backup_count <= gen_count, "recovery aggregate ordering drift")
     require(binding_boundary.get("independentReviewCompleted") is (candidate_count > 0), "generation binding independent review state drift")
     require(binding_boundary.get("humanProductionPromotionReviewCompleted") is False, "human production promotion review must remain unclaimed")
     require(binding_boundary.get("humanProductionPromotionAuthorized") is False, "human production promotion authorization must remain unclaimed")
@@ -224,6 +237,8 @@ def main() -> int:
         "currentExecutableDrillRequestCount": current_drill_count,
         "generationEvidenceCount": gen_count,
         "drillRequestBoundGenerationEvidenceCount": bound_count,
+        "generationBoundBackupCount": backup_count,
+        "generationBoundRestoreCount": restore_count,
         "completeTypedNonResurrectionRecordCount": typed_complete_count,
         "finalProductionEquivalentRecoveryCandidateCount": candidate_count,
         "independentEvidenceReviewCompleted": candidate_count > 0,
@@ -245,6 +260,8 @@ def main() -> int:
     require(ops7.get("preflightDecision") == preflight_decision and ops7.get("preflightEligible") is preflight_eligible, "OPS-P0-007 preflight inventory drift")
     deps = ops7.get("dependencyCounts")
     require(isinstance(deps, dict) and deps.get("productionEquivalentRecoveryCandidates") == candidate_count, "inventory candidate dependency drift")
+    require(deps.get("generationBoundBackups") == backup_count, "inventory generation-bound backup dependency drift")
+    require(deps.get("generationBoundRestores") == restore_count, "inventory generation-bound restore dependency drift")
     require(deps.get("reviewedRestoreDrillRequests") == drill_count and deps.get("currentExecutableRestoreDrillRequests") == current_drill_count, "inventory drill request dependency drift")
     require(deps.get("eligibleDirectedRestorePairs") == preflight_pair_count, "inventory preflight pair dependency drift")
 
@@ -259,6 +276,7 @@ def main() -> int:
     print(f"preflight eligible pairs: {preflight_pair_count}")
     print(f"reviewed/current drill requests: {drill_count}/{current_drill_count}")
     print(f"generation/drill-bound evidence: {gen_count}/{bound_count}")
+    print(f"generation-bound backup/restore: {backup_count}/{restore_count}")
     print(f"complete typed non-resurrection records: {typed_complete_count}")
     print(f"final production-equivalent recovery candidates: {candidate_count}")
     print(f"candidate-level independent evidence review completed: {str(candidate_count > 0).lower()}")
