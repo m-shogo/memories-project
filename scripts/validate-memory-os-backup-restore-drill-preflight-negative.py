@@ -82,6 +82,35 @@ def expect_state_rejected(
     raise Fail(f"negative state case unexpectedly accepted: {name}")
 
 
+def expect_unexpected_helper_exception_preserved(
+    validator: Any,
+    generations: dict[str, Any],
+    objectives: dict[str, Any],
+    drill_registry: dict[str, Any],
+) -> None:
+    class BrokenHelper:
+        class Fail(RuntimeError):
+            pass
+
+        @staticmethod
+        def derive_registry(_registry: dict[str, Any]) -> dict[str, Any]:
+            raise TypeError("synthetic unexpected semantic helper failure")
+
+    original = validator.load_eligibility_helper
+    validator.load_eligibility_helper = lambda: BrokenHelper
+    try:
+        validator.derive_state(copy.deepcopy(generations), copy.deepcopy(objectives), copy.deepcopy(drill_registry))
+    except TypeError as exc:
+        require(str(exc) == "synthetic unexpected semantic helper failure", "unexpected helper exception identity drift")
+        print("PASS preserve: unexpected semantic helper TypeError")
+        return
+    except validator.Fail as exc:
+        raise Fail(f"unexpected helper exception was normalized as domain rejection: {exc}") from exc
+    finally:
+        validator.load_eligibility_helper = original
+    raise Fail("unexpected helper exception was silently accepted")
+
+
 def main() -> int:
     require(
         VALIDATOR.is_file()
@@ -185,6 +214,7 @@ def main() -> int:
         "boolean current executable drill request count",
         lambda _g, _o, d: d.__setitem__("currentExecutableRequestCount", False),
     )
+    expect_unexpected_helper_exception_preserved(validator, generations, objectives, drill_registry)
 
     print("Memory OS restore drill preflight negative authority-shape suite PASS")
     print("negative validator contract binding: true")
@@ -192,6 +222,7 @@ def main() -> int:
     print("stable blocker ids require semantic preflight gates: true")
     print("registered generation count alone satisfies blocker: false")
     print("boolean objective/request counts accepted: false")
+    print("unexpected semantic helper exceptions normalized as domain rejection: false")
     print("stale state aliases accepted: false")
     print("unexpected readiness aliases accepted: false")
     print("canonical authority mutated: false")
