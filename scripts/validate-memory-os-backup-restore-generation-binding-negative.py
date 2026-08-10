@@ -29,10 +29,10 @@ def load_module():
     return module
 
 
-def expect_rejected(name: str, action: Callable[[], Any]) -> None:
+def expect_rejected(module: Any, name: str, action: Callable[[], Any]) -> None:
     try:
         action()
-    except Exception:
+    except module.Fail:
         print(f"PASS reject: {name}")
         return
     raise Fail(f"negative case unexpectedly accepted: {name}")
@@ -140,6 +140,7 @@ def main() -> int:
     manufactured_aggregate = copy.deepcopy(state)
     manufactured_aggregate[module.EVIDENCE_REGISTRY]["records"][0]["syntheticCandidate"] = False
     expect_rejected(
+        module,
         "recovery candidate aggregate without current executable reviewed candidate evidence",
         lambda: run_with_state(module, manufactured_aggregate),
     )
@@ -147,6 +148,7 @@ def main() -> int:
     missing_boundary_review = copy.deepcopy(state)
     missing_boundary_review[module.CONTRACT]["currentBoundary"]["independentReviewCompleted"] = False
     expect_rejected(
+        module,
         "recovery candidate without independent evidence review boundary",
         lambda: run_with_state(module, missing_boundary_review),
     )
@@ -154,6 +156,7 @@ def main() -> int:
     missing_readiness_review = copy.deepcopy(state)
     missing_readiness_review[module.CONTRACT]["readiness"]["independentReviewCompleted"] = False
     expect_rejected(
+        module,
         "recovery candidate without independent evidence review readiness",
         lambda: run_with_state(module, missing_readiness_review),
     )
@@ -161,6 +164,7 @@ def main() -> int:
     independent_review_rule = copy.deepcopy(state)
     independent_review_rule[module.CONTRACT]["promotionRules"]["independentReviewRequired"] = False
     expect_rejected(
+        module,
         "recovery candidate independent-review requirement disabled",
         lambda: run_with_state(module, independent_review_rule),
     )
@@ -168,6 +172,7 @@ def main() -> int:
     candidate_rederivation_rule = copy.deepcopy(state)
     candidate_rederivation_rule[module.CONTRACT]["promotionRules"]["candidateCountMustBeRederivedFromCurrentExecutableReviewedEvidence"] = False
     expect_rejected(
+        module,
         "recovery candidate aggregate re-derivation requirement disabled",
         lambda: run_with_state(module, candidate_rederivation_rule),
     )
@@ -176,6 +181,7 @@ def main() -> int:
     promotion_reviewed[module.CONTRACT]["currentBoundary"]["humanProductionPromotionReviewCompleted"] = True
     promotion_reviewed[module.CONTRACT]["readiness"]["humanProductionPromotionReviewCompleted"] = True
     expect_rejected(
+        module,
         "recovery candidate cannot automatically complete human production-promotion review",
         lambda: run_with_state(module, promotion_reviewed),
     )
@@ -184,6 +190,7 @@ def main() -> int:
     promoted[module.CONTRACT]["currentBoundary"]["humanProductionPromotionAuthorized"] = True
     promoted[module.CONTRACT]["readiness"]["humanProductionPromotionAuthorized"] = True
     expect_rejected(
+        module,
         "recovery candidate cannot automatically authorize production promotion",
         lambda: run_with_state(module, promoted),
     )
@@ -191,6 +198,7 @@ def main() -> int:
     automatic_review_rule = copy.deepcopy(state)
     automatic_review_rule[module.CONTRACT]["promotionRules"]["recoveryCandidateAutomaticallyCompletesHumanProductionPromotionReview"] = True
     expect_rejected(
+        module,
         "automatic candidate-to-human-promotion-review rule",
         lambda: run_with_state(module, automatic_review_rule),
     )
@@ -198,6 +206,7 @@ def main() -> int:
     automatic_promotion_rule = copy.deepcopy(state)
     automatic_promotion_rule[module.CONTRACT]["promotionRules"]["recoveryCandidateAutomaticallyAuthorizesProductionPromotion"] = True
     expect_rejected(
+        module,
         "automatic candidate-to-production-promotion rule",
         lambda: run_with_state(module, automatic_promotion_rule),
     )
@@ -209,6 +218,7 @@ def main() -> int:
     print("candidate requires independent evidence review: true")
     print("candidate implies human production-promotion review: false")
     print("candidate implies production promotion: false")
+    print("unexpected exception accepted as a valid rejection: false")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
