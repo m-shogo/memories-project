@@ -38,6 +38,7 @@
     "productionCredentialsRequired": false,
     "isolatedRestoreRequired": true,
     "independentReviewRequired": true,
+    "candidateCountMustBeRederivedFromCurrentExecutableReviewedEvidence": true,
     "recoveryCandidateAutomaticallyCompletesHumanProductionPromotionReview": false,
     "recoveryCandidateAutomaticallyAuthorizesProductionPromotion": false,
     "humanProductionPromotionReviewRemainsSeparate": true
