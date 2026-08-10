@@ -15,6 +15,22 @@ CONTRACT = ROOT / "contracts/operations/recovery-objectives-admission-contract.v
 REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-recovery-objectives.py"
 NEGATIVE = ROOT / "scripts/validate-memory-os-recovery-objectives-negative.py"
+EXPECTED_NEGATIVE_CASES = {
+    "arbitrary repository files used as approval evidence",
+    "typed approval bound to a different objectiveId",
+    "typed approval bound to different RPO/RTO/skew values",
+    "zero or negative RPO/RTO",
+    "boolean RPO/RTO/skew values",
+    "negative object-database skew",
+    "placeholder measurement method",
+    "missing owner evidence path",
+    "owner evidence reused as independent approval evidence",
+    "duplicate approval evidence refs",
+    "missing approval evidence path",
+    "approvedAt without UTC Z",
+    "mutable latest alias",
+    "production evidence relabel",
+}
 
 
 class Fail(RuntimeError):
@@ -85,7 +101,12 @@ def main() -> int:
     ):
         require(rules.get(key) is True, f"required recovery-objective rule missing: {key}")
     negative_cases = contract.get("negativeAdmissionCases")
-    require(isinstance(negative_cases, list) and len(negative_cases) >= 13 and len(negative_cases) == len(set(negative_cases)), "negative admission cases incomplete or duplicated")
+    require(
+        isinstance(negative_cases, list)
+        and len(negative_cases) == len(set(negative_cases))
+        and set(negative_cases) == EXPECTED_NEGATIVE_CASES,
+        "negative admission case authority drift",
+    )
 
     require(registry.get("schemaVersion") == "memory-os-recovery-objectives-registry.v1", "registry schema drift")
     require(registry.get("appendOnly") is True, "objectives registry must remain append-only")
@@ -129,6 +150,7 @@ def main() -> int:
     print("arbitrary repository approval files accepted: false")
     print("objective values chosen/defaulted by validator: false")
     print("boolean objective counts accepted: false")
+    print("negative admission case authority exact: true")
     print("negative admission suite: PASS")
     print("production evidence: false")
     print("production decision: NO_GO")
