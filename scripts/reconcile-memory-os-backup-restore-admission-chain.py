@@ -10,6 +10,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from memory_os_backup_restore_blockers import require_canonical_gaps
+
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/backup-restore-admission-chain-contract.v1.json"
 PREFLIGHT = ROOT / "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
@@ -121,8 +123,7 @@ def main() -> int:
     gate = next((row for row in status.get("areas", []) if isinstance(row, dict) and row.get("id") == "OPS-P0-007"), None)
     require(isinstance(gate, dict), "OPS-P0-007 missing")
     require(gate.get("status") == "PARTIAL_FOUNDATIONS_ONLY" and gate.get("blocking") is True, "OPS-P0-007 must remain blocking foundation-only")
-    missing = gate.get("missingEvidence")
-    require(isinstance(missing, list) and len(missing) == 6, "canonical OPS-P0-007 six-blocker boundary drift")
+    require_canonical_gaps(gate.get("missingEvidence"), Fail)
 
     completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     require(completed.returncode == 0, f"post-reconcile admission-chain validator failed:\n{completed.stdout[-8000:]}{completed.stderr[-8000:]}")
