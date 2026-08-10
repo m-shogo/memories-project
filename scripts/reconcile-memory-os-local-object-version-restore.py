@@ -11,6 +11,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from memory_os_backup_restore_blockers import require_canonical_gaps
+
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/local-object-version-restore-contract.v1.json"
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/local-object-version-restore-results.sample.v1.json"
@@ -29,14 +31,6 @@ NEW_REFS = (
     "scripts/reconcile-memory-os-local-object-version-restore.py",
     "docs/fixtures/memory-os-operability/local-object-version-restore-results.sample.v1.json",
     ".github/workflows/local-object-version-restore.yml",
-)
-CANONICAL_GAP_FRAGMENTS = (
-    "production PostgreSQL backup and PITR schedule",
-    "production independent object backup retention",
-    "approved and measured RPO and RTO",
-    "production-shaped cross-cluster isolated restore drill",
-    "production deletion, expired/revoked-session, replay, idempotency and lease non-resurrection verification after restore",
-    "independent review of generation-bound recovery evidence",
 )
 
 
@@ -65,16 +59,6 @@ def append_once(items: list[Any], value: str) -> bool:
         return False
     items.append(value)
     return True
-
-
-def require_canonical_blockers(missing: list[Any]) -> None:
-    require(len(missing) == len(CANONICAL_GAP_FRAGMENTS),
-            "local object restore cannot rewrite or expand the canonical OPS-P0-007 blocker set")
-    require(all(isinstance(item, str) for item in missing),
-            "OPS-P0-007 missingEvidence must contain only strings")
-    for fragment in CANONICAL_GAP_FRAGMENTS:
-        require(sum(fragment in item for item in missing) == 1,
-                f"canonical OPS-P0-007 blocker missing or duplicated: {fragment}")
 
 
 def main() -> int:
@@ -118,7 +102,7 @@ def main() -> int:
         refs = []
         gate["evidenceRefs"] = refs
     require(isinstance(refs, list), "OPS-P0-007 evidenceRefs must be a list")
-    require_canonical_blockers(missing)
+    require_canonical_gaps(missing, ReconcileFailure)
 
     changed = False
     if gate.get("status") == "NOT_IMPLEMENTED_OR_PROVEN":
@@ -131,9 +115,9 @@ def main() -> int:
         changed = append_once(refs, ref) or changed
 
     # Local evidence can add local evidence only. The canonical production
-    # blocker set is owned by reconcile-memory-os-backup-authority.py and must
-    # never be expanded or rewritten by this per-drill reconciler.
-    require_canonical_blockers(missing)
+    # blocker set is a single imported authority and must never be expanded or
+    # rewritten by this per-drill reconciler.
+    require_canonical_gaps(missing, ReconcileFailure)
     require(gate.get("status") != "READY",
             "local object restore cannot make OPS-P0-007 READY")
     require(status.get("productionDecision") == "NO_GO",
