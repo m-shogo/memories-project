@@ -46,6 +46,12 @@ def repo_relative(path: Path) -> Path:
         raise Fail(f"authority path escapes repository: {path}") from exc
 
 
+def require_repo_file(path: Path, message: str) -> Path:
+    relative = repo_relative(path)
+    require((ROOT / relative).is_file(), message)
+    return relative
+
+
 def load(path: Path) -> dict[str, Any]:
     relative = repo_relative(path)
     try:
@@ -100,11 +106,11 @@ def main() -> int:
         "workflow": Path(".github/workflows/backup-restore-admission-chain.yml"),
     }
     for field, path in refs.items():
-        expected = str(repo_relative(path)) if path.is_absolute() else str(path)
+        candidate = path if path.is_absolute() else ROOT / path
+        expected = str(require_repo_file(candidate, f"chain artifact missing: {path}"))
         require(contract.get(field) == expected, f"chain ref drift: {field}")
-        require((ROOT / expected).is_file(), f"chain artifact missing: {expected}")
-    require(TYPED_WRITER.is_file(), "typed non-resurrection writer authority missing")
-    require(BLOCKER_AUTHORITY.is_file(), "canonical OPS-P0-007 blocker authority missing")
+    require_repo_file(TYPED_WRITER, "typed non-resurrection writer authority missing")
+    require_repo_file(BLOCKER_AUTHORITY, "canonical OPS-P0-007 blocker authority missing")
 
     expected_chain = [
         "readOnlyDrillPreflight",
@@ -131,7 +137,7 @@ def main() -> int:
         "generationEvidenceRequestRestoreTargetGenerationMustMatch",
         "generationEvidenceRequestRecoveryObjectiveMustMatch",
         "newEvidenceRequiresCurrentlyExecutableDrillRequest",
-        "historicalEvidenceMayRemainAuditableAfterRequestStales",
+        "historicalEvidenceMayRemainAuditableAfterDrillRequestStales",
         "staleRequestEvidenceCannotRemainCurrentCandidate",
         "generationBoundBackupCountMustBeRederivedFromImmutableEvidence",
         "generationBoundRestoreCountMustBeRederivedFromImmutableEvidence",
