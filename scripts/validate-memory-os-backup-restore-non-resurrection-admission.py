@@ -36,6 +36,14 @@ def repo_relative(path: Path) -> Path:
     except ValueError as exc:
         raise Fail(f"artifact path escapes repository root: {path}") from exc
 
+def canonical_repo_file_ref(value: Any, field: str) -> Path:
+    require(isinstance(value, str) and value, f"{field} must be a non-empty repository-relative path")
+    relative = Path(value)
+    require(not relative.is_absolute() and ".." not in relative.parts and relative.as_posix() == value, f"{field} must be a canonical repository-relative path")
+    path = ROOT / relative
+    require(repo_relative(path) == relative and path.is_file(), f"{field} artifact missing or escapes repository: {value}")
+    return path
+
 def load(path: Path) -> dict[str, Any]:
     relative = repo_relative(path)
     try:
@@ -68,8 +76,7 @@ def main() -> int:
 
     require(contract.get("schemaVersion") == "memory-os-backup-restore-non-resurrection-admission.v1", "contract schema drift")
     for field in ("registry", "generationEvidenceRegistry", "writer", "validator", "negativeAdmissionValidator", "reconcile", "workflow"):
-        ref = contract.get(field)
-        require(isinstance(ref, str) and ref and (ROOT / ref).is_file(), f"contract artifact missing: {field}")
+        canonical_repo_file_ref(contract.get(field), f"contract.{field}")
     rules = contract.get("recordRules")
     require(isinstance(rules, dict) and rules and all(value is True for value in rules.values()), "recordRules must remain fail-closed")
     coverage_rule = contract.get("candidateCoverageRule")
@@ -89,8 +96,7 @@ def main() -> int:
     require(isinstance(local, dict), "localFoundationEvidence missing")
     require(local.get("localEvidenceMaySatisfyProductionEquivalentTypedRecord") is False, "local evidence cannot satisfy production-equivalent typed record")
     for key in ("appleReplayRestoreContract", "appleReplayRestoreResult", "coherentRecoverySetContract", "coherentRecoverySetResult"):
-        ref = local.get(key)
-        require(isinstance(ref, str) and (ROOT / ref).is_file(), f"local foundation missing: {key}")
+        canonical_repo_file_ref(local.get(key), f"localFoundationEvidence.{key}")
     run_validator(LOCAL_APPLE_VALIDATOR, "local Apple replay restore validator")
     run_validator(LOCAL_COHERENT_VALIDATOR, "local coherent recovery-set validator")
 
