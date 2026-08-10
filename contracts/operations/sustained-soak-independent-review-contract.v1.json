@@ -14,7 +14,8 @@
     "criteriaMustDeclareMetricAndUnit": true,
     "criteriaMustDeclareDirectionAndAcceptanceRule": true,
     "criteriaMustDeclareReviewScope": true,
-    "criteriaMustPreexistIndependentReview": true
+    "criteriaMustPreexistIndependentReview": true,
+    "supersededCriteriaCannotRemainCurrentReviewAuthority": true
   },
   "reviewAuthority": {
     "independentReviewerRequired": true,
@@ -23,6 +24,7 @@
     "reviewMustBindExactRunIds": true,
     "reviewMustBindExactRunEvidenceDigests": true,
     "atMostOneIndependentReviewPerCriteria": true,
+    "onlyCurrentCriteriaPassCountsAsPassingIndependentReview": true,
     "descriptiveTrendReviewIsNotIndependentReview": true,
     "passingReviewDoesNotCreateProductionEvidence": true,
     "passingReviewDoesNotAuthorizeProductionPromotion": true,
