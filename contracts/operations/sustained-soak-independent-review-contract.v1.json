@@ -15,7 +15,8 @@
     "criteriaMustDeclareDirectionAndAcceptanceRule": true,
     "criteriaMustDeclareReviewScope": true,
     "criteriaMustPreexistIndependentReview": true,
-    "supersededCriteriaCannotRemainCurrentReviewAuthority": true
+    "supersededCriteriaCannotRemainCurrentReviewAuthority": true,
+    "approvalEvidenceMustBindCriteriaRecordDigest": true
   },
   "reviewAuthority": {
     "independentReviewerRequired": true,
@@ -28,6 +29,7 @@
     "descriptiveTrendReviewIsNotIndependentReview": true,
     "passingReviewDoesNotCreateProductionEvidence": true,
     "passingReviewDoesNotAuthorizeProductionPromotion": true,
+    "independentReviewEvidenceMustBindReviewRecordDigest": true,
     "reviewOutcomeValues": [
       "PASS",
       "FAIL"
@@ -38,8 +40,8 @@
     "independentReviewEvidenceDirectory": "docs/evidence/sustained-soak/independent-reviews",
     "canonicalRunEvidenceDirectory": "docs/fixtures/memory-os-operability",
     "canonicalRunEvidenceGlob": "sustained-local-soak-results.run-*.v1.json",
-    "criteriaApprovalEvidenceSchemaVersion": "memory-os-sustained-soak-criteria-approval.v1",
-    "independentReviewEvidenceSchemaVersion": "memory-os-sustained-soak-independent-review-evidence.v1",
+    "criteriaApprovalEvidenceSchemaVersion": "memory-os-sustained-soak-criteria-approval.v2",
+    "independentReviewEvidenceSchemaVersion": "memory-os-sustained-soak-independent-review-evidence.v2",
     "criteriaRequiredFields": [
       "schemaVersion",
       "criteriaId",
@@ -80,6 +82,7 @@
     "criteriaApprovalEvidenceRequiredFields": [
       "schemaVersion",
       "criteriaId",
+      "criteriaRecordSha256",
       "decision",
       "approvedAt",
       "approverPseudonym",
@@ -91,6 +94,7 @@
       "schemaVersion",
       "reviewId",
       "criteriaId",
+      "reviewRecordSha256",
       "outcome",
       "reviewedAt",
       "reviewerPseudonym",
@@ -106,6 +110,8 @@
     "reviewRunBindingsMustExactlyMatchCriteria": true,
     "reviewerMustDifferFromCriteriaApprover": true,
     "reviewCannotPredateCriteriaApproval": true,
+    "criteriaApprovalMustBindCanonicalRecordDigest": true,
+    "independentReviewMustBindCanonicalRecordDigest": true,
     "productionEvidenceForbidden": true,
     "productionReadyForbidden": true
   },
