@@ -223,6 +223,22 @@ def main() -> int:
     material_without_review["materialDeltas"][0]["independentReviewRef"] = None
     expect_rejected("accepted material delta without independent review", lambda: env_validator.validate_environment_record(material_without_review))
 
+    real_env_root = env_validator.ROOT
+    with tempfile.TemporaryDirectory(prefix="memory-os-semantic-ref-root-") as root_tmp, tempfile.TemporaryDirectory(prefix="memory-os-semantic-ref-external-") as external_tmp:
+        root_path = Path(root_tmp)
+        external_path = Path(external_tmp) / "external-evidence.txt"
+        (root_path / "evidence.txt").write_text("local evidence\n", encoding="utf-8")
+        external_path.write_text("external evidence\n", encoding="utf-8")
+        env_validator.ROOT = root_path
+        try:
+            expect_rejected("absolute semantic environment evidence ref", lambda: env_validator.repo_ref(str((root_path / "evidence.txt").resolve()), "negative.absolute", required=True))
+            expect_rejected("parent-traversal semantic environment evidence ref", lambda: env_validator.repo_ref("nested/../evidence.txt", "negative.parent", required=True))
+            escape_link = root_path / "escaped-evidence.txt"
+            escape_link.symlink_to(external_path)
+            expect_rejected("semantic environment evidence symlink escapes repository root", lambda: env_validator.repo_ref("escaped-evidence.txt", "negative.symlink", required=True))
+        finally:
+            env_validator.ROOT = real_env_root
+
     real_root = writer.ROOT
     with tempfile.TemporaryDirectory(prefix="memory-os-generation-ref-root-") as root_tmp, tempfile.TemporaryDirectory(prefix="memory-os-generation-ref-external-") as external_tmp:
         root_path = Path(root_tmp)
@@ -289,6 +305,7 @@ def main() -> int:
     print("canonical registry mutated: false")
     print("registration implies preflight eligibility: false")
     print("incomplete equivalent environment accepted: false")
+    print("semantic environment evidence refs escape repository: false")
     print("generation environment refs escape repository: false")
     print("semantic validator implementation exceptions folded into rejection: false")
     print("unexpected implementation exception accepted as valid rejection: false")
