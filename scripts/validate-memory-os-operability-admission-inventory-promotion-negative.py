@@ -158,6 +158,11 @@ def manufacture_candidate_review_projection(value: dict[str, Any]) -> None:
     backup_row(value)["independentEvidenceReviewCompleted"] = True
 
 
+def manufacture_candidate_count_and_review_projection(value: dict[str, Any]) -> None:
+    manufacture_candidate_review_projection(value)
+    backup_row(value)["dependencyCounts"]["productionEquivalentRecoveryCandidates"] = 1
+
+
 def main() -> int:
     require(
         INVENTORY_VALIDATOR.is_file()
@@ -251,6 +256,13 @@ def main() -> int:
         status_validator,
         canonical_status,
         canonical_inventory,
+        "status layer rejects coordinated candidate count/review projection manufacture",
+        mutate_inventory=manufacture_candidate_count_and_review_projection,
+    )
+    expect_status_rejected(
+        status_validator,
+        canonical_status,
+        canonical_inventory,
         "status layer rejects top-level production promotion manufacture",
         mutate_inventory=lambda value: value.__setitem__("humanProductionPromotionAuthorized", True),
     )
@@ -293,6 +305,7 @@ def main() -> int:
     print("status layer can accept manufactured sustained-soak review authority: false")
     print("candidate authority can manufacture independent evidence review: false")
     print("coordinated inventory candidate-review projection can bypass generation binding: false")
+    print("coordinated inventory candidate count/review projection can bypass generation binding: false")
     print("registered inventory alone creates restore-planning authority: false")
     print("candidate authority can manufacture human promotion review: false")
     print("candidate authority can manufacture human promotion authorization: false")
