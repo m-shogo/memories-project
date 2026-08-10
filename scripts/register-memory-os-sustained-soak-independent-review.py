@@ -57,11 +57,22 @@ def recompute_counts(registry: dict[str, Any]) -> None:
     reviews = registry.get("reviews")
     require(isinstance(criteria, list), "registry.criteria must be list")
     require(isinstance(reviews, list), "registry.reviews must be list")
+    current_criteria_id: str | None = None
+    if criteria:
+        current = criteria[-1]
+        require(isinstance(current, dict), "current criteria row must be object")
+        current_criteria_id = current.get("criteriaId")
+        require(isinstance(current_criteria_id, str) and current_criteria_id,
+                "current criteria row requires criteriaId")
     registry["registeredCriteriaCount"] = len(criteria)
     registry["approvedLeakStabilityCriteriaCount"] = len(criteria)
     registry["registeredReviewCount"] = len(reviews)
     registry["passingIndependentReviewCount"] = sum(
-        1 for review in reviews if isinstance(review, dict) and review.get("outcome") == "PASS"
+        1
+        for review in reviews
+        if isinstance(review, dict)
+        and review.get("outcome") == "PASS"
+        and review.get("criteriaId") == current_criteria_id
     )
     for field in (
         "leakProof",
@@ -154,6 +165,7 @@ def main() -> int:
     print(f"record id: {record_id}")
     print("thresholds generated automatically: false")
     print("human evidence generated automatically: false")
+    print("superseded criteria PASS review remains current authority: false")
     print("leak proof promoted automatically: false")
     print("production evidence: false")
     print("production decision: NO_GO")
