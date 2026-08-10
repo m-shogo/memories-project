@@ -72,11 +72,20 @@ def sha256(path: Path) -> str:
 
 
 def repo_ref(value: Any, field: str) -> Path:
-    require(isinstance(value, str) and value and not Path(value).is_absolute(), f"{field} invalid")
-    path = Path(value)
-    require(".." not in path.parts, f"{field} traversal forbidden")
-    absolute = ROOT / path
-    require(absolute.is_file(), f"{field} missing: {value}")
+    require(isinstance(value, str) and value, f"{field} invalid")
+    relative = Path(value)
+    require(
+        not relative.is_absolute()
+        and ".." not in relative.parts
+        and relative.as_posix() == value,
+        f"{field} must be a canonical repository-relative path",
+    )
+    absolute = ROOT / relative
+    try:
+        resolved = absolute.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository: {value}") from exc
+    require(resolved == relative and absolute.is_file(), f"{field} must resolve to the canonical repository file")
     return absolute
 
 
@@ -117,7 +126,7 @@ def validate_record(record: dict[str, Any]) -> bool:
             expected_environment_id=record["environmentId"],
             expected_generation_id=record["generationId"],
         )
-    except Exception as exc:
+    except env_validator.Fail as exc:
         raise Fail(f"environment record semantic validation failed: {exc}") from exc
 
     require(contract.get("environmentRecordSchema") == str(ENV_SCHEMA.relative_to(ROOT)), "environment record schema ref drift")
