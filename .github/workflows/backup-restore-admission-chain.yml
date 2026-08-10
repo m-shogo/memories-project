@@ -130,6 +130,16 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Capture exact chain authority source
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
       - name: Validate end-to-end recovery admission chain
         id: chain
         run: |
@@ -217,6 +227,58 @@ jobs:
         if: steps.chain.outputs.exit_code == '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
+          git fetch origin so
+          if ! git diff --quiet "$SOURCE_SHA" origin/so -- \
+            .github/workflows/backup-restore-admission-chain.yml \
+            contracts/operations/backup-restore-drill-preflight-contract.v1.json \
+            contracts/operations/backup-restore-admission-chain-contract.v1.json \
+            contracts/operations/backup-restore-drill-request-contract.v1.json \
+            contracts/operations/backup-restore-drill-request-registry.v1.json \
+            contracts/operations/backup-restore-generation-evidence-contract.v1.json \
+            contracts/operations/backup-restore-generation-evidence-registry.v1.json \
+            contracts/operations/backup-restore-generation-binding-contract.v1.json \
+            contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json \
+            contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json \
+            contracts/operations/production-equivalent-environment-generation-contract.v1.json \
+            contracts/operations/production-equivalent-environment-generation-registry.v1.json \
+            contracts/operations/recovery-objectives-admission-contract.v1.json \
+            contracts/operations/recovery-objectives-registry.v1.json \
+            contracts/operations/operability-admission-inventory.v1.json \
+            contracts/operations/production-operability-status.json \
+            docs/evidence/backup-restore \
+            docs/evidence/recovery-objectives/approvals \
+            scripts/memory_os_environment_generation_eligibility.py \
+            scripts/validate-memory-os-production-equivalent-environment-generation.py \
+            scripts/register-memory-os-recovery-objectives.py \
+            scripts/validate-memory-os-recovery-objectives.py \
+            scripts/validate-memory-os-recovery-objectives-negative.py \
+            scripts/validate-memory-os-backup-restore-drill-preflight.py \
+            scripts/validate-memory-os-backup-restore-drill-preflight-negative.py \
+            scripts/reconcile-memory-os-backup-restore-drill-preflight.py \
+            scripts/request-memory-os-backup-restore-drill.py \
+            scripts/validate-memory-os-backup-restore-drill-request.py \
+            scripts/validate-memory-os-backup-restore-drill-request-negative.py \
+            scripts/reconcile-memory-os-backup-restore-drill-request.py \
+            scripts/register-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-generation-evidence-negative.py \
+            scripts/validate-memory-os-backup-restore-semantic-generation-negative.py \
+            scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py \
+            scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py \
+            scripts/reconcile-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-generation-binding.py \
+            scripts/validate-memory-os-backup-restore-generation-binding-negative.py \
+            scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-negative.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py \
+            scripts/reconcile-memory-os-backup-non-resurrection-authority.py \
+            scripts/validate-memory-os-backup-restore-admission-chain.py \
+            scripts/reconcile-memory-os-backup-restore-admission-chain.py \
+            scripts/validate-memory-os-operability.py; then
+            echo "Recovery admission chain source changed during reconciliation; refusing stale derived authority."
+            exit 75
+          fi
           git rm -f docs/fixtures/memory-os-operability/backup-restore-admission-chain-diagnostic.last.json 2>/dev/null || true
           git add contracts/operations/backup-restore-admission-chain-contract.v1.json
           git add -u docs/fixtures/memory-os-operability/backup-restore-admission-chain-diagnostic.last.json 2>/dev/null || true
@@ -226,7 +288,11 @@ jobs:
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(restore): reconcile end-to-end admission chain"
             for attempt in 1 2 3 4; do
-              git pull --rebase origin so
+              git fetch origin so
+              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+                echo "Branch advanced after validation; refusing to rebase stale end-to-end authority."
+                exit 75
+              fi
               if git push origin HEAD:so; then exit 0; fi
               sleep 2
             done
@@ -240,7 +306,10 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin so
-          git reset --hard origin/so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Branch advanced after validation; refusing to attach a stale failure diagnostic."
+            exit 75
+          fi
           python - <<'PY'
           import json, os
           from pathlib import Path
@@ -270,7 +339,11 @@ jobs:
           if ! git diff --cached --quiet; then
             git commit -m "test(restore): record end-to-end admission chain diagnostic"
             for attempt in 1 2 3; do
-              git pull --rebase origin so
+              git fetch origin so
+              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+                echo "Branch advanced before diagnostic push; refusing stale failure diagnostic."
+                exit 75
+              fi
               if git push origin HEAD:so; then exit 0; fi
               sleep 2
             done
