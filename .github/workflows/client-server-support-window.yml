@@ -10,8 +10,10 @@ on:
       - "contracts/operations/client-baseline-registry.v1.json"
       - "contracts/operations/client-server-skew-registry.v1.json"
       - "contracts/operations/release-baseline-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "scripts/validate-memory-os-client-server-support-window.py"
       - "scripts/reconcile-memory-os-client-server-support-window-status.py"
+      - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
 
 permissions:
@@ -33,6 +35,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Capture exact client skew authority source
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - name: Validate fail-closed skew admission
         id: validate
         run: |
@@ -43,6 +53,7 @@ jobs:
           python -m py_compile \
             scripts/validate-memory-os-client-server-support-window.py \
             scripts/reconcile-memory-os-client-server-support-window-status.py \
+            scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-client-server-support-window.py >> "$log" 2>&1 || code=$?
@@ -54,11 +65,17 @@ jobs:
             python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?
           fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          cat "$log"
           exit 0
       - name: Commit bounded foundation authority
         if: steps.validate.outputs.exit_code == '0'
         run: |
           set -euo pipefail
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Client skew authority source changed during reconciliation; refusing stale derived authority."
+            exit 75
+          fi
           git rm -f docs/fixtures/memory-os-operability/client-server-support-window-diagnostic.last.json 2>/dev/null || true
           git add contracts/operations/production-operability-status.json
           git add -u docs/fixtures/memory-os-operability/client-server-support-window-diagnostic.last.json 2>/dev/null || true
@@ -67,7 +84,11 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(compat): register client skew admission foundation"
-            git pull --rebase origin so
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              echo "Branch advanced after client skew validation; refusing to rebase stale authority."
+              exit 75
+            fi
             git push origin HEAD:so
           fi
       - name: Record privacy-safe failure diagnostic
@@ -77,7 +98,10 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin so
-          git reset --hard origin/so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Client skew authority source changed after validation; refusing stale failure diagnostic."
+            exit 75
+          fi
           python - <<'PY'
           import json
           import os
@@ -105,8 +129,16 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --cached --quiet; then
             git commit -m "test(compat): record client skew admission diagnostic"
-            git pull --rebase origin so
-            git push origin HEAD:so
+            for attempt in 1 2 3; do
+              git fetch origin so
+              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+                echo "Branch advanced before client skew diagnostic push; refusing stale diagnostic."
+                exit 75
+              fi
+              if git push origin HEAD:so; then exit 0; fi
+              sleep 2
+            done
+            exit 1
           fi
       - name: Enforce validation
         run: test "${{ steps.validate.outputs.exit_code }}" = "0"
