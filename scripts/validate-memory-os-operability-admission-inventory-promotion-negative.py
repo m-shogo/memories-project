@@ -21,6 +21,7 @@ INVENTORY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability-admission-i
 STATUS_VALIDATOR = ROOT / "scripts/validate-memory-os-operability-status-hygiene.py"
 INVENTORY = ROOT / "contracts/operations/operability-admission-inventory.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
+BACKUP_BINDING = ROOT / "contracts/operations/backup-restore-generation-binding-contract.v1.json"
 TEMP_PARENT = ROOT / "contracts/operations"
 
 
@@ -117,12 +118,45 @@ def expect_inventory_authority_path_rejected(
         try:
             validator.main()
         except validator.Fail:
-            print(f"PASS reject: escaped {field} authority path")
+            print(f"PASS reject: escaped inventory-validator {field} authority path")
             return
         finally:
             validator.INVENTORY = original_inventory
             validator.STATUS = original_status
-    raise Fail(f"escaped {field} authority path unexpectedly accepted")
+    raise Fail(f"escaped inventory-validator {field} authority path unexpectedly accepted")
+
+
+def expect_status_authority_path_rejected(
+    validator: Any,
+    canonical_status: dict[str, Any],
+    canonical_inventory: dict[str, Any],
+    canonical_binding: dict[str, Any],
+    field: str,
+) -> None:
+    with tempfile.TemporaryDirectory(prefix="memory-os-status-authority-escape-") as tmp:
+        tmp_path = Path(tmp)
+        status_path = tmp_path / "status.json"
+        inventory_path = tmp_path / "inventory.json"
+        binding_path = tmp_path / "binding.json"
+        write_json(status_path, canonical_status)
+        write_json(inventory_path, canonical_inventory)
+        write_json(binding_path, canonical_binding)
+        original_status = validator.STATUS
+        original_inventory = validator.INVENTORY
+        original_binding = validator.BACKUP_BINDING
+        validator.STATUS = status_path if field == "status" else original_status
+        validator.INVENTORY = inventory_path if field == "inventory" else original_inventory
+        validator.BACKUP_BINDING = binding_path if field == "binding" else original_binding
+        try:
+            validator.main()
+        except validator.Fail:
+            print(f"PASS reject: escaped status-validator {field} authority path")
+            return
+        finally:
+            validator.STATUS = original_status
+            validator.INVENTORY = original_inventory
+            validator.BACKUP_BINDING = original_binding
+    raise Fail(f"escaped status-validator {field} authority path unexpectedly accepted")
 
 
 def expect_status_rejected(
@@ -206,11 +240,13 @@ def main() -> int:
         and STATUS_VALIDATOR.is_file()
         and INVENTORY.is_file()
         and STATUS.is_file()
+        and BACKUP_BINDING.is_file()
         and TEMP_PARENT.is_dir(),
         "operability promotion negative foundation missing",
     )
     canonical_inventory = load(INVENTORY)
     canonical_status = load(STATUS)
+    canonical_binding = load(BACKUP_BINDING)
     row = backup_row(canonical_inventory)
     soak = soak_row(canonical_inventory)
     require(canonical_inventory.get("productionDecision") == "NO_GO", "canonical inventory productionDecision drift")
@@ -236,6 +272,9 @@ def main() -> int:
 
     expect_inventory_authority_path_rejected(inventory_validator, canonical_inventory, canonical_status, "inventory")
     expect_inventory_authority_path_rejected(inventory_validator, canonical_inventory, canonical_status, "status")
+    expect_status_authority_path_rejected(status_validator, canonical_status, canonical_inventory, canonical_binding, "status")
+    expect_status_authority_path_rejected(status_validator, canonical_status, canonical_inventory, canonical_binding, "inventory")
+    expect_status_authority_path_rejected(status_validator, canonical_status, canonical_inventory, canonical_binding, "binding")
 
     expect_inventory_rejected(inventory_validator, canonical_inventory, "top-level sustained-soak approved criteria manufactured", lambda value: value.__setitem__("approvedLeakStabilityCriteriaCount", 1))
     expect_inventory_rejected(inventory_validator, canonical_inventory, "top-level sustained-soak independent review manufactured", lambda value: value.__setitem__("passingIndependentSustainedSoakReviewCount", 1))
@@ -361,7 +400,7 @@ def main() -> int:
     )
 
     print("Memory OS operability inventory/status production-promotion negative suite PASS")
-    print("escaped inventory/status authority paths accepted: false")
+    print("escaped inventory/status/binding authority paths accepted: false")
     print("local sustained-soak evidence can manufacture approved criteria: false")
     print("local sustained-soak evidence can manufacture independent review: false")
     print("local sustained-soak evidence can manufacture leak proof: false")
