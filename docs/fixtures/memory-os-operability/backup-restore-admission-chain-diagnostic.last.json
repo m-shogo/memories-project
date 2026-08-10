@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "backup-restore-admission-chain",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "Memory OS production-equivalent environment generation validation PASS\nregistered generations: 0\npreflight-eligible generations: 0\ncurrent generation: none\ncurrent production-equivalent dependencies: false\nregistration implies preflight eligibility: false\ncross-generation evidence reuse: forbidden\nnegative admission suite: PASS\nproduction evidence: false\nproduction decision: NO_GO\nMemory OS recovery objectives validation PASS\napproved objective records: 0\ncurrent objective: none\nRPO/RTO defined: false\ntyped Recovery Owner/Operability approval binding: required\narbitrary repository approval files accepted: false\nobjective values chosen/defaulted by validator: false\nnegative admission suite: PASS\nproduction evidence: false\nproduction decision: NO_GO\nBACKUP RESTORE DRILL PREFLIGHT FAILED: restore drill request validator failed:\nBACKUP RESTORE DRILL REQUEST VALIDATION FAILED: drill request negative suite failed:\nPASS reject: canonical empty generation/objective registries\nTraceback (most recent call last):\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-backup-restore-drill-request-negative.py\", line 356, in <module>\n    raise SystemExit(main())\n                     ^^^^^^\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-backup-restore-drill-request-negative.py\", line 198, in main\n    validate_bound(valid)\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-backup-restore-drill-request-negative.py\", line 195, in validate_bound\n    writer.validate_request(request, require_current=require_current)\n  File \"/home/runner/work/memories-project/memories-project/scripts/request-memory-os-backup-restore-drill.py\", line 250, in validate_request\n    reviewers = [validate_request_approval(approval_document(approvals[key], f\"approvalRefs.{key}\"), record, key) for key in APPROVAL_ROLES]\n                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/memories-project/memories-project/scripts/request-memory-os-backup-restore-drill.py\", line 154, in approval_document\n    require(set(document) == APPROVAL_FIELDS, f\"{field} approval field drift\")\n  File \"/home/runner/work/memories-project/memories-project/scripts/request-memory-os-backup-restore-drill.py\", line 56, in require\n    raise Fail(message)\nmemory_os_restore_drill_request_writer_negative.Fail: approvalRefs.recoveryOwner approval field drift\n\n\n",
+  "containsSecrets": false,
+  "preflightCreatedPrerequisite": false,
+  "drillRequestCreated": false,
+  "generationEvidenceCreated": false,
+  "typedEvidenceCreated": false,
+  "restoreExecuted": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
