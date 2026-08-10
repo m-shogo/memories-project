@@ -16,6 +16,7 @@ on:
       - "docs/fixtures/memory-os-operability/sustained-local-soak-trend-review.v1.json"
       - "scripts/validate-memory-os-sustained-local-soak.py"
       - "scripts/validate-memory-os-sustained-soak-independent-review.py"
+      - "scripts/validate-memory-os-sustained-soak-independent-review-negative.py"
       - "scripts/validate-memory-os-sustained-local-soak-result.py"
       - "scripts/update-memory-os-sustained-local-soak-aggregate.py"
       - "scripts/review-memory-os-sustained-local-soak-trends.py"
@@ -74,6 +75,7 @@ jobs:
           python -m py_compile \
             scripts/validate-memory-os-sustained-local-soak.py \
             scripts/validate-memory-os-sustained-soak-independent-review.py \
+            scripts/validate-memory-os-sustained-soak-independent-review-negative.py \
             scripts/validate-memory-os-sustained-local-soak-result.py \
             scripts/update-memory-os-sustained-local-soak-aggregate.py \
             scripts/review-memory-os-sustained-local-soak-trends.py \
@@ -89,6 +91,7 @@ jobs:
             echo "STAGE: contract-validation" >> "$log"
             python scripts/validate-memory-os-sustained-local-soak.py >> "$log" 2>&1 || code=$?
             python scripts/validate-memory-os-sustained-soak-independent-review.py >> "$log" 2>&1 || code=$?
+            python scripts/validate-memory-os-sustained-soak-independent-review-negative.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             stage=pending-aggregate
@@ -115,6 +118,7 @@ jobs:
             python scripts/reconcile-memory-os-sustained-local-soak-status.py >> "$log" 2>&1 || code=$?
             python scripts/validate-memory-os-sustained-local-soak.py >> "$log" 2>&1 || code=$?
             python scripts/validate-memory-os-sustained-soak-independent-review.py >> "$log" 2>&1 || code=$?
+            python scripts/validate-memory-os-sustained-soak-independent-review-negative.py >> "$log" 2>&1 || code=$?
             python scripts/validate-memory-os-sustained-local-soak-aggregate.py --require-local-evidence >> "$log" 2>&1 || code=$?
             python scripts/validate-memory-os-load.py >> "$log" 2>&1 || code=$?
             python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?
@@ -141,6 +145,7 @@ jobs:
             docs/fixtures/memory-os-operability/sustained-local-soak-trend-review.v1.json \
             scripts/validate-memory-os-sustained-local-soak.py \
             scripts/validate-memory-os-sustained-soak-independent-review.py \
+            scripts/validate-memory-os-sustained-soak-independent-review-negative.py \
             scripts/validate-memory-os-sustained-local-soak-result.py \
             scripts/update-memory-os-sustained-local-soak-aggregate.py \
             scripts/review-memory-os-sustained-local-soak-trends.py \
