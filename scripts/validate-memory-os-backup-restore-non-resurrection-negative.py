@@ -151,12 +151,28 @@ def main() -> int:
         state["reviewResult"] = "REJECTED"; expect_rejected("review result not APPROVED", lambda: writer.validate_record(valid)); state["reviewResult"] = "APPROVED"
 
         writer.repo_ref, writer.load = real_repo_ref, real_load
+        expect_rejected("writer evidence ref absolute path", lambda: writer.repo_ref(str((ROOT / "SECURITY.md").resolve()), "securityReviewRef"))
+        expect_rejected("writer evidence ref parent traversal alias", lambda: writer.repo_ref("docs/../SECURITY.md", "securityReviewRef"))
+
+        external_evidence = Path(tmp) / "external-evidence.json"
+        external_evidence.write_text("{}\n", encoding="utf-8")
+        symlink_ref = prefixes[domain_name] + "negative-external-symlink.json"
+        symlink_path = ROOT / symlink_ref
+        symlink_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            symlink_path.unlink(missing_ok=True)
+            symlink_path.symlink_to(external_evidence)
+            expect_rejected("writer repo-local evidence symlink escaping repository", lambda: writer.repo_ref(symlink_ref, f"domains.{domain_name}.evidenceRef"))
+        finally:
+            symlink_path.unlink(missing_ok=True)
+
         missing_file = copy.deepcopy(valid); missing_file["recordId"] = "brnr_missing_evidence_file"
         expect_rejected("typed evidence file must exist", lambda: writer.validate_record(missing_file))
 
     print("Memory OS backup/restore non-resurrection negative admission suite PASS")
     print("typed domain and independent review evidence are generation/commit/bundle/digest bound: true")
     print("typed record immutably binds review payload digests: true")
+    print("writer evidence refs canonical and repository-contained: true")
     print("unexpected exception accepted as a valid rejection: false")
     print("canonical registries mutated: false")
     print("production evidence: false")
