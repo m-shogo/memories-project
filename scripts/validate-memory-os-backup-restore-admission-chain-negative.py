@@ -166,6 +166,38 @@ def main() -> int:
         lambda: run_with_overrides(module, {module.INVENTORY: boolean_inventory_request}),
     )
 
+    integer_preflight_eligibility = copy.deepcopy(contract)
+    integer_preflight_eligibility["currentBoundary"]["preflightEligibleToSubmitReviewedDrillRequest"] = 0
+    expect_rejected(
+        module,
+        "integer used as chain preflight eligibility boolean",
+        lambda: run_with_overrides(module, {module.CONTRACT: integer_preflight_eligibility}),
+    )
+
+    integer_independent_review = copy.deepcopy(contract)
+    integer_independent_review["currentBoundary"]["independentEvidenceReviewCompleted"] = 0
+    expect_rejected(
+        module,
+        "integer used as chain independent review boolean",
+        lambda: run_with_overrides(module, {module.CONTRACT: integer_independent_review}),
+    )
+
+    integer_human_review = copy.deepcopy(contract)
+    integer_human_review["currentBoundary"]["humanProductionPromotionReviewCompleted"] = 0
+    expect_rejected(
+        module,
+        "integer used as chain human promotion review boolean",
+        lambda: run_with_overrides(module, {module.CONTRACT: integer_human_review}),
+    )
+
+    integer_human_authorization = copy.deepcopy(contract)
+    integer_human_authorization["currentBoundary"]["humanProductionPromotionAuthorized"] = 0
+    expect_rejected(
+        module,
+        "integer used as chain human promotion authorization boolean",
+        lambda: run_with_overrides(module, {module.CONTRACT: integer_human_authorization}),
+    )
+
     promoted = copy.deepcopy(contract)
     promoted["currentBoundary"]["humanProductionPromotionAuthorized"] = True
     expect_rejected(
@@ -180,6 +212,7 @@ def main() -> int:
     print("typed eight-domain rederivation downgrade accepted: false")
     print("inventory recovery aggregate projection accepted: false")
     print("boolean-as-count authority accepted: false")
+    print("integer-as-review/promotion-boolean authority accepted: false")
     print("candidate may authorize human production promotion: false")
     print("canonical files mutated: false")
     print("production evidence: false")
