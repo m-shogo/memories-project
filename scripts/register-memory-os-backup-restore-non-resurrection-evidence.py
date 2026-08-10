@@ -54,9 +54,15 @@ def payload_sha256(payload: dict[str, Any]) -> str:
     return hashlib.sha256(canonical).hexdigest()
 
 def repo_ref(value: Any, field: str) -> str:
-    require(isinstance(value, str) and value and not Path(value).is_absolute(), f"{field} invalid")
-    path = Path(value)
-    require(".." not in path.parts and (ROOT / path).is_file(), f"{field} evidence path missing")
+    require(isinstance(value, str) and value, f"{field} invalid")
+    relative = Path(value)
+    require(not relative.is_absolute() and ".." not in relative.parts and relative.as_posix() == value, f"{field} must be a canonical repository-relative path")
+    path = ROOT / relative
+    try:
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise Fail(f"{field} evidence path missing or escapes repository") from exc
+    require(resolved == relative and path.is_file(), f"{field} must resolve to the canonical repository file")
     return value
 
 def generation_record(evidence_id: Any) -> dict[str, Any]:
@@ -178,6 +184,10 @@ def load_generation_writer():
 def candidate_complete(record: dict[str, Any]) -> bool:
     generation = generation_record(record.get("generationEvidenceId"))
     generation_writer = load_generation_writer()
+    generation_writer.GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+    generation_writer.OBJECTIVES_REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
+    generation_writer.DRILL_REQUEST_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
+    generation_writer.NON_RESURRECTION_REGISTRY = REGISTRY
     return record.get("evidenceComplete") is True and generation_writer.base_candidate(generation)
 
 def atomic_write(value: dict[str, Any]) -> None:
