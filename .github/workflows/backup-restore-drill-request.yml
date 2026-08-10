@@ -21,6 +21,7 @@ on:
       - "docs/fixtures/memory-os-operability/backup-restore-generation-evidence/**"
       - "docs/fixtures/memory-os-operability/recovery-objectives-approval/**"
       - "docs/runbooks/memory-os-production-equivalent-backup-restore-drill.md"
+      - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
       - "scripts/register-memory-os-recovery-objectives.py"
@@ -62,6 +63,7 @@ on:
       - "docs/fixtures/memory-os-operability/backup-restore-generation-evidence/**"
       - "docs/fixtures/memory-os-operability/recovery-objectives-approval/**"
       - "docs/runbooks/memory-os-production-equivalent-backup-restore-drill.md"
+      - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
       - "scripts/register-memory-os-recovery-objectives.py"
@@ -127,6 +129,7 @@ jobs:
           test -z "$(git status --porcelain)" >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then
             python -m py_compile \
+              scripts/memory_os_backup_restore_blockers.py \
               scripts/memory_os_environment_generation_eligibility.py \
               scripts/validate-memory-os-production-equivalent-environment-generation.py \
               scripts/register-memory-os-recovery-objectives.py \
@@ -203,6 +206,7 @@ jobs:
             'docs/fixtures/memory-os-operability/backup-restore-generation-evidence/**' \
             'docs/fixtures/memory-os-operability/recovery-objectives-approval/**' \
             docs/runbooks/memory-os-production-equivalent-backup-restore-drill.md \
+            scripts/memory_os_backup_restore_blockers.py \
             scripts/memory_os_environment_generation_eligibility.py \
             scripts/validate-memory-os-production-equivalent-environment-generation.py \
             scripts/register-memory-os-recovery-objectives.py \
