@@ -17,6 +17,7 @@ CONTRACT = ROOT / "contracts/operations/backup-restore-admission-chain-contract.
 PREFLIGHT = ROOT / "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
 DRILL_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+BINDING_CONTRACT = ROOT / "contracts/operations/backup-restore-generation-binding-contract.v1.json"
 TYPED_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
 GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-admission-chain.py"
@@ -54,6 +55,7 @@ def main() -> int:
     preflight_contract = load(PREFLIGHT)
     drill_registry = load(DRILL_REGISTRY)
     gen_registry = load(GEN_REGISTRY)
+    binding_contract = load(BINDING_CONTRACT)
     typed_registry = load(TYPED_REGISTRY)
     status = load(STATUS)
     gen_writer = load_generation_writer()
@@ -93,6 +95,18 @@ def main() -> int:
     candidate_count = sum(1 for row in gen_rows if gen_writer.candidate(row))
     require(gen_registry.get("productionEquivalentRecoveryCandidateCount") == candidate_count, "generation candidate count drift")
 
+    binding_boundary = binding_contract.get("currentBoundary")
+    require(isinstance(binding_boundary, dict), "generation binding currentBoundary missing")
+    backup_count = binding_boundary.get("generationBoundBackupCount")
+    restore_count = binding_boundary.get("generationBoundRestoreCount")
+    binding_candidate_count = binding_boundary.get("productionEquivalentRecoveryCandidateCount")
+    require(isinstance(backup_count, int) and backup_count >= 0, "generation-bound backup count invalid")
+    require(isinstance(restore_count, int) and restore_count >= 0, "generation-bound restore count invalid")
+    require(isinstance(binding_candidate_count, int) and binding_candidate_count >= 0, "generation binding candidate count invalid")
+    require(binding_candidate_count == candidate_count, "generation binding candidate count drift")
+    require(candidate_count <= restore_count <= backup_count <= gen_count, "recovery aggregate ordering drift")
+    require(binding_boundary.get("productionEvidence") is False and binding_boundary.get("productionReady") is False and binding_boundary.get("productionDecision") == "NO_GO", "generation binding production boundary drift")
+
     typed_rows = typed_registry.get("records")
     typed_complete_count = typed_registry.get("completeRecordCount")
     typed_covered_count = typed_registry.get("candidateCoveredCount")
@@ -109,6 +123,8 @@ def main() -> int:
     boundary["currentExecutableDrillRequestCount"] = current_drill_count
     boundary["generationEvidenceCount"] = gen_count
     boundary["drillRequestBoundGenerationEvidenceCount"] = bound_count
+    boundary["generationBoundBackupCount"] = backup_count
+    boundary["generationBoundRestoreCount"] = restore_count
     boundary["completeTypedNonResurrectionRecordCount"] = typed_complete_count
     boundary["finalProductionEquivalentRecoveryCandidateCount"] = candidate_count
     boundary["independentEvidenceReviewCompleted"] = candidate_count > 0
@@ -133,6 +149,7 @@ def main() -> int:
     print(f"preflight eligible pairs: {preflight_pair_count}")
     print(f"reviewed/current drill requests: {drill_count}/{current_drill_count}")
     print(f"generation/drill-bound evidence: {gen_count}/{bound_count}")
+    print(f"generation-bound backup/restore: {backup_count}/{restore_count}")
     print(f"complete typed records/final candidates: {typed_complete_count}/{candidate_count}")
     print(f"candidate-level independent evidence review completed: {str(candidate_count > 0).lower()}")
     print("human production-promotion review completed: false")
