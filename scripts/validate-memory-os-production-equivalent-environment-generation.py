@@ -100,7 +100,7 @@ def main() -> int:
     require(registry.get("productionEvidence") is False, "generation registry cannot itself be production evidence")
     count = registry.get("registeredGenerationCount")
     rows = registry.get("generations")
-    require(isinstance(count, int) and count >= 0, "registeredGenerationCount invalid")
+    require(isinstance(count, int) and not isinstance(count, bool) and count >= 0, "registeredGenerationCount invalid")
     require(isinstance(rows, list) and len(rows) == count and all(isinstance(row, dict) for row in rows), "generation registry count mismatch")
 
     ids: set[str] = set()
@@ -118,7 +118,7 @@ def main() -> int:
         prior_by_environment[environment_id] = generation_id
         try:
             eligible = writer.validate_record(row)
-        except Exception as exc:
+        except writer.Fail as exc:
             raise Fail(f"generation record validation failed for {generation_id}: {exc}") from exc
         require(isinstance(eligible, bool), "generation semantic eligibility predicate invalid")
         eligibility_by_id[generation_id] = eligible
@@ -144,8 +144,12 @@ def main() -> int:
 
     boundary = contract.get("currentBoundary")
     require(isinstance(boundary, dict), "currentBoundary required")
-    require(boundary.get("registeredGenerationCount") == count, "contract/registry generation count mismatch")
-    require(boundary.get("preflightEligibleGenerationCount") == preflight_eligible_count, "preflightEligibleGenerationCount derivation drift")
+    boundary_registered_count = boundary.get("registeredGenerationCount")
+    boundary_eligible_count = boundary.get("preflightEligibleGenerationCount")
+    require(isinstance(boundary_registered_count, int) and not isinstance(boundary_registered_count, bool), "contract registeredGenerationCount must be integer")
+    require(isinstance(boundary_eligible_count, int) and not isinstance(boundary_eligible_count, bool), "contract preflightEligibleGenerationCount must be integer")
+    require(boundary_registered_count == count, "contract/registry generation count mismatch")
+    require(boundary_eligible_count == preflight_eligible_count, "preflightEligibleGenerationCount derivation drift")
     require(boundary.get("currentGenerationId") == current_id, "current generation drift")
     require(boundary.get("environmentProvisioned") is derived_provisioned, "environmentProvisioned derivation drift")
     require(boundary.get("environmentValidated") is derived_validated, "environmentValidated derivation drift")
@@ -175,6 +179,8 @@ def main() -> int:
     print(f"current generation: {current_id or 'none'}")
     print(f"current production-equivalent dependencies: {str(derived_equivalent).lower()}")
     print("registration implies preflight eligibility: false")
+    print("boolean generation counts accepted: false")
+    print("unexpected generation-writer exceptions normalized as expected rejection: false")
     print("cross-generation evidence reuse: forbidden")
     print("negative admission suite: PASS")
     print("production evidence: false")
