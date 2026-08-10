@@ -31,24 +31,43 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def repo_relative(path: Path) -> Path:
+    try:
+        return path.resolve(strict=False).relative_to(ROOT.resolve())
+    except (OSError, ValueError) as exc:
+        raise Fail(f"authority path escapes repository: {path}") from exc
+
+
+def require_repo_file(path: Path, message: str) -> Path:
+    relative = repo_relative(path)
+    require((ROOT / relative).is_file(), message)
+    return relative
+
+
 def load(path: Path) -> dict[str, Any]:
+    relative = repo_relative(path)
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
-        raise Fail(f"cannot load {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+    except (FileNotFoundError, json.JSONDecodeError, OSError) as exc:
+        raise Fail(f"cannot load {relative}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be object: {relative}")
     return value
 
 
 def load_module(path: Path, name: str):
+    relative = repo_relative(path)
     spec = importlib.util.spec_from_file_location(name, path)
-    require(spec is not None and spec.loader is not None, f"cannot load {path.relative_to(ROOT)}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    require(spec is not None and spec.loader is not None, f"cannot load {relative}")
+    try:
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except (FileNotFoundError, OSError) as exc:
+        raise Fail(f"cannot load {relative}: {exc}") from exc
     return module
 
 
 def run_negative() -> None:
+    require_repo_file(NEGATIVE, "drill request negative validator missing")
     completed = subprocess.run([sys.executable, str(NEGATIVE)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     require(completed.returncode == 0, f"drill request negative suite failed:\n{completed.stdout[-5000:]}{completed.stderr[-5000:]}")
 
@@ -98,10 +117,10 @@ def main() -> int:
         "workflow": Path(".github/workflows/backup-restore-drill-request.yml"),
     }
     for field, path in path_refs.items():
-        expected = str(path.relative_to(ROOT)) if path.is_absolute() else str(path)
+        candidate = path if path.is_absolute() else ROOT / path
+        expected = str(require_repo_file(candidate, f"contract artifact missing: {path}"))
         require(contract.get(field) == expected, f"contract ref drift: {field}")
-        require((ROOT / expected).is_file(), f"contract artifact missing: {expected}")
-    require(ELIGIBILITY_HELPER.is_file(), "semantic generation eligibility helper missing")
+    require_repo_file(ELIGIBILITY_HELPER, "semantic generation eligibility helper missing")
 
     required_fields = contract.get("requiredRequestFields")
     required_domains = contract.get("requiredEvidenceDomains")
@@ -130,7 +149,7 @@ def main() -> int:
     for key in ("backupExecuted", "restoreExecuted", "productionTrafficChanged", "productionEvidence", "productionReady"):
         require(execution.get(key) is False, f"executionBoundary must keep {key}=false")
 
-    require(generation_recovery.get("typedNonResurrectionAdmissionContract") == str(TYPED_CONTRACT.relative_to(ROOT)), "generation recovery contract typed gate drift")
+    require(generation_recovery.get("typedNonResurrectionAdmissionContract") == str(repo_relative(TYPED_CONTRACT)), "generation recovery contract typed gate drift")
     typed_rules = typed_contract.get("candidateCoverageRule")
     require(isinstance(typed_rules, dict) and typed_rules.get("genericNonResurrectionPassAloneIsInsufficient") is True, "typed non-resurrection bypass guard missing")
 
