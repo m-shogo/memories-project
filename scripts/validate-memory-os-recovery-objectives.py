@@ -109,6 +109,7 @@ def main() -> int:
         "approvalEvidenceMustUseDedicatedAuthorityDirectory",
         "recoveryOwnerAndOperabilityApprovalRolesRequired",
         "approvalReviewersMustBeDistinct",
+        "reviewerPseudonymsMustBeCanonicalNonEmptyText",
         "approvalDecisionMustBeApproved",
         "approvalMustBindObjectiveIdScopeRpoRtoAndSkew",
         "approvalCannotPostDateObjectiveApproval",
@@ -169,6 +170,7 @@ def main() -> int:
     print("typed Recovery Owner/Operability approval binding: required")
     print("arbitrary repository approval files accepted: false")
     print("canonical repository authority refs required: true")
+    print("canonical reviewer pseudonyms required: true")
     print("objective values chosen/defaulted by validator: false")
     print("boolean objective counts accepted: false")
     print("negative admission case authority exact: true")
