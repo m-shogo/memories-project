@@ -220,6 +220,14 @@ def main() -> int:
     expect_inventory_rejected(inventory_validator, canonical_inventory, "OPS-P0-007 human promotion review manufactured", lambda value: backup_row(value).__setitem__("humanProductionPromotionReviewCompleted", True))
     expect_inventory_rejected(inventory_validator, canonical_inventory, "OPS-P0-007 human promotion authorization manufactured", lambda value: backup_row(value).__setitem__("humanProductionPromotionAuthorized", True))
 
+    expect_inventory_rejected(inventory_validator, canonical_inventory, "boolean top-level environment generation count", lambda value: value.__setitem__("productionEquivalentEnvironmentGenerationCount", False))
+    expect_inventory_rejected(inventory_validator, canonical_inventory, "boolean top-level recovery objective count", lambda value: value.__setitem__("approvedRecoveryObjectiveCount", False))
+    expect_inventory_rejected(inventory_validator, canonical_inventory, "boolean top-level reviewed drill request count", lambda value: value.__setitem__("reviewedBackupRestoreDrillRequestCount", False))
+    expect_inventory_rejected(inventory_validator, canonical_inventory, "boolean top-level generation recovery evidence count", lambda value: value.__setitem__("generationRecoveryEvidenceRecordCount", False))
+    expect_inventory_rejected(inventory_validator, canonical_inventory, "boolean top-level typed non-resurrection count", lambda value: value.__setitem__("typedNonResurrectionRecordCount", False))
+    expect_inventory_rejected(inventory_validator, canonical_inventory, "boolean OPS-P0-007 generation-bound backup dependency", lambda value: backup_row(value)["dependencyCounts"].__setitem__("generationBoundBackups", False))
+    expect_inventory_rejected(inventory_validator, canonical_inventory, "boolean OPS-P0-007 admitted restore count", lambda value: backup_row(value).__setitem__("admittedEvidenceCount", False))
+
     expect_status_rejected(
         status_validator,
         canonical_status,
@@ -327,6 +335,7 @@ def main() -> int:
     print("local sustained-soak evidence can manufacture independent review: false")
     print("local sustained-soak evidence can manufacture leak proof: false")
     print("status layer can accept manufactured sustained-soak review authority: false")
+    print("boolean admission inventory counts accepted as zero: false")
     print("inventory generation-bound backup/restore projections can bypass generation binding: false")
     print("candidate authority can manufacture independent evidence review: false")
     print("coordinated inventory candidate-review projection can bypass generation binding: false")
