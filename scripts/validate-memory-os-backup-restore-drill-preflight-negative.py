@@ -15,6 +15,7 @@ VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight.py
 CONTRACT = ROOT / "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
 TEMP_PARENT = ROOT / "contracts/operations"
 NEGATIVE_REF = "scripts/validate-memory-os-backup-restore-drill-preflight-negative.py"
+SEMANTIC_HELPER_REF = "scripts/memory_os_environment_generation_eligibility.py"
 
 
 class Fail(RuntimeError):
@@ -64,12 +65,20 @@ def main() -> int:
     canonical = load(CONTRACT)
     require(canonical.get("negativeAdmissionValidator") == NEGATIVE_REF, "preflight contract negativeAdmissionValidator drift")
     require((ROOT / NEGATIVE_REF).is_file(), "preflight negativeAdmissionValidator artifact missing")
+    require(canonical.get("semanticEligibilityHelper") == SEMANTIC_HELPER_REF, "preflight semanticEligibilityHelper drift")
+    require((ROOT / SEMANTIC_HELPER_REF).is_file(), "preflight semanticEligibilityHelper artifact missing")
     current_state = canonical.get("currentState")
     readiness = canonical.get("readiness")
     require(isinstance(current_state, dict) and set(current_state) == validator.STATE_FIELDS, "canonical preflight currentState is not exact")
     require(isinstance(readiness, dict) and set(readiness) == validator.READINESS_FIELDS, "canonical preflight readiness is not exact")
     print("PASS baseline: canonical preflight negative authority and field sets are exact")
 
+    expect_rejected(
+        validator,
+        canonical,
+        "semantic eligibility helper authority drift",
+        lambda value: value.__setitem__("semanticEligibilityHelper", "scripts/register-memory-os-production-equivalent-environment-generation.py"),
+    )
     expect_rejected(
         validator,
         canonical,
@@ -121,6 +130,7 @@ def main() -> int:
 
     print("Memory OS restore drill preflight negative authority-shape suite PASS")
     print("negative validator contract binding: true")
+    print("shared semantic eligibility helper contract binding: true")
     print("stable blocker ids require semantic preflight gates: true")
     print("registered generation count alone satisfies blocker: false")
     print("stale state aliases accepted: false")
