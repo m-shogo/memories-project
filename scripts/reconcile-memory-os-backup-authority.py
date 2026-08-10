@@ -3,9 +3,9 @@
 
 The PostgreSQL and object restore workflows can complete in either order. This
 is the local-foundation convergence point: it validates both exact-source PASS
-results, registers only local CI foundations, and converges on the same six
-production blockers used by generation-bound recovery admission. Local evidence
-must never re-expand an older duplicate blocker vocabulary or promote readiness.
+results and registers only local CI foundations. The canonical production
+blockers are immutable input authority here: drift must fail closed rather than
+being silently repaired by reconciliation.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from memory_os_backup_restore_blockers import CANONICAL_GAPS, require_canonical_gaps
+from memory_os_backup_restore_blockers import require_canonical_gaps
 
 ROOT = Path(__file__).resolve().parents[1]
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
@@ -47,36 +47,6 @@ OBJECT_EVIDENCE = (
     "executable local three-bucket MinIO exact-version recovery drill using explicit source and backup VersionIds",
     "complete simulated source-version loss before restore with backup checksum and source-version metadata binding preserved",
     "privacy-safe exact-source object recovery result storing only SHA-256 digests of bucket, key and provider version identifiers",
-)
-MANAGED_OLD_GAPS = (
-    "PostgreSQL backup and PITR configuration",
-    "independent object-version retention",
-    "RPO and RTO",
-    "isolated restore rehearsal",
-    "deletion and expired-session semantics after restore",
-    "production PostgreSQL backup schedule, independent retention and PITR configuration",
-    "cross-cluster isolated restore rehearsal with approved recovery owner and promotion decision",
-    "coherent PostgreSQL and object-version recovery-point selection",
-    "approved and measured RPO/RTO",
-    "production deletion and expired-session non-resurrection verification after restore",
-    "production object backup with independently owned retention, deletion protection and lifecycle verification",
-    "production object-store TLS, restore-only credential separation and provider durability evidence",
-    "coherent PostgreSQL and exact object-version restore with measured skew",
-    "production PostgreSQL backup schedule, encrypted independent retention and WAL/PITR configuration",
-    "production-shaped cross-cluster isolated restore with approved recovery owner and promotion decision",
-    "production object backup with independently owned retention, deletion protection, immutability and lifecycle verification",
-    "coherent PostgreSQL and exact object-version recovery-point selection with measured skew",
-    "approved and measured RPO/RTO and backup freshness monitoring",
-    "production deletion, expired/revoked-session, replay and lease non-resurrection verification after restore",
-    "restore promotion rehearsal and independent security/privacy review",
-    "production independent object backup retention, deletion protection, immutability and lifecycle verification",
-    "production-shaped cross-cluster isolated restore drill with approved recovery owner and promotion decision",
-    "production PostgreSQL backup schedule, encrypted independent retention and WAL/PITR configuration",
-    "production object-store TLS, restore-only credential separation and provider durability evidence",
-    "approved and measured RPO/RTO and backup freshness monitoring",
-    "production deletion, expired/revoked-session, replay and lease non-resurrection verification after restore",
-    "restore promotion rehearsal and independent security/privacy review",
-    "production-shaped correlated PostgreSQL/object recovery with temporal recovery-point skew measurement, an approved skew bound and independent review",
 )
 EVIDENCE_REFS = (
     "contracts/operations/backup-restore-contract.v1.json",
@@ -139,12 +109,6 @@ def unique(values: list[Any]) -> list[Any]:
         if value not in result:
             result.append(value)
     return result
-
-
-def remove_all(items: list[str], values: tuple[str, ...]) -> None:
-    for value in values:
-        while value in items:
-            items.remove(value)
 
 
 def append_all(items: list[str], values: tuple[str, ...]) -> None:
@@ -235,27 +199,27 @@ def normalize(status: dict[str, Any]) -> dict[str, Any]:
     require(gate.get("status") in {
         "NOT_IMPLEMENTED_OR_PROVEN", "PARTIAL_FOUNDATIONS_ONLY", "PARTIAL"
     }, "unexpected OPS-P0-007 status")
-    gate["status"] = "PARTIAL_FOUNDATIONS_ONLY"
 
     existing = gate.get("existingEvidence")
     missing = gate.get("missingEvidence")
     refs = gate.get("evidenceRefs")
     require(isinstance(existing, list), "OPS-P0-007 existingEvidence must be a list")
-    require(isinstance(missing, list), "OPS-P0-007 missingEvidence must be a list")
+    require_canonical_gaps(missing, ReconcileFailure)
     if refs is None:
         refs = []
         gate["evidenceRefs"] = refs
     require(isinstance(refs, list), "OPS-P0-007 evidenceRefs must be a list")
 
+    # Local foundation reconciliation may add local evidence and normalize the
+    # partial-foundation status only. It has no authority to repair, replace,
+    # reorder, split, merge, remove, or append production blockers.
+    gate["status"] = "PARTIAL_FOUNDATIONS_ONLY"
     append_all(existing, POLICY_EVIDENCE + LOGICAL_EVIDENCE + OBJECT_EVIDENCE)
-    remove_all(missing, MANAGED_OLD_GAPS + CANONICAL_GAPS)
-    append_all(missing, CANONICAL_GAPS)
     for ref in EVIDENCE_REFS:
         require((ROOT / ref).is_file(), f"backup authority evidence path missing: {ref}")
     append_all(refs, EVIDENCE_REFS)
 
     gate["existingEvidence"] = unique(existing)
-    gate["missingEvidence"] = unique(missing)
     gate["evidenceRefs"] = unique(refs)
     require_canonical_gaps(gate.get("missingEvidence"), ReconcileFailure)
     require(gate.get("status") == "PARTIAL_FOUNDATIONS_ONLY",
@@ -290,7 +254,7 @@ def main() -> int:
         json.dumps(candidate, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
-    print("Normalized OPS-P0-007 across local foundations and canonical production blockers")
+    print("Normalized OPS-P0-007 local foundations; canonical production blockers unchanged")
     return 0
 
 
