@@ -189,7 +189,11 @@ jobs:
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(restore): reconcile drill-bound generation recovery authority"
             for attempt in 1 2 3 4; do
-              git pull --rebase origin so
+              git fetch origin so
+              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+                echo "Branch advanced after validation; refusing to rebase stale generation recovery authority."
+                exit 75
+              fi
               if git push origin HEAD:so; then exit 0; fi
               sleep 2
             done
@@ -202,7 +206,10 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin so
-          git reset --hard origin/so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Branch advanced after validation; refusing to attach a stale generation recovery diagnostic."
+            exit 75
+          fi
           python - <<'PY'
           import json, os
           from pathlib import Path
@@ -230,7 +237,11 @@ jobs:
           if ! git diff --cached --quiet; then
             git commit -m "test(restore): record generation recovery admission diagnostic"
             for attempt in 1 2 3; do
-              git pull --rebase origin so
+              git fetch origin so
+              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+                echo "Branch advanced before generation recovery diagnostic push; refusing stale diagnostic."
+                exit 75
+              fi
               if git push origin HEAD:so; then exit 0; fi
               sleep 2
             done
