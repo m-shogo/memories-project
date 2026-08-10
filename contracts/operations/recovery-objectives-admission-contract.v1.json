@@ -33,6 +33,7 @@
     "measurementMethodsCannotBePlaceholderText": true,
     "ownerRequired": true,
     "ownerRefMustExistInRepository": true,
+    "authorityRefsMustBeCanonicalRepositoryFiles": true,
     "exactlyTwoTypedApprovalEvidenceRefsRequired": true,
     "approvalEvidenceMustUseDedicatedAuthorityDirectory": true,
     "recoveryOwnerAndOperabilityApprovalRolesRequired": true,
@@ -53,6 +54,7 @@
   },
   "negativeAdmissionCases": [
     "arbitrary repository files used as approval evidence",
+    "absolute, parent-traversal or symlinked authority refs",
     "typed approval bound to a different objectiveId",
     "typed approval bound to different RPO/RTO/skew values",
     "zero or negative RPO/RTO",
