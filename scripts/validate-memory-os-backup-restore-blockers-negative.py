@@ -100,14 +100,14 @@ def main() -> int:
         lambda: run_with_status(module, substituted),
     )
 
-    def semantic_duplicate(missing: list[str]) -> None:
+    def cross_domain_duplicate(missing: list[str]) -> None:
         missing[-1] = (
-            "independent review of generation-bound recovery evidence plus a second independent review of generation-bound recovery evidence"
+            "independent review of generation-bound recovery evidence after production PostgreSQL backup and PITR schedule validation"
         )
 
-    duplicated = status_with_mutation(module, semantic_duplicate)
+    duplicated = status_with_mutation(module, cross_domain_duplicate)
     expect_rejected(
-        "one blocker row cannot satisfy a canonical fragment twice",
+        "one blocker row cannot duplicate another canonical blocker domain",
         lambda: run_with_status(module, duplicated),
     )
 
