@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from memory_os_backup_restore_blockers import require_canonical_gaps
+
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
@@ -125,15 +127,13 @@ def main() -> int:
     missing = gate.get("missingEvidence")
     refs = gate.get("evidenceRefs")
     require(isinstance(existing, list) and isinstance(missing, list) and isinstance(refs, list), "OPS-P0-007 authority arrays missing")
+    require_canonical_gaps(missing, Fail)
     existing[:] = [item for item in existing if not (isinstance(item, str) and item.startswith(EVIDENCE_PREFIX))]
     append_once(existing, LOCAL_APPLE_EVIDENCE)
     append_once(existing, f"{EVIDENCE_PREFIX} pre-overlay eligible generation records={len(base_candidate_ids)}, typed records={len(typed_rows)}, complete typed records={registry['completeRecordCount']}, final production-equivalent recovery candidates={len(final_candidate_ids)}, pending typed coverage={len(pending_typed_ids)}; a generic nonResurrectionVerification PASS is insufficient and final candidate derivation requires separate deleted-account/session, expired/revoked-session, Apple nonce/code replay, deletion-lease and idempotent-effect evidence with distinct security/operability review; productionEvidence and productionReady remain false")
     for ref in REFS:
         require((ROOT / ref).is_file(), f"non-resurrection authority evidence ref missing: {ref}")
         append_once(refs, ref)
-    joined = "\n".join(str(item).lower() for item in missing)
-    for phrase in ("postgresql backup", "independent object", "rpo", "isolated restore", "non-resurrection", "independent review"):
-        require(phrase in joined, f"production backup/restore blocker must remain: {phrase}")
     STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     print("Memory OS backup/restore typed non-resurrection authority reconciliation PASS")
