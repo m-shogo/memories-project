@@ -1,6 +1,8 @@
 {
   "contractId": "memory-os.operability.sustained-soak-independent-review.v1",
   "schemaVersion": "memory-os-sustained-soak-independent-review.v1",
+  "criteriaRecordSchemaVersion": "memory-os-sustained-soak-leak-stability-criteria.v1",
+  "reviewRecordSchemaVersion": "memory-os-sustained-soak-independent-review-record.v1",
   "description": "Fail-closed admission contract for future human-approved leak/stability criteria and independent review. This contract does not define thresholds, does not create leak proof, and does not create production evidence.",
   "appendOnlyRegistry": true,
   "criteriaAuthority": {
@@ -20,13 +22,66 @@
     "reviewMustBindApprovedCriteriaRecord": true,
     "reviewMustBindExactRunIds": true,
     "reviewMustBindExactRunEvidenceDigests": true,
+    "descriptiveTrendReviewIsNotIndependentReview": true,
+    "passingReviewDoesNotCreateProductionEvidence": true,
+    "passingReviewDoesNotAuthorizeProductionPromotion": true,
     "reviewOutcomeValues": [
       "PASS",
       "FAIL"
+    ]
+  },
+  "recordAuthority": {
+    "criteriaApprovalEvidenceDirectory": "docs/evidence/sustained-soak/criteria-approvals",
+    "independentReviewEvidenceDirectory": "docs/evidence/sustained-soak/independent-reviews",
+    "canonicalRunEvidenceDirectory": "docs/fixtures/memory-os-operability",
+    "canonicalRunEvidenceGlob": "sustained-local-soak-results.run-*.v1.json",
+    "criteriaRequiredFields": [
+      "schemaVersion",
+      "criteriaId",
+      "reviewScope",
+      "runBindings",
+      "criteria",
+      "approvedAt",
+      "approverPseudonym",
+      "approvalEvidenceRef",
+      "supersedesCriteriaId",
+      "productionEvidence",
+      "productionReady"
     ],
-    "descriptiveTrendReviewIsNotIndependentReview": true,
-    "passingReviewDoesNotCreateProductionEvidence": true,
-    "passingReviewDoesNotAuthorizeProductionPromotion": true
+    "reviewRequiredFields": [
+      "schemaVersion",
+      "reviewId",
+      "criteriaId",
+      "runBindings",
+      "reviewedAt",
+      "reviewerPseudonym",
+      "outcome",
+      "findings",
+      "reviewEvidenceRef",
+      "productionEvidence",
+      "productionReady"
+    ],
+    "runBindingRequiredFields": [
+      "runId",
+      "evidenceRef",
+      "sha256"
+    ],
+    "criterionRequiredFields": [
+      "metric",
+      "unit",
+      "direction",
+      "acceptanceRule"
+    ],
+    "minimumBoundRuns": 2,
+    "criteriaReviewScope": "LOCAL_LONG_SOAK_LEAK_STABILITY",
+    "humanEvidenceMustUseDedicatedDirectory": true,
+    "runEvidenceMustBeCanonicalAndPerRunValidated": true,
+    "runEvidenceDigestMustMatchBytes": true,
+    "reviewRunBindingsMustExactlyMatchCriteria": true,
+    "reviewerMustDifferFromCriteriaApprover": true,
+    "reviewCannotPostdateMissingEvidence": true,
+    "productionEvidenceForbidden": true,
+    "productionReadyForbidden": true
   },
   "promotionBoundary": {
     "localSustainedSoakEvidenceMaySatisfyReviewInput": true,
