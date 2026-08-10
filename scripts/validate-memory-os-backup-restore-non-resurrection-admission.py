@@ -30,22 +30,31 @@ def require(condition: bool, message: str) -> None:
 def valid_count(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
+def repo_relative(path: Path) -> Path:
+    try:
+        return path.resolve().relative_to(ROOT.resolve())
+    except ValueError as exc:
+        raise Fail(f"artifact path escapes repository root: {path}") from exc
+
 def load(path: Path) -> dict[str, Any]:
+    relative = repo_relative(path)
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError) as exc:
-        raise Fail(f"cannot load {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+        raise Fail(f"cannot load {relative}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be object: {relative}")
     return value
 
 def load_module(path: Path, name: str):
+    relative = repo_relative(path)
     spec = importlib.util.spec_from_file_location(name, path)
-    require(spec is not None and spec.loader is not None, f"cannot load {path.relative_to(ROOT)}")
+    require(spec is not None and spec.loader is not None, f"cannot load {relative}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 def run_validator(path: Path, label: str) -> None:
+    repo_relative(path)
     completed = subprocess.run([sys.executable, str(path)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     require(completed.returncode == 0, f"{label} failed:\n{completed.stdout[-3000:]}{completed.stderr[-3000:]}")
 
