@@ -38,6 +38,8 @@
     "productionCredentialsRequired": false,
     "isolatedRestoreRequired": true,
     "independentReviewRequired": true,
+    "backupCountMustBeRederivedFromImmutableEvidence": true,
+    "restoreCountMustBeRederivedFromImmutableEvidence": true,
     "candidateCountMustBeRederivedFromCurrentExecutableReviewedEvidence": true,
     "recoveryCandidateAutomaticallyCompletesHumanProductionPromotionReview": false,
     "recoveryCandidateAutomaticallyAuthorizesProductionPromotion": false,
@@ -76,6 +78,7 @@
   "limitations": [
     "the existing exact-source local PostgreSQL and MinIO restore proofs remain local-only",
     "no production-equivalent environment generation or generation-bound recovery evidence is currently registered",
+    "backup and restore aggregate counts are re-derived from immutable generation evidence rows rather than trusted as registry authority",
     "recovery objectives and reviewed restore drill requests remain separately governed and cannot be invented by restore evidence",
     "candidate-level independent evidence review is not human production-promotion review",
     "a production-equivalent recovery candidate cannot complete or authorize the separate human production-promotion decision",
