@@ -12,6 +12,7 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-sustained-soak-independent-review.py"
+REGISTER_PATH = ROOT / "scripts/register-memory-os-sustained-soak-independent-review.py"
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -69,12 +70,43 @@ def malformed_review(registry: dict[str, Any]) -> None:
     registry["passingIndependentReviewCount"] = 1
 
 
-def main() -> int:
-    spec = importlib.util.spec_from_file_location("soak_review_validator", VALIDATOR_PATH)
+def load_module(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
-        raise RuntimeError("unable to import independent review validator")
-    validator = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(validator)
+        raise RuntimeError(f"unable to import {path.name}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def prove_current_criteria_counting(register) -> None:
+    registry = {
+        "criteria": [
+            {"criteriaId": "soakcrit_history01"},
+            {"criteriaId": "soakcrit_current01"},
+        ],
+        "reviews": [
+            {"criteriaId": "soakcrit_history01", "outcome": "PASS"},
+        ],
+    }
+    register.recompute_counts(registry)
+    if registry.get("passingIndependentReviewCount") != 0:
+        raise RuntimeError("superseded PASS review remained current authority")
+    registry["reviews"].append(
+        {"criteriaId": "soakcrit_current01", "outcome": "PASS"}
+    )
+    register.recompute_counts(registry)
+    if registry.get("passingIndependentReviewCount") != 1:
+        raise RuntimeError("current criteria PASS review was not counted")
+    if registry.get("leakProof") is not False or registry.get("productionEvidence") is not False:
+        raise RuntimeError("review count recompute manufactured promotion")
+    print("PASS current-criteria review count: historical PASS excluded; current PASS counted")
+
+
+def main() -> int:
+    validator = load_module(VALIDATOR_PATH, "soak_review_validator")
+    register = load_module(REGISTER_PATH, "soak_review_register")
+    prove_current_criteria_counting(register)
 
     canonical_contract = load(ROOT / "contracts/operations/sustained-soak-independent-review-contract.v1.json")
     canonical_registry = load(ROOT / "contracts/operations/sustained-soak-independent-review-registry.v1.json")
@@ -96,8 +128,10 @@ def main() -> int:
         ("descriptive review production evidence manufactured", lambda c, r, l, v: v.__setitem__("productionEvidence", True)),
         ("automatic threshold selection enabled", lambda c, r, l, v: c["criteriaAuthority"].__setitem__("automaticThresholdSelectionForbidden", False)),
         ("criteria may be generated automatically", lambda c, r, l, v: c["criteriaAuthority"].__setitem__("automaticCriteriaGenerationForbidden", False)),
+        ("superseded criteria may remain current authority", lambda c, r, l, v: c["criteriaAuthority"].__setitem__("supersededCriteriaCannotRemainCurrentReviewAuthority", False)),
         ("reviewer independence disabled", lambda c, r, l, v: c["reviewAuthority"].__setitem__("independentReviewerRequired", False)),
         ("criteria approver reviewer separation disabled", lambda c, r, l, v: c["reviewAuthority"].__setitem__("criteriaApproverAndReviewerMustBeDistinct", False)),
+        ("historical PASS may count as current review", lambda c, r, l, v: c["reviewAuthority"].__setitem__("onlyCurrentCriteriaPassCountsAsPassingIndependentReview", False)),
         ("passing review promotes production", lambda c, r, l, v: c["reviewAuthority"].__setitem__("passingReviewDoesNotAuthorizeProductionPromotion", False)),
         ("dedicated human evidence directory disabled", lambda c, r, l, v: c["recordAuthority"].__setitem__("humanEvidenceMustUseDedicatedDirectory", False)),
         ("run digest binding disabled", lambda c, r, l, v: c["recordAuthority"].__setitem__("runEvidenceDigestMustMatchBytes", False)),
@@ -145,6 +179,7 @@ def main() -> int:
                 raise RuntimeError(f"mutation unexpectedly accepted: {name}")
 
     print("Memory OS sustained-soak independent review negative suite PASS")
+    print("historical PASS review counted as current authority: false")
     print("automatic leak proof accepted: false")
     print("automatic independent review accepted: false")
     print("automatic threshold approval accepted: false")
