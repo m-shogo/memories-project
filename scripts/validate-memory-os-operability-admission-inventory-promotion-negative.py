@@ -159,6 +159,33 @@ def expect_status_authority_path_rejected(
     raise Fail(f"escaped status-validator {field} authority path unexpectedly accepted")
 
 
+def expect_status_evidence_symlink_rejected(
+    validator: Any,
+    canonical_status: dict[str, Any],
+) -> None:
+    bad_status = copy.deepcopy(canonical_status)
+    with tempfile.TemporaryDirectory(prefix="memory-os-status-evidence-target-") as external_tmp:
+        external_target = Path(external_tmp) / "external-evidence.json"
+        write_json(external_target, {"notProductionEvidence": True})
+        with tempfile.TemporaryDirectory(prefix=".memory-os-status-evidence-symlink-", dir=TEMP_PARENT) as repo_tmp:
+            repo_tmp_path = Path(repo_tmp)
+            symlink_path = repo_tmp_path / "escaped-evidence.json"
+            symlink_path.symlink_to(external_target)
+            status_row(bad_status)["evidenceRefs"] = [symlink_path.relative_to(ROOT).as_posix()]
+            status_path = repo_tmp_path / "status.json"
+            write_json(status_path, bad_status)
+            original_status = validator.STATUS
+            validator.STATUS = status_path
+            try:
+                validator.main()
+            except validator.Fail:
+                print("PASS reject: repo-local evidence symlink escaping repository")
+                return
+            finally:
+                validator.STATUS = original_status
+    raise Fail("repo-local evidence symlink escaping repository unexpectedly accepted")
+
+
 def expect_status_rejected(
     validator: Any,
     canonical_status: dict[str, Any],
@@ -275,6 +302,7 @@ def main() -> int:
     expect_status_authority_path_rejected(status_validator, canonical_status, canonical_inventory, canonical_binding, "status")
     expect_status_authority_path_rejected(status_validator, canonical_status, canonical_inventory, canonical_binding, "inventory")
     expect_status_authority_path_rejected(status_validator, canonical_status, canonical_inventory, canonical_binding, "binding")
+    expect_status_evidence_symlink_rejected(status_validator, canonical_status)
 
     expect_inventory_rejected(inventory_validator, canonical_inventory, "top-level sustained-soak approved criteria manufactured", lambda value: value.__setitem__("approvedLeakStabilityCriteriaCount", 1))
     expect_inventory_rejected(inventory_validator, canonical_inventory, "top-level sustained-soak independent review manufactured", lambda value: value.__setitem__("passingIndependentSustainedSoakReviewCount", 1))
@@ -401,6 +429,7 @@ def main() -> int:
 
     print("Memory OS operability inventory/status production-promotion negative suite PASS")
     print("escaped inventory/status/binding authority paths accepted: false")
+    print("repo-local evidence symlink escaping repository accepted: false")
     print("local sustained-soak evidence can manufacture approved criteria: false")
     print("local sustained-soak evidence can manufacture independent review: false")
     print("local sustained-soak evidence can manufacture leak proof: false")
