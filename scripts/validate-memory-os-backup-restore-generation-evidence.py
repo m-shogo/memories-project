@@ -32,6 +32,10 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def valid_count(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -136,8 +140,8 @@ def main() -> int:
     restore_count = registry.get("completeGenerationBoundRestoreCount")
     candidate_count = registry.get("productionEquivalentRecoveryCandidateCount")
     require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "registry records invalid")
-    require(isinstance(count, int) and count == len(rows), "registeredEvidenceCount drift")
-    require(all(isinstance(value, int) and value >= 0 for value in (bound_count, backup_count, restore_count, candidate_count)), "registry derived counts invalid")
+    require(valid_count(count) and count == len(rows), "registeredEvidenceCount drift")
+    require(all(valid_count(value) for value in (bound_count, backup_count, restore_count, candidate_count)), "registry derived counts invalid")
 
     ids: set[str] = set()
     derived_bound = 0
@@ -167,11 +171,11 @@ def main() -> int:
     drill_rows = drill_registry.get("requests")
     drill_count = drill_registry.get("registeredRequestCount")
     current_drill_count = drill_registry.get("currentExecutableRequestCount")
-    require(isinstance(generation_count, int) and generation_count >= 0, "generation registry count invalid")
-    require(isinstance(objective_count, int) and objective_count >= 0, "approvedObjectiveCount invalid")
+    require(valid_count(generation_count), "generation registry count invalid")
+    require(valid_count(objective_count), "approvedObjectiveCount invalid")
     require(isinstance(objective_rows, list) and len(objective_rows) == objective_count, "recovery objectives registry count drift")
-    require(isinstance(drill_rows, list) and isinstance(drill_count, int) and drill_count == len(drill_rows), "drill request registry count drift")
-    require(isinstance(current_drill_count, int) and 0 <= current_drill_count <= drill_count, "current drill request count invalid")
+    require(isinstance(drill_rows, list) and valid_count(drill_count) and drill_count == len(drill_rows), "drill request registry count drift")
+    require(valid_count(current_drill_count) and current_drill_count <= drill_count, "current drill request count invalid")
     require(drill_registry.get("productionEvidence") is False and drill_registry.get("productionReady") is False, "drill request registry production boundary drift")
     if generation_count == 0 or drill_count == 0:
         require(count == 0, "recovery evidence cannot exist without registered generations and a reviewed drill request")
@@ -181,6 +185,15 @@ def main() -> int:
     boundary = contract.get("currentBoundary")
     readiness = contract.get("readiness")
     require(isinstance(boundary, dict) and isinstance(readiness, dict), "contract authority state missing")
+    boundary_count_fields = (
+        "registeredEvidenceCount",
+        "drillRequestBoundEvidenceCount",
+        "completeGenerationBoundBackupCount",
+        "completeGenerationBoundRestoreCount",
+        "productionEquivalentRecoveryCandidateCount",
+    )
+    for field in boundary_count_fields:
+        require(valid_count(boundary.get(field)), f"contract {field} must be a non-boolean count")
     require(boundary.get("registeredEvidenceCount") == count, "contract evidence count drift")
     require(boundary.get("drillRequestBoundEvidenceCount") == derived_bound, "contract drill-bound evidence count drift")
     require(boundary.get("completeGenerationBoundBackupCount") == derived_backup, "contract backup count drift")
@@ -205,6 +218,14 @@ def main() -> int:
     binding_readiness = binding.get("readiness")
     require(isinstance(binding_boundary, dict), "generation binding currentBoundary missing")
     require(isinstance(binding_readiness, dict), "generation binding readiness missing")
+    binding_count_fields = (
+        "registeredProductionEquivalentGenerationCount",
+        "generationBoundBackupCount",
+        "generationBoundRestoreCount",
+        "productionEquivalentRecoveryCandidateCount",
+    )
+    for field in binding_count_fields:
+        require(valid_count(binding_boundary.get(field)), f"generation binding {field} must be a non-boolean count")
     require(binding_boundary.get("registeredProductionEquivalentGenerationCount") == generation_count, "generation binding generation count drift")
     require(binding_boundary.get("generationBoundBackupCount") == derived_backup, "generation binding backup count drift")
     require(binding_boundary.get("generationBoundRestoreCount") == derived_restore, "generation binding restore count drift")
@@ -228,6 +249,7 @@ def main() -> int:
     print(f"registered/drill-bound recovery evidence: {count}/{derived_bound}")
     print(f"complete generation-bound restores: {derived_restore}")
     print(f"production-equivalent recovery candidates: {derived_candidates}")
+    print("boolean registry/contract/binding counts accepted: false")
     print("candidate-level independent review cross-authority binding: enforced")
     print("human production-promotion separation cross-authority binding: enforced")
     print("historical evidence audit after request supersession: allowed")
