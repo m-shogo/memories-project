@@ -141,6 +141,31 @@ def main() -> int:
         lambda: run_with_overrides(module, {module.PREFLIGHT_CONTRACT: boolean_pair_count}),
     )
 
+    boolean_chain_candidate = copy.deepcopy(contract)
+    boolean_chain_candidate["currentBoundary"]["finalProductionEquivalentRecoveryCandidateCount"] = False
+    expect_rejected(
+        module,
+        "boolean used as chain final candidate count",
+        lambda: run_with_overrides(module, {module.CONTRACT: boolean_chain_candidate}),
+    )
+
+    boolean_inventory_candidate = copy.deepcopy(inventory)
+    ops7 = next(row for row in boolean_inventory_candidate["areas"] if row.get("id") == "OPS-P0-007")
+    ops7["dependencyCounts"]["productionEquivalentRecoveryCandidates"] = False
+    expect_rejected(
+        module,
+        "boolean used as inventory final candidate count",
+        lambda: run_with_overrides(module, {module.INVENTORY: boolean_inventory_candidate}),
+    )
+
+    boolean_inventory_request = copy.deepcopy(inventory)
+    boolean_inventory_request["reviewedBackupRestoreDrillRequestCount"] = False
+    expect_rejected(
+        module,
+        "boolean used as inventory reviewed request count",
+        lambda: run_with_overrides(module, {module.INVENTORY: boolean_inventory_request}),
+    )
+
     promoted = copy.deepcopy(contract)
     promoted["currentBoundary"]["humanProductionPromotionAuthorized"] = True
     expect_rejected(
