@@ -142,6 +142,7 @@ def main() -> int:
     require(contract.get("approvalSchemaVersion") == "memory-os-backup-restore-drill-request-approval.v2", "approval schema must remain digest-bound v2")
     require("requestRecordSha256" in set(contract.get("requiredApprovalFields", [])), "approval requestRecordSha256 authority missing")
     require(contract.get("admissionRules", {}).get("approvalDocumentsMustBindCanonicalRequestRecordDigest") is True, "approval digest admission rule missing")
+    require(contract.get("admissionRules", {}).get("approvalDocumentsMustNotPredateRequest") is True, "approval chronology admission rule missing")
 
     canonical_probe = base_request(contract)
     canonical_probe["requestId"] = "brrq_no_prerequisites"
@@ -205,12 +206,18 @@ def main() -> int:
         print("PASS accept: fully bound isolated planning request with digest-bound typed approvals and semantic generation gate invoked")
 
         bind_approvals(tmp_path, writer, contract, valid)
+        security_path = tmp_path / valid["approvalRefs"]["securityReview"]
+        security = load(security_path)
+        security["approvedAt"] = "2026-08-07T23:59:59Z"
+        write_json(security_path, security)
+        expect_rejected("approval predates request", lambda: writer.validate_request(valid))
+
+        bind_approvals(tmp_path, writer, contract, valid)
         mutated_after_approval = copy.deepcopy(valid)
         mutated_after_approval["openRisks"] = [{"riskId": "risk_low_after_approval", "severity": "LOW", "status": "OPEN", "ownerRef": "README.md"}]
         expect_rejected("request mutated after human approvals", lambda: writer.validate_request(mutated_after_approval))
 
         bind_approvals(tmp_path, writer, contract, valid)
-        security_path = tmp_path / valid["approvalRefs"]["securityReview"]
         security = load(security_path)
         security["requestRecordSha256"] = "0" * 64
         write_json(security_path, security)
@@ -357,6 +364,7 @@ def main() -> int:
     print("arbitrary repository approval authority: false")
     print("typed approval request/generation/objective binding enforced: true")
     print("typed approvals bind canonical request-record digest: true")
+    print("approval chronology bound to request creation: true")
     print("post-approval planning request mutation accepted: false")
     print("independent reviewer pseudonyms enforced: true")
     print("historical authority preserved across supersession: true")
