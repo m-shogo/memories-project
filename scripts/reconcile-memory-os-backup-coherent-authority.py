@@ -13,6 +13,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from memory_os_backup_restore_blockers import require_canonical_gaps
+
 ROOT = Path(__file__).resolve().parents[1]
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 INDEX = ROOT / "contracts/operations/backup-local-foundation-evidence.v1.json"
@@ -30,15 +32,6 @@ REFS = (
     "scripts/validate-memory-os-local-coherent-recovery-set.py",
     "scripts/reconcile-memory-os-backup-coherent-authority.py",
     ".github/workflows/local-coherent-recovery-set.yml",
-)
-LEGACY_COHERENCE_GAPS = {
-    "coherent PostgreSQL and exact object-version recovery-point selection with measured skew",
-    "coherent PostgreSQL and object-version recovery-point selection",
-    "coherent PostgreSQL and exact object-version restore with measured skew",
-    "production-shaped correlated PostgreSQL/object recovery with temporal recovery-point skew measurement, an approved skew bound and independent review",
-}
-CANONICAL_OBJECTIVES_GAP_FRAGMENT = (
-    "coherent PostgreSQL/object recovery-point skew measurement"
 )
 
 
@@ -110,26 +103,23 @@ def normalized(status: dict[str, Any]) -> dict[str, Any]:
     existing = gate.get("existingEvidence")
     missing = gate.get("missingEvidence")
     refs = gate.get("evidenceRefs")
-    require(isinstance(existing, list) and isinstance(missing, list) and isinstance(refs, list),
+    require(isinstance(existing, list) and isinstance(refs, list),
             "OPS-P0-007 evidence arrays missing")
+    require_canonical_gaps(missing, Fail)
+
     for item in EVIDENCE:
         append_once(existing, item)
-
-    # The canonical recovery-objectives blocker already requires production-
-    # shaped PostgreSQL/object skew measurement. Local coherence evidence should
-    # remove older duplicate wording, never append a second equivalent blocker.
-    next_missing = [item for item in missing if item not in LEGACY_COHERENCE_GAPS]
-    require(any(CANONICAL_OBJECTIVES_GAP_FRAGMENT in item for item in next_missing),
-            "canonical production recovery-point skew blocker missing")
-    require(any("independent review" in item for item in next_missing),
-            "canonical independent recovery review blocker missing")
     for ref in REFS:
         require((ROOT / ref).is_file(), f"coherent evidence path missing: {ref}")
         append_once(refs, ref)
     gate["existingEvidence"] = existing
-    gate["missingEvidence"] = next_missing
     gate["evidenceRefs"] = refs
+
+    # Local coherence is evidence-only. It must never normalize, rewrite, remove,
+    # split, merge, or otherwise reinterpret the canonical production blockers.
+    require_canonical_gaps(gate.get("missingEvidence"), Fail)
     require(gate.get("status") != "READY", "local coherence cannot make OPS-P0-007 READY")
+    require(status.get("productionDecision") == "NO_GO", "production decision changed unexpectedly")
     return status
 
 
