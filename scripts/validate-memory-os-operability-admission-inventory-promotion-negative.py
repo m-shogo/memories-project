@@ -163,6 +163,16 @@ def manufacture_candidate_count_and_review_projection(value: dict[str, Any]) -> 
     backup_row(value)["dependencyCounts"]["productionEquivalentRecoveryCandidates"] = 1
 
 
+def manufacture_generation_bound_backup_projection(value: dict[str, Any]) -> None:
+    backup_row(value)["dependencyCounts"]["generationBoundBackups"] = 1
+
+
+def manufacture_generation_bound_restore_projection(value: dict[str, Any]) -> None:
+    counts = backup_row(value)["dependencyCounts"]
+    counts["generationBoundBackups"] = 1
+    counts["generationBoundRestores"] = 1
+
+
 def main() -> int:
     require(
         INVENTORY_VALIDATOR.is_file()
@@ -249,6 +259,20 @@ def main() -> int:
         status_validator,
         canonical_status,
         canonical_inventory,
+        "status layer rejects coordinated generation-bound backup projection manufacture",
+        mutate_inventory=manufacture_generation_bound_backup_projection,
+    )
+    expect_status_rejected(
+        status_validator,
+        canonical_status,
+        canonical_inventory,
+        "status layer rejects coordinated generation-bound restore projection manufacture",
+        mutate_inventory=manufacture_generation_bound_restore_projection,
+    )
+    expect_status_rejected(
+        status_validator,
+        canonical_status,
+        canonical_inventory,
         "status layer rejects coordinated candidate review projection manufacture",
         mutate_inventory=manufacture_candidate_review_projection,
     )
@@ -303,6 +327,7 @@ def main() -> int:
     print("local sustained-soak evidence can manufacture independent review: false")
     print("local sustained-soak evidence can manufacture leak proof: false")
     print("status layer can accept manufactured sustained-soak review authority: false")
+    print("inventory generation-bound backup/restore projections can bypass generation binding: false")
     print("candidate authority can manufacture independent evidence review: false")
     print("coordinated inventory candidate-review projection can bypass generation binding: false")
     print("coordinated inventory candidate count/review projection can bypass generation binding: false")
