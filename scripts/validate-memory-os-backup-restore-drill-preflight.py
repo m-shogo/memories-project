@@ -59,6 +59,18 @@ STATE_FIELDS = {
     "productionReady",
     "productionDecision",
 }
+STATE_COUNT_FIELDS = {
+    "registeredGenerationCount",
+    "preflightEligibleGenerationCount",
+    "unsupersededGenerationCount",
+    "unsupersededPreflightEligibleGenerationCount",
+    "distinctUnsupersededPreflightEligibleEnvironmentCount",
+    "eligibleDirectedSourceTargetPairCount",
+    "approvedRecoveryObjectiveCount",
+    "reviewedDrillRequestCount",
+    "currentExecutableDrillRequestCount",
+    "blockingPrerequisiteCount",
+}
 READINESS_FIELDS = {
     "contractDefined",
     "validatorImplemented",
@@ -254,6 +266,9 @@ def main() -> int:
     require(isinstance(canonical, dict) and isinstance(readiness, dict), "preflight authority state missing")
     require(set(canonical) == STATE_FIELDS, "preflight currentState field drift")
     require(set(readiness) == READINESS_FIELDS, "preflight readiness field drift")
+    for field in STATE_COUNT_FIELDS:
+        value = canonical.get(field)
+        require(isinstance(value, int) and not isinstance(value, bool) and value >= 0, f"preflight currentState {field} must be a non-boolean count")
     for field, value in state.items():
         require(canonical.get(field) == value, f"preflight state drift: {field}")
     blockers = canonical.get("blockingPrerequisites")
@@ -290,7 +305,7 @@ def main() -> int:
     print(f"preflight decision: {state['preflightDecision']}")
     print("semantic generation authority shared with downstream admission: true")
     print("registered generation blocker semantically requires eligible distinct environments: true")
-    print("boolean objective/request/blocker counts accepted: false")
+    print("boolean registry/current-state counts accepted: false")
     print("automatic prerequisite/request creation: false")
     print("restore executed: false")
     print("production evidence: false")
