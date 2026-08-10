@@ -356,7 +356,8 @@
         "2 exact-source LOCAL_LONG_SOAK run document(s) satisfy the per-run validator; production evidence and leak proof remain false",
         "repeated LOCAL_LONG_SOAK runs plus cross-run trend review are registered as local-only sustained-soak evidence; this is not leak proof or production-shaped evidence",
         "production-equivalent environment generation admission is machine-readable and append-only: load, restore, failure-drill and review evidence must bind immutable generation, environment/dependency/evidence/material-delta hashes and source commit; registered generations=0, preflight-eligible generations=0, current generation=none, and current production-equivalent dependencies=false; registration alone never creates preflight eligibility",
-        "repeated LOCAL_LONG_SOAK runs plus cross-run descriptive trend review are registered as local-only sustained-soak evidence; this is not leak proof or production-shaped evidence"
+        "repeated LOCAL_LONG_SOAK runs plus cross-run descriptive trend review are registered as local-only sustained-soak evidence; this is not leak proof or production-shaped evidence",
+        "append-only independent sustained-soak review authority is implemented for future human-approved leak/stability criteria and distinct independent review; automatic threshold selection, leak proof, capacity-boundary promotion and production promotion remain forbidden, and the registry is currently empty"
       ],
       "missingEvidence": [
         "capacity boundary, saturation report and load-calibrated operational thresholds",
@@ -496,7 +497,11 @@
         "scripts/review-memory-os-sustained-local-soak-trends.py",
         "scripts/validate-memory-os-sustained-local-soak-trend-review.py",
         ".github/workflows/reconcile-sustained-local-soak-authority.yml",
-        "docs/fixtures/memory-os-operability/sustained-local-soak-trend-review.v1.json"
+        "docs/fixtures/memory-os-operability/sustained-local-soak-trend-review.v1.json",
+        "contracts/operations/sustained-soak-independent-review-contract.v1.json",
+        "contracts/operations/sustained-soak-independent-review-registry.v1.json",
+        "scripts/validate-memory-os-sustained-soak-independent-review.py",
+        "scripts/validate-memory-os-sustained-soak-independent-review-negative.py"
       ]
     },
     {
