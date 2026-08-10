@@ -90,7 +90,7 @@ def candidate_state(module) -> dict[Path, dict[str, Any]]:
         "completeGenerationBoundBackupCount": 1,
         "completeGenerationBoundRestoreCount": 1,
         "productionEquivalentRecoveryCandidateCount": 1,
-        "records": [{}],
+        "records": [{"syntheticCandidate": True}],
     }
     return {
         module.CONTRACT: contract,
@@ -105,17 +105,29 @@ def candidate_state(module) -> dict[Path, dict[str, Any]]:
 
 def run_with_state(module, state: dict[Path, dict[str, Any]]) -> int:
     original_load = module.load
+    original_load_evidence_writer = module.load_evidence_writer
 
     def fake_load(path: Path) -> dict[str, Any]:
         if path in state:
             return copy.deepcopy(state[path])
         return original_load(path)
 
+    class SyntheticEvidenceWriter:
+        @staticmethod
+        def validate_record(record: dict[str, Any], *, require_current_drill_request: bool = True) -> None:
+            require(isinstance(record, dict), "synthetic evidence row invalid")
+
+        @staticmethod
+        def candidate(record: dict[str, Any]) -> bool:
+            return record.get("syntheticCandidate") is True
+
     module.load = fake_load
+    module.load_evidence_writer = lambda: SyntheticEvidenceWriter
     try:
         return module.main()
     finally:
         module.load = original_load
+        module.load_evidence_writer = original_load_evidence_writer
 
 
 def main() -> int:
@@ -123,7 +135,14 @@ def main() -> int:
     state = candidate_state(module)
 
     require(run_with_state(module, state) == 0, "candidate baseline must validate with evidence review but without human promotion review")
-    print("PASS baseline: recovery candidate includes independent evidence review while human promotion review remains false")
+    print("PASS baseline: recovery candidate includes independently re-derived evidence review while human promotion review remains false")
+
+    manufactured_aggregate = copy.deepcopy(state)
+    manufactured_aggregate[module.EVIDENCE_REGISTRY]["records"][0]["syntheticCandidate"] = False
+    expect_rejected(
+        "recovery candidate aggregate without current executable reviewed candidate evidence",
+        lambda: run_with_state(module, manufactured_aggregate),
+    )
 
     missing_boundary_review = copy.deepcopy(state)
     missing_boundary_review[module.CONTRACT]["currentBoundary"]["independentReviewCompleted"] = False
@@ -177,6 +196,7 @@ def main() -> int:
     )
 
     print("Memory OS backup/restore generation binding negative suite PASS")
+    print("candidate aggregate without current executable reviewed candidate evidence accepted: false")
     print("candidate without independent evidence review accepted: false")
     print("candidate requires independent evidence review: true")
     print("candidate implies human production-promotion review: false")
