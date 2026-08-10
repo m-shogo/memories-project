@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
 GEN_CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
-GEN_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
+ELIGIBILITY_HELPER = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
 OBJECTIVES = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
 DRILL_CONTRACT = ROOT / "contracts/operations/backup-restore-drill-request-contract.v1.json"
 DRILL_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
@@ -92,9 +92,9 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def load_generation_writer():
-    spec = importlib.util.spec_from_file_location("memory_os_environment_generation_writer_for_restore_preflight", GEN_WRITER)
-    require(spec is not None and spec.loader is not None, "cannot load environment generation writer")
+def load_eligibility_helper():
+    spec = importlib.util.spec_from_file_location("memory_os_environment_generation_eligibility_for_restore_preflight", ELIGIBILITY_HELPER)
+    require(spec is not None and spec.loader is not None, "cannot load shared environment generation eligibility authority")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -106,40 +106,31 @@ def run_validator(path: Path, name: str) -> None:
 
 
 def derive_state(generations: dict[str, Any], objectives: dict[str, Any], drill_registry: dict[str, Any]) -> dict[str, Any]:
-    rows = generations.get("generations")
-    generation_count = generations.get("registeredGenerationCount")
-    require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "generation registry rows invalid")
-    require(isinstance(generation_count, int) and generation_count == len(rows), "generation registry count drift")
-    ids = [row.get("generationId") for row in rows]
-    require(all(isinstance(value, str) and value for value in ids) and len(set(ids)) == len(ids), "generation IDs invalid or duplicated")
-
-    writer = load_generation_writer()
-    eligibility_by_id: dict[str, bool] = {}
-    for row in rows:
-        generation_id = row.get("generationId")
-        try:
-            eligible = writer.validate_record(row)
-        except Exception as exc:
-            raise Fail(f"generation semantic validation failed for {generation_id}: {exc}") from exc
-        require(isinstance(eligible, bool), "generation semantic eligibility predicate invalid")
-        eligibility_by_id[generation_id] = eligible
-
-    superseded_ids = {row.get("supersedesGenerationId") for row in rows if isinstance(row.get("supersedesGenerationId"), str)}
-    unsuperseded = [row for row in rows if row.get("generationId") not in superseded_ids]
-    preflight_eligible = [row for row in rows if eligibility_by_id.get(row.get("generationId")) is True]
-    unsuperseded_preflight_eligible = [row for row in unsuperseded if eligibility_by_id.get(row.get("generationId")) is True]
-    environments = {
-        row.get("environmentId")
-        for row in unsuperseded_preflight_eligible
-        if isinstance(row.get("environmentId"), str) and row.get("environmentId")
-    }
-    pair_count = sum(
-        1
-        for source in unsuperseded_preflight_eligible
-        for target in unsuperseded_preflight_eligible
-        if source.get("generationId") != target.get("generationId")
-        and source.get("environmentId") != target.get("environmentId")
-    )
+    helper = load_eligibility_helper()
+    try:
+        semantic = helper.derive_registry(generations)
+    except Exception as exc:
+        raise Fail(f"shared generation semantic derivation failed: {exc}") from exc
+    generation_count = semantic.get("registeredGenerationCount")
+    preflight_eligible_count = semantic.get("preflightEligibleGenerationCount")
+    unsuperseded_count = semantic.get("unsupersededGenerationCount")
+    unsuperseded_preflight_eligible_count = semantic.get("unsupersededPreflightEligibleGenerationCount")
+    distinct_eligible_environment_count = semantic.get("distinctPreflightEligibleEnvironmentCount")
+    pair_count = semantic.get("eligibleDirectedPairCount")
+    for value, field in (
+        (generation_count, "registeredGenerationCount"),
+        (preflight_eligible_count, "preflightEligibleGenerationCount"),
+        (unsuperseded_count, "unsupersededGenerationCount"),
+        (unsuperseded_preflight_eligible_count, "unsupersededPreflightEligibleGenerationCount"),
+        (distinct_eligible_environment_count, "distinctPreflightEligibleEnvironmentCount"),
+        (pair_count, "eligibleDirectedPairCount"),
+    ):
+        require(isinstance(value, int) and not isinstance(value, bool) and value >= 0, f"shared semantic derivation {field} invalid")
+    require(preflight_eligible_count <= generation_count, "shared semantic eligible count exceeds registered generations")
+    require(unsuperseded_preflight_eligible_count <= unsuperseded_count, "shared unsuperseded semantic eligible count drift")
+    require(distinct_eligible_environment_count <= unsuperseded_preflight_eligible_count, "shared distinct eligible environment count drift")
+    if distinct_eligible_environment_count < 2:
+        require(pair_count == 0, "shared eligible directed pair requires two distinct semantic environments")
 
     objective_rows = objectives.get("records")
     objective_count = objectives.get("approvedObjectiveCount")
@@ -182,10 +173,10 @@ def derive_state(generations: dict[str, Any], objectives: dict[str, Any], drill_
 
     return {
         "registeredGenerationCount": generation_count,
-        "preflightEligibleGenerationCount": len(preflight_eligible),
-        "unsupersededGenerationCount": len(unsuperseded),
-        "unsupersededPreflightEligibleGenerationCount": len(unsuperseded_preflight_eligible),
-        "distinctUnsupersededPreflightEligibleEnvironmentCount": len(environments),
+        "preflightEligibleGenerationCount": preflight_eligible_count,
+        "unsupersededGenerationCount": unsuperseded_count,
+        "unsupersededPreflightEligibleGenerationCount": unsuperseded_preflight_eligible_count,
+        "distinctUnsupersededPreflightEligibleEnvironmentCount": distinct_eligible_environment_count,
         "eligibleDirectedSourceTargetPairCount": pair_count,
         "approvedRecoveryObjectiveCount": objective_count,
         "currentObjectiveId": current_objective_id,
@@ -211,6 +202,7 @@ def main() -> int:
     refs = {
         "environmentGenerationContract": GEN_CONTRACT,
         "environmentGenerationRegistry": GEN_REGISTRY,
+        "semanticEligibilityHelper": ELIGIBILITY_HELPER,
         "recoveryObjectivesRegistry": OBJECTIVES,
         "drillRequestContract": DRILL_CONTRACT,
         "drillRequestRegistry": DRILL_REGISTRY,
@@ -296,6 +288,7 @@ def main() -> int:
     print(f"reviewed/current drill requests: {state['reviewedDrillRequestCount']}/{state['currentExecutableDrillRequestCount']}")
     print(f"blocking prerequisites ({state['blockingPrerequisiteCount']}): {','.join(state['blockingPrerequisites']) if state['blockingPrerequisites'] else 'none'}")
     print(f"preflight decision: {state['preflightDecision']}")
+    print("semantic generation authority shared with downstream admission: true")
     print("registered generation blocker semantically requires eligible distinct environments: true")
     print("automatic prerequisite/request creation: false")
     print("restore executed: false")
