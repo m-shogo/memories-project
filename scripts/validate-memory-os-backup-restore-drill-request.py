@@ -138,7 +138,7 @@ def main() -> int:
     generation_count = generations.get("registeredGenerationCount")
     require(generations.get("appendOnly") is True and generations.get("productionEvidence") is False, "generation registry boundary drift")
     require(isinstance(generation_rows, list) and all(isinstance(row, dict) for row in generation_rows), "generation registry rows invalid")
-    require(isinstance(generation_count, int) and generation_count == len(generation_rows), "generation registry count drift")
+    require(isinstance(generation_count, int) and not isinstance(generation_count, bool) and generation_count == len(generation_rows), "generation registry count drift")
 
     semantic = eligibility.derive(GEN_REGISTRY)
     require(semantic.get("registeredGenerationCount") == generation_count, "semantic eligibility registered count drift")
@@ -164,7 +164,7 @@ def main() -> int:
     current_objective = objectives.get("currentObjectiveId")
     require(objectives.get("appendOnly") is True and objectives.get("productionEvidence") is False and objectives.get("productionReady") is False, "recovery objective registry boundary drift")
     require(isinstance(objective_rows, list) and all(isinstance(row, dict) for row in objective_rows), "recovery objective rows invalid")
-    require(isinstance(objective_count, int) and objective_count == len(objective_rows), "recovery objective count drift")
+    require(isinstance(objective_count, int) and not isinstance(objective_count, bool) and objective_count == len(objective_rows), "recovery objective count drift")
     if objective_count == 0:
         require(current_objective is None, "empty recovery objective registry cannot have currentObjectiveId")
         current_objective_available = False
@@ -180,7 +180,7 @@ def main() -> int:
     request_count = registry.get("registeredRequestCount")
     executable_count = registry.get("currentExecutableRequestCount")
     require(isinstance(requests, list) and all(isinstance(row, dict) for row in requests), "request registry records invalid")
-    require(isinstance(request_count, int) and request_count == len(requests), "registeredRequestCount drift")
+    require(isinstance(request_count, int) and not isinstance(request_count, bool) and request_count == len(requests), "registeredRequestCount drift")
     request_ids: set[str] = set()
     tuples: set[tuple[Any, Any, Any]] = set()
     derived_executable = 0
@@ -194,7 +194,7 @@ def main() -> int:
         tuples.add(key)
         if writer.request_currently_executable(row):
             derived_executable += 1
-    require(isinstance(executable_count, int) and executable_count == derived_executable, "currentExecutableRequestCount drift")
+    require(isinstance(executable_count, int) and not isinstance(executable_count, bool) and executable_count == derived_executable, "currentExecutableRequestCount drift")
     if generation_count < 2 or not current_objective_available:
         require(request_count == 0 and executable_count == 0, "drill request cannot exist without two registered generations and a current approved objective")
     if eligible_pair_count == 0 or not current_objective_available:
@@ -233,6 +233,7 @@ def main() -> int:
     print(f"registered drill requests: {request_count}")
     print(f"currently executable requests: {executable_count}")
     print(f"admission decision: {decision}")
+    print("boolean registry aggregate counts accepted: false")
     print("registered generation or historical objective count alone creates planning authority: false")
     print("historical admitted requests survive later generation/objective supersession: true")
     print("planning authority only: true")
