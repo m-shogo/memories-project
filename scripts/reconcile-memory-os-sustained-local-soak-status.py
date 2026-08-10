@@ -25,6 +25,7 @@ FOUNDATION_REFS = (
     "contracts/operations/sustained-soak-independent-review-registry.v1.json",
     "services/import-api/internal/httpserver/sustained_local_soak_test.go",
     "scripts/validate-memory-os-sustained-local-soak.py",
+    "scripts/register-memory-os-sustained-soak-independent-review.py",
     "scripts/validate-memory-os-sustained-soak-independent-review.py",
     "scripts/validate-memory-os-sustained-soak-independent-review-negative.py",
     "scripts/validate-memory-os-sustained-local-soak-result.py",
