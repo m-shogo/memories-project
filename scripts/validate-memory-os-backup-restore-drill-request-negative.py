@@ -107,10 +107,11 @@ def base_request(contract: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def approval_payload(request: dict[str, Any], role: str, reviewer: str) -> dict[str, Any]:
+def approval_payload(writer: Any, contract: dict[str, Any], request: dict[str, Any], role: str, reviewer: str) -> dict[str, Any]:
     return {
-        "schemaVersion": "memory-os-backup-restore-drill-request-approval.v1",
+        "schemaVersion": contract["approvalSchemaVersion"],
         "requestId": request["requestId"],
+        "requestRecordSha256": writer.canonical_request_sha256(request),
         "reviewRole": role,
         "decision": "APPROVED",
         "sourceEnvironmentGenerationId": request["sourceEnvironmentGenerationId"],
@@ -124,20 +125,23 @@ def approval_payload(request: dict[str, Any], role: str, reviewer: str) -> dict[
     }
 
 
-def bind_approvals(tmp_path: Path, request: dict[str, Any]) -> None:
+def bind_approvals(tmp_path: Path, writer: Any, contract: dict[str, Any], request: dict[str, Any]) -> None:
     mapping = (
         ("recoveryOwner", "RECOVERY_OWNER", "reviewer_recovery_owner"),
         ("securityReview", "SECURITY", "reviewer_security"),
         ("operabilityReview", "OPERABILITY", "reviewer_operability"),
     )
     for key, role, reviewer in mapping:
-        write_json(tmp_path / request["approvalRefs"][key], approval_payload(request, role, reviewer))
+        write_json(tmp_path / request["approvalRefs"][key], approval_payload(writer, contract, request, role, reviewer))
 
 
 def main() -> int:
     require(WRITER.is_file() and CONTRACT.is_file(), "drill request foundation missing")
     contract = load(CONTRACT)
     writer = load_writer()
+    require(contract.get("approvalSchemaVersion") == "memory-os-backup-restore-drill-request-approval.v2", "approval schema must remain digest-bound v2")
+    require("requestRecordSha256" in set(contract.get("requiredApprovalFields", [])), "approval requestRecordSha256 authority missing")
+    require(contract.get("admissionRules", {}).get("approvalDocumentsMustBindCanonicalRequestRecordDigest") is True, "approval digest admission rule missing")
 
     canonical_probe = base_request(contract)
     canonical_probe["requestId"] = "brrq_no_prerequisites"
@@ -191,53 +195,64 @@ def main() -> int:
         writer.require_preflight_eligible_generation = lambda generation_id, field: None if generation_id in {"pegen_source", "pegen_target"} else (_ for _ in ()).throw(writer.Fail(f"{field} synthetic generation not eligible"))
 
         def validate_bound(request: dict[str, Any], *, require_current: bool = True) -> None:
-            bind_approvals(tmp_path, request)
+            bind_approvals(tmp_path, writer, contract, request)
             writer.validate_request(request, require_current=require_current)
 
         valid = base_request(contract)
         validate_bound(valid)
         validate_bound(valid, require_current=False)
         require(writer.request_currently_executable(valid) is True, "valid synthetic request should be current in isolated negative fixture")
-        print("PASS accept: fully bound isolated planning request with typed approvals and semantic generation gate invoked")
+        print("PASS accept: fully bound isolated planning request with digest-bound typed approvals and semantic generation gate invoked")
 
-        bind_approvals(tmp_path, valid)
+        bind_approvals(tmp_path, writer, contract, valid)
+        mutated_after_approval = copy.deepcopy(valid)
+        mutated_after_approval["openRisks"] = [{"riskId": "risk_low_after_approval", "severity": "LOW", "status": "OPEN", "ownerRef": "README.md"}]
+        expect_rejected("request mutated after human approvals", lambda: writer.validate_request(mutated_after_approval))
+
+        bind_approvals(tmp_path, writer, contract, valid)
+        security_path = tmp_path / valid["approvalRefs"]["securityReview"]
+        security = load(security_path)
+        security["requestRecordSha256"] = "0" * 64
+        write_json(security_path, security)
+        expect_rejected("approval request digest mismatch", lambda: writer.validate_request(valid))
+
+        bind_approvals(tmp_path, writer, contract, valid)
         (tmp_path / "SECURITY.md").write_text("not json\n", encoding="utf-8")
         arbitrary_approval = copy.deepcopy(valid)
         arbitrary_approval["approvalRefs"]["securityReview"] = "SECURITY.md"
         expect_rejected("arbitrary repository file used as approval", lambda: writer.validate_request(arbitrary_approval))
 
-        bind_approvals(tmp_path, valid)
-        security_path = tmp_path / valid["approvalRefs"]["securityReview"]
+        bind_approvals(tmp_path, writer, contract, valid)
         security = load(security_path)
         security["requestId"] = "brrq_other_request"
         write_json(security_path, security)
         expect_rejected("approval bound to another request", lambda: writer.validate_request(valid))
 
-        bind_approvals(tmp_path, valid)
+        bind_approvals(tmp_path, writer, contract, valid)
         security = load(security_path)
         security["reviewRole"] = "OPERABILITY"
         write_json(security_path, security)
         expect_rejected("approval review role mismatch", lambda: writer.validate_request(valid))
 
-        bind_approvals(tmp_path, valid)
+        bind_approvals(tmp_path, writer, contract, valid)
         security = load(security_path)
         security["recoveryObjectivesId"] = "recovery_objectives_old"
         write_json(security_path, security)
         expect_rejected("approval bound to another recovery objective", lambda: writer.validate_request(valid))
 
-        bind_approvals(tmp_path, valid)
+        bind_approvals(tmp_path, writer, contract, valid)
         security = load(security_path)
         security["decision"] = "REJECTED"
         write_json(security_path, security)
         expect_rejected("approval decision not approved", lambda: writer.validate_request(valid))
 
-        bind_approvals(tmp_path, valid)
+        bind_approvals(tmp_path, writer, contract, valid)
         security = load(security_path)
         security["productionTraffic"] = True
         write_json(security_path, security)
         expect_rejected("approval permits production traffic", lambda: writer.validate_request(valid))
 
-        bind_approvals(tmp_path, valid)
+        bind_approvals(tmp_path, writer, contract, valid)
         operability_path = tmp_path / valid["approvalRefs"]["operabilityReview"]
         operability = load(operability_path)
         operability["reviewerPseudonym"] = "reviewer_security"
@@ -329,7 +344,7 @@ def main() -> int:
         superseded["requestId"] = "brrq_superseded_source"
         expect_rejected("superseded source generation for new/current execution", lambda: validate_bound(superseded))
         validate_bound(superseded, require_current=False)
-        bind_approvals(tmp_path, superseded)
+        bind_approvals(tmp_path, writer, contract, superseded)
         require(writer.request_currently_executable(superseded) is False, "superseded historical request must not remain executable")
         print("PASS history: superseded generation request remains auditable but non-executable")
 
@@ -341,6 +356,8 @@ def main() -> int:
     print("semantic generation eligibility bypass: false")
     print("arbitrary repository approval authority: false")
     print("typed approval request/generation/objective binding enforced: true")
+    print("typed approvals bind canonical request-record digest: true")
+    print("post-approval planning request mutation accepted: false")
     print("independent reviewer pseudonyms enforced: true")
     print("historical authority preserved across supersession: true")
     print("current execution revalidation preserved: true")
