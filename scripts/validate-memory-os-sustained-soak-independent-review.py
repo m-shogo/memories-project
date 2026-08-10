@@ -45,6 +45,11 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def canonical_record_sha256(record: dict[str, Any]) -> str:
+    encoded = json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def parse_utc(value: Any, field: str) -> dt.datetime:
     require(isinstance(value, str) and value.endswith("Z"), f"{field} must be UTC RFC3339 ending in Z")
     try:
@@ -164,7 +169,20 @@ def validate_criteria_record(record: Any, index: int, contract: dict[str, Any], 
         bounded_text(criterion.get("acceptanceRule"), f"criteria[{index}].criteria[{criterion_index}].acceptanceRule", 500)
     require(record.get("productionEvidence") is False and record.get("productionReady") is False, f"criteria[{index}] cannot promote production")
     approval_fields = set(record_authority.get("criteriaApprovalEvidenceRequiredFields", []))
-    validate_human_evidence(record.get("approvalEvidenceRef"), record_authority.get("criteriaApprovalEvidenceDirectory"), approval_fields, record_authority.get("criteriaApprovalEvidenceSchemaVersion"), {"criteriaId": criteria_id, "decision": "APPROVED", "approvedAt": record.get("approvedAt"), "approverPseudonym": approver}, f"criteria[{index}].approvalEvidenceRef")
+    validate_human_evidence(
+        record.get("approvalEvidenceRef"),
+        record_authority.get("criteriaApprovalEvidenceDirectory"),
+        approval_fields,
+        record_authority.get("criteriaApprovalEvidenceSchemaVersion"),
+        {
+            "criteriaId": criteria_id,
+            "criteriaRecordSha256": canonical_record_sha256(record),
+            "decision": "APPROVED",
+            "approvedAt": record.get("approvedAt"),
+            "approverPseudonym": approver,
+        },
+        f"criteria[{index}].approvalEvidenceRef",
+    )
     return criteria_id, approver, approved_at, run_bindings
 
 
@@ -193,7 +211,21 @@ def validate_review_record(record: Any, index: int, contract: dict[str, Any], re
         bounded_text(finding, f"reviews[{index}].findings[{finding_index}]", 1000)
     require(record.get("productionEvidence") is False and record.get("productionReady") is False, f"reviews[{index}] cannot promote production")
     review_fields = set(record_authority.get("independentReviewEvidenceRequiredFields", []))
-    validate_human_evidence(record.get("reviewEvidenceRef"), record_authority.get("independentReviewEvidenceDirectory"), review_fields, record_authority.get("independentReviewEvidenceSchemaVersion"), {"reviewId": review_id, "criteriaId": criteria_id, "outcome": outcome, "reviewedAt": record.get("reviewedAt"), "reviewerPseudonym": reviewer}, f"reviews[{index}].reviewEvidenceRef")
+    validate_human_evidence(
+        record.get("reviewEvidenceRef"),
+        record_authority.get("independentReviewEvidenceDirectory"),
+        review_fields,
+        record_authority.get("independentReviewEvidenceSchemaVersion"),
+        {
+            "reviewId": review_id,
+            "criteriaId": criteria_id,
+            "reviewRecordSha256": canonical_record_sha256(record),
+            "outcome": outcome,
+            "reviewedAt": record.get("reviewedAt"),
+            "reviewerPseudonym": reviewer,
+        },
+        f"reviews[{index}].reviewEvidenceRef",
+    )
     return review_id, outcome
 
 
@@ -211,7 +243,7 @@ def main() -> int:
         "humanApprovedCriteriaRequired", "automaticCriteriaGenerationForbidden", "automaticThresholdSelectionForbidden",
         "criteriaMustBindExactRunIds", "criteriaMustBindExactRunEvidenceDigests", "criteriaMustDeclareMetricAndUnit",
         "criteriaMustDeclareDirectionAndAcceptanceRule", "criteriaMustDeclareReviewScope", "criteriaMustPreexistIndependentReview",
-        "supersededCriteriaCannotRemainCurrentReviewAuthority",
+        "supersededCriteriaCannotRemainCurrentReviewAuthority", "approvalEvidenceMustBindCriteriaRecordDigest",
     ):
         require(criteria.get(key) is True, f"criteria safeguard missing: {key}")
 
@@ -222,6 +254,7 @@ def main() -> int:
         "reviewMustBindExactRunIds", "reviewMustBindExactRunEvidenceDigests", "atMostOneIndependentReviewPerCriteria",
         "onlyCurrentCriteriaPassCountsAsPassingIndependentReview", "descriptiveTrendReviewIsNotIndependentReview",
         "passingReviewDoesNotCreateProductionEvidence", "passingReviewDoesNotAuthorizeProductionPromotion",
+        "independentReviewEvidenceMustBindReviewRecordDigest",
     ):
         require(authority.get(key) is True, f"review safeguard missing: {key}")
     require(authority.get("reviewOutcomeValues") == ["PASS", "FAIL"], "review outcomes must remain closed")
@@ -231,9 +264,14 @@ def main() -> int:
     for key in (
         "humanEvidenceMustUseDedicatedDirectory", "runEvidenceMustBeCanonicalAndPerRunValidated", "runEvidenceDigestMustMatchBytes",
         "reviewRunBindingsMustExactlyMatchCriteria", "reviewerMustDifferFromCriteriaApprover", "reviewCannotPredateCriteriaApproval",
+        "criteriaApprovalMustBindCanonicalRecordDigest", "independentReviewMustBindCanonicalRecordDigest",
         "productionEvidenceForbidden", "productionReadyForbidden",
     ):
         require(record_authority.get(key) is True, f"record safeguard missing: {key}")
+    require(record_authority.get("criteriaApprovalEvidenceSchemaVersion") == "memory-os-sustained-soak-criteria-approval.v2", "criteria approval evidence schema must remain digest-bound v2")
+    require(record_authority.get("independentReviewEvidenceSchemaVersion") == "memory-os-sustained-soak-independent-review-evidence.v2", "independent review evidence schema must remain digest-bound v2")
+    require("criteriaRecordSha256" in set(record_authority.get("criteriaApprovalEvidenceRequiredFields", [])), "criteria approval evidence digest field missing")
+    require("reviewRecordSha256" in set(record_authority.get("independentReviewEvidenceRequiredFields", [])), "independent review evidence digest field missing")
 
     promotion = contract.get("promotionBoundary")
     require(isinstance(promotion, dict), "promotionBoundary must be object")
@@ -300,6 +338,7 @@ def main() -> int:
     print(f"current passing independent reviews: {passing_reviews}")
     print("superseded criteria review remains current authority: false")
     print("typed human criteria/review records accepted without dedicated evidence: false")
+    print("human approval evidence without exact record digest binding accepted: false")
     print("review run-binding drift accepted: false")
     print("descriptive trend review implies independent review: false")
     print("leak proof: false")
