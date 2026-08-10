@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "local-coherent-recovery-set",
-  "sourceCommitSha": "09bd6544d50210668210c922dcf8f821947cb219",
+  "sourceCommitSha": "ae7f74b436d76258dd241c93c0eb893e84ee1074",
   "result": "PASS",
   "exitCode": 0,
   "output": "Memory OS local coherent recovery-set PASS\nmigrations: 11  database/object binding: PASS  deliberate skew rejected: true\nresult: /home/runner/work/memories-project/memories-project/docs/fixtures/memory-os-operability/local-coherent-recovery-set-results.sample.v1.json\n",
