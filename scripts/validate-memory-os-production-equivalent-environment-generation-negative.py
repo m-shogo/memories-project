@@ -223,6 +223,22 @@ def main() -> int:
     material_without_review["materialDeltas"][0]["independentReviewRef"] = None
     expect_rejected("accepted material delta without independent review", lambda: env_validator.validate_environment_record(material_without_review))
 
+    real_root = writer.ROOT
+    with tempfile.TemporaryDirectory(prefix="memory-os-generation-ref-root-") as root_tmp, tempfile.TemporaryDirectory(prefix="memory-os-generation-ref-external-") as external_tmp:
+        root_path = Path(root_tmp)
+        external_path = Path(external_tmp) / "external-environment.json"
+        (root_path / "environment.json").write_text("{}\n", encoding="utf-8")
+        external_path.write_text("{}\n", encoding="utf-8")
+        writer.ROOT = root_path
+        try:
+            expect_rejected("absolute generation environment ref", lambda: writer.repo_ref(str((root_path / "environment.json").resolve()), "environmentRecordRef"))
+            expect_rejected("parent-traversal generation environment ref", lambda: writer.repo_ref("nested/../environment.json", "environmentRecordRef"))
+            escape_link = root_path / "escaped-environment.json"
+            escape_link.symlink_to(external_path)
+            expect_rejected("generation environment symlink escapes repository root", lambda: writer.repo_ref("escaped-environment.json", "environmentRecordRef"))
+        finally:
+            writer.ROOT = real_root
+
     with tempfile.TemporaryDirectory(prefix="memory-os-generation-negative-") as tmp:
         tmp_path = Path(tmp)
         env_path = tmp_path / "environment.json"
@@ -233,6 +249,27 @@ def main() -> int:
         valid_generation = generation_record(commit_sha, env_path, planned)
         require(writer.validate_record(valid_generation) is False, "PLANNED generation registration must remain preflight-ineligible")
         print("PASS registration: PLANNED generation history is allowed without preflight eligibility")
+
+        real_loader = writer.load_environment_validator
+        class BrokenValidator:
+            class Fail(RuntimeError):
+                pass
+
+            @staticmethod
+            def validate_environment_record(*args: Any, **kwargs: Any) -> bool:
+                raise TypeError("synthetic implementation failure")
+
+        writer.load_environment_validator = lambda: BrokenValidator
+        try:
+            writer.validate_record(valid_generation)
+        except TypeError:
+            print("PASS implementation boundary: semantic validator TypeError surfaced")
+        except writer.Fail as exc:
+            raise Fail(f"semantic validator implementation failure was folded into domain rejection: {exc}") from exc
+        else:
+            raise Fail("semantic validator implementation failure was unexpectedly accepted")
+        finally:
+            writer.load_environment_validator = real_loader
 
         mutable_alias = copy.deepcopy(valid_generation)
         mutable_alias["generationId"] = "pegen-latest-negative"
@@ -252,6 +289,8 @@ def main() -> int:
     print("canonical registry mutated: false")
     print("registration implies preflight eligibility: false")
     print("incomplete equivalent environment accepted: false")
+    print("generation environment refs escape repository: false")
+    print("semantic validator implementation exceptions folded into rejection: false")
     print("unexpected implementation exception accepted as valid rejection: false")
     print("production evidence: false")
     print("production decision: NO_GO")
