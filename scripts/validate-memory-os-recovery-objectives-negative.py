@@ -12,6 +12,7 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 WRITER = ROOT / "scripts/register-memory-os-recovery-objectives.py"
+VALIDATOR = ROOT / "scripts/validate-memory-os-recovery-objectives.py"
 CONTRACT = ROOT / "contracts/operations/recovery-objectives-admission-contract.v1.json"
 APPROVAL_FIXTURE_DIR = ROOT / "docs/fixtures/memory-os-operability/recovery-objectives-approval"
 APPROVAL_FIXTURE_REF = "docs/fixtures/memory-os-operability/recovery-objectives-approval"
@@ -26,11 +27,16 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
-def load_writer():
-    spec = importlib.util.spec_from_file_location("memory_os_recovery_objectives_writer_negative", WRITER)
-    require(spec is not None and spec.loader is not None, "cannot load recovery objectives writer")
+def load_module(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load module: {path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    return module
+
+
+def load_writer():
+    module = load_module(WRITER, "memory_os_recovery_objectives_writer_negative")
     module.APPROVAL_DIR = APPROVAL_FIXTURE_DIR
     return module
 
@@ -42,6 +48,15 @@ def expect_rejected(writer: Any, name: str, action: Callable[[], Any]) -> None:
         print(f"PASS reject: {name}")
         return
     raise Fail(f"negative case unexpectedly accepted: {name}")
+
+
+def expect_validator_rejected(validator: Any, name: str, action: Callable[[], Any]) -> None:
+    try:
+        action()
+    except validator.Fail:
+        print(f"PASS reject: {name}")
+        return
+    raise Fail(f"validator negative case unexpectedly accepted: {name}")
 
 
 def base_record() -> dict[str, Any]:
@@ -68,9 +83,10 @@ def base_record() -> dict[str, Any]:
 
 
 def main() -> int:
-    require(WRITER.is_file() and CONTRACT.is_file(), "recovery objective foundation missing")
+    require(WRITER.is_file() and VALIDATOR.is_file() and CONTRACT.is_file(), "recovery objective foundation missing")
     require(APPROVAL_FIXTURE_DIR.is_dir(), "typed objective approval fixtures missing")
     writer = load_writer()
+    validator = load_module(VALIDATOR, "memory_os_recovery_objectives_validator_negative")
 
     valid = base_record()
     writer.validate_record(valid)
@@ -91,6 +107,23 @@ def main() -> int:
             expect_rejected(writer, "objective authority symlink escapes repository root", lambda: writer.repo_ref("escaped-owner.json", "ownerRef"))
         finally:
             writer.ROOT = real_root
+
+    real_validator_root = validator.ROOT
+    with tempfile.TemporaryDirectory(prefix="memory-os-objective-validator-root-") as root_tmp, tempfile.TemporaryDirectory(prefix="memory-os-objective-validator-external-") as external_tmp:
+        root_path = Path(root_tmp)
+        external_path = Path(external_tmp) / "external-authority.py"
+        (root_path / "authority.py").write_text("# canonical\n", encoding="utf-8")
+        external_path.write_text("# external\n", encoding="utf-8")
+        validator.ROOT = root_path
+        try:
+            require(validator.repo_file("authority.py", "validator") == root_path / "authority.py", "canonical validator authority rejected")
+            expect_validator_rejected(validator, "absolute validator authority ref", lambda: validator.repo_file(str((root_path / "authority.py").resolve()), "validator"))
+            expect_validator_rejected(validator, "parent-traversal validator authority ref", lambda: validator.repo_file("nested/../authority.py", "validator"))
+            escape_link = root_path / "escaped-authority.py"
+            escape_link.symlink_to(external_path)
+            expect_validator_rejected(validator, "validator authority symlink escapes repository root", lambda: validator.repo_file("escaped-authority.py", "validator"))
+        finally:
+            validator.ROOT = real_validator_root
 
     arbitrary_repo_files = copy.deepcopy(valid)
     arbitrary_repo_files["approvalEvidenceRefs"] = ["SECURITY.md", "README.md"]
@@ -231,6 +264,7 @@ def main() -> int:
     print("objective values invented/defaulted: false")
     print("arbitrary repository file approval accepted: false")
     print("objective authority refs escape repository: false")
+    print("validator contract refs escape repository: false")
     print("malformed typed approval authority accepted: false")
     print("whitespace-aliased reviewer identity accepted: false")
     print("typed approval objective/value binding enforced: true")
