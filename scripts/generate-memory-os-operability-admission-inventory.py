@@ -44,6 +44,7 @@ def main() -> int:
     observability = load("contracts/operations/observability-stack-deployment-registry.v1.json")
     rate_runtime = load("contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json")
     load_contract = load("contracts/operations/load-test-scenario-contract.v1.json")
+    soak_review = load("contracts/operations/sustained-soak-independent-review-registry.v1.json")
     generations = load("contracts/operations/production-equivalent-environment-generation-registry.v1.json")
     recovery_objectives = load("contracts/operations/recovery-objectives-registry.v1.json")
     backup_binding = load("contracts/operations/backup-restore-generation-binding-contract.v1.json")
@@ -82,6 +83,9 @@ def main() -> int:
     release_pair_count = release_pairs.get("approvedPairCount")
     if not isinstance(release_pair_count, int) or release_pair_count < 0:
         raise SystemExit("approved release pair count invalid")
+    soak_approved_criteria_count = soak_review.get("approvedLeakStabilityCriteriaCount")
+    soak_passing_review_count = soak_review.get("passingIndependentReviewCount")
+    soak_leak_proof = soak_review.get("leakProof")
     typed_record_count = backup_non_resurrection.get("registeredRecordCount")
     typed_complete_count = backup_non_resurrection.get("completeRecordCount")
     typed_covered_count = backup_non_resurrection.get("candidateCoveredCount")
@@ -102,6 +106,8 @@ def main() -> int:
     human_promotion_authorized = backup_boundary.get("humanProductionPromotionAuthorized")
 
     for value, field in (
+        (soak_approved_criteria_count, "approved leak/stability criteria"),
+        (soak_passing_review_count, "passing independent sustained-soak review"),
         (typed_record_count, "typed non-resurrection record"),
         (typed_complete_count, "complete typed non-resurrection"),
         (typed_covered_count, "typed candidate coverage"),
@@ -119,12 +125,17 @@ def main() -> int:
         if not isinstance(value, int) or isinstance(value, bool) or value < 0:
             raise SystemExit(f"{field} count invalid")
     for value, field in (
+        (soak_leak_proof, "sustained-soak leak proof"),
         (independent_evidence_review_completed, "independent evidence review completed"),
         (human_promotion_review_completed, "human production-promotion review completed"),
         (human_promotion_authorized, "human production-promotion authorized"),
     ):
         if not isinstance(value, bool):
             raise SystemExit(f"{field} invalid")
+    if soak_leak_proof and soak_passing_review_count == 0:
+        raise SystemExit("sustained-soak leak proof cannot exist without a passing independent review")
+    if soak_passing_review_count > soak_approved_criteria_count:
+        raise SystemExit("passing sustained-soak review count exceeds approved criteria authority")
     if human_promotion_authorized and not human_promotion_review_completed:
         raise SystemExit("production promotion cannot be authorized without completed human promotion review")
     if not isinstance(preflight_eligible, bool):
@@ -235,13 +246,19 @@ def main() -> int:
         {
             "id": "OPS-P0-006",
             "authority": "contracts/operations/load-test-scenario-contract.v1.json",
+            "secondaryAuthority": "contracts/operations/sustained-soak-independent-review-registry.v1.json",
             "foundationImplemented": True,
             "admittedEvidenceCount": load_ready.get("localLongSoakRunCount", 0),
             "requiredEvidenceCount": 2,
+            "approvedLeakStabilityCriteriaCount": soak_approved_criteria_count,
+            "passingIndependentReviewCount": soak_passing_review_count,
+            "leakProof": soak_leak_proof,
             "dependencyCounts": {
                 "environmentGenerations": generations.get("registeredGenerationCount", 0),
                 "localSustainedSoakEvidence": local_soak_complete,
                 "repeatableLocalDegradationSignalObserved": bool(load_ready.get("repeatableLocalDegradationSignalObserved")),
+                "approvedLeakStabilityCriteria": soak_approved_criteria_count,
+                "passingIndependentReviews": soak_passing_review_count,
             },
             "nextGate": (
                 "local repeated 60-minute soak and descriptive trend review are complete; next require independent leak/stability criteria plus generation-bound production-equivalent capacity, dependency and host-failure evidence"
@@ -359,6 +376,9 @@ def main() -> int:
         "deterministic": True,
         "areas": areas,
         "productionEquivalentEnvironmentGenerationCount": generations.get("registeredGenerationCount", 0),
+        "approvedLeakStabilityCriteriaCount": soak_approved_criteria_count,
+        "passingIndependentSustainedSoakReviewCount": soak_passing_review_count,
+        "sustainedSoakLeakProof": soak_leak_proof,
         "backupRestorePreflightEligibleEnvironmentGenerationCount": preflight_eligible_generation_count,
         "backupRestoreUnsupersededEnvironmentGenerationCount": unsuperseded_generation_count,
         "backupRestoreUnsupersededPreflightEligibleEnvironmentGenerationCount": unsuperseded_preflight_eligible_generation_count,
@@ -384,7 +404,7 @@ def main() -> int:
             "foundationImplemented means the admission path exists; it does not mean runtime or production evidence exists",
             "admittedEvidenceCount is derived only from canonical append-only registries or accepted human tabletop ledger files",
             "candidate/local evidence is not counted as production admission unless its owning authority explicitly admits it",
-            "local repeated soak evidence is tracked separately from independent leak proof and production-shaped soak evidence",
+            "local repeated soak evidence is tracked separately from human-approved leak/stability criteria, independent review, leak proof and production-shaped soak evidence",
             "recovery-objective values are never defaulted by this inventory; zero approved objectives means RPO/RTO/skew remain intentionally undefined",
             "registered production-equivalent generations are inventory only; restore planning additionally requires independent semantic preflight eligibility, unsuperseded state and a distinct-environment eligible directed pair",
             "restore drill preflight is read-only: READY authorizes only external reviewed request submission and BLOCKED never creates missing generations or recovery objectives",
@@ -399,6 +419,9 @@ def main() -> int:
     print("Memory OS operability admission inventory generated")
     print(f"P0 areas inventoried: {len(areas)}")
     print(f"production-equivalent generations: {document['productionEquivalentEnvironmentGenerationCount']}")
+    print(f"approved leak/stability criteria: {soak_approved_criteria_count}")
+    print(f"passing independent sustained-soak reviews: {soak_passing_review_count}")
+    print(f"sustained-soak leak proof: {str(soak_leak_proof).lower()}")
     print(f"restore preflight semantic/unsuperseded-semantic generations: {preflight_eligible_generation_count}/{unsuperseded_preflight_eligible_generation_count}")
     print(f"restore preflight distinct semantic unsuperseded environments: {distinct_unsuperseded_preflight_eligible_environment_count}")
     print(f"restore preflight decision: {preflight_decision}")
