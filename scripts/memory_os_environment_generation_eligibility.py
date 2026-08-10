@@ -46,7 +46,7 @@ def derive_registry(registry: dict[str, Any]) -> dict[str, Any]:
     count = registry.get("registeredGenerationCount")
     require(registry.get("appendOnly") is True and registry.get("productionEvidence") is False, "generation registry boundary drift")
     require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "generation registry rows invalid")
-    require(isinstance(count, int) and count == len(rows), "generation registry count drift")
+    require(isinstance(count, int) and not isinstance(count, bool) and count == len(rows), "generation registry count drift")
     generation_ids = [row.get("generationId") for row in rows]
     require(all(isinstance(value, str) and value for value in generation_ids), "generationId invalid")
     require(len(generation_ids) == len(set(generation_ids)), "generationId duplicate")
@@ -59,7 +59,7 @@ def derive_registry(registry: dict[str, Any]) -> dict[str, Any]:
         generation_id = row["generationId"]
         try:
             value = writer.validate_record(row)
-        except Exception as exc:
+        except writer.Fail as exc:
             raise Fail(f"generation semantic validation failed for {generation_id}: {exc}") from exc
         require(isinstance(value, bool), "generation eligibility predicate invalid")
         eligible_by_id[generation_id] = value
@@ -120,6 +120,8 @@ def main() -> int:
     print(f"unsuperseded preflight-eligible generations: {state['unsupersededPreflightEligibleGenerationCount']}")
     print(f"distinct preflight-eligible environments: {state['distinctPreflightEligibleEnvironmentCount']}")
     print(f"eligible directed restore pairs: {state['eligibleDirectedPairCount']}")
+    print("boolean registered-generation counts accepted: false")
+    print("unexpected generation-validator exceptions normalized as semantic rejection: false")
     print("production evidence: false")
     print("production ready: false")
     return 0
