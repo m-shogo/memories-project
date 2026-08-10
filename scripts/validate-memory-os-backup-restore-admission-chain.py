@@ -22,6 +22,7 @@ TYPED_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-ad
 INVENTORY = ROOT / "contracts/operations/operability-admission-inventory.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
+BLOCKER_AUTHORITY = ROOT / "scripts/memory_os_backup_restore_blockers.py"
 
 
 class Fail(RuntimeError):
@@ -42,9 +43,9 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def load_generation_writer():
-    spec = importlib.util.spec_from_file_location("memory_os_generation_writer_admission_chain", GEN_WRITER)
-    require(spec is not None and spec.loader is not None, "cannot load generation recovery writer")
+def load_module(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load {path.relative_to(ROOT)}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -62,7 +63,8 @@ def main() -> int:
     typed_registry = load(TYPED_REGISTRY)
     inventory = load(INVENTORY)
     status = load(STATUS)
-    gen_writer = load_generation_writer()
+    gen_writer = load_module(GEN_WRITER, "memory_os_generation_writer_admission_chain")
+    blocker_authority = load_module(BLOCKER_AUTHORITY, "memory_os_backup_restore_blockers_admission_chain")
 
     require(contract.get("schemaVersion") == "memory-os-backup-restore-admission-chain-contract.v1", "chain contract schema drift")
     refs = {
@@ -83,6 +85,7 @@ def main() -> int:
         expected = str(path.relative_to(ROOT)) if path.is_absolute() else str(path)
         require(contract.get(field) == expected, f"chain ref drift: {field}")
         require((ROOT / expected).is_file(), f"chain artifact missing: {expected}")
+    require(BLOCKER_AUTHORITY.is_file(), "canonical OPS-P0-007 blocker authority missing")
     required_chain = contract.get("requiredChain")
     require(isinstance(required_chain, list) and required_chain and required_chain[0] == "readOnlyDrillPreflight", "preflight must remain chain stage zero")
     require(len(required_chain) == len(set(required_chain)), "chain stages must be unique")
@@ -249,11 +252,7 @@ def main() -> int:
     status7 = next((row for row in status.get("areas", []) if isinstance(row, dict) and row.get("id") == "OPS-P0-007"), None)
     require(isinstance(status7, dict), "OPS-P0-007 status row missing")
     require(status7.get("status") == "PARTIAL_FOUNDATIONS_ONLY" and status7.get("blocking") is True, "OPS-P0-007 must remain blocking foundation-only")
-    missing = status7.get("missingEvidence")
-    require(isinstance(missing, list) and len(missing) == 6, f"canonical OPS-P0-007 blocker count drift: {len(missing) if isinstance(missing, list) else 'invalid'}")
-    lowered = "\n".join(str(item).lower() for item in missing)
-    for phrase in ("postgresql backup", "independent object", "rpo", "cross-cluster", "non-resurrection", "independent review"):
-        require(phrase in lowered, f"canonical OPS-P0-007 blocker disappeared: {phrase}")
+    blocker_authority.require_canonical_gaps(status7.get("missingEvidence"), Fail)
 
     print("Memory OS backup/restore end-to-end admission chain PASS")
     print(f"preflight: {preflight_decision}")
