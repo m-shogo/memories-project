@@ -16,6 +16,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from memory_os_backup_restore_blockers import require_canonical_gaps
+
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/backup-restore-drill-request-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
@@ -36,14 +38,6 @@ REFS = (
     "scripts/validate-memory-os-backup-restore-drill-request-negative.py",
     "scripts/reconcile-memory-os-backup-restore-drill-request.py",
     ".github/workflows/backup-restore-drill-request.yml",
-)
-REQUIRED_BLOCKER_TERMS = (
-    ("postgresql backup", "pitr"),
-    ("independent object", "tls"),
-    ("rpo", "rto"),
-    ("cross-cluster", "recovery owner"),
-    ("non-resurrection", "replay"),
-    ("independent review", "promotion decision"),
 )
 
 
@@ -201,10 +195,7 @@ def main() -> int:
     missing = gate.get("missingEvidence")
     refs = gate.get("evidenceRefs")
     require(isinstance(existing, list) and isinstance(missing, list) and isinstance(refs, list), "OPS-P0-007 authority arrays invalid")
-    require(len(missing) == 6, f"canonical OPS-P0-007 blocker count drift: {len(missing)}")
-    lowered = [str(item).lower() for item in missing]
-    for terms in REQUIRED_BLOCKER_TERMS:
-        require(any(all(term in item for term in terms) for item in lowered), f"canonical backup/restore blocker disappeared: {terms}")
+    require_canonical_gaps(missing, Fail)
 
     existing[:] = [item for item in existing if not (isinstance(item, str) and item.startswith(EVIDENCE_PREFIX))]
     append_once(
