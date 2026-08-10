@@ -318,6 +318,14 @@ def main() -> int:
     }
     for field in chain_count_fields:
         require(valid_count(chain_boundary.get(field)), f"chain boundary {field} must be a non-boolean count")
+    chain_boolean_fields = {
+        "preflightEligibleToSubmitReviewedDrillRequest",
+        "independentEvidenceReviewCompleted",
+        "humanProductionPromotionReviewCompleted",
+        "humanProductionPromotionAuthorized",
+    }
+    for field in chain_boolean_fields:
+        require(isinstance(chain_boundary.get(field), bool), f"chain boundary {field} must be boolean")
     for field, value in expected.items():
         require(chain_boundary.get(field) == value, f"chain boundary drift: {field}")
     require(chain_boundary.get("productionEvidence") is False and chain_boundary.get("productionReady") is False and chain_boundary.get("productionDecision") == "NO_GO", "chain cannot promote production")
@@ -372,6 +380,7 @@ def main() -> int:
     print(f"revalidated complete typed non-resurrection records: {typed_complete_count}")
     print(f"final production-equivalent recovery candidates: {candidate_count}")
     print("boolean chain/inventory aggregate counts accepted: false")
+    print("chain review/promotion authority fields strictly typed boolean: true")
     print(f"candidate-level independent evidence review completed: {str(candidate_count > 0).lower()}")
     print("human production-promotion review completed: false")
     print("human production-promotion authorized: false")
