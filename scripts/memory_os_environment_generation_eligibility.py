@@ -39,8 +39,9 @@ def load_generation_writer():
     return module
 
 
-def derive(registry_path: Path = GEN_REGISTRY) -> dict[str, Any]:
-    registry = load(registry_path)
+def derive_registry(registry: dict[str, Any]) -> dict[str, Any]:
+    """Derive semantic preflight authority from an already loaded registry object."""
+    require(isinstance(registry, dict), "generation registry root must be object")
     rows = registry.get("generations")
     count = registry.get("registeredGenerationCount")
     require(registry.get("appendOnly") is True and registry.get("productionEvidence") is False, "generation registry boundary drift")
@@ -96,6 +97,10 @@ def derive(registry_path: Path = GEN_REGISTRY) -> dict[str, Any]:
         "eligibleDirectedPairs": eligible_directed_pairs,
         "eligibleDirectedPairCount": len(eligible_directed_pairs),
     }
+
+
+def derive(registry_path: Path = GEN_REGISTRY) -> dict[str, Any]:
+    return derive_registry(load(registry_path))
 
 
 def eligible_generation_by_id(generation_id: Any, *, registry_path: Path = GEN_REGISTRY) -> dict[str, Any]:
