@@ -167,8 +167,10 @@ def main() -> int:
     row = backup_row(canonical_inventory)
     soak = soak_row(canonical_inventory)
     require(canonical_inventory.get("productionDecision") == "NO_GO", "canonical inventory productionDecision drift")
+    require(canonical_inventory.get("backupRestoreIndependentEvidenceReviewCompleted") is False, "canonical top-level backup/restore independent review drift")
     require(canonical_inventory.get("humanProductionPromotionReviewCompleted") is False, "canonical top-level human promotion review drift")
     require(canonical_inventory.get("humanProductionPromotionAuthorized") is False, "canonical top-level human promotion authorization drift")
+    require(row.get("independentEvidenceReviewCompleted") is False, "canonical OPS-P0-007 independent evidence review drift")
     require(row.get("humanProductionPromotionReviewCompleted") is False, "canonical OPS-P0-007 human promotion review drift")
     require(row.get("humanProductionPromotionAuthorized") is False, "canonical OPS-P0-007 human promotion authorization drift")
     require(canonical_inventory.get("approvedLeakStabilityCriteriaCount") == 0, "canonical top-level sustained-soak approved criteria drift")
@@ -191,6 +193,8 @@ def main() -> int:
     expect_inventory_rejected(inventory_validator, canonical_inventory, "OPS-P0-006 approved criteria manufactured", lambda value: soak_row(value).__setitem__("approvedLeakStabilityCriteriaCount", 1))
     expect_inventory_rejected(inventory_validator, canonical_inventory, "OPS-P0-006 independent review manufactured", lambda value: soak_row(value).__setitem__("passingIndependentReviewCount", 1))
     expect_inventory_rejected(inventory_validator, canonical_inventory, "OPS-P0-006 leak proof manufactured", lambda value: soak_row(value).__setitem__("leakProof", True))
+    expect_inventory_rejected(inventory_validator, canonical_inventory, "top-level backup/restore independent review manufactured", lambda value: value.__setitem__("backupRestoreIndependentEvidenceReviewCompleted", True))
+    expect_inventory_rejected(inventory_validator, canonical_inventory, "OPS-P0-007 independent evidence review manufactured", lambda value: backup_row(value).__setitem__("independentEvidenceReviewCompleted", True))
     expect_inventory_rejected(inventory_validator, canonical_inventory, "top-level human promotion review manufactured", lambda value: value.__setitem__("humanProductionPromotionReviewCompleted", True))
     expect_inventory_rejected(inventory_validator, canonical_inventory, "top-level human promotion authorization manufactured", lambda value: value.__setitem__("humanProductionPromotionAuthorized", True))
     expect_inventory_rejected(inventory_validator, canonical_inventory, "OPS-P0-007 human promotion review manufactured", lambda value: backup_row(value).__setitem__("humanProductionPromotionReviewCompleted", True))
@@ -216,6 +220,20 @@ def main() -> int:
         canonical_inventory,
         "status layer rejects OPS-P0-006 leak proof manufacture",
         mutate_inventory=lambda value: soak_row(value).__setitem__("leakProof", True),
+    )
+    expect_status_rejected(
+        status_validator,
+        canonical_status,
+        canonical_inventory,
+        "status layer rejects top-level backup/restore independent review manufacture",
+        mutate_inventory=lambda value: value.__setitem__("backupRestoreIndependentEvidenceReviewCompleted", True),
+    )
+    expect_status_rejected(
+        status_validator,
+        canonical_status,
+        canonical_inventory,
+        "status layer rejects OPS-P0-007 independent evidence review manufacture",
+        mutate_inventory=lambda value: backup_row(value).__setitem__("independentEvidenceReviewCompleted", True),
     )
     expect_status_rejected(
         status_validator,
@@ -261,6 +279,7 @@ def main() -> int:
     print("local sustained-soak evidence can manufacture independent review: false")
     print("local sustained-soak evidence can manufacture leak proof: false")
     print("status layer can accept manufactured sustained-soak review authority: false")
+    print("candidate authority can manufacture independent evidence review: false")
     print("registered inventory alone creates restore-planning authority: false")
     print("candidate authority can manufacture human promotion review: false")
     print("candidate authority can manufacture human promotion authorization: false")
