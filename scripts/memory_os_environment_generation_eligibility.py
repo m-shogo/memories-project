@@ -25,7 +25,7 @@ def require(condition: bool, message: str) -> None:
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise Fail(f"cannot load {path}: {exc}") from exc
     require(isinstance(value, dict), f"root must be object: {path}")
     return value
@@ -148,6 +148,7 @@ def main() -> int:
     print("out-of-order same-environment supersedes accepted: false")
     print("current generation pointer drift accepted: false")
     print("boolean registered-generation counts accepted: false")
+    print("malformed or unreadable generation registry accepted: false")
     print("unexpected generation-validator exceptions normalized as semantic rejection: false")
     print("production evidence: false")
     print("production ready: false")
