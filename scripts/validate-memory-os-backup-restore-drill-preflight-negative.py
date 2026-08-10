@@ -163,6 +163,18 @@ def main() -> int:
     expect_rejected(
         validator,
         canonical,
+        "boolean canonical registered generation count",
+        lambda value: value["currentState"].__setitem__("registeredGenerationCount", False),
+    )
+    expect_rejected(
+        validator,
+        canonical,
+        "boolean canonical approved objective count",
+        lambda value: value["currentState"].__setitem__("approvedRecoveryObjectiveCount", False),
+    )
+    expect_rejected(
+        validator,
+        canonical,
         "unexpected future readiness field",
         lambda value: value["readiness"].__setitem__("unexpectedReadinessAlias", False),
     )
@@ -221,7 +233,7 @@ def main() -> int:
     print("shared semantic eligibility helper contract binding: true")
     print("stable blocker ids require semantic preflight gates: true")
     print("registered generation count alone satisfies blocker: false")
-    print("boolean objective/request counts accepted: false")
+    print("boolean registry/current-state counts accepted: false")
     print("unexpected semantic helper exceptions normalized as domain rejection: false")
     print("stale state aliases accepted: false")
     print("unexpected readiness aliases accepted: false")
