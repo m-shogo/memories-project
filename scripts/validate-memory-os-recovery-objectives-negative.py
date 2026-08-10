@@ -153,6 +153,28 @@ def main() -> int:
     ]
     expect_rejected(writer, "missing approval evidence path", lambda: writer.validate_record(missing_approval))
 
+    malformed_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            prefix="malformed-objective-approval-",
+            suffix=".json",
+            dir=APPROVAL_FIXTURE_DIR,
+            delete=False,
+            encoding="utf-8",
+        ) as handle:
+            handle.write("{not-json\n")
+            malformed_path = Path(handle.name)
+        malformed_approval = copy.deepcopy(valid)
+        malformed_approval["approvalEvidenceRefs"] = [
+            f"{APPROVAL_FIXTURE_REF}/recovery-owner.valid.json",
+            malformed_path.relative_to(ROOT).as_posix(),
+        ]
+        expect_rejected(writer, "malformed typed approval authority JSON", lambda: writer.validate_record(malformed_approval))
+    finally:
+        if malformed_path is not None:
+            malformed_path.unlink(missing_ok=True)
+
     non_utc = copy.deepcopy(valid)
     non_utc["approvedAt"] = "2026-08-08T09:00:00+09:00"
     expect_rejected(writer, "approvedAt without UTC Z", lambda: writer.validate_record(non_utc))
@@ -170,6 +192,7 @@ def main() -> int:
     print("objective values invented/defaulted: false")
     print("arbitrary repository file approval accepted: false")
     print("objective authority refs escape repository: false")
+    print("malformed typed approval authority accepted: false")
     print("typed approval objective/value binding enforced: true")
     print("unexpected implementation exceptions accepted as rejection: false")
     print("boolean objective values accepted: false")
