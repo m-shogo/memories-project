@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -44,10 +45,26 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def source_is_ancestor(value: Any) -> bool:
+    if not isinstance(value, str) or SHA40.fullmatch(value) is None:
+        return False
+    try:
+        return subprocess.run(
+            ["git", "merge-base", "--is-ancestor", value, "HEAD"],
+            cwd=ROOT,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ).returncode == 0
+    except OSError:
+        return False
+
+
 def validate_result(result: dict[str, Any], expected_sha: str | None, migration_count: int) -> None:
     require(result.get("schemaVersion") == "memory-os-local-apple-replay-restore-results.v1", "result schema drift")
     commit_sha = result.get("commitSha")
     require(isinstance(commit_sha, str) and SHA40.fullmatch(commit_sha), "result commit SHA invalid")
+    require(source_is_ancestor(commit_sha), "Apple replay restore result source is not an ancestor of current HEAD")
     if expected_sha:
         require(commit_sha == expected_sha, "Apple replay restore result is not exact-source")
     environment = result.get("environment")
@@ -132,7 +149,12 @@ def main() -> int:
     if expected_sha:
         require(SHA40.fullmatch(expected_sha) is not None, "EXPECTED_COMMIT_SHA invalid")
         require(RESULT.is_file(), "exact-source replay restore result missing")
-    if RESULT.is_file():
+    result_present = RESULT.is_file()
+    require(readiness.get("exactSourcePassResultCommitted") is result_present,
+            "readiness exactSourcePassResultCommitted does not match committed result presence")
+    require(readiness.get("localReplayGuardRestoreProven") is result_present,
+            "readiness localReplayGuardRestoreProven does not match committed PASS evidence presence")
+    if result_present:
         validate_result(load(RESULT), expected_sha, migration_count)
 
     status = load(STATUS)
@@ -142,7 +164,7 @@ def main() -> int:
 
     print("Memory OS local Apple replay restore validation PASS")
     print(f"canonical migrations: {migration_count}")
-    print(f"result present: {RESULT.is_file()}")
+    print(f"result present: {result_present}")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
