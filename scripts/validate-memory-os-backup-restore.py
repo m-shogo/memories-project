@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from memory_os_backup_restore_blockers import CANONICAL_GAPS
+
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/backup-restore-contract.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
@@ -40,14 +42,7 @@ REQUIRED_STATUS_REFS = {
     "docs/runbooks/memory-os-backup-restore.md",
     "scripts/validate-memory-os-backup-restore.py",
 }
-CANONICAL_GAP_FRAGMENTS = (
-    "production PostgreSQL backup and PITR schedule",
-    "production independent object backup retention",
-    "approved and measured RPO and RTO",
-    "production-shaped cross-cluster isolated restore drill",
-    "production deletion, expired/revoked-session, replay, idempotency and lease non-resurrection verification after restore",
-    "independent review of generation-bound recovery evidence",
-)
+CANONICAL_GAP_FRAGMENTS = CANONICAL_GAPS
 REQUIRED_RUNBOOK_HEADINGS = [
     "## Current state",
     "## Non-negotiable rules",
