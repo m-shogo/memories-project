@@ -105,7 +105,7 @@ def generations() -> list[dict[str, Any]]:
     rows = registry.get("generations")
     count = registry.get("registeredGenerationCount")
     require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "environment generation registry invalid")
-    require(isinstance(count, int) and count == len(rows), "environment generation registry count drift")
+    require(isinstance(count, int) and not isinstance(count, bool) and count == len(rows), "environment generation registry count drift")
     return rows
 
 
@@ -124,7 +124,7 @@ def require_preflight_eligible_generation(generation_id: str, field: str) -> Non
     helper = load_eligibility_helper()
     try:
         helper.eligible_generation_by_id(generation_id, registry_path=GEN_REGISTRY)
-    except Exception as exc:
+    except helper.Fail as exc:
         raise Fail(f"{field} is not an unsuperseded restore-preflight-eligible generation: {exc}") from exc
 
 
@@ -134,7 +134,7 @@ def objective_by_id(objective_id: Any) -> dict[str, Any]:
     rows = registry.get("records")
     count = registry.get("approvedObjectiveCount")
     require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "recovery objective registry invalid")
-    require(isinstance(count, int) and count == len(rows), "recovery objective registry count drift")
+    require(isinstance(count, int) and not isinstance(count, bool) and count == len(rows), "recovery objective registry count drift")
     require(isinstance(objective_id, str) and objective_id, "recoveryObjectivesId required")
     matches = [row for row in rows if row.get("objectiveId") == objective_id]
     require(len(matches) == 1, "recoveryObjectivesId is not uniquely registered")
@@ -288,7 +288,7 @@ def validate_request(record: dict[str, Any], *, require_current: bool = True) ->
 def request_currently_executable(record: dict[str, Any]) -> bool:
     try:
         validate_request(record, require_current=True)
-    except Exception:
+    except Fail:
         return False
     return True
 
