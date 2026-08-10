@@ -95,16 +95,25 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def repo_relative(path: Path) -> Path:
+    try:
+        return path.resolve().relative_to(ROOT.resolve())
+    except ValueError as exc:
+        raise Fail(f"artifact path escapes repository root: {path}") from exc
+
+
 def load(path: Path) -> dict[str, Any]:
+    relative = repo_relative(path)
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError) as exc:
-        raise Fail(f"cannot load {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+        raise Fail(f"cannot load {relative}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be object: {relative}")
     return value
 
 
 def load_eligibility_helper():
+    repo_relative(ELIGIBILITY_HELPER)
     spec = importlib.util.spec_from_file_location("memory_os_environment_generation_eligibility_for_restore_preflight", ELIGIBILITY_HELPER)
     require(spec is not None and spec.loader is not None, "cannot load shared environment generation eligibility authority")
     module = importlib.util.module_from_spec(spec)
@@ -113,6 +122,7 @@ def load_eligibility_helper():
 
 
 def run_validator(path: Path, name: str) -> None:
+    repo_relative(path)
     completed = subprocess.run([sys.executable, str(path)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     require(completed.returncode == 0, f"{name} validator failed:\n{completed.stdout[-4000:]}{completed.stderr[-4000:]}")
 
@@ -225,7 +235,7 @@ def main() -> int:
         "workflow": Path(".github/workflows/backup-restore-drill-preflight.yml"),
     }
     for field, path in refs.items():
-        expected = str(path.relative_to(ROOT)) if path.is_absolute() else str(path)
+        expected = str(repo_relative(path)) if path.is_absolute() else str(path)
         require(contract.get(field) == expected, f"preflight ref drift: {field}")
         require((ROOT / expected).is_file(), f"preflight artifact missing: {expected}")
 
