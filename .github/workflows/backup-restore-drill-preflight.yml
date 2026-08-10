@@ -17,6 +17,7 @@ on:
       - "docs/evidence/recovery-objectives/approvals/**"
       - "docs/fixtures/memory-os-operability/backup-restore-generation-evidence/**"
       - "docs/fixtures/memory-os-operability/recovery-objectives-approval/**"
+      - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
       - "scripts/register-memory-os-recovery-objectives.py"
@@ -47,6 +48,7 @@ on:
       - "docs/evidence/recovery-objectives/approvals/**"
       - "docs/fixtures/memory-os-operability/backup-restore-generation-evidence/**"
       - "docs/fixtures/memory-os-operability/recovery-objectives-approval/**"
+      - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
       - "scripts/register-memory-os-recovery-objectives.py"
@@ -98,6 +100,7 @@ jobs:
           : > "$log"
           code=0
           python -m py_compile \
+            scripts/memory_os_backup_restore_blockers.py \
             scripts/validate-memory-os-production-equivalent-environment-generation.py \
             scripts/register-memory-os-recovery-objectives.py \
             scripts/validate-memory-os-recovery-objectives.py \
@@ -145,6 +148,7 @@ jobs:
             'docs/evidence/recovery-objectives/approvals/**' \
             'docs/fixtures/memory-os-operability/backup-restore-generation-evidence/**' \
             'docs/fixtures/memory-os-operability/recovery-objectives-approval/**' \
+            scripts/memory_os_backup_restore_blockers.py \
             scripts/memory_os_environment_generation_eligibility.py \
             scripts/validate-memory-os-production-equivalent-environment-generation.py \
             scripts/register-memory-os-recovery-objectives.py \
