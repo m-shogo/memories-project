@@ -203,6 +203,19 @@ def main() -> int:
     state = contract.get("currentAdmissionState")
     readiness = contract.get("readiness")
     require(isinstance(state, dict) and isinstance(readiness, dict), "contract authority state missing")
+    state_counts = (
+        "registeredEnvironmentGenerationCount",
+        "preflightEligibleEnvironmentGenerationCount",
+        "unsupersededPreflightEligibleEnvironmentGenerationCount",
+        "distinctPreflightEligibleEnvironmentCount",
+        "eligibleDirectedSourceTargetPairCount",
+        "approvedRecoveryObjectiveCount",
+        "registeredRequestCount",
+        "currentExecutableRequestCount",
+    )
+    for field in state_counts:
+        value = state.get(field)
+        require(isinstance(value, int) and not isinstance(value, bool) and value >= 0, f"contract {field} must be a non-boolean count")
     require(state.get("registeredEnvironmentGenerationCount") == generation_count, "contract generation count drift")
     require(state.get("preflightEligibleEnvironmentGenerationCount") == eligible_count, "contract semantic eligible count drift")
     require(state.get("unsupersededPreflightEligibleEnvironmentGenerationCount") == unsuperseded_eligible_count, "contract unsuperseded semantic eligible count drift")
@@ -233,7 +246,7 @@ def main() -> int:
     print(f"registered drill requests: {request_count}")
     print(f"currently executable requests: {executable_count}")
     print(f"admission decision: {decision}")
-    print("boolean registry aggregate counts accepted: false")
+    print("boolean registry/contract aggregate counts accepted: false")
     print("registered generation or historical objective count alone creates planning authority: false")
     print("historical admitted requests survive later generation/objective supersession: true")
     print("planning authority only: true")
