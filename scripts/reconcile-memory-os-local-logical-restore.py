@@ -23,13 +23,6 @@ NEW_EXISTING = (
     "synthetic deleted account and session-digest non-resurrection check across logical dump/restore",
     "exact-source machine-readable local restore result with explicit same-cluster/non-PITR limitations",
 )
-NEW_MISSING = (
-    "production PostgreSQL backup schedule, independent retention and PITR configuration",
-    "cross-cluster isolated restore rehearsal with approved recovery owner and promotion decision",
-    "coherent PostgreSQL and object-version recovery-point selection",
-    "approved and measured RPO/RTO",
-    "production deletion and expired-session non-resurrection verification after restore",
-)
 NEW_REFS = (
     "contracts/operations/local-logical-restore-contract.v1.json",
     "scripts/run-memory-os-local-logical-restore.sh",
@@ -37,6 +30,14 @@ NEW_REFS = (
     "scripts/reconcile-memory-os-local-logical-restore.py",
     "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json",
     ".github/workflows/local-logical-restore.yml",
+)
+CANONICAL_GAP_FRAGMENTS = (
+    "production PostgreSQL backup and PITR schedule",
+    "production independent object backup retention",
+    "approved and measured RPO and RTO",
+    "production-shaped cross-cluster isolated restore drill",
+    "production deletion, expired/revoked-session, replay, idempotency and lease non-resurrection verification after restore",
+    "independent review of generation-bound recovery evidence",
 )
 
 
@@ -65,6 +66,16 @@ def append_once(items: list[Any], value: str) -> bool:
         return False
     items.append(value)
     return True
+
+
+def require_canonical_blockers(missing: list[Any]) -> None:
+    require(len(missing) == len(CANONICAL_GAP_FRAGMENTS),
+            "local logical restore cannot rewrite or expand the canonical OPS-P0-007 blocker set")
+    require(all(isinstance(item, str) for item in missing),
+            "OPS-P0-007 missingEvidence must contain only strings")
+    for fragment in CANONICAL_GAP_FRAGMENTS:
+        require(sum(fragment in item for item in missing) == 1,
+                f"canonical OPS-P0-007 blocker missing or duplicated: {fragment}")
 
 
 def main() -> int:
@@ -107,6 +118,7 @@ def main() -> int:
         refs = []
         gate["evidenceRefs"] = refs
     require(isinstance(refs, list), "OPS-P0-007 evidenceRefs must be a list")
+    require_canonical_blockers(missing)
 
     changed = False
     if gate.get("status") == "NOT_IMPLEMENTED_OR_PROVEN":
@@ -114,33 +126,14 @@ def main() -> int:
         changed = True
     for item in NEW_EXISTING:
         changed = append_once(existing, item) or changed
-    # Replace the old coarse list with precise remaining production gaps while
-    # preserving unrelated additions made by future work.
-    for obsolete in (
-        "PostgreSQL backup and PITR configuration",
-        "independent object-version retention",
-        "RPO and RTO",
-        "isolated restore rehearsal",
-        "deletion and expired-session semantics after restore",
-    ):
-        if obsolete in missing:
-            missing.remove(obsolete)
-            changed = True
-    for item in NEW_MISSING:
-        changed = append_once(missing, item) or changed
     for ref in NEW_REFS:
         require((ROOT / ref).is_file(), f"logical restore evidence missing: {ref}")
         changed = append_once(refs, ref) or changed
 
-    for required_gap in (
-        "production PostgreSQL backup schedule",
-        "cross-cluster isolated restore",
-        "PostgreSQL and object-version recovery-point",
-        "approved and measured RPO/RTO",
-        "production deletion and expired-session",
-    ):
-        require(any(required_gap in item for item in missing),
-                f"required OPS-P0-007 gap disappeared: {required_gap}")
+    # Local evidence can add local evidence only. The canonical production
+    # blocker set is owned by reconcile-memory-os-backup-authority.py and must
+    # never be expanded or rewritten by this per-drill reconciler.
+    require_canonical_blockers(missing)
     require(gate.get("status") != "READY",
             "local logical restore cannot make OPS-P0-007 READY")
     require(status.get("productionDecision") == "NO_GO",
@@ -155,7 +148,7 @@ def main() -> int:
         json.dumps(status, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
-    print("Registered exact-source local logical restore PASS; OPS-P0-007 remains non-ready")
+    print("Registered exact-source local logical restore PASS; canonical production blockers unchanged")
     return 0
 
 
