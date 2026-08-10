@@ -37,24 +37,38 @@ def valid_count(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
+def repo_relative(path: Path) -> Path:
+    try:
+        return path.resolve(strict=False).relative_to(ROOT.resolve())
+    except (OSError, ValueError) as exc:
+        raise Fail(f"authority path escapes repository: {path}") from exc
+
+
 def load(path: Path) -> dict[str, Any]:
+    relative = repo_relative(path)
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
-        raise Fail(f"cannot load {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+    except (FileNotFoundError, json.JSONDecodeError, OSError) as exc:
+        raise Fail(f"cannot load {relative}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be object: {relative}")
     return value
 
 
 def load_generation_writer():
+    relative = repo_relative(GEN_WRITER)
     spec = importlib.util.spec_from_file_location("memory_os_generation_writer_admission_chain_reconcile", GEN_WRITER)
-    require(spec is not None and spec.loader is not None, "cannot load generation recovery writer")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    require(spec is not None and spec.loader is not None, f"cannot load {relative}")
+    try:
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except (FileNotFoundError, OSError) as exc:
+        raise Fail(f"cannot load {relative}: {exc}") from exc
     return module
 
 
 def main() -> int:
+    repo_relative(CONTRACT)
+    repo_relative(VALIDATOR)
     original_contract_text = CONTRACT.read_text(encoding="utf-8")
     contract = load(CONTRACT)
     preflight_contract = load(PREFLIGHT)
