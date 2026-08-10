@@ -55,6 +55,7 @@ def load_generation_writer():
 
 
 def main() -> int:
+    original_contract_text = CONTRACT.read_text(encoding="utf-8")
     contract = load(CONTRACT)
     preflight_contract = load(PREFLIGHT)
     drill_registry = load(DRILL_REGISTRY)
@@ -97,12 +98,14 @@ def main() -> int:
     gen_rows = gen_registry.get("records")
     gen_count = gen_registry.get("registeredEvidenceCount")
     bound_count = gen_registry.get("drillRequestBoundEvidenceCount")
+    registry_candidate_count = gen_registry.get("productionEquivalentRecoveryCandidateCount")
     require(isinstance(gen_rows, list) and valid_count(gen_count) and gen_count == len(gen_rows), "generation evidence count drift")
     require(valid_count(bound_count) and bound_count == gen_count, "every generation evidence row must be drill-request-bound")
+    require(valid_count(registry_candidate_count) and registry_candidate_count <= gen_count, "generation candidate count invalid")
     for row in gen_rows:
         gen_writer.validate_record(row, require_current_drill_request=False)
     candidate_count = sum(1 for row in gen_rows if gen_writer.candidate(row))
-    require(gen_registry.get("productionEquivalentRecoveryCandidateCount") == candidate_count, "generation candidate count drift")
+    require(registry_candidate_count == candidate_count, "generation candidate count drift")
 
     binding_boundary = binding_contract.get("currentBoundary")
     require(isinstance(binding_boundary, dict), "generation binding currentBoundary missing")
@@ -128,6 +131,12 @@ def main() -> int:
     require(typed_covered_count <= typed_complete_count <= len(typed_rows), "typed registry count ordering invalid")
     require(typed_covered_count == candidate_count, "typed candidate coverage must equal final candidate count")
 
+    require(status.get("productionDecision") == "NO_GO", "chain reconcile cannot change production decision")
+    gate = next((row for row in status.get("areas", []) if isinstance(row, dict) and row.get("id") == "OPS-P0-007"), None)
+    require(isinstance(gate, dict), "OPS-P0-007 missing")
+    require(gate.get("status") == "PARTIAL_FOUNDATIONS_ONLY" and gate.get("blocking") is True, "OPS-P0-007 must remain blocking foundation-only")
+    require_canonical_gaps(gate.get("missingEvidence"), Fail)
+
     boundary = contract.get("currentBoundary")
     require(isinstance(boundary, dict), "chain currentBoundary missing")
     boundary["preflightDecision"] = preflight_decision
@@ -149,14 +158,10 @@ def main() -> int:
     boundary["productionDecision"] = "NO_GO"
     CONTRACT.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    require(status.get("productionDecision") == "NO_GO", "chain reconcile cannot change production decision")
-    gate = next((row for row in status.get("areas", []) if isinstance(row, dict) and row.get("id") == "OPS-P0-007"), None)
-    require(isinstance(gate, dict), "OPS-P0-007 missing")
-    require(gate.get("status") == "PARTIAL_FOUNDATIONS_ONLY" and gate.get("blocking") is True, "OPS-P0-007 must remain blocking foundation-only")
-    require_canonical_gaps(gate.get("missingEvidence"), Fail)
-
     completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-    require(completed.returncode == 0, f"post-reconcile admission-chain validator failed:\n{completed.stdout[-8000:]}{completed.stderr[-8000:]}")
+    if completed.returncode != 0:
+        CONTRACT.write_text(original_contract_text, encoding="utf-8")
+        raise Fail(f"post-reconcile admission-chain validator failed; original contract restored:\n{completed.stdout[-8000:]}{completed.stderr[-8000:]}")
 
     print("Memory OS backup/restore admission chain reconciliation PASS")
     print(f"preflight: {preflight_decision}")
@@ -166,6 +171,7 @@ def main() -> int:
     print(f"generation-bound backup/restore: {backup_count}/{restore_count}")
     print(f"complete typed records/final candidates: {typed_complete_count}/{candidate_count}")
     print("boolean aggregate counts accepted by reconciler: false")
+    print("failed post-validation leaves derived contract mutation behind: false")
     print(f"candidate-level independent evidence review completed: {str(candidate_count > 0).lower()}")
     print("human production-promotion review completed: false")
     print("human production-promotion authorized: false")
