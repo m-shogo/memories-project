@@ -120,6 +120,7 @@ def main() -> int:
         "generationBoundBackupCountMustMatchBindingAuthority",
         "generationBoundRestoreCountMustMatchBindingAuthority",
         "recoveryAggregateOrderingMustRemainMonotonic",
+        "typedCompleteCountMustBeRederivedFromValidatedEightDomainEvidence",
         "genericNonResurrectionPassCannotCreateFinalCandidate",
         "finalCandidateRequiresCompleteTypedEightDomainCoverage",
         "finalCandidateRequiresCurrentApprovedRecoveryObjective",
