@@ -11,6 +11,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from memory_os_backup_restore_blockers import require_canonical_gaps
+
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/local-apple-replay-restore-contract.v1.json"
 MIGRATION = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
@@ -161,6 +163,7 @@ def main() -> int:
     require(status.get("productionDecision") == "NO_GO", "local replay restore cannot change production decision")
     gate = next((row for row in status.get("areas", []) if isinstance(row, dict) and row.get("id") == "OPS-P0-007"), None)
     require(isinstance(gate, dict) and gate.get("status") != "READY", "local replay restore cannot make OPS-P0-007 READY")
+    require_canonical_gaps(gate.get("missingEvidence"), Fail)
 
     print("Memory OS local Apple replay restore validation PASS")
     print(f"canonical migrations: {migration_count}")
