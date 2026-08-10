@@ -104,6 +104,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Capture exact inventory source
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - name: Generate and validate inventory
         id: inventory
         run: |
@@ -205,6 +213,11 @@ jobs:
         if: steps.inventory.outputs.exit_code == '0'
         run: |
           set -euo pipefail
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Inventory source HEAD changed during reconciliation; refusing stale derived authority."
+            exit 75
+          fi
           git rm -f docs/fixtures/memory-os-operability/operability-admission-inventory-diagnostic.last.json 2>/dev/null || true
           git add \
             contracts/operations/operability-admission-inventory.v1.json \
@@ -217,11 +230,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(ops): refresh operability admission inventory"
-            for attempt in 1 2 3 4; do
-              git pull --rebase origin so
-              if git push origin HEAD:so; then exit 0; fi
-              sleep 2
-            done
+            if git push origin HEAD:so; then exit 0; fi
             exit 1
           fi
       - name: Record privacy-safe inventory diagnostic
