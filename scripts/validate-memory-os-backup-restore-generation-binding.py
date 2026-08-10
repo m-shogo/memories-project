@@ -88,6 +88,7 @@ def main() -> int:
         require(promotion.get(key) is False, f"unsafe restore promotion rule: {key}")
     require(promotion.get("isolatedRestoreRequired") is True, "isolated restore must remain required")
     require(promotion.get("independentReviewRequired") is True, "candidate-level independent evidence review must remain required")
+    require(promotion.get("candidateCountMustBeRederivedFromCurrentExecutableReviewedEvidence") is True, "candidate aggregate must be re-derived from current executable reviewed evidence")
     require(promotion.get("humanProductionPromotionReviewRemainsSeparate") is True, "human production-promotion review must remain separate")
 
     backup_readiness = backup.get("readiness")
