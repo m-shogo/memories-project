@@ -1,0 +1,44 @@
+{
+  "contractId": "memory-os.operability.sustained-soak-independent-review.v1",
+  "schemaVersion": "memory-os-sustained-soak-independent-review.v1",
+  "description": "Fail-closed admission contract for future human-approved leak/stability criteria and independent review. This contract does not define thresholds, does not create leak proof, and does not create production evidence.",
+  "appendOnlyRegistry": true,
+  "criteriaAuthority": {
+    "humanApprovedCriteriaRequired": true,
+    "automaticCriteriaGenerationForbidden": true,
+    "automaticThresholdSelectionForbidden": true,
+    "criteriaMustBindExactRunIds": true,
+    "criteriaMustBindExactRunEvidenceDigests": true,
+    "criteriaMustDeclareMetricAndUnit": true,
+    "criteriaMustDeclareDirectionAndAcceptanceRule": true,
+    "criteriaMustDeclareReviewScope": true,
+    "criteriaMustPreexistIndependentReview": true
+  },
+  "reviewAuthority": {
+    "independentReviewerRequired": true,
+    "criteriaApproverAndReviewerMustBeDistinct": true,
+    "reviewMustBindApprovedCriteriaRecord": true,
+    "reviewMustBindExactRunIds": true,
+    "reviewMustBindExactRunEvidenceDigests": true,
+    "reviewOutcomeValues": [
+      "PASS",
+      "FAIL"
+    ],
+    "descriptiveTrendReviewIsNotIndependentReview": true,
+    "passingReviewDoesNotCreateProductionEvidence": true,
+    "passingReviewDoesNotAuthorizeProductionPromotion": true
+  },
+  "promotionBoundary": {
+    "localSustainedSoakEvidenceMaySatisfyReviewInput": true,
+    "localSustainedSoakEvidenceAloneCreatesLeakProof": false,
+    "emptyRegistryCreatesLeakProof": false,
+    "automaticLeakProofForbidden": true,
+    "automaticCapacityBoundaryPromotionForbidden": true,
+    "automaticOperationalThresholdPromotionForbidden": true,
+    "automaticProductionSoakPromotionForbidden": true,
+    "productionEvidence": false,
+    "productionReady": false
+  },
+  "registry": "contracts/operations/sustained-soak-independent-review-registry.v1.json",
+  "validator": "scripts/validate-memory-os-sustained-soak-independent-review.py"
+}
