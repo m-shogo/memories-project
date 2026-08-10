@@ -62,6 +62,15 @@ def run_with_overrides(module: Any, overrides: dict[Path, dict[str, Any]]) -> in
         module.load = original_load
 
 
+def expect_reconciler_path_rejected(reconciler: Any, field: str, escaped: Path, action: Callable[[], Any]) -> None:
+    original = getattr(reconciler, field)
+    setattr(reconciler, field, escaped)
+    try:
+        expect_rejected(reconciler, f"reconciler {field} path escapes repository root", action)
+    finally:
+        setattr(reconciler, field, original)
+
+
 def main() -> int:
     module = load_module()
     real_load = module.load
@@ -269,6 +278,20 @@ def main() -> int:
     reconcile_binding = copy.deepcopy(reconcile_load(reconciler.BINDING_CONTRACT))
     reconcile_typed = copy.deepcopy(reconcile_load(reconciler.TYPED_REGISTRY))
 
+    escaped_reconcile = Path("/tmp/memory-os-backup-restore-admission-chain-reconcile-escaped.json")
+    expect_reconciler_path_rejected(
+        reconciler,
+        "CONTRACT",
+        escaped_reconcile,
+        lambda: reconciler.main(),
+    )
+    expect_reconciler_path_rejected(
+        reconciler,
+        "GEN_WRITER",
+        escaped_reconcile,
+        lambda: reconciler.load_generation_writer(),
+    )
+
     reconcile_boolean_pair = copy.deepcopy(reconcile_preflight)
     reconcile_boolean_pair["currentState"]["eligibleDirectedSourceTargetPairCount"] = False
     expect_rejected(
@@ -311,6 +334,7 @@ def main() -> int:
 
     print("Memory OS backup/restore admission-chain negative suite PASS")
     print("escaped JSON/module authority path accepted: false")
+    print("escaped reconciler contract/module authority path accepted: false")
     print("chain stage deletion/reordering accepted: false")
     print("backup/restore aggregate rederivation downgrade accepted: false")
     print("typed eight-domain rederivation downgrade accepted: false")
