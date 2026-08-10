@@ -83,12 +83,12 @@ def repo_ref(value: Any, field: str) -> str:
     return value
 
 
-def parse_timestamp(value: Any) -> None:
-    require(isinstance(value, str) and value.endswith("Z"), "requestedAt must be UTC RFC3339 ending in Z")
+def parse_timestamp(value: Any, field: str) -> datetime:
+    require(isinstance(value, str) and value.endswith("Z"), f"{field} must be UTC RFC3339 ending in Z")
     try:
-        datetime.fromisoformat(value[:-1] + "+00:00")
+        return datetime.fromisoformat(value[:-1] + "+00:00")
     except ValueError as exc:
-        raise Fail("requestedAt invalid") from exc
+        raise Fail(f"{field} invalid") from exc
 
 
 def load_eligibility_helper():
@@ -153,7 +153,7 @@ def approval_document(ref: Any, field: str) -> dict[str, Any]:
     document = load(ROOT / relative)
     require(set(document) == APPROVAL_FIELDS, f"{field} approval field drift")
     require(document.get("schemaVersion") == APPROVAL_SCHEMA, f"{field} approval schemaVersion drift")
-    parse_timestamp(document.get("approvedAt"))
+    parse_timestamp(document.get("approvedAt"), f"{field}.approvedAt")
     reviewer = document.get("reviewerPseudonym")
     require(isinstance(reviewer, str) and reviewer.strip(), f"{field} reviewerPseudonym required")
     require(document.get("decision") == "APPROVED", f"{field} approval decision must be APPROVED")
@@ -168,6 +168,9 @@ def validate_request_approval(document: dict[str, Any], record: dict[str, Any], 
     digest = document.get("requestRecordSha256")
     require(isinstance(digest, str) and DIGEST.fullmatch(digest), f"{field} requestRecordSha256 invalid")
     require(digest == canonical_request_sha256(record), f"{field} requestRecordSha256 binding mismatch")
+    approved_at = parse_timestamp(document.get("approvedAt"), f"{field}.approvedAt")
+    requested_at = parse_timestamp(record.get("requestedAt"), "requestedAt")
+    require(approved_at >= requested_at, f"{field} approval predates the request")
     for approval_field, request_field in (
         ("requestId", "requestId"),
         ("sourceEnvironmentGenerationId", "sourceEnvironmentGenerationId"),
@@ -189,7 +192,7 @@ def validate_request(record: dict[str, Any], *, require_current: bool = True) ->
     require(isinstance(rules, dict) and rules.get("approvalDocumentsMustBindCanonicalRequestRecordDigest") is True, "canonical request digest approval rule missing")
     request_id = record.get("requestId")
     require(isinstance(request_id, str) and REQUEST_ID.fullmatch(request_id), "requestId invalid")
-    parse_timestamp(record.get("requestedAt"))
+    parse_timestamp(record.get("requestedAt"), "requestedAt")
 
     rows = generations()
     source = generation_by_id(rows, record.get("sourceEnvironmentGenerationId"), "sourceEnvironmentGenerationId")
@@ -354,6 +357,7 @@ def main() -> int:
     print(f"Registered production-equivalent backup/restore drill request: {record['requestId']}")
     print("source/target semantically preflight eligible: true")
     print("typed human approvals bound to canonical request digest: true")
+    print("approval chronology bound to request creation: true")
     print("planning authority only: true")
     print("execution-time revalidation required: true")
     print("production evidence: false")
