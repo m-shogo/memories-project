@@ -168,6 +168,25 @@ def main() -> int:
         finally:
             link_path.unlink(missing_ok=True)
 
+    canonical_ref = state[module.LOCAL_FOUNDATIONS]["foundations"][0]["contract"]
+    require(isinstance(canonical_ref, str) and canonical_ref, "baseline local foundation contract ref missing")
+
+    absolute_ref_state = copy.deepcopy(state)
+    absolute_ref_state[module.LOCAL_FOUNDATIONS]["foundations"][0]["contract"] = str((ROOT / canonical_ref).resolve())
+    expect_rejected(
+        module,
+        "local foundation absolute in-repository path is not canonical authority",
+        lambda: run_with_state(module, absolute_ref_state),
+    )
+
+    parent_alias_state = copy.deepcopy(state)
+    parent_alias_state[module.LOCAL_FOUNDATIONS]["foundations"][0]["contract"] = f"scripts/../{canonical_ref}"
+    expect_rejected(
+        module,
+        "local foundation parent-traversal alias is not canonical authority",
+        lambda: run_with_state(module, parent_alias_state),
+    )
+
     impossible_count_order = copy.deepcopy(state)
     impossible_count_order[module.EVIDENCE_REGISTRY]["completeGenerationBoundRestoreCount"] = 0
     expect_rejected(
@@ -293,6 +312,7 @@ def main() -> int:
     print("Memory OS backup/restore generation binding negative suite PASS")
     print("artifact path escape accepted: false")
     print("local foundation evidence symlink escape accepted: false")
+    print("absolute or parent-traversal local foundation ref accepted: false")
     print("candidate count may exceed complete restore count: false")
     print("generation-bound restore count may exceed backup count: false")
     print("backup aggregate without row-derived complete evidence accepted: false")
