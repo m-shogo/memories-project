@@ -190,15 +190,18 @@ def validate_request(record: dict[str, Any], *, require_current: bool = True) ->
     require(set(contract.get("requiredApprovalFields", [])) == APPROVAL_FIELDS, "approval field contract/writer drift")
     rules = contract.get("admissionRules")
     require(isinstance(rules, dict) and rules.get("approvalDocumentsMustBindCanonicalRequestRecordDigest") is True, "canonical request digest approval rule missing")
+    require(rules.get("approvalDocumentsMustNotPredateRequest") is True, "approval chronology rule missing")
     request_id = record.get("requestId")
     require(isinstance(request_id, str) and REQUEST_ID.fullmatch(request_id), "requestId invalid")
-    parse_timestamp(record.get("requestedAt"), "requestedAt")
+    requested_at = parse_timestamp(record.get("requestedAt"), "requestedAt")
 
     rows = generations()
     source = generation_by_id(rows, record.get("sourceEnvironmentGenerationId"), "sourceEnvironmentGenerationId")
     target = generation_by_id(rows, record.get("restoreTargetEnvironmentGenerationId"), "restoreTargetEnvironmentGenerationId")
     require(source.get("generationId") != target.get("generationId"), "source and restore-target generation IDs must differ")
     require(source.get("environmentId") != target.get("environmentId"), "source and restore-target environment IDs must differ")
+    require(requested_at >= parse_timestamp(source.get("registeredAt"), "source generation registeredAt"), "request predates source generation registration")
+    require(requested_at >= parse_timestamp(target.get("registeredAt"), "restore-target generation registeredAt"), "request predates restore-target generation registration")
     if require_current:
         require(generation_is_unsuperseded(rows, source["generationId"]), "source generation has been superseded")
         require(generation_is_unsuperseded(rows, target["generationId"]), "restore-target generation has been superseded")
@@ -216,7 +219,8 @@ def validate_request(record: dict[str, Any], *, require_current: bool = True) ->
         objective = current_objective()
         require(record.get("recoveryObjectivesId") == objective.get("objectiveId"), "request must bind current approved recovery objective")
     else:
-        objective_by_id(record.get("recoveryObjectivesId"))
+        objective = objective_by_id(record.get("recoveryObjectivesId"))
+    require(requested_at >= parse_timestamp(objective.get("approvedAt"), "recovery objective approvedAt"), "request predates recovery objective approval")
 
     isolation = record.get("isolationPolicy")
     require(isinstance(isolation, dict) and set(isolation) == {"environmentClass", "networkIsolated", "productionRoutingForbidden", "syntheticOrApprovedSanitizedDataOnly"}, "isolationPolicy field drift")
@@ -356,6 +360,7 @@ def main() -> int:
 
     print(f"Registered production-equivalent backup/restore drill request: {record['requestId']}")
     print("source/target semantically preflight eligible: true")
+    print("request chronology bound to generation/objective authority: true")
     print("typed human approvals bound to canonical request digest: true")
     print("approval chronology bound to request creation: true")
     print("planning authority only: true")
