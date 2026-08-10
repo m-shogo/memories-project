@@ -41,6 +41,7 @@
     "generationBoundBackupCountMustMatchBindingAuthority": true,
     "generationBoundRestoreCountMustMatchBindingAuthority": true,
     "recoveryAggregateOrderingMustRemainMonotonic": true,
+    "typedCompleteCountMustBeRederivedFromValidatedEightDomainEvidence": true,
     "genericNonResurrectionPassCannotCreateFinalCandidate": true,
     "finalCandidateRequiresCompleteTypedEightDomainCoverage": true,
     "finalCandidateRequiresCurrentApprovedRecoveryObjective": true,
