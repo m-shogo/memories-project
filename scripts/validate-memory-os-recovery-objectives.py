@@ -93,7 +93,7 @@ def main() -> int:
     rows = registry.get("records")
     count = registry.get("approvedObjectiveCount")
     require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "objectives records invalid")
-    require(isinstance(count, int) and count == len(rows), "approvedObjectiveCount drift")
+    require(isinstance(count, int) and not isinstance(count, bool) and count == len(rows), "approvedObjectiveCount drift")
     ids: set[str] = set()
     previous: str | None = None
     for row in rows:
@@ -108,7 +108,9 @@ def main() -> int:
 
     authority = contract.get("currentAuthority")
     require(isinstance(authority, dict), "currentAuthority required")
-    require(authority.get("approvedObjectiveCount") == count, "contract objective count drift")
+    authority_count = authority.get("approvedObjectiveCount")
+    require(isinstance(authority_count, int) and not isinstance(authority_count, bool), "contract approvedObjectiveCount must be integer")
+    require(authority_count == count, "contract objective count drift")
     require(authority.get("currentObjectiveId") == current_id, "contract currentObjectiveId drift")
     defined = count > 0
     require(authority.get("rpoDefined") is defined, "rpoDefined drift")
@@ -126,6 +128,7 @@ def main() -> int:
     print("typed Recovery Owner/Operability approval binding: required")
     print("arbitrary repository approval files accepted: false")
     print("objective values chosen/defaulted by validator: false")
+    print("boolean objective counts accepted: false")
     print("negative admission suite: PASS")
     print("production evidence: false")
     print("production decision: NO_GO")
