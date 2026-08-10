@@ -112,14 +112,38 @@ def main() -> int:
     gen_rows = gen_registry.get("records")
     gen_count = gen_registry.get("registeredEvidenceCount")
     bound_count = gen_registry.get("drillRequestBoundEvidenceCount")
+    registry_backup_count = gen_registry.get("completeGenerationBoundBackupCount")
+    registry_restore_count = gen_registry.get("completeGenerationBoundRestoreCount")
     registry_candidate_count = gen_registry.get("productionEquivalentRecoveryCandidateCount")
     require(isinstance(gen_rows, list) and valid_count(gen_count) and gen_count == len(gen_rows), "generation evidence count drift")
     require(valid_count(bound_count) and bound_count == gen_count, "every generation evidence row must be drill-request-bound")
-    require(valid_count(registry_candidate_count) and registry_candidate_count <= gen_count, "generation candidate count invalid")
+    for value, field in (
+        (registry_backup_count, "backup"),
+        (registry_restore_count, "restore"),
+        (registry_candidate_count, "candidate"),
+    ):
+        require(valid_count(value) and value <= gen_count, f"generation {field} count invalid")
+
+    derived_backup_count = 0
+    derived_restore_count = 0
+    candidate_count = 0
     for row in gen_rows:
         gen_writer.validate_record(row, require_current_drill_request=False)
-    candidate_count = sum(1 for row in gen_rows if gen_writer.candidate(row))
+        if row.get("evidenceComplete") is True:
+            derived_backup_count += 1
+        if (
+            row.get("evidenceComplete") is True
+            and row.get("isolatedRestoreVerified") is True
+            and row.get("restoredBackupArtifactSha256") == row.get("backupArtifactSha256")
+        ):
+            derived_restore_count += 1
+        if gen_writer.candidate(row):
+            candidate_count += 1
+
+    require(registry_backup_count == derived_backup_count, "generation backup count drift from immutable evidence rows")
+    require(registry_restore_count == derived_restore_count, "generation restore count drift from immutable evidence rows")
     require(registry_candidate_count == candidate_count, "generation candidate count drift")
+    require(candidate_count <= derived_restore_count <= derived_backup_count <= gen_count, "derived recovery aggregate ordering drift")
 
     binding_boundary = binding_contract.get("currentBoundary")
     require(isinstance(binding_boundary, dict), "generation binding currentBoundary missing")
@@ -129,6 +153,8 @@ def main() -> int:
     require(valid_count(backup_count), "generation-bound backup count invalid")
     require(valid_count(restore_count), "generation-bound restore count invalid")
     require(valid_count(binding_candidate_count), "generation binding candidate count invalid")
+    require(backup_count == derived_backup_count, "generation binding backup count drift from immutable evidence rows")
+    require(restore_count == derived_restore_count, "generation binding restore count drift from immutable evidence rows")
     require(binding_candidate_count == candidate_count, "generation binding candidate count drift")
     require(candidate_count <= restore_count <= backup_count <= gen_count, "recovery aggregate ordering drift")
     require(binding_boundary.get("independentReviewCompleted") is (candidate_count > 0), "generation binding independent review state drift")
@@ -160,8 +186,8 @@ def main() -> int:
     boundary["currentExecutableDrillRequestCount"] = current_drill_count
     boundary["generationEvidenceCount"] = gen_count
     boundary["drillRequestBoundGenerationEvidenceCount"] = bound_count
-    boundary["generationBoundBackupCount"] = backup_count
-    boundary["generationBoundRestoreCount"] = restore_count
+    boundary["generationBoundBackupCount"] = derived_backup_count
+    boundary["generationBoundRestoreCount"] = derived_restore_count
     boundary["completeTypedNonResurrectionRecordCount"] = typed_complete_count
     boundary["finalProductionEquivalentRecoveryCandidateCount"] = candidate_count
     boundary["independentEvidenceReviewCompleted"] = candidate_count > 0
@@ -182,7 +208,8 @@ def main() -> int:
     print(f"preflight eligible pairs: {preflight_pair_count}")
     print(f"reviewed/current drill requests: {drill_count}/{current_drill_count}")
     print(f"generation/drill-bound evidence: {gen_count}/{bound_count}")
-    print(f"generation-bound backup/restore: {backup_count}/{restore_count}")
+    print(f"generation-bound backup/restore: {derived_backup_count}/{derived_restore_count}")
+    print("backup/restore aggregates re-derived before contract write: true")
     print(f"complete typed records/final candidates: {typed_complete_count}/{candidate_count}")
     print("boolean aggregate counts accepted by reconciler: false")
     print("failed post-validation leaves derived contract mutation behind: false")
