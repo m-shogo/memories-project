@@ -17,6 +17,7 @@ WRITER = ROOT / "scripts/register-memory-os-recovery-objectives.py"
 NEGATIVE = ROOT / "scripts/validate-memory-os-recovery-objectives-negative.py"
 EXPECTED_NEGATIVE_CASES = {
     "arbitrary repository files used as approval evidence",
+    "absolute, parent-traversal or symlinked authority refs",
     "typed approval bound to a different objectiveId",
     "typed approval bound to different RPO/RTO/skew values",
     "zero or negative RPO/RTO",
@@ -85,6 +86,7 @@ def main() -> int:
     for key in (
         "measurementMethodsCannotBePlaceholderText",
         "ownerRefMustExistInRepository",
+        "authorityRefsMustBeCanonicalRepositoryFiles",
         "exactlyTwoTypedApprovalEvidenceRefsRequired",
         "approvalEvidenceMustUseDedicatedAuthorityDirectory",
         "recoveryOwnerAndOperabilityApprovalRolesRequired",
@@ -148,6 +150,7 @@ def main() -> int:
     print(f"RPO/RTO defined: {str(defined).lower()}")
     print("typed Recovery Owner/Operability approval binding: required")
     print("arbitrary repository approval files accepted: false")
+    print("canonical repository authority refs required: true")
     print("objective values chosen/defaulted by validator: false")
     print("boolean objective counts accepted: false")
     print("negative admission case authority exact: true")
