@@ -25,6 +25,9 @@ class Fail(RuntimeError):
     pass
 
 
+EXPECTED_FAILURES: tuple[type[Exception], ...] = (Fail,)
+
+
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
@@ -49,7 +52,7 @@ def head_sha() -> str:
 def expect_rejected(name: str, action: Callable[[], Any]) -> None:
     try:
         action()
-    except Exception:
+    except EXPECTED_FAILURES:
         print(f"PASS reject: {name}")
         return
     raise Fail(f"negative case unexpectedly accepted: {name}")
@@ -173,9 +176,11 @@ def generation_record(commit_sha: str, env_path: Path, env: dict[str, Any]) -> d
 
 
 def main() -> int:
+    global EXPECTED_FAILURES
     require(WRITER.is_file() and ENV_VALIDATOR.is_file(), "generation validation foundation missing")
     writer = load_module(WRITER, "memory_os_generation_writer_negative")
     env_validator = load_module(ENV_VALIDATOR, "memory_os_environment_semantic_negative")
+    EXPECTED_FAILURES = (writer.Fail, env_validator.Fail)
     commit_sha = head_sha()
 
     planned = planned_env()
@@ -247,6 +252,7 @@ def main() -> int:
     print("canonical registry mutated: false")
     print("registration implies preflight eligibility: false")
     print("incomplete equivalent environment accepted: false")
+    print("unexpected implementation exception accepted as valid rejection: false")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
