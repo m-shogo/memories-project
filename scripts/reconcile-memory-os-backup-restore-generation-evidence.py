@@ -10,6 +10,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from memory_os_backup_restore_blockers import require_canonical_gaps
+
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
@@ -212,6 +214,7 @@ def main() -> int:
     refs = gate.get("evidenceRefs")
     missing = gate.get("missingEvidence")
     require(isinstance(existing, list) and isinstance(refs, list) and isinstance(missing, list), "OPS-P0-007 authority arrays missing")
+    require_canonical_gaps(missing, Fail)
     existing[:] = [item for item in existing if not (isinstance(item, str) and item.startswith(EVIDENCE_PREFIX))]
     append_once(existing, (
         f"{EVIDENCE_PREFIX} registered environment generations={generation_count}, approved recovery objectives={objective_count}, reviewed/current restore drill requests={drill_count}/{current_drill_count}, recovery records={count}, drill-request-bound records={bound_count}, complete generation-bound restores={restore_count}, production-equivalent recovery candidates={candidate_count}; candidate-level independent evidence review={str(candidate_count > 0).lower()}, human production-promotion review/authorization=false/false; immutable history is preserved after request supersession but current candidate derivation is recomputed fail-closed from the current request/objective/typed-evidence state, while productionEvidence and productionReady remain false"
@@ -219,9 +222,6 @@ def main() -> int:
     for ref in REFS:
         require((ROOT / ref).is_file(), f"generation recovery evidence ref missing: {ref}")
         append_once(refs, ref)
-    joined = "\n".join(str(item).lower() for item in missing)
-    for phrase in ("postgresql backup and pitr", "independent object", "rpo and rto", "isolated restore", "non-resurrection", "independent review"):
-        require(phrase in joined, f"production backup/restore blocker must remain: {phrase}")
     STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     print("Memory OS drill-bound generation recovery authority reconciliation PASS")
