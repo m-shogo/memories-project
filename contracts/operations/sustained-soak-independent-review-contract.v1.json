@@ -22,6 +22,7 @@
     "reviewMustBindApprovedCriteriaRecord": true,
     "reviewMustBindExactRunIds": true,
     "reviewMustBindExactRunEvidenceDigests": true,
+    "atMostOneIndependentReviewPerCriteria": true,
     "descriptiveTrendReviewIsNotIndependentReview": true,
     "passingReviewDoesNotCreateProductionEvidence": true,
     "passingReviewDoesNotAuthorizeProductionPromotion": true,
