@@ -38,6 +38,7 @@
     "approvalEvidenceMustUseDedicatedAuthorityDirectory": true,
     "recoveryOwnerAndOperabilityApprovalRolesRequired": true,
     "approvalReviewersMustBeDistinct": true,
+    "reviewerPseudonymsMustBeCanonicalNonEmptyText": true,
     "approvalDecisionMustBeApproved": true,
     "approvalMustBindObjectiveIdScopeRpoRtoAndSkew": true,
     "approvalCannotPostDateObjectiveApproval": true,
