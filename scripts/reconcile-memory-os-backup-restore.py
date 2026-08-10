@@ -20,28 +20,6 @@ NEW_EXISTING = (
     "promotion guards that block routing on cross-tenant visibility, resurrection, recovery-point incoherence, missing artifacts, unmeasured objectives or incomplete checks",
     "canonical backup/restore runbook and fail-closed policy validator",
 )
-PRECISE_GAPS = (
-    "production PostgreSQL backup and PITR configuration with independent retention",
-    "independent object-version retention and exact-version recovery validation",
-    "approved and measured RPO and RTO under production-shaped recovery",
-    "cross-cluster isolated restore drill with approved recovery owner and promotion decision",
-    "production deletion and expired-session non-resurrection verification after restore",
-    "production restore drill completion across coherent PostgreSQL and object recovery points",
-    "production backup monitoring, freshness enforcement and paging",
-    "independent review of recovery evidence and promotion decision",
-)
-OBSOLETE_GAPS = (
-    "PostgreSQL backup and PITR configuration",
-    "independent object-version retention",
-    "RPO and RTO",
-    "isolated restore rehearsal",
-    "deletion and expired-session semantics after restore",
-    "production PostgreSQL backup schedule, independent retention and PITR configuration",
-    "cross-cluster isolated restore rehearsal with approved recovery owner and promotion decision",
-    "coherent PostgreSQL and object-version recovery-point selection",
-    "approved and measured RPO/RTO",
-    "production deletion and expired-session non-resurrection verification after restore",
-)
 NEW_REFS = (
     "contracts/operations/backup-restore-contract.v1.json",
     "contracts/operations/local-logical-restore-contract.v1.json",
@@ -49,6 +27,14 @@ NEW_REFS = (
     "docs/runbooks/memory-os-backup-restore.md",
     "scripts/validate-memory-os-backup-restore.py",
     "scripts/reconcile-memory-os-backup-restore.py",
+)
+CANONICAL_GAP_FRAGMENTS = (
+    "production PostgreSQL backup and PITR schedule",
+    "production independent object backup retention",
+    "approved and measured RPO and RTO",
+    "production-shaped cross-cluster isolated restore drill",
+    "production deletion, expired/revoked-session, replay, idempotency and lease non-resurrection verification after restore",
+    "independent review of generation-bound recovery evidence",
 )
 
 
@@ -77,6 +63,16 @@ def append_once(items: list[Any], value: str) -> bool:
         return False
     items.append(value)
     return True
+
+
+def require_canonical_blockers(missing: list[Any]) -> None:
+    require(len(missing) == len(CANONICAL_GAP_FRAGMENTS),
+            "backup policy foundation reconciler cannot rewrite or expand the canonical OPS-P0-007 blocker set")
+    require(all(isinstance(item, str) for item in missing),
+            "OPS-P0-007 missingEvidence must contain only strings")
+    for fragment in CANONICAL_GAP_FRAGMENTS:
+        require(sum(fragment in item for item in missing) == 1,
+                f"canonical OPS-P0-007 blocker missing or duplicated: {fragment}")
 
 
 def main() -> int:
@@ -120,6 +116,7 @@ def main() -> int:
         refs = []
         gate["evidenceRefs"] = refs
     require(isinstance(refs, list), "OPS-P0-007 evidenceRefs must be a list")
+    require_canonical_blockers(missing)
 
     changed = False
     if gate.get("status") == "NOT_IMPLEMENTED_OR_PROVEN":
@@ -127,39 +124,21 @@ def main() -> int:
         changed = True
     for item in NEW_EXISTING:
         changed = append_once(existing, item) or changed
-    for obsolete in OBSOLETE_GAPS:
-        while obsolete in missing:
-            missing.remove(obsolete)
-            changed = True
-    for gap in PRECISE_GAPS:
-        changed = append_once(missing, gap) or changed
     for ref in NEW_REFS:
         require((ROOT / ref).is_file(), f"backup evidence missing: {ref}")
         changed = append_once(refs, ref) or changed
 
-    require(len(missing) == len(set(missing)),
-            "OPS-P0-007 missingEvidence contains exact duplicates")
-    for required_gap in (
-        "PostgreSQL backup and PITR",
-        "independent object",
-        "RPO and RTO",
-        "isolated restore",
-        "non-resurrection",
-        "restore drill",
-        "backup monitoring",
-        "independent review",
-    ):
-        require(any(required_gap in item for item in missing),
-                f"required OPS-P0-007 gap disappeared: {required_gap}")
-    require(not any(item in missing for item in OBSOLETE_GAPS),
-            "superseded OPS-P0-007 gap wording remains")
+    # Canonical production blockers are exclusively owned by
+    # reconcile-memory-os-backup-authority.py. This policy-foundation layer may
+    # add policy evidence, but it cannot manufacture, rewrite or duplicate gaps.
+    require_canonical_blockers(missing)
     require(gate.get("status") != "READY",
             "policy foundations cannot make OPS-P0-007 READY")
     require(status.get("productionDecision") == "NO_GO",
             "production decision changed unexpectedly")
 
     if not changed:
-        print("Backup/restore authority already reconciled")
+        print("Backup/restore policy foundation already reconciled")
         return 0
 
     status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
@@ -167,7 +146,7 @@ def main() -> int:
         json.dumps(status, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
-    print("Normalized backup/restore gaps; OPS-P0-007 remains non-ready")
+    print("Registered backup/restore policy foundations; canonical production blockers unchanged")
     return 0
 
 
