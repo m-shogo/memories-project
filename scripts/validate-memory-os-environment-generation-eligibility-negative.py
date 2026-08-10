@@ -93,6 +93,20 @@ def main() -> int:
     require(HELPER.is_file(), "generation eligibility helper missing")
     helper = load_helper()
 
+    with tempfile.TemporaryDirectory(prefix="memory-os-generation-eligibility-io-negative-") as tmp:
+        malformed = Path(tmp) / "registry-invalid-utf8.json"
+        malformed.write_bytes(b"{\xff}")
+        expect_rejected(
+            "malformed UTF-8 generation registry",
+            lambda: helper.derive(malformed),
+            helper.Fail,
+        )
+        expect_rejected(
+            "missing generation registry",
+            lambda: helper.derive(Path(tmp) / "missing.json"),
+            helper.Fail,
+        )
+
     empty = derive(helper, [])
     require(empty["eligibleDirectedPairCount"] == 0, "empty registry cannot have restore pair")
     print("PASS: empty registry has zero eligible pairs")
@@ -209,6 +223,7 @@ def main() -> int:
     print("same-environment predecessor skip accepted: false")
     print("current generation pointer drift accepted: false")
     print("boolean registered generation counts accepted: false")
+    print("malformed or missing generation registries accepted: false")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
