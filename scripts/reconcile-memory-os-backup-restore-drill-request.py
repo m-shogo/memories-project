@@ -101,7 +101,7 @@ def main() -> int:
     generation_rows = generations.get("generations")
     generation_count = generations.get("registeredGenerationCount")
     require(isinstance(generation_rows, list) and all(isinstance(row, dict) for row in generation_rows), "generation registry rows invalid")
-    require(isinstance(generation_count, int) and generation_count == len(generation_rows), "generation registry count drift")
+    require(isinstance(generation_count, int) and not isinstance(generation_count, bool) and generation_count == len(generation_rows), "generation registry count drift")
     require(generations.get("appendOnly") is True and generations.get("productionEvidence") is False, "generation registry boundary drift")
 
     semantic = eligibility.derive(GEN_REGISTRY)
@@ -127,7 +127,7 @@ def main() -> int:
     objective_count = objectives.get("approvedObjectiveCount")
     current_objective_id = objectives.get("currentObjectiveId")
     require(isinstance(objective_rows, list) and all(isinstance(row, dict) for row in objective_rows), "recovery objective rows invalid")
-    require(isinstance(objective_count, int) and objective_count == len(objective_rows), "recovery objective count drift")
+    require(isinstance(objective_count, int) and not isinstance(objective_count, bool) and objective_count == len(objective_rows), "recovery objective count drift")
     require(objectives.get("appendOnly") is True and objectives.get("productionEvidence") is False and objectives.get("productionReady") is False, "recovery objective boundary drift")
     if objective_count == 0:
         require(current_objective_id is None, "empty recovery objective registry cannot declare a current objective")
@@ -230,6 +230,7 @@ def main() -> int:
     print(f"registered planning requests: {request_count}")
     print(f"currently executable requests: {executable_count}")
     print(f"admission decision: {state['admissionDecision']}")
+    print("boolean generation/objective aggregate counts accepted: false")
     print("registered generation or historical objective count alone creates planning authority: false")
     print("canonical OPS-P0-007 blockers preserved: 6")
     print("restore executed: false")
