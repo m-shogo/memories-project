@@ -124,6 +124,7 @@
     "approvalDocumentsMustBindExactCurrentRecoveryObjective": true,
     "approvalReviewRolesMustMatchApprovalRefRole": true,
     "approvalReviewerPseudonymsMustBeDistinct": true,
+    "approvalReviewerPseudonymsMustBeCanonicalNonEmptyText": true,
     "approvalDocumentsMustForbidProductionTrafficCredentialsAndAutomaticPromotion": true,
     "productionTrafficForbidden": true,
     "productionCredentialsForbidden": true,
