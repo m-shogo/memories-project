@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import os
@@ -23,7 +24,7 @@ ELIGIBILITY_HELPER = ROOT / "scripts/memory_os_environment_generation_eligibilit
 LOCK = ROOT / "contracts/operations/.backup-restore-drill-request.lock"
 REQUEST_ID = re.compile(r"^brrq_[a-z0-9][a-z0-9_-]{7,63}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
-APPROVAL_SCHEMA = "memory-os-backup-restore-drill-request-approval.v1"
+APPROVAL_SCHEMA = "memory-os-backup-restore-drill-request-approval.v2"
 APPROVAL_ROLES = {
     "recoveryOwner": "RECOVERY_OWNER",
     "securityReview": "SECURITY",
@@ -32,6 +33,7 @@ APPROVAL_ROLES = {
 APPROVAL_FIELDS = {
     "schemaVersion",
     "requestId",
+    "requestRecordSha256",
     "reviewRole",
     "decision",
     "sourceEnvironmentGenerationId",
@@ -61,6 +63,11 @@ def load(path: Path) -> dict[str, Any]:
         raise Fail(f"cannot load {path}: {exc}") from exc
     require(isinstance(value, dict), f"root must be object: {path}")
     return value
+
+
+def canonical_request_sha256(record: dict[str, Any]) -> str:
+    encoded = json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def git(*args: str) -> str:
@@ -158,6 +165,9 @@ def approval_document(ref: Any, field: str) -> dict[str, Any]:
 def validate_request_approval(document: dict[str, Any], record: dict[str, Any], approval_key: str) -> str:
     field = f"approvalRefs.{approval_key}"
     require(document.get("reviewRole") == APPROVAL_ROLES[approval_key], f"{field} reviewRole mismatch")
+    digest = document.get("requestRecordSha256")
+    require(isinstance(digest, str) and DIGEST.fullmatch(digest), f"{field} requestRecordSha256 invalid")
+    require(digest == canonical_request_sha256(record), f"{field} requestRecordSha256 binding mismatch")
     for approval_field, request_field in (
         ("requestId", "requestId"),
         ("sourceEnvironmentGenerationId", "sourceEnvironmentGenerationId"),
@@ -173,6 +183,10 @@ def validate_request(record: dict[str, Any], *, require_current: bool = True) ->
     required = set(contract.get("requiredRequestFields", []))
     require(required and set(record) == required, f"request field set drift: {sorted(set(record) ^ required)}")
     require(record.get("schemaVersion") == contract.get("recordSchemaVersion"), "request schemaVersion drift")
+    require(contract.get("approvalSchemaVersion") == APPROVAL_SCHEMA, "approval schema contract/writer drift")
+    require(set(contract.get("requiredApprovalFields", [])) == APPROVAL_FIELDS, "approval field contract/writer drift")
+    rules = contract.get("admissionRules")
+    require(isinstance(rules, dict) and rules.get("approvalDocumentsMustBindCanonicalRequestRecordDigest") is True, "canonical request digest approval rule missing")
     request_id = record.get("requestId")
     require(isinstance(request_id, str) and REQUEST_ID.fullmatch(request_id), "requestId invalid")
     parse_timestamp(record.get("requestedAt"))
@@ -339,7 +353,7 @@ def main() -> int:
 
     print(f"Registered production-equivalent backup/restore drill request: {record['requestId']}")
     print("source/target semantically preflight eligible: true")
-    print("typed human approvals bound to request: true")
+    print("typed human approvals bound to canonical request digest: true")
     print("planning authority only: true")
     print("execution-time revalidation required: true")
     print("production evidence: false")
