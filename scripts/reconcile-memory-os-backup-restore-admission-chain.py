@@ -33,6 +33,10 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def valid_count(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -67,15 +71,17 @@ def main() -> int:
     preflight_pair_count = preflight.get("eligibleDirectedSourceTargetPairCount")
     require(isinstance(preflight_decision, str) and preflight_decision, "preflight decision invalid")
     require(isinstance(preflight_eligible, bool), "preflight eligibility invalid")
-    require(isinstance(preflight_pair_count, int) and preflight_pair_count >= 0, "preflight pair count invalid")
+    require(valid_count(preflight_pair_count), "preflight pair count invalid")
+    for field in ("reviewedDrillRequestCount", "currentExecutableDrillRequestCount"):
+        require(valid_count(preflight.get(field)), f"preflight {field} must be a non-boolean count")
     require(all(preflight.get(field) is False for field in ("requestCreated", "backupExecuted", "restoreExecuted", "productionTrafficChanged", "productionEvidence", "productionReady")), "preflight execution boundary drift")
     require(preflight.get("productionDecision") == "NO_GO", "preflight production decision drift")
 
     drill_rows = drill_registry.get("requests")
     drill_count = drill_registry.get("registeredRequestCount")
     current_drill_count = drill_registry.get("currentExecutableRequestCount")
-    require(isinstance(drill_rows, list) and isinstance(drill_count, int) and drill_count == len(drill_rows), "drill request registry count drift")
-    require(isinstance(current_drill_count, int) and 0 <= current_drill_count <= drill_count, "current drill request count invalid")
+    require(isinstance(drill_rows, list) and valid_count(drill_count) and drill_count == len(drill_rows), "drill request registry count drift")
+    require(valid_count(current_drill_count) and current_drill_count <= drill_count, "current drill request count invalid")
     require(preflight.get("reviewedDrillRequestCount") == drill_count, "preflight reviewed request count drift")
     require(preflight.get("currentExecutableDrillRequestCount") == current_drill_count, "preflight current request count drift")
     if current_drill_count > 0:
@@ -83,13 +89,16 @@ def main() -> int:
     elif preflight_eligible:
         require(preflight_decision == "READY_FOR_REVIEWED_DRILL_REQUEST_SUBMISSION" and preflight_pair_count > 0, "eligible preflight state mismatch")
     else:
-        require(preflight_decision.startswith("BLOCKED_") and current_drill_count == 0, "blocked preflight/current request mismatch")
+        require(preflight_decision in {
+            "BLOCKED_NEEDS_TWO_UNSUPERSEDED_DISTINCT_ENVIRONMENT_GENERATIONS",
+            "BLOCKED_NEEDS_CURRENT_APPROVED_RECOVERY_OBJECTIVE",
+        } and current_drill_count == 0, "blocked preflight/current request mismatch")
 
     gen_rows = gen_registry.get("records")
     gen_count = gen_registry.get("registeredEvidenceCount")
     bound_count = gen_registry.get("drillRequestBoundEvidenceCount")
-    require(isinstance(gen_rows, list) and isinstance(gen_count, int) and gen_count == len(gen_rows), "generation evidence count drift")
-    require(isinstance(bound_count, int) and bound_count == gen_count, "every generation evidence row must be drill-request-bound")
+    require(isinstance(gen_rows, list) and valid_count(gen_count) and gen_count == len(gen_rows), "generation evidence count drift")
+    require(valid_count(bound_count) and bound_count == gen_count, "every generation evidence row must be drill-request-bound")
     for row in gen_rows:
         gen_writer.validate_record(row, require_current_drill_request=False)
     candidate_count = sum(1 for row in gen_rows if gen_writer.candidate(row))
@@ -100,18 +109,23 @@ def main() -> int:
     backup_count = binding_boundary.get("generationBoundBackupCount")
     restore_count = binding_boundary.get("generationBoundRestoreCount")
     binding_candidate_count = binding_boundary.get("productionEquivalentRecoveryCandidateCount")
-    require(isinstance(backup_count, int) and backup_count >= 0, "generation-bound backup count invalid")
-    require(isinstance(restore_count, int) and restore_count >= 0, "generation-bound restore count invalid")
-    require(isinstance(binding_candidate_count, int) and binding_candidate_count >= 0, "generation binding candidate count invalid")
+    require(valid_count(backup_count), "generation-bound backup count invalid")
+    require(valid_count(restore_count), "generation-bound restore count invalid")
+    require(valid_count(binding_candidate_count), "generation binding candidate count invalid")
     require(binding_candidate_count == candidate_count, "generation binding candidate count drift")
     require(candidate_count <= restore_count <= backup_count <= gen_count, "recovery aggregate ordering drift")
+    require(binding_boundary.get("independentReviewCompleted") is (candidate_count > 0), "generation binding independent review state drift")
+    require(binding_boundary.get("humanProductionPromotionReviewCompleted") is False, "generation binding human production-promotion review must remain unclaimed")
+    require(binding_boundary.get("humanProductionPromotionAuthorized") is False, "generation binding human production-promotion authorization must remain unclaimed")
     require(binding_boundary.get("productionEvidence") is False and binding_boundary.get("productionReady") is False and binding_boundary.get("productionDecision") == "NO_GO", "generation binding production boundary drift")
 
     typed_rows = typed_registry.get("records")
     typed_complete_count = typed_registry.get("completeRecordCount")
     typed_covered_count = typed_registry.get("candidateCoveredCount")
-    require(isinstance(typed_rows, list) and isinstance(typed_complete_count, int) and isinstance(typed_covered_count, int), "typed registry counters invalid")
-    require(0 <= typed_covered_count <= typed_complete_count <= len(typed_rows), "typed registry count ordering invalid")
+    require(isinstance(typed_rows, list), "typed registry rows invalid")
+    require(valid_count(typed_complete_count), "typed complete count invalid")
+    require(valid_count(typed_covered_count), "typed covered count invalid")
+    require(typed_covered_count <= typed_complete_count <= len(typed_rows), "typed registry count ordering invalid")
     require(typed_covered_count == candidate_count, "typed candidate coverage must equal final candidate count")
 
     boundary = contract.get("currentBoundary")
@@ -151,6 +165,7 @@ def main() -> int:
     print(f"generation/drill-bound evidence: {gen_count}/{bound_count}")
     print(f"generation-bound backup/restore: {backup_count}/{restore_count}")
     print(f"complete typed records/final candidates: {typed_complete_count}/{candidate_count}")
+    print("boolean aggregate counts accepted by reconciler: false")
     print(f"candidate-level independent evidence review completed: {str(candidate_count > 0).lower()}")
     print("human production-promotion review completed: false")
     print("human production-promotion authorized: false")
