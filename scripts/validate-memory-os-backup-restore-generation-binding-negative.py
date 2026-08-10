@@ -90,7 +90,13 @@ def candidate_state(module) -> dict[Path, dict[str, Any]]:
         "completeGenerationBoundBackupCount": 1,
         "completeGenerationBoundRestoreCount": 1,
         "productionEquivalentRecoveryCandidateCount": 1,
-        "records": [{"syntheticCandidate": True}],
+        "records": [{
+            "syntheticCandidate": True,
+            "evidenceComplete": True,
+            "isolatedRestoreVerified": True,
+            "backupArtifactSha256": "a" * 64,
+            "restoredBackupArtifactSha256": "a" * 64,
+        }],
     }
     return {
         module.CONTRACT: contract,
@@ -137,12 +143,44 @@ def main() -> int:
     require(run_with_state(module, state) == 0, "candidate baseline must validate with evidence review but without human promotion review")
     print("PASS baseline: recovery candidate includes independently re-derived evidence review while human promotion review remains false")
 
+    manufactured_backup_aggregate = copy.deepcopy(state)
+    manufactured_backup_aggregate[module.EVIDENCE_REGISTRY]["records"][0]["evidenceComplete"] = False
+    expect_rejected(
+        module,
+        "generation-bound backup aggregate without complete immutable evidence",
+        lambda: run_with_state(module, manufactured_backup_aggregate),
+    )
+
+    manufactured_restore_aggregate = copy.deepcopy(state)
+    manufactured_restore_aggregate[module.EVIDENCE_REGISTRY]["records"][0]["isolatedRestoreVerified"] = False
+    expect_rejected(
+        module,
+        "generation-bound restore aggregate without isolated exact-artifact restore evidence",
+        lambda: run_with_state(module, manufactured_restore_aggregate),
+    )
+
     manufactured_aggregate = copy.deepcopy(state)
     manufactured_aggregate[module.EVIDENCE_REGISTRY]["records"][0]["syntheticCandidate"] = False
     expect_rejected(
         module,
         "recovery candidate aggregate without current executable reviewed candidate evidence",
         lambda: run_with_state(module, manufactured_aggregate),
+    )
+
+    backup_rederivation_rule = copy.deepcopy(state)
+    backup_rederivation_rule[module.CONTRACT]["promotionRules"]["backupCountMustBeRederivedFromImmutableEvidence"] = False
+    expect_rejected(
+        module,
+        "generation-bound backup aggregate re-derivation requirement disabled",
+        lambda: run_with_state(module, backup_rederivation_rule),
+    )
+
+    restore_rederivation_rule = copy.deepcopy(state)
+    restore_rederivation_rule[module.CONTRACT]["promotionRules"]["restoreCountMustBeRederivedFromImmutableEvidence"] = False
+    expect_rejected(
+        module,
+        "generation-bound restore aggregate re-derivation requirement disabled",
+        lambda: run_with_state(module, restore_rederivation_rule),
     )
 
     missing_boundary_review = copy.deepcopy(state)
@@ -212,6 +250,9 @@ def main() -> int:
     )
 
     print("Memory OS backup/restore generation binding negative suite PASS")
+    print("backup aggregate without row-derived complete evidence accepted: false")
+    print("restore aggregate without row-derived isolated exact-artifact evidence accepted: false")
+    print("backup/restore aggregate re-derivation contract can be disabled: false")
     print("candidate aggregate without current executable reviewed candidate evidence accepted: false")
     print("candidate aggregate re-derivation contract can be disabled: false")
     print("candidate without independent evidence review accepted: false")
