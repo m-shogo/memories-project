@@ -46,6 +46,18 @@ REMAINING_REVIEW_GAP = (
 PRODUCTION_SOAK_GAP = (
     "production-shaped sustained soak against registered production-equivalent dependencies with runtime topology, TLS, scoped credentials, dependency latency/failure behavior and independent review; LOCAL_LONG_SOAK remains local-only evidence"
 )
+STALE_REVIEW_AUTHORITY_EVIDENCE = (
+    "append-only independent sustained-soak review authority is implemented for future human-approved leak/stability criteria and distinct independent review; automatic threshold selection, leak proof, capacity-boundary promotion and production promotion remain forbidden, and the registry is currently empty"
+)
+REVIEW_AUTHORITY_EVIDENCE = (
+    "append-only independent sustained-soak review authority accepts only externally supplied human-approved leak/stability criteria and distinct independent review; automatic threshold selection, leak proof, capacity-boundary promotion and production promotion remain forbidden"
+)
+STALE_LOCAL_REVIEW_EVIDENCE = (
+    "repeated LOCAL_LONG_SOAK runs plus cross-run trend review are registered as local-only sustained-soak evidence; this is not leak proof or production-shaped evidence"
+)
+CANONICAL_LOCAL_REVIEW_EVIDENCE = (
+    "repeated LOCAL_LONG_SOAK runs plus cross-run descriptive trend review are registered as local-only sustained-soak evidence; this is not leak proof or production-shaped evidence"
+)
 
 
 class Fail(RuntimeError):
@@ -199,18 +211,23 @@ def main() -> int:
     refs = load_status.get("evidenceRefs")
     require(isinstance(existing, list) and isinstance(missing, list) and isinstance(refs, list), "OPS-P0-006 evidence structure invalid")
 
+    existing = [
+        item for item in existing
+        if item not in {
+            STALE_REVIEW_AUTHORITY_EVIDENCE,
+            STALE_LOCAL_REVIEW_EVIDENCE,
+        }
+    ]
+    load_status["existingEvidence"] = existing
     append_unique(
         existing,
         "fail-closed LOCAL_LONG_SOAK foundation requires a long-lived API process plus PostgreSQL, MinIO, parser recovery, scan-queue observation and deletion-worker convergence across 12 windows, and physically refuses to publish result evidence for runs configured below 3600 seconds",
     )
-    append_unique(
-        existing,
-        "append-only independent sustained-soak review authority is implemented for future human-approved leak/stability criteria and distinct independent review; automatic threshold selection, leak proof, capacity-boundary promotion and production promotion remain forbidden, and the registry is currently empty",
-    )
+    append_unique(existing, REVIEW_AUTHORITY_EVIDENCE)
     if run_count >= 1:
         append_unique(existing, f"{run_count} exact-source LOCAL_LONG_SOAK run document(s) satisfy the per-run validator; production evidence and leak proof remain false")
     if readiness["localSustainedSoakEvidence"]:
-        append_unique(existing, "repeated LOCAL_LONG_SOAK runs plus cross-run descriptive trend review are registered as local-only sustained-soak evidence; this is not leak proof or production-shaped evidence")
+        append_unique(existing, CANONICAL_LOCAL_REVIEW_EVIDENCE)
 
     local_prefixes = (
         "two independent 60-minute-or-longer LOCAL_LONG_SOAK runs",
@@ -256,6 +273,14 @@ def main() -> int:
                 "independent leak/stability review gap must remain explicit")
         require(PRODUCTION_SOAK_GAP in load_status["missingEvidence"],
                 "production-shaped sustained soak gap must remain explicit")
+        require(STALE_REVIEW_AUTHORITY_EVIDENCE not in existing,
+                "dynamic empty-registry statement must not remain in existing evidence")
+        require(STALE_LOCAL_REVIEW_EVIDENCE not in existing,
+                "duplicate pre-descriptive trend-review statement must not remain")
+        require(REVIEW_AUTHORITY_EVIDENCE in existing,
+                "stable independent-review authority evidence missing")
+        require(CANONICAL_LOCAL_REVIEW_EVIDENCE in existing,
+                "canonical descriptive trend-review evidence missing")
 
     require(status.get("productionDecision") == "NO_GO", "production decision drift")
     require(load_status.get("status") == "PARTIAL", "OPS-P0-006 status drift")
