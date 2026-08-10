@@ -137,7 +137,7 @@ def main() -> int:
         "generationEvidenceRequestRestoreTargetGenerationMustMatch",
         "generationEvidenceRequestRecoveryObjectiveMustMatch",
         "newEvidenceRequiresCurrentlyExecutableDrillRequest",
-        "historicalEvidenceMayRemainAuditableAfterDrillRequestStales",
+        "historicalEvidenceMayRemainAuditableAfterRequestStales",
         "staleRequestEvidenceCannotRemainCurrentCandidate",
         "generationBoundBackupCountMustBeRederivedFromImmutableEvidence",
         "generationBoundRestoreCountMustBeRederivedFromImmutableEvidence",
