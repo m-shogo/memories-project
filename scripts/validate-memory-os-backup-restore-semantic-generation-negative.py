@@ -233,7 +233,7 @@ def main() -> int:
             "appendOnly": True,
             "approvedObjectiveCount": 1,
             "currentObjectiveId": "recovery_objectives_ci",
-            "records": [{"objectiveId": "recovery_objectives_ci", "rpoSeconds": 60, "rtoSeconds": 120, "maximumObjectDatabaseSkewSeconds": 10}],
+            "records": [{"objectiveId": "recovery_objectives_ci", "rpoSeconds": 60, "rtoSeconds": 120, "maximumObjectDatabaseSkewSeconds": 10, "approvedAt": "2026-08-07T23:55:00Z"}],
             "productionEvidence": False,
             "productionReady": False,
         })
