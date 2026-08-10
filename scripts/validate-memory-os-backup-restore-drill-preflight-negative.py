@@ -13,6 +13,9 @@ from typing import Any, Callable
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight.py"
 CONTRACT = ROOT / "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
+GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+OBJECTIVES = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
+DRILL_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
 TEMP_PARENT = ROOT / "contracts/operations"
 NEGATIVE_REF = "scripts/validate-memory-os-backup-restore-drill-preflight-negative.py"
 SEMANTIC_HELPER_REF = "scripts/memory_os_environment_generation_eligibility.py"
@@ -59,10 +62,41 @@ def expect_rejected(validator: Any, canonical: dict[str, Any], name: str, mutate
     raise Fail(f"negative case unexpectedly accepted: {name}")
 
 
+def expect_state_rejected(
+    validator: Any,
+    generations: dict[str, Any],
+    objectives: dict[str, Any],
+    drill_registry: dict[str, Any],
+    name: str,
+    mutate: Callable[[dict[str, Any], dict[str, Any], dict[str, Any]], None],
+) -> None:
+    bad_generations = copy.deepcopy(generations)
+    bad_objectives = copy.deepcopy(objectives)
+    bad_drill_registry = copy.deepcopy(drill_registry)
+    mutate(bad_generations, bad_objectives, bad_drill_registry)
+    try:
+        validator.derive_state(bad_generations, bad_objectives, bad_drill_registry)
+    except validator.Fail:
+        print(f"PASS reject: {name}")
+        return
+    raise Fail(f"negative state case unexpectedly accepted: {name}")
+
+
 def main() -> int:
-    require(VALIDATOR.is_file() and CONTRACT.is_file() and TEMP_PARENT.is_dir(), "preflight negative foundation missing")
+    require(
+        VALIDATOR.is_file()
+        and CONTRACT.is_file()
+        and GEN_REGISTRY.is_file()
+        and OBJECTIVES.is_file()
+        and DRILL_REGISTRY.is_file()
+        and TEMP_PARENT.is_dir(),
+        "preflight negative foundation missing",
+    )
     validator = load_validator()
     canonical = load(CONTRACT)
+    generations = load(GEN_REGISTRY)
+    objectives = load(OBJECTIVES)
+    drill_registry = load(DRILL_REGISTRY)
     require(canonical.get("negativeAdmissionValidator") == NEGATIVE_REF, "preflight contract negativeAdmissionValidator drift")
     require((ROOT / NEGATIVE_REF).is_file(), "preflight negativeAdmissionValidator artifact missing")
     require(canonical.get("semanticEligibilityHelper") == SEMANTIC_HELPER_REF, "preflight semanticEligibilityHelper drift")
@@ -127,12 +161,37 @@ def main() -> int:
         "objective blocker without current approved objective binding",
         lambda value: value["blockingPrerequisiteSemantics"][validator.OBJECTIVE_BLOCKER].__setitem__("requiresCurrentApprovedRecoveryObjective", False),
     )
+    expect_state_rejected(
+        validator,
+        generations,
+        objectives,
+        drill_registry,
+        "boolean approved recovery objective count",
+        lambda _g, o, _d: o.__setitem__("approvedObjectiveCount", False),
+    )
+    expect_state_rejected(
+        validator,
+        generations,
+        objectives,
+        drill_registry,
+        "boolean registered drill request count",
+        lambda _g, _o, d: d.__setitem__("registeredRequestCount", False),
+    )
+    expect_state_rejected(
+        validator,
+        generations,
+        objectives,
+        drill_registry,
+        "boolean current executable drill request count",
+        lambda _g, _o, d: d.__setitem__("currentExecutableRequestCount", False),
+    )
 
     print("Memory OS restore drill preflight negative authority-shape suite PASS")
     print("negative validator contract binding: true")
     print("shared semantic eligibility helper contract binding: true")
     print("stable blocker ids require semantic preflight gates: true")
     print("registered generation count alone satisfies blocker: false")
+    print("boolean objective/request counts accepted: false")
     print("stale state aliases accepted: false")
     print("unexpected readiness aliases accepted: false")
     print("canonical authority mutated: false")
