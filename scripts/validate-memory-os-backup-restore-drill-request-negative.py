@@ -163,12 +163,14 @@ def main() -> int:
                     "generationId": "pegen_source",
                     "environmentId": "pe_source",
                     "environmentManifestSha256": DIGEST_A,
+                    "registeredAt": "2026-08-07T23:00:00Z",
                     "supersedesGenerationId": None,
                 },
                 {
                     "generationId": "pegen_target",
                     "environmentId": "pe_target",
                     "environmentManifestSha256": DIGEST_B,
+                    "registeredAt": "2026-08-07T23:10:00Z",
                     "supersedesGenerationId": None,
                 },
             ],
@@ -179,8 +181,8 @@ def main() -> int:
             "approvedObjectiveCount": 2,
             "currentObjectiveId": "recovery_objectives_current",
             "records": [
-                {"objectiveId": "recovery_objectives_old"},
-                {"objectiveId": "recovery_objectives_current"},
+                {"objectiveId": "recovery_objectives_old", "approvedAt": "2026-08-07T23:20:00Z"},
+                {"objectiveId": "recovery_objectives_current", "approvedAt": "2026-08-07T23:30:00Z"},
             ],
             "productionEvidence": False,
             "productionReady": False,
@@ -203,7 +205,19 @@ def main() -> int:
         validate_bound(valid)
         validate_bound(valid, require_current=False)
         require(writer.request_currently_executable(valid) is True, "valid synthetic request should be current in isolated negative fixture")
-        print("PASS accept: fully bound isolated planning request with digest-bound typed approvals and semantic generation gate invoked")
+        print("PASS accept: fully bound isolated planning request with digest-bound typed approvals and prerequisite chronology")
+
+        predates_generation = copy.deepcopy(valid)
+        predates_generation["requestId"] = "brrq_predates_generation"
+        predates_generation["requestedAt"] = "2026-08-07T22:59:59Z"
+        expect_rejected("request predates registered generations", lambda: validate_bound(predates_generation))
+
+        objectives_after_request = load(objectives_registry)
+        objectives_after_request["records"][1]["approvedAt"] = "2026-08-08T00:00:01Z"
+        write_json(objectives_registry, objectives_after_request)
+        expect_rejected("request predates current recovery objective approval", lambda: validate_bound(valid))
+        objectives_after_request["records"][1]["approvedAt"] = "2026-08-07T23:30:00Z"
+        write_json(objectives_registry, objectives_after_request)
 
         bind_approvals(tmp_path, writer, contract, valid)
         security_path = tmp_path / valid["approvalRefs"]["securityReview"]
@@ -344,6 +358,7 @@ def main() -> int:
             "generationId": "pegen_source_successor",
             "environmentId": "pe_source",
             "environmentManifestSha256": "c" * 64,
+            "registeredAt": "2026-08-08T00:10:00Z",
             "supersedesGenerationId": "pegen_source",
         })
         write_json(generation_registry, superseded_registry)
@@ -361,6 +376,7 @@ def main() -> int:
     print("Memory OS production-equivalent backup/restore drill request negative suite PASS")
     print("canonical request registry mutated: false")
     print("semantic generation eligibility bypass: false")
+    print("request chronology predates generation/objective authority: false")
     print("arbitrary repository approval authority: false")
     print("typed approval request/generation/objective binding enforced: true")
     print("typed approvals bind canonical request-record digest: true")
