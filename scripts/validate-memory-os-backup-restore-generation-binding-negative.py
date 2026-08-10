@@ -125,6 +125,27 @@ def main() -> int:
     require(run_with_state(module, state) == 0, "candidate baseline must validate with evidence review but without human promotion review")
     print("PASS baseline: recovery candidate includes independent evidence review while human promotion review remains false")
 
+    missing_boundary_review = copy.deepcopy(state)
+    missing_boundary_review[module.CONTRACT]["currentBoundary"]["independentReviewCompleted"] = False
+    expect_rejected(
+        "recovery candidate without independent evidence review boundary",
+        lambda: run_with_state(module, missing_boundary_review),
+    )
+
+    missing_readiness_review = copy.deepcopy(state)
+    missing_readiness_review[module.CONTRACT]["readiness"]["independentReviewCompleted"] = False
+    expect_rejected(
+        "recovery candidate without independent evidence review readiness",
+        lambda: run_with_state(module, missing_readiness_review),
+    )
+
+    independent_review_rule = copy.deepcopy(state)
+    independent_review_rule[module.CONTRACT]["promotionRules"]["independentReviewRequired"] = False
+    expect_rejected(
+        "recovery candidate independent-review requirement disabled",
+        lambda: run_with_state(module, independent_review_rule),
+    )
+
     promotion_reviewed = copy.deepcopy(state)
     promotion_reviewed[module.CONTRACT]["currentBoundary"]["humanProductionPromotionReviewCompleted"] = True
     promotion_reviewed[module.CONTRACT]["readiness"]["humanProductionPromotionReviewCompleted"] = True
@@ -156,6 +177,7 @@ def main() -> int:
     )
 
     print("Memory OS backup/restore generation binding negative suite PASS")
+    print("candidate without independent evidence review accepted: false")
     print("candidate requires independent evidence review: true")
     print("candidate implies human production-promotion review: false")
     print("candidate implies production promotion: false")
