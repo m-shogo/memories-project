@@ -20,6 +20,7 @@ on:
       - "contracts/operations/local-apple-replay-restore-contract.v1.json"
       - "contracts/operations/local-coherent-recovery-set-contract.v1.json"
       - "contracts/operations/backup-local-foundation-evidence.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "docs/fixtures/memory-os-operability/local-apple-replay-restore-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/local-coherent-recovery-set-results.sample.v1.json"
       - "docs/evidence/backup-restore/**"
@@ -71,6 +72,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Capture exact typed recovery authority source
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - name: Validate typed non-resurrection admission
         id: admission
         run: |
@@ -143,6 +152,57 @@ jobs:
         if: steps.admission.outputs.exit_code == '0'
         run: |
           set -euo pipefail
+          git fetch origin so
+          if ! git diff --quiet "$SOURCE_SHA" origin/so -- \
+            .github/workflows/backup-restore-non-resurrection-admission.yml \
+            contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json \
+            contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json \
+            contracts/operations/backup-restore-generation-evidence-contract.v1.json \
+            contracts/operations/backup-restore-generation-evidence-registry.v1.json \
+            contracts/operations/backup-restore-generation-binding-contract.v1.json \
+            contracts/operations/backup-restore-drill-request-contract.v1.json \
+            contracts/operations/backup-restore-drill-request-registry.v1.json \
+            contracts/operations/production-equivalent-environment-generation-contract.v1.json \
+            contracts/operations/production-equivalent-environment-generation-registry.v1.json \
+            contracts/operations/recovery-objectives-admission-contract.v1.json \
+            contracts/operations/recovery-objectives-registry.v1.json \
+            contracts/operations/local-apple-replay-restore-contract.v1.json \
+            contracts/operations/local-coherent-recovery-set-contract.v1.json \
+            contracts/operations/backup-local-foundation-evidence.v1.json \
+            contracts/operations/production-operability-status.json \
+            'docs/fixtures/memory-os-operability/local-apple-replay-restore-results.sample.v1.json' \
+            'docs/fixtures/memory-os-operability/local-coherent-recovery-set-results.sample.v1.json' \
+            'docs/evidence/backup-restore/**' \
+            'docs/evidence/recovery-objectives/approvals/**' \
+            'docs/fixtures/memory-os-operability/backup-restore-generation-evidence/**' \
+            'docs/fixtures/memory-os-operability/recovery-objectives-approval/**' \
+            scripts/memory_os_environment_generation_eligibility.py \
+            scripts/register-memory-os-recovery-objectives.py \
+            scripts/validate-memory-os-recovery-objectives.py \
+            scripts/validate-memory-os-recovery-objectives-negative.py \
+            scripts/request-memory-os-backup-restore-drill.py \
+            scripts/validate-memory-os-backup-restore-drill-request.py \
+            scripts/validate-memory-os-backup-restore-drill-request-negative.py \
+            scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-negative.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py \
+            scripts/reconcile-memory-os-backup-non-resurrection-authority.py \
+            scripts/register-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-generation-evidence-negative.py \
+            scripts/validate-memory-os-backup-restore-semantic-generation-negative.py \
+            scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py \
+            scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py \
+            scripts/reconcile-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-generation-binding.py \
+            scripts/validate-memory-os-backup-restore-generation-binding-negative.py \
+            scripts/validate-memory-os-local-apple-replay-restore.py \
+            scripts/validate-memory-os-local-coherent-recovery-set.py \
+            scripts/validate-memory-os-operability.py; then
+            echo "Typed recovery authority source changed during reconciliation; refusing stale derived authority."
+            exit 75
+          fi
           git rm -f docs/fixtures/memory-os-operability/backup-restore-non-resurrection-admission-diagnostic.last.json 2>/dev/null || true
           git add \
             contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json \
@@ -158,7 +218,11 @@ jobs:
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(restore): reconcile typed non-resurrection authority"
             for attempt in 1 2 3 4; do
-              git pull --rebase origin so
+              git fetch origin so
+              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+                echo "Branch advanced after validation; refusing to rebase stale typed recovery authority."
+                exit 75
+              fi
               if git push origin HEAD:so; then exit 0; fi
               sleep 2
             done
