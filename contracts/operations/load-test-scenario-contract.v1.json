@@ -473,6 +473,7 @@
     "contracts/operations/sustained-soak-independent-review-contract.v1.json",
     "contracts/operations/sustained-soak-independent-review-registry.v1.json",
     "scripts/validate-memory-os-sustained-soak-independent-review.py",
-    "scripts/validate-memory-os-sustained-soak-independent-review-negative.py"
+    "scripts/validate-memory-os-sustained-soak-independent-review-negative.py",
+    "scripts/register-memory-os-sustained-soak-independent-review.py"
   ]
 }
