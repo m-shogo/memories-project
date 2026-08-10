@@ -17,6 +17,7 @@ GEN_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-r
 GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
 WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
 NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
+PATH_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py"
 LOCAL_APPLE_VALIDATOR = ROOT / "scripts/validate-memory-os-local-apple-replay-restore.py"
 LOCAL_COHERENT_VALIDATOR = ROOT / "scripts/validate-memory-os-local-coherent-recovery-set.py"
 
@@ -166,6 +167,7 @@ def main() -> int:
     require(readiness.get("productionReady") is False, "overlay cannot make application production ready")
 
     run_validator(NEGATIVE, "non-resurrection negative admission suite")
+    run_validator(PATH_NEGATIVE, "non-resurrection contract path negative suite")
     print("Memory OS backup/restore typed non-resurrection admission validation PASS")
     print(f"pre-overlay eligible generation records: {len(base_candidate_ids)}")
     print(f"typed records: {count}")
