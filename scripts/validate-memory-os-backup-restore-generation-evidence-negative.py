@@ -37,7 +37,7 @@ class Fail(RuntimeError):
     pass
 
 
-EXPECTED_FAILURE: tuple[type[Exception], ...] = (Fail,)
+EXPECTED_FAILURE_MODULES: set[str] = set()
 
 
 def require(condition: bool, message: str) -> None:
@@ -89,9 +89,11 @@ def write_json(path: Path, value: dict[str, Any]) -> None:
 def expect_rejected(name: str, action: Callable[[], Any]) -> None:
     try:
         action()
-    except EXPECTED_FAILURE:
-        print(f"PASS reject: {name}")
-        return
+    except Exception as exc:
+        if type(exc).__name__ == "Fail" and type(exc).__module__ in EXPECTED_FAILURE_MODULES:
+            print(f"PASS reject: {name}")
+            return
+        raise
     raise Fail(f"negative case unexpectedly accepted: {name}")
 
 
@@ -238,7 +240,7 @@ def typed_overlay_record(evidence_id: str, commit_sha: str) -> dict[str, Any]:
 
 
 def main() -> int:
-    global EXPECTED_FAILURE
+    global EXPECTED_FAILURE_MODULES
     require(
         WRITER.is_file()
         and CONTRACT.is_file()
@@ -249,7 +251,10 @@ def main() -> int:
         "generation evidence foundation missing",
     )
     writer = load_writer()
-    EXPECTED_FAILURE = (writer.Fail, writer.load_drill_writer().Fail)
+    EXPECTED_FAILURE_MODULES = {
+        writer.Fail.__module__,
+        "memory_os_restore_drill_request_writer_for_generation_evidence",
+    }
     commit_sha = head_sha()
 
     no_generation = base_record(commit_sha)
