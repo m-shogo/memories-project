@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import json
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
@@ -175,6 +176,44 @@ def main() -> int:
         if malformed_path is not None:
             malformed_path.unlink(missing_ok=True)
 
+    reviewer_alias_path: Path | None = None
+    try:
+        reviewer_alias_document = {
+            "schemaVersion": "memory-os-recovery-objectives-approval.v1",
+            "objectiveId": "ro_negative_base",
+            "reviewRole": "OPERABILITY",
+            "decision": "APPROVED",
+            "scope": "PRODUCTION_RECOVERY_OBJECTIVES",
+            "rpoSeconds": 60,
+            "rtoSeconds": 120,
+            "maximumObjectDatabaseSkewSeconds": 10,
+            "reviewedAt": "2026-08-08T00:00:00Z",
+            "reviewerPseudonym": " fixture_recovery_owner ",
+            "productionTraffic": False,
+            "productionCredentials": False,
+            "automaticPromotion": False,
+        }
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            prefix="aliased-objective-reviewer-",
+            suffix=".json",
+            dir=APPROVAL_FIXTURE_DIR,
+            delete=False,
+            encoding="utf-8",
+        ) as handle:
+            json.dump(reviewer_alias_document, handle, indent=2)
+            handle.write("\n")
+            reviewer_alias_path = Path(handle.name)
+        reviewer_alias = copy.deepcopy(valid)
+        reviewer_alias["approvalEvidenceRefs"] = [
+            f"{APPROVAL_FIXTURE_REF}/recovery-owner.valid.json",
+            reviewer_alias_path.relative_to(ROOT).as_posix(),
+        ]
+        expect_rejected(writer, "whitespace-aliased reviewer pseudonym", lambda: writer.validate_record(reviewer_alias))
+    finally:
+        if reviewer_alias_path is not None:
+            reviewer_alias_path.unlink(missing_ok=True)
+
     non_utc = copy.deepcopy(valid)
     non_utc["approvedAt"] = "2026-08-08T09:00:00+09:00"
     expect_rejected(writer, "approvedAt without UTC Z", lambda: writer.validate_record(non_utc))
@@ -193,6 +232,7 @@ def main() -> int:
     print("arbitrary repository file approval accepted: false")
     print("objective authority refs escape repository: false")
     print("malformed typed approval authority accepted: false")
+    print("whitespace-aliased reviewer identity accepted: false")
     print("typed approval objective/value binding enforced: true")
     print("unexpected implementation exceptions accepted as rejection: false")
     print("boolean objective values accepted: false")
