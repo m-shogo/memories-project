@@ -58,6 +58,7 @@ def main() -> int:
     real_load = module.load
     contract = copy.deepcopy(real_load(module.CONTRACT))
     inventory = copy.deepcopy(real_load(module.INVENTORY))
+    preflight_contract = copy.deepcopy(real_load(module.PREFLIGHT_CONTRACT))
 
     require(run_with_overrides(module, {}) == 0, "canonical admission-chain baseline must validate")
     print("PASS baseline: canonical end-to-end admission chain validates")
@@ -79,6 +80,22 @@ def main() -> int:
         module,
         "backup/restore stage reordering",
         lambda: run_with_overrides(module, {module.CONTRACT: reordered_stage}),
+    )
+
+    weakened_backup_rederivation = copy.deepcopy(contract)
+    weakened_backup_rederivation["invariants"]["generationBoundBackupCountMustBeRederivedFromImmutableEvidence"] = False
+    expect_rejected(
+        module,
+        "backup aggregate rederivation invariant disabled",
+        lambda: run_with_overrides(module, {module.CONTRACT: weakened_backup_rederivation}),
+    )
+
+    weakened_restore_rederivation = copy.deepcopy(contract)
+    weakened_restore_rederivation["invariants"]["generationBoundRestoreCountMustBeRederivedFromImmutableEvidence"] = False
+    expect_rejected(
+        module,
+        "restore aggregate rederivation invariant disabled",
+        lambda: run_with_overrides(module, {module.CONTRACT: weakened_restore_rederivation}),
     )
 
     weakened_typed_rederivation = copy.deepcopy(contract)
@@ -116,6 +133,14 @@ def main() -> int:
         lambda: run_with_overrides(module, {module.INVENTORY: projected_restore}),
     )
 
+    boolean_pair_count = copy.deepcopy(preflight_contract)
+    boolean_pair_count["currentState"]["eligibleDirectedSourceTargetPairCount"] = False
+    expect_rejected(
+        module,
+        "boolean used as preflight pair count",
+        lambda: run_with_overrides(module, {module.PREFLIGHT_CONTRACT: boolean_pair_count}),
+    )
+
     promoted = copy.deepcopy(contract)
     promoted["currentBoundary"]["humanProductionPromotionAuthorized"] = True
     expect_rejected(
@@ -126,8 +151,10 @@ def main() -> int:
 
     print("Memory OS backup/restore admission-chain negative suite PASS")
     print("chain stage deletion/reordering accepted: false")
+    print("backup/restore aggregate rederivation downgrade accepted: false")
     print("typed eight-domain rederivation downgrade accepted: false")
     print("inventory recovery aggregate projection accepted: false")
+    print("boolean-as-count authority accepted: false")
     print("candidate may authorize human production promotion: false")
     print("canonical files mutated: false")
     print("production evidence: false")
