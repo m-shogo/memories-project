@@ -127,14 +127,7 @@ def validate_run_bindings(value: Any, record_authority: dict[str, Any], result_v
     return normalized
 
 
-def validate_human_evidence(
-    ref: Any,
-    directory: str,
-    required_fields: set[str],
-    schema_version: str,
-    bindings: dict[str, Any],
-    field: str,
-) -> None:
+def validate_human_evidence(ref: Any, directory: str, required_fields: set[str], schema_version: str, bindings: dict[str, Any], field: str) -> None:
     _, path = dedicated_ref(ref, directory, field)
     document = load(path)
     require(set(document) == required_fields, f"{field} field drift")
@@ -145,14 +138,7 @@ def validate_human_evidence(
         require(document.get(key) is False, f"{field} {key} must remain false")
 
 
-def validate_criteria_record(
-    record: Any,
-    index: int,
-    contract: dict[str, Any],
-    record_authority: dict[str, Any],
-    result_validator: Any,
-    previous_id: str | None,
-) -> tuple[str, str, dt.datetime, list[dict[str, str]]]:
+def validate_criteria_record(record: Any, index: int, contract: dict[str, Any], record_authority: dict[str, Any], result_validator: Any, previous_id: str | None) -> tuple[str, str, dt.datetime, list[dict[str, str]]]:
     required = set(record_authority.get("criteriaRequiredFields", []))
     require(isinstance(record, dict) and set(record) == required, f"criteria[{index}] field drift")
     require(record.get("schemaVersion") == contract.get("criteriaRecordSchemaVersion"), f"criteria[{index}] schema drift")
@@ -178,30 +164,11 @@ def validate_criteria_record(
         bounded_text(criterion.get("acceptanceRule"), f"criteria[{index}].criteria[{criterion_index}].acceptanceRule", 500)
     require(record.get("productionEvidence") is False and record.get("productionReady") is False, f"criteria[{index}] cannot promote production")
     approval_fields = set(record_authority.get("criteriaApprovalEvidenceRequiredFields", []))
-    validate_human_evidence(
-        record.get("approvalEvidenceRef"),
-        record_authority.get("criteriaApprovalEvidenceDirectory"),
-        approval_fields,
-        record_authority.get("criteriaApprovalEvidenceSchemaVersion"),
-        {
-            "criteriaId": criteria_id,
-            "decision": "APPROVED",
-            "approvedAt": record.get("approvedAt"),
-            "approverPseudonym": approver,
-        },
-        f"criteria[{index}].approvalEvidenceRef",
-    )
+    validate_human_evidence(record.get("approvalEvidenceRef"), record_authority.get("criteriaApprovalEvidenceDirectory"), approval_fields, record_authority.get("criteriaApprovalEvidenceSchemaVersion"), {"criteriaId": criteria_id, "decision": "APPROVED", "approvedAt": record.get("approvedAt"), "approverPseudonym": approver}, f"criteria[{index}].approvalEvidenceRef")
     return criteria_id, approver, approved_at, run_bindings
 
 
-def validate_review_record(
-    record: Any,
-    index: int,
-    contract: dict[str, Any],
-    record_authority: dict[str, Any],
-    result_validator: Any,
-    criteria_records: dict[str, tuple[str, dt.datetime, list[dict[str, str]]]],
-) -> tuple[str, str]:
+def validate_review_record(record: Any, index: int, contract: dict[str, Any], record_authority: dict[str, Any], result_validator: Any, criteria_records: dict[str, tuple[str, dt.datetime, list[dict[str, str]]]]) -> tuple[str, str]:
     required = set(record_authority.get("reviewRequiredFields", []))
     require(isinstance(record, dict) and set(record) == required, f"reviews[{index}] field drift")
     require(record.get("schemaVersion") == contract.get("reviewRecordSchemaVersion"), f"reviews[{index}] schema drift")
@@ -226,20 +193,7 @@ def validate_review_record(
         bounded_text(finding, f"reviews[{index}].findings[{finding_index}]", 1000)
     require(record.get("productionEvidence") is False and record.get("productionReady") is False, f"reviews[{index}] cannot promote production")
     review_fields = set(record_authority.get("independentReviewEvidenceRequiredFields", []))
-    validate_human_evidence(
-        record.get("reviewEvidenceRef"),
-        record_authority.get("independentReviewEvidenceDirectory"),
-        review_fields,
-        record_authority.get("independentReviewEvidenceSchemaVersion"),
-        {
-            "reviewId": review_id,
-            "criteriaId": criteria_id,
-            "outcome": outcome,
-            "reviewedAt": record.get("reviewedAt"),
-            "reviewerPseudonym": reviewer,
-        },
-        f"reviews[{index}].reviewEvidenceRef",
-    )
+    validate_human_evidence(record.get("reviewEvidenceRef"), record_authority.get("independentReviewEvidenceDirectory"), review_fields, record_authority.get("independentReviewEvidenceSchemaVersion"), {"reviewId": review_id, "criteriaId": criteria_id, "outcome": outcome, "reviewedAt": record.get("reviewedAt"), "reviewerPseudonym": reviewer}, f"reviews[{index}].reviewEvidenceRef")
     return review_id, outcome
 
 
@@ -254,29 +208,20 @@ def main() -> int:
     criteria = contract.get("criteriaAuthority")
     require(isinstance(criteria, dict), "criteriaAuthority must be object")
     for key in (
-        "humanApprovedCriteriaRequired",
-        "automaticCriteriaGenerationForbidden",
-        "automaticThresholdSelectionForbidden",
-        "criteriaMustBindExactRunIds",
-        "criteriaMustBindExactRunEvidenceDigests",
-        "criteriaMustDeclareMetricAndUnit",
-        "criteriaMustDeclareDirectionAndAcceptanceRule",
-        "criteriaMustDeclareReviewScope",
-        "criteriaMustPreexistIndependentReview",
+        "humanApprovedCriteriaRequired", "automaticCriteriaGenerationForbidden", "automaticThresholdSelectionForbidden",
+        "criteriaMustBindExactRunIds", "criteriaMustBindExactRunEvidenceDigests", "criteriaMustDeclareMetricAndUnit",
+        "criteriaMustDeclareDirectionAndAcceptanceRule", "criteriaMustDeclareReviewScope", "criteriaMustPreexistIndependentReview",
+        "supersededCriteriaCannotRemainCurrentReviewAuthority",
     ):
         require(criteria.get(key) is True, f"criteria safeguard missing: {key}")
 
     authority = contract.get("reviewAuthority")
     require(isinstance(authority, dict), "reviewAuthority must be object")
     for key in (
-        "independentReviewerRequired",
-        "criteriaApproverAndReviewerMustBeDistinct",
-        "reviewMustBindApprovedCriteriaRecord",
-        "reviewMustBindExactRunIds",
-        "reviewMustBindExactRunEvidenceDigests",
-        "descriptiveTrendReviewIsNotIndependentReview",
-        "passingReviewDoesNotCreateProductionEvidence",
-        "passingReviewDoesNotAuthorizeProductionPromotion",
+        "independentReviewerRequired", "criteriaApproverAndReviewerMustBeDistinct", "reviewMustBindApprovedCriteriaRecord",
+        "reviewMustBindExactRunIds", "reviewMustBindExactRunEvidenceDigests", "atMostOneIndependentReviewPerCriteria",
+        "onlyCurrentCriteriaPassCountsAsPassingIndependentReview", "descriptiveTrendReviewIsNotIndependentReview",
+        "passingReviewDoesNotCreateProductionEvidence", "passingReviewDoesNotAuthorizeProductionPromotion",
     ):
         require(authority.get(key) is True, f"review safeguard missing: {key}")
     require(authority.get("reviewOutcomeValues") == ["PASS", "FAIL"], "review outcomes must remain closed")
@@ -284,33 +229,18 @@ def main() -> int:
     record_authority = contract.get("recordAuthority")
     require(isinstance(record_authority, dict), "recordAuthority must be object")
     for key in (
-        "humanEvidenceMustUseDedicatedDirectory",
-        "runEvidenceMustBeCanonicalAndPerRunValidated",
-        "runEvidenceDigestMustMatchBytes",
-        "reviewRunBindingsMustExactlyMatchCriteria",
-        "reviewerMustDifferFromCriteriaApprover",
-        "reviewCannotPredateCriteriaApproval",
-        "productionEvidenceForbidden",
-        "productionReadyForbidden",
+        "humanEvidenceMustUseDedicatedDirectory", "runEvidenceMustBeCanonicalAndPerRunValidated", "runEvidenceDigestMustMatchBytes",
+        "reviewRunBindingsMustExactlyMatchCriteria", "reviewerMustDifferFromCriteriaApprover", "reviewCannotPredateCriteriaApproval",
+        "productionEvidenceForbidden", "productionReadyForbidden",
     ):
         require(record_authority.get(key) is True, f"record safeguard missing: {key}")
 
     promotion = contract.get("promotionBoundary")
     require(isinstance(promotion, dict), "promotionBoundary must be object")
     require(promotion.get("localSustainedSoakEvidenceMaySatisfyReviewInput") is True, "local evidence may only be review input")
-    for key in (
-        "localSustainedSoakEvidenceAloneCreatesLeakProof",
-        "emptyRegistryCreatesLeakProof",
-        "productionEvidence",
-        "productionReady",
-    ):
+    for key in ("localSustainedSoakEvidenceAloneCreatesLeakProof", "emptyRegistryCreatesLeakProof", "productionEvidence", "productionReady"):
         require(promotion.get(key) is False, f"promotion boundary cannot enable {key}")
-    for key in (
-        "automaticLeakProofForbidden",
-        "automaticCapacityBoundaryPromotionForbidden",
-        "automaticOperationalThresholdPromotionForbidden",
-        "automaticProductionSoakPromotionForbidden",
-    ):
+    for key in ("automaticLeakProofForbidden", "automaticCapacityBoundaryPromotionForbidden", "automaticOperationalThresholdPromotionForbidden", "automaticProductionSoakPromotionForbidden"):
         require(promotion.get(key) is True, f"automatic promotion safeguard missing: {key}")
 
     require(registry.get("schemaVersion") == "memory-os-sustained-soak-independent-review-registry.v1", "registry schema drift")
@@ -325,39 +255,31 @@ def main() -> int:
     criteria_records: dict[str, tuple[str, dt.datetime, list[dict[str, str]]]] = {}
     previous_id: str | None = None
     for index, row in enumerate(criteria_rows):
-        criteria_id, approver, approved_at, run_bindings = validate_criteria_record(
-            row, index, contract, record_authority, result_validator, previous_id
-        )
+        criteria_id, approver, approved_at, run_bindings = validate_criteria_record(row, index, contract, record_authority, result_validator, previous_id)
         require(criteria_id not in criteria_records, "duplicate criteriaId")
         criteria_records[criteria_id] = (approver, approved_at, run_bindings)
         previous_id = criteria_id
+    current_criteria_id = previous_id
 
     review_ids: set[str] = set()
     reviewed_criteria_ids: set[str] = set()
     passing_reviews = 0
     for index, row in enumerate(review_rows):
-        review_id, outcome = validate_review_record(
-            row, index, contract, record_authority, result_validator, criteria_records
-        )
+        review_id, outcome = validate_review_record(row, index, contract, record_authority, result_validator, criteria_records)
         require(review_id not in review_ids, "duplicate reviewId")
         review_ids.add(review_id)
         criteria_id = row.get("criteriaId")
         require(criteria_id not in reviewed_criteria_ids, "at most one independent review may be registered per criteria record")
         reviewed_criteria_ids.add(criteria_id)
-        if outcome == "PASS":
+        if outcome == "PASS" and criteria_id == current_criteria_id:
             passing_reviews += 1
 
+    require(passing_reviews in (0, 1), "current criteria can have at most one passing independent review")
     require(registry.get("registeredCriteriaCount") == len(criteria_rows), "registeredCriteriaCount drift")
     require(registry.get("approvedLeakStabilityCriteriaCount") == len(criteria_rows), "approvedLeakStabilityCriteriaCount drift")
     require(registry.get("registeredReviewCount") == len(review_rows), "registeredReviewCount drift")
-    require(registry.get("passingIndependentReviewCount") == passing_reviews, "passingIndependentReviewCount drift")
-    for field in (
-        "leakProof",
-        "capacityBoundaryEstablished",
-        "operationalThresholdApproved",
-        "productionSustainedSoakEvidence",
-        "productionReady",
-    ):
+    require(registry.get("passingIndependentReviewCount") == passing_reviews, "passingIndependentReviewCount must describe only the current criteria authority")
+    for field in ("leakProof", "capacityBoundaryEstablished", "operationalThresholdApproved", "productionSustainedSoakEvidence", "productionReady"):
         require(registry.get(field) is False, f"independent review registry cannot automatically enable {field}")
 
     local_boundary = local.get("evidenceBoundary")
@@ -375,7 +297,8 @@ def main() -> int:
     print("Memory OS sustained-soak independent review authority PASS")
     print(f"approved leak/stability criteria: {len(criteria_rows)}")
     print(f"independent reviews: {len(review_rows)}")
-    print(f"passing independent reviews: {passing_reviews}")
+    print(f"current passing independent reviews: {passing_reviews}")
+    print("superseded criteria review remains current authority: false")
     print("typed human criteria/review records accepted without dedicated evidence: false")
     print("review run-binding drift accepted: false")
     print("descriptive trend review implies independent review: false")
