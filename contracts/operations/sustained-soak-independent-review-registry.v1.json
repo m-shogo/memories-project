@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "memory-os-sustained-soak-independent-review-registry.v1",
+  "registryClass": "SUSTAINED_SOAK_INDEPENDENT_REVIEW",
+  "appendOnly": true,
+  "productionEvidence": false,
+  "registeredCriteriaCount": 0,
+  "registeredReviewCount": 0,
+  "approvedLeakStabilityCriteriaCount": 0,
+  "passingIndependentReviewCount": 0,
+  "leakProof": false,
+  "capacityBoundaryEstablished": false,
+  "operationalThresholdApproved": false,
+  "productionSustainedSoakEvidence": false,
+  "productionReady": false,
+  "criteria": [],
+  "reviews": [],
+  "limitations": [
+    "no human-approved leak/stability criteria have been registered",
+    "no independent sustained-soak review has been registered",
+    "descriptive local trend review is not independent leak/stability review",
+    "an empty registry creates no leak proof, threshold approval, capacity boundary, production evidence or production readiness"
+  ]
+}
