@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "backup-restore-non-resurrection-admission",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "Memory OS recovery objectives validation PASS\napproved objective records: 0\ncurrent objective: none\nRPO/RTO defined: false\ntyped Recovery Owner/Operability approval binding: required\narbitrary repository approval files accepted: false\nobjective values chosen/defaulted by validator: false\nboolean objective counts accepted: false\nnegative admission case authority exact: true\nnegative admission suite: PASS\nproduction evidence: false\nproduction decision: NO_GO\nBACKUP RESTORE NON-RESURRECTION AGGREGATE NEGATIVE SUITE FAILED: unexpected exception accepted as aggregate rejection for registeredRecordCount drift: ValueError: '/tmp/memory-os-nonres-aggregate-negative-x74ahwmg/typed-registry.json' is not in the subpath of '/home/runner/work/memories-project/memories-project'\n",
+  "containsSecrets": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
