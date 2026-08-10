@@ -12,6 +12,8 @@ on:
       - "contracts/operations/observability-stack-deployment-registry.v1.json"
       - "contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json"
       - "contracts/operations/load-test-scenario-contract.v1.json"
+      - "contracts/operations/sustained-soak-independent-review-contract.v1.json"
+      - "contracts/operations/sustained-soak-independent-review-registry.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
@@ -37,10 +39,13 @@ on:
       - "docs/evidence/recovery-objectives/approvals/**"
       - "docs/fixtures/memory-os-operability/backup-restore-generation-evidence/**"
       - "docs/fixtures/memory-os-operability/recovery-objectives-approval/**"
+      - "docs/fixtures/memory-os-operability/sustained-local-soak-trend-review.v1.json"
       - "docs/runbooks/memory-os-production-equivalent-backup-restore-drill.md"
       - "scripts/generate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py"
+      - "scripts/validate-memory-os-sustained-soak-independent-review.py"
+      - "scripts/validate-memory-os-sustained-soak-independent-review-negative.py"
       - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
@@ -110,6 +115,8 @@ jobs:
             scripts/generate-memory-os-operability-admission-inventory.py \
             scripts/validate-memory-os-operability-admission-inventory.py \
             scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py \
+            scripts/validate-memory-os-sustained-soak-independent-review.py \
+            scripts/validate-memory-os-sustained-soak-independent-review-negative.py \
             scripts/register-memory-os-recovery-objectives.py \
             scripts/validate-memory-os-recovery-objectives.py \
             scripts/validate-memory-os-recovery-objectives-negative.py \
@@ -134,6 +141,12 @@ jobs:
             scripts/validate-memory-os-backup-restore-admission-chain.py \
             scripts/validate-memory-os-operability-status-hygiene.py \
             >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-sustained-soak-independent-review.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-sustained-soak-independent-review-negative.py >> "$log" 2>&1 || code=$?
+          fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1 || code=$?
           fi
