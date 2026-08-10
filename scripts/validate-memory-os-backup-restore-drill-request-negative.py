@@ -148,6 +148,7 @@ def main() -> int:
     require("requestRecordSha256" in set(contract.get("requiredApprovalFields", [])), "approval requestRecordSha256 authority missing")
     require(contract.get("admissionRules", {}).get("approvalDocumentsMustBindCanonicalRequestRecordDigest") is True, "approval digest admission rule missing")
     require(contract.get("admissionRules", {}).get("approvalDocumentsMustNotPredateRequest") is True, "approval chronology admission rule missing")
+    require(contract.get("admissionRules", {}).get("approvalReviewerPseudonymsMustBeCanonicalNonEmptyText") is True, "canonical reviewer pseudonym admission rule missing")
 
     canonical_probe = base_request(contract)
     canonical_probe["requestId"] = "brrq_no_prerequisites"
@@ -294,6 +295,12 @@ def main() -> int:
         write_json(operability_path, operability)
         expect_rejected("approval reviewer pseudonym reuse", lambda: writer.validate_request(valid))
 
+        bind_approvals(tmp_path, writer, contract, valid)
+        operability = load(operability_path)
+        operability["reviewerPseudonym"] = " reviewer_security "
+        write_json(operability_path, operability)
+        expect_rejected("whitespace-aliased reviewer pseudonym reuse", lambda: writer.validate_request(valid))
+
         real_guard_for_probe = writer.require_preflight_eligible_generation
         writer.require_preflight_eligible_generation = lambda generation_id, field: (_ for _ in ()).throw(writer.Fail(f"{field} not semantically eligible"))
         expect_rejected("semantically ineligible source/target generation", lambda: validate_bound(valid))
@@ -398,6 +405,7 @@ def main() -> int:
     print("approval chronology bound to request creation: true")
     print("post-approval planning request mutation accepted: false")
     print("independent reviewer pseudonyms enforced: true")
+    print("whitespace-aliased reviewer identity accepted: false")
     print("historical authority preserved across supersession: true")
     print("current execution revalidation preserved: true")
     print("unexpected exception accepted as a valid rejection: false")
