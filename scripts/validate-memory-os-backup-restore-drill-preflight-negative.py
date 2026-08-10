@@ -62,6 +62,15 @@ def expect_rejected(validator: Any, canonical: dict[str, Any], name: str, mutate
     raise Fail(f"negative case unexpectedly accepted: {name}")
 
 
+def expect_path_rejected(validator: Any, name: str, path: Path) -> None:
+    try:
+        validator.load(path)
+    except validator.Fail:
+        print(f"PASS reject: {name}")
+        return
+    raise Fail(f"escaped path unexpectedly accepted: {name}")
+
+
 def expect_state_rejected(
     validator: Any,
     generations: dict[str, Any],
@@ -136,6 +145,11 @@ def main() -> int:
     require(isinstance(readiness, dict) and set(readiness) == validator.READINESS_FIELDS, "canonical preflight readiness is not exact")
     print("PASS baseline: canonical preflight negative authority and field sets are exact")
 
+    expect_path_rejected(
+        validator,
+        "preflight contract path escapes repository root",
+        Path(tempfile.gettempdir()) / "memory-os-preflight-outside-root.json",
+    )
     expect_rejected(
         validator,
         canonical,
@@ -229,6 +243,7 @@ def main() -> int:
     expect_unexpected_helper_exception_preserved(validator, generations, objectives, drill_registry)
 
     print("Memory OS restore drill preflight negative authority-shape suite PASS")
+    print("escaped artifact path accepted: false")
     print("negative validator contract binding: true")
     print("shared semantic eligibility helper contract binding: true")
     print("stable blocker ids require semantic preflight gates: true")
