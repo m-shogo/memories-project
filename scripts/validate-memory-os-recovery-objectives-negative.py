@@ -209,6 +209,27 @@ def main() -> int:
         if malformed_path is not None:
             malformed_path.unlink(missing_ok=True)
 
+    invalid_utf8_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            prefix="invalid-utf8-objective-approval-",
+            suffix=".json",
+            dir=APPROVAL_FIXTURE_DIR,
+            delete=False,
+        ) as handle:
+            handle.write(b"{\xff}\n")
+            invalid_utf8_path = Path(handle.name)
+        invalid_utf8_approval = copy.deepcopy(valid)
+        invalid_utf8_approval["approvalEvidenceRefs"] = [
+            f"{APPROVAL_FIXTURE_REF}/recovery-owner.valid.json",
+            invalid_utf8_path.relative_to(ROOT).as_posix(),
+        ]
+        expect_rejected(writer, "invalid UTF-8 typed approval authority", lambda: writer.validate_record(invalid_utf8_approval))
+    finally:
+        if invalid_utf8_path is not None:
+            invalid_utf8_path.unlink(missing_ok=True)
+
     reviewer_alias_path: Path | None = None
     try:
         reviewer_alias_document = {
@@ -266,6 +287,7 @@ def main() -> int:
     print("objective authority refs escape repository: false")
     print("validator contract refs escape repository: false")
     print("malformed typed approval authority accepted: false")
+    print("invalid UTF-8 typed approval authority accepted: false")
     print("whitespace-aliased reviewer identity accepted: false")
     print("typed approval objective/value binding enforced: true")
     print("unexpected implementation exceptions accepted as rejection: false")
