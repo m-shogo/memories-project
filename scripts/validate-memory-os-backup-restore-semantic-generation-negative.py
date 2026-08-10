@@ -38,6 +38,9 @@ class Fail(RuntimeError):
     pass
 
 
+EXPECTED_FAILURES: tuple[type[Exception], ...] = (Fail,)
+
+
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
@@ -83,7 +86,7 @@ def load_module(path: Path, name: str):
 def expect_rejected(name: str, action: Callable[[], Any]) -> None:
     try:
         action()
-    except Exception:
+    except EXPECTED_FAILURES:
         print(f"PASS reject: {name}")
         return
     raise Fail(f"negative case unexpectedly accepted: {name}")
@@ -202,12 +205,14 @@ def evidence_record(commit_sha: str) -> dict[str, Any]:
 
 
 def main() -> int:
+    global EXPECTED_FAILURES
     for path in (DRILL_WRITER, EVIDENCE_WRITER, DRILL_CONTRACT, EVIDENCE_CONTRACT, NON_RESURRECTION_CONTRACT, SOURCE_ENV_FIXTURE, TARGET_ENV_FIXTURE):
         require(path.is_file(), f"semantic negative foundation missing: {path}")
 
     commit_sha = head_sha()
     drill_writer = load_module(DRILL_WRITER, "memory_os_restore_drill_semantic_negative")
     evidence_writer = load_module(EVIDENCE_WRITER, "memory_os_restore_evidence_semantic_negative")
+    EXPECTED_FAILURES = (drill_writer.Fail, evidence_writer.Fail)
 
     source = generation_record(generation_id="pegen_source", environment_id="pe_source", manifest=DIGEST_A, environment_record=SOURCE_ENV_FIXTURE, commit_sha=commit_sha)
     target = generation_record(generation_id="pegen_target", environment_id="pe_target", manifest=DIGEST_B, environment_record=TARGET_ENV_FIXTURE, commit_sha=commit_sha)
@@ -290,6 +295,7 @@ def main() -> int:
     print("Memory OS semantic generation negative admission suite PASS")
     print("registered generation alone creates current drill authority: false")
     print("semantically ineligible generation creates new recovery evidence: false")
+    print("unexpected implementation exception accepted as valid rejection: false")
     print("canonical registries mutated: false")
     print("production evidence: false")
     print("production decision: NO_GO")
