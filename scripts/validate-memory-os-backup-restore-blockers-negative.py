@@ -10,6 +10,7 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore.py"
+CANONICAL_NORMALIZER = ROOT / "scripts/reconcile-memory-os-backup-authority.py"
 SEMANTIC_AUTHORITY = ROOT / "scripts/reconcile-memory-os-backup-semantic-overlay.py"
 COHERENT_AUTHORITY = ROOT / "scripts/reconcile-memory-os-backup-coherent-authority.py"
 
@@ -67,6 +68,10 @@ def run_with_status(module, status: dict[str, Any]) -> int:
         module.load = real_load
 
 
+def validate_normalizer_status(module, status: dict[str, Any]) -> None:
+    module.normalize(copy.deepcopy(status))
+
+
 def validate_semantic_status(module, status: dict[str, Any]) -> None:
     module.validate(copy.deepcopy(status))
 
@@ -80,6 +85,10 @@ def main() -> int:
         VALIDATOR,
         "memory_os_backup_restore_blocker_negative_target",
     )
+    normalizer = load_module(
+        CANONICAL_NORMALIZER,
+        "memory_os_backup_restore_normalizer_negative_target",
+    )
     semantic = load_module(
         SEMANTIC_AUTHORITY,
         "memory_os_backup_restore_semantic_negative_target",
@@ -92,6 +101,7 @@ def main() -> int:
     baseline = copy.deepcopy(module.load(module.STATUS_PATH))
     require(run_with_status(module, baseline) == 0,
             "canonical six-blocker baseline must validate")
+    validate_normalizer_status(normalizer, baseline)
     validate_semantic_status(semantic, baseline)
     validate_coherent_status(coherent, baseline)
     print("PASS baseline: canonical six OPS-P0-007 production blockers")
@@ -107,6 +117,10 @@ def main() -> int:
         lambda: run_with_status(module, extra),
     )
     expect_rejected(
+        "canonical normalizer cannot repair an extra legacy blocker",
+        lambda: validate_normalizer_status(normalizer, extra),
+    )
+    expect_rejected(
         "semantic authority cannot repair an extra legacy blocker",
         lambda: validate_semantic_status(semantic, extra),
     )
@@ -119,6 +133,10 @@ def main() -> int:
     expect_rejected(
         "canonical production blocker cannot disappear",
         lambda: run_with_status(module, removed),
+    )
+    expect_rejected(
+        "canonical normalizer cannot repair a missing canonical blocker",
+        lambda: validate_normalizer_status(normalizer, removed),
     )
     expect_rejected(
         "semantic authority cannot repair a missing canonical blocker",
@@ -138,6 +156,10 @@ def main() -> int:
         lambda: run_with_status(module, substituted),
     )
     expect_rejected(
+        "canonical normalizer cannot rewrite legacy blocker wording",
+        lambda: validate_normalizer_status(normalizer, substituted),
+    )
+    expect_rejected(
         "semantic authority cannot rewrite legacy blocker wording",
         lambda: validate_semantic_status(semantic, substituted),
     )
@@ -153,6 +175,10 @@ def main() -> int:
     expect_rejected(
         "canonical production blockers cannot be reordered",
         lambda: run_with_status(module, reordered),
+    )
+    expect_rejected(
+        "canonical normalizer cannot reorder canonical blockers",
+        lambda: validate_normalizer_status(normalizer, reordered),
     )
     expect_rejected(
         "semantic authority cannot reorder canonical blockers",
@@ -174,6 +200,10 @@ def main() -> int:
         lambda: run_with_status(module, duplicated),
     )
     expect_rejected(
+        "canonical normalizer cannot accept cross-domain blocker duplication",
+        lambda: validate_normalizer_status(normalizer, duplicated),
+    )
+    expect_rejected(
         "semantic authority cannot accept cross-domain blocker duplication",
         lambda: validate_semantic_status(semantic, duplicated),
     )
@@ -184,6 +214,7 @@ def main() -> int:
 
     print("Memory OS backup/restore canonical blocker negative suite PASS")
     print("canonical blocker count: 6")
+    print("canonical normalizer repair behavior: disabled")
     print("semantic authority repair behavior: disabled")
     print("coherent restore blocker repair behavior: disabled")
     print("production evidence: false")
