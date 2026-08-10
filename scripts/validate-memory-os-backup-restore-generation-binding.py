@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -16,6 +17,7 @@ GENERATION = ROOT / "contracts/operations/production-equivalent-environment-gene
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 EVIDENCE_CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
 EVIDENCE_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+EVIDENCE_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
 REQUIRED_LOCAL_FOUNDATIONS = {
     "LOCAL_POSTGRESQL_LOGICAL_RESTORE",
     "LOCAL_EXACT_OBJECT_VERSION_RESTORE",
@@ -41,6 +43,14 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def load_evidence_writer():
+    spec = importlib.util.spec_from_file_location("memory_os_generation_evidence_writer_for_binding", EVIDENCE_WRITER)
+    require(spec is not None and spec.loader is not None, "cannot load generation evidence writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def main() -> int:
     contract = load(CONTRACT)
     backup = load(BACKUP_POLICY)
@@ -61,6 +71,7 @@ def main() -> int:
     }
     for field, path in refs.items():
         require(contract.get(field) == str(path.relative_to(ROOT)), f"{field} ref drift")
+    require(EVIDENCE_WRITER.is_file(), "generation evidence writer missing")
 
     bindings = contract.get("requiredBindings")
     require(isinstance(bindings, dict) and bindings and all(value is True for value in bindings.values()), "restore generation bindings must remain fail-closed")
@@ -108,7 +119,7 @@ def main() -> int:
     generation_count = gen_registry.get("registeredGenerationCount")
     generations = gen_registry.get("generations")
     require(gen_registry.get("appendOnly") is True and gen_registry.get("productionEvidence") is False, "generation registry boundary drift")
-    require(isinstance(generation_count, int) and generation_count >= 0, "registered generation count invalid")
+    require(isinstance(generation_count, int) and not isinstance(generation_count, bool) and generation_count >= 0, "registered generation count invalid")
     require(isinstance(generations, list) and len(generations) == generation_count, "generation registry count drift")
     generation_boundary = generation.get("currentBoundary")
     require(isinstance(generation_boundary, dict), "generation boundary missing")
@@ -123,12 +134,21 @@ def main() -> int:
     restore_count = evidence_registry.get("completeGenerationBoundRestoreCount")
     candidate_count = evidence_registry.get("productionEquivalentRecoveryCandidateCount")
     evidence_rows = evidence_registry.get("records")
-    require(isinstance(evidence_count, int) and isinstance(evidence_rows, list) and len(evidence_rows) == evidence_count, "generation evidence count drift")
+    require(isinstance(evidence_count, int) and not isinstance(evidence_count, bool) and isinstance(evidence_rows, list) and len(evidence_rows) == evidence_count, "generation evidence count drift")
+    require(all(isinstance(row, dict) for row in evidence_rows), "generation evidence rows invalid")
     for value, field in ((backup_count, "backup"), (restore_count, "restore"), (candidate_count, "candidate")):
-        require(isinstance(value, int) and 0 <= value <= evidence_count, f"generation-bound {field} count invalid")
+        require(isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= evidence_count, f"generation-bound {field} count invalid")
     require(candidate_count <= restore_count <= backup_count, "generation recovery count ordering invalid")
     if generation_count == 0:
         require(evidence_count == 0, "recovery evidence cannot exist without registered environment generations")
+
+    evidence_writer = load_evidence_writer()
+    derived_candidate_count = 0
+    for row in evidence_rows:
+        evidence_writer.validate_record(row, require_current_drill_request=False)
+        if evidence_writer.candidate(row):
+            derived_candidate_count += 1
+    require(candidate_count == derived_candidate_count, "generation evidence registry candidate aggregate drift from current executable reviewed evidence")
 
     boundary = contract.get("currentBoundary")
     require(isinstance(boundary, dict), "currentBoundary required")
@@ -176,6 +196,7 @@ def main() -> int:
     print(f"registered production-equivalent generations: {generation_count}")
     print(f"generation-bound backups/restores: {backup_count}/{restore_count}")
     print(f"production-equivalent recovery candidates: {candidate_count}")
+    print("recovery candidate aggregate re-derived from current executable reviewed evidence: true")
     print(f"candidate-level independent evidence review complete: {str(candidate_count > 0).lower()}")
     print("human production-promotion review completed by recovery candidate: false")
     print("human production promotion authorized by recovery candidate: false")
