@@ -43,12 +43,30 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def repo_file(value: Any, field: str) -> Path:
+    require(isinstance(value, str) and value, f"contract artifact ref invalid: {field}")
+    relative = Path(value)
+    require(
+        not relative.is_absolute()
+        and ".." not in relative.parts
+        and relative.as_posix() == value,
+        f"contract artifact ref must be canonical repository-relative path: {field}",
+    )
+    path = ROOT / relative
+    try:
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise Fail(f"contract artifact missing or escapes repository: {field}") from exc
+    require(resolved == relative and path.is_file(), f"contract artifact must resolve to canonical repository file: {field}")
+    return path
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
-        raise Fail(f"cannot load {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+    except (FileNotFoundError, OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise Fail(f"cannot load recovery-objective JSON authority: {path}") from exc
+    require(isinstance(value, dict), f"root must be object: {path}")
     return value
 
 
@@ -76,11 +94,11 @@ def main() -> int:
         "negativeAdmissionValidator": NEGATIVE,
     }
     for field, path in expected_refs.items():
-        require(contract.get(field) == str(path.relative_to(ROOT)), f"contract ref drift: {field}")
-        require(path.is_file(), f"contract artifact missing: {field}")
+        expected_ref = str(path.relative_to(ROOT))
+        require(contract.get(field) == expected_ref, f"contract ref drift: {field}")
+        repo_file(expected_ref, field)
     for field in ("validator", "reconcile", "workflow"):
-        ref = contract.get(field)
-        require(isinstance(ref, str) and ref and (ROOT / ref).is_file(), f"contract artifact missing: {field}")
+        repo_file(contract.get(field), field)
     rules = contract.get("rules")
     require(isinstance(rules, dict) and rules and all(value is True for value in rules.values()), "recovery-objective rules must remain fail-closed")
     for key in (
