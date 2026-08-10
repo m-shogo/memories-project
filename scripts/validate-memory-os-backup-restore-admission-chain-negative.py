@@ -198,6 +198,40 @@ def main() -> int:
         lambda: run_with_overrides(module, {module.CONTRACT: integer_human_authorization}),
     )
 
+    projected_inventory_review = copy.deepcopy(inventory)
+    projected_inventory_review["backupRestoreIndependentEvidenceReviewCompleted"] = True
+    expect_rejected(
+        module,
+        "inventory-only independent evidence review projection",
+        lambda: run_with_overrides(module, {module.INVENTORY: projected_inventory_review}),
+    )
+
+    projected_ops7_review = copy.deepcopy(inventory)
+    ops7 = next(row for row in projected_ops7_review["areas"] if row.get("id") == "OPS-P0-007")
+    ops7["independentEvidenceReviewCompleted"] = True
+    expect_rejected(
+        module,
+        "OPS-P0-007-only independent evidence review projection",
+        lambda: run_with_overrides(module, {module.INVENTORY: projected_ops7_review}),
+    )
+
+    projected_inventory_human_review = copy.deepcopy(inventory)
+    projected_inventory_human_review["humanProductionPromotionReviewCompleted"] = True
+    expect_rejected(
+        module,
+        "inventory-only human production-promotion review projection",
+        lambda: run_with_overrides(module, {module.INVENTORY: projected_inventory_human_review}),
+    )
+
+    projected_ops7_human_authorization = copy.deepcopy(inventory)
+    ops7 = next(row for row in projected_ops7_human_authorization["areas"] if row.get("id") == "OPS-P0-007")
+    ops7["humanProductionPromotionAuthorized"] = True
+    expect_rejected(
+        module,
+        "OPS-P0-007-only human production-promotion authorization projection",
+        lambda: run_with_overrides(module, {module.INVENTORY: projected_ops7_human_authorization}),
+    )
+
     promoted = copy.deepcopy(contract)
     promoted["currentBoundary"]["humanProductionPromotionAuthorized"] = True
     expect_rejected(
@@ -213,6 +247,7 @@ def main() -> int:
     print("inventory recovery aggregate projection accepted: false")
     print("boolean-as-count authority accepted: false")
     print("integer-as-review/promotion-boolean authority accepted: false")
+    print("inventory review/promotion projection accepted: false")
     print("candidate may authorize human production promotion: false")
     print("canonical files mutated: false")
     print("production evidence: false")
