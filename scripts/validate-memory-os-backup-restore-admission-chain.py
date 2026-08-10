@@ -22,6 +22,7 @@ TYPED_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-ad
 INVENTORY = ROOT / "contracts/operations/operability-admission-inventory.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
+TYPED_WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
 BLOCKER_AUTHORITY = ROOT / "scripts/memory_os_backup_restore_blockers.py"
 
 
@@ -64,6 +65,7 @@ def main() -> int:
     inventory = load(INVENTORY)
     status = load(STATUS)
     gen_writer = load_module(GEN_WRITER, "memory_os_generation_writer_admission_chain")
+    typed_writer = load_module(TYPED_WRITER, "memory_os_typed_writer_admission_chain")
     blocker_authority = load_module(BLOCKER_AUTHORITY, "memory_os_backup_restore_blockers_admission_chain")
 
     require(contract.get("schemaVersion") == "memory-os-backup-restore-admission-chain-contract.v1", "chain contract schema drift")
@@ -85,6 +87,7 @@ def main() -> int:
         expected = str(path.relative_to(ROOT)) if path.is_absolute() else str(path)
         require(contract.get(field) == expected, f"chain ref drift: {field}")
         require((ROOT / expected).is_file(), f"chain artifact missing: {expected}")
+    require(TYPED_WRITER.is_file(), "typed non-resurrection writer authority missing")
     require(BLOCKER_AUTHORITY.is_file(), "canonical OPS-P0-007 blocker authority missing")
 
     expected_chain = [
@@ -221,12 +224,17 @@ def main() -> int:
     require(isinstance(typed_complete_count, int) and 0 <= typed_complete_count <= typed_count, "typed complete count invalid")
     require(isinstance(typed_covered_count, int) and 0 <= typed_covered_count <= typed_complete_count, "typed candidate coverage count invalid")
     require(typed_registry.get("productionEvidence") is False and typed_registry.get("productionReady") is False, "typed registry production boundary drift")
-    complete_typed_ids = {
-        row.get("generationEvidenceId")
-        for row in typed_rows
-        if row.get("evidenceComplete") is True and isinstance(row.get("generationEvidenceId"), str)
-    }
-    require(candidate_ids.issubset(complete_typed_ids), "final candidate bypasses complete typed non-resurrection evidence")
+    complete_typed_ids: set[str] = set()
+    derived_typed_complete_count = 0
+    for row in typed_rows:
+        typed_writer.validate_record(row)
+        if row.get("evidenceComplete") is True:
+            derived_typed_complete_count += 1
+            generation_evidence_id = row.get("generationEvidenceId")
+            require(isinstance(generation_evidence_id, str), "complete typed generationEvidenceId invalid")
+            complete_typed_ids.add(generation_evidence_id)
+    require(derived_typed_complete_count == typed_complete_count, "typed complete aggregate drift from revalidated eight-domain records")
+    require(candidate_ids.issubset(complete_typed_ids), "final candidate bypasses revalidated complete typed non-resurrection evidence")
     require(typed_covered_count == candidate_count, "typed candidate coverage count must equal final candidate count")
 
     binding_rules = binding_contract.get("promotionRules")
@@ -302,7 +310,7 @@ def main() -> int:
     print(f"reviewed/current drill requests: {drill_count}/{current_drill_count}")
     print(f"generation/drill-bound evidence: {gen_count}/{bound_count}")
     print(f"generation-bound backup/restore: {backup_count}/{restore_count}")
-    print(f"complete typed non-resurrection records: {typed_complete_count}")
+    print(f"revalidated complete typed non-resurrection records: {typed_complete_count}")
     print(f"final production-equivalent recovery candidates: {candidate_count}")
     print(f"candidate-level independent evidence review completed: {str(candidate_count > 0).lower()}")
     print("human production-promotion review completed: false")
