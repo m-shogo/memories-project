@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Prove typed non-resurrection registry row mutation revokes candidate coverage.
 
-This harness never mutates canonical registries. It builds an isolated generation
-recovery evidence registry plus one fully bound typed overlay, proves the typed
-coverage predicate accepts the intact row, then mutates only the registry row
-while leaving the referenced domain/review payloads untouched. Every mutation
-must fail closed.
+This harness never mutates canonical registries. It builds isolated, fully bound
+source/target generation, objective, drill-request and generation-evidence
+authorities plus one complete typed overlay. The intact authority must pass;
+registry aggregate or row mutations must fail closed.
 """
 
 from __future__ import annotations
@@ -70,8 +69,60 @@ def main() -> int:
     try:
         with tempfile.TemporaryDirectory(prefix=".tmp-memory-os-candidate-row-mutation-", dir=TMP_PARENT) as tmp:
             tmp_path = Path(tmp)
+            generation_registry = tmp_path / "generations.json"
+            objectives_registry = tmp_path / "objectives.json"
+            drill_registry = tmp_path / "drill-requests.json"
             generation_evidence_registry = tmp_path / "generation-evidence.json"
             overlay_registry = tmp_path / "typed-overlay.json"
+
+            source_generation = helpers.generation_record(
+                generation_id="pegen_source",
+                environment_id="pe_source",
+                environment_manifest_sha256=helpers.DIGEST_A,
+                environment_record=helpers.SOURCE_ENV_FIXTURE,
+                commit_sha=commit_sha,
+            )
+            target_generation = helpers.generation_record(
+                generation_id="pegen_target",
+                environment_id="pe_target",
+                environment_manifest_sha256=helpers.DIGEST_B,
+                environment_record=helpers.TARGET_ENV_FIXTURE,
+                commit_sha=commit_sha,
+            )
+            write_json(generation_registry, {
+                "schemaVersion": "memory-os-production-equivalent-environment-generation-registry.v1",
+                "appendOnly": True,
+                "registeredGenerationCount": 2,
+                "currentGenerationId": "pegen_target",
+                "productionEvidence": False,
+                "generations": [source_generation, target_generation],
+            })
+            write_json(objectives_registry, {
+                "schemaVersion": "memory-os-recovery-objectives-registry.v1",
+                "appendOnly": True,
+                "approvedObjectiveCount": 1,
+                "currentObjectiveId": "recovery_objectives_ci",
+                "records": [{
+                    "objectiveId": "recovery_objectives_ci",
+                    "rpoSeconds": 60,
+                    "rtoSeconds": 120,
+                    "maximumObjectDatabaseSkewSeconds": 10,
+                    "approvedAt": "2026-08-07T23:55:00Z"
+                }],
+                "productionEvidence": False,
+                "productionReady": False,
+            })
+            request = helpers.base_drill_request()
+            write_json(drill_registry, {
+                "schemaVersion": "memory-os-backup-restore-drill-request-registry.v1",
+                "registryClass": "PRODUCTION_EQUIVALENT_BACKUP_RESTORE_DRILL_REQUESTS",
+                "appendOnly": True,
+                "registeredRequestCount": 1,
+                "currentExecutableRequestCount": 1,
+                "requests": [request],
+                "productionEvidence": False,
+                "productionReady": False,
+            })
 
             valid = helpers.base_record(commit_sha)
             write_json(generation_evidence_registry, {
@@ -96,20 +147,23 @@ def main() -> int:
                 "appendOnly": True,
                 "registeredRecordCount": 1,
                 "completeRecordCount": 1,
-                "candidateCoveredCount": 0,
+                "candidateCoveredCount": 1,
                 "records": [overlay],
                 "productionEvidence": False,
                 "productionReady": False,
             }
             write_json(overlay_registry, intact_registry)
 
+            writer.GEN_REGISTRY = generation_registry
+            writer.OBJECTIVES_REGISTRY = objectives_registry
+            writer.DRILL_REQUEST_REGISTRY = drill_registry
             writer.REGISTRY = generation_evidence_registry
             writer.NON_RESURRECTION_REGISTRY = overlay_registry
             writer.CANONICAL_NON_RESURRECTION_REGISTRY = overlay_registry
 
             evidence_id = valid["evidenceId"]
             require(writer.typed_non_resurrection_covered(evidence_id) is True, "intact typed registry row must cover generation evidence")
-            print("PASS candidate coverage: intact typed registry row accepted")
+            print("PASS candidate coverage: intact fully bound typed registry accepted")
 
             registered_count_mutation = copy.deepcopy(intact_registry)
             registered_count_mutation["registeredRecordCount"] = 0
@@ -130,7 +184,7 @@ def main() -> int:
             print("PASS revoke: typed registry completeRecordCount drift invalidates coverage")
 
             candidate_count_mutation = copy.deepcopy(intact_registry)
-            candidate_count_mutation["candidateCoveredCount"] = 1
+            candidate_count_mutation["candidateCoveredCount"] = 0
             write_json(overlay_registry, candidate_count_mutation)
             require(writer.typed_non_resurrection_covered(evidence_id) is False, "typed registry candidateCoveredCount drift must revoke coverage")
             print("PASS revoke: typed registry candidateCoveredCount drift invalidates coverage")
@@ -222,7 +276,7 @@ def main() -> int:
             duplicate_binding.update({
                 "registeredRecordCount": 2,
                 "completeRecordCount": 2,
-                "candidateCoveredCount": 0,
+                "candidateCoveredCount": 2,
                 "records": [copy.deepcopy(overlay), copy.deepcopy(overlay)],
             })
             write_json(overlay_registry, duplicate_binding)
@@ -241,6 +295,7 @@ def main() -> int:
         print("Memory OS generation candidate registry-row mutation negative suite PASS")
         print("canonical registries mutated: false")
         print("repository-local canonical simulation: true")
+        print("fully bound upstream candidate authority: true")
         print("typed registeredRecordCount drift accepted: false")
         print("typed boolean registeredRecordCount accepted: false")
         print("typed completeRecordCount drift accepted: false")
