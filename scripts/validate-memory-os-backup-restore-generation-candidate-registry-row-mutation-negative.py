@@ -91,11 +91,13 @@ def main() -> int:
             )
             write_json(generation_registry, {
                 "schemaVersion": "memory-os-production-equivalent-environment-generation-registry.v1",
+                "registryClass": "PRODUCTION_EQUIVALENT_ENVIRONMENT_GENERATIONS",
                 "appendOnly": True,
                 "registeredGenerationCount": 2,
                 "currentGenerationId": "pegen_target",
                 "productionEvidence": False,
                 "generations": [source_generation, target_generation],
+                "limitations": [],
             })
             write_json(objectives_registry, {
                 "schemaVersion": "memory-os-recovery-objectives-registry.v1",
@@ -127,12 +129,17 @@ def main() -> int:
             valid = helpers.base_record(commit_sha)
             write_json(generation_evidence_registry, {
                 "schemaVersion": "memory-os-backup-restore-generation-evidence-registry.v1",
+                "registryClass": "PRODUCTION_EQUIVALENT_BACKUP_RESTORE_EVIDENCE",
                 "appendOnly": True,
                 "registeredEvidenceCount": 1,
-                "productionEquivalentRecoveryCandidateCount": 0,
+                "drillRequestBoundEvidenceCount": 1,
+                "completeGenerationBoundBackupCount": 1,
+                "completeGenerationBoundRestoreCount": 1,
+                "productionEquivalentRecoveryCandidateCount": 1,
                 "records": [valid],
                 "productionEvidence": False,
                 "productionReady": False,
+                "limitations": [],
             })
 
             overlay, _, _ = candidate_helpers.build_typed_overlay(
