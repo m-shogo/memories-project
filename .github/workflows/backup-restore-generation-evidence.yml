@@ -69,6 +69,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
       - name: Capture exact recovery authority source
         run: |
           set -euo pipefail
@@ -77,6 +78,55 @@ jobs:
           test -z "$(git status --porcelain)"
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Write generation recovery authority manifest
+        run: |
+          cat > "$RUNNER_TEMP/backup-restore-generation-evidence-authority-paths" <<'EOF'
+          .github/workflows/backup-restore-generation-evidence.yml
+          contracts/operations/backup-restore-generation-evidence-contract.v1.json
+          contracts/operations/backup-restore-generation-evidence-registry.v1.json
+          contracts/operations/backup-restore-generation-binding-contract.v1.json
+          contracts/operations/backup-restore-drill-request-contract.v1.json
+          contracts/operations/backup-restore-drill-request-registry.v1.json
+          contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json
+          contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json
+          contracts/operations/production-equivalent-environment-generation-contract.v1.json
+          contracts/operations/production-equivalent-environment-generation-registry.v1.json
+          contracts/operations/recovery-objectives-admission-contract.v1.json
+          contracts/operations/recovery-objectives-registry.v1.json
+          contracts/operations/production-operability-status.json
+          docs/evidence/backup-restore
+          docs/evidence/recovery-objectives/approvals
+          docs/fixtures/memory-os-operability/backup-restore-generation-evidence
+          docs/fixtures/memory-os-operability/recovery-objectives-approval
+          scripts/memory_os_backup_restore_blockers.py
+          scripts/memory_os_environment_generation_eligibility.py
+          scripts/validate-memory-os-production-equivalent-environment-generation.py
+          scripts/register-memory-os-recovery-objectives.py
+          scripts/validate-memory-os-recovery-objectives.py
+          scripts/validate-memory-os-recovery-objectives-negative.py
+          scripts/request-memory-os-backup-restore-drill.py
+          scripts/validate-memory-os-backup-restore-drill-request.py
+          scripts/validate-memory-os-backup-restore-drill-request-negative.py
+          scripts/reconcile-memory-os-backup-restore-drill-request.py
+          scripts/register-memory-os-backup-restore-generation-evidence.py
+          scripts/validate-memory-os-backup-restore-generation-evidence.py
+          scripts/validate-memory-os-backup-restore-generation-evidence-negative.py
+          scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py
+          scripts/validate-memory-os-backup-restore-semantic-generation-negative.py
+          scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py
+          scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py
+          scripts/reconcile-memory-os-backup-restore-generation-evidence.py
+          scripts/validate-memory-os-backup-restore-generation-binding.py
+          scripts/validate-memory-os-backup-restore-generation-binding-negative.py
+          scripts/register-memory-os-backup-restore-non-resurrection-evidence.py
+          scripts/validate-memory-os-backup-restore-non-resurrection-admission.py
+          scripts/validate-memory-os-backup-restore-non-resurrection-negative.py
+          scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py
+          scripts/reconcile-memory-os-backup-non-resurrection-authority.py
+          scripts/validate-memory-os-operability.py
+          EOF
+
       - name: Validate drill-bound generation recovery admission
         id: validation
         run: |
@@ -129,55 +179,14 @@ jobs:
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
+
       - name: Commit bounded recovery authority
         if: steps.validation.outputs.exit_code == '0'
         run: |
           set -euo pipefail
+          mapfile -t authority_paths < "$RUNNER_TEMP/backup-restore-generation-evidence-authority-paths"
           git fetch origin so
-          if ! git diff --quiet "$SOURCE_SHA" origin/so -- \
-            .github/workflows/backup-restore-generation-evidence.yml \
-            contracts/operations/backup-restore-generation-evidence-contract.v1.json \
-            contracts/operations/backup-restore-generation-evidence-registry.v1.json \
-            contracts/operations/backup-restore-generation-binding-contract.v1.json \
-            contracts/operations/backup-restore-drill-request-contract.v1.json \
-            contracts/operations/backup-restore-drill-request-registry.v1.json \
-            contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json \
-            contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json \
-            contracts/operations/production-equivalent-environment-generation-contract.v1.json \
-            contracts/operations/production-equivalent-environment-generation-registry.v1.json \
-            contracts/operations/recovery-objectives-admission-contract.v1.json \
-            contracts/operations/recovery-objectives-registry.v1.json \
-            contracts/operations/production-operability-status.json \
-            'docs/evidence/backup-restore/**' \
-            'docs/evidence/recovery-objectives/approvals/**' \
-            'docs/fixtures/memory-os-operability/backup-restore-generation-evidence/**' \
-            'docs/fixtures/memory-os-operability/recovery-objectives-approval/**' \
-            scripts/memory_os_backup_restore_blockers.py \
-            scripts/memory_os_environment_generation_eligibility.py \
-            scripts/validate-memory-os-production-equivalent-environment-generation.py \
-            scripts/register-memory-os-recovery-objectives.py \
-            scripts/validate-memory-os-recovery-objectives.py \
-            scripts/validate-memory-os-recovery-objectives-negative.py \
-            scripts/request-memory-os-backup-restore-drill.py \
-            scripts/validate-memory-os-backup-restore-drill-request.py \
-            scripts/validate-memory-os-backup-restore-drill-request-negative.py \
-            scripts/reconcile-memory-os-backup-restore-drill-request.py \
-            scripts/register-memory-os-backup-restore-generation-evidence.py \
-            scripts/validate-memory-os-backup-restore-generation-evidence.py \
-            scripts/validate-memory-os-backup-restore-generation-evidence-negative.py \
-            scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py \
-            scripts/validate-memory-os-backup-restore-semantic-generation-negative.py \
-            scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py \
-            scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py \
-            scripts/reconcile-memory-os-backup-restore-generation-evidence.py \
-            scripts/validate-memory-os-backup-restore-generation-binding.py \
-            scripts/validate-memory-os-backup-restore-generation-binding-negative.py \
-            scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
-            scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
-            scripts/validate-memory-os-backup-restore-non-resurrection-negative.py \
-            scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py \
-            scripts/reconcile-memory-os-backup-non-resurrection-authority.py \
-            scripts/validate-memory-os-operability.py; then
+          if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
             echo "Generation recovery authority source changed during reconciliation; refusing stale derived authority."
             exit 75
           fi
@@ -197,24 +206,29 @@ jobs:
             git commit -m "docs(restore): reconcile drill-bound generation recovery authority"
             for attempt in 1 2 3 4; do
               git fetch origin so
-              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
-                echo "Branch advanced after validation; refusing to rebase stale generation recovery authority."
+              if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
+                echo "Generation recovery authority changed after validation; refusing stale derived authority."
                 exit 75
+              fi
+              if [[ "$(git rev-parse origin/so)" != "$(git rev-parse HEAD^)" ]]; then
+                git rebase origin/so
               fi
               if git push origin HEAD:so; then exit 0; fi
               sleep 2
             done
             exit 1
           fi
+
       - name: Record privacy-safe generation recovery diagnostic
         if: steps.validation.outputs.exit_code != '0'
         env:
           VALIDATION_EXIT_CODE: ${{ steps.validation.outputs.exit_code }}
         run: |
           set -euo pipefail
+          mapfile -t authority_paths < "$RUNNER_TEMP/backup-restore-generation-evidence-authority-paths"
           git fetch origin so
-          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
-            echo "Branch advanced after validation; refusing to attach a stale generation recovery diagnostic."
+          if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
+            echo "Generation recovery authority changed after validation; refusing stale diagnostic."
             exit 75
           fi
           python - <<'PY'
@@ -245,13 +259,17 @@ jobs:
             git commit -m "test(restore): record generation recovery admission diagnostic"
             for attempt in 1 2 3; do
               git fetch origin so
-              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
-                echo "Branch advanced before generation recovery diagnostic push; refusing stale diagnostic."
+              if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
+                echo "Generation recovery authority changed before diagnostic push; refusing stale diagnostic."
                 exit 75
+              fi
+              if [[ "$(git rev-parse origin/so)" != "$(git rev-parse HEAD^)" ]]; then
+                git rebase origin/so
               fi
               if git push origin HEAD:so; then exit 0; fi
               sleep 2
             done
           fi
+
       - name: Enforce generation recovery admission
         run: test "${{ steps.validation.outputs.exit_code }}" = "0"
