@@ -47,14 +47,26 @@ def require(condition: bool, message: str) -> None:
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise Fail(f"cannot load {path}: {exc}") from exc
     require(isinstance(value, dict), f"root must be object: {path}")
     return value
 
 
+def canonical_repo_file(path: Path, field: str) -> Path:
+    try:
+        relative = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(relative.parts and ".." not in relative.parts, f"{field} must be repository-contained")
+    require(relative == resolved and path.is_file(), f"{field} must resolve to its canonical repository file")
+    return path
+
+
 def load_environment_validator():
-    spec = importlib.util.spec_from_file_location("memory_os_environment_record_validator_for_generation_writer", ENV_VALIDATOR)
+    validator = canonical_repo_file(ENV_VALIDATOR, "environment record semantic validator")
+    spec = importlib.util.spec_from_file_location("memory_os_environment_record_validator_for_generation_writer", validator)
     require(spec is not None and spec.loader is not None, "cannot load environment record semantic validator")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
