@@ -316,6 +316,33 @@ def main() -> int:
 
         writer.repo_ref = real_repo_ref
 
+    healthy_registry = {
+        "schemaVersion": "memory-os-production-equivalent-environment-generation-registry.v1",
+        "registryClass": "PRODUCTION_EQUIVALENT_ENVIRONMENT_GENERATIONS",
+        "appendOnly": True,
+        "productionEvidence": False,
+        "registeredGenerationCount": 0,
+        "currentGenerationId": None,
+        "generations": [],
+        "limitations": [],
+    }
+    require(writer.validate_registry_for_append(copy.deepcopy(healthy_registry)) == [], "healthy empty generation registry append authority must remain valid")
+    print("PASS append authority: healthy empty generation registry")
+
+    registry_cases = (
+        ("generation registry schema drift before append", "schemaVersion", "memory-os-production-equivalent-environment-generation-registry.v0"),
+        ("generation registry class drift before append", "registryClass", "UNTRUSTED_GENERATION_AUTHORITY"),
+        ("generation registry appendOnly disabled before append", "appendOnly", False),
+        ("generation registry production evidence boundary drift before append", "productionEvidence", True),
+        ("generation registry registeredGenerationCount drift before append", "registeredGenerationCount", 1),
+        ("generation registry boolean registeredGenerationCount before append", "registeredGenerationCount", False),
+        ("generation registry current pointer drift before append", "currentGenerationId", "pegen_unregistered"),
+    )
+    for name, field, invalid_value in registry_cases:
+        mutated = copy.deepcopy(healthy_registry)
+        mutated[field] = invalid_value
+        expect_rejected(name, lambda value=mutated: writer.validate_registry_for_append(value))
+
     print("Memory OS production-equivalent environment generation negative suite PASS")
     print("canonical registry mutated: false")
     print("registration implies preflight eligibility: false")
@@ -327,6 +354,8 @@ def main() -> int:
     print("invalid or unreadable semantic environment authority accepted: false")
     print("semantic validator implementation exceptions folded into rejection: false")
     print("unexpected implementation exception accepted as valid rejection: false")
+    print("generation registry append authority drift accepted: false")
+    print("boolean generation registry counts accepted before append: false")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
