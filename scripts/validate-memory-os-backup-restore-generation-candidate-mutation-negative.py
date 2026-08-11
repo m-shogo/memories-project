@@ -288,7 +288,7 @@ def main() -> int:
             try:
                 class RejectingOverlay:
                     @staticmethod
-                    def validate_record(record: dict[str, Any]) -> None:
+                    def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any]]:
                         raise writer.Fail("synthetic typed domain rejection")
 
                 writer.load_non_resurrection_writer = lambda: RejectingOverlay()
@@ -297,7 +297,7 @@ def main() -> int:
 
                 class BrokenOverlay:
                     @staticmethod
-                    def validate_record(record: dict[str, Any]) -> None:
+                    def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any]]:
                         raise TypeError("synthetic unexpected typed implementation error")
 
                 writer.load_non_resurrection_writer = lambda: BrokenOverlay()
