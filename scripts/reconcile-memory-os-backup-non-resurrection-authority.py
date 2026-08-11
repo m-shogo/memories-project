@@ -44,8 +44,8 @@ def require(condition: bool, message: str) -> None:
 def repo_relative(path: Path) -> Path:
     try:
         return path.resolve(strict=False).relative_to(ROOT.resolve())
-    except (OSError, ValueError) as exc:
-        raise Fail(f"authority path escapes repository: {path}") from exc
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"authority path missing, unreadable, or escapes repository: {path}") from exc
 
 def require_repo_file(path: Path, message: str) -> Path:
     relative = repo_relative(path)
