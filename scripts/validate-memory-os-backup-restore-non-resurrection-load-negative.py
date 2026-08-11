@@ -69,6 +69,8 @@ def main() -> int:
             outside_writer.write_text("VALUE = 1\n", encoding="utf-8")
             escaped_link = tmp / "escaped-generation-writer.py"
             escaped_link.symlink_to(outside_writer)
+            loop_link = tmp / "loop-generation-writer.py"
+            loop_link.symlink_to(loop_link.name)
 
             original_generation_writer = writer.GEN_WRITER
             try:
@@ -76,6 +78,8 @@ def main() -> int:
                 expect_domain_fail("generation writer absolute path escapes repository", writer.load_generation_writer, writer.Fail)
                 writer.GEN_WRITER = escaped_link
                 expect_domain_fail("generation writer repository symlink escapes repository", writer.load_generation_writer, writer.Fail)
+                writer.GEN_WRITER = loop_link
+                expect_domain_fail("generation writer repository symlink loop", writer.load_generation_writer, writer.Fail)
             finally:
                 writer.GEN_WRITER = original_generation_writer
 
