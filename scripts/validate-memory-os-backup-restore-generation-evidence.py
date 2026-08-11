@@ -39,7 +39,7 @@ def valid_count(value: Any) -> bool:
 def repo_relative(path: Path) -> Path:
     try:
         return path.resolve().relative_to(ROOT.resolve())
-    except ValueError as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"artifact path escapes repository root: {path}") from exc
 
 
