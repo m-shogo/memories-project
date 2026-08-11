@@ -50,17 +50,46 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def repo_relative(path: Path) -> Path:
+    try:
+        return path.resolve(strict=False).relative_to(ROOT.resolve())
+    except (OSError, ValueError) as exc:
+        raise Fail(f"authority path escapes repository: {path}") from exc
+
+
+def require_repo_file(path: Path, message: str) -> Path:
+    relative = repo_relative(path)
+    require((ROOT / relative).is_file(), message)
+    return relative
+
+
+def read_text(path: Path) -> str:
+    relative = repo_relative(path)
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise Fail(f"cannot read {relative}: {exc}") from exc
+
+
 def load(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+    relative = repo_relative(path)
+    try:
+        value = json.loads(read_text(path))
+    except json.JSONDecodeError as exc:
+        raise Fail(f"cannot load {relative}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be object: {relative}")
     return value
 
 
 def load_writer():
+    relative = require_repo_file(WRITER, "generation evidence writer missing")
     spec = importlib.util.spec_from_file_location("memory_os_backup_restore_generation_reconcile_writer", WRITER)
-    require(spec is not None and spec.loader is not None, "cannot load generation evidence writer")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    require(spec is not None and spec.loader is not None, f"cannot load {relative}")
+    try:
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except (FileNotFoundError, OSError) as exc:
+        raise Fail(f"cannot load {relative}: {exc}") from exc
     return module
 
 
@@ -200,6 +229,8 @@ def main() -> int:
     BINDING.write_text(json.dumps(binding, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     # Validate after deterministic re-derivation.
+    require_repo_file(BINDING_VALIDATOR, "generation binding validator missing")
+    require_repo_file(VALIDATOR, "generation evidence validator missing")
     completed = subprocess.run([sys.executable, str(BINDING_VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     require(completed.returncode == 0, f"generation binding validator failed:\n{completed.stdout[-5000:]}{completed.stderr[-5000:]}")
     completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
@@ -220,7 +251,7 @@ def main() -> int:
         f"{EVIDENCE_PREFIX} registered environment generations={generation_count}, approved recovery objectives={objective_count}, reviewed/current restore drill requests={drill_count}/{current_drill_count}, recovery records={count}, drill-request-bound records={bound_count}, complete generation-bound restores={restore_count}, production-equivalent recovery candidates={candidate_count}; candidate-level independent evidence review={str(candidate_count > 0).lower()}, human production-promotion review/authorization=false/false; immutable history is preserved after request supersession but current candidate derivation is recomputed fail-closed from the current request/objective/typed-evidence state, while productionEvidence and productionReady remain false"
     ))
     for ref in REFS:
-        require((ROOT / ref).is_file(), f"generation recovery evidence ref missing: {ref}")
+        require_repo_file(ROOT / ref, f"generation recovery evidence ref missing: {ref}")
         append_once(refs, ref)
     STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
