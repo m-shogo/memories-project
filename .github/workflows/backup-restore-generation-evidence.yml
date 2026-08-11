@@ -35,6 +35,7 @@ on:
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py"
       - "scripts/validate-memory-os-backup-restore-semantic-generation-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py"
@@ -112,6 +113,7 @@ jobs:
           scripts/register-memory-os-backup-restore-generation-evidence.py
           scripts/validate-memory-os-backup-restore-generation-evidence.py
           scripts/validate-memory-os-backup-restore-generation-evidence-negative.py
+          scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py
           scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py
           scripts/validate-memory-os-backup-restore-semantic-generation-negative.py
           scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py
@@ -148,6 +150,7 @@ jobs:
             scripts/register-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-negative.py \
+            scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py \
             scripts/validate-memory-os-backup-restore-semantic-generation-negative.py \
             scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py \
@@ -168,6 +171,7 @@ jobs:
           if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-backup-non-resurrection-authority.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py >> "$log" 2>&1 || code=$?; fi
