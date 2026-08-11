@@ -158,6 +158,9 @@ def main() -> int:
         source_superseded["generations"] = [source, target, source_successor]
         source_superseded["registeredGenerationCount"] = 3
         write_json(generation_registry, source_superseded)
+        source_superseded_drill = drill_registry_value(request)
+        source_superseded_drill["currentExecutableRequestCount"] = 0
+        write_json(drill_registry, source_superseded_drill)
 
         writer.validate_record(record, require_current_drill_request=False)
         require(writer.candidate(record) is False, "superseded source generation must invalidate current candidate")
@@ -165,6 +168,7 @@ def main() -> int:
         print("PASS revoke: superseded source generation invalidates candidate and new evidence")
 
         write_json(generation_registry, baseline_generations)
+        write_json(drill_registry, drill_registry_value(request))
         writer.validate_record(record)
         require(writer.candidate(record) is True, "baseline candidate must recover after isolated source supersession fixture reset")
 
@@ -181,6 +185,9 @@ def main() -> int:
         target_superseded["registeredGenerationCount"] = 3
         target_superseded["currentGenerationId"] = "pegen_target_v2"
         write_json(generation_registry, target_superseded)
+        target_superseded_drill = drill_registry_value(request)
+        target_superseded_drill["currentExecutableRequestCount"] = 0
+        write_json(drill_registry, target_superseded_drill)
 
         writer.validate_record(record, require_current_drill_request=False)
         require(writer.candidate(record) is False, "superseded restore-target generation must invalidate current candidate")
@@ -317,6 +324,9 @@ def main() -> int:
             },
         ]
         write_json(objectives_registry, rolled_objectives)
+        rolled_objective_drill = drill_registry_value(request)
+        rolled_objective_drill["currentExecutableRequestCount"] = 0
+        write_json(drill_registry, rolled_objective_drill)
 
         writer.validate_record(record, require_current_drill_request=False)
         require(writer.candidate(record) is False, "recovery objective rollover must invalidate current candidate")
