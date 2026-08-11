@@ -162,6 +162,10 @@ def main() -> int:
             writer.CANONICAL_NON_RESURRECTION_REGISTRY = overlay_registry
 
             evidence_id = valid["evidenceId"]
+            require(writer.base_candidate(valid) is True, "fully bound upstream authority must satisfy pre-overlay candidate gates")
+            print("PASS candidate foundation: fully bound upstream authority satisfies pre-overlay gates")
+            require(writer.candidate(valid) is True, "intact fully bound authority must satisfy the final candidate predicate")
+            print("PASS candidate: intact fully bound authority accepted")
             require(writer.typed_non_resurrection_covered(evidence_id) is True, "intact typed registry row must cover generation evidence")
             print("PASS candidate coverage: intact fully bound typed registry accepted")
 
@@ -290,6 +294,8 @@ def main() -> int:
             print("PASS revoke: registry-row review independence mutation invalidates coverage")
 
             write_json(overlay_registry, intact_registry)
+            require(writer.base_candidate(valid) is True, "restored intact authority must retain pre-overlay candidate eligibility")
+            require(writer.candidate(valid) is True, "restored intact authority must restore final candidate predicate")
             require(writer.typed_non_resurrection_covered(evidence_id) is True, "restored intact row must restore isolated typed coverage predicate")
 
         print("Memory OS generation candidate registry-row mutation negative suite PASS")
