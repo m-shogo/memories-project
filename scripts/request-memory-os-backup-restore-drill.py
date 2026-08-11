@@ -65,6 +65,17 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def canonical_repo_file(path: Path, field: str) -> Path:
+    try:
+        relative = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(relative.parts and ".." not in relative.parts, f"{field} must be repository-contained")
+    require(relative == resolved and path.is_file(), f"{field} must resolve to its canonical repository file")
+    return path
+
+
 def canonical_request_sha256(record: dict[str, Any]) -> str:
     encoded = json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
@@ -103,7 +114,8 @@ def parse_timestamp(value: Any, field: str) -> datetime:
 
 
 def load_eligibility_helper():
-    spec = importlib.util.spec_from_file_location("memory_os_generation_eligibility_for_restore_request", ELIGIBILITY_HELPER)
+    helper = canonical_repo_file(ELIGIBILITY_HELPER, "environment generation eligibility helper")
+    spec = importlib.util.spec_from_file_location("memory_os_generation_eligibility_for_restore_request", helper)
     require(spec is not None and spec.loader is not None, "cannot load environment generation eligibility helper")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
