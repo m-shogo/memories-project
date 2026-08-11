@@ -236,6 +236,9 @@ def main() -> int:
             escape_link = root_path / "escaped-evidence.txt"
             escape_link.symlink_to(external_path)
             expect_rejected("semantic environment evidence symlink escapes repository root", lambda: env_validator.repo_ref("escaped-evidence.txt", "negative.symlink", required=True))
+            loop_link = root_path / "loop-evidence.txt"
+            loop_link.symlink_to(loop_link.name)
+            expect_rejected("semantic environment evidence symlink loop", lambda: env_validator.repo_ref("loop-evidence.txt", "negative.loop", required=True))
         finally:
             env_validator.ROOT = real_env_root
 
@@ -252,8 +255,20 @@ def main() -> int:
             escape_link = root_path / "escaped-environment.json"
             escape_link.symlink_to(external_path)
             expect_rejected("generation environment symlink escapes repository root", lambda: writer.repo_ref("escaped-environment.json", "environmentRecordRef"))
+            loop_link = root_path / "loop-environment.json"
+            loop_link.symlink_to(loop_link.name)
+            expect_rejected("generation environment ref symlink loop", lambda: writer.repo_ref("loop-environment.json", "environmentRecordRef"))
         finally:
             writer.ROOT = real_root
+
+    with tempfile.TemporaryDirectory(prefix="memory-os-semantic-load-negative-") as tmp:
+        tmp_path = Path(tmp)
+        invalid_utf8 = tmp_path / "invalid-utf8.json"
+        invalid_utf8.write_bytes(b"{\xff}\n")
+        expect_rejected("invalid UTF-8 semantic environment record", lambda: env_validator.load_file(invalid_utf8))
+        directory_record = tmp_path / "directory-record.json"
+        directory_record.mkdir()
+        expect_rejected("unreadable semantic environment record directory", lambda: env_validator.load_file(directory_record))
 
     with tempfile.TemporaryDirectory(prefix="memory-os-generation-negative-") as tmp:
         tmp_path = Path(tmp)
@@ -307,6 +322,9 @@ def main() -> int:
     print("incomplete equivalent environment accepted: false")
     print("semantic environment evidence refs escape repository: false")
     print("generation environment refs escape repository: false")
+    print("semantic environment ref symlink loops accepted: false")
+    print("generation environment ref symlink loops accepted: false")
+    print("invalid or unreadable semantic environment authority accepted: false")
     print("semantic validator implementation exceptions folded into rejection: false")
     print("unexpected implementation exception accepted as valid rejection: false")
     print("production evidence: false")
