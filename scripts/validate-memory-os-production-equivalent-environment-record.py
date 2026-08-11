@@ -44,7 +44,7 @@ def repo_ref(value: Any, field: str, *, required: bool) -> str | None:
     absolute = ROOT / relative
     try:
         resolved = absolute.resolve(strict=True).relative_to(ROOT.resolve())
-    except (FileNotFoundError, OSError, ValueError) as exc:
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"{field} evidence missing or escapes repository: {value}") from exc
     require(resolved == relative and absolute.is_file(), f"{field} must resolve to the canonical repository file")
     return value
@@ -197,7 +197,7 @@ def load_file(path: Path) -> dict[str, Any]:
     import json
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise Fail(f"cannot load {path}: {exc}") from exc
     require(isinstance(value, dict), "environment record root must be object")
     return value
