@@ -92,7 +92,31 @@ def main() -> int:
             finally:
                 writer.GEN_WRITER = original_generation_writer
 
+            outside_json = outside_dir / "outside-authority.json"
+            outside_json.write_text("{}\n", encoding="utf-8")
+            escaped_authority = tmp / "escaped-canonical-authority.json"
+            escaped_authority.symlink_to(outside_json)
+            loop_authority = tmp / "loop-canonical-authority.json"
+            loop_authority.symlink_to(loop_authority.name)
+
+            for field in (
+                "typed non-resurrection contract",
+                "typed non-resurrection registry",
+                "generation evidence registry",
+            ):
+                expect_domain_fail(
+                    f"{field} repository symlink escapes repository",
+                    lambda field=field: writer.require_canonical_runtime_authority(escaped_authority, escaped_authority, field),
+                    writer.Fail,
+                )
+                expect_domain_fail(
+                    f"{field} repository symlink loop",
+                    lambda field=field: writer.require_canonical_runtime_authority(loop_authority, loop_authority, field),
+                    writer.Fail,
+                )
+
     print("Typed unreadable/escaped-authority negative suite PASS")
+    print("canonical typed contract/registry/generation registry containment: enforced")
     return 0
 
 
