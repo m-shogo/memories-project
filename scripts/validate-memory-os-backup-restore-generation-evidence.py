@@ -138,6 +138,7 @@ def main() -> int:
     require(drill_writer == ROOT / "scripts/request-memory-os-backup-restore-drill.py", "drill request writer authority drift")
     writer.canonical_repo_file(non_resurrection_writer, "typed non-resurrection writer")
     writer.canonical_repo_file(drill_writer, "drill request writer")
+    require(callable(getattr(writer, "validate_registry_for_append", None)), "generation writer append authority guard missing")
 
     require(contract.get("schemaVersion") == "memory-os-backup-restore-generation-evidence.v1", "contract schema drift")
     expected_refs = {
@@ -214,6 +215,7 @@ def main() -> int:
     require(restore_count == derived_restore, "completeGenerationBoundRestoreCount drift")
     require(candidate_count == derived_candidates, "productionEquivalentRecoveryCandidateCount drift")
     require(0 <= candidate_count <= restore_count <= backup_count <= bound_count <= count, "generation evidence count ordering invalid")
+    writer.validate_registry_for_append(registry)
 
     generation_count = generations.get("registeredGenerationCount")
     objective_count = objectives.get("approvedObjectiveCount")
@@ -300,6 +302,7 @@ def main() -> int:
     print(f"complete generation-bound restores: {derived_restore}")
     print(f"production-equivalent recovery candidates: {derived_candidates}")
     print("generation writer canonical cross-authority binding without evidence rows: enforced")
+    print("generation writer append authority guard executed: true")
     print("boolean registry/contract/binding counts accepted: false")
     print("contract artifact refs canonical and repository-contained: true")
     print("candidate-level independent review cross-authority binding: enforced")
