@@ -316,16 +316,23 @@ def typed_non_resurrection_covered(evidence_id: Any) -> bool:
     row = matches[0]
 
     # Canonical candidate derivation must re-run the typed writer's complete
-    # evidence validation. This prevents an already-registered overlay from
-    # remaining candidate-eligible after any domain/review payload is replaced
-    # in place. Non-canonical registries are used only by isolated negative
-    # harnesses; those continue to exercise the generation layer without
-    # mutating canonical evidence files.
+    # registry and evidence validation. This prevents stale aggregate counters
+    # or an in-place payload mutation from leaving a recovery candidate eligible.
+    # Non-canonical registries are used only by isolated negative harnesses.
     if NON_RESURRECTION_REGISTRY == CANONICAL_NON_RESURRECTION_REGISTRY:
         try:
             overlay_writer = load_non_resurrection_writer()
+            overlay_writer.REGISTRY = NON_RESURRECTION_REGISTRY
             overlay_writer.GEN_EVIDENCE_REGISTRY = REGISTRY
-            overlay_writer.validate_record(row)
+            validated_rows = overlay_writer.validate_registry_for_append(registry)
+            validated_matches = [
+                candidate_row
+                for candidate_row in validated_rows
+                if candidate_row.get("generationEvidenceId") == evidence_id
+            ]
+            if len(validated_matches) != 1:
+                return False
+            row = validated_matches[0]
         except Exception as exc:
             if domain_validation_failure(exc):
                 return False
