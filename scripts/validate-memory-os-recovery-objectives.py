@@ -61,6 +61,16 @@ def repo_file(value: Any, field: str) -> Path:
     return path
 
 
+def repo_directory(path: Path, field: str) -> Path:
+    try:
+        relative = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"contract authority directory missing or escapes repository: {field}") from exc
+    require(relative == resolved and path.is_dir(), f"contract authority directory must resolve canonically: {field}")
+    return path
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -71,7 +81,8 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_writer():
-    spec = importlib.util.spec_from_file_location("memory_os_recovery_objectives_writer", WRITER)
+    writer_path = repo_file(str(WRITER.relative_to(ROOT)), "writer")
+    spec = importlib.util.spec_from_file_location("memory_os_recovery_objectives_writer", writer_path)
     require(spec is not None and spec.loader is not None, "cannot load recovery objectives writer")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -87,6 +98,23 @@ def main() -> int:
     contract = load(CONTRACT)
     registry = load(REGISTRY)
     writer = load_writer()
+
+    writer_authorities = (
+        ("CONTRACT", "CANONICAL_CONTRACT", CONTRACT, "recovery objective contract"),
+        ("REGISTRY", "CANONICAL_REGISTRY", REGISTRY, "recovery objective registry"),
+    )
+    for runtime_name, canonical_name, expected_path, field in writer_authorities:
+        runtime_path = getattr(writer, runtime_name, None)
+        canonical_path = getattr(writer, canonical_name, None)
+        require(runtime_path == expected_path, f"writer runtime authority drift: {runtime_name}")
+        require(canonical_path == expected_path, f"writer canonical authority drift: {canonical_name}")
+        writer.canonical_repo_file(runtime_path, field)
+    approval_dir = getattr(writer, "APPROVAL_DIR", None)
+    canonical_approval_dir = getattr(writer, "CANONICAL_APPROVAL_DIR", None)
+    require(approval_dir == canonical_approval_dir, "writer approval authority directory drift")
+    require(isinstance(approval_dir, Path), "writer approval authority directory missing")
+    repo_directory(approval_dir, "recovery objective approval authority directory")
+
     require(contract.get("schemaVersion") == "memory-os-recovery-objectives-admission.v1", "contract schema drift")
     expected_refs = {
         "registry": REGISTRY,
@@ -170,6 +198,7 @@ def main() -> int:
     print("typed Recovery Owner/Operability approval binding: required")
     print("arbitrary repository approval files accepted: false")
     print("canonical repository authority refs required: true")
+    print("canonical writer contract/registry/approval authority validated without objective rows: true")
     print("canonical reviewer pseudonyms required: true")
     print("objective values chosen/defaulted by validator: false")
     print("boolean objective counts accepted: false")
