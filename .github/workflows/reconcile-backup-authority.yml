@@ -86,14 +86,23 @@ jobs:
           python scripts/validate-memory-os-local-coherent-recovery-set.py
           python scripts/validate-memory-os-backup-local-foundations.py
 
-      - name: Normalize policy and local restore authority
+      - name: Reconcile backup policy authority
         run: |
           python scripts/reconcile-memory-os-backup-authority.py
           python scripts/reconcile-memory-os-backup-authority.py --check
+
+      - name: Reconcile backup semantic overlay
+        run: |
           python scripts/reconcile-memory-os-backup-semantic-overlay.py
           python scripts/reconcile-memory-os-backup-semantic-overlay.py --check
+
+      - name: Reconcile coherent restore authority
+        run: |
           python scripts/reconcile-memory-os-backup-coherent-authority.py
           python scripts/reconcile-memory-os-backup-coherent-authority.py --check
+
+      - name: Validate normalized backup authority
+        run: |
           python scripts/validate-memory-os-backup-restore.py
           python scripts/validate-memory-os-backup-restore-blockers-negative.py
           python scripts/validate-memory-os-local-apple-replay-restore.py
