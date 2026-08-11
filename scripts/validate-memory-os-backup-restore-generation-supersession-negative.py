@@ -195,6 +195,44 @@ def main() -> int:
         writer.validate_record(record)
         require(writer.candidate(record) is True, "baseline candidate must recover after isolated approval replacement fixture reset")
 
+        mutated_request = copy.deepcopy(request)
+        mutated_request["productionTraffic"] = True
+        write_json(drill_registry, drill_registry_value(mutated_request))
+
+        require(writer.candidate(record) is False, "in-place drill request mutation must invalidate current candidate")
+        reject_current_registration(writer, record, "in-place drill request mutation")
+        print("PASS revoke: in-place drill request mutation invalidates candidate and new evidence")
+
+        write_json(drill_registry, drill_registry_value(request))
+        writer.validate_record(record)
+        require(writer.candidate(record) is True, "baseline candidate must recover after isolated request mutation fixture reset")
+
+        duplicate_request_registry = drill_registry_value(request)
+        duplicate_request_registry["registeredRequestCount"] = 2
+        duplicate_request_registry["currentExecutableRequestCount"] = 2
+        duplicate_request_registry["requests"] = [request, copy.deepcopy(request)]
+        write_json(drill_registry, duplicate_request_registry)
+
+        require(writer.candidate(record) is False, "duplicate drill request identity must invalidate current candidate")
+        reject_current_registration(writer, record, "duplicate drill request identity")
+        print("PASS revoke: duplicate drill request identity invalidates candidate and new evidence")
+
+        write_json(drill_registry, drill_registry_value(request))
+        writer.validate_record(record)
+        require(writer.candidate(record) is True, "baseline candidate must recover after isolated duplicate request fixture reset")
+
+        drifted_boundary_registry = drill_registry_value(request)
+        drifted_boundary_registry["productionReady"] = True
+        write_json(drill_registry, drifted_boundary_registry)
+
+        require(writer.candidate(record) is False, "drill registry production boundary drift must invalidate current candidate")
+        reject_current_registration(writer, record, "drill registry production boundary drift")
+        print("PASS revoke: drill registry production boundary drift invalidates candidate and new evidence")
+
+        write_json(drill_registry, drill_registry_value(request))
+        writer.validate_record(record)
+        require(writer.candidate(record) is True, "baseline candidate must recover after isolated registry boundary fixture reset")
+
         rolled_objectives = dict(baseline_objectives)
         rolled_objectives["approvedObjectiveCount"] = 2
         rolled_objectives["currentObjectiveId"] = "recovery_objectives_ci_v2"
@@ -220,6 +258,9 @@ def main() -> int:
     print("superseded source generation creates current candidate: false")
     print("superseded restore-target generation creates current candidate: false")
     print("replaced review approval path creates current candidate: false")
+    print("mutated drill request row creates current candidate: false")
+    print("duplicate drill request identity creates current candidate: false")
+    print("drill registry production boundary drift creates current candidate: false")
     print("stale recovery objective creates current candidate: false")
     print("new evidence accepted against stale generation/objective/request authority: false")
     print("canonical registries mutated: false")
