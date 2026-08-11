@@ -92,6 +92,38 @@ jobs:
             test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
           fi
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Write preflight authority manifest
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        run: |
+          cat > "$RUNNER_TEMP/backup-restore-preflight-authority-paths" <<'EOF'
+          .github/workflows/backup-restore-drill-preflight.yml
+          contracts/operations/backup-restore-drill-preflight-contract.v1.json
+          contracts/operations/production-equivalent-environment-generation-contract.v1.json
+          contracts/operations/production-equivalent-environment-generation-registry.v1.json
+          contracts/operations/recovery-objectives-admission-contract.v1.json
+          contracts/operations/recovery-objectives-registry.v1.json
+          contracts/operations/backup-restore-drill-request-contract.v1.json
+          contracts/operations/backup-restore-drill-request-registry.v1.json
+          contracts/operations/backup-restore-admission-chain-contract.v1.json
+          contracts/operations/production-operability-status.json
+          docs/evidence/backup-restore
+          docs/evidence/recovery-objectives/approvals
+          docs/fixtures/memory-os-operability/backup-restore-generation-evidence
+          docs/fixtures/memory-os-operability/recovery-objectives-approval
+          scripts/memory_os_backup_restore_blockers.py
+          scripts/memory_os_environment_generation_eligibility.py
+          scripts/validate-memory-os-production-equivalent-environment-generation.py
+          scripts/register-memory-os-recovery-objectives.py
+          scripts/validate-memory-os-recovery-objectives.py
+          scripts/validate-memory-os-recovery-objectives-negative.py
+          scripts/request-memory-os-backup-restore-drill.py
+          scripts/validate-memory-os-backup-restore-drill-request.py
+          scripts/validate-memory-os-backup-restore-drill-request-negative.py
+          scripts/validate-memory-os-backup-restore-drill-preflight.py
+          scripts/validate-memory-os-backup-restore-drill-preflight-negative.py
+          scripts/reconcile-memory-os-backup-restore-drill-preflight.py
+          scripts/validate-memory-os-operability.py
+          EOF
       - name: Reconcile and validate restore drill preflight
         id: preflight
         run: |
@@ -101,6 +133,7 @@ jobs:
           code=0
           python -m py_compile \
             scripts/memory_os_backup_restore_blockers.py \
+            scripts/memory_os_environment_generation_eligibility.py \
             scripts/validate-memory-os-production-equivalent-environment-generation.py \
             scripts/register-memory-os-recovery-objectives.py \
             scripts/validate-memory-os-recovery-objectives.py \
@@ -132,35 +165,9 @@ jobs:
         if: steps.preflight.outputs.exit_code == '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
+          mapfile -t authority_paths < "$RUNNER_TEMP/backup-restore-preflight-authority-paths"
           git fetch origin so
-          if ! git diff --quiet "$SOURCE_SHA" origin/so -- \
-            .github/workflows/backup-restore-drill-preflight.yml \
-            contracts/operations/backup-restore-drill-preflight-contract.v1.json \
-            contracts/operations/production-equivalent-environment-generation-contract.v1.json \
-            contracts/operations/production-equivalent-environment-generation-registry.v1.json \
-            contracts/operations/recovery-objectives-admission-contract.v1.json \
-            contracts/operations/recovery-objectives-registry.v1.json \
-            contracts/operations/backup-restore-drill-request-contract.v1.json \
-            contracts/operations/backup-restore-drill-request-registry.v1.json \
-            contracts/operations/backup-restore-admission-chain-contract.v1.json \
-            contracts/operations/production-operability-status.json \
-            'docs/evidence/backup-restore/**' \
-            'docs/evidence/recovery-objectives/approvals/**' \
-            'docs/fixtures/memory-os-operability/backup-restore-generation-evidence/**' \
-            'docs/fixtures/memory-os-operability/recovery-objectives-approval/**' \
-            scripts/memory_os_backup_restore_blockers.py \
-            scripts/memory_os_environment_generation_eligibility.py \
-            scripts/validate-memory-os-production-equivalent-environment-generation.py \
-            scripts/register-memory-os-recovery-objectives.py \
-            scripts/validate-memory-os-recovery-objectives.py \
-            scripts/validate-memory-os-recovery-objectives-negative.py \
-            scripts/request-memory-os-backup-restore-drill.py \
-            scripts/validate-memory-os-backup-restore-drill-request.py \
-            scripts/validate-memory-os-backup-restore-drill-request-negative.py \
-            scripts/validate-memory-os-backup-restore-drill-preflight.py \
-            scripts/validate-memory-os-backup-restore-drill-preflight-negative.py \
-            scripts/reconcile-memory-os-backup-restore-drill-preflight.py \
-            scripts/validate-memory-os-operability.py; then
+          if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
             echo "Preflight authority source changed during reconciliation; refusing stale derived authority."
             exit 75
           fi
@@ -176,9 +183,12 @@ jobs:
             git commit -m "docs(restore): reconcile restore drill preflight authority"
             for attempt in 1 2 3 4; do
               git fetch origin so
-              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
-                echo "Branch advanced after validation; refusing to rebase stale preflight authority."
+              if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
+                echo "Preflight authority changed after validation; refusing stale derived authority."
                 exit 75
+              fi
+              if [[ "$(git rev-parse origin/so)" != "$(git rev-parse HEAD^)" ]]; then
+                git rebase origin/so
               fi
               if git push origin HEAD:so; then exit 0; fi
               sleep 2
@@ -191,9 +201,10 @@ jobs:
           PREFLIGHT_EXIT_CODE: ${{ steps.preflight.outputs.exit_code }}
         run: |
           set -euo pipefail
+          mapfile -t authority_paths < "$RUNNER_TEMP/backup-restore-preflight-authority-paths"
           git fetch origin so
-          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
-            echo "Branch advanced after validation; refusing stale preflight diagnostic."
+          if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
+            echo "Preflight authority changed after validation; refusing stale preflight diagnostic."
             exit 75
           fi
           python - <<'PY'
@@ -225,9 +236,12 @@ jobs:
             git commit -m "test(restore): record restore drill preflight diagnostic"
             for attempt in 1 2 3; do
               git fetch origin so
-              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
-                echo "Branch advanced after diagnostic capture; refusing stale preflight diagnostic."
+              if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
+                echo "Preflight authority changed before diagnostic push; refusing stale preflight diagnostic."
                 exit 75
+              fi
+              if [[ "$(git rev-parse origin/so)" != "$(git rev-parse HEAD^)" ]]; then
+                git rebase origin/so
               fi
               if git push origin HEAD:so; then exit 0; fi
               sleep 2
