@@ -119,8 +119,36 @@ def generation_by_id(generations: list[Any], generation_id: Any, field: str) -> 
 def objective_for_record(record: dict[str, Any]) -> dict[str, Any] | None:
     require_canonical_runtime_authority(OBJECTIVES_REGISTRY, CANONICAL_OBJECTIVES_REGISTRY, "recovery objectives registry")
     registry = load(OBJECTIVES_REGISTRY)
+    require(registry.get("schemaVersion") == "memory-os-recovery-objectives-registry.v1", "recovery objectives registry schema drift")
+    require(registry.get("appendOnly") is True, "recovery objectives registry must remain append-only")
+    require(
+        registry.get("productionEvidence") is False and registry.get("productionReady") is False,
+        "recovery objectives registry production boundary drift",
+    )
     rows = registry.get("records")
     require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "recovery objectives registry invalid")
+    approved_count = registry.get("approvedObjectiveCount")
+    require(
+        isinstance(approved_count, int)
+        and not isinstance(approved_count, bool)
+        and approved_count == len(rows),
+        "recovery objectives registry approvedObjectiveCount drift",
+    )
+    objective_ids = [row.get("objectiveId") for row in rows]
+    require(
+        all(isinstance(value, str) and value for value in objective_ids)
+        and len(objective_ids) == len(set(objective_ids)),
+        "recovery objectives registry objectiveId authority invalid",
+    )
+    current_objective_id = registry.get("currentObjectiveId")
+    if rows:
+        require(
+            current_objective_id == objective_ids[-1],
+            "recovery objectives registry currentObjectiveId drift",
+        )
+    else:
+        require(current_objective_id is None, "empty recovery objectives registry must not declare currentObjectiveId")
+
     objective_id = record.get("recoveryObjectivesId")
     measurements = (
         record.get("measuredRpoSeconds"),
