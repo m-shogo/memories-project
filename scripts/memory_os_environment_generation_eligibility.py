@@ -64,6 +64,10 @@ def derive_registry(registry: dict[str, Any]) -> dict[str, Any]:
         registry.get("schemaVersion") == "memory-os-production-equivalent-environment-generation-registry.v1",
         "generation registry schema drift",
     )
+    require(
+        registry.get("registryClass") == "PRODUCTION_EQUIVALENT_ENVIRONMENT_GENERATIONS",
+        "generation registry class drift",
+    )
     rows = registry.get("generations")
     count = registry.get("registeredGenerationCount")
     require(registry.get("appendOnly") is True and registry.get("productionEvidence") is False, "generation registry boundary drift")
@@ -169,6 +173,7 @@ def main() -> int:
     print(f"eligible directed restore pairs: {state['eligibleDirectedPairCount']}")
     print("canonical generation registry identity required for default derivation: true")
     print("generation registry schema drift accepted: false")
+    print("generation registry class drift accepted: false")
     print("cross-environment supersedes accepted: false")
     print("out-of-order same-environment supersedes accepted: false")
     print("current generation pointer drift accepted: false")
