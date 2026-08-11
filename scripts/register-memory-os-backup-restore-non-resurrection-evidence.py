@@ -44,6 +44,9 @@ def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
 
+def valid_count(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -86,9 +89,16 @@ def generation_record(evidence_id: Any) -> dict[str, Any]:
     require(isinstance(evidence_id, str) and evidence_id, "generationEvidenceId required")
     require_canonical_runtime_authority(GEN_EVIDENCE_REGISTRY, CANONICAL_GEN_EVIDENCE_REGISTRY, "generation evidence registry")
     registry = load(GEN_EVIDENCE_REGISTRY)
+    require(registry.get("schemaVersion") == "memory-os-backup-restore-generation-evidence-registry.v1", "generation evidence registry schema drift")
+    require(registry.get("appendOnly") is True, "generation evidence registry must remain append-only")
+    require(registry.get("productionEvidence") is False and registry.get("productionReady") is False, "generation evidence registry production boundary drift")
     rows = registry.get("records")
-    require(isinstance(rows, list), "generation evidence registry records invalid")
-    matches = [row for row in rows if isinstance(row, dict) and row.get("evidenceId") == evidence_id]
+    require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "generation evidence registry records invalid")
+    count = registry.get("registeredEvidenceCount")
+    require(valid_count(count) and count == len(rows), "generation evidence registry registeredEvidenceCount drift")
+    evidence_ids = [row.get("evidenceId") for row in rows]
+    require(all(isinstance(value, str) and value for value in evidence_ids) and len(evidence_ids) == len(set(evidence_ids)), "generation evidence registry evidenceId authority invalid")
+    matches = [row for row in rows if row.get("evidenceId") == evidence_id]
     require(len(matches) == 1, "generationEvidenceId is not uniquely registered")
     return matches[0]
 
@@ -210,6 +220,26 @@ def candidate_complete(record: dict[str, Any]) -> bool:
     generation_writer.NON_RESURRECTION_REGISTRY = REGISTRY
     return record.get("evidenceComplete") is True and generation_writer.base_candidate(generation)
 
+def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any]]:
+    require(registry.get("schemaVersion") == "memory-os-backup-restore-non-resurrection-admission-registry.v1", "registry schema drift")
+    require(registry.get("appendOnly") is True, "registry must remain append-only")
+    require(registry.get("productionEvidence") is False and registry.get("productionReady") is False, "registry production boundary drift")
+    rows = registry.get("records")
+    require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "registry records invalid")
+    registered_count = registry.get("registeredRecordCount")
+    complete_count = registry.get("completeRecordCount")
+    covered_count = registry.get("candidateCoveredCount")
+    require(valid_count(registered_count) and registered_count == len(rows), "registeredRecordCount drift")
+    derived_complete = sum(1 for row in rows if row.get("evidenceComplete") is True)
+    require(valid_count(complete_count) and complete_count == derived_complete, "completeRecordCount drift")
+    record_ids = [row.get("recordId") for row in rows]
+    generation_ids = [row.get("generationEvidenceId") for row in rows]
+    require(all(isinstance(value, str) and value for value in record_ids) and len(record_ids) == len(set(record_ids)), "recordId authority invalid")
+    require(all(isinstance(value, str) and value for value in generation_ids) and len(generation_ids) == len(set(generation_ids)), "generationEvidenceId coverage authority invalid")
+    derived_covered = sum(1 for row in rows if candidate_complete(row))
+    require(valid_count(covered_count) and covered_count == derived_covered, "candidateCoveredCount drift")
+    return rows
+
 def atomic_write(value: dict[str, Any]) -> None:
     fd, temp_name = tempfile.mkstemp(prefix=".backup-restore-non-resurrection.", suffix=".tmp", dir=REGISTRY.parent)
     try:
@@ -247,9 +277,7 @@ def main() -> int:
         os.write(lock_fd, (record["recordId"] + "\n").encode("ascii"))
         os.fsync(lock_fd)
         registry = load(REGISTRY)
-        require(registry.get("appendOnly") is True, "registry must remain append-only")
-        rows = registry.get("records")
-        require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "registry records invalid")
+        rows = validate_registry_for_append(registry)
         require(all(row.get("recordId") != record["recordId"] for row in rows), "recordId already registered")
         require(all(row.get("generationEvidenceId") != record["generationEvidenceId"] for row in rows), "generationEvidenceId already has non-resurrection evidence")
         rows.append(record)
