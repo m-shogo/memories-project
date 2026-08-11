@@ -5,12 +5,15 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import json
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-binding.py"
+STATUS_RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-generation-status.py"
 TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 
 
@@ -23,12 +26,16 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
-def load_module():
-    spec = importlib.util.spec_from_file_location("memory_os_restore_generation_binding_negative_target", VALIDATOR)
-    require(spec is not None and spec.loader is not None, "cannot load generation binding validator")
+def load_target(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load {path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def load_module():
+    return load_target(VALIDATOR, "memory_os_restore_generation_binding_negative_target")
 
 
 def expect_rejected(module: Any, name: str, action: Callable[[], Any]) -> None:
@@ -138,6 +145,59 @@ def run_with_state(module, state: dict[Path, dict[str, Any]]) -> int:
     finally:
         module.load = original_load
         module.load_evidence_writer = original_load_evidence_writer
+
+
+def prove_status_reconcile_boundaries() -> None:
+    reconciler = load_target(STATUS_RECONCILER, "memory_os_restore_generation_status_negative_target")
+    require(TMP_PARENT.is_dir(), "generation-status temporary fixture parent missing")
+
+    with tempfile.TemporaryDirectory(prefix=".tmp-generation-status-negative-", dir=TMP_PARENT) as tmpdir:
+        tmp = Path(tmpdir)
+
+        invalid_utf8 = tmp / "invalid-utf8.json"
+        invalid_utf8.write_bytes(b"{\xff}")
+        expect_rejected(reconciler, "generation status invalid UTF-8 authority", lambda: reconciler.load(invalid_utf8))
+
+        loop_authority = tmp / "loop-authority.json"
+        loop_authority.symlink_to(loop_authority.name)
+        expect_rejected(reconciler, "generation status authority symlink loop", lambda: reconciler.load(loop_authority))
+
+        contract_copy = tmp / reconciler.CONTRACT.name
+        status_copy = tmp / reconciler.STATUS.name
+        shutil.copyfile(reconciler.CONTRACT, contract_copy)
+        shutil.copyfile(reconciler.STATUS, status_copy)
+        original_status = status_copy.read_bytes()
+
+        pass_validator = tmp / "pass-validator.py"
+        pass_validator.write_text("#!/usr/bin/env python3\nraise SystemExit(0)\n", encoding="utf-8")
+        fail_validator = tmp / "fail-validator.py"
+        fail_validator.write_text("#!/usr/bin/env python3\nraise SystemExit(43)\n", encoding="utf-8")
+
+        original_contract_path = reconciler.CONTRACT
+        original_status_path = reconciler.STATUS
+        original_validator = reconciler.VALIDATOR
+        original_backup_validator = reconciler.BACKUP_VALIDATOR
+        try:
+            reconciler.CONTRACT = contract_copy
+            reconciler.STATUS = status_copy
+            reconciler.VALIDATOR = pass_validator
+            reconciler.BACKUP_VALIDATOR = fail_validator
+            expect_rejected(reconciler, "generation status forced post-validator failure", reconciler.main)
+            require(status_copy.read_bytes() == original_status, "generation status rollback drift after post-validator failure")
+
+            contract = json.loads(contract_copy.read_text(encoding="utf-8"))
+            contract["currentBoundary"]["generationBoundBackupCount"] = True
+            contract_copy.write_text(json.dumps(contract, indent=2) + "\n", encoding="utf-8")
+            reconciler.BACKUP_VALIDATOR = pass_validator
+            expect_rejected(reconciler, "generation status boolean boundary count", reconciler.main)
+            require(status_copy.read_bytes() == original_status, "generation status mutated after boolean count rejection")
+        finally:
+            reconciler.CONTRACT = original_contract_path
+            reconciler.STATUS = original_status_path
+            reconciler.VALIDATOR = original_validator
+            reconciler.BACKUP_VALIDATOR = original_backup_validator
+
+    print("PASS rollback: generation status restored byte-for-byte after forced post-validator failure")
 
 
 def main() -> int:
@@ -327,9 +387,13 @@ def main() -> int:
         lambda: run_with_state(module, automatic_promotion_rule),
     )
 
+    prove_status_reconcile_boundaries()
+
     print("Memory OS backup/restore generation binding negative suite PASS")
     print("invalid UTF-8 or unreadable generation-binding authority accepted: false")
     print("generation-binding authority symlink loop accepted: false")
+    print("generation status post-validator failure leaves partial status: false")
+    print("generation status boolean boundary count accepted: false")
     print("artifact path escape accepted: false")
     print("local foundation evidence symlink escape accepted: false")
     print("absolute or parent-traversal local foundation ref accepted: false")
