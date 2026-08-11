@@ -78,7 +78,6 @@ jobs:
             contracts/operations/production-operability-status.json
             docs/evidence/recovery-objectives/approvals
             docs/fixtures/memory-os-operability/recovery-objectives-approval
-            docs/fixtures/memory-os-operability/recovery-objectives-admission-diagnostic.last.json
             scripts/memory_os_backup_restore_blockers.py
             scripts/register-memory-os-recovery-objectives.py
             scripts/validate-memory-os-recovery-objectives.py
@@ -128,7 +127,6 @@ jobs:
             contracts/operations/production-operability-status.json
             docs/evidence/recovery-objectives/approvals
             docs/fixtures/memory-os-operability/recovery-objectives-approval
-            docs/fixtures/memory-os-operability/recovery-objectives-admission-diagnostic.last.json
             scripts/memory_os_backup_restore_blockers.py
             scripts/register-memory-os-recovery-objectives.py
             scripts/validate-memory-os-recovery-objectives.py
