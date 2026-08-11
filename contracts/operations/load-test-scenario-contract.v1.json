@@ -319,6 +319,37 @@
       "multiAccountWorkerSaturationProven": true,
       "capacityBoundaryEstablished": false,
       "operationalThresholdApproved": false
+    },
+    {
+      "scenarioId": "LOCAL_LONG_SOAK",
+      "environment": "local-sustained-soak",
+      "attemptLayout": "30s, 60s and 3600s bounded local long-soak receipts",
+      "evidenceRefs": [
+        "docs/fixtures/memory-os-operability/memory-os-rehearsal-sustained-soak-60s.attempts.json",
+        "docs/fixtures/memory-os-operability/memory-os-rehearsal-sustained-soak-3600s.attempts.json"
+      ],
+      "reportOutput": "docs/fixtures/memory-os-operability/memory-os-rehearsal-sustained-soak-3600s.attempts.json",
+      "executedRunner": "scripts/run-memory-os-sustained-local-soak.py",
+      "semanticSummaryRef": "contracts/operations/load-test-semantic-summary.v1.json",
+      "semanticStatus": "DESCRIPTIVE_LOCAL_SOAK_COMPLETE",
+      "parameterProvenanceRef": "contracts/operations/load-test-result-contract.v1.json",
+      "parameterProvenanceStatus": "DESCRIPTIVE_LOCAL_SOAK_COMPLETE",
+      "outcome": "DESCRIPTIVE_LOCAL_SOAK_COMPLETE",
+      "productionEvidence": false,
+      "productionSustainedSoakEvidence": false,
+      "leakProof": false,
+      "capacityApproved": false,
+      "thresholdsApproved": false,
+      "remainingScope": "Local 60-second and 3600-second bounded runs are registered as descriptive non-production evidence only; production-equivalent sustained soak, leak proof, capacity approval and threshold approval remain absent.",
+      "runMetadata": {
+        "executionClass": "LOCAL_LONG_SOAK",
+        "environmentClass": "local",
+        "productionEquivalent": false,
+        "productionTraffic": false,
+        "productionCredentials": false,
+        "productionEvidence": false,
+        "approvalAuthority": "NONE"
+      }
     }
   ],
   "deferredScenarios": [
@@ -339,7 +370,7 @@
     },
     {
       "scenarioId": "soak",
-      "reason": "a six-window short CI process sample now records RSS, heap and goroutine trends, but it is not a 60-minute repeated soak, does not cover MinIO/parser/queue/deletion/Apple dependencies and cannot prove leak freedom or production stability",
+      "reason": "repeated LOCAL_LONG_SOAK execution and descriptive trend review exist, but this local evidence is not leak proof and is not production-shaped sustained-soak evidence; independent leak/stability criteria remain required",
       "requiredDependencyMode": "LOCAL_POSTGRES_MINIO"
     },
     {
