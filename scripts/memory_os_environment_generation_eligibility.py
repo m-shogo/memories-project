@@ -31,8 +31,20 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def canonical_repo_file(path: Path, field: str) -> Path:
+    try:
+        relative = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(relative.parts and ".." not in relative.parts, f"{field} must be repository-contained")
+    require(relative == resolved and path.is_file(), f"{field} must resolve to its canonical repository file")
+    return path
+
+
 def load_generation_writer():
-    spec = importlib.util.spec_from_file_location("memory_os_generation_writer_for_eligibility", GEN_WRITER)
+    writer = canonical_repo_file(GEN_WRITER, "generation writer")
+    spec = importlib.util.spec_from_file_location("memory_os_generation_writer_for_eligibility", writer)
     require(spec is not None and spec.loader is not None, "cannot load generation writer")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
