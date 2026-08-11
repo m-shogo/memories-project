@@ -236,6 +236,7 @@ def main() -> int:
 
         canonical_generations = {
             "schemaVersion": "memory-os-production-equivalent-environment-generation-registry.v1",
+            "registryClass": "PRODUCTION_EQUIVALENT_ENVIRONMENT_GENERATIONS",
             "appendOnly": True,
             "registeredGenerationCount": 2,
             "currentGenerationId": "pegen_target",
