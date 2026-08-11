@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Callable
 
 ROOT = Path(__file__).resolve().parents[1]
+WRITER = ROOT / "scripts/request-memory-os-backup-restore-drill.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-request.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-drill-request.py"
 TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
@@ -55,19 +56,36 @@ def exercise(label: str, module, tmp: Path, outside: Path) -> None:
 
 
 def main() -> int:
+    require(WRITER.is_file(), "drill-request writer missing")
     require(VALIDATOR.is_file(), "drill-request validator missing")
     require(RECONCILER.is_file(), "drill-request reconciler missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
+    writer = load_module(WRITER, "memory_os_restore_drill_request_writer_load_negative")
     validator = load_module(VALIDATOR, "memory_os_restore_drill_request_load_negative")
     reconciler = load_module(RECONCILER, "memory_os_restore_drill_request_reconcile_load_negative")
+    require(writer.canonical_repo_file(writer.ELIGIBILITY_HELPER, "environment generation eligibility helper") == writer.ELIGIBILITY_HELPER, "canonical eligibility helper rejected")
 
     with tempfile.TemporaryDirectory(prefix=".tmp-drill-request-load-", dir=TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
-        with tempfile.TemporaryDirectory(prefix="memory-os-drill-request-outside-") as outside_dir:
-            outside = Path(outside_dir) / "outside.json"
+        with tempfile.TemporaryDirectory(prefix="memory-os-drill-request-outside-") as outside_dirname:
+            outside_dir = Path(outside_dirname)
+            outside = outside_dir / "outside.json"
             outside.write_text("{}\n", encoding="utf-8")
             exercise("validator", validator, tmp, outside)
             exercise("reconciler", reconciler, tmp, outside)
+
+            outside_helper = outside_dir / "outside-eligibility-helper.py"
+            outside_helper.write_text("VALUE = 1\n", encoding="utf-8")
+            escaped_link = tmp / "escaped-eligibility-helper.py"
+            escaped_link.symlink_to(outside_helper)
+            original_helper = writer.ELIGIBILITY_HELPER
+            try:
+                writer.ELIGIBILITY_HELPER = outside_helper
+                expect_domain_fail("eligibility helper absolute path escapes repository", writer.load_eligibility_helper, writer.Fail)
+                writer.ELIGIBILITY_HELPER = escaped_link
+                expect_domain_fail("eligibility helper repository symlink escapes repository", writer.load_eligibility_helper, writer.Fail)
+            finally:
+                writer.ELIGIBILITY_HELPER = original_helper
 
     print("Drill-request unreadable/escaped-authority negative suite PASS")
     return 0
