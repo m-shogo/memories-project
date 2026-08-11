@@ -158,6 +158,8 @@ def main() -> int:
         tmp_path = Path(tmp)
         generation_registry = tmp_path / "generations.json"
         objectives_registry = tmp_path / "objectives.json"
+        simulated_contract = tmp_path / CONTRACT.name
+        write_json(simulated_contract, contract)
         write_json(generation_registry, {
             "schemaVersion": "memory-os-production-equivalent-environment-generation-registry.v1",
             "appendOnly": True,
@@ -201,6 +203,8 @@ def main() -> int:
         real_root = writer.ROOT
         real_eligibility_guard = writer.require_preflight_eligible_generation
         writer.ROOT = tmp_path
+        writer.CONTRACT = simulated_contract
+        writer.CANONICAL_CONTRACT = simulated_contract
         writer.require_preflight_eligible_generation = lambda generation_id, field: None if generation_id in {"pegen_source", "pegen_target"} else (_ for _ in ()).throw(writer.Fail(f"{field} synthetic generation not eligible"))
 
         def validate_bound(request: dict[str, Any], *, require_current: bool = True) -> None:
