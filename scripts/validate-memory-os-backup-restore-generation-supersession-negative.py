@@ -233,6 +233,34 @@ def main() -> int:
         writer.validate_record(record)
         require(writer.candidate(record) is True, "baseline candidate must recover after isolated registry boundary fixture reset")
 
+        duplicate_objectives = copy.deepcopy(baseline_objectives)
+        duplicate_objectives["approvedObjectiveCount"] = 2
+        duplicate_objectives["records"] = [
+            baseline_objectives["records"][0],
+            copy.deepcopy(baseline_objectives["records"][0]),
+        ]
+        write_json(objectives_registry, duplicate_objectives)
+
+        require(writer.candidate(record) is False, "duplicate recovery objective identity must invalidate current candidate")
+        reject_current_registration(writer, record, "duplicate recovery objective identity")
+        print("PASS revoke: duplicate recovery objective identity invalidates candidate and new evidence")
+
+        write_json(objectives_registry, baseline_objectives)
+        writer.validate_record(record)
+        require(writer.candidate(record) is True, "baseline candidate must recover after isolated duplicate objective fixture reset")
+
+        missing_current_objective = copy.deepcopy(baseline_objectives)
+        missing_current_objective["currentObjectiveId"] = None
+        write_json(objectives_registry, missing_current_objective)
+
+        require(writer.candidate(record) is False, "missing current recovery objective authority must invalidate current candidate")
+        reject_current_registration(writer, record, "missing current recovery objective authority")
+        print("PASS revoke: missing current recovery objective authority invalidates candidate and new evidence")
+
+        write_json(objectives_registry, baseline_objectives)
+        writer.validate_record(record)
+        require(writer.candidate(record) is True, "baseline candidate must recover after isolated current objective fixture reset")
+
         rolled_objectives = dict(baseline_objectives)
         rolled_objectives["approvedObjectiveCount"] = 2
         rolled_objectives["currentObjectiveId"] = "recovery_objectives_ci_v2"
@@ -261,6 +289,8 @@ def main() -> int:
     print("mutated drill request row creates current candidate: false")
     print("duplicate drill request identity creates current candidate: false")
     print("drill registry production boundary drift creates current candidate: false")
+    print("duplicate recovery objective identity creates current candidate: false")
+    print("missing current recovery objective creates current candidate: false")
     print("stale recovery objective creates current candidate: false")
     print("new evidence accepted against stale generation/objective/request authority: false")
     print("canonical registries mutated: false")
