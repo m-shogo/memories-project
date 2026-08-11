@@ -6,6 +6,9 @@ on:
       - ".github/workflows/recovery-objectives-reconcile-negative.yml"
       - "scripts/reconcile-memory-os-recovery-objectives.py"
       - "scripts/memory_os_backup_restore_blockers.py"
+      - "scripts/register-memory-os-recovery-objectives.py"
+      - "scripts/validate-memory-os-recovery-objectives.py"
+      - "scripts/validate-memory-os-recovery-objectives-negative.py"
       - "scripts/validate-memory-os-recovery-objectives-reconcile-negative.py"
       - "contracts/operations/recovery-objectives-admission-contract.v1.json"
       - "contracts/operations/recovery-objectives-registry.v1.json"
@@ -17,6 +20,9 @@ on:
       - ".github/workflows/recovery-objectives-reconcile-negative.yml"
       - "scripts/reconcile-memory-os-recovery-objectives.py"
       - "scripts/memory_os_backup_restore_blockers.py"
+      - "scripts/register-memory-os-recovery-objectives.py"
+      - "scripts/validate-memory-os-recovery-objectives.py"
+      - "scripts/validate-memory-os-recovery-objectives-negative.py"
       - "scripts/validate-memory-os-recovery-objectives-reconcile-negative.py"
       - "contracts/operations/recovery-objectives-admission-contract.v1.json"
       - "contracts/operations/recovery-objectives-registry.v1.json"
@@ -47,6 +53,9 @@ jobs:
           python -m py_compile \
             scripts/reconcile-memory-os-recovery-objectives.py \
             scripts/memory_os_backup_restore_blockers.py \
+            scripts/register-memory-os-recovery-objectives.py \
+            scripts/validate-memory-os-recovery-objectives.py \
+            scripts/validate-memory-os-recovery-objectives-negative.py \
             scripts/validate-memory-os-recovery-objectives-reconcile-negative.py
           python scripts/validate-memory-os-recovery-objectives-reconcile-negative.py
           git diff --exit-code
