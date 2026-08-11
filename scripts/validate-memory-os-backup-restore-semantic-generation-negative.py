@@ -287,6 +287,26 @@ def main() -> int:
         evidence_writer.validate_record(valid_evidence)
         print("PASS baseline: both registered generations are semantically preflight eligible")
 
+        aggregate_corruptions = (
+            ("registered generation count drift", "registeredGenerationCount", 3),
+            ("boolean registered generation count", "registeredGenerationCount", True),
+            ("generation registry class drift", "registryClass", "WRONG_CLASS"),
+            ("generation registry append-only disabled", "appendOnly", False),
+            ("generation registry production evidence relabel", "productionEvidence", True),
+            ("generation registry current pointer drift", "currentGenerationId", "pegen_source"),
+        )
+        for label, field, value in aggregate_corruptions:
+            corrupted = copy.deepcopy(canonical_generations)
+            corrupted[field] = value
+            write_json(generation_registry, corrupted)
+            expect_rejected(f"{label} for drill request", lambda: drill_writer.validate_request(request, require_current=True))
+            expect_rejected(f"{label} for new recovery evidence", lambda: evidence_writer.validate_record(valid_evidence))
+
+        write_json(generation_registry, canonical_generations)
+        drill_writer.validate_request(request, require_current=True)
+        evidence_writer.validate_record(valid_evidence)
+        print("PASS restore: healthy generation aggregate authority remains admissible")
+
         bad_source = copy.deepcopy(canonical_generations)
         bad_source["generations"][0]["environmentRecordSha256"] = DIGEST_F
         write_json(generation_registry, bad_source)
@@ -305,6 +325,7 @@ def main() -> int:
 
     print("Memory OS semantic generation negative admission suite PASS")
     print("registered generation alone creates current drill authority: false")
+    print("generation registry aggregate corruption accepted by current drill/evidence admission: false")
     print("semantically ineligible generation creates new recovery evidence: false")
     print("nested explicit domain validation failures recognized: true")
     print("unexpected implementation exception accepted as valid rejection: false")
