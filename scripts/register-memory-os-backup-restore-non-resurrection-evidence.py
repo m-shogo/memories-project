@@ -47,6 +47,7 @@ def load(path: Path) -> dict[str, Any]:
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise Fail(f"cannot load {path}: {exc}") from exc
     require(isinstance(value, dict), f"root must be object: {path}")
+    return value
 
 def canonical_repo_file(path: Path, field: str) -> Path:
     try:
