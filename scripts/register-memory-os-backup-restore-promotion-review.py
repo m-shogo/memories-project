@@ -32,17 +32,40 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def domain_validation_failure(exc: BaseException) -> bool:
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, RuntimeError) and current.__class__.__name__ == "Fail":
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise Fail(f"cannot load {path}: {exc}") from exc
     require(isinstance(value, dict), f"root must be object: {path}")
     return value
 
 
+def canonical_repo_file(path: Path, field: str) -> Path:
+    try:
+        relative = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(relative.parts and ".." not in relative.parts, f"{field} must be repository-contained")
+    require(relative == resolved and path.is_file(), f"{field} must resolve to its canonical repository file")
+    return path
+
+
 def load_generation_writer():
-    spec = importlib.util.spec_from_file_location("memory_os_generation_writer_for_promotion_review", GEN_WRITER)
+    writer = canonical_repo_file(GEN_WRITER, "generation recovery writer")
+    spec = importlib.util.spec_from_file_location("memory_os_generation_writer_for_promotion_review", writer)
     require(spec is not None and spec.loader is not None, "cannot load generation recovery writer")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -50,9 +73,20 @@ def load_generation_writer():
 
 
 def repo_ref(value: Any, field: str) -> str:
-    require(isinstance(value, str) and value and not Path(value).is_absolute(), f"{field} invalid")
-    path = Path(value)
-    require(".." not in path.parts and (ROOT / path).is_file(), f"{field} evidence missing")
+    require(isinstance(value, str) and value, f"{field} invalid")
+    relative = Path(value)
+    require(
+        not relative.is_absolute()
+        and ".." not in relative.parts
+        and relative.as_posix() == value,
+        f"{field} must be a canonical repository-relative path",
+    )
+    path = ROOT / relative
+    try:
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} evidence missing or escapes repository") from exc
+    require(resolved == relative and path.is_file(), f"{field} must resolve to the canonical repository file")
     return value
 
 
@@ -68,18 +102,16 @@ def parse_timestamp(value: Any) -> None:
 def recovery_candidate(evidence_id: Any) -> dict[str, Any]:
     require(isinstance(evidence_id, str) and EVIDENCE_ID.fullmatch(evidence_id), "recoveryEvidenceId invalid")
     registry = load(GEN_REGISTRY)
-    rows = registry.get("records")
-    count = registry.get("registeredEvidenceCount")
-    require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "generation recovery evidence rows invalid")
-    require(isinstance(count, int) and count == len(rows), "generation recovery evidence count drift")
+    writer = load_generation_writer()
+    try:
+        rows = writer.validate_registry_for_append(registry)
+    except Exception as exc:
+        if domain_validation_failure(exc):
+            raise Fail(f"generation recovery evidence registry authority invalid: {exc}") from exc
+        raise
     matches = [row for row in rows if row.get("evidenceId") == evidence_id]
     require(len(matches) == 1, "recoveryEvidenceId is not uniquely registered")
     row = matches[0]
-    writer = load_generation_writer()
-    try:
-        writer.validate_record(row, require_current_drill_request=False)
-    except Exception as exc:
-        raise Fail(f"recovery evidence is not structurally auditable: {exc}") from exc
     require(writer.candidate(row) is True, "recoveryEvidenceId is not a current final production-equivalent recovery candidate")
     return row
 
