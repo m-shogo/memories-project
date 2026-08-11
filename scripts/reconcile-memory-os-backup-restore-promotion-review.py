@@ -26,6 +26,10 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def valid_count(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
 def load(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
@@ -37,19 +41,45 @@ def main() -> int:
     registry = load(REGISTRY)
     generation = load(GEN_REGISTRY)
     status = load(STATUS)
+
+    require(registry.get("schemaVersion") == "memory-os-backup-restore-promotion-review-registry.v1", "promotion review registry schema drift")
+    require(registry.get("appendOnly") is True, "promotion review registry must remain append-only")
+    require(
+        registry.get("productionTrafficChanged") is False
+        and registry.get("productionEvidence") is False
+        and registry.get("productionReady") is False,
+        "promotion review registry production boundary drift",
+    )
+
     rows = registry.get("records")
     count = registry.get("registeredReviewCount")
-    require(isinstance(rows, list) and isinstance(count, int) and count == len(rows), "promotion review registry count drift")
-    go_count = sum(1 for row in rows if isinstance(row, dict) and row.get("decision") == "GO_RECOMMENDATION")
-    no_go_count = sum(1 for row in rows if isinstance(row, dict) and row.get("decision") == "NO_GO")
-    defer_count = sum(1 for row in rows if isinstance(row, dict) and row.get("decision") == "DEFER")
+    require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "promotion review registry rows invalid")
+    require(valid_count(count) and count == len(rows), "promotion review registry count drift")
+
+    go_count = sum(1 for row in rows if row.get("decision") == "GO_RECOMMENDATION")
+    no_go_count = sum(1 for row in rows if row.get("decision") == "NO_GO")
+    defer_count = sum(1 for row in rows if row.get("decision") == "DEFER")
     require(go_count + no_go_count + defer_count == count, "promotion review decision partition drift")
+
+    stored_counts = (
+        registry.get("goRecommendationCount"),
+        registry.get("noGoCount"),
+        registry.get("deferCount"),
+    )
+    require(all(valid_count(value) for value in stored_counts), "promotion review derived counts invalid")
+    require(stored_counts == (go_count, no_go_count, defer_count), "promotion review derived count authority drift")
+
     current_id = rows[-1].get("decisionId") if rows else None
+    require(registry.get("currentDecisionId") == current_id, "promotion review currentDecisionId authority drift")
+
     candidate_count = generation.get("productionEquivalentRecoveryCandidateCount")
-    require(isinstance(candidate_count, int) and candidate_count >= 0, "recovery candidate count invalid")
+    require(valid_count(candidate_count), "recovery candidate count invalid")
     if candidate_count == 0:
         require(count == 0, "promotion reviews cannot exist without final recovery candidate")
 
+    # The registry is append-only authority. Reconciliation may project its
+    # already-valid values into the contract boundary, but must never heal a
+    # corrupted registry counter, pointer, or production boundary in place.
     registry["goRecommendationCount"] = go_count
     registry["noGoCount"] = no_go_count
     registry["deferCount"] = defer_count
@@ -85,6 +115,7 @@ def main() -> int:
     print(f"registered promotion reviews: {count}")
     print(f"GO/NO_GO/DEFER: {go_count}/{no_go_count}/{defer_count}")
     print("canonical OPS-P0-007 blockers preserved: 6")
+    print("registry corruption auto-healed: false")
     print("production traffic changed: false")
     print("production ready: false")
     print("production decision: NO_GO")
