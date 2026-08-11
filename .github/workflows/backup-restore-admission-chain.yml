@@ -172,6 +172,8 @@ jobs:
           contracts/operations/production-operability-status.json
           docs/evidence/backup-restore
           docs/evidence/recovery-objectives/approvals
+          docs/fixtures/memory-os-operability/backup-restore-generation-evidence
+          docs/fixtures/memory-os-operability/recovery-objectives-approval
           scripts/memory_os_backup_restore_blockers.py
           scripts/memory_os_environment_generation_eligibility.py
           scripts/validate-memory-os-production-equivalent-environment-generation.py
