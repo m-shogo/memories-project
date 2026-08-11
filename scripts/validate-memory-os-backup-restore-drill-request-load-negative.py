@@ -78,12 +78,16 @@ def main() -> int:
             outside_helper.write_text("VALUE = 1\n", encoding="utf-8")
             escaped_link = tmp / "escaped-eligibility-helper.py"
             escaped_link.symlink_to(outside_helper)
+            loop_link = tmp / "loop-eligibility-helper.py"
+            loop_link.symlink_to(loop_link.name)
             original_helper = writer.ELIGIBILITY_HELPER
             try:
                 writer.ELIGIBILITY_HELPER = outside_helper
                 expect_domain_fail("eligibility helper absolute path escapes repository", writer.load_eligibility_helper, writer.Fail)
                 writer.ELIGIBILITY_HELPER = escaped_link
                 expect_domain_fail("eligibility helper repository symlink escapes repository", writer.load_eligibility_helper, writer.Fail)
+                writer.ELIGIBILITY_HELPER = loop_link
+                expect_domain_fail("eligibility helper repository symlink loop", writer.load_eligibility_helper, writer.Fail)
             finally:
                 writer.ELIGIBILITY_HELPER = original_helper
 
