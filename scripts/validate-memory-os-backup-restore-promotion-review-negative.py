@@ -69,6 +69,7 @@ def base_registry() -> dict[str, Any]:
         "goRecommendationCount": 0,
         "noGoCount": 0,
         "deferCount": 0,
+        "latestDecisionId": None,
         "currentDecisionId": None,
         "records": [],
         "productionTrafficChanged": False,
@@ -83,21 +84,17 @@ def main() -> int:
     require(WRITER.is_file(), "promotion review writer missing")
     writer = load_writer()
     EXPECTED_FAILURE = writer.Fail
-
     canonical = base_record()
     canonical["decisionId"] = "brpr_no_candidate"
     expect_rejected("no current final recovery candidate", lambda: writer.validate_record(canonical))
-
     try:
         expect_rejected("unexpected implementation TypeError", lambda: (_ for _ in ()).throw(TypeError("synthetic implementation fault")))
     except TypeError:
         print("PASS preserve: unexpected implementation TypeError is not normalized as domain rejection")
     else:
         raise Fail("unexpected implementation TypeError was accepted as a valid rejection")
-
     expect_rejected("absolute review authority ref", lambda: writer.repo_ref(str((ROOT / "README.md").resolve()), "negative.absolute"))
     expect_rejected("parent-traversal review authority ref", lambda: writer.repo_ref("docs/../README.md", "negative.parent"))
-
     real_root = writer.ROOT
     with tempfile.TemporaryDirectory(prefix="memory-os-promotion-review-path-negative-") as tmp:
         tmp_path = Path(tmp)
@@ -112,101 +109,106 @@ def main() -> int:
     valid_registry = base_registry()
     writer.validate_registry_for_append(valid_registry)
     print("PASS accept: empty append-only promotion registry authority")
-
     schema_drift = copy.deepcopy(valid_registry)
     schema_drift["schemaVersion"] = "memory-os-backup-restore-promotion-review-registry.v0"
     expect_rejected("promotion registry schema drift", lambda: writer.validate_registry_for_append(schema_drift))
-
     mutable_registry = copy.deepcopy(valid_registry)
     mutable_registry["appendOnly"] = False
     expect_rejected("promotion registry append-only disabled", lambda: writer.validate_registry_for_append(mutable_registry))
-
     production_ready = copy.deepcopy(valid_registry)
     production_ready["productionReady"] = True
     expect_rejected("promotion registry production-ready relabel", lambda: writer.validate_registry_for_append(production_ready))
-
     boolean_count = copy.deepcopy(valid_registry)
     boolean_count["registeredReviewCount"] = False
     expect_rejected("promotion registry boolean registered count", lambda: writer.validate_registry_for_append(boolean_count))
-
     derived_boolean = copy.deepcopy(valid_registry)
     derived_boolean["goRecommendationCount"] = False
     expect_rejected("promotion registry boolean decision count", lambda: writer.validate_registry_for_append(derived_boolean))
-
     pointer_drift = copy.deepcopy(valid_registry)
     pointer_drift["currentDecisionId"] = "brpr_impossible_current"
     expect_rejected("empty promotion registry current pointer drift", lambda: writer.validate_registry_for_append(pointer_drift))
-
+    latest_pointer_drift = copy.deepcopy(valid_registry)
+    latest_pointer_drift["latestDecisionId"] = "brpr_impossible_latest"
+    expect_rejected("empty promotion registry latest pointer drift", lambda: writer.validate_registry_for_append(latest_pointer_drift))
     duplicate_rows = copy.deepcopy(valid_registry)
-    duplicate_rows.update({
-        "registeredReviewCount": 2,
-        "goRecommendationCount": 2,
-        "currentDecisionId": "brpr_duplicate_review",
-        "records": [
-            {"decisionId": "brpr_duplicate_review", "decision": "GO_RECOMMENDATION"},
-            {"decisionId": "brpr_duplicate_review", "decision": "GO_RECOMMENDATION"},
-        ],
-    })
+    duplicate_rows.update({"registeredReviewCount": 2, "goRecommendationCount": 2, "latestDecisionId": "brpr_duplicate_review", "currentDecisionId": "brpr_duplicate_review", "records": [{"decisionId": "brpr_duplicate_review", "decision": "GO_RECOMMENDATION"}, {"decisionId": "brpr_duplicate_review", "decision": "GO_RECOMMENDATION"}]})
     expect_rejected("promotion registry duplicate decision identity", lambda: writer.validate_registry_for_append(duplicate_rows))
 
     real_candidate = writer.recovery_candidate
+    real_registered = writer.registered_recovery_evidence
     writer.recovery_candidate = lambda evidence_id: {"evidenceId": evidence_id}
+    writer.registered_recovery_evidence = lambda evidence_id: {"evidenceId": evidence_id}
     try:
         valid = base_record()
         writer.validate_record(valid)
-        print("PASS accept: isolated synthetic review with candidate guard stubbed")
-
+        writer.validate_record(valid, require_current_candidate=False)
+        print("PASS accept: isolated synthetic current and historical review")
         same_review = copy.deepcopy(valid)
         same_review["decisionId"] = "brpr_same_review"
         same_review["operabilityReviewRef"] = same_review["securityReviewRef"]
         expect_rejected("review evidence reuse", lambda: writer.validate_record(same_review))
-
         rationale_reuse = copy.deepcopy(valid)
         rationale_reuse["decisionId"] = "brpr_rationale_reuse"
         rationale_reuse["rationaleRef"] = rationale_reuse["securityReviewRef"]
         expect_rejected("rationale reused as reviewer evidence", lambda: writer.validate_record(rationale_reuse))
-
         go_with_finding = copy.deepcopy(valid)
         go_with_finding["decisionId"] = "brpr_go_with_findings"
-        go_with_finding["unresolvedFindings"] = [{
-            "findingId": "finding_open",
-            "severity": "LOW",
-            "status": "OPEN",
-            "ownerRef": "README.md",
-        }]
+        go_with_finding["unresolvedFindings"] = [{"findingId": "finding_open", "severity": "LOW", "status": "OPEN", "ownerRef": "README.md"}]
         expect_rejected("GO recommendation with unresolved finding", lambda: writer.validate_record(go_with_finding))
-
         defer_with_finding = copy.deepcopy(go_with_finding)
         defer_with_finding["decisionId"] = "brpr_defer_findings"
         defer_with_finding["decision"] = "DEFER"
         writer.validate_record(defer_with_finding)
         print("PASS accept: DEFER may preserve owned unresolved finding")
-
         traffic = copy.deepcopy(valid)
         traffic["decisionId"] = "brpr_traffic_change"
         traffic["productionTrafficChanged"] = True
         expect_rejected("traffic change claimed by review", lambda: writer.validate_record(traffic))
-
         credentials = copy.deepcopy(valid)
         credentials["decisionId"] = "brpr_prod_credentials"
         credentials["productionCredentialsUsed"] = True
         expect_rejected("production credentials claimed by review", lambda: writer.validate_record(credentials))
-
         production_flag = copy.deepcopy(valid)
         production_flag["decisionId"] = "brpr_prod_evidence"
         production_flag["productionEvidence"] = True
         expect_rejected("production evidence relabel", lambda: writer.validate_record(production_flag))
-
         mutable_alias = copy.deepcopy(valid)
         mutable_alias["decisionId"] = "brpr_latest_alias"
         mutable_alias["rationaleRef"] = "docs/latest-review.md"
         expect_rejected("mutable latest alias", lambda: writer.validate_record(mutable_alias))
+
+        one = base_registry()
+        one.update({"registeredReviewCount": 1, "goRecommendationCount": 1, "latestDecisionId": valid["decisionId"], "currentDecisionId": valid["decisionId"], "records": [copy.deepcopy(valid)]})
+        writer.validate_registry_for_append(one)
+        print("PASS accept: latest historical review is current while candidate remains current")
+        writer.recovery_candidate = lambda evidence_id: (_ for _ in ()).throw(writer.Fail("synthetic supersession"))
+        expect_rejected("stale current pointer after candidate supersession", lambda: writer.validate_registry_for_append(copy.deepcopy(one)))
+        revoked = copy.deepcopy(one)
+        rows, current_id = writer.reconcile_current_decision(revoked)
+        require(len(rows) == 1 and revoked["records"] == one["records"], "reconcile mutated historical review rows")
+        require(revoked["latestDecisionId"] == valid["decisionId"], "reconcile changed latest historical decision")
+        require(current_id is None and revoked["currentDecisionId"] is None, "reconcile did not revoke current promotion authority")
+        writer.validate_registry_for_append(revoked)
+        print("PASS preserve: superseded review remains historical while current authority is revoked")
+        corrupt_current = copy.deepcopy(revoked)
+        corrupt_current["currentDecisionId"] = "brpr_unregistered_corrupt"
+        expect_rejected("reconcile refuses corrupt current pointer", lambda: writer.reconcile_current_decision(corrupt_current))
+        writer.recovery_candidate = lambda evidence_id: (_ for _ in ()).throw(TypeError("synthetic current predicate fault"))
+        try:
+            writer.review_current(valid)
+        except TypeError:
+            print("PASS preserve: unexpected current-predicate TypeError surfaces")
+        else:
+            raise Fail("unexpected current-predicate TypeError was normalized into revocation")
     finally:
         writer.recovery_candidate = real_candidate
+        writer.registered_recovery_evidence = real_registered
 
     print("Memory OS backup/restore promotion review negative suite PASS")
     print("canonical registry mutated: false")
     print("candidate bypass: false")
+    print("historical review deleted on supersession: false")
+    print("current promotion authority retained after supersession: false")
     print("review authority path escape accepted: false")
     print("corrupt promotion registry accepted on append: false")
     print("unexpected implementation exception accepted as valid rejection: false")

@@ -2,7 +2,7 @@
   "contractId": "memory-os.operability.backup-restore-promotion-review.v1",
   "schemaVersion": "memory-os-backup-restore-promotion-review-contract.v1",
   "recordSchemaVersion": "memory-os-backup-restore-promotion-review-record.v1",
-  "description": "Append-only human review authority after a final production-equivalent recovery candidate exists. A review may recommend GO, NO_GO or DEFER, but this authority never changes traffic, never writes production credentials, never creates production evidence, and never makes the application production-ready. Application production promotion remains governed separately.",
+  "description": "Append-only human review authority after a final production-equivalent recovery candidate exists. Historical review rows remain auditable after legitimate upstream supersession, while current promotion authority is revoked fail-closed. A review may recommend GO, NO_GO or DEFER, but this authority never changes traffic, never writes production credentials, never creates production evidence, and never makes the application production-ready. Application production promotion remains governed separately.",
   "registry": "contracts/operations/backup-restore-promotion-review-registry.v1.json",
   "generationEvidenceRegistry": "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
   "typedNonResurrectionRegistry": "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json",
@@ -37,6 +37,9 @@
     "reviewDoesNotCreateProductionEvidence": true,
     "reviewDoesNotCreateProductionReady": true,
     "appendOnlyDecisionHistoryRequired": true,
+    "historicalReviewRemainsAuditableAfterCandidateSupersession": true,
+    "currentPromotionAuthorityRevokedWhenCandidateStopsBeingCurrent": true,
+    "currentPromotionAuthorityCannotBeAutoCreatedOrReactivated": true,
     "mutableLatestAliasForbidden": true
   },
   "decisionValues": [
@@ -49,6 +52,7 @@
     "goRecommendationCount": 0,
     "noGoCount": 0,
     "deferCount": 0,
+    "latestDecisionId": null,
     "currentDecisionId": null,
     "productionTrafficChanged": false,
     "productionEvidence": false,

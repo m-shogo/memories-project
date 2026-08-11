@@ -5,6 +5,7 @@
   "goRecommendationCount": 0,
   "noGoCount": 0,
   "deferCount": 0,
+  "latestDecisionId": null,
   "currentDecisionId": null,
   "records": [],
   "productionTrafficChanged": false,
@@ -12,7 +13,9 @@
   "productionReady": false,
   "limitations": [
     "no recovery promotion review has been registered",
-    "a review cannot exist without a current final production-equivalent recovery candidate",
+    "new promotion review registration requires a current final production-equivalent recovery candidate",
+    "historical review rows remain append-only audit evidence after legitimate generation, objective, request or candidate supersession",
+    "currentDecisionId is revoked to null when the latest review's bound final recovery candidate stops being current; reconciliation never recreates current authority",
     "GO_RECOMMENDATION remains review evidence only and never changes traffic or application production readiness"
   ]
 }

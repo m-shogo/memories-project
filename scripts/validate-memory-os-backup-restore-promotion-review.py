@@ -55,7 +55,6 @@ def main() -> int:
     generation = load(GEN_REGISTRY)
     typed = load(TYPED_REGISTRY)
     writer = load_writer()
-
     require(contract.get("schemaVersion") == "memory-os-backup-restore-promotion-review-contract.v1", "promotion review contract schema drift")
     refs = {
         "registry": REGISTRY,
@@ -75,26 +74,23 @@ def main() -> int:
     decisions = contract.get("decisionValues")
     require(isinstance(decisions, list) and set(decisions) == {"GO_RECOMMENDATION", "NO_GO", "DEFER"}, "promotion review decision values drift")
 
-    # Reuse the direct-registration authority validator so standalone validation,
-    # append admission, and reconcile cannot disagree about schema, counters,
-    # append-only history, current pointer, or production-boundary corruption.
     rows = writer.validate_registry_for_append(registry)
     count = registry.get("registeredReviewCount")
     go_count = registry.get("goRecommendationCount")
     no_go_count = registry.get("noGoCount")
     defer_count = registry.get("deferCount")
+    latest_id = registry.get("latestDecisionId")
     current_id = registry.get("currentDecisionId")
-
-    for row in rows:
-        writer.validate_record(row)
-
     candidate_count = generation.get("productionEquivalentRecoveryCandidateCount")
     typed_covered = typed.get("candidateCoveredCount")
     require(valid_count(candidate_count), "recovery candidate count invalid")
     require(valid_count(typed_covered), "typed candidate coverage count invalid")
     require(candidate_count == typed_covered, "promotion review requires typed-final candidate count coherence")
+    if current_id is not None:
+        require(candidate_count > 0, "current promotion review cannot exist without a current final recovery candidate")
+        require(current_id == latest_id, "only the latest historical review may hold current promotion authority")
     if candidate_count == 0:
-        require(count == 0, "promotion review cannot exist without final recovery candidate")
+        require(current_id is None, "zero final recovery candidates requires revoked current promotion authority")
 
     boundary = contract.get("currentBoundary")
     require(isinstance(boundary, dict), "promotion review currentBoundary missing")
@@ -103,6 +99,7 @@ def main() -> int:
         "goRecommendationCount": go_count,
         "noGoCount": no_go_count,
         "deferCount": defer_count,
+        "latestDecisionId": latest_id,
         "currentDecisionId": current_id,
     }
     for field, value in expected.items():
@@ -111,12 +108,13 @@ def main() -> int:
 
     completed = subprocess.run([sys.executable, str(NEGATIVE)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     require(completed.returncode == 0, f"promotion review negative suite failed:\n{completed.stdout[-7000:]}{completed.stderr[-7000:]}")
-
     print("Memory OS backup/restore promotion review validation PASS")
     print(f"final recovery candidates: {candidate_count}")
-    print(f"registered promotion reviews: {count}")
+    print(f"registered historical promotion reviews: {count}")
     print(f"GO/NO_GO/DEFER: {go_count}/{no_go_count}/{defer_count}")
-    print("promotion registry shared fail-closed validator: PASS")
+    print(f"latest historical decision: {latest_id}")
+    print(f"current promotion authority decision: {current_id}")
+    print("historical review/current authority separation: PASS")
     print("review changes production traffic: false")
     print("review creates production ready: false")
     print("negative admission suite: PASS")
