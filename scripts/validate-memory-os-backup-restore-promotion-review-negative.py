@@ -61,6 +61,23 @@ def base_record() -> dict[str, Any]:
     }
 
 
+def base_registry() -> dict[str, Any]:
+    return {
+        "schemaVersion": "memory-os-backup-restore-promotion-review-registry.v1",
+        "appendOnly": True,
+        "registeredReviewCount": 0,
+        "goRecommendationCount": 0,
+        "noGoCount": 0,
+        "deferCount": 0,
+        "currentDecisionId": None,
+        "records": [],
+        "productionTrafficChanged": False,
+        "productionEvidence": False,
+        "productionReady": False,
+        "limitations": [],
+    }
+
+
 def main() -> int:
     global EXPECTED_FAILURE
     require(WRITER.is_file(), "promotion review writer missing")
@@ -91,6 +108,46 @@ def main() -> int:
             expect_rejected("review authority symlink escapes repository root", lambda: writer.repo_ref("escaped-review.md", "negative.symlink"))
         finally:
             writer.ROOT = real_root
+
+    valid_registry = base_registry()
+    writer.validate_registry_for_append(valid_registry)
+    print("PASS accept: empty append-only promotion registry authority")
+
+    schema_drift = copy.deepcopy(valid_registry)
+    schema_drift["schemaVersion"] = "memory-os-backup-restore-promotion-review-registry.v0"
+    expect_rejected("promotion registry schema drift", lambda: writer.validate_registry_for_append(schema_drift))
+
+    mutable_registry = copy.deepcopy(valid_registry)
+    mutable_registry["appendOnly"] = False
+    expect_rejected("promotion registry append-only disabled", lambda: writer.validate_registry_for_append(mutable_registry))
+
+    production_ready = copy.deepcopy(valid_registry)
+    production_ready["productionReady"] = True
+    expect_rejected("promotion registry production-ready relabel", lambda: writer.validate_registry_for_append(production_ready))
+
+    boolean_count = copy.deepcopy(valid_registry)
+    boolean_count["registeredReviewCount"] = False
+    expect_rejected("promotion registry boolean registered count", lambda: writer.validate_registry_for_append(boolean_count))
+
+    derived_boolean = copy.deepcopy(valid_registry)
+    derived_boolean["goRecommendationCount"] = False
+    expect_rejected("promotion registry boolean decision count", lambda: writer.validate_registry_for_append(derived_boolean))
+
+    pointer_drift = copy.deepcopy(valid_registry)
+    pointer_drift["currentDecisionId"] = "brpr_impossible_current"
+    expect_rejected("empty promotion registry current pointer drift", lambda: writer.validate_registry_for_append(pointer_drift))
+
+    duplicate_rows = copy.deepcopy(valid_registry)
+    duplicate_rows.update({
+        "registeredReviewCount": 2,
+        "goRecommendationCount": 2,
+        "currentDecisionId": "brpr_duplicate_review",
+        "records": [
+            {"decisionId": "brpr_duplicate_review", "decision": "GO_RECOMMENDATION"},
+            {"decisionId": "brpr_duplicate_review", "decision": "GO_RECOMMENDATION"},
+        ],
+    })
+    expect_rejected("promotion registry duplicate decision identity", lambda: writer.validate_registry_for_append(duplicate_rows))
 
     real_candidate = writer.recovery_candidate
     writer.recovery_candidate = lambda evidence_id: {"evidenceId": evidence_id}
@@ -151,6 +208,7 @@ def main() -> int:
     print("canonical registry mutated: false")
     print("candidate bypass: false")
     print("review authority path escape accepted: false")
+    print("corrupt promotion registry accepted on append: false")
     print("unexpected implementation exception accepted as valid rejection: false")
     print("review can change traffic: false")
     print("GO recommendation implies production ready: false")
