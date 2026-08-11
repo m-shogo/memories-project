@@ -315,15 +315,35 @@ def typed_non_resurrection_covered(evidence_id: Any) -> bool:
         return False
     row = matches[0]
 
-    # Canonical candidate derivation must re-run the typed writer's complete
-    # registry and evidence validation. This prevents stale aggregate counters
-    # or an in-place payload mutation from leaving a recovery candidate eligible.
-    # Non-canonical registries are used only by isolated negative harnesses.
+    # Canonical candidate derivation reuses the typed writer's full registry
+    # validator. Its candidate counter is evaluated against this generation
+    # writer's currently bound authorities, so isolated negative harnesses and
+    # canonical runtime use the same fail-closed derivation without hardcoded
+    # production fixtures leaking into the test boundary.
     if NON_RESURRECTION_REGISTRY == CANONICAL_NON_RESURRECTION_REGISTRY:
         try:
             overlay_writer = load_non_resurrection_writer()
             overlay_writer.REGISTRY = NON_RESURRECTION_REGISTRY
             overlay_writer.GEN_EVIDENCE_REGISTRY = REGISTRY
+
+            generation_registry = load(REGISTRY)
+            generation_rows = generation_registry.get("records")
+            require(
+                isinstance(generation_rows, list) and all(isinstance(candidate_row, dict) for candidate_row in generation_rows),
+                "generation evidence registry records invalid for typed candidate derivation",
+            )
+
+            def candidate_complete_against_bound_authority(candidate_row: dict[str, Any]) -> bool:
+                generation_evidence_id = candidate_row.get("generationEvidenceId")
+                bound_matches = [
+                    generation_row
+                    for generation_row in generation_rows
+                    if generation_row.get("evidenceId") == generation_evidence_id
+                ]
+                require(len(bound_matches) == 1, "typed candidate generation evidence binding is not unique")
+                return candidate_row.get("evidenceComplete") is True and base_candidate(bound_matches[0])
+
+            overlay_writer.candidate_complete = candidate_complete_against_bound_authority
             validated_rows = overlay_writer.validate_registry_for_append(registry)
             validated_matches = [
                 candidate_row
