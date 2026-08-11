@@ -16,11 +16,17 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
-ENV_SCHEMA = ROOT / "contracts/operations/production-equivalent-environment-record.v1.schema.json"
-GEN_SCHEMA = ROOT / "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
-ENV_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-record.py"
+CANONICAL_ROOT = ROOT
+CANONICAL_CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
+CANONICAL_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+CANONICAL_ENV_SCHEMA = ROOT / "contracts/operations/production-equivalent-environment-record.v1.schema.json"
+CANONICAL_GEN_SCHEMA = ROOT / "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
+CANONICAL_ENV_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-record.py"
+CONTRACT = CANONICAL_CONTRACT
+REGISTRY = CANONICAL_REGISTRY
+ENV_SCHEMA = CANONICAL_ENV_SCHEMA
+GEN_SCHEMA = CANONICAL_GEN_SCHEMA
+ENV_VALIDATOR = CANONICAL_ENV_VALIDATOR
 LOCK = ROOT / "contracts/operations/.production-equivalent-environment-generation.lock"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
@@ -64,7 +70,22 @@ def canonical_repo_file(path: Path, field: str) -> Path:
     return path
 
 
+def require_canonical_runtime_authority(path: Path, canonical: Path, field: str) -> None:
+    """Contain canonical runtime authority while permitting isolated test substitutions."""
+    if ROOT == CANONICAL_ROOT and path == canonical:
+        canonical_repo_file(path, field)
+
+
+def require_canonical_runtime_authorities() -> None:
+    require_canonical_runtime_authority(CONTRACT, CANONICAL_CONTRACT, "environment generation contract")
+    require_canonical_runtime_authority(REGISTRY, CANONICAL_REGISTRY, "environment generation registry")
+    require_canonical_runtime_authority(ENV_SCHEMA, CANONICAL_ENV_SCHEMA, "environment record schema")
+    require_canonical_runtime_authority(GEN_SCHEMA, CANONICAL_GEN_SCHEMA, "generation record schema")
+    require_canonical_runtime_authority(ENV_VALIDATOR, CANONICAL_ENV_VALIDATOR, "environment record semantic validator")
+
+
 def load_environment_validator():
+    require_canonical_runtime_authority(ENV_VALIDATOR, CANONICAL_ENV_VALIDATOR, "environment record semantic validator")
     validator = canonical_repo_file(ENV_VALIDATOR, "environment record semantic validator")
     spec = importlib.util.spec_from_file_location("memory_os_environment_record_validator_for_generation_writer", validator)
     require(spec is not None and spec.loader is not None, "cannot load environment record semantic validator")
@@ -102,6 +123,7 @@ def repo_ref(value: Any, field: str) -> Path:
 
 
 def validate_record(record: dict[str, Any]) -> bool:
+    require_canonical_runtime_authorities()
     contract = load(CONTRACT)
     require(set(record) == REQUIRED, f"record field set drift: {sorted(set(record) ^ REQUIRED)}")
     require(record.get("schemaVersion") == "memory-os-production-equivalent-environment-generation-record.v1", "schemaVersion drift")
@@ -183,6 +205,7 @@ def main() -> int:
     else:
         raise Fail("input generation record must be outside repository")
     require(git("status", "--porcelain") == "", "working tree must be clean")
+    require_canonical_runtime_authorities()
     record = load(input_path)
     preflight_eligible = validate_record(record)
 
