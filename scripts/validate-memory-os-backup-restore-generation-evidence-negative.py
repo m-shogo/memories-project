@@ -284,6 +284,7 @@ def main() -> int:
         )
         write_json(generation_registry, {
             "schemaVersion": "memory-os-production-equivalent-environment-generation-registry.v1",
+            "registryClass": "PRODUCTION_EQUIVALENT_ENVIRONMENT_GENERATIONS",
             "appendOnly": True,
             "registeredGenerationCount": 2,
             "currentGenerationId": "pegen_target",
