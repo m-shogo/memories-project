@@ -154,6 +154,18 @@ def main() -> int:
     canonical_probe["requestId"] = "brrq_no_prerequisites"
     expect_rejected("canonical empty generation/objective registries", lambda: writer.validate_request(canonical_probe))
 
+    shared_eligibility_helper = writer.load_eligibility_helper()
+
+    class SyntheticGenerationWriter:
+        class Fail(RuntimeError):
+            pass
+
+        @staticmethod
+        def validate_record(record: dict[str, Any]) -> bool:
+            return True
+
+    shared_eligibility_helper.load_generation_writer = lambda: SyntheticGenerationWriter
+
     with tempfile.TemporaryDirectory(prefix="memory-os-restore-drill-request-negative-") as tmp:
         tmp_path = Path(tmp)
         generation_registry = tmp_path / "generations.json"
@@ -162,6 +174,7 @@ def main() -> int:
         write_json(simulated_contract, contract)
         write_json(generation_registry, {
             "schemaVersion": "memory-os-production-equivalent-environment-generation-registry.v1",
+            "registryClass": "PRODUCTION_EQUIVALENT_ENVIRONMENT_GENERATIONS",
             "appendOnly": True,
             "productionEvidence": False,
             "registeredGenerationCount": 2,
@@ -202,9 +215,11 @@ def main() -> int:
         writer.OBJECTIVES_REGISTRY = objectives_registry
         real_root = writer.ROOT
         real_eligibility_guard = writer.require_preflight_eligible_generation
+        real_eligibility_loader = writer.load_eligibility_helper
         writer.ROOT = tmp_path
         writer.CONTRACT = simulated_contract
         writer.CANONICAL_CONTRACT = simulated_contract
+        writer.load_eligibility_helper = lambda: shared_eligibility_helper
         writer.require_preflight_eligible_generation = lambda generation_id, field: None if generation_id in {"pegen_source", "pegen_target"} else (_ for _ in ()).throw(writer.Fail(f"{field} synthetic generation not eligible"))
 
         def validate_bound(request: dict[str, Any], *, require_current: bool = True) -> None:
@@ -216,6 +231,19 @@ def main() -> int:
         validate_bound(valid, require_current=False)
         require(writer.request_currently_executable(valid) is True, "valid synthetic request should be current in isolated negative fixture")
         print("PASS accept: fully bound isolated planning request with digest-bound typed approvals and prerequisite chronology")
+
+        generation_authority = load(generation_registry)
+        generation_authority["registeredGenerationCount"] = 3
+        write_json(generation_registry, generation_authority)
+        expect_rejected("generation registry aggregate count drift", lambda: validate_bound(valid))
+        generation_authority["registeredGenerationCount"] = 2
+        write_json(generation_registry, generation_authority)
+
+        generation_authority["registryClass"] = "LEGACY_GENERATIONS"
+        write_json(generation_registry, generation_authority)
+        expect_rejected("generation registry class drift", lambda: validate_bound(valid))
+        generation_authority["registryClass"] = "PRODUCTION_EQUIVALENT_ENVIRONMENT_GENERATIONS"
+        write_json(generation_registry, generation_authority)
 
         expect_rejected("absolute drill authority ref", lambda: writer.repo_ref(str((tmp_path / "SECURITY.md").resolve()), "negative.absolute"))
         expect_rejected("parent-traversal drill authority ref", lambda: writer.repo_ref("nested/../SECURITY.md", "negative.parent"))
@@ -379,6 +407,7 @@ def main() -> int:
 
         superseded_registry = load(generation_registry)
         superseded_registry["registeredGenerationCount"] = 3
+        superseded_registry["currentGenerationId"] = "pegen_source_successor"
         superseded_registry["generations"].append({
             "generationId": "pegen_source_successor",
             "environmentId": "pe_source",
@@ -397,10 +426,12 @@ def main() -> int:
 
         writer.ROOT = real_root
         writer.require_preflight_eligible_generation = real_eligibility_guard
+        writer.load_eligibility_helper = real_eligibility_loader
 
     print("Memory OS production-equivalent backup/restore drill request negative suite PASS")
     print("canonical request registry mutated: false")
     print("semantic generation eligibility bypass: false")
+    print("corrupt generation aggregate authority accepted: false")
     print("request chronology predates generation/objective authority: false")
     print("arbitrary repository approval authority: false")
     print("drill request authority refs escape repository: false")
