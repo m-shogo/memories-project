@@ -308,28 +308,73 @@ def typed_non_resurrection_covered(evidence_id: Any) -> bool:
     if registry.get("appendOnly") is not True or registry.get("productionEvidence") is not False or registry.get("productionReady") is not False:
         return False
     rows = registry.get("records")
-    if not isinstance(rows, list):
+    if not isinstance(rows, list) or not all(isinstance(existing, dict) for existing in rows):
         return False
-    matches = [row for row in rows if isinstance(row, dict) and row.get("generationEvidenceId") == evidence_id]
+    matches = [row for row in rows if row.get("generationEvidenceId") == evidence_id]
     if len(matches) != 1:
         return False
     row = matches[0]
 
-    # Canonical candidate derivation must re-run the typed writer's complete
-    # evidence validation. This prevents an already-registered overlay from
-    # remaining candidate-eligible after any domain/review payload is replaced
-    # in place. It also validates the typed registry's append-only aggregate
-    # counters before those rows can contribute generation candidate authority.
-    # Non-canonical registries are used only by isolated negative harnesses;
-    # those continue to exercise the generation layer without mutating
-    # canonical evidence files.
+    # Candidate derivation must not trust typed aggregate counters. Re-derive
+    # them from the same generation/objective/drill authorities this writer is
+    # currently evaluating, so canonical runtime and isolated negative harnesses
+    # exercise identical semantics without the typed writer silently switching
+    # back to repository-global authorities.
+    registered_count = registry.get("registeredRecordCount")
+    complete_count = registry.get("completeRecordCount")
+    covered_count = registry.get("candidateCoveredCount")
+    if not all(valid_count(value) for value in (registered_count, complete_count, covered_count)):
+        return False
+    if registered_count != len(rows):
+        return False
+    if complete_count != sum(1 for existing in rows if existing.get("evidenceComplete") is True):
+        return False
+    record_ids = [existing.get("recordId") for existing in rows]
+    generation_ids = [existing.get("generationEvidenceId") for existing in rows]
+    if not all(isinstance(value, str) and value for value in record_ids) or len(record_ids) != len(set(record_ids)):
+        return False
+    if not all(isinstance(value, str) and value for value in generation_ids) or len(generation_ids) != len(set(generation_ids)):
+        return False
+
+    try:
+        generation_registry = load(REGISTRY)
+    except Fail:
+        return False
+    generation_rows = generation_registry.get("records")
+    if not isinstance(generation_rows, list) or not all(isinstance(existing, dict) for existing in generation_rows):
+        return False
+
+    derived_covered = 0
+    for existing in rows:
+        generation_matches = [
+            generation_row
+            for generation_row in generation_rows
+            if generation_row.get("evidenceId") == existing.get("generationEvidenceId")
+        ]
+        if len(generation_matches) != 1:
+            return False
+        if existing.get("evidenceComplete") is True:
+            try:
+                if base_candidate(generation_matches[0]):
+                    derived_covered += 1
+            except Exception as exc:
+                if domain_validation_failure(exc):
+                    continue
+                raise
+    if covered_count != derived_covered:
+        return False
+
+    # When the registry is the active canonical authority for this execution,
+    # re-run typed payload/review validation so in-place evidence mutation also
+    # revokes candidate coverage. Isolated suites may designate a repo-local
+    # registry as canonical and therefore exercise this exact path as well.
     if NON_RESURRECTION_REGISTRY == CANONICAL_NON_RESURRECTION_REGISTRY:
         try:
             overlay_writer = load_non_resurrection_writer()
             overlay_writer.GEN_EVIDENCE_REGISTRY = REGISTRY
             overlay_writer.REGISTRY = NON_RESURRECTION_REGISTRY
-            overlay_writer.validate_registry_for_append(registry)
-            overlay_writer.validate_record(row)
+            for existing in rows:
+                overlay_writer.validate_record(existing)
         except Exception as exc:
             if domain_validation_failure(exc):
                 return False
