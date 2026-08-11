@@ -64,10 +64,11 @@ def repo_file(value: Any, field: str) -> Path:
 def repo_directory(path: Path, field: str) -> Path:
     try:
         relative = path.relative_to(ROOT)
-        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
-    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
-        raise Fail(f"contract authority directory missing or escapes repository: {field}") from exc
-    require(relative == resolved and path.is_dir(), f"contract authority directory must resolve canonically: {field}")
+        resolved = path.resolve(strict=False).relative_to(ROOT.resolve())
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"contract authority directory escapes repository: {field}") from exc
+    require(relative == resolved, f"contract authority directory must resolve canonically: {field}")
+    require(not path.exists() or path.is_dir(), f"contract authority path must be a directory when present: {field}")
     return path
 
 
@@ -199,6 +200,7 @@ def main() -> int:
     print("arbitrary repository approval files accepted: false")
     print("canonical repository authority refs required: true")
     print("canonical writer contract/registry/approval authority validated without objective rows: true")
+    print("empty canonical approval authority directory permitted before first evidence file: true")
     print("canonical reviewer pseudonyms required: true")
     print("objective values chosen/defaulted by validator: false")
     print("boolean objective counts accepted: false")
