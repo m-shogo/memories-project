@@ -1,0 +1,67 @@
+name: Backup Restore Unreadable Authority Negatives
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/backup-restore-unreadable-authority-negative.yml"
+      - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
+      - "scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request-load-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py"
+      - "scripts/validate-memory-os-backup-restore-admission-chain.py"
+      - "scripts/validate-memory-os-backup-restore-admission-chain-load-negative.py"
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/backup-restore-unreadable-authority-negative.yml"
+      - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
+      - "scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request-load-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py"
+      - "scripts/validate-memory-os-backup-restore-admission-chain.py"
+      - "scripts/validate-memory-os-backup-restore-admission-chain-load-negative.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile unreadable-authority boundaries
+        run: |
+          python -m py_compile \
+            scripts/validate-memory-os-backup-restore-drill-preflight.py \
+            scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py \
+            scripts/validate-memory-os-backup-restore-drill-request.py \
+            scripts/validate-memory-os-backup-restore-drill-request-load-negative.py \
+            scripts/validate-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py \
+            scripts/validate-memory-os-backup-restore-admission-chain.py \
+            scripts/validate-memory-os-backup-restore-admission-chain-load-negative.py
+      - name: Prove unreadable authorities fail closed
+        run: |
+          python scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py
+          python scripts/validate-memory-os-backup-restore-drill-request-load-negative.py
+          python scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py
+          python scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py
+          python scripts/validate-memory-os-backup-restore-admission-chain-load-negative.py
