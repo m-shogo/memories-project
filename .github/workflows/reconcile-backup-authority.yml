@@ -101,14 +101,23 @@ jobs:
           python scripts/reconcile-memory-os-backup-coherent-authority.py
           python scripts/reconcile-memory-os-backup-coherent-authority.py --check
 
-      - name: Validate normalized backup authority
-        run: |
-          python scripts/validate-memory-os-backup-restore.py
-          python scripts/validate-memory-os-backup-restore-blockers-negative.py
-          python scripts/validate-memory-os-local-apple-replay-restore.py
-          python scripts/validate-memory-os-local-coherent-recovery-set.py
-          python scripts/validate-memory-os-backup-local-foundations.py
-          python scripts/validate-memory-os-operability.py
+      - name: Validate backup restore policy
+        run: python scripts/validate-memory-os-backup-restore.py
+
+      - name: Validate backup blocker negatives
+        run: python scripts/validate-memory-os-backup-restore-blockers-negative.py
+
+      - name: Revalidate local Apple replay restore
+        run: python scripts/validate-memory-os-local-apple-replay-restore.py
+
+      - name: Revalidate coherent local restore
+        run: python scripts/validate-memory-os-local-coherent-recovery-set.py
+
+      - name: Revalidate local foundation inventory
+        run: python scripts/validate-memory-os-backup-local-foundations.py
+
+      - name: Validate operability authority
+        run: python scripts/validate-memory-os-operability.py
 
       - name: Commit normalized backup authority
         run: |
