@@ -134,13 +134,23 @@ def load_eligibility_helper():
 
 
 def generations() -> list[dict[str, Any]]:
+    """Return registered history only after the shared generation authority validates it.
+
+    Historical drill requests may bind superseded rows, but neither current nor
+    historical validation may consume a corrupt generation registry. Reusing the
+    shared semantic authority keeps schema/class/count/supersession/current-pointer
+    checks aligned with restore preflight without treating superseded history as
+    current eligibility.
+    """
     require_canonical_runtime_authority(GEN_REGISTRY, CANONICAL_GEN_REGISTRY, "environment generation registry")
     registry = load(GEN_REGISTRY)
-    require(registry.get("appendOnly") is True and registry.get("productionEvidence") is False, "environment generation registry boundary drift")
-    rows = registry.get("generations")
-    count = registry.get("registeredGenerationCount")
+    helper = load_eligibility_helper()
+    try:
+        state = helper.derive_registry(registry)
+    except helper.Fail as exc:
+        raise Fail(f"environment generation registry authority invalid: {exc}") from exc
+    rows = state.get("registeredRows")
     require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "environment generation registry invalid")
-    require(isinstance(count, int) and not isinstance(count, bool) and count == len(rows), "environment generation registry count drift")
     return rows
 
 
