@@ -1,6 +1,15 @@
 name: Backup Restore Non-Resurrection Reconcile Negative
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/backup-restore-non-resurrection-reconcile-negative.yml"
+      - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
+      - "scripts/validate-memory-os-backup-non-resurrection-reconcile-negative.py"
+      - "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
   push:
     branches:
       - so
