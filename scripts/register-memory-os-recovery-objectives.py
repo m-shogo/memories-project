@@ -13,8 +13,11 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/recovery-objectives-admission-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
+CANONICAL_ROOT = ROOT
+CANONICAL_CONTRACT = ROOT / "contracts/operations/recovery-objectives-admission-contract.v1.json"
+CANONICAL_REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
+CONTRACT = CANONICAL_CONTRACT
+REGISTRY = CANONICAL_REGISTRY
 LOCK = ROOT / "contracts/operations/.recovery-objectives.lock"
 CANONICAL_APPROVAL_DIR = ROOT / "docs/evidence/recovery-objectives/approvals"
 APPROVAL_DIR = CANONICAL_APPROVAL_DIR
@@ -60,6 +63,39 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def canonical_repo_file(path: Path, field: str) -> Path:
+    try:
+        relative = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(relative.parts and ".." not in relative.parts, f"{field} must be repository-contained")
+    require(relative == resolved and path.is_file(), f"{field} must resolve to its canonical repository file")
+    return path
+
+
+def canonical_repo_directory(path: Path, field: str) -> Path:
+    try:
+        relative = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(relative.parts and ".." not in relative.parts, f"{field} must be repository-contained")
+    require(relative == resolved and path.is_dir(), f"{field} must resolve to its canonical repository directory")
+    return path
+
+
+def require_canonical_runtime_authorities() -> None:
+    if ROOT != CANONICAL_ROOT:
+        return
+    if CONTRACT == CANONICAL_CONTRACT:
+        canonical_repo_file(CONTRACT, "recovery objective contract")
+    if REGISTRY == CANONICAL_REGISTRY:
+        canonical_repo_file(REGISTRY, "recovery objective registry")
+    if APPROVAL_DIR == CANONICAL_APPROVAL_DIR:
+        canonical_repo_directory(APPROVAL_DIR, "recovery objective approval authority directory")
+
+
 def parse_utc_timestamp(value: Any, field: str) -> datetime:
     require(isinstance(value, str) and value.endswith("Z"), f"{field} must be UTC RFC3339 ending in Z")
     try:
@@ -89,9 +125,13 @@ def repo_ref(value: Any, field: str) -> str:
 
 
 def approval_ref(value: Any) -> str:
+    require_canonical_runtime_authorities()
     ref = repo_ref(value, "approvalEvidenceRefs")
-    path = (ROOT / ref).resolve()
-    approval_root = APPROVAL_DIR.resolve()
+    try:
+        path = (ROOT / ref).resolve(strict=True)
+        approval_root = APPROVAL_DIR.resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError) as exc:
+        raise Fail("approval authority directory or evidence cannot be resolved") from exc
     require(path.is_relative_to(approval_root), "approvalEvidenceRefs must use the dedicated recovery-objective approval authority directory")
     return ref
 
@@ -137,6 +177,7 @@ def measurement_method(value: Any, field: str) -> str:
 
 
 def validate_record(record: dict[str, Any]) -> None:
+    require_canonical_runtime_authorities()
     contract = load(CONTRACT)
     required = set(contract.get("requiredRecordFields", []))
     require(set(record) == required, f"record field set drift: {sorted(set(record) ^ required)}")
@@ -196,6 +237,7 @@ def main() -> int:
         pass
     else:
         raise Fail("input objectives record must be outside repository")
+    require_canonical_runtime_authorities()
     record = load(path)
     validate_record(record)
     try:
