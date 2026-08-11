@@ -45,6 +45,10 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def valid_count(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
 def domain_validation_failure(exc: BaseException) -> bool:
     """Recognize only explicit domain validation failures across dynamic modules."""
     current: BaseException | None = exc
@@ -437,6 +441,47 @@ def validate_record(record: dict[str, Any], *, require_current_drill_request: bo
         require(forbidden not in serialized, f"record contains forbidden recovery material: {forbidden}")
 
 
+def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any]]:
+    """Reject corrupted append-only authority instead of silently healing counters on the next write."""
+    require(registry.get("schemaVersion") == "memory-os-backup-restore-generation-evidence-registry.v1", "registry schema drift")
+    require(registry.get("appendOnly") is True, "registry must remain append-only")
+    require(registry.get("productionEvidence") is False and registry.get("productionReady") is False, "registry production boundary drift")
+    rows = registry.get("records")
+    require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "registry records invalid")
+
+    count = registry.get("registeredEvidenceCount")
+    bound_count = registry.get("drillRequestBoundEvidenceCount")
+    backup_count = registry.get("completeGenerationBoundBackupCount")
+    restore_count = registry.get("completeGenerationBoundRestoreCount")
+    candidate_count = registry.get("productionEquivalentRecoveryCandidateCount")
+    require(valid_count(count) and count == len(rows), "registeredEvidenceCount drift")
+    require(all(valid_count(value) for value in (bound_count, backup_count, restore_count, candidate_count)), "registry derived counts invalid")
+
+    ids: set[str] = set()
+    for index, row in enumerate(rows):
+        evidence_id = row.get("evidenceId")
+        require(isinstance(evidence_id, str) and evidence_id and evidence_id not in ids, f"registry records[{index}] evidenceId authority invalid")
+        ids.add(evidence_id)
+        validate_record(row, require_current_drill_request=False)
+
+    derived_bound = len(rows)
+    derived_backup = sum(1 for row in rows if row.get("evidenceComplete") is True)
+    derived_restore = sum(
+        1
+        for row in rows
+        if row.get("evidenceComplete") is True
+        and row.get("isolatedRestoreVerified") is True
+        and row.get("restoredBackupArtifactSha256") == row.get("backupArtifactSha256")
+    )
+    derived_candidates = sum(1 for row in rows if candidate(row))
+    require(bound_count == derived_bound == count, "drillRequestBoundEvidenceCount drift")
+    require(backup_count == derived_backup, "completeGenerationBoundBackupCount drift")
+    require(restore_count == derived_restore, "completeGenerationBoundRestoreCount drift")
+    require(candidate_count == derived_candidates, "productionEquivalentRecoveryCandidateCount drift")
+    require(0 <= candidate_count <= restore_count <= backup_count <= bound_count <= count, "registry count ordering invalid")
+    return rows
+
+
 def atomic_write(value: dict[str, Any]) -> None:
     descriptor, temp_name = tempfile.mkstemp(prefix=".backup-restore-generation.", suffix=".tmp", dir=REGISTRY.parent)
     try:
@@ -476,9 +521,7 @@ def main() -> int:
         os.write(lock_fd, (record["evidenceId"] + "\n").encode("ascii"))
         os.fsync(lock_fd)
         registry = load(REGISTRY)
-        require(registry.get("appendOnly") is True, "registry must remain append-only")
-        rows = registry.get("records")
-        require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "registry records invalid")
+        rows = validate_registry_for_append(registry)
         require(all(row.get("evidenceId") != record["evidenceId"] for row in rows), "evidenceId already registered")
         rows.append(record)
         registry["registeredEvidenceCount"] = len(rows)
