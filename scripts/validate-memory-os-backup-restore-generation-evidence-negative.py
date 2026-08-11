@@ -439,6 +439,9 @@ def main() -> int:
             {"objectiveId": "recovery_objectives_new", "rpoSeconds": 45, "rtoSeconds": 90, "maximumObjectDatabaseSkewSeconds": 8, "approvedAt": "2026-08-08T00:10:00Z"}
         )
         write_json(objectives_registry, stale_objectives)
+        stale_drill_registry = load(drill_registry)
+        stale_drill_registry["currentExecutableRequestCount"] = 0
+        write_json(drill_registry, stale_drill_registry)
         expect_rejected("stale drill request for new evidence", lambda: writer.validate_record(valid))
         writer.validate_record(valid, require_current_drill_request=False)
         require(writer.candidate(valid) is False, "stale drill request must invalidate current candidate")
