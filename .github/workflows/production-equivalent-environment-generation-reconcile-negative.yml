@@ -1,6 +1,14 @@
 name: Production Equivalent Environment Generation Reconcile Negative
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/production-equivalent-environment-generation-reconcile-negative.yml"
+      - "scripts/reconcile-memory-os-production-equivalent-generation-status.py"
+      - "scripts/validate-memory-os-production-equivalent-generation-reconcile-negative.py"
+      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
   push:
     branches:
       - so
