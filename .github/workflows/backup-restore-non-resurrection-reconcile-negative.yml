@@ -6,10 +6,17 @@ on:
       - ".github/workflows/backup-restore-non-resurrection-reconcile-negative.yml"
       - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/memory_os_backup_restore_blockers.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py"
+      - "scripts/validate-memory-os-local-apple-replay-restore.py"
+      - "scripts/validate-memory-os-local-coherent-recovery-set.py"
       - "scripts/validate-memory-os-backup-non-resurrection-reconcile-negative.py"
       - "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
       - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
       - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
   push:
@@ -19,10 +26,17 @@ on:
       - ".github/workflows/backup-restore-non-resurrection-reconcile-negative.yml"
       - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/memory_os_backup_restore_blockers.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py"
+      - "scripts/validate-memory-os-local-apple-replay-restore.py"
+      - "scripts/validate-memory-os-local-coherent-recovery-set.py"
       - "scripts/validate-memory-os-backup-non-resurrection-reconcile-negative.py"
       - "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
       - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
       - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
   workflow_dispatch:
@@ -51,7 +65,13 @@ jobs:
           python -m py_compile \
             scripts/reconcile-memory-os-backup-non-resurrection-authority.py \
             scripts/register-memory-os-backup-restore-generation-evidence.py \
+            scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
             scripts/memory_os_backup_restore_blockers.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-negative.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py \
+            scripts/validate-memory-os-local-apple-replay-restore.py \
+            scripts/validate-memory-os-local-coherent-recovery-set.py \
             scripts/validate-memory-os-backup-non-resurrection-reconcile-negative.py
           python scripts/validate-memory-os-backup-non-resurrection-reconcile-negative.py
           git diff --exit-code
