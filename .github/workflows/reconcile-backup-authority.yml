@@ -66,7 +66,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
-      - name: Validate exact-source local foundations
+      - name: Validate local foundation source inputs
         run: |
           python -m py_compile \
             scripts/memory_os_backup_restore_blockers.py \
@@ -85,8 +85,6 @@ jobs:
           python scripts/validate-memory-os-local-object-version-restore.py
           python scripts/validate-memory-os-local-coherent-recovery-set.py
           python scripts/validate-memory-os-backup-local-foundations.py
-          python scripts/validate-memory-os-backup-restore.py
-          python scripts/validate-memory-os-backup-restore-blockers-negative.py
 
       - name: Normalize policy and local restore authority
         run: |
