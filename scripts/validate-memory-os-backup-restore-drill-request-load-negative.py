@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove drill-request authority loading fails closed on unreadable repo-local inputs."""
+"""Prove drill-request authority loading fails closed on unreadable or escaped inputs."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from typing import Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-request.py"
+RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-drill-request.py"
 TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 
 
@@ -22,9 +23,9 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
-def load_validator():
-    spec = importlib.util.spec_from_file_location("memory_os_restore_drill_request_load_negative", VALIDATOR)
-    require(spec is not None and spec.loader is not None, "cannot load drill-request validator")
+def load_module(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load {path.name}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -41,23 +42,34 @@ def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[
     raise Fail(f"negative case unexpectedly accepted: {name}")
 
 
+def exercise(label: str, module, tmp: Path, outside: Path) -> None:
+    invalid_utf8 = tmp / f"{label}-invalid-utf8.json"
+    invalid_utf8.write_bytes(b"{\xff}")
+    expect_domain_fail(f"{label} invalid UTF-8 authority JSON", lambda: module.load(invalid_utf8), module.Fail)
+
+    directory_authority = tmp / f"{label}-directory-authority.json"
+    directory_authority.mkdir()
+    expect_domain_fail(f"{label} authority path is unreadable directory", lambda: module.load(directory_authority), module.Fail)
+
+    expect_domain_fail(f"{label} authority path escapes repository", lambda: module.load(outside), module.Fail)
+
+
 def main() -> int:
     require(VALIDATOR.is_file(), "drill-request validator missing")
+    require(RECONCILER.is_file(), "drill-request reconciler missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
-    validator = load_validator()
+    validator = load_module(VALIDATOR, "memory_os_restore_drill_request_load_negative")
+    reconciler = load_module(RECONCILER, "memory_os_restore_drill_request_reconcile_load_negative")
 
     with tempfile.TemporaryDirectory(prefix=".tmp-drill-request-load-", dir=TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
+        with tempfile.TemporaryDirectory(prefix="memory-os-drill-request-outside-") as outside_dir:
+            outside = Path(outside_dir) / "outside.json"
+            outside.write_text("{}\n", encoding="utf-8")
+            exercise("validator", validator, tmp, outside)
+            exercise("reconciler", reconciler, tmp, outside)
 
-        invalid_utf8 = tmp / "invalid-utf8.json"
-        invalid_utf8.write_bytes(b"{\xff}")
-        expect_domain_fail("invalid UTF-8 drill-request authority JSON", lambda: validator.load(invalid_utf8), validator.Fail)
-
-        directory_authority = tmp / "directory-authority.json"
-        directory_authority.mkdir()
-        expect_domain_fail("drill-request authority path is unreadable directory", lambda: validator.load(directory_authority), validator.Fail)
-
-    print("Drill-request unreadable-authority negative suite PASS")
+    print("Drill-request unreadable/escaped-authority negative suite PASS")
     return 0
 
 
