@@ -58,6 +58,10 @@ def main() -> int:
         directory_authority.mkdir()
         expect_domain_fail("admission-chain unreadable authority directory", lambda: reconciler.load(directory_authority), reconciler.Fail)
 
+        loop_authority = tmp / "loop-authority.json"
+        loop_authority.symlink_to(loop_authority.name)
+        expect_domain_fail("admission-chain authority symlink loop", lambda: reconciler.load(loop_authority), reconciler.Fail)
+
         with tempfile.TemporaryDirectory(prefix="memory-os-chain-outside-") as outside_dir:
             outside = Path(outside_dir) / "outside.json"
             outside.write_text("{}\n", encoding="utf-8")
