@@ -243,6 +243,38 @@ def main() -> int:
         writer.validate_record(record)
         require(writer.candidate(record) is True, "baseline candidate must recover after isolated registry boundary fixture reset")
 
+        registered_count_drift = drill_registry_value(request)
+        registered_count_drift["registeredRequestCount"] = 2
+        write_json(drill_registry, registered_count_drift)
+        reject_candidate(writer, record, "registered request aggregate drift")
+        reject_current_registration(writer, record, "registered request aggregate drift")
+        print("PASS revoke: registeredRequestCount drift invalidates candidate and new evidence")
+
+        boolean_registered_count = drill_registry_value(request)
+        boolean_registered_count["registeredRequestCount"] = True
+        write_json(drill_registry, boolean_registered_count)
+        reject_candidate(writer, record, "boolean registered request aggregate")
+        reject_current_registration(writer, record, "boolean registered request aggregate")
+        print("PASS revoke: boolean registeredRequestCount invalidates candidate and new evidence")
+
+        current_count_drift = drill_registry_value(request)
+        current_count_drift["currentExecutableRequestCount"] = 0
+        write_json(drill_registry, current_count_drift)
+        reject_candidate(writer, record, "current executable request aggregate drift")
+        reject_current_registration(writer, record, "current executable request aggregate drift")
+        print("PASS revoke: currentExecutableRequestCount drift invalidates candidate and new evidence")
+
+        boolean_current_count = drill_registry_value(request)
+        boolean_current_count["currentExecutableRequestCount"] = True
+        write_json(drill_registry, boolean_current_count)
+        reject_candidate(writer, record, "boolean current executable request aggregate")
+        reject_current_registration(writer, record, "boolean current executable request aggregate")
+        print("PASS revoke: boolean currentExecutableRequestCount invalidates candidate and new evidence")
+
+        write_json(drill_registry, drill_registry_value(request))
+        writer.validate_record(record)
+        require(writer.candidate(record) is True, "baseline candidate must recover after isolated request counter drift fixtures reset")
+
         duplicate_objectives = copy.deepcopy(baseline_objectives)
         duplicate_objectives["approvedObjectiveCount"] = 2
         duplicate_objectives["records"] = [
@@ -299,6 +331,9 @@ def main() -> int:
     print("mutated drill request row creates current candidate: false")
     print("duplicate drill request identity creates current candidate: false")
     print("drill registry production boundary drift creates current candidate: false")
+    print("drill registry registered count drift creates current candidate: false")
+    print("drill registry current executable count drift creates current candidate: false")
+    print("boolean drill registry aggregate counts accepted: false")
     print("duplicate recovery objective identity creates current candidate: false")
     print("missing current recovery objective creates current candidate: false")
     print("stale recovery objective creates current candidate: false")
