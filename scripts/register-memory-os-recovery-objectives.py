@@ -210,6 +210,38 @@ def validate_record(record: dict[str, Any]) -> None:
         require(forbidden not in serialized, f"record contains forbidden material: {forbidden}")
 
 
+def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any]]:
+    """Reject corrupt append-only objective authority before adding human-reviewed policy."""
+    require(registry.get("schemaVersion") == "memory-os-recovery-objectives-registry.v1", "registry schema drift")
+    require(registry.get("appendOnly") is True, "objectives registry must remain append-only")
+    require(registry.get("productionEvidence") is False, "objectives registry productionEvidence must remain false")
+    require(registry.get("productionReady") is False, "objectives registry productionReady must remain false")
+    rows = registry.get("records")
+    count = registry.get("approvedObjectiveCount")
+    require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "objectives records invalid")
+    require(isinstance(count, int) and not isinstance(count, bool), "approvedObjectiveCount must be a non-boolean integer")
+    require(count == len(rows), "approvedObjectiveCount drift")
+    ids: set[str] = set()
+    previous: str | None = None
+    for row in rows:
+        validate_record(row)
+        objective_id = row.get("objectiveId")
+        require(isinstance(objective_id, str) and objective_id not in ids, f"duplicate objectiveId: {objective_id}")
+        ids.add(objective_id)
+        require(row.get("supersedesObjectiveId") == previous, "recovery objective supersession chain drift")
+        previous = objective_id
+    require(registry.get("currentObjectiveId") == previous, "currentObjectiveId must equal latest append-only record")
+    limitations = registry.get("limitations")
+    require(
+        isinstance(limitations, list)
+        and limitations
+        and all(isinstance(item, str) and item.strip() for item in limitations)
+        and len(limitations) == len(set(limitations)),
+        "objectives registry limitations invalid",
+    )
+    return rows
+
+
 def atomic_write(value: dict[str, Any]) -> None:
     descriptor, temp_name = tempfile.mkstemp(prefix=".recovery-objectives.", suffix=".tmp", dir=REGISTRY.parent)
     try:
@@ -248,16 +280,13 @@ def main() -> int:
         os.write(lock_fd, (record["objectiveId"] + "\n").encode("ascii"))
         os.fsync(lock_fd)
         registry = load(REGISTRY)
-        rows = registry.get("records")
-        require(registry.get("appendOnly") is True and isinstance(rows, list), "registry invalid")
-        require(all(isinstance(row, dict) and row.get("objectiveId") != record["objectiveId"] for row in rows), "objectiveId already registered")
+        rows = validate_registry_for_append(registry)
+        require(all(row.get("objectiveId") != record["objectiveId"] for row in rows), "objectiveId already registered")
         expected_supersedes = rows[-1].get("objectiveId") if rows else None
         require(record.get("supersedesObjectiveId") == expected_supersedes, "supersedesObjectiveId must reference current approved objectives")
         rows.append(record)
         registry["approvedObjectiveCount"] = len(rows)
         registry["currentObjectiveId"] = record["objectiveId"]
-        registry["productionEvidence"] = False
-        registry["productionReady"] = False
         registry["limitations"] = [
             "approved objectives are policy targets, not restore evidence",
             "objective values are supplied by reviewed human authority and are never chosen or defaulted by this writer",
