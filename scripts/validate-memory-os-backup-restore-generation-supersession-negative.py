@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove generation supersession invalidates current backup/restore candidates.
+"""Prove generation/objective rollover invalidates current backup/restore candidates.
 
 This suite uses only temporary registries and existing synthetic fixtures. It
 never mutates canonical evidence or creates production authority.
@@ -83,7 +83,7 @@ def main() -> int:
             "generations": [source, target],
         }
         write_json(generation_registry, baseline_generations)
-        write_json(objectives_registry, {
+        baseline_objectives = {
             "schemaVersion": "memory-os-recovery-objectives-registry.v1",
             "appendOnly": True,
             "approvedObjectiveCount": 1,
@@ -97,7 +97,8 @@ def main() -> int:
             }],
             "productionEvidence": False,
             "productionReady": False,
-        })
+        }
+        write_json(objectives_registry, baseline_objectives)
         request = fixture.base_drill_request()
         write_json(drill_registry, {
             "schemaVersion": "memory-os-backup-restore-drill-request-registry.v1",
@@ -128,7 +129,7 @@ def main() -> int:
         writer.NON_RESURRECTION_REGISTRY = overlay_registry
 
         writer.validate_record(record)
-        require(writer.candidate(record) is True, "baseline current candidate must be derivable before supersession")
+        require(writer.candidate(record) is True, "baseline current candidate must be derivable before authority rollover")
 
         source_successor = fixture.generation_record(
             generation_id="pegen_source_v2",
@@ -171,11 +172,37 @@ def main() -> int:
         reject_current_registration(writer, record, "restore-target generation supersession")
         print("PASS revoke: superseded restore-target generation invalidates candidate and new evidence")
 
-    print("Memory OS generation supersession candidate negative suite PASS")
+        write_json(generation_registry, baseline_generations)
+        write_json(objectives_registry, baseline_objectives)
+        writer.validate_record(record)
+        require(writer.candidate(record) is True, "baseline candidate must recover after isolated target supersession fixture reset")
+
+        rolled_objectives = dict(baseline_objectives)
+        rolled_objectives["approvedObjectiveCount"] = 2
+        rolled_objectives["currentObjectiveId"] = "recovery_objectives_ci_v2"
+        rolled_objectives["records"] = [
+            *baseline_objectives["records"],
+            {
+                "objectiveId": "recovery_objectives_ci_v2",
+                "rpoSeconds": 45,
+                "rtoSeconds": 90,
+                "maximumObjectDatabaseSkewSeconds": 8,
+                "approvedAt": "2026-08-08T00:10:00Z",
+            },
+        ]
+        write_json(objectives_registry, rolled_objectives)
+
+        writer.validate_record(record, require_current_drill_request=False)
+        require(writer.candidate(record) is False, "recovery objective rollover must invalidate current candidate")
+        reject_current_registration(writer, record, "recovery objective rollover")
+        print("PASS revoke: recovery objective rollover invalidates stale request candidate and new evidence")
+
+    print("Memory OS generation/objective rollover candidate negative suite PASS")
     print("historical evidence remains auditable: true")
     print("superseded source generation creates current candidate: false")
     print("superseded restore-target generation creates current candidate: false")
-    print("new evidence accepted against superseded generation: false")
+    print("stale recovery objective creates current candidate: false")
+    print("new evidence accepted against stale generation/objective authority: false")
     print("canonical registries mutated: false")
     print("production evidence: false")
     print("production decision: NO_GO")
