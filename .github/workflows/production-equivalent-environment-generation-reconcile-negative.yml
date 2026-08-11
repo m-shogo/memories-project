@@ -7,9 +7,13 @@ on:
       - "scripts/reconcile-memory-os-production-equivalent-generation-status.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-generation-negative.py"
       - "scripts/validate-memory-os-production-equivalent-generation-reconcile-negative.py"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
+      - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
       - "contracts/operations/production-operability-status.json"
   push:
     branches:
@@ -19,9 +23,13 @@ on:
       - "scripts/reconcile-memory-os-production-equivalent-generation-status.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-generation-negative.py"
       - "scripts/validate-memory-os-production-equivalent-generation-reconcile-negative.py"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
+      - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
       - "contracts/operations/production-operability-status.json"
   workflow_dispatch:
 
@@ -50,6 +58,8 @@ jobs:
             scripts/reconcile-memory-os-production-equivalent-generation-status.py \
             scripts/register-memory-os-production-equivalent-environment-generation.py \
             scripts/validate-memory-os-production-equivalent-environment-record.py \
+            scripts/validate-memory-os-production-equivalent-environment-generation.py \
+            scripts/validate-memory-os-production-equivalent-environment-generation-negative.py \
             scripts/validate-memory-os-production-equivalent-generation-reconcile-negative.py
           python scripts/validate-memory-os-production-equivalent-generation-reconcile-negative.py
           git diff --exit-code
