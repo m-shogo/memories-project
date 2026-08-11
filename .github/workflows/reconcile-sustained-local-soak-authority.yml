@@ -26,6 +26,7 @@ on:
       - "scripts/validate-memory-os-sustained-local-soak-aggregate.py"
       - "scripts/reconcile-memory-os-sustained-local-soak-status.py"
       - "scripts/reconcile-memory-os-local-long-soak-load-projection.py"
+      - "scripts/validate-memory-os-local-long-soak-load-projection-negative.py"
       - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
@@ -87,6 +88,7 @@ jobs:
             scripts/validate-memory-os-sustained-local-soak-aggregate.py \
             scripts/reconcile-memory-os-sustained-local-soak-status.py \
             scripts/reconcile-memory-os-local-long-soak-load-projection.py \
+            scripts/validate-memory-os-local-long-soak-load-projection-negative.py \
             scripts/validate-memory-os-load.py \
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
@@ -97,6 +99,7 @@ jobs:
             python scripts/validate-memory-os-sustained-local-soak.py >> "$log" 2>&1 || code=$?
             python scripts/validate-memory-os-sustained-soak-independent-review.py >> "$log" 2>&1 || code=$?
             python scripts/validate-memory-os-sustained-soak-independent-review-negative.py >> "$log" 2>&1 || code=$?
+            python scripts/validate-memory-os-local-long-soak-load-projection-negative.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             stage=pending-aggregate
@@ -122,6 +125,7 @@ jobs:
             echo "STAGE: status-reconcile" >> "$log"
             python scripts/reconcile-memory-os-sustained-local-soak-status.py >> "$log" 2>&1 || code=$?
             python scripts/reconcile-memory-os-local-long-soak-load-projection.py >> "$log" 2>&1 || code=$?
+            python scripts/validate-memory-os-local-long-soak-load-projection-negative.py >> "$log" 2>&1 || code=$?
             python scripts/validate-memory-os-sustained-local-soak.py >> "$log" 2>&1 || code=$?
             python scripts/validate-memory-os-sustained-soak-independent-review.py >> "$log" 2>&1 || code=$?
             python scripts/validate-memory-os-sustained-soak-independent-review-negative.py >> "$log" 2>&1 || code=$?
