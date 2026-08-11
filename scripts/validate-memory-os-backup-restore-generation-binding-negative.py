@@ -11,6 +11,7 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-binding.py"
+TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 
 
 class Fail(RuntimeError):
@@ -36,6 +37,8 @@ def expect_rejected(module: Any, name: str, action: Callable[[], Any]) -> None:
     except module.Fail:
         print(f"PASS reject: {name}")
         return
+    except Exception as exc:
+        raise Fail(f"{name} leaked non-domain exception: {type(exc).__name__}: {exc}") from exc
     raise Fail(f"negative case unexpectedly accepted: {name}")
 
 
@@ -143,6 +146,21 @@ def main() -> int:
 
     require(run_with_state(module, state) == 0, "candidate baseline must validate with evidence review but without human promotion review")
     print("PASS baseline: recovery candidate includes independently re-derived evidence review while human promotion review remains false")
+
+    require(TMP_PARENT.is_dir(), "generation-binding temporary fixture parent missing")
+    with tempfile.TemporaryDirectory(prefix=".tmp-generation-binding-load-negative-", dir=TMP_PARENT) as tmpdir:
+        tmp = Path(tmpdir)
+        invalid_utf8 = tmp / "invalid-utf8.json"
+        invalid_utf8.write_bytes(b"{\xff}")
+        expect_rejected(module, "generation binding invalid UTF-8 authority", lambda: module.load(invalid_utf8))
+
+        directory_authority = tmp / "directory-authority.json"
+        directory_authority.mkdir()
+        expect_rejected(module, "generation binding unreadable authority directory", lambda: module.load(directory_authority))
+
+        loop_authority = tmp / "loop-authority.json"
+        loop_authority.symlink_to(loop_authority.name)
+        expect_rejected(module, "generation binding authority symlink loop", lambda: module.load(loop_authority))
 
     outside_path = Path(tempfile.gettempdir()) / "memory-os-generation-binding-outside-root.json"
     expect_rejected(
@@ -310,6 +328,8 @@ def main() -> int:
     )
 
     print("Memory OS backup/restore generation binding negative suite PASS")
+    print("invalid UTF-8 or unreadable generation-binding authority accepted: false")
+    print("generation-binding authority symlink loop accepted: false")
     print("artifact path escape accepted: false")
     print("local foundation evidence symlink escape accepted: false")
     print("absolute or parent-traversal local foundation ref accepted: false")
