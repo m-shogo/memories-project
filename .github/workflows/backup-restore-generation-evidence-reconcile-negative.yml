@@ -1,0 +1,40 @@
+name: Backup Restore Generation Evidence Reconcile Negative
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/backup-restore-generation-evidence-reconcile-negative.yml"
+      - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-reconcile-negative.py"
+      - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "contracts/operations/backup-restore-generation-binding-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  negative:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Prove transactional generation recovery reconciliation
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          python -m py_compile \
+            scripts/reconcile-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-generation-evidence-reconcile-negative.py
+          python scripts/validate-memory-os-backup-restore-generation-evidence-reconcile-negative.py
+          git diff --exit-code
