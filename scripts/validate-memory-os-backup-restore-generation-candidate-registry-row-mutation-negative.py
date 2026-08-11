@@ -96,7 +96,7 @@ def main() -> int:
                 "appendOnly": True,
                 "registeredRecordCount": 1,
                 "completeRecordCount": 1,
-                "candidateCoveredCount": 1,
+                "candidateCoveredCount": 0,
                 "records": [overlay],
                 "productionEvidence": False,
                 "productionReady": False,
@@ -110,6 +110,30 @@ def main() -> int:
             evidence_id = valid["evidenceId"]
             require(writer.typed_non_resurrection_covered(evidence_id) is True, "intact typed registry row must cover generation evidence")
             print("PASS candidate coverage: intact typed registry row accepted")
+
+            registered_count_mutation = copy.deepcopy(intact_registry)
+            registered_count_mutation["registeredRecordCount"] = 0
+            write_json(overlay_registry, registered_count_mutation)
+            require(writer.typed_non_resurrection_covered(evidence_id) is False, "typed registry registeredRecordCount drift must revoke coverage")
+            print("PASS revoke: typed registry registeredRecordCount drift invalidates coverage")
+
+            boolean_registered_count_mutation = copy.deepcopy(intact_registry)
+            boolean_registered_count_mutation["registeredRecordCount"] = True
+            write_json(overlay_registry, boolean_registered_count_mutation)
+            require(writer.typed_non_resurrection_covered(evidence_id) is False, "typed registry boolean registeredRecordCount must revoke coverage")
+            print("PASS revoke: typed registry boolean registeredRecordCount invalidates coverage")
+
+            complete_count_mutation = copy.deepcopy(intact_registry)
+            complete_count_mutation["completeRecordCount"] = 0
+            write_json(overlay_registry, complete_count_mutation)
+            require(writer.typed_non_resurrection_covered(evidence_id) is False, "typed registry completeRecordCount drift must revoke coverage")
+            print("PASS revoke: typed registry completeRecordCount drift invalidates coverage")
+
+            candidate_count_mutation = copy.deepcopy(intact_registry)
+            candidate_count_mutation["candidateCoveredCount"] = 1
+            write_json(overlay_registry, candidate_count_mutation)
+            require(writer.typed_non_resurrection_covered(evidence_id) is False, "typed registry candidateCoveredCount drift must revoke coverage")
+            print("PASS revoke: typed registry candidateCoveredCount drift invalidates coverage")
 
             schema_mutation = copy.deepcopy(intact_registry)
             schema_mutation["schemaVersion"] = "memory-os-backup-restore-non-resurrection-admission-registry.v0"
@@ -198,7 +222,7 @@ def main() -> int:
             duplicate_binding.update({
                 "registeredRecordCount": 2,
                 "completeRecordCount": 2,
-                "candidateCoveredCount": 2,
+                "candidateCoveredCount": 0,
                 "records": [copy.deepcopy(overlay), copy.deepcopy(overlay)],
             })
             write_json(overlay_registry, duplicate_binding)
@@ -217,6 +241,10 @@ def main() -> int:
         print("Memory OS generation candidate registry-row mutation negative suite PASS")
         print("canonical registries mutated: false")
         print("repository-local canonical simulation: true")
+        print("typed registeredRecordCount drift accepted: false")
+        print("typed boolean registeredRecordCount accepted: false")
+        print("typed completeRecordCount drift accepted: false")
+        print("typed candidateCoveredCount drift accepted: false")
         print("typed registry schema drift accepted: false")
         print("typed registry append-only boundary mutation accepted: false")
         print("typed registry productionEvidence mutation accepted: false")
