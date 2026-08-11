@@ -34,7 +34,7 @@ def require(condition: bool, message: str) -> None:
 def repo_relative(path: Path) -> Path:
     try:
         return path.resolve(strict=False).relative_to(ROOT.resolve())
-    except (OSError, ValueError) as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"authority path escapes repository: {path}") from exc
 
 
@@ -99,6 +99,19 @@ def main() -> int:
     typed_contract = load(TYPED_CONTRACT)
     writer = load_module(WRITER, "memory_os_restore_drill_request_writer_validator")
     eligibility = load_module(ELIGIBILITY_HELPER, "memory_os_restore_generation_eligibility_validator")
+
+    writer_authorities = (
+        ("CONTRACT", "CANONICAL_CONTRACT", CONTRACT, "restore drill request contract"),
+        ("REGISTRY", "CANONICAL_REGISTRY", REGISTRY, "restore drill request registry"),
+        ("GEN_REGISTRY", "CANONICAL_GEN_REGISTRY", GEN_REGISTRY, "environment generation registry"),
+        ("OBJECTIVES_REGISTRY", "CANONICAL_OBJECTIVES_REGISTRY", OBJECTIVES_REGISTRY, "recovery objectives registry"),
+    )
+    for runtime_name, canonical_name, expected_path, field in writer_authorities:
+        runtime_path = getattr(writer, runtime_name, None)
+        canonical_path = getattr(writer, canonical_name, None)
+        require(runtime_path == expected_path, f"writer runtime authority drift: {runtime_name}")
+        require(canonical_path == expected_path, f"writer canonical authority drift: {canonical_name}")
+        writer.require_canonical_runtime_authority(runtime_path, canonical_path, field)
 
     require(contract.get("schemaVersion") == "memory-os-backup-restore-drill-request-contract.v1", "contract schema drift")
     require(contract.get("recordSchemaVersion") == "memory-os-backup-restore-drill-request.v1", "record schema drift")
@@ -265,6 +278,7 @@ def main() -> int:
     print(f"registered drill requests: {request_count}")
     print(f"currently executable requests: {executable_count}")
     print(f"admission decision: {decision}")
+    print("writer canonical runtime authorities validated without evidence rows: true")
     print("boolean registry/contract aggregate counts accepted: false")
     print("registered generation or historical objective count alone creates planning authority: false")
     print("historical admitted requests survive later generation/objective supersession: true")
