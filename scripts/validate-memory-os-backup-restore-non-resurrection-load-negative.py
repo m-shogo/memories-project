@@ -63,6 +63,15 @@ def main() -> int:
         expect_domain_fail("typed authority path is unreadable directory", lambda: validator.load(directory_authority), validator.Fail)
         expect_domain_fail("typed writer input path is unreadable directory", lambda: writer.load(directory_authority), writer.Fail)
 
+        ref_loop = tmp / "loop-evidence-ref.json"
+        ref_loop.symlink_to(ref_loop.name)
+        ref_loop_relative = ref_loop.relative_to(ROOT).as_posix()
+        expect_domain_fail(
+            "typed evidence repository ref symlink loop",
+            lambda: writer.repo_ref(ref_loop_relative, "negativeEvidenceRef"),
+            writer.Fail,
+        )
+
         with tempfile.TemporaryDirectory(prefix="memory-os-typed-writer-outside-") as outside_dirname:
             outside_dir = Path(outside_dirname)
             outside_writer = outside_dir / "outside-generation-writer.py"
