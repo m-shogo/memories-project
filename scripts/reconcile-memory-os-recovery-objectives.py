@@ -33,9 +33,42 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def repo_relative(path: Path) -> Path:
+    try:
+        return path.resolve(strict=False).relative_to(ROOT.resolve())
+    except (OSError, ValueError) as exc:
+        raise Fail(f"authority path escapes repository: {path}") from exc
+
+
+def require_repo_file(path: Path, message: str) -> Path:
+    relative = repo_relative(path)
+    require((ROOT / relative).is_file(), message)
+    return relative
+
+
+def read_text(path: Path) -> str:
+    relative = repo_relative(path)
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise Fail(f"cannot read {relative}: {exc}") from exc
+
+
+def write_text(path: Path, text: str) -> None:
+    relative = repo_relative(path)
+    try:
+        path.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        raise Fail(f"cannot write {relative}: {exc}") from exc
+
+
 def load(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+    relative = repo_relative(path)
+    try:
+        value = json.loads(read_text(path))
+    except json.JSONDecodeError as exc:
+        raise Fail(f"cannot load {relative}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be object: {relative}")
     return value
 
 
@@ -45,13 +78,20 @@ def append_once(values: list[Any], value: str) -> None:
 
 
 def main() -> int:
+    original_contract_text = read_text(CONTRACT)
+    original_status_text = read_text(STATUS)
     registry = load(REGISTRY)
     contract = load(CONTRACT)
+    status = load(STATUS)
     rows = registry.get("records")
     count = registry.get("approvedObjectiveCount")
     current_id = registry.get("currentObjectiveId")
-    require(isinstance(rows, list) and isinstance(count, int) and len(rows) == count, "recovery objective registry count drift")
+    require(isinstance(rows, list) and isinstance(count, int) and not isinstance(count, bool) and count >= 0 and len(rows) == count, "recovery objective registry count drift")
+    require(all(isinstance(row, dict) for row in rows), "recovery objective registry row invalid")
     require(current_id == (rows[-1].get("objectiveId") if rows else None), "current objective drift")
+    if count == 0:
+        require(current_id is None, "empty objective registry requires null currentObjectiveId")
+
     authority = contract.get("currentAuthority")
     require(isinstance(authority, dict), "currentAuthority missing")
     authority["approvedObjectiveCount"] = count
@@ -62,13 +102,11 @@ def main() -> int:
     authority["productionEvidence"] = False
     authority["productionReady"] = False
     authority["productionDecision"] = "NO_GO"
-    CONTRACT.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    status = load(STATUS)
     require(status.get("productionDecision") == "NO_GO", "productionDecision must remain NO_GO")
     gate = next((item for item in status.get("areas", []) if isinstance(item, dict) and item.get("id") == "OPS-P0-007"), None)
     require(isinstance(gate, dict), "OPS-P0-007 missing")
-    require(gate.get("status") in {"PARTIAL_FOUNDATIONS_ONLY", "PARTIAL"} and gate.get("blocking") is True,
+    require(gate.get("status") == "PARTIAL_FOUNDATIONS_ONLY" and gate.get("blocking") is True,
             "recovery objectives cannot advance OPS-P0-007 readiness")
     existing = gate.get("existingEvidence")
     missing = gate.get("missingEvidence")
@@ -82,11 +120,20 @@ def main() -> int:
         evidence = f"{EVIDENCE_PREFIX} {count} reviewed objective record(s) exist and current objectiveId={current_id}; measured restore evidence must bind this exact objective and satisfy its RPO/RTO/skew targets, while objective approval itself is not production evidence"
     append_once(existing, evidence)
     for ref in REFS:
-        require((ROOT / ref).is_file(), f"recovery objective authority ref missing: {ref}")
+        require_repo_file(ROOT / ref, f"recovery objective authority ref missing: {ref}")
         append_once(refs, ref)
     require_canonical_gaps(gate.get("missingEvidence"), Fail)
     require(status.get("productionDecision") == "NO_GO", "productionDecision changed unexpectedly")
-    STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    contract_text = json.dumps(contract, indent=2, ensure_ascii=False) + "\n"
+    status_text = json.dumps(status, indent=2, ensure_ascii=False) + "\n"
+    try:
+        write_text(CONTRACT, contract_text)
+        write_text(STATUS, status_text)
+    except Exception:
+        write_text(CONTRACT, original_contract_text)
+        write_text(STATUS, original_status_text)
+        raise
 
     print("Memory OS recovery objectives reconciliation PASS")
     print(f"approved objective records: {count}")
