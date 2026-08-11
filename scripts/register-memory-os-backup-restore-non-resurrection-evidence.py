@@ -47,13 +47,12 @@ def load(path: Path) -> dict[str, Any]:
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise Fail(f"cannot load {path}: {exc}") from exc
     require(isinstance(value, dict), f"root must be object: {path}")
-    return value
 
 def canonical_repo_file(path: Path, field: str) -> Path:
     try:
         relative = path.relative_to(ROOT)
         resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
-    except (FileNotFoundError, OSError, ValueError) as exc:
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"{field} missing or escapes repository") from exc
     require(relative.parts and ".." not in relative.parts, f"{field} must be repository-contained")
     require(relative == resolved and path.is_file(), f"{field} must resolve to its canonical repository file")
