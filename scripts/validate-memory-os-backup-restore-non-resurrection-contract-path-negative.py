@@ -30,6 +30,8 @@ def expect_rejected(module: Any, name: str, action: Callable[[], Any]) -> None:
     except module.Fail:
         print(f"PASS reject: {name}")
         return
+    except Exception as exc:
+        raise Fail(f"{name} leaked non-domain exception: {type(exc).__name__}: {exc}") from exc
     raise Fail(f"negative case unexpectedly accepted: {name}")
 
 def main() -> int:
@@ -46,18 +48,27 @@ def main() -> int:
         outside = Path(tmp) / "outside.json"
         outside.write_text("{}\n", encoding="utf-8")
         link = ROOT / "docs/fixtures/memory-os-operability/.non-resurrection-path-negative-link.json"
+        loop = ROOT / "docs/fixtures/memory-os-operability/.non-resurrection-path-negative-loop.json"
         require(not link.exists() and not link.is_symlink(), "temporary negative symlink path already exists")
+        require(not loop.exists() and not loop.is_symlink(), "temporary negative symlink-loop path already exists")
         try:
             link.symlink_to(outside)
             ref = link.relative_to(ROOT).as_posix()
             expect_rejected(validator, "repo-local symlink escaping repository", lambda: validator.canonical_repo_file_ref(ref, "negative.symlink"))
+
+            loop.symlink_to(loop.name)
+            loop_ref = loop.relative_to(ROOT).as_posix()
+            expect_rejected(validator, "repo-local authority symlink loop", lambda: validator.canonical_repo_file_ref(loop_ref, "negative.symlinkLoop"))
         finally:
             link.unlink(missing_ok=True)
+            loop.unlink(missing_ok=True)
 
     print("Memory OS backup/restore non-resurrection contract path negative suite PASS")
     print("absolute authority aliases accepted: false")
     print("parent traversal authority aliases accepted: false")
     print("repository-escaping authority symlinks accepted: false")
+    print("authority symlink loops accepted: false")
+    print("non-domain authority resolution exceptions leaked: false")
     print("canonical authorities mutated: false")
     print("production evidence: false")
     print("production decision: NO_GO")
