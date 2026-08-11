@@ -4,336 +4,36 @@
   "resultsSchemaVersion": "memory-os-load-results.v1",
   "description": "Machine-readable load-test scenario matrix for the deterministic in-process Import API harness. The validator checks that every persisted result names a scenario defined in executedScenarios, that required scenarios have results, and that no MOCK result claims production-equivalent or real-Apple evidence. Live PostgreSQL and MinIO checkpoints are governed by separate contracts listed in externalExecutedScenarios. OPS-P0-006 may not be READY on either local evidence set.",
   "goHarness": "services/import-api/internal/loadtest",
-  "dependencyModes": [
-    "MOCK",
-    "LOCAL_POSTGRES",
-    "LOCAL_OBJECT_STORE",
-    "LOCAL_POSTGRES_MINIO",
-    "FAILURE_INJECTED",
-    "PRODUCTION_EQUIVALENT"
-  ],
-  "workloadTypes": [
-    "STEADY",
-    "BURST",
-    "RAMP",
-    "SOAK",
-    "OVERLOAD",
-    "DEPENDENCY_DEGRADED"
-  ],
-  "forbiddenAsPass": [
-    "REAL_APPLE",
-    "PRODUCTION_EQUIVALENT"
-  ],
+  "dependencyModes": ["MOCK", "LOCAL_POSTGRES", "LOCAL_OBJECT_STORE", "LOCAL_POSTGRES_MINIO", "FAILURE_INJECTED", "PRODUCTION_EQUIVALENT"],
+  "workloadTypes": ["STEADY", "BURST", "RAMP", "SOAK", "OVERLOAD", "DEPENDENCY_DEGRADED"],
+  "forbiddenAsPass": ["REAL_APPLE", "PRODUCTION_EQUIVALENT"],
   "executedScenarios": [
-    {
-      "scenarioId": "health-baseline-mock",
-      "route": "GET /healthz",
-      "routeClass": "HEALTH",
-      "workloadType": "STEADY",
-      "concurrency": 8,
-      "requestRate": "unbounded-count",
-      "duration": "count:400",
-      "rampUp": "none",
-      "payloadClass": "none",
-      "dependencyMode": "MOCK",
-      "rateLimitPolicy": "exempt",
-      "expectedStatusClasses": [
-        "2xx"
-      ],
-      "measurementMetrics": [
-        "memory_os_http_requests_total",
-        "memory_os_http_request_duration_seconds",
-        "memory_os_http_in_flight"
-      ],
-      "successCriteria": "all 2xx; harness overhead observable; Apple path untouched",
-      "abortCriteria": "any 5xx; goroutine or heap runaway",
-      "privacyClass": "operational_nonpersonal",
-      "evidenceRefs": [
-        "services/import-api/internal/loadtest/scenarios_test.go"
-      ]
-    },
-    {
-      "scenarioId": "apple-steady-mock",
-      "route": "POST /v1/auth/apple",
-      "routeClass": "PUBLIC_UNAUTHENTICATED",
-      "workloadType": "STEADY",
-      "concurrency": 16,
-      "requestRate": "unbounded-count",
-      "duration": "count:1000",
-      "rampUp": "none",
-      "payloadClass": "unique-nonce-and-code",
-      "dependencyMode": "MOCK",
-      "rateLimitPolicy": "permissive",
-      "expectedStatusClasses": [
-        "2xx"
-      ],
-      "measurementMetrics": [
-        "memory_os_http_requests_total",
-        "memory_os_http_request_duration_seconds",
-        "memory_os_apple_exchange_total",
-        "memory_os_apple_exchange_duration_seconds",
-        "memory_os_session_issuance_total",
-        "memory_os_db_operations_total"
-      ],
-      "successCriteria": "all 2xx; one account for one subject; one session per request; series bounded",
-      "abortCriteria": "any 5xx; series above budget; goroutine or heap runaway",
-      "privacyClass": "operational_nonpersonal",
-      "evidenceRefs": [
-        "services/import-api/internal/loadtest/scenarios_test.go",
-        "services/import-api/internal/appleauth/metered.go"
-      ]
-    },
-    {
-      "scenarioId": "apple-burst-mock",
-      "route": "POST /v1/auth/apple",
-      "routeClass": "PUBLIC_UNAUTHENTICATED",
-      "workloadType": "BURST",
-      "concurrency": 32,
-      "requestRate": "unbounded-count",
-      "duration": "count:1000",
-      "rampUp": "none",
-      "payloadClass": "unique-nonce-and-code",
-      "dependencyMode": "MOCK",
-      "rateLimitPolicy": "tight-network-guard",
-      "expectedStatusClasses": [
-        "2xx",
-        "4xx"
-      ],
-      "measurementMetrics": [
-        "memory_os_http_requests_total",
-        "memory_os_rate_limit_decisions_total"
-      ],
-      "successCriteria": "network guard rejects the burst with bounded 429; sessions equal 2xx count; no 5xx; series bounded",
-      "abortCriteria": "any 5xx; sessions exceed 2xx; series above budget",
-      "privacyClass": "operational_nonpersonal",
-      "evidenceRefs": [
-        "services/import-api/internal/loadtest/scenarios_test.go",
-        "services/import-api/internal/httpserver/ratelimit.go"
-      ]
-    },
-    {
-      "scenarioId": "ratelimit-store-failure-mock",
-      "route": "POST /v1/auth/apple",
-      "routeClass": "PUBLIC_UNAUTHENTICATED",
-      "workloadType": "DEPENDENCY_DEGRADED",
-      "concurrency": 16,
-      "requestRate": "unbounded-count",
-      "duration": "count:500",
-      "rampUp": "none",
-      "payloadClass": "unique-nonce-and-code",
-      "dependencyMode": "FAILURE_INJECTED",
-      "rateLimitPolicy": "fail-closed-store-down",
-      "expectedStatusClasses": [
-        "4xx"
-      ],
-      "measurementMetrics": [
-        "memory_os_http_requests_total",
-        "memory_os_rate_limit_decisions_total",
-        "memory_os_rate_limit_store_failures_total"
-      ],
-      "successCriteria": "pre-auth route fails closed; no account, session or replay mutation; store-failure metric recorded",
-      "abortCriteria": "any 2xx; any business-state mutation",
-      "privacyClass": "operational_nonpersonal",
-      "evidenceRefs": [
-        "services/import-api/internal/loadtest/scenarios_test.go",
-        "services/import-api/internal/ratelimit/enforce.go"
-      ]
-    },
-    {
-      "scenarioId": "cardinality-attack-mock",
-      "route": "various hostile paths",
-      "routeClass": "PUBLIC_UNAUTHENTICATED",
-      "workloadType": "OVERLOAD",
-      "concurrency": 16,
-      "requestRate": "unbounded-count",
-      "duration": "count:5000",
-      "rampUp": "none",
-      "payloadClass": "hostile-unique-path-header-token",
-      "dependencyMode": "MOCK",
-      "rateLimitPolicy": "permissive",
-      "expectedStatusClasses": [
-        "4xx"
-      ],
-      "measurementMetrics": [
-        "memory_os_http_requests_total"
-      ],
-      "successCriteria": "distinct request ids, paths, forwarded headers and bearer tokens never become series identity; total series stays bounded",
-      "abortCriteria": "series above budget; any hostile value present in a label",
-      "privacyClass": "operational_nonpersonal",
-      "evidenceRefs": [
-        "services/import-api/internal/loadtest/scenarios_test.go",
-        "services/import-api/internal/metrics/labels.go"
-      ]
-    },
-    {
-      "scenarioId": "authenticated-preview-mock",
-      "route": "GET /v1/import-jobs/{jobId}/preview",
-      "routeClass": "PUBLIC_AUTHENTICATED",
-      "workloadType": "STEADY",
-      "concurrency": 16,
-      "requestRate": "unbounded-count",
-      "duration": "count:1000",
-      "rampUp": "none",
-      "payloadClass": "authenticated-bearer",
-      "dependencyMode": "MOCK",
-      "rateLimitPolicy": "permissive-authenticated",
-      "expectedStatusClasses": [
-        "2xx"
-      ],
-      "measurementMetrics": [
-        "memory_os_http_requests_total",
-        "memory_os_http_request_duration_seconds",
-        "memory_os_db_operations_total",
-        "memory_os_db_operation_duration_seconds"
-      ],
-      "successCriteria": "all 2xx through the session middleware and fence; preview_read db op recorded once per request; job id never a label; series bounded",
-      "abortCriteria": "any 5xx; series above budget; job id present in a label",
-      "privacyClass": "operational_nonpersonal",
-      "evidenceRefs": [
-        "services/import-api/internal/loadtest/authenticated_test.go",
-        "services/import-api/internal/servicemetrics/servicemetrics.go"
-      ]
-    },
-    {
-      "scenarioId": "concurrent-apply-mock",
-      "route": "POST /v1/previews/{previewId}/apply",
-      "routeClass": "PUBLIC_AUTHENTICATED",
-      "workloadType": "STEADY",
-      "concurrency": 24,
-      "requestRate": "unbounded-count",
-      "duration": "count:800",
-      "rampUp": "none",
-      "payloadClass": "authenticated-bearer-json",
-      "dependencyMode": "MOCK",
-      "rateLimitPolicy": "permissive-authenticated",
-      "expectedStatusClasses": [
-        "2xx"
-      ],
-      "measurementMetrics": [
-        "memory_os_http_requests_total",
-        "memory_os_http_request_duration_seconds",
-        "memory_os_db_operations_total",
-        "memory_os_db_operation_duration_seconds"
-      ],
-      "successCriteria": "concurrent apply requests return 2xx with no 5xx; apply_transaction db op recorded once per request; preview/apply ids never a label; series bounded",
-      "abortCriteria": "any 5xx; series above budget; preview id present in a label",
-      "privacyClass": "operational_nonpersonal",
-      "evidenceRefs": [
-        "services/import-api/internal/loadtest/authenticated_test.go",
-        "services/import-api/internal/servicemetrics/servicemetrics.go"
-      ]
-    }
+    {"scenarioId":"health-baseline-mock","route":"GET /healthz","routeClass":"HEALTH","workloadType":"STEADY","concurrency":8,"requestRate":"unbounded-count","duration":"count:400","rampUp":"none","payloadClass":"none","dependencyMode":"MOCK","rateLimitPolicy":"exempt","expectedStatusClasses":["2xx"],"measurementMetrics":["memory_os_http_requests_total","memory_os_http_request_duration_seconds","memory_os_http_in_flight"],"successCriteria":"all 2xx; harness overhead observable; Apple path untouched","abortCriteria":"any 5xx; goroutine or heap runaway","privacyClass":"operational_nonpersonal","evidenceRefs":["services/import-api/internal/loadtest/scenarios_test.go"]},
+    {"scenarioId":"apple-steady-mock","route":"POST /v1/auth/apple","routeClass":"PUBLIC_UNAUTHENTICATED","workloadType":"STEADY","concurrency":16,"requestRate":"unbounded-count","duration":"count:1000","rampUp":"none","payloadClass":"unique-nonce-and-code","dependencyMode":"MOCK","rateLimitPolicy":"permissive","expectedStatusClasses":["2xx"],"measurementMetrics":["memory_os_http_requests_total","memory_os_http_request_duration_seconds","memory_os_apple_exchange_total","memory_os_apple_exchange_duration_seconds","memory_os_session_issuance_total","memory_os_db_operations_total"],"successCriteria":"all 2xx; one account for one subject; one session per request; series bounded","abortCriteria":"any 5xx; series above budget; goroutine or heap runaway","privacyClass":"operational_nonpersonal","evidenceRefs":["services/import-api/internal/loadtest/scenarios_test.go","services/import-api/internal/appleauth/metered.go"]},
+    {"scenarioId":"apple-burst-mock","route":"POST /v1/auth/apple","routeClass":"PUBLIC_UNAUTHENTICATED","workloadType":"BURST","concurrency":32,"requestRate":"unbounded-count","duration":"count:1000","rampUp":"none","payloadClass":"unique-nonce-and-code","dependencyMode":"MOCK","rateLimitPolicy":"tight-network-guard","expectedStatusClasses":["2xx","4xx"],"measurementMetrics":["memory_os_http_requests_total","memory_os_rate_limit_decisions_total"],"successCriteria":"network guard rejects the burst with bounded 429; sessions equal 2xx count; no 5xx; series bounded","abortCriteria":"any 5xx; sessions exceed 2xx; series above budget","privacyClass":"operational_nonpersonal","evidenceRefs":["services/import-api/internal/loadtest/scenarios_test.go","services/import-api/internal/httpserver/ratelimit.go"]},
+    {"scenarioId":"ratelimit-store-failure-mock","route":"POST /v1/auth/apple","routeClass":"PUBLIC_UNAUTHENTICATED","workloadType":"DEPENDENCY_DEGRADED","concurrency":16,"requestRate":"unbounded-count","duration":"count:500","rampUp":"none","payloadClass":"unique-nonce-and-code","dependencyMode":"FAILURE_INJECTED","rateLimitPolicy":"fail-closed-store-down","expectedStatusClasses":["4xx"],"measurementMetrics":["memory_os_http_requests_total","memory_os_rate_limit_decisions_total","memory_os_rate_limit_store_failures_total"],"successCriteria":"pre-auth route fails closed; no account, session or replay mutation; store-failure metric recorded","abortCriteria":"any 2xx; any business-state mutation","privacyClass":"operational_nonpersonal","evidenceRefs":["services/import-api/internal/loadtest/scenarios_test.go","services/import-api/internal/ratelimit/enforce.go"]},
+    {"scenarioId":"cardinality-attack-mock","route":"various hostile paths","routeClass":"PUBLIC_UNAUTHENTICATED","workloadType":"OVERLOAD","concurrency":16,"requestRate":"unbounded-count","duration":"count:5000","rampUp":"none","payloadClass":"hostile-unique-path-header-token","dependencyMode":"MOCK","rateLimitPolicy":"permissive","expectedStatusClasses":["4xx"],"measurementMetrics":["memory_os_http_requests_total"],"successCriteria":"distinct request ids, paths, forwarded headers and bearer tokens never become series identity; total series stays bounded","abortCriteria":"series above budget; any hostile value present in a label","privacyClass":"operational_nonpersonal","evidenceRefs":["services/import-api/internal/loadtest/scenarios_test.go","services/import-api/internal/metrics/labels.go"]},
+    {"scenarioId":"authenticated-preview-mock","route":"GET /v1/import-jobs/{jobId}/preview","routeClass":"PUBLIC_AUTHENTICATED","workloadType":"STEADY","concurrency":16,"requestRate":"unbounded-count","duration":"count:1000","rampUp":"none","payloadClass":"authenticated-bearer","dependencyMode":"MOCK","rateLimitPolicy":"permissive-authenticated","expectedStatusClasses":["2xx"],"measurementMetrics":["memory_os_http_requests_total","memory_os_http_request_duration_seconds","memory_os_db_operations_total","memory_os_db_operation_duration_seconds"],"successCriteria":"all 2xx through the session middleware and fence; preview_read db op recorded once per request; job id never a label; series bounded","abortCriteria":"any 5xx; series above budget; job id present in a label","privacyClass":"operational_nonpersonal","evidenceRefs":["services/import-api/internal/loadtest/authenticated_test.go","services/import-api/internal/servicemetrics/servicemetrics.go"]},
+    {"scenarioId":"concurrent-apply-mock","route":"POST /v1/previews/{previewId}/apply","routeClass":"PUBLIC_AUTHENTICATED","workloadType":"STEADY","concurrency":24,"requestRate":"unbounded-count","duration":"count:800","rampUp":"none","payloadClass":"authenticated-bearer-json","dependencyMode":"MOCK","rateLimitPolicy":"permissive-authenticated","expectedStatusClasses":["2xx"],"measurementMetrics":["memory_os_http_requests_total","memory_os_http_request_duration_seconds","memory_os_db_operations_total","memory_os_db_operation_duration_seconds"],"successCriteria":"concurrent apply requests return 2xx with no 5xx; apply_transaction db op recorded once per request; preview/apply ids never a label; series bounded","abortCriteria":"any 5xx; series above budget; preview id present in a label","privacyClass":"operational_nonpersonal","evidenceRefs":["services/import-api/internal/loadtest/authenticated_test.go","services/import-api/internal/servicemetrics/servicemetrics.go"]}
   ],
   "externalExecutedScenarios": [
-    {
-      "scenarioId": "authenticated-preview-local-postgres",
-      "contractRef": "contracts/operations/live-postgres-load-scenario-contract.v1.json",
-      "validatorRef": "scripts/validate-memory-os-live-load.py",
-      "dependencyMode": "LOCAL_POSTGRES",
-      "productionEvidence": false
-    },
-    {
-      "scenarioId": "concurrent-idempotent-apply-local-postgres",
-      "contractRef": "contracts/operations/live-postgres-load-scenario-contract.v1.json",
-      "validatorRef": "scripts/validate-memory-os-live-load.py",
-      "dependencyMode": "LOCAL_POSTGRES",
-      "productionEvidence": false
-    },
-    {
-      "scenarioId": "signed-upload-lifecycle-local-minio-postgres",
-      "contractRef": "contracts/operations/live-object-load-scenario-contract.v1.json",
-      "validatorRef": "scripts/validate-memory-os-live-object-load.py",
-      "dependencyMode": "LOCAL_POSTGRES_MINIO",
-      "productionEvidence": false
-    },
-    {
-      "scenarioId": "authenticated-preview-capacity-ramp-local-postgres",
-      "contractRef": "contracts/operations/capacity-ramp-contract.v1.json",
-      "validatorRef": "scripts/validate-memory-os-capacity-ramp.py",
-      "dependencyMode": "LOCAL_POSTGRES",
-      "productionEvidence": false,
-      "capacityBoundaryEstablished": false
-    },
-    {
-      "scenarioId": "authenticated-preview-short-ci-stability-local-postgres",
-      "contractRef": "contracts/operations/short-stability-sample-contract.v1.json",
-      "validatorRef": "scripts/validate-memory-os-short-stability-sample.py",
-      "dependencyMode": "LOCAL_POSTGRES",
-      "classification": "SHORT_CI_STABILITY_SAMPLE",
-      "productionEvidence": false,
-      "sustainedSoakEvidence": false,
-      "leakProof": false
-    },
-    {
-      "scenarioId": "account-deletion-post-fence-load-local-dependencies",
-      "contractRef": "contracts/operations/deletion-under-load-contract.v1.json",
-      "validatorRef": "scripts/validate-memory-os-deletion-under-load.py",
-      "dependencyMode": "LOCAL_POSTGRES_MINIO",
-      "productionEvidence": false,
-      "requestsStartedBeforeFenceCovered": false
-    },
-    {
-      "scenarioId": "signed-upload-controlled-saturation-ramp-local-dependencies",
-      "contractRef": "contracts/operations/controlled-saturation-ramp-contract.v1.json",
-      "validatorRef": "scripts/validate-memory-os-controlled-saturation-ramp.py",
-      "dependencyMode": "LOCAL_POSTGRES_MINIO",
-      "classification": "BOUNDED_LOCAL_CAPACITY_RAMP",
-      "productionEvidence": false,
-      "capacityBoundaryEstablished": false,
-      "operationalThresholdApproved": false,
-      "repeatabilityEstablished": false
-    },
-    {
-      "scenarioId": "account-deletion-prefence-inflight-linearization-local-dependencies",
-      "contractRef": "contracts/operations/deletion-prefence-linearization-contract.v1.json",
-      "validatorRef": "scripts/validate-memory-os-deletion-prefence-linearization.py",
-      "dependencyMode": "LOCAL_POSTGRES_MINIO",
-      "classification": "LOCAL_PREFENCE_LINEARIZATION",
-      "surfaceCoverage": "PREVIEW_READ_ONLY",
-      "productionEvidence": false,
-      "productionEquivalentDependencies": false,
-      "requestsStartedBeforeFenceCovered": true,
-      "preFenceInFlightLinearizationProven": true
-    },
-    {
-      "scenarioId": "multi-account-deletion-worker-saturation-local-dependencies",
-      "contractRef": "contracts/operations/deletion-worker-saturation-contract.v1.json",
-      "validatorRef": "scripts/validate-memory-os-deletion-worker-saturation.py",
-      "dependencyMode": "LOCAL_POSTGRES_MINIO",
-      "classification": "BOUNDED_LOCAL_WORKER_SATURATION",
-      "productionEvidence": false,
-      "productionEquivalentDependencies": false,
-      "multiAccountWorkerSaturationProven": true,
-      "capacityBoundaryEstablished": false,
-      "operationalThresholdApproved": false
-    }
+    {"scenarioId":"authenticated-preview-local-postgres","contractRef":"contracts/operations/live-postgres-load-scenario-contract.v1.json","validatorRef":"scripts/validate-memory-os-live-load.py","dependencyMode":"LOCAL_POSTGRES","productionEvidence":false},
+    {"scenarioId":"concurrent-idempotent-apply-local-postgres","contractRef":"contracts/operations/live-postgres-load-scenario-contract.v1.json","validatorRef":"scripts/validate-memory-os-live-load.py","dependencyMode":"LOCAL_POSTGRES","productionEvidence":false},
+    {"scenarioId":"signed-upload-lifecycle-local-minio-postgres","contractRef":"contracts/operations/live-object-load-scenario-contract.v1.json","validatorRef":"scripts/validate-memory-os-live-object-load.py","dependencyMode":"LOCAL_POSTGRES_MINIO","productionEvidence":false},
+    {"scenarioId":"authenticated-preview-capacity-ramp-local-postgres","contractRef":"contracts/operations/capacity-ramp-contract.v1.json","validatorRef":"scripts/validate-memory-os-capacity-ramp.py","dependencyMode":"LOCAL_POSTGRES","productionEvidence":false,"capacityBoundaryEstablished":false},
+    {"scenarioId":"authenticated-preview-short-ci-stability-local-postgres","contractRef":"contracts/operations/short-stability-sample-contract.v1.json","validatorRef":"scripts/validate-memory-os-short-stability-sample.py","dependencyMode":"LOCAL_POSTGRES","classification":"SHORT_CI_STABILITY_SAMPLE","productionEvidence":false,"sustainedSoakEvidence":false,"leakProof":false},
+    {"scenarioId":"account-deletion-post-fence-load-local-dependencies","contractRef":"contracts/operations/deletion-under-load-contract.v1.json","validatorRef":"scripts/validate-memory-os-deletion-under-load.py","dependencyMode":"LOCAL_POSTGRES_MINIO","productionEvidence":false,"requestsStartedBeforeFenceCovered":false},
+    {"scenarioId":"signed-upload-controlled-saturation-ramp-local-dependencies","contractRef":"contracts/operations/controlled-saturation-ramp-contract.v1.json","validatorRef":"scripts/validate-memory-os-controlled-saturation-ramp.py","dependencyMode":"LOCAL_POSTGRES_MINIO","classification":"BOUNDED_LOCAL_CAPACITY_RAMP","productionEvidence":false,"capacityBoundaryEstablished":false,"operationalThresholdApproved":false,"repeatabilityEstablished":false},
+    {"scenarioId":"mixed-import-lifecycle-local-long-soak","contractRef":"contracts/operations/sustained-local-soak-contract.v1.json","validatorRef":"scripts/validate-memory-os-sustained-local-soak-aggregate.py","dependencyMode":"LOCAL_POSTGRES_MINIO","classification":"LOCAL_LONG_SOAK","productionEvidence":false,"localSustainedSoakEvidence":true,"productionSustainedSoakEvidence":false,"leakProof":false,"capacityBoundaryEstablished":false,"operationalThresholdApproved":false},
+    {"scenarioId":"account-deletion-prefence-inflight-linearization-local-dependencies","contractRef":"contracts/operations/deletion-prefence-linearization-contract.v1.json","validatorRef":"scripts/validate-memory-os-deletion-prefence-linearization.py","dependencyMode":"LOCAL_POSTGRES_MINIO","classification":"LOCAL_PREFENCE_LINEARIZATION","surfaceCoverage":"PREVIEW_READ_ONLY","productionEvidence":false,"productionEquivalentDependencies":false,"requestsStartedBeforeFenceCovered":true,"preFenceInFlightLinearizationProven":true},
+    {"scenarioId":"multi-account-deletion-worker-saturation-local-dependencies","contractRef":"contracts/operations/deletion-worker-saturation-contract.v1.json","validatorRef":"scripts/validate-memory-os-deletion-worker-saturation.py","dependencyMode":"LOCAL_POSTGRES_MINIO","classification":"BOUNDED_LOCAL_WORKER_SATURATION","productionEvidence":false,"productionEquivalentDependencies":false,"multiAccountWorkerSaturationProven":true,"capacityBoundaryEstablished":false,"operationalThresholdApproved":false}
   ],
   "deferredScenarios": [
-    {
-      "scenarioId": "capacity-ramp-local-postgres-minio",
-      "reason": "a bounded authenticated Preview ramp now executes against local PostgreSQL, but it observed no saturation transition and does not exercise MinIO; deliberate overload, queue/backlog observation and reviewed safe operating thresholds remain deferred",
-      "requiredDependencyMode": "LOCAL_POSTGRES_MINIO"
-    },
-    {
-      "scenarioId": "soak-memory-leak",
-      "reason": "repeated LOCAL_LONG_SOAK execution and descriptive trend review exist, but this local evidence is not leak proof and is not production-shaped sustained-soak evidence; independent leak/stability criteria remain required",
-      "requiredDependencyMode": "LOCAL_POSTGRES_MINIO"
-    },
-    {
-      "scenarioId": "production-equivalent",
-      "reason": "ephemeral PostgreSQL and MinIO do not reproduce production topology, TLS, scoped credentials, retention, latency or failure behavior",
-      "requiredDependencyMode": "PRODUCTION_EQUIVALENT"
-    },
-    {
-      "scenarioId": "soak",
-      "reason": "a six-window short CI process sample now records RSS, heap and goroutine trends, but it is not a 60-minute repeated soak, does not cover MinIO/parser/queue/deletion/Apple dependencies and cannot prove leak freedom or production stability",
-      "requiredDependencyMode": "LOCAL_POSTGRES_MINIO"
-    },
-    {
-      "scenarioId": "deletion-under-load",
-      "reason": "post-fence former-session load and concurrent worker erasure now pass against local PostgreSQL and MinIO; request linearization for calls already in flight before the 202 fence, multiple-account worker saturation and production dependency behavior remain deferred",
-      "requiredDependencyMode": "PRODUCTION_EQUIVALENT"
-    }
+    {"scenarioId":"capacity-ramp-local-postgres-minio","reason":"a bounded authenticated Preview ramp now executes against local PostgreSQL, but it observed no saturation transition and does not exercise MinIO; deliberate overload, queue/backlog observation and reviewed safe operating thresholds remain deferred","requiredDependencyMode":"LOCAL_POSTGRES_MINIO"},
+    {"scenarioId":"soak-memory-leak","reason":"repeated LOCAL_LONG_SOAK execution and descriptive trend review exist, but this local evidence is not leak proof and is not production-shaped sustained-soak evidence; independent leak/stability criteria remain required","requiredDependencyMode":"LOCAL_POSTGRES_MINIO"},
+    {"scenarioId":"production-equivalent","reason":"ephemeral PostgreSQL and MinIO do not reproduce production topology, TLS, scoped credentials, retention, latency or failure behavior","requiredDependencyMode":"PRODUCTION_EQUIVALENT"},
+    {"scenarioId":"soak","reason":"a six-window short CI process sample now records RSS, heap and goroutine trends, but it is not a 60-minute repeated soak, does not cover MinIO/parser/queue/deletion/Apple dependencies and cannot prove leak freedom or production stability","requiredDependencyMode":"LOCAL_POSTGRES_MINIO"},
+    {"scenarioId":"deletion-under-load","reason":"post-fence former-session load and concurrent worker erasure now pass against local PostgreSQL and MinIO; request linearization for calls already in flight before the 202 fence, multiple-account worker saturation and production dependency behavior remain deferred","requiredDependencyMode":"PRODUCTION_EQUIVALENT"}
   ],
   "readiness": {
     "localLivePostgresCheckpointImplemented": true,
