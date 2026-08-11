@@ -348,11 +348,10 @@ def main() -> int:
             "OPS-P0-007.missingEvidence",
             minimum=len(CANONICAL_GAP_FRAGMENTS),
         )
-        require(len(missing) == len(CANONICAL_GAP_FRAGMENTS),
-                "OPS-P0-007 must retain exactly the six canonical production blockers")
-        for fragment in CANONICAL_GAP_FRAGMENTS:
-            require(sum(fragment in item for item in missing) == 1,
-                    f"canonical OPS-P0-007 blocker missing or duplicated: {fragment}")
+        require(
+            missing == list(CANONICAL_GAP_FRAGMENTS),
+            "OPS-P0-007 must retain the ordered canonical six production blockers",
+        )
 
     print("Memory OS backup/restore validation PASS")
     print(f"protected domains: {len(domains)}")
