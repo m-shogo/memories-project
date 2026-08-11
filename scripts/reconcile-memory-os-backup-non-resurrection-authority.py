@@ -109,7 +109,18 @@ def main() -> int:
     require(isinstance(generation_rows, list) and all(isinstance(row, dict) for row in generation_rows), "generation recovery rows invalid")
 
     base_candidate_ids = {row.get("evidenceId") for row in generation_rows if generation_writer.base_candidate(row)}
-    complete_typed_ids = {row.get("generationEvidenceId") for row in typed_rows if row.get("evidenceComplete") is True}
+    declared_complete_typed_ids = {row.get("generationEvidenceId") for row in typed_rows if row.get("evidenceComplete") is True}
+    validated_complete_typed_ids = {
+        row.get("generationEvidenceId")
+        for row in typed_rows
+        if row.get("evidenceComplete") is True
+        and generation_writer.typed_non_resurrection_covered(row.get("generationEvidenceId"))
+    }
+    require(
+        declared_complete_typed_ids == validated_complete_typed_ids,
+        "typed registry evidenceComplete includes record that fails canonical typed validation",
+    )
+    complete_typed_ids = validated_complete_typed_ids
     covered_base_ids = base_candidate_ids & complete_typed_ids
     pending_typed_ids = base_candidate_ids - complete_typed_ids
     final_candidate_ids = {row.get("evidenceId") for row in generation_rows if generation_writer.candidate(row)}
@@ -117,7 +128,7 @@ def main() -> int:
     require(final_candidate_ids == covered_base_ids, "final candidate derivation bypasses typed non-resurrection coverage")
 
     registry["registeredRecordCount"] = len(typed_rows)
-    registry["completeRecordCount"] = sum(1 for row in typed_rows if row.get("evidenceComplete") is True)
+    registry["completeRecordCount"] = len(complete_typed_ids)
     registry["candidateCoveredCount"] = len(covered_base_ids)
     registry["productionEvidence"] = False
     registry["productionReady"] = False
