@@ -172,6 +172,18 @@ def main() -> int:
             require(writer.typed_non_resurrection_covered(evidence_id) is False, "mutated productionReady bit in typed row must revoke coverage")
             print("PASS revoke: registry-row production boundary mutation invalidates coverage")
 
+            production_traffic_mutation = copy.deepcopy(intact_registry)
+            production_traffic_mutation["records"][0]["productionTraffic"] = True
+            write_json(overlay_registry, production_traffic_mutation)
+            require(writer.typed_non_resurrection_covered(evidence_id) is False, "mutated productionTraffic bit in typed row must revoke coverage")
+            print("PASS revoke: registry-row productionTraffic mutation invalidates coverage")
+
+            production_credentials_mutation = copy.deepcopy(intact_registry)
+            production_credentials_mutation["records"][0]["productionCredentials"] = True
+            write_json(overlay_registry, production_credentials_mutation)
+            require(writer.typed_non_resurrection_covered(evidence_id) is False, "mutated productionCredentials bit in typed row must revoke coverage")
+            print("PASS revoke: registry-row productionCredentials mutation invalidates coverage")
+
             findings_mutation = copy.deepcopy(intact_registry)
             findings_mutation["records"][0]["unresolvedFindings"] = [{
                 "findingId": "finding_candidate_row_mutation",
@@ -212,6 +224,8 @@ def main() -> int:
         print("typed registry records container mutation accepted: false")
         print("typed registry row stale mutation accepted: false")
         print("typed production boundary mutation accepted: false")
+        print("typed productionTraffic mutation accepted: false")
+        print("typed productionCredentials mutation accepted: false")
         print("typed unresolved finding mutation accepted: false")
         print("duplicate typed generation binding accepted: false")
         print("collapsed independent review refs accepted: false")
