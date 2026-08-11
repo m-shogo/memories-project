@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "production-equivalent-environment-generation",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "Memory OS production-equivalent generation status reconciliation PASS\ngeneration registry entries: 0\npreflight-eligible generations: 0\ncurrent generation: none\ncurrent production-equivalent dependencies: false\nregistration implies preflight eligibility: false\ncross-generation evidence reuse: forbidden\nfailed post-validation leaves generation/status mutation behind: false\nOPS-P0-006: PARTIAL\nproductionDecision: NO_GO\nPASS reject: semantic generation writer absolute path escapes repository\nPASS reject: semantic generation writer symlink escapes repository\nPASS reject: semantic generation writer symlink loop\nPASS reject: malformed UTF-8 generation registry\nPASS reject: missing generation registry\nTraceback (most recent call last):\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-environment-generation-eligibility-negative.py\", line 262, in <module>\n    raise SystemExit(main())\n                     ^^^^^^\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-environment-generation-eligibility-negative.py\", line 136, in main\n    empty = derive(helper, [])\n            ^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-environment-generation-eligibility-negative.py\", line 80, in derive\n    return helper.derive(path)\n           ^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/memories-project/memories-project/scripts/memory_os_environment_generation_eligibility.py\", line 154, in derive\n    return derive_registry(load(registry_path))\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/memories-project/memories-project/scripts/memory_os_environment_generation_eligibility.py\", line 67, in derive_registry\n    require(\n  File \"/home/runner/work/memories-project/memories-project/scripts/memory_os_environment_generation_eligibility.py\", line 23, in require\n    raise Fail(message)\nmemory_os_environment_generation_eligibility_negative.Fail: generation registry class drift\n",
+  "containsSecrets": false,
+  "generationCreated": false,
+  "preflightEligibilityFabricated": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
