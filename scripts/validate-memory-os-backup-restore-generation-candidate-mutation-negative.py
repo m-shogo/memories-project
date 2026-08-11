@@ -22,6 +22,7 @@ GEN_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-generation-evid
 GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
 NONRES_WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
 NONRES_CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
+TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 
 
 class Fail(RuntimeError):
@@ -155,6 +156,7 @@ def build_typed_overlay(
 
 def main() -> int:
     require(GEN_NEGATIVE.is_file() and GEN_WRITER.is_file() and NONRES_WRITER.is_file() and NONRES_CONTRACT.is_file(), "candidate mutation foundation missing")
+    require(TMP_PARENT.is_dir(), "candidate mutation repository-local temp parent missing")
     helpers = load_module(GEN_NEGATIVE, "memory_os_generation_negative_helpers")
     writer = load_module(GEN_WRITER, "memory_os_generation_writer_candidate_mutation")
     overlay_writer = load_module(NONRES_WRITER, "memory_os_nonres_writer_candidate_mutation")
@@ -163,7 +165,7 @@ def main() -> int:
     cleanup: list[Path] = []
 
     try:
-        with tempfile.TemporaryDirectory(prefix="memory-os-candidate-mutation-") as tmp:
+        with tempfile.TemporaryDirectory(prefix=".tmp-memory-os-candidate-mutation-", dir=TMP_PARENT) as tmp:
             tmp_path = Path(tmp)
             generation_registry = tmp_path / "generations.json"
             objectives_registry = tmp_path / "objectives.json"
@@ -332,6 +334,7 @@ def main() -> int:
 
         print("Memory OS generation candidate mutation negative suite PASS")
         print("canonical registries mutated: false")
+        print("repository-local canonical simulation: true")
         print("domain payload stale reuse accepted: false")
         print("review payload stale reuse accepted: false")
         print("unexpected candidate implementation exceptions hidden: false")
