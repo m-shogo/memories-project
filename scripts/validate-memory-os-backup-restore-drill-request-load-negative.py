@@ -74,6 +74,15 @@ def main() -> int:
             exercise("validator", validator, tmp, outside)
             exercise("reconciler", reconciler, tmp, outside)
 
+            ref_loop = tmp / "loop-authority-ref.json"
+            ref_loop.symlink_to(ref_loop.name)
+            ref_loop_relative = ref_loop.relative_to(ROOT).as_posix()
+            expect_domain_fail(
+                "drill request repository ref symlink loop",
+                lambda: writer.repo_ref(ref_loop_relative, "negativeAuthorityRef"),
+                writer.Fail,
+            )
+
             outside_helper = outside_dir / "outside-eligibility-helper.py"
             outside_helper.write_text("VALUE = 1\n", encoding="utf-8")
             escaped_link = tmp / "escaped-eligibility-helper.py"
