@@ -16,10 +16,14 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/backup-restore-drill-request-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
-GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
-OBJECTIVES_REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
+CANONICAL_CONTRACT = ROOT / "contracts/operations/backup-restore-drill-request-contract.v1.json"
+CONTRACT = CANONICAL_CONTRACT
+CANONICAL_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
+REGISTRY = CANONICAL_REGISTRY
+CANONICAL_GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+GEN_REGISTRY = CANONICAL_GEN_REGISTRY
+CANONICAL_OBJECTIVES_REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
+OBJECTIVES_REGISTRY = CANONICAL_OBJECTIVES_REGISTRY
 ELIGIBILITY_HELPER = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
 LOCK = ROOT / "contracts/operations/.backup-restore-drill-request.lock"
 REQUEST_ID = re.compile(r"^brrq_[a-z0-9][a-z0-9_-]{7,63}$")
@@ -76,6 +80,12 @@ def canonical_repo_file(path: Path, field: str) -> Path:
     return path
 
 
+def require_canonical_runtime_authority(path: Path, canonical: Path, field: str) -> None:
+    """Contain canonical runtime authority while permitting isolated test substitutions."""
+    if path == canonical:
+        canonical_repo_file(path, field)
+
+
 def canonical_request_sha256(record: dict[str, Any]) -> str:
     encoded = json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
@@ -123,6 +133,7 @@ def load_eligibility_helper():
 
 
 def generations() -> list[dict[str, Any]]:
+    require_canonical_runtime_authority(GEN_REGISTRY, CANONICAL_GEN_REGISTRY, "environment generation registry")
     registry = load(GEN_REGISTRY)
     require(registry.get("appendOnly") is True and registry.get("productionEvidence") is False, "environment generation registry boundary drift")
     rows = registry.get("generations")
@@ -152,6 +163,7 @@ def require_preflight_eligible_generation(generation_id: str, field: str) -> Non
 
 
 def objective_by_id(objective_id: Any) -> dict[str, Any]:
+    require_canonical_runtime_authority(OBJECTIVES_REGISTRY, CANONICAL_OBJECTIVES_REGISTRY, "recovery objectives registry")
     registry = load(OBJECTIVES_REGISTRY)
     require(registry.get("appendOnly") is True and registry.get("productionEvidence") is False and registry.get("productionReady") is False, "recovery objective registry boundary drift")
     rows = registry.get("records")
@@ -165,6 +177,7 @@ def objective_by_id(objective_id: Any) -> dict[str, Any]:
 
 
 def current_objective() -> dict[str, Any]:
+    require_canonical_runtime_authority(OBJECTIVES_REGISTRY, CANONICAL_OBJECTIVES_REGISTRY, "recovery objectives registry")
     registry = load(OBJECTIVES_REGISTRY)
     objective_id = registry.get("currentObjectiveId")
     require(isinstance(objective_id, str) and objective_id, "no current approved recovery objective")
@@ -210,6 +223,7 @@ def validate_request_approval(document: dict[str, Any], record: dict[str, Any], 
 
 
 def validate_request(record: dict[str, Any], *, require_current: bool = True) -> None:
+    require_canonical_runtime_authority(CONTRACT, CANONICAL_CONTRACT, "restore drill request contract")
     contract = load(CONTRACT)
     required = set(contract.get("requiredRequestFields", []))
     require(required and set(record) == required, f"request field set drift: {sorted(set(record) ^ required)}")
@@ -350,6 +364,10 @@ def main() -> int:
     else:
         raise Fail("drill request input must be external to repository")
     require(git("status", "--porcelain") == "", "working tree must be clean")
+    require_canonical_runtime_authority(CONTRACT, CANONICAL_CONTRACT, "restore drill request contract")
+    require_canonical_runtime_authority(REGISTRY, CANONICAL_REGISTRY, "restore drill request registry")
+    require_canonical_runtime_authority(GEN_REGISTRY, CANONICAL_GEN_REGISTRY, "environment generation registry")
+    require_canonical_runtime_authority(OBJECTIVES_REGISTRY, CANONICAL_OBJECTIVES_REGISTRY, "recovery objectives registry")
     record = load(input_path)
     validate_request(record, require_current=True)
 
