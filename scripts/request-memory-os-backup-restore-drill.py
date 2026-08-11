@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+CANONICAL_ROOT = ROOT
 CANONICAL_CONTRACT = ROOT / "contracts/operations/backup-restore-drill-request-contract.v1.json"
 CONTRACT = CANONICAL_CONTRACT
 CANONICAL_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
@@ -82,7 +83,7 @@ def canonical_repo_file(path: Path, field: str) -> Path:
 
 def require_canonical_runtime_authority(path: Path, canonical: Path, field: str) -> None:
     """Contain canonical runtime authority while permitting isolated test substitutions."""
-    if path == canonical:
+    if ROOT == CANONICAL_ROOT and path == canonical:
         canonical_repo_file(path, field)
 
 
