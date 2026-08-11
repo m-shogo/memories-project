@@ -1,6 +1,15 @@
 name: Backup Restore Generation Evidence Reconcile Negative
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/backup-restore-generation-evidence-reconcile-negative.yml"
+      - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-reconcile-negative.py"
+      - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "contracts/operations/backup-restore-generation-binding-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
   push:
     branches:
       - so
