@@ -64,15 +64,24 @@ def main() -> int:
     require(eligibility.get("eligibleDirectedRestorePairCount") == strict_pair_count, "eligibility contract pair count drift")
 
     preflight_pair_count = preflight.get("eligibleDirectedSourceTargetPairCount")
-    require(isinstance(preflight_pair_count, int) and preflight_pair_count >= 0, "preflight pair count invalid")
+    require(
+        isinstance(preflight_pair_count, int) and not isinstance(preflight_pair_count, bool) and preflight_pair_count >= 0,
+        "preflight pair count invalid",
+    )
     require(preflight_pair_count <= strict_pair_count, "restore preflight counts a source-target pair that is not semantically eligible")
 
     objective_count = objectives.get("approvedObjectiveCount")
     current_objective = objectives.get("currentObjectiveId")
-    require(isinstance(objective_count, int) and objective_count >= 0, "approved objective count invalid")
+    require(
+        isinstance(objective_count, int) and not isinstance(objective_count, bool) and objective_count >= 0,
+        "approved objective count invalid",
+    )
     objective_available = objective_count > 0 and isinstance(current_objective, str) and bool(current_objective)
     request_count = drill_registry.get("currentExecutableRequestCount")
-    require(isinstance(request_count, int) and request_count >= 0, "current executable request count invalid")
+    require(
+        isinstance(request_count, int) and not isinstance(request_count, bool) and request_count >= 0,
+        "current executable request count invalid",
+    )
 
     strict_submission_eligible = strict_pair_count > 0 and objective_available
     preflight_eligible = preflight.get("eligibleToSubmitReviewedDrillRequest")
@@ -100,6 +109,7 @@ def main() -> int:
     print(f"strict distinct eligible environments: {strict_distinct_env_count}")
     print(f"strict/preflight directed restore pairs: {strict_pair_count}/{preflight_pair_count}")
     print(f"strict submission eligible: {str(strict_submission_eligible).lower()}")
+    print("boolean authority counters accepted: false")
     print("noneligible generation can make preflight READY: false")
     print("production evidence: false")
     print("production decision: NO_GO")
