@@ -1,0 +1,39 @@
+name: Production Equivalent Environment Generation Reconcile Negative
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/production-equivalent-environment-generation-reconcile-negative.yml"
+      - "scripts/reconcile-memory-os-production-equivalent-generation-status.py"
+      - "scripts/validate-memory-os-production-equivalent-generation-reconcile-negative.py"
+      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  negative:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Prove transactional environment-generation reconciliation
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          python -m py_compile \
+            scripts/reconcile-memory-os-production-equivalent-generation-status.py \
+            scripts/validate-memory-os-production-equivalent-generation-reconcile-negative.py
+          python scripts/validate-memory-os-production-equivalent-generation-reconcile-negative.py
+          git diff --exit-code
