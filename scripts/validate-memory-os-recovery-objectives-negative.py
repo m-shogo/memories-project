@@ -82,6 +82,24 @@ def base_record() -> dict[str, Any]:
     }
 
 
+def exercise_registry_corruption(writer: Any) -> None:
+    baseline = writer.load(writer.REGISTRY)
+    writer.validate_registry_for_append(copy.deepcopy(baseline))
+    cases = (
+        ("objective registry schema drift", "schemaVersion", "memory-os-recovery-objectives-registry.corrupt"),
+        ("objective registry append-only disabled", "appendOnly", False),
+        ("objective registry production evidence forged", "productionEvidence", True),
+        ("objective registry production ready forged", "productionReady", True),
+        ("approved objective count boolean", "approvedObjectiveCount", True),
+        ("approved objective count drift", "approvedObjectiveCount", baseline.get("approvedObjectiveCount", 0) + 1),
+        ("current objective pointer drift", "currentObjectiveId", "ro_negative_unknown"),
+    )
+    for name, field, value in cases:
+        mutated = copy.deepcopy(baseline)
+        mutated[field] = value
+        expect_rejected(writer, name, lambda mutated=mutated: writer.validate_registry_for_append(mutated))
+
+
 def main() -> int:
     require(WRITER.is_file() and VALIDATOR.is_file() and CONTRACT.is_file(), "recovery objective foundation missing")
     require(APPROVAL_FIXTURE_DIR.is_dir(), "typed objective approval fixtures missing")
@@ -91,6 +109,7 @@ def main() -> int:
     valid = base_record()
     writer.validate_record(valid)
     print("PASS accept: explicit typed reviewed recovery objective")
+    exercise_registry_corruption(writer)
 
     real_root = writer.ROOT
     with tempfile.TemporaryDirectory(prefix="memory-os-objective-ref-root-") as root_tmp, tempfile.TemporaryDirectory(prefix="memory-os-objective-ref-external-") as external_tmp:
@@ -195,14 +214,7 @@ def main() -> int:
 
     malformed_path: Path | None = None
     try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            prefix="malformed-objective-approval-",
-            suffix=".json",
-            dir=APPROVAL_FIXTURE_DIR,
-            delete=False,
-            encoding="utf-8",
-        ) as handle:
+        with tempfile.NamedTemporaryFile(mode="w", prefix="malformed-objective-approval-", suffix=".json", dir=APPROVAL_FIXTURE_DIR, delete=False, encoding="utf-8") as handle:
             handle.write("{not-json\n")
             malformed_path = Path(handle.name)
         malformed_approval = copy.deepcopy(valid)
@@ -217,13 +229,7 @@ def main() -> int:
 
     invalid_utf8_path: Path | None = None
     try:
-        with tempfile.NamedTemporaryFile(
-            mode="wb",
-            prefix="invalid-utf8-objective-approval-",
-            suffix=".json",
-            dir=APPROVAL_FIXTURE_DIR,
-            delete=False,
-        ) as handle:
+        with tempfile.NamedTemporaryFile(mode="wb", prefix="invalid-utf8-objective-approval-", suffix=".json", dir=APPROVAL_FIXTURE_DIR, delete=False) as handle:
             handle.write(b"{\xff}\n")
             invalid_utf8_path = Path(handle.name)
         invalid_utf8_approval = copy.deepcopy(valid)
@@ -253,14 +259,7 @@ def main() -> int:
             "productionCredentials": False,
             "automaticPromotion": False,
         }
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            prefix="aliased-objective-reviewer-",
-            suffix=".json",
-            dir=APPROVAL_FIXTURE_DIR,
-            delete=False,
-            encoding="utf-8",
-        ) as handle:
+        with tempfile.NamedTemporaryFile(mode="w", prefix="aliased-objective-reviewer-", suffix=".json", dir=APPROVAL_FIXTURE_DIR, delete=False, encoding="utf-8") as handle:
             json.dump(reviewer_alias_document, handle, indent=2)
             handle.write("\n")
             reviewer_alias_path = Path(handle.name)
@@ -288,6 +287,7 @@ def main() -> int:
 
     print("Memory OS recovery objectives negative admission suite PASS")
     print("canonical registry mutated: false")
+    print("objective registry append corruption rejection: enforced")
     print("objective values invented/defaulted: false")
     print("arbitrary repository file approval accepted: false")
     print("objective authority refs escape repository: false")
