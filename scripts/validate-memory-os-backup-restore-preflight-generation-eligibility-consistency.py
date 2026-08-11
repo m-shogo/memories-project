@@ -70,17 +70,57 @@ def main() -> int:
     )
     require(preflight_pair_count <= strict_pair_count, "restore preflight counts a source-target pair that is not semantically eligible")
 
+    require(objectives.get("schemaVersion") == "memory-os-recovery-objectives-registry.v1", "recovery objective registry schema drift")
+    require(objectives.get("appendOnly") is True, "recovery objective registry must remain append-only")
+    require(objectives.get("productionEvidence") is False and objectives.get("productionReady") is False, "recovery objective registry production boundary drift")
+    objective_rows = objectives.get("records")
     objective_count = objectives.get("approvedObjectiveCount")
     current_objective = objectives.get("currentObjectiveId")
+    require(isinstance(objective_rows, list) and all(isinstance(row, dict) for row in objective_rows), "recovery objective rows invalid")
     require(
-        isinstance(objective_count, int) and not isinstance(objective_count, bool) and objective_count >= 0,
+        isinstance(objective_count, int)
+        and not isinstance(objective_count, bool)
+        and objective_count == len(objective_rows),
         "approved objective count invalid",
     )
-    objective_available = objective_count > 0 and isinstance(current_objective, str) and bool(current_objective)
-    request_count = drill_registry.get("currentExecutableRequestCount")
+    objective_ids = [row.get("objectiveId") for row in objective_rows]
     require(
-        isinstance(request_count, int) and not isinstance(request_count, bool) and request_count >= 0,
+        all(isinstance(objective_id, str) and objective_id for objective_id in objective_ids)
+        and len(objective_ids) == len(set(objective_ids)),
+        "recovery objective identity authority invalid",
+    )
+    if objective_count == 0:
+        require(current_objective is None, "empty recovery objective registry must have null currentObjectiveId")
+        objective_available = False
+    else:
+        require(current_objective == objective_ids[-1], "currentObjectiveId must equal latest append-only recovery objective")
+        objective_available = True
+
+    require(drill_registry.get("schemaVersion") == "memory-os-backup-restore-drill-request-registry.v1", "drill request registry schema drift")
+    require(drill_registry.get("registryClass") == "PRODUCTION_EQUIVALENT_BACKUP_RESTORE_DRILL_REQUESTS", "drill request registry class drift")
+    require(drill_registry.get("appendOnly") is True, "drill request registry must remain append-only")
+    require(drill_registry.get("productionEvidence") is False and drill_registry.get("productionReady") is False, "drill request registry production boundary drift")
+    requests = drill_registry.get("requests")
+    registered_request_count = drill_registry.get("registeredRequestCount")
+    request_count = drill_registry.get("currentExecutableRequestCount")
+    require(isinstance(requests, list) and all(isinstance(row, dict) for row in requests), "drill request rows invalid")
+    require(
+        isinstance(registered_request_count, int)
+        and not isinstance(registered_request_count, bool)
+        and registered_request_count == len(requests),
+        "registered drill request count invalid",
+    )
+    require(
+        isinstance(request_count, int)
+        and not isinstance(request_count, bool)
+        and 0 <= request_count <= registered_request_count,
         "current executable request count invalid",
+    )
+    request_ids = [row.get("requestId") for row in requests]
+    require(
+        all(isinstance(request_id, str) and request_id for request_id in request_ids)
+        and len(request_ids) == len(set(request_ids)),
+        "drill request identity authority invalid",
     )
 
     strict_submission_eligible = strict_pair_count > 0 and objective_available
@@ -109,6 +149,8 @@ def main() -> int:
     print(f"strict distinct eligible environments: {strict_distinct_env_count}")
     print(f"strict/preflight directed restore pairs: {strict_pair_count}/{preflight_pair_count}")
     print(f"strict submission eligible: {str(strict_submission_eligible).lower()}")
+    print("recovery objective aggregate/current authority revalidated: true")
+    print("drill request aggregate/identity authority revalidated: true")
     print("boolean authority counters accepted: false")
     print("noneligible generation can make preflight READY: false")
     print("production evidence: false")
