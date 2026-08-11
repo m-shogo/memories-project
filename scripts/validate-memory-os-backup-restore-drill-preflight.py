@@ -106,7 +106,7 @@ def load(path: Path) -> dict[str, Any]:
     relative = repo_relative(path)
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise Fail(f"cannot load {relative}: {exc}") from exc
     require(isinstance(value, dict), f"root must be object: {relative}")
     return value
