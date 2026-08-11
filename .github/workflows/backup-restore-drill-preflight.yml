@@ -28,6 +28,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-drill-request-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight-negative.py"
+      - "scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-drill-preflight.py"
       - "scripts/validate-memory-os-operability.py"
   push:
@@ -59,6 +60,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-drill-request-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight-negative.py"
+      - "scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-drill-preflight.py"
       - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
@@ -121,6 +123,7 @@ jobs:
           scripts/validate-memory-os-backup-restore-drill-request-negative.py
           scripts/validate-memory-os-backup-restore-drill-preflight.py
           scripts/validate-memory-os-backup-restore-drill-preflight-negative.py
+          scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py
           scripts/reconcile-memory-os-backup-restore-drill-preflight.py
           scripts/validate-memory-os-operability.py
           EOF
@@ -143,11 +146,15 @@ jobs:
             scripts/validate-memory-os-backup-restore-drill-request-negative.py \
             scripts/validate-memory-os-backup-restore-drill-preflight.py \
             scripts/validate-memory-os-backup-restore-drill-preflight-negative.py \
+            scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py \
             scripts/reconcile-memory-os-backup-restore-drill-preflight.py \
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-backup-restore-drill-preflight-negative.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/reconcile-memory-os-backup-restore-drill-preflight.py >> "$log" 2>&1 || code=$?
