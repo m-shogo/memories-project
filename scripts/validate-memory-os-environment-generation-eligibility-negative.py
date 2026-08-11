@@ -53,6 +53,7 @@ class FakeWriter:
 def registry(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "schemaVersion": "memory-os-production-equivalent-environment-generation-registry.v1",
+        "registryClass": "PRODUCTION_EQUIVALENT_ENVIRONMENT_GENERATIONS",
         "appendOnly": True,
         "registeredGenerationCount": len(rows),
         "currentGenerationId": rows[-1]["generationId"] if rows else None,
@@ -191,6 +192,14 @@ def main() -> int:
     require(superseded_one_of_three["eligibleDirectedPairCount"] == 2, "superseded generation must not add extra restore pairs")
     print("PASS: superseded eligible history does not inflate current pairs")
 
+    class_drift = registry([])
+    class_drift["registryClass"] = "UNRELATED_GENERATION_REGISTRY"
+    expect_rejected(
+        "generation registry class drift",
+        lambda: derive_registry(helper, class_drift),
+        helper.Fail,
+    )
+
     cross_environment = registry([
         row("pegen-a-v1", "env-a", True),
         row("pegen-b-v1", "env-b", True, "pegen-a-v1"),
@@ -245,6 +254,7 @@ def main() -> int:
     print("ineligible generation counted as pair: false")
     print("superseded generation counted as current pair: false")
     print("same environment can restore-pair with itself: false")
+    print("generation registry class drift accepted: false")
     print("cross-environment supersedes accepted: false")
     print("same-environment predecessor skip accepted: false")
     print("current generation pointer drift accepted: false")
