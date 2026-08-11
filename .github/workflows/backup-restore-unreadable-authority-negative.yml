@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/backup-restore-unreadable-authority-negative.yml"
       - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
+      - "scripts/reconcile-memory-os-backup-restore-drill-preflight.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-request.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-load-negative.py"
@@ -20,6 +21,7 @@ on:
     paths:
       - ".github/workflows/backup-restore-unreadable-authority-negative.yml"
       - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
+      - "scripts/reconcile-memory-os-backup-restore-drill-preflight.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-request.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-load-negative.py"
@@ -49,6 +51,7 @@ jobs:
         run: |
           python -m py_compile \
             scripts/validate-memory-os-backup-restore-drill-preflight.py \
+            scripts/reconcile-memory-os-backup-restore-drill-preflight.py \
             scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py \
             scripts/validate-memory-os-backup-restore-drill-request.py \
             scripts/validate-memory-os-backup-restore-drill-request-load-negative.py \
