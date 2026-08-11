@@ -100,6 +100,7 @@ def main() -> int:
         outside_writer = Path(outside_tmp) / "outside-generation-writer.py"
         outside_writer.write_text("VALUE = 1\n", encoding="utf-8")
         escaped_link = ROOT / ".tmp-generation-eligibility-writer-escape.py"
+        loop_link = ROOT / ".tmp-generation-eligibility-writer-loop.py"
         original_writer = helper.GEN_WRITER
         try:
             helper.GEN_WRITER = outside_writer
@@ -107,12 +108,16 @@ def main() -> int:
             escaped_link.symlink_to(outside_writer)
             helper.GEN_WRITER = escaped_link
             expect_rejected("semantic generation writer symlink escapes repository", helper.load_generation_writer, helper.Fail)
+            loop_link.symlink_to(loop_link.name)
+            helper.GEN_WRITER = loop_link
+            expect_rejected("semantic generation writer symlink loop", helper.load_generation_writer, helper.Fail)
         finally:
             helper.GEN_WRITER = original_writer
-            try:
-                escaped_link.unlink()
-            except FileNotFoundError:
-                pass
+            for path in (escaped_link, loop_link):
+                try:
+                    path.unlink()
+                except FileNotFoundError:
+                    pass
 
     with tempfile.TemporaryDirectory(prefix="memory-os-generation-eligibility-io-negative-") as tmp:
         malformed = Path(tmp) / "registry-invalid-utf8.json"
@@ -246,6 +251,7 @@ def main() -> int:
     print("boolean registered generation counts accepted: false")
     print("malformed or missing generation registries accepted: false")
     print("generation writer import escape accepted: false")
+    print("generation writer symlink loop accepted: false")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
