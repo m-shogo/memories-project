@@ -41,16 +41,49 @@ def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
 
+def repo_relative(path: Path) -> Path:
+    try:
+        return path.resolve(strict=False).relative_to(ROOT.resolve())
+    except (OSError, ValueError) as exc:
+        raise Fail(f"authority path escapes repository: {path}") from exc
+
+def require_repo_file(path: Path, message: str) -> Path:
+    relative = repo_relative(path)
+    require((ROOT / relative).is_file(), message)
+    return relative
+
+def read_text(path: Path) -> str:
+    relative = repo_relative(path)
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise Fail(f"cannot read {relative}: {exc}") from exc
+
+def write_text(path: Path, text: str) -> None:
+    relative = repo_relative(path)
+    try:
+        path.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        raise Fail(f"cannot write {relative}: {exc}") from exc
+
 def load(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+    relative = repo_relative(path)
+    try:
+        value = json.loads(read_text(path))
+    except json.JSONDecodeError as exc:
+        raise Fail(f"cannot load {relative}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be object: {relative}")
     return value
 
 def load_module(path: Path, name: str):
+    relative = require_repo_file(path, f"module missing: {path.name}")
     spec = importlib.util.spec_from_file_location(name, path)
-    require(spec is not None and spec.loader is not None, f"cannot load {path.relative_to(ROOT)}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    require(spec is not None and spec.loader is not None, f"cannot load {relative}")
+    try:
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except (FileNotFoundError, OSError) as exc:
+        raise Fail(f"cannot load {relative}: {exc}") from exc
     return module
 
 def append_once(values: list[Any], value: str) -> None:
@@ -58,9 +91,16 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 def main() -> int:
+    original_text = {
+        REGISTRY: read_text(REGISTRY),
+        GEN_REGISTRY: read_text(GEN_REGISTRY),
+        CONTRACT: read_text(CONTRACT),
+        STATUS: read_text(STATUS),
+    }
     contract = load(CONTRACT)
     registry = load(REGISTRY)
     generation_registry = load(GEN_REGISTRY)
+    status = load(STATUS)
     generation_writer = load_module(GEN_WRITER, "memory_os_generation_recovery_writer_reconcile")
 
     typed_rows = registry.get("records")
@@ -81,12 +121,10 @@ def main() -> int:
     registry["candidateCoveredCount"] = len(covered_base_ids)
     registry["productionEvidence"] = False
     registry["productionReady"] = False
-    REGISTRY.write_text(json.dumps(registry, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     generation_registry["productionEquivalentRecoveryCandidateCount"] = len(final_candidate_ids)
     generation_registry["productionEvidence"] = False
     generation_registry["productionReady"] = False
-    GEN_REGISTRY.write_text(json.dumps(generation_registry, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     boundary = contract.get("currentBoundary")
     readiness = contract.get("readiness")
@@ -114,15 +152,11 @@ def main() -> int:
     readiness["independentReviewCompleted"] = len(final_candidate_ids) > 0
     readiness["productionEquivalentNonResurrectionEvidence"] = len(final_candidate_ids) > 0
     readiness["productionReady"] = False
-    CONTRACT.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, check=True)
-
-    status = load(STATUS)
     require(status.get("productionDecision") == "NO_GO", "productionDecision must remain NO_GO")
     gate = next((row for row in status.get("areas", []) if isinstance(row, dict) and row.get("id") == "OPS-P0-007"), None)
     require(isinstance(gate, dict), "OPS-P0-007 missing")
-    require(gate.get("status") in {"PARTIAL_FOUNDATIONS_ONLY", "PARTIAL"} and gate.get("blocking") is True, "OPS-P0-007 must remain blocking and incomplete")
+    require(gate.get("status") == "PARTIAL_FOUNDATIONS_ONLY" and gate.get("blocking") is True, "OPS-P0-007 must remain blocking foundation-only")
     existing = gate.get("existingEvidence")
     missing = gate.get("missingEvidence")
     refs = gate.get("evidenceRefs")
@@ -132,14 +166,31 @@ def main() -> int:
     append_once(existing, LOCAL_APPLE_EVIDENCE)
     append_once(existing, f"{EVIDENCE_PREFIX} pre-overlay eligible generation records={len(base_candidate_ids)}, typed records={len(typed_rows)}, complete typed records={registry['completeRecordCount']}, final production-equivalent recovery candidates={len(final_candidate_ids)}, pending typed coverage={len(pending_typed_ids)}; a generic nonResurrectionVerification PASS is insufficient and final candidate derivation requires separate deleted-account/session, expired/revoked-session, Apple nonce/code replay, deletion-lease and idempotent-effect evidence with distinct security/operability review; productionEvidence and productionReady remain false")
     for ref in REFS:
-        require((ROOT / ref).is_file(), f"non-resurrection authority evidence ref missing: {ref}")
+        require_repo_file(ROOT / ref, f"non-resurrection authority evidence ref missing: {ref}")
         append_once(refs, ref)
-    STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    require_repo_file(VALIDATOR, "typed non-resurrection validator missing")
+    rendered = {
+        REGISTRY: json.dumps(registry, indent=2, ensure_ascii=False) + "\n",
+        GEN_REGISTRY: json.dumps(generation_registry, indent=2, ensure_ascii=False) + "\n",
+        CONTRACT: json.dumps(contract, indent=2, ensure_ascii=False) + "\n",
+        STATUS: json.dumps(status, indent=2, ensure_ascii=False) + "\n",
+    }
+    try:
+        for path, text in rendered.items():
+            write_text(path, text)
+        completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        require(completed.returncode == 0, f"typed non-resurrection validator failed:\n{completed.stdout[-7000:]}{completed.stderr[-7000:]}")
+    except Exception:
+        for path, text in original_text.items():
+            write_text(path, text)
+        raise
 
     print("Memory OS backup/restore typed non-resurrection authority reconciliation PASS")
     print(f"pre-overlay eligible generation records: {len(base_candidate_ids)}")
     print(f"final production-equivalent recovery candidates: {len(final_candidate_ids)}")
     print(f"pending typed coverage: {len(pending_typed_ids)}")
+    print("failed post-validation leaves typed/generation/status mutation behind: false")
     print("OPS-P0-007: incomplete")
     print("production evidence: false")
     print("productionDecision: NO_GO")
