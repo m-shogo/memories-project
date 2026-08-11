@@ -57,7 +57,7 @@ def canonical_repo_file(path: Path, field: str) -> Path:
     try:
         relative = path.relative_to(ROOT)
         resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
-    except (FileNotFoundError, OSError, ValueError) as exc:
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"{field} missing or escapes repository") from exc
     require(relative.parts and ".." not in relative.parts, f"{field} must be repository-contained")
     require(relative == resolved and path.is_file(), f"{field} must resolve to its canonical repository file")
@@ -95,7 +95,7 @@ def repo_ref(value: Any, field: str) -> Path:
     absolute = ROOT / relative
     try:
         resolved = absolute.resolve(strict=True).relative_to(ROOT.resolve())
-    except (FileNotFoundError, OSError, ValueError) as exc:
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"{field} missing or escapes repository: {value}") from exc
     require(resolved == relative and absolute.is_file(), f"{field} must resolve to the canonical repository file")
     return absolute
