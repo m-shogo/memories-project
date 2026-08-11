@@ -40,8 +40,8 @@ def valid_count(value: Any) -> bool:
 
 def repo_relative(path: Path) -> Path:
     try:
-        return path.resolve().relative_to(ROOT.resolve())
-    except ValueError as exc:
+        return path.resolve(strict=False).relative_to(ROOT.resolve())
+    except (OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"artifact path escapes repository root: {path}") from exc
 
 
@@ -49,18 +49,21 @@ def load(path: Path) -> dict[str, Any]:
     relative = repo_relative(path)
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise Fail(f"cannot load {relative}: {exc}") from exc
     require(isinstance(value, dict), f"root must be object: {relative}")
     return value
 
 
 def load_evidence_writer():
-    repo_relative(EVIDENCE_WRITER)
+    relative = repo_relative(EVIDENCE_WRITER)
     spec = importlib.util.spec_from_file_location("memory_os_generation_evidence_writer_for_binding", EVIDENCE_WRITER)
-    require(spec is not None and spec.loader is not None, "cannot load generation evidence writer")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    require(spec is not None and spec.loader is not None, f"cannot load generation evidence writer: {relative}")
+    try:
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except (OSError, UnicodeDecodeError) as exc:
+        raise Fail(f"cannot load generation evidence writer {relative}: {exc}") from exc
     return module
 
 
@@ -84,7 +87,7 @@ def main() -> int:
     }
     for field, path in refs.items():
         require(contract.get(field) == str(repo_relative(path)), f"{field} ref drift")
-    require(EVIDENCE_WRITER.is_file(), "generation evidence writer missing")
+    require((ROOT / repo_relative(EVIDENCE_WRITER)).is_file(), "generation evidence writer missing")
 
     bindings = contract.get("requiredBindings")
     require(isinstance(bindings, dict) and bindings and all(value is True for value in bindings.values()), "restore generation bindings must remain fail-closed")
