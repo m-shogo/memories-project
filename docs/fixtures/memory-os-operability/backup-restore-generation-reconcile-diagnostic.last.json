@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "backup-restore-generation-binding",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "RECOVERY OBJECTIVES VALIDATION FAILED: contract authority directory missing or escapes repository: recovery objective approval authority directory\n",
+  "containsSecrets": false,
+  "productionEquivalentRestoreEvidence": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
