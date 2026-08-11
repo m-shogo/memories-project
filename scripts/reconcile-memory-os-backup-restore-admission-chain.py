@@ -44,18 +44,40 @@ def repo_relative(path: Path) -> Path:
         raise Fail(f"authority path escapes repository: {path}") from exc
 
 
+def require_repo_file(path: Path, message: str) -> Path:
+    relative = repo_relative(path)
+    require((ROOT / relative).is_file(), message)
+    return relative
+
+
+def read_text(path: Path) -> str:
+    relative = repo_relative(path)
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise Fail(f"cannot read {relative}: {exc}") from exc
+
+
+def write_text(path: Path, text: str) -> None:
+    relative = repo_relative(path)
+    try:
+        path.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        raise Fail(f"cannot write {relative}: {exc}") from exc
+
+
 def load(path: Path) -> dict[str, Any]:
     relative = repo_relative(path)
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError, OSError) as exc:
+        value = json.loads(read_text(path))
+    except json.JSONDecodeError as exc:
         raise Fail(f"cannot load {relative}: {exc}") from exc
     require(isinstance(value, dict), f"root must be object: {relative}")
     return value
 
 
 def load_generation_writer():
-    relative = repo_relative(GEN_WRITER)
+    relative = require_repo_file(GEN_WRITER, "generation evidence writer missing")
     spec = importlib.util.spec_from_file_location("memory_os_generation_writer_admission_chain_reconcile", GEN_WRITER)
     require(spec is not None and spec.loader is not None, f"cannot load {relative}")
     try:
@@ -67,9 +89,20 @@ def load_generation_writer():
 
 
 def main() -> int:
-    repo_relative(CONTRACT)
-    repo_relative(VALIDATOR)
-    original_contract_text = CONTRACT.read_text(encoding="utf-8")
+    for path, message in (
+        (CONTRACT, "admission-chain contract missing"),
+        (PREFLIGHT, "preflight contract missing"),
+        (DRILL_REGISTRY, "drill request registry missing"),
+        (GEN_REGISTRY, "generation evidence registry missing"),
+        (BINDING_CONTRACT, "generation binding contract missing"),
+        (TYPED_REGISTRY, "typed non-resurrection registry missing"),
+        (GEN_WRITER, "generation evidence writer missing"),
+        (VALIDATOR, "admission-chain validator missing"),
+        (STATUS, "operability status missing"),
+    ):
+        require_repo_file(path, message)
+
+    original_contract_text = read_text(CONTRACT)
     contract = load(CONTRACT)
     preflight_contract = load(PREFLIGHT)
     drill_registry = load(DRILL_REGISTRY)
@@ -117,11 +150,7 @@ def main() -> int:
     registry_candidate_count = gen_registry.get("productionEquivalentRecoveryCandidateCount")
     require(isinstance(gen_rows, list) and valid_count(gen_count) and gen_count == len(gen_rows), "generation evidence count drift")
     require(valid_count(bound_count) and bound_count == gen_count, "every generation evidence row must be drill-request-bound")
-    for value, field in (
-        (registry_backup_count, "backup"),
-        (registry_restore_count, "restore"),
-        (registry_candidate_count, "candidate"),
-    ):
+    for value, field in ((registry_backup_count, "backup"), (registry_restore_count, "restore"), (registry_candidate_count, "candidate")):
         require(valid_count(value) and value <= gen_count, f"generation {field} count invalid")
 
     derived_backup_count = 0
@@ -131,11 +160,7 @@ def main() -> int:
         gen_writer.validate_record(row, require_current_drill_request=False)
         if row.get("evidenceComplete") is True:
             derived_backup_count += 1
-        if (
-            row.get("evidenceComplete") is True
-            and row.get("isolatedRestoreVerified") is True
-            and row.get("restoredBackupArtifactSha256") == row.get("backupArtifactSha256")
-        ):
+        if row.get("evidenceComplete") is True and row.get("isolatedRestoreVerified") is True and row.get("restoredBackupArtifactSha256") == row.get("backupArtifactSha256"):
             derived_restore_count += 1
         if gen_writer.candidate(row):
             candidate_count += 1
@@ -196,12 +221,15 @@ def main() -> int:
     boundary["productionEvidence"] = False
     boundary["productionReady"] = False
     boundary["productionDecision"] = "NO_GO"
-    CONTRACT.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-    if completed.returncode != 0:
-        CONTRACT.write_text(original_contract_text, encoding="utf-8")
-        raise Fail(f"post-reconcile admission-chain validator failed; original contract restored:\n{completed.stdout[-8000:]}{completed.stderr[-8000:]}")
+    contract_text = json.dumps(contract, indent=2, ensure_ascii=False) + "\n"
+    try:
+        write_text(CONTRACT, contract_text)
+        completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        require(completed.returncode == 0, f"post-reconcile admission-chain validator failed:\n{completed.stdout[-8000:]}{completed.stderr[-8000:]}")
+    except Exception:
+        write_text(CONTRACT, original_contract_text)
+        raise
 
     print("Memory OS backup/restore admission chain reconciliation PASS")
     print(f"preflight: {preflight_decision}")
@@ -212,6 +240,8 @@ def main() -> int:
     print("backup/restore aggregates re-derived before contract write: true")
     print(f"complete typed records/final candidates: {typed_complete_count}/{candidate_count}")
     print("boolean aggregate counts accepted by reconciler: false")
+    print("authority reads and executable refs repository-contained: true")
+    print("invalid UTF-8 authority accepted: false")
     print("failed post-validation leaves derived contract mutation behind: false")
     print(f"candidate-level independent evidence review completed: {str(candidate_count > 0).lower()}")
     print("human production-promotion review completed: false")
