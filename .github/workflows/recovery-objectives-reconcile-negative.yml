@@ -1,0 +1,39 @@
+name: Recovery Objectives Reconcile Negative
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/recovery-objectives-reconcile-negative.yml"
+      - "scripts/reconcile-memory-os-recovery-objectives.py"
+      - "scripts/validate-memory-os-recovery-objectives-reconcile-negative.py"
+      - "contracts/operations/recovery-objectives-admission-contract.v1.json"
+      - "contracts/operations/recovery-objectives-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  negative:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Prove transactional recovery-objective reconciliation
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          python -m py_compile \
+            scripts/reconcile-memory-os-recovery-objectives.py \
+            scripts/validate-memory-os-recovery-objectives-reconcile-negative.py
+          python scripts/validate-memory-os-recovery-objectives-reconcile-negative.py
+          git diff --exit-code
