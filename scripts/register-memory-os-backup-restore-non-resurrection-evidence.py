@@ -70,7 +70,7 @@ def repo_ref(value: Any, field: str) -> str:
     path = ROOT / relative
     try:
         resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
-    except (FileNotFoundError, OSError, ValueError) as exc:
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"{field} evidence path missing or escapes repository") from exc
     require(resolved == relative and path.is_file(), f"{field} must resolve to the canonical repository file")
     return value
