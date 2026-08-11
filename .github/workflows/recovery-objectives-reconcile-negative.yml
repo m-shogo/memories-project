@@ -1,6 +1,14 @@
 name: Recovery Objectives Reconcile Negative
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/recovery-objectives-reconcile-negative.yml"
+      - "scripts/reconcile-memory-os-recovery-objectives.py"
+      - "scripts/validate-memory-os-recovery-objectives-reconcile-negative.py"
+      - "contracts/operations/recovery-objectives-admission-contract.v1.json"
+      - "contracts/operations/recovery-objectives-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
   push:
     branches:
       - so
