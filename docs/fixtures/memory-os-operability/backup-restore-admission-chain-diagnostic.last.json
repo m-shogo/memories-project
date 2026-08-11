@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "backup-restore-admission-chain",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "Memory OS production-equivalent environment generation validation PASS\nregistered generations: 0\npreflight-eligible generations: 0\ncurrent generation: none\ncurrent production-equivalent dependencies: false\nregistration implies preflight eligibility: false\nboolean generation counts accepted: false\ncanonical environmentRecordRef required: true\ncanonical writer runtime authorities validated without generation rows: true\nsemantic environment evidence refs canonical: true\nsemantic validator implementation exceptions surfaced: true\nunexpected generation-writer exceptions normalized as expected rejection: false\ncross-generation evidence reuse: forbidden\nnegative admission case authority exact: true\nnegative admission suite: PASS\nproduction evidence: false\nproduction decision: NO_GO\nRECOVERY OBJECTIVES VALIDATION FAILED: contract authority directory missing or escapes repository: recovery objective approval authority directory\n",
+  "containsSecrets": false,
+  "preflightCreatedPrerequisite": false,
+  "drillRequestCreated": false,
+  "generationEvidenceCreated": false,
+  "typedEvidenceCreated": false,
+  "restoreExecuted": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
