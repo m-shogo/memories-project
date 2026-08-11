@@ -54,23 +54,29 @@ def repo_file(ref: Any, field: str) -> Path:
     try:
         resolved = path.resolve(strict=True)
         resolved.relative_to(ROOT.resolve())
-    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"generation artifact must resolve inside repository: {field}") from exc
     require(resolved.is_file(), f"generation artifact missing: {field}")
+    require(resolved.relative_to(ROOT.resolve()) == candidate, f"generation artifact must resolve to its canonical repository path: {field}")
     return resolved
 
 
 def load(path: Path) -> dict[str, Any]:
     try:
+        relative = path.resolve(strict=False).relative_to(ROOT.resolve())
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"authority path escapes repository: {path}") from exc
+    try:
         value = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
-        raise Fail(f"cannot load {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+    except (FileNotFoundError, OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise Fail(f"cannot load {relative}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be object: {relative}")
     return value
 
 
 def load_writer():
-    spec = importlib.util.spec_from_file_location("memory_os_environment_generation_writer_for_validator", WRITER)
+    writer_path = repo_file(str(WRITER.relative_to(ROOT)), "writer")
+    spec = importlib.util.spec_from_file_location("memory_os_environment_generation_writer_for_validator", writer_path)
     require(spec is not None and spec.loader is not None, "cannot load environment generation writer")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -89,6 +95,20 @@ def main() -> int:
     gen_schema = load(GEN_SCHEMA)
     writer = load_writer()
 
+    writer_authorities = (
+        ("CONTRACT", "CANONICAL_CONTRACT", CONTRACT, "environment generation contract"),
+        ("REGISTRY", "CANONICAL_REGISTRY", REGISTRY, "environment generation registry"),
+        ("ENV_SCHEMA", "CANONICAL_ENV_SCHEMA", ENV_SCHEMA, "environment record schema"),
+        ("GEN_SCHEMA", "CANONICAL_GEN_SCHEMA", GEN_SCHEMA, "generation record schema"),
+        ("ENV_VALIDATOR", "CANONICAL_ENV_VALIDATOR", ENV_VALIDATOR, "environment record semantic validator"),
+    )
+    for runtime_name, canonical_name, expected_path, field in writer_authorities:
+        runtime_path = getattr(writer, runtime_name, None)
+        canonical_path = getattr(writer, canonical_name, None)
+        require(runtime_path == expected_path, f"writer runtime authority drift: {runtime_name}")
+        require(canonical_path == expected_path, f"writer canonical authority drift: {canonical_name}")
+        writer.require_canonical_runtime_authority(runtime_path, canonical_path, field)
+
     require(contract.get("schemaVersion") == "memory-os-production-equivalent-environment-generation.v1", "contract schema drift")
     expected_refs = {
         "environmentRecordSchema": ENV_SCHEMA,
@@ -100,7 +120,7 @@ def main() -> int:
     }
     for field, path in expected_refs.items():
         require(contract.get(field) == str(path.relative_to(ROOT)), f"contract ref drift: {field}")
-        require(path.is_file(), f"generation artifact missing: {field}")
+        require(repo_file(str(path.relative_to(ROOT)), field) == path.resolve(), f"generation artifact canonical path drift: {field}")
     for field in ("validator", "workflow"):
         repo_file(contract.get(field), field)
     require(env_schema.get("$schema") == "https://json-schema.org/draft/2020-12/schema", "environment schema draft drift")
@@ -218,6 +238,7 @@ def main() -> int:
     print("registration implies preflight eligibility: false")
     print("boolean generation counts accepted: false")
     print("canonical environmentRecordRef required: true")
+    print("canonical writer runtime authorities validated without generation rows: true")
     print("semantic environment evidence refs canonical: true")
     print("semantic validator implementation exceptions surfaced: true")
     print("unexpected generation-writer exceptions normalized as expected rejection: false")
