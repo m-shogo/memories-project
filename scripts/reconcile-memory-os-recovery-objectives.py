@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +14,7 @@ from memory_os_backup_restore_blockers import require_canonical_gaps
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/recovery-objectives-admission-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
+VALIDATOR = ROOT / "scripts/validate-memory-os-recovery-objectives.py"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 EVIDENCE_PREFIX = "recovery objectives approval is append-only:"
 REFS = (
@@ -124,12 +127,15 @@ def main() -> int:
         append_once(refs, ref)
     require_canonical_gaps(gate.get("missingEvidence"), Fail)
     require(status.get("productionDecision") == "NO_GO", "productionDecision changed unexpectedly")
+    require_repo_file(VALIDATOR, "recovery objective validator missing")
 
     contract_text = json.dumps(contract, indent=2, ensure_ascii=False) + "\n"
     status_text = json.dumps(status, indent=2, ensure_ascii=False) + "\n"
     try:
         write_text(CONTRACT, contract_text)
         write_text(STATUS, status_text)
+        completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        require(completed.returncode == 0, f"recovery objective validator failed:\n{completed.stdout[-7000:]}{completed.stderr[-7000:]}")
     except Exception:
         write_text(CONTRACT, original_contract_text)
         write_text(STATUS, original_status_text)
@@ -138,6 +144,7 @@ def main() -> int:
     print("Memory OS recovery objectives reconciliation PASS")
     print(f"approved objective records: {count}")
     print(f"current objective: {current_id or 'none'}")
+    print("failed post-validation leaves objective/status mutation behind: false")
     print("canonical OPS-P0-007 blockers preserved: 6")
     print("production evidence: false")
     print("productionDecision: NO_GO")
