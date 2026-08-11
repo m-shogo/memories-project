@@ -69,7 +69,7 @@ def canonical_repo_file(path: Path, field: str) -> Path:
     try:
         relative = path.relative_to(ROOT)
         resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
-    except (FileNotFoundError, OSError, ValueError) as exc:
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"{field} missing or escapes repository") from exc
     require(relative.parts and ".." not in relative.parts, f"{field} must be repository-contained")
     require(relative == resolved and path.is_file(), f"{field} must resolve to its canonical repository file")
@@ -241,11 +241,11 @@ def validate_request(record: dict[str, Any], *, require_current: bool = True) ->
         require_preflight_eligible_generation(target["generationId"], "restoreTargetEnvironmentGenerationId")
     for value, field in (
         (record.get("sourceEnvironmentManifestSha256"), "sourceEnvironmentManifestSha256"),
-        (record.get("restoreTargetManifestSha256"), "restoreTargetManifestSha256"),
+        (record.get("restoreTargetEnvironmentManifestSha256"), "restoreTargetEnvironmentManifestSha256"),
     ):
         require(isinstance(value, str) and DIGEST.fullmatch(value), f"{field} invalid")
     require(record["sourceEnvironmentManifestSha256"] == source.get("environmentManifestSha256"), "source environment manifest digest mismatch")
-    require(record["restoreTargetManifestSha256"] == target.get("environmentManifestSha256"), "restore-target environment manifest digest mismatch")
+    require(record["restoreTargetEnvironmentManifestSha256"] == target.get("environmentManifestSha256"), "restore-target environment manifest digest mismatch")
 
     if require_current:
         objective = current_objective()
