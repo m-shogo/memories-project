@@ -52,6 +52,10 @@ def exercise_loads(label: str, module, tmp: Path, outside: Path) -> None:
     directory_authority.mkdir()
     expect_domain_fail(f"{label} authority path is unreadable directory", lambda: module.load(directory_authority), module.Fail)
 
+    loop_authority = tmp / f"{label}-loop-authority.json"
+    loop_authority.symlink_to(loop_authority.name)
+    expect_domain_fail(f"{label} authority symlink loop", lambda: module.load(loop_authority), module.Fail)
+
     expect_domain_fail(f"{label} authority path escapes repository", lambda: module.load(outside), module.Fail)
 
 
