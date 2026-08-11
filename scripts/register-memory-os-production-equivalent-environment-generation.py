@@ -177,6 +177,41 @@ def validate_record(record: dict[str, Any]) -> bool:
     return preflight_eligible
 
 
+def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any]]:
+    """Reject corrupted append-only generation authority instead of healing it on the next write."""
+    require(
+        registry.get("schemaVersion") == "memory-os-production-equivalent-environment-generation-registry.v1",
+        "registry schema drift",
+    )
+    require(registry.get("registryClass") == "PRODUCTION_EQUIVALENT_ENVIRONMENT_GENERATIONS", "registry class drift")
+    require(registry.get("appendOnly") is True, "registry must remain append-only")
+    require(registry.get("productionEvidence") is False, "registry production evidence boundary drift")
+    rows = registry.get("generations")
+    count = registry.get("registeredGenerationCount")
+    require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "registry generations invalid")
+    require(isinstance(count, int) and not isinstance(count, bool) and count == len(rows), "registeredGenerationCount drift")
+
+    ids: set[str] = set()
+    prior_by_environment: dict[str, str] = {}
+    for index, row in enumerate(rows):
+        generation_id = row.get("generationId")
+        environment_id = row.get("environmentId")
+        require(isinstance(generation_id, str) and generation_id and generation_id not in ids, f"registry generations[{index}] generationId authority invalid")
+        require(isinstance(environment_id, str) and environment_id, f"registry generations[{index}] environmentId invalid")
+        ids.add(generation_id)
+        expected_supersedes = prior_by_environment.get(environment_id)
+        require(row.get("supersedesGenerationId") == expected_supersedes, f"supersedes chain drift for environment {environment_id}")
+        prior_by_environment[environment_id] = generation_id
+        validate_record(row)
+
+    current_id = registry.get("currentGenerationId")
+    if count == 0:
+        require(current_id is None, "empty generation registry must have null currentGenerationId")
+    else:
+        require(current_id == rows[-1].get("generationId"), "currentGenerationId must equal latest append-only registry record")
+    return rows
+
+
 def atomic_write(value: dict[str, Any]) -> None:
     descriptor, temp_name = tempfile.mkstemp(prefix=".environment-generation.", suffix=".tmp", dir=REGISTRY.parent)
     try:
@@ -217,9 +252,7 @@ def main() -> int:
         os.write(lock_fd, (record["generationId"] + "\n").encode("ascii"))
         os.fsync(lock_fd)
         registry = load(REGISTRY)
-        require(registry.get("appendOnly") is True, "registry must remain append-only")
-        rows = registry.get("generations")
-        require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "registry generations invalid")
+        rows = validate_registry_for_append(registry)
         require(all(row.get("generationId") != record["generationId"] for row in rows), "generationId already registered")
         same_environment = [row for row in rows if row.get("environmentId") == record["environmentId"]]
         expected_supersedes = same_environment[-1].get("generationId") if same_environment else None
