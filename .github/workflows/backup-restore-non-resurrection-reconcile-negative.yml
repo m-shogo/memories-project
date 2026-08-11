@@ -33,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 1
       - uses: actions/setup-python@v5
         with:
@@ -41,7 +41,9 @@ jobs:
       - name: Prove transactional typed non-resurrection reconciliation
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
           python -m py_compile \
             scripts/reconcile-memory-os-backup-non-resurrection-authority.py \
             scripts/validate-memory-os-backup-non-resurrection-reconcile-negative.py
