@@ -77,6 +77,12 @@ def canonical_repo_file(path: Path, field: str) -> Path:
     return path
 
 
+def require_canonical_runtime_authority(path: Path, canonical: Path, field: str) -> None:
+    """Contain canonical runtime authority without breaking isolated test registries."""
+    if path == canonical:
+        canonical_repo_file(path, field)
+
+
 def git(*args: str) -> str:
     completed = subprocess.run(["git", *args], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     require(completed.returncode == 0, f"git {' '.join(args)} failed")
@@ -111,6 +117,7 @@ def generation_by_id(generations: list[Any], generation_id: Any, field: str) -> 
 
 
 def objective_for_record(record: dict[str, Any]) -> dict[str, Any] | None:
+    require_canonical_runtime_authority(OBJECTIVES_REGISTRY, CANONICAL_OBJECTIVES_REGISTRY, "recovery objectives registry")
     registry = load(OBJECTIVES_REGISTRY)
     rows = registry.get("records")
     require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "recovery objectives registry invalid")
@@ -143,6 +150,7 @@ def measurements_meet_objective(record: dict[str, Any], objective: dict[str, Any
 
 
 def load_drill_writer():
+    require_canonical_runtime_authority(DRILL_REQUEST_CONTRACT, CANONICAL_DRILL_REQUEST_CONTRACT, "restore drill request contract")
     writer = canonical_repo_file(DRILL_REQUEST_WRITER, "restore drill request writer")
     spec = importlib.util.spec_from_file_location("memory_os_restore_drill_request_writer_for_generation_evidence", writer)
     require(spec is not None and spec.loader is not None, "cannot load restore drill request writer")
@@ -155,6 +163,7 @@ def load_drill_writer():
 
 
 def load_non_resurrection_writer():
+    require_canonical_runtime_authority(NON_RESURRECTION_CONTRACT, CANONICAL_NON_RESURRECTION_CONTRACT, "typed non-resurrection contract")
     writer = canonical_repo_file(NON_RESURRECTION_WRITER, "typed non-resurrection writer")
     spec = importlib.util.spec_from_file_location("memory_os_non_resurrection_writer_for_generation_evidence", writer)
     require(spec is not None and spec.loader is not None, "cannot load typed non-resurrection writer")
@@ -165,6 +174,7 @@ def load_non_resurrection_writer():
 
 
 def drill_request_for_record(record: dict[str, Any], *, require_current: bool) -> dict[str, Any]:
+    require_canonical_runtime_authority(DRILL_REQUEST_REGISTRY, CANONICAL_DRILL_REQUEST_REGISTRY, "restore drill request registry")
     request_id = record.get("drillRequestId")
     require(isinstance(request_id, str) and REQUEST_ID.fullmatch(request_id), "drillRequestId invalid")
     registry = load(DRILL_REQUEST_REGISTRY)
@@ -199,6 +209,7 @@ def drill_request_current(record: dict[str, Any]) -> bool:
 def base_candidate(record: dict[str, Any]) -> bool:
     """Return whether generation evidence satisfies every pre-overlay candidate gate."""
     objective = objective_for_record(record)
+    require_canonical_runtime_authority(OBJECTIVES_REGISTRY, CANONICAL_OBJECTIVES_REGISTRY, "recovery objectives registry")
     objectives_registry = load(OBJECTIVES_REGISTRY)
     current_objective_id = objectives_registry.get("currentObjectiveId")
     return (
@@ -226,6 +237,8 @@ def typed_non_resurrection_covered(evidence_id: Any) -> bool:
     if not isinstance(evidence_id, str) or not evidence_id:
         return False
     try:
+        require_canonical_runtime_authority(NON_RESURRECTION_CONTRACT, CANONICAL_NON_RESURRECTION_CONTRACT, "typed non-resurrection contract")
+        require_canonical_runtime_authority(NON_RESURRECTION_REGISTRY, CANONICAL_NON_RESURRECTION_REGISTRY, "typed non-resurrection registry")
         contract = load(NON_RESURRECTION_CONTRACT)
         registry = load(NON_RESURRECTION_REGISTRY)
     except Fail:
@@ -306,9 +319,12 @@ def validate_record(record: dict[str, Any], *, require_current_drill_request: bo
     require(contract.get("drillRequestRegistry") == str(CANONICAL_DRILL_REQUEST_REGISTRY.relative_to(ROOT)), "drillRequestRegistry ref drift")
     require(contract.get("typedNonResurrectionAdmissionContract") == str(CANONICAL_NON_RESURRECTION_CONTRACT.relative_to(ROOT)), "typed non-resurrection contract ref drift")
     require(contract.get("typedNonResurrectionAdmissionRegistry") == str(CANONICAL_NON_RESURRECTION_REGISTRY.relative_to(ROOT)), "typed non-resurrection registry ref drift")
-    require(CANONICAL_DRILL_REQUEST_CONTRACT.is_file() and DRILL_REQUEST_REGISTRY.is_file(), "drill request admission foundation missing")
+    require_canonical_runtime_authority(OBJECTIVES_REGISTRY, CANONICAL_OBJECTIVES_REGISTRY, "recovery objectives registry")
+    require_canonical_runtime_authority(DRILL_REQUEST_CONTRACT, CANONICAL_DRILL_REQUEST_CONTRACT, "restore drill request contract")
+    require_canonical_runtime_authority(DRILL_REQUEST_REGISTRY, CANONICAL_DRILL_REQUEST_REGISTRY, "restore drill request registry")
+    require_canonical_runtime_authority(NON_RESURRECTION_CONTRACT, CANONICAL_NON_RESURRECTION_CONTRACT, "typed non-resurrection contract")
+    require_canonical_runtime_authority(NON_RESURRECTION_REGISTRY, CANONICAL_NON_RESURRECTION_REGISTRY, "typed non-resurrection registry")
     canonical_repo_file(DRILL_REQUEST_WRITER, "restore drill request writer")
-    require(CANONICAL_NON_RESURRECTION_CONTRACT.is_file() and NON_RESURRECTION_REGISTRY.is_file(), "typed non-resurrection admission foundation missing")
     canonical_repo_file(NON_RESURRECTION_WRITER, "typed non-resurrection writer")
     require(isinstance(record.get("evidenceId"), str) and EVIDENCE_ID.fullmatch(record["evidenceId"]), "evidenceId invalid")
     source_commit = record.get("sourceCommitSha")
