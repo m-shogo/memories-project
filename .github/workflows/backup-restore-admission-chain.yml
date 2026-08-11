@@ -40,6 +40,7 @@ on:
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py"
       - "scripts/validate-memory-os-backup-restore-semantic-generation-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py"
@@ -49,6 +50,7 @@ on:
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py"
       - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
@@ -96,6 +98,7 @@ on:
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py"
       - "scripts/validate-memory-os-backup-restore-semantic-generation-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py"
@@ -105,6 +108,7 @@ on:
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py"
       - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
@@ -185,6 +189,7 @@ jobs:
           scripts/register-memory-os-backup-restore-generation-evidence.py
           scripts/validate-memory-os-backup-restore-generation-evidence.py
           scripts/validate-memory-os-backup-restore-generation-evidence-negative.py
+          scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py
           scripts/validate-memory-os-backup-restore-semantic-generation-negative.py
           scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py
           scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py
@@ -194,6 +199,7 @@ jobs:
           scripts/register-memory-os-backup-restore-non-resurrection-evidence.py
           scripts/validate-memory-os-backup-restore-non-resurrection-admission.py
           scripts/validate-memory-os-backup-restore-non-resurrection-negative.py
+          scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py
           scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py
           scripts/reconcile-memory-os-backup-non-resurrection-authority.py
           scripts/validate-memory-os-backup-restore-admission-chain.py
@@ -227,6 +233,7 @@ jobs:
             scripts/register-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-negative.py \
+            scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py \
             scripts/validate-memory-os-backup-restore-semantic-generation-negative.py \
             scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py \
             scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py \
@@ -236,6 +243,7 @@ jobs:
             scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-negative.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py \
             scripts/reconcile-memory-os-backup-non-resurrection-authority.py \
             scripts/validate-memory-os-backup-restore-admission-chain.py \
@@ -248,6 +256,8 @@ jobs:
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-preflight.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-preflight-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-backup-restore-admission-chain.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-admission-chain.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-admission-chain-negative.py >> "$log" 2>&1 || code=$?; fi
