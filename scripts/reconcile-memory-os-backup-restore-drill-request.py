@@ -180,22 +180,55 @@ def main() -> int:
     require(isinstance(objective_rows, list) and all(isinstance(row, dict) for row in objective_rows), "recovery objective rows invalid")
     require(isinstance(objective_count, int) and not isinstance(objective_count, bool) and objective_count == len(objective_rows), "recovery objective count drift")
     require(objectives.get("appendOnly") is True and objectives.get("productionEvidence") is False and objectives.get("productionReady") is False, "recovery objective boundary drift")
+    objective_ids = [row.get("objectiveId") for row in objective_rows]
+    require(
+        all(isinstance(objective_id, str) and objective_id for objective_id in objective_ids)
+        and len(objective_ids) == len(set(objective_ids)),
+        "recovery objective identity authority invalid",
+    )
     if objective_count == 0:
         require(current_objective_id is None, "empty recovery objective registry cannot declare a current objective")
         current_objective_available = False
     else:
-        require(current_objective_id is None or isinstance(current_objective_id, str), "currentObjectiveId invalid")
-        current_matches = [row for row in objective_rows if row.get("objectiveId") == current_objective_id] if current_objective_id is not None else []
-        require(len(current_matches) <= 1, "current recovery objective must be unique")
-        current_objective_available = len(current_matches) == 1
+        require(current_objective_id == objective_ids[-1], "currentObjectiveId must equal latest append-only recovery objective")
+        current_objective_available = True
 
-    requests = registry.get("requests")
+    require(registry.get("schemaVersion") == "memory-os-backup-restore-drill-request-registry.v1", "drill request registry schema drift")
+    require(registry.get("registryClass") == "PRODUCTION_EQUIVALENT_BACKUP_RESTORE_DRILL_REQUESTS", "drill request registry class drift")
     require(registry.get("appendOnly") is True, "drill request registry must remain append-only")
+    require(registry.get("productionEvidence") is False and registry.get("productionReady") is False, "drill request registry production boundary drift")
+    requests = registry.get("requests")
+    registered_request_count = registry.get("registeredRequestCount")
+    current_executable_count = registry.get("currentExecutableRequestCount")
     require(isinstance(requests, list) and all(isinstance(row, dict) for row in requests), "drill request registry rows invalid")
+    require(
+        isinstance(registered_request_count, int)
+        and not isinstance(registered_request_count, bool)
+        and registered_request_count == len(requests),
+        "registeredRequestCount drift",
+    )
+    request_ids: set[str] = set()
+    request_tuples: set[tuple[Any, Any, Any]] = set()
     for row in requests:
         writer.validate_request(row, require_current=False)
+        request_id = row.get("requestId")
+        require(isinstance(request_id, str) and request_id and request_id not in request_ids, f"duplicate requestId: {request_id}")
+        request_ids.add(request_id)
+        request_tuple = (
+            row.get("sourceEnvironmentGenerationId"),
+            row.get("restoreTargetEnvironmentGenerationId"),
+            row.get("recoveryObjectivesId"),
+        )
+        require(request_tuple not in request_tuples, f"duplicate source/target/objective drill request tuple: {request_tuple}")
+        request_tuples.add(request_tuple)
     executable_count = sum(1 for row in requests if writer.request_currently_executable(row))
     request_count = len(requests)
+    require(
+        isinstance(current_executable_count, int)
+        and not isinstance(current_executable_count, bool)
+        and current_executable_count == executable_count,
+        "currentExecutableRequestCount drift",
+    )
     if generation_count < 2 or objective_count == 0:
         require(request_count == 0, "request history cannot exist before prerequisite authorities")
     if eligible_pair_count == 0 or not current_objective_available:
@@ -286,6 +319,7 @@ def main() -> int:
     print("invalid UTF-8 authority accepted: false")
     print("failed post-validation leaves registry/contract/status mutation behind: false")
     print("boolean generation/objective aggregate counts accepted: false")
+    print("corrupt drill-request aggregate authority auto-healed: false")
     print("registered generation or historical objective count alone creates planning authority: false")
     print("canonical OPS-P0-007 blockers preserved: 6")
     print("restore executed: false")
