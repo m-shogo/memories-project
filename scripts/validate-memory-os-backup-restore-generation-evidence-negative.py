@@ -348,6 +348,32 @@ def main() -> int:
         require(writer.candidate(valid) is False, "generic non-resurrection PASS without typed overlay must not become candidate")
         print("PASS non-candidate: request-bound record lacks typed coverage")
 
+        healthy_objectives = load(objectives_registry)
+
+        count_drift = copy.deepcopy(healthy_objectives)
+        count_drift["approvedObjectiveCount"] = len(count_drift["records"]) + 1
+        write_json(objectives_registry, count_drift)
+        expect_rejected("recovery objective aggregate count drift", lambda: writer.validate_record(valid))
+
+        boolean_count = copy.deepcopy(healthy_objectives)
+        boolean_count["approvedObjectiveCount"] = True
+        write_json(objectives_registry, boolean_count)
+        expect_rejected("boolean recovery objective aggregate count", lambda: writer.validate_record(valid))
+
+        current_pointer_drift = copy.deepcopy(healthy_objectives)
+        current_pointer_drift["currentObjectiveId"] = "recovery_objectives_old"
+        write_json(objectives_registry, current_pointer_drift)
+        expect_rejected("recovery objective current pointer drift", lambda: writer.validate_record(valid))
+
+        objective_promotion_drift = copy.deepcopy(healthy_objectives)
+        objective_promotion_drift["productionReady"] = True
+        write_json(objectives_registry, objective_promotion_drift)
+        expect_rejected("recovery objective production boundary drift", lambda: writer.validate_record(valid))
+
+        write_json(objectives_registry, healthy_objectives)
+        writer.validate_record(valid)
+        print("PASS restore: healthy recovery objective authority remains admissible")
+
         absolute_review = copy.deepcopy(valid)
         absolute_review["evidenceId"] = "brge_absolute_review"
         absolute_review["securityReviewRef"] = str((ROOT / "SECURITY.md").resolve())
@@ -450,6 +476,7 @@ def main() -> int:
     print("Memory OS drill-request-bound generation negative admission suite PASS")
     print("canonical registries mutated: false")
     print("request bypass to generation evidence: false")
+    print("recovery objective aggregate/current authority drift accepted: false")
     print("stale request creates current candidate: false")
     print("generic non-resurrection PASS creates candidate: false")
     print("generation review refs escape repository: false")
