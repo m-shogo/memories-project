@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove generation/objective rollover invalidates current backup/restore candidates.
+"""Prove generation/objective/request rollover invalidates current recovery candidates.
 
 This suite uses only temporary registries and existing synthetic fixtures. It
 never mutates canonical evidence or creates production authority.
@@ -7,6 +7,7 @@ never mutates canonical evidence or creates production authority.
 
 from __future__ import annotations
 
+import copy
 import importlib.util
 import json
 import tempfile
@@ -36,6 +37,19 @@ def load_module(path: Path, name: str):
 
 def write_json(path: Path, value: dict) -> None:
     path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+
+
+def drill_registry_value(request: dict) -> dict:
+    return {
+        "schemaVersion": "memory-os-backup-restore-drill-request-registry.v1",
+        "registryClass": "PRODUCTION_EQUIVALENT_BACKUP_RESTORE_DRILL_REQUESTS",
+        "appendOnly": True,
+        "registeredRequestCount": 1,
+        "currentExecutableRequestCount": 1,
+        "requests": [request],
+        "productionEvidence": False,
+        "productionReady": False,
+    }
 
 
 def reject_current_registration(writer, record: dict, label: str) -> None:
@@ -100,16 +114,7 @@ def main() -> int:
         }
         write_json(objectives_registry, baseline_objectives)
         request = fixture.base_drill_request()
-        write_json(drill_registry, {
-            "schemaVersion": "memory-os-backup-restore-drill-request-registry.v1",
-            "registryClass": "PRODUCTION_EQUIVALENT_BACKUP_RESTORE_DRILL_REQUESTS",
-            "appendOnly": True,
-            "registeredRequestCount": 1,
-            "currentExecutableRequestCount": 1,
-            "requests": [request],
-            "productionEvidence": False,
-            "productionReady": False,
-        })
+        write_json(drill_registry, drill_registry_value(request))
         record = fixture.base_record(commit_sha)
         overlay = fixture.typed_overlay_record(record["evidenceId"], commit_sha)
         write_json(overlay_registry, {
@@ -174,8 +179,22 @@ def main() -> int:
 
         write_json(generation_registry, baseline_generations)
         write_json(objectives_registry, baseline_objectives)
+        write_json(drill_registry, drill_registry_value(request))
         writer.validate_record(record)
         require(writer.candidate(record) is True, "baseline candidate must recover after isolated target supersession fixture reset")
+
+        replaced_approval_request = copy.deepcopy(request)
+        replaced_approval_request["approvalRefs"]["securityReview"] = request["approvalRefs"]["operabilityReview"]
+        write_json(drill_registry, drill_registry_value(replaced_approval_request))
+
+        writer.validate_record(record, require_current_drill_request=False)
+        require(writer.candidate(record) is False, "review approval path replacement must invalidate current candidate")
+        reject_current_registration(writer, record, "review approval path replacement")
+        print("PASS revoke: review approval path replacement invalidates candidate and new evidence")
+
+        write_json(drill_registry, drill_registry_value(request))
+        writer.validate_record(record)
+        require(writer.candidate(record) is True, "baseline candidate must recover after isolated approval replacement fixture reset")
 
         rolled_objectives = dict(baseline_objectives)
         rolled_objectives["approvedObjectiveCount"] = 2
@@ -197,12 +216,13 @@ def main() -> int:
         reject_current_registration(writer, record, "recovery objective rollover")
         print("PASS revoke: recovery objective rollover invalidates stale request candidate and new evidence")
 
-    print("Memory OS generation/objective rollover candidate negative suite PASS")
+    print("Memory OS generation/objective/request rollover candidate negative suite PASS")
     print("historical evidence remains auditable: true")
     print("superseded source generation creates current candidate: false")
     print("superseded restore-target generation creates current candidate: false")
+    print("replaced review approval path creates current candidate: false")
     print("stale recovery objective creates current candidate: false")
-    print("new evidence accepted against stale generation/objective authority: false")
+    print("new evidence accepted against stale generation/objective/request authority: false")
     print("canonical registries mutated: false")
     print("production evidence: false")
     print("production decision: NO_GO")
