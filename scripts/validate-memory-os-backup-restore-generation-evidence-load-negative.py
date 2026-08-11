@@ -70,6 +70,8 @@ def exercise_writer_module_containment(writer, tmp: Path, outside_dir: Path) -> 
     outside_module.write_text("VALUE = 1\n", encoding="utf-8")
     escaped_link = tmp / "escaped-writer.py"
     escaped_link.symlink_to(outside_module)
+    loop_link = tmp / "loop-writer.py"
+    loop_link.symlink_to(loop_link.name)
 
     original_drill_writer = writer.DRILL_REQUEST_WRITER
     original_non_resurrection_writer = writer.NON_RESURRECTION_WRITER
@@ -78,11 +80,15 @@ def exercise_writer_module_containment(writer, tmp: Path, outside_dir: Path) -> 
         expect_domain_fail("drill writer absolute path escapes repository", writer.load_drill_writer, writer.Fail)
         writer.DRILL_REQUEST_WRITER = escaped_link
         expect_domain_fail("drill writer repository symlink escapes repository", writer.load_drill_writer, writer.Fail)
+        writer.DRILL_REQUEST_WRITER = loop_link
+        expect_domain_fail("drill writer repository symlink loop", writer.load_drill_writer, writer.Fail)
 
         writer.NON_RESURRECTION_WRITER = outside_module
         expect_domain_fail("typed writer absolute path escapes repository", writer.load_non_resurrection_writer, writer.Fail)
         writer.NON_RESURRECTION_WRITER = escaped_link
         expect_domain_fail("typed writer repository symlink escapes repository", writer.load_non_resurrection_writer, writer.Fail)
+        writer.NON_RESURRECTION_WRITER = loop_link
+        expect_domain_fail("typed writer repository symlink loop", writer.load_non_resurrection_writer, writer.Fail)
     finally:
         writer.DRILL_REQUEST_WRITER = original_drill_writer
         writer.NON_RESURRECTION_WRITER = original_non_resurrection_writer
