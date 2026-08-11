@@ -34,8 +34,8 @@ def valid_count(value: Any) -> bool:
 def repo_relative(path: Path) -> Path:
     try:
         return path.resolve().relative_to(ROOT.resolve())
-    except ValueError as exc:
-        raise Fail(f"artifact path escapes repository root: {path}") from exc
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"artifact path missing, unreadable, or escapes repository root: {path}") from exc
 
 def canonical_repo_file_ref(value: Any, field: str) -> Path:
     require(isinstance(value, str) and value, f"{field} must be a non-empty repository-relative path")
