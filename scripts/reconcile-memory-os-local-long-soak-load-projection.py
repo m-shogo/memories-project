@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Derive the LOCAL_LONG_SOAK load projection from canonical local-only soak authority."""
+"""Reconcile local long-soak load authority without inventing a duplicate scenario ID."""
 
 from __future__ import annotations
 
@@ -12,20 +12,12 @@ ROOT = Path(__file__).resolve().parents[1]
 SOAK_PATH = ROOT / "contracts/operations/sustained-local-soak-contract.v1.json"
 LOAD_PATH = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
 
-SCENARIO_ID = "LOCAL_LONG_SOAK"
-EVIDENCE_REFS = [
-    "docs/fixtures/memory-os-operability/memory-os-rehearsal-sustained-soak-60s.attempts.json",
-    "docs/fixtures/memory-os-operability/memory-os-rehearsal-sustained-soak-3600s.attempts.json",
-]
-REPORT_OUTPUT = "docs/fixtures/memory-os-operability/memory-os-rehearsal-sustained-soak-3600s.attempts.json"
-RUNNER = "scripts/run-memory-os-sustained-local-soak.py"
-SEMANTIC_SUMMARY = "contracts/operations/load-test-semantic-summary.v1.json"
-PARAMETER_PROVENANCE = "contracts/operations/load-test-result-contract.v1.json"
-DESCRIPTIVE_STATUS = "DESCRIPTIVE_LOCAL_SOAK_COMPLETE"
-REMAINING_SCOPE = (
-    "Local 60-second and 3600-second bounded runs are registered as descriptive non-production evidence only; "
-    "production-equivalent sustained soak, leak proof, capacity approval and threshold approval remain absent."
-)
+SCENARIO_ID = "mixed-import-lifecycle-local-long-soak"
+LEGACY_ALIAS_ID = "LOCAL_LONG_SOAK"
+CONTRACT_REF = "contracts/operations/sustained-local-soak-contract.v1.json"
+VALIDATOR_REF = "scripts/validate-memory-os-sustained-local-soak-aggregate.py"
+DEPENDENCY_MODE = "LOCAL_POSTGRES_MINIO"
+CLASSIFICATION = "LOCAL_LONG_SOAK"
 
 
 class Fail(RuntimeError):
@@ -47,6 +39,40 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def assert_local_only_boundary(row: dict[str, Any]) -> None:
+    require(row.get("scenarioId") == SCENARIO_ID, "local long-soak projection must use the canonical scenarioId")
+    require(row.get("contractRef") == CONTRACT_REF, f"{SCENARIO_ID} contractRef drift")
+    require(row.get("validatorRef") == VALIDATOR_REF, f"{SCENARIO_ID} validatorRef drift")
+    require(row.get("dependencyMode") == DEPENDENCY_MODE, f"{SCENARIO_ID} dependencyMode drift")
+    require(row.get("classification") == CLASSIFICATION, f"{SCENARIO_ID} classification drift")
+    require(row.get("productionEvidence") is False, f"{SCENARIO_ID} productionEvidence must remain false")
+    for key in (
+        "productionSustainedSoakEvidence",
+        "leakProof",
+        "capacityBoundaryEstablished",
+        "operationalThresholdApproved",
+    ):
+        require(row.get(key) is False, f"{SCENARIO_ID} must keep {key}=false")
+    require(isinstance(row.get("localSustainedSoakEvidence"), bool), f"{SCENARIO_ID} local evidence flag must be boolean")
+
+
+def derived_row(*, local_evidence: bool) -> dict[str, Any]:
+    return {
+        "scenarioId": SCENARIO_ID,
+        "contractRef": CONTRACT_REF,
+        "validatorRef": VALIDATOR_REF,
+        "dependencyMode": DEPENDENCY_MODE,
+        "classification": CLASSIFICATION,
+        "productionEvidence": False,
+        "localSustainedSoakEvidence": local_evidence,
+        "productionSustainedSoakEvidence": False,
+        "leakProof": False,
+        "capacityBoundaryEstablished": False,
+        "operationalThresholdApproved": False,
+    }
+
+
+def assert_legacy_alias_safe_to_remove(row: dict[str, Any]) -> None:
+    require(row.get("scenarioId") == LEGACY_ALIAS_ID, "legacy alias identity drift")
     for key in (
         "productionEvidence",
         "productionSustainedSoakEvidence",
@@ -54,43 +80,12 @@ def assert_local_only_boundary(row: dict[str, Any]) -> None:
         "capacityApproved",
         "thresholdsApproved",
     ):
-        require(row.get(key) is False, f"{SCENARIO_ID} existing row must keep {key}=false")
+        require(row.get(key) is False, f"legacy {LEGACY_ALIAS_ID} row must keep {key}=false before removal")
     metadata = row.get("runMetadata")
-    require(isinstance(metadata, dict), f"{SCENARIO_ID} existing row runMetadata missing")
+    require(isinstance(metadata, dict), f"legacy {LEGACY_ALIAS_ID} row runMetadata missing")
     for key in ("productionEquivalent", "productionTraffic", "productionCredentials", "productionEvidence"):
-        require(metadata.get(key) is False, f"{SCENARIO_ID} existing row must keep runMetadata.{key}=false")
-    require(metadata.get("approvalAuthority") == "NONE", f"{SCENARIO_ID} existing row must not claim approval authority")
-
-
-def derived_row() -> dict[str, Any]:
-    return {
-        "scenarioId": SCENARIO_ID,
-        "environment": "local-sustained-soak",
-        "attemptLayout": "30s, 60s and 3600s bounded local long-soak receipts",
-        "evidenceRefs": EVIDENCE_REFS,
-        "reportOutput": REPORT_OUTPUT,
-        "executedRunner": RUNNER,
-        "semanticSummaryRef": SEMANTIC_SUMMARY,
-        "semanticStatus": DESCRIPTIVE_STATUS,
-        "parameterProvenanceRef": PARAMETER_PROVENANCE,
-        "parameterProvenanceStatus": DESCRIPTIVE_STATUS,
-        "outcome": DESCRIPTIVE_STATUS,
-        "productionEvidence": False,
-        "productionSustainedSoakEvidence": False,
-        "leakProof": False,
-        "capacityApproved": False,
-        "thresholdsApproved": False,
-        "remainingScope": REMAINING_SCOPE,
-        "runMetadata": {
-            "executionClass": SCENARIO_ID,
-            "environmentClass": "local",
-            "productionEquivalent": False,
-            "productionTraffic": False,
-            "productionCredentials": False,
-            "productionEvidence": False,
-            "approvalAuthority": "NONE",
-        },
-    }
+        require(metadata.get(key) is False, f"legacy {LEGACY_ALIAS_ID} row must keep runMetadata.{key}=false before removal")
+    require(metadata.get("approvalAuthority") == "NONE", f"legacy {LEGACY_ALIAS_ID} row must not claim approval authority")
 
 
 def main() -> int:
@@ -104,15 +99,19 @@ def main() -> int:
 
     readiness = soak.get("readiness")
     require(isinstance(readiness, dict), "sustained local soak readiness missing")
-    eligible = all(
-        readiness.get(key) is True
-        for key in (
-            "firstLongRunCommitted",
-            "secondIndependentLongRunCommitted",
-            "trendReviewCompleted",
-            "localSustainedSoakEvidence",
-        )
-    )
+    first_run = readiness.get("firstLongRunCommitted")
+    second_run = readiness.get("secondIndependentLongRunCommitted")
+    trend_review = readiness.get("trendReviewCompleted")
+    local_evidence = readiness.get("localSustainedSoakEvidence")
+    for key, value in (
+        ("firstLongRunCommitted", first_run),
+        ("secondIndependentLongRunCommitted", second_run),
+        ("trendReviewCompleted", trend_review),
+        ("localSustainedSoakEvidence", local_evidence),
+    ):
+        require(isinstance(value, bool), f"sustained local soak readiness.{key} must be boolean")
+    if local_evidence:
+        require(first_run and second_run and trend_review, "local sustained-soak evidence requires two long runs and trend review")
     for key in (
         "productionSustainedSoakEvidence",
         "leakProofAvailable",
@@ -125,26 +124,28 @@ def main() -> int:
 
     rows = load_contract.get("externalExecutedScenarios")
     require(isinstance(rows, list), "externalExecutedScenarios must be a list")
-    matches = [row for row in rows if isinstance(row, dict) and row.get("scenarioId") == SCENARIO_ID]
-    require(len(matches) <= 1, f"duplicate {SCENARIO_ID} projection rows are forbidden")
-    if matches:
-        assert_local_only_boundary(matches[0])
+    canonical = [row for row in rows if isinstance(row, dict) and row.get("scenarioId") == SCENARIO_ID]
+    legacy = [row for row in rows if isinstance(row, dict) and row.get("scenarioId") == LEGACY_ALIAS_ID]
+    require(len(canonical) <= 1, f"duplicate {SCENARIO_ID} rows are forbidden")
+    require(len(legacy) <= 1, f"duplicate legacy {LEGACY_ALIAS_ID} rows are forbidden")
+    if canonical:
+        assert_local_only_boundary(canonical[0])
+    if legacy:
+        assert_legacy_alias_safe_to_remove(legacy[0])
 
-    rebuilt: list[Any] = []
-    replaced = False
-    for row in rows:
-        if isinstance(row, dict) and row.get("scenarioId") == SCENARIO_ID:
-            if eligible:
-                rebuilt.append(derived_row())
-                replaced = True
-            continue
-        rebuilt.append(row)
-    if eligible and not replaced:
-        rebuilt.append(derived_row())
+    rebuilt = [
+        row
+        for row in rows
+        if not (isinstance(row, dict) and row.get("scenarioId") in {SCENARIO_ID, LEGACY_ALIAS_ID})
+    ]
+    if first_run:
+        rebuilt.append(derived_row(local_evidence=local_evidence))
 
     load_contract["externalExecutedScenarios"] = rebuilt
     LOAD_PATH.write_text(json.dumps(load_contract, indent=2) + "\n", encoding="utf-8")
-    print(f"{SCENARIO_ID} load projection reconciled: {'registered' if eligible else 'withheld'}")
+    print(f"{SCENARIO_ID} load projection reconciled: {'registered' if first_run else 'withheld'}")
+    print(f"legacy {LEGACY_ALIAS_ID} alias present after reconcile: false")
+    print(f"local sustained-soak evidence: {str(local_evidence).lower()}")
     print("production evidence: false")
     print("production readiness: false")
     return 0
