@@ -96,6 +96,27 @@ def generation_record(evidence_id: Any) -> dict[str, Any]:
     require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "generation evidence registry records invalid")
     count = registry.get("registeredEvidenceCount")
     require(valid_count(count) and count == len(rows), "generation evidence registry registeredEvidenceCount drift")
+    if GEN_EVIDENCE_REGISTRY == CANONICAL_GEN_EVIDENCE_REGISTRY:
+        bound_count = registry.get("drillRequestBoundEvidenceCount")
+        backup_count = registry.get("completeGenerationBoundBackupCount")
+        restore_count = registry.get("completeGenerationBoundRestoreCount")
+        candidate_count = registry.get("productionEquivalentRecoveryCandidateCount")
+        require(
+            all(valid_count(value) for value in (bound_count, backup_count, restore_count, candidate_count)),
+            "generation evidence registry derived counts invalid",
+        )
+        derived_backup = sum(1 for row in rows if row.get("evidenceComplete") is True)
+        derived_restore = sum(
+            1
+            for row in rows
+            if row.get("evidenceComplete") is True
+            and row.get("isolatedRestoreVerified") is True
+            and row.get("restoredBackupArtifactSha256") == row.get("backupArtifactSha256")
+        )
+        require(bound_count == count, "generation evidence registry drillRequestBoundEvidenceCount drift")
+        require(backup_count == derived_backup, "generation evidence registry completeGenerationBoundBackupCount drift")
+        require(restore_count == derived_restore, "generation evidence registry completeGenerationBoundRestoreCount drift")
+        require(0 <= candidate_count <= restore_count <= backup_count <= bound_count <= count, "generation evidence registry count ordering invalid")
     evidence_ids = [row.get("evidenceId") for row in rows]
     require(all(isinstance(value, str) and value for value in evidence_ids) and len(evidence_ids) == len(set(evidence_ids)), "generation evidence registry evidenceId authority invalid")
     matches = [row for row in rows if row.get("evidenceId") == evidence_id]
