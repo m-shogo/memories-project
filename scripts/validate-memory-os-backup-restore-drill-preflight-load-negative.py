@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
-"""Prove restore-drill preflight authority loading fails closed on unreadable repo-local inputs."""
+"""Prove restore-drill preflight authority loading and reconcile rollback fail closed."""
 
 from __future__ import annotations
 
 import importlib.util
+import shutil
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-drill-preflight.py"
+CANONICAL_CONTRACT = ROOT / "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
+CANONICAL_STATUS = ROOT / "contracts/operations/production-operability-status.json"
 TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 
 
@@ -42,9 +46,42 @@ def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[
     raise Fail(f"negative case unexpectedly accepted: {name}")
 
 
+def prove_transactional_rollback(reconciler: object, tmp: Path) -> None:
+    contract = tmp / "preflight-contract.json"
+    status = tmp / "production-operability-status.json"
+    shutil.copyfile(CANONICAL_CONTRACT, contract)
+    shutil.copyfile(CANONICAL_STATUS, status)
+    before_contract = contract.read_bytes()
+    before_status = status.read_bytes()
+
+    original_contract = reconciler.CONTRACT
+    original_status = reconciler.STATUS
+    original_run = reconciler.subprocess.run
+    reconciler.CONTRACT = contract
+    reconciler.STATUS = status
+    reconciler.subprocess.run = lambda *args, **kwargs: SimpleNamespace(
+        returncode=1,
+        stdout="forced post-reconcile validator failure",
+        stderr="",
+    )
+    try:
+        expect_domain_fail("forced post-reconcile validation failure", reconciler.main, reconciler.Fail)
+    finally:
+        reconciler.CONTRACT = original_contract
+        reconciler.STATUS = original_status
+        reconciler.subprocess.run = original_run
+
+    require(contract.read_bytes() == before_contract, "preflight contract was not rolled back byte-for-byte")
+    require(status.read_bytes() == before_status, "production status was not rolled back byte-for-byte")
+    print("PASS rollback: preflight contract restored byte-for-byte")
+    print("PASS rollback: production status restored byte-for-byte")
+
+
 def main() -> int:
     require(VALIDATOR.is_file(), "preflight validator missing")
     require(RECONCILER.is_file(), "preflight reconciler missing")
+    require(CANONICAL_CONTRACT.is_file(), "preflight contract missing")
+    require(CANONICAL_STATUS.is_file(), "production status missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
     validator = load_module(VALIDATOR, "memory_os_restore_drill_preflight_load_negative")
     reconciler = load_module(RECONCILER, "memory_os_restore_drill_preflight_reconcile_load_negative")
@@ -62,13 +99,18 @@ def main() -> int:
         expect_domain_fail("preflight authority path is unreadable directory", lambda: validator.load(directory_authority), validator.Fail)
         expect_domain_fail("preflight reconcile authority path is unreadable directory", lambda: reconciler.load(directory_authority), reconciler.Fail)
 
+        prove_transactional_rollback(reconciler, tmp)
+
     escaped = Path("/tmp/memory-os-preflight-reconcile-escaped.json")
     expect_domain_fail("preflight reconcile authority path escapes repository", lambda: reconciler.load(escaped), reconciler.Fail)
 
-    print("Preflight unreadable-authority negative suite PASS")
+    print("Preflight unreadable-authority and reconcile rollback negative suite PASS")
     print("reconciler invalid UTF-8 authority leaked raw exception: false")
     print("reconciler unreadable directory authority leaked raw exception: false")
     print("reconciler escaped authority accepted: false")
+    print("failed post-validation leaves derived authority mutation behind: false")
+    print("production evidence created: false")
+    print("production decision: NO_GO")
     return 0
 
 
