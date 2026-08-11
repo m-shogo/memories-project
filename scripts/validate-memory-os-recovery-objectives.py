@@ -55,7 +55,7 @@ def repo_file(value: Any, field: str) -> Path:
     path = ROOT / relative
     try:
         resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
-    except (FileNotFoundError, OSError, ValueError) as exc:
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"contract artifact missing or escapes repository: {field}") from exc
     require(resolved == relative and path.is_file(), f"contract artifact must resolve to canonical repository file: {field}")
     return path
