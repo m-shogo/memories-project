@@ -63,18 +63,34 @@ def require_repo_file(path: Path, message: str) -> Path:
     return relative
 
 
+def read_text(path: Path) -> str:
+    relative = repo_relative(path)
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise Fail(f"cannot read {relative}: {exc}") from exc
+
+
+def write_text(path: Path, text: str) -> None:
+    relative = repo_relative(path)
+    try:
+        path.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        raise Fail(f"cannot write {relative}: {exc}") from exc
+
+
 def load(path: Path) -> dict[str, Any]:
     relative = repo_relative(path)
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError, OSError) as exc:
+        value = json.loads(read_text(path))
+    except json.JSONDecodeError as exc:
         raise Fail(f"cannot load {relative}: {exc}") from exc
     require(isinstance(value, dict), f"root must be object: {relative}")
     return value
 
 
 def load_module(path: Path, name: str):
-    relative = repo_relative(path)
+    relative = require_repo_file(path, f"module missing: {path.name}")
     spec = importlib.util.spec_from_file_location(name, path)
     require(spec is not None and spec.loader is not None, f"cannot load {relative}")
     try:
@@ -109,16 +125,21 @@ def expected_decision(
 
 
 def main() -> int:
-    require_repo_file(CONTRACT, "drill request contract missing")
-    require_repo_file(REGISTRY, "drill request registry missing")
-    require_repo_file(STATUS, "operability status missing")
-    require_repo_file(VALIDATOR, "drill request validator missing")
-    require_repo_file(WRITER, "drill request writer missing")
-    require_repo_file(ELIGIBILITY_HELPER, "semantic generation eligibility helper missing")
+    for path, message in (
+        (CONTRACT, "drill request contract missing"),
+        (REGISTRY, "drill request registry missing"),
+        (GEN_REGISTRY, "environment generation registry missing"),
+        (OBJECTIVES_REGISTRY, "recovery objectives registry missing"),
+        (STATUS, "operability status missing"),
+        (VALIDATOR, "drill request validator missing"),
+        (WRITER, "drill request writer missing"),
+        (ELIGIBILITY_HELPER, "semantic generation eligibility helper missing"),
+    ):
+        require_repo_file(path, message)
 
-    original_contract_text = CONTRACT.read_text(encoding="utf-8")
-    original_registry_text = REGISTRY.read_text(encoding="utf-8")
-    original_status_text = STATUS.read_text(encoding="utf-8")
+    original_contract_text = read_text(CONTRACT)
+    original_registry_text = read_text(REGISTRY)
+    original_status_text = read_text(STATUS)
 
     contract = load(CONTRACT)
     registry = load(REGISTRY)
@@ -209,13 +230,7 @@ def main() -> int:
     state["approvedRecoveryObjectiveCount"] = objective_count
     state["registeredRequestCount"] = request_count
     state["currentExecutableRequestCount"] = executable_count
-    state["admissionDecision"] = expected_decision(
-        generation_count,
-        eligible_pair_count,
-        current_objective_available,
-        request_count,
-        executable_count,
-    )
+    state["admissionDecision"] = expected_decision(generation_count, eligible_pair_count, current_objective_available, request_count, executable_count)
     state["productionEvidence"] = False
     state["productionReady"] = False
     state["productionDecision"] = "NO_GO"
@@ -245,17 +260,15 @@ def main() -> int:
         append_once(refs, ref)
 
     try:
-        REGISTRY.write_text(json.dumps(registry, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        CONTRACT.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-
+        write_text(REGISTRY, json.dumps(registry, indent=2, ensure_ascii=False) + "\n")
+        write_text(CONTRACT, json.dumps(contract, indent=2, ensure_ascii=False) + "\n")
+        write_text(STATUS, json.dumps(status, indent=2, ensure_ascii=False) + "\n")
         completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-        if completed.returncode != 0:
-            raise Fail(f"post-reconcile drill request validator failed:\n{completed.stdout[-5000:]}{completed.stderr[-5000:]}")
+        require(completed.returncode == 0, f"post-reconcile drill request validator failed:\n{completed.stdout[-5000:]}{completed.stderr[-5000:]}")
     except Exception:
-        REGISTRY.write_text(original_registry_text, encoding="utf-8")
-        CONTRACT.write_text(original_contract_text, encoding="utf-8")
-        STATUS.write_text(original_status_text, encoding="utf-8")
+        write_text(REGISTRY, original_registry_text)
+        write_text(CONTRACT, original_contract_text)
+        write_text(STATUS, original_status_text)
         raise
 
     print("Memory OS backup/restore drill request authority reconciliation PASS")
@@ -270,6 +283,7 @@ def main() -> int:
     print(f"currently executable requests: {executable_count}")
     print(f"admission decision: {state['admissionDecision']}")
     print("authority paths contained inside repository: true")
+    print("invalid UTF-8 authority accepted: false")
     print("failed post-validation leaves registry/contract/status mutation behind: false")
     print("boolean generation/objective aggregate counts accepted: false")
     print("registered generation or historical objective count alone creates planning authority: false")
