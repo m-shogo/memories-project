@@ -75,6 +75,33 @@ def main() -> int:
     writer = load_module(WRITER, "memory_os_non_resurrection_writer")
     generation_writer = load_module(GEN_WRITER, "memory_os_generation_recovery_writer_overlay")
 
+    typed_writer_authorities = (
+        ("CONTRACT", "CANONICAL_CONTRACT", CONTRACT, "typed non-resurrection contract"),
+        ("REGISTRY", "CANONICAL_REGISTRY", REGISTRY, "typed non-resurrection registry"),
+        ("GEN_EVIDENCE_REGISTRY", "CANONICAL_GEN_EVIDENCE_REGISTRY", GEN_REGISTRY, "generation evidence registry"),
+    )
+    for runtime_name, canonical_name, expected_path, field in typed_writer_authorities:
+        runtime_path = getattr(writer, runtime_name, None)
+        canonical_path = getattr(writer, canonical_name, None)
+        require(runtime_path == expected_path, f"typed writer runtime authority drift: {runtime_name}")
+        require(canonical_path == expected_path, f"typed writer canonical authority drift: {canonical_name}")
+        writer.require_canonical_runtime_authority(runtime_path, canonical_path, field)
+
+    generation_writer_authorities = (
+        ("CONTRACT", GEN_CONTRACT, "generation evidence contract"),
+        ("REGISTRY", GEN_REGISTRY, "generation evidence registry"),
+        ("NON_RESURRECTION_CONTRACT", CONTRACT, "typed non-resurrection contract"),
+        ("CANONICAL_NON_RESURRECTION_CONTRACT", CONTRACT, "canonical typed non-resurrection contract"),
+        ("NON_RESURRECTION_REGISTRY", REGISTRY, "typed non-resurrection registry"),
+        ("CANONICAL_NON_RESURRECTION_REGISTRY", REGISTRY, "canonical typed non-resurrection registry"),
+    )
+    for name, expected_path, field in generation_writer_authorities:
+        require(getattr(generation_writer, name, None) == expected_path, f"generation writer typed-overlay authority drift: {name}")
+        if hasattr(generation_writer, "canonical_repo_file") and expected_path.is_file():
+            generation_writer.canonical_repo_file(expected_path, field)
+    require(getattr(generation_writer, "NON_RESURRECTION_WRITER", None) == WRITER, "generation writer typed overlay executable drift")
+    generation_writer.canonical_repo_file(WRITER, "typed non-resurrection writer")
+
     require(contract.get("schemaVersion") == "memory-os-backup-restore-non-resurrection-admission.v1", "contract schema drift")
     for field in ("registry", "generationEvidenceRegistry", "writer", "validator", "negativeAdmissionValidator", "reconcile", "workflow"):
         canonical_repo_file_ref(contract.get(field), f"contract.{field}")
@@ -173,6 +200,7 @@ def main() -> int:
     print(f"typed records: {count}")
     print(f"final production-equivalent recovery candidates: {len(final_candidate_ids)}")
     print(f"pending typed coverage: {len(pending_typed_ids)}")
+    print("typed/generation writer canonical cross-authority binding without records: enforced")
     print("boolean typed/generation/boundary counts accepted: false")
     print("generic PASS candidate bypass: false")
     print("production evidence: false")
