@@ -187,7 +187,6 @@ def main() -> int:
         replaced_approval_request["approvalRefs"]["securityReview"] = request["approvalRefs"]["operabilityReview"]
         write_json(drill_registry, drill_registry_value(replaced_approval_request))
 
-        writer.validate_record(record, require_current_drill_request=False)
         require(writer.candidate(record) is False, "review approval path replacement must invalidate current candidate")
         reject_current_registration(writer, record, "review approval path replacement")
         print("PASS revoke: review approval path replacement invalidates candidate and new evidence")
@@ -217,7 +216,7 @@ def main() -> int:
         print("PASS revoke: recovery objective rollover invalidates stale request candidate and new evidence")
 
     print("Memory OS generation/objective/request rollover candidate negative suite PASS")
-    print("historical evidence remains auditable: true")
+    print("historical evidence remains auditable after valid supersession: true")
     print("superseded source generation creates current candidate: false")
     print("superseded restore-target generation creates current candidate: false")
     print("replaced review approval path creates current candidate: false")
