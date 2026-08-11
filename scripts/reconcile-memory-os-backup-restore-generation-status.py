@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -37,10 +38,39 @@ REFS = (
 )
 
 
+class Fail(RuntimeError):
+    pass
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise Fail(message)
+
+
+def valid_count(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def repo_relative(path: Path) -> Path:
+    try:
+        return path.resolve(strict=False).relative_to(ROOT.resolve())
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"authority path escapes repository: {path}") from exc
+
+
+def require_repo_file(path: Path, message: str) -> Path:
+    relative = repo_relative(path)
+    require((ROOT / relative).is_file(), message)
+    return relative
+
+
 def load(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(value, dict):
-        raise SystemExit(f"root must be object: {path.relative_to(ROOT)}")
+    relative = repo_relative(path)
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise Fail(f"cannot load {relative}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be object: {relative}")
     return value
 
 
@@ -49,8 +79,20 @@ def append_once(items: list[Any], value: str) -> None:
         items.append(value)
 
 
+def run_validator(path: Path, label: str) -> None:
+    relative = require_repo_file(path, f"{label} missing")
+    completed = subprocess.run(["python", str(ROOT / relative)], cwd=ROOT, check=False)
+    if completed.returncode != 0:
+        raise Fail(f"{label} failed with exit code {completed.returncode}")
+
+
 def main() -> int:
-    subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=True)
+    require_repo_file(CONTRACT, "generation binding contract missing")
+    require_repo_file(VALIDATOR, "generation binding validator missing")
+    require_repo_file(BACKUP_VALIDATOR, "backup validator missing")
+    require_repo_file(STATUS, "production operability status missing")
+    run_validator(VALIDATOR, "generation binding validator")
+
     contract = load(CONTRACT)
     boundary = contract.get("currentBoundary", {})
     generation_count = boundary.get("registeredProductionEquivalentGenerationCount")
@@ -63,64 +105,54 @@ def main() -> int:
         (restore_count, "generationBoundRestoreCount"),
         (candidate_count, "productionEquivalentRecoveryCandidateCount"),
     ):
-        if not isinstance(value, int) or value < 0:
-            raise SystemExit(f"invalid restore generation boundary count: {field}")
-    if not (candidate_count <= restore_count <= backup_count):
-        raise SystemExit("restore generation boundary count ordering drift")
-    if boundary.get("productionEquivalentRestoreEvidence") is not (candidate_count > 0):
-        raise SystemExit("production-equivalent restore evidence derivation drift")
-    if boundary.get("independentReviewCompleted") is not (candidate_count > 0):
-        raise SystemExit("candidate-level independent evidence review derivation drift")
+        require(valid_count(value), f"invalid restore generation boundary count: {field}")
+    require(candidate_count <= restore_count <= backup_count, "restore generation boundary count ordering drift")
+    require(boundary.get("productionEquivalentRestoreEvidence") is (candidate_count > 0), "production-equivalent restore evidence derivation drift")
+    require(boundary.get("independentReviewCompleted") is (candidate_count > 0), "candidate-level independent evidence review derivation drift")
     for key in ("humanProductionPromotionReviewCompleted", "humanProductionPromotionAuthorized", "productionEvidence", "productionReady"):
-        if boundary.get(key) is not False:
-            raise SystemExit(f"restore foundation cannot enable {key}")
-    if boundary.get("productionDecision") != "NO_GO":
-        raise SystemExit("restore foundation cannot change production decision")
+        require(boundary.get(key) is False, f"restore foundation cannot enable {key}")
+    require(boundary.get("productionDecision") == "NO_GO", "restore foundation cannot change production decision")
 
     status = load(STATUS)
-    if status.get("productionDecision") != "NO_GO":
-        raise SystemExit("productionDecision must remain NO_GO")
+    require(status.get("productionDecision") == "NO_GO", "productionDecision must remain NO_GO")
     areas = status.get("areas")
-    if not isinstance(areas, list):
-        raise SystemExit("operability areas missing")
+    require(isinstance(areas, list), "operability areas missing")
     observability = next((item for item in areas if isinstance(item, dict) and item.get("id") == "OPS-P0-003"), None)
     backup = next((item for item in areas if isinstance(item, dict) and item.get("id") == "OPS-P0-007"), None)
-    if not isinstance(observability, dict) or not isinstance(backup, dict):
-        raise SystemExit("OPS-P0-003 or OPS-P0-007 missing")
-    if backup.get("status") not in {"PARTIAL_FOUNDATIONS_ONLY", "PARTIAL"} or backup.get("blocking") is not True:
-        raise SystemExit("OPS-P0-007 must remain blocking and incomplete")
-    require_canonical_gaps(backup.get("missingEvidence"), SystemExit)
+    require(isinstance(observability, dict) and isinstance(backup, dict), "OPS-P0-003 or OPS-P0-007 missing")
+    require(backup.get("status") in {"PARTIAL_FOUNDATIONS_ONLY", "PARTIAL"} and backup.get("blocking") is True, "OPS-P0-007 must remain blocking and incomplete")
+    require_canonical_gaps(backup.get("missingEvidence"), Fail)
 
-    # Repair historical misclassification if the old reconciler ever wrote to
-    # observability. Do not remove any unrelated observability authority.
     obs_existing = observability.get("existingEvidence")
     obs_refs = observability.get("evidenceRefs")
-    if not isinstance(obs_existing, list) or not isinstance(obs_refs, list):
-        raise SystemExit("OPS-P0-003 authority arrays missing")
+    require(isinstance(obs_existing, list) and isinstance(obs_refs, list), "OPS-P0-003 authority arrays missing")
     observability["existingEvidence"] = [item for item in obs_existing if item != EVIDENCE]
     observability["evidenceRefs"] = [ref for ref in obs_refs if ref not in set(REFS)]
 
     existing = backup.get("existingEvidence")
     refs = backup.get("evidenceRefs")
-    if not isinstance(existing, list) or not isinstance(refs, list):
-        raise SystemExit("OPS-P0-007 authority arrays missing")
-    # Replace older wording for this authority without touching unrelated evidence.
+    require(isinstance(existing, list) and isinstance(refs, list), "OPS-P0-007 authority arrays missing")
     prefix = "future production-equivalent restore promotion is generation-bound:"
     existing[:] = [item for item in existing if not (isinstance(item, str) and item.startswith(prefix))]
     append_once(existing, EVIDENCE)
     for ref in REFS:
-        if not (ROOT / ref).is_file():
-            raise SystemExit(f"missing restore-generation ref: {ref}")
+        ref_path = Path(ref)
+        require(not ref_path.is_absolute() and ".." not in ref_path.parts, f"restore-generation ref must be canonical repository-relative path: {ref}")
+        relative = require_repo_file(ROOT / ref_path, f"missing restore-generation ref: {ref}")
+        require(relative == ref_path, f"restore-generation ref resolution drift: {ref}")
         append_once(refs, ref)
 
-    # This layer may register generation-binding evidence, but it cannot create,
-    # normalize, rewrite, remove, merge, or otherwise reinterpret production gaps.
-    require_canonical_gaps(backup.get("missingEvidence"), SystemExit)
-    if status.get("productionDecision") != "NO_GO":
-        raise SystemExit("productionDecision changed unexpectedly")
+    require_canonical_gaps(backup.get("missingEvidence"), Fail)
+    require(status.get("productionDecision") == "NO_GO", "productionDecision changed unexpectedly")
 
-    STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    subprocess.run(["python", str(BACKUP_VALIDATOR)], cwd=ROOT, check=True)
+    original_status = STATUS.read_bytes()
+    try:
+        STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        run_validator(BACKUP_VALIDATOR, "backup validator")
+    except Exception:
+        STATUS.write_bytes(original_status)
+        raise
+
     print("Memory OS backup/restore generation status reconciliation PASS")
     print("misclassified OPS-P0-003 restore evidence: removed")
     print("generation binding foundation: registered under OPS-P0-007")
@@ -135,4 +167,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except Fail as exc:
+        print(f"BACKUP RESTORE GENERATION STATUS RECONCILE FAILED: {exc}", file=sys.stderr)
+        raise SystemExit(1)
