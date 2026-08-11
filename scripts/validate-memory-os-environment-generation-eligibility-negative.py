@@ -22,12 +22,14 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
-def expect_rejected(name: str, action: Callable[[], Any], failure_type: type[Exception]) -> None:
+def expect_rejected(name: str, action: Callable[[], Any], failure_type: type[BaseException]) -> None:
     try:
         action()
     except failure_type:
         print(f"PASS reject: {name}")
         return
+    except Exception as exc:
+        raise Fail(f"{name} leaked non-domain exception: {type(exc).__name__}: {exc}") from exc
     raise Fail(f"negative case unexpectedly accepted: {name}")
 
 
@@ -92,6 +94,25 @@ def derive_registry(helper, value: dict[str, Any]) -> dict[str, Any]:
 def main() -> int:
     require(HELPER.is_file(), "generation eligibility helper missing")
     helper = load_helper()
+    require(helper.canonical_repo_file(helper.GEN_WRITER, "generation writer") == helper.GEN_WRITER, "canonical generation writer rejected")
+
+    with tempfile.TemporaryDirectory(prefix="memory-os-generation-writer-outside-") as outside_tmp:
+        outside_writer = Path(outside_tmp) / "outside-generation-writer.py"
+        outside_writer.write_text("VALUE = 1\n", encoding="utf-8")
+        escaped_link = ROOT / ".tmp-generation-eligibility-writer-escape.py"
+        original_writer = helper.GEN_WRITER
+        try:
+            helper.GEN_WRITER = outside_writer
+            expect_rejected("semantic generation writer absolute path escapes repository", helper.load_generation_writer, helper.Fail)
+            escaped_link.symlink_to(outside_writer)
+            helper.GEN_WRITER = escaped_link
+            expect_rejected("semantic generation writer symlink escapes repository", helper.load_generation_writer, helper.Fail)
+        finally:
+            helper.GEN_WRITER = original_writer
+            try:
+                escaped_link.unlink()
+            except FileNotFoundError:
+                pass
 
     with tempfile.TemporaryDirectory(prefix="memory-os-generation-eligibility-io-negative-") as tmp:
         malformed = Path(tmp) / "registry-invalid-utf8.json"
@@ -224,6 +245,7 @@ def main() -> int:
     print("current generation pointer drift accepted: false")
     print("boolean registered generation counts accepted: false")
     print("malformed or missing generation registries accepted: false")
+    print("generation writer import escape accepted: false")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
