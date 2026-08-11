@@ -183,10 +183,35 @@ def drill_request_for_record(record: dict[str, Any], *, require_current: bool) -
     require(registry.get("productionEvidence") is False and registry.get("productionReady") is False, "drill request registry production boundary drift")
     rows = registry.get("requests")
     require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "drill request registry rows invalid")
+    registered_count = registry.get("registeredRequestCount")
+    current_count = registry.get("currentExecutableRequestCount")
+    require(
+        isinstance(registered_count, int) and not isinstance(registered_count, bool) and registered_count == len(rows),
+        "drill request registry registeredRequestCount drift",
+    )
+    require(isinstance(current_count, int) and not isinstance(current_count, bool), "drill request registry currentExecutableRequestCount invalid")
+
+    drill_writer = load_drill_writer()
+    current_executable = 0
+    for index, row in enumerate(rows):
+        try:
+            drill_writer.validate_request(row, require_current=False)
+        except Exception as exc:
+            if domain_validation_failure(exc):
+                raise Fail(f"drill request registry requests[{index}] historical authority invalid") from exc
+            raise
+        try:
+            drill_writer.validate_request(row, require_current=True)
+        except Exception as exc:
+            if domain_validation_failure(exc):
+                continue
+            raise
+        current_executable += 1
+    require(current_count == current_executable, "drill request registry currentExecutableRequestCount drift")
+
     matches = [row for row in rows if row.get("requestId") == request_id]
     require(len(matches) == 1, "drillRequestId is not uniquely registered")
     request = matches[0]
-    drill_writer = load_drill_writer()
     drill_writer.validate_request(request, require_current=require_current)
     require(request.get("sourceEnvironmentGenerationId") == record.get("sourceEnvironmentGenerationId"), "drill request source generation mismatch")
     require(request.get("sourceEnvironmentManifestSha256") == record.get("sourceEnvironmentManifestSha256"), "drill request source manifest mismatch")
