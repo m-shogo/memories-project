@@ -71,6 +71,14 @@ def read_text(path: Path) -> str:
         raise Fail(f"cannot read {relative}: {exc}") from exc
 
 
+def write_text(path: Path, text: str) -> None:
+    relative = repo_relative(path)
+    try:
+        path.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        raise Fail(f"cannot write {relative}: {exc}") from exc
+
+
 def load(path: Path) -> dict[str, Any]:
     relative = repo_relative(path)
     try:
@@ -99,12 +107,19 @@ def append_once(values: list[Any], value: str) -> None:
 
 
 def main() -> int:
+    original_text = {
+        REGISTRY: read_text(REGISTRY),
+        CONTRACT: read_text(CONTRACT),
+        BINDING: read_text(BINDING),
+        STATUS: read_text(STATUS),
+    }
     contract = load(CONTRACT)
     registry = load(REGISTRY)
     gen_registry = load(GEN_REGISTRY)
     objectives_registry = load(OBJECTIVES_REGISTRY)
     drill_registry = load(DRILL_REGISTRY)
     binding = load(BINDING)
+    status = load(STATUS)
     writer = load_writer()
 
     rows = registry.get("records")
@@ -120,7 +135,6 @@ def main() -> int:
     require(isinstance(drill_rows, list) and drill_count == len(drill_rows), "drill request registry count drift")
     require(current_drill_count <= drill_count, "current drill request count invalid")
 
-    # Re-derive every mutable counter from immutable append-only evidence.
     for row in rows:
         writer.validate_record(row, require_current_drill_request=False)
     bound_count = len(rows)
@@ -153,7 +167,6 @@ def main() -> int:
         "historical generation evidence remains auditable after its drill request becomes stale, but it immediately stops qualifying as a current recovery candidate",
     ):
         append_once(limitations, text)
-    REGISTRY.write_text(json.dumps(registry, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     boundary = contract.get("currentBoundary")
     readiness = contract.get("readiness")
@@ -182,7 +195,6 @@ def main() -> int:
     readiness["independentReviewCompleted"] = candidate_count > 0
     readiness["productionEquivalentRestoreEvidence"] = candidate_count > 0
     readiness["productionReady"] = False
-    CONTRACT.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     binding_boundary = binding.get("currentBoundary")
     binding_readiness = binding.get("readiness")
@@ -226,17 +238,7 @@ def main() -> int:
             "production promotion remains a separate human-reviewed decision and is never authorized by candidate derivation",
             "local restore foundations cannot be relabeled into generation-bound evidence"
         ]
-    BINDING.write_text(json.dumps(binding, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    # Validate after deterministic re-derivation.
-    require_repo_file(BINDING_VALIDATOR, "generation binding validator missing")
-    require_repo_file(VALIDATOR, "generation evidence validator missing")
-    completed = subprocess.run([sys.executable, str(BINDING_VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-    require(completed.returncode == 0, f"generation binding validator failed:\n{completed.stdout[-5000:]}{completed.stderr[-5000:]}")
-    completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-    require(completed.returncode == 0, f"generation evidence validator failed:\n{completed.stdout[-7000:]}{completed.stderr[-7000:]}")
-
-    status = load(STATUS)
     require(status.get("productionDecision") == "NO_GO", "productionDecision must remain NO_GO")
     gate = next((item for item in status.get("areas", []) if isinstance(item, dict) and item.get("id") == "OPS-P0-007"), None)
     require(isinstance(gate, dict), "OPS-P0-007 missing")
@@ -253,7 +255,26 @@ def main() -> int:
     for ref in REFS:
         require_repo_file(ROOT / ref, f"generation recovery evidence ref missing: {ref}")
         append_once(refs, ref)
-    STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    require_repo_file(BINDING_VALIDATOR, "generation binding validator missing")
+    require_repo_file(VALIDATOR, "generation evidence validator missing")
+    rendered = {
+        REGISTRY: json.dumps(registry, indent=2, ensure_ascii=False) + "\n",
+        CONTRACT: json.dumps(contract, indent=2, ensure_ascii=False) + "\n",
+        BINDING: json.dumps(binding, indent=2, ensure_ascii=False) + "\n",
+        STATUS: json.dumps(status, indent=2, ensure_ascii=False) + "\n",
+    }
+    try:
+        for path, text in rendered.items():
+            write_text(path, text)
+        completed = subprocess.run([sys.executable, str(BINDING_VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        require(completed.returncode == 0, f"generation binding validator failed:\n{completed.stdout[-5000:]}{completed.stderr[-5000:]}")
+        completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        require(completed.returncode == 0, f"generation evidence validator failed:\n{completed.stdout[-7000:]}{completed.stderr[-7000:]}")
+    except Exception:
+        for path, text in original_text.items():
+            write_text(path, text)
+        raise
 
     print("Memory OS drill-bound generation recovery authority reconciliation PASS")
     print(f"registered/current drill requests: {drill_count}/{current_drill_count}")
@@ -263,6 +284,7 @@ def main() -> int:
     print("human production-promotion review completed: false")
     print("human production promotion authorized: false")
     print("candidate counters rederived from append-only records: true")
+    print("failed post-validation leaves derived generation/status mutation behind: false")
     print("production evidence: false")
     print("OPS-P0-007: incomplete")
     print("productionDecision: NO_GO")
