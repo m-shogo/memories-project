@@ -32,6 +32,10 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def valid_count(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
 def domain_validation_failure(exc: BaseException) -> bool:
     current: BaseException | None = exc
     seen: set[int] = set()
@@ -156,6 +160,50 @@ def validate_record(record: dict[str, Any]) -> None:
         require(forbidden not in serialized, f"promotion review contains forbidden material: {forbidden}")
 
 
+def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any]]:
+    """Reject corrupted human-review authority rather than healing it on append."""
+    require(registry.get("schemaVersion") == "memory-os-backup-restore-promotion-review-registry.v1", "promotion review registry schema drift")
+    require(registry.get("appendOnly") is True, "promotion review registry must remain append-only")
+    require(
+        registry.get("productionTrafficChanged") is False
+        and registry.get("productionEvidence") is False
+        and registry.get("productionReady") is False,
+        "promotion review registry production boundary drift",
+    )
+    rows = registry.get("records")
+    require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "promotion review registry rows invalid")
+
+    count = registry.get("registeredReviewCount")
+    go_count = registry.get("goRecommendationCount")
+    no_go_count = registry.get("noGoCount")
+    defer_count = registry.get("deferCount")
+    require(valid_count(count) and count == len(rows), "promotion review registeredReviewCount drift")
+    require(all(valid_count(value) for value in (go_count, no_go_count, defer_count)), "promotion review derived counts invalid")
+
+    ids: set[str] = set()
+    decisions = load(CONTRACT).get("decisionValues")
+    require(isinstance(decisions, list), "promotion review decision authority invalid")
+    for index, row in enumerate(rows):
+        decision_id = row.get("decisionId")
+        require(
+            isinstance(decision_id, str)
+            and DECISION_ID.fullmatch(decision_id) is not None
+            and decision_id not in ids,
+            f"promotion review records[{index}] decisionId authority invalid",
+        )
+        ids.add(decision_id)
+        require(row.get("decision") in decisions, f"promotion review records[{index}] decision invalid")
+
+    derived_go = sum(1 for row in rows if row.get("decision") == "GO_RECOMMENDATION")
+    derived_no_go = sum(1 for row in rows if row.get("decision") == "NO_GO")
+    derived_defer = sum(1 for row in rows if row.get("decision") == "DEFER")
+    require((go_count, no_go_count, defer_count) == (derived_go, derived_no_go, derived_defer), "promotion review derived count authority drift")
+    require(go_count + no_go_count + defer_count == count, "promotion review decision counts do not partition registry")
+    expected_current = rows[-1].get("decisionId") if rows else None
+    require(registry.get("currentDecisionId") == expected_current, "promotion review currentDecisionId authority drift")
+    return rows
+
+
 def atomic_write(value: dict[str, Any]) -> None:
     fd, temp_name = tempfile.mkstemp(prefix=".backup-restore-promotion-review.", suffix=".tmp", dir=REGISTRY.parent)
     try:
@@ -194,9 +242,7 @@ def main() -> int:
         os.write(lock_fd, (record["decisionId"] + "\n").encode("ascii"))
         os.fsync(lock_fd)
         registry = load(REGISTRY)
-        require(registry.get("appendOnly") is True, "promotion review registry must remain append-only")
-        rows = registry.get("records")
-        require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "promotion review registry rows invalid")
+        rows = validate_registry_for_append(registry)
         require(all(row.get("decisionId") != record["decisionId"] for row in rows), "decisionId already registered")
         rows.append(record)
         registry["registeredReviewCount"] = len(rows)
