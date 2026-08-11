@@ -51,14 +51,30 @@ def require_repo_file(path: Path, message: str) -> Path:
     return relative
 
 
+def read_text(path: Path) -> str:
+    relative = repo_relative(path)
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise Fail(f"cannot read {relative}: {exc}") from exc
+
+
 def load(path: Path) -> dict[str, Any]:
     relative = repo_relative(path)
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        value = json.loads(read_text(path))
+    except json.JSONDecodeError as exc:
         raise Fail(f"cannot load {relative}: {exc}") from exc
     require(isinstance(value, dict), f"root must be object: {relative}")
     return value
+
+
+def write_text(path: Path, text: str) -> None:
+    relative = repo_relative(path)
+    try:
+        path.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        raise Fail(f"cannot write {relative}: {exc}") from exc
 
 
 def load_validator_module():
@@ -79,10 +95,13 @@ def append_once(values: list[Any], value: str) -> None:
 
 
 def main() -> int:
+    original_contract_text = read_text(CONTRACT)
+    original_status_text = read_text(STATUS)
     contract = load(CONTRACT)
     generations = load(GEN_REGISTRY)
     objectives = load(OBJECTIVES)
     drill_registry = load(DRILL_REGISTRY)
+    status = load(STATUS)
     validator = load_validator_module()
     state = validator.derive_state(generations, objectives, drill_registry)
 
@@ -115,9 +134,7 @@ def main() -> int:
     require(set(readiness) == validator.READINESS_FIELDS, "reconciled preflight readiness field drift")
     contract["currentState"] = canonical
     contract["readiness"] = readiness
-    CONTRACT.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    status = load(STATUS)
     require(status.get("productionDecision") == "NO_GO", "preflight reconcile cannot change production decision")
     gate = next((row for row in status.get("areas", []) if isinstance(row, dict) and row.get("id") == "OPS-P0-007"), None)
     require(isinstance(gate, dict), "OPS-P0-007 missing")
@@ -136,10 +153,18 @@ def main() -> int:
     for ref in REFS:
         require_repo_file(ROOT / ref, f"preflight evidence ref missing: {ref}")
         append_once(refs, ref)
-    STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    completed = subprocess.run([sys.executable, str(VALIDATOR_MODULE)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-    require(completed.returncode == 0, f"post-reconcile preflight validator failed:\n{completed.stdout[-8000:]}{completed.stderr[-8000:]}")
+    contract_text = json.dumps(contract, indent=2, ensure_ascii=False) + "\n"
+    status_text = json.dumps(status, indent=2, ensure_ascii=False) + "\n"
+    try:
+        write_text(CONTRACT, contract_text)
+        write_text(STATUS, status_text)
+        completed = subprocess.run([sys.executable, str(VALIDATOR_MODULE)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        require(completed.returncode == 0, f"post-reconcile preflight validator failed:\n{completed.stdout[-8000:]}{completed.stderr[-8000:]}")
+    except Exception:
+        write_text(CONTRACT, original_contract_text)
+        write_text(STATUS, original_status_text)
+        raise
 
     print("Memory OS production-equivalent restore drill preflight reconciliation PASS")
     print(f"registered/preflight-eligible generations: {state['registeredGenerationCount']}/{state['preflightEligibleGenerationCount']}")
@@ -150,6 +175,7 @@ def main() -> int:
     print(f"eligible directed source-target pairs: {state['eligibleDirectedSourceTargetPairCount']}")
     print(f"reviewed/current drill requests: {state['reviewedDrillRequestCount']}/{state['currentExecutableDrillRequestCount']}")
     print("preflight authority state canonicalized: true")
+    print("failed post-validation leaves derived preflight/status mutation behind: false")
     print("registered generation inventory alone creates restore-planning authority: false")
     print("automatic prerequisite/request creation: false")
     print("restore executed: false")
