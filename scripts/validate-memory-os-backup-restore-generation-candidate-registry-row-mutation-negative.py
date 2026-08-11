@@ -111,6 +111,36 @@ def main() -> int:
             require(writer.typed_non_resurrection_covered(evidence_id) is True, "intact typed registry row must cover generation evidence")
             print("PASS candidate coverage: intact typed registry row accepted")
 
+            schema_mutation = copy.deepcopy(intact_registry)
+            schema_mutation["schemaVersion"] = "memory-os-backup-restore-non-resurrection-admission-registry.v0"
+            write_json(overlay_registry, schema_mutation)
+            require(writer.typed_non_resurrection_covered(evidence_id) is False, "typed registry schema drift must revoke coverage")
+            print("PASS revoke: typed registry schema drift invalidates coverage")
+
+            append_only_mutation = copy.deepcopy(intact_registry)
+            append_only_mutation["appendOnly"] = False
+            write_json(overlay_registry, append_only_mutation)
+            require(writer.typed_non_resurrection_covered(evidence_id) is False, "typed registry append-only boundary drift must revoke coverage")
+            print("PASS revoke: typed registry append-only boundary mutation invalidates coverage")
+
+            registry_production_evidence_mutation = copy.deepcopy(intact_registry)
+            registry_production_evidence_mutation["productionEvidence"] = True
+            write_json(overlay_registry, registry_production_evidence_mutation)
+            require(writer.typed_non_resurrection_covered(evidence_id) is False, "typed registry productionEvidence mutation must revoke coverage")
+            print("PASS revoke: typed registry productionEvidence mutation invalidates coverage")
+
+            registry_production_ready_mutation = copy.deepcopy(intact_registry)
+            registry_production_ready_mutation["productionReady"] = True
+            write_json(overlay_registry, registry_production_ready_mutation)
+            require(writer.typed_non_resurrection_covered(evidence_id) is False, "typed registry productionReady mutation must revoke coverage")
+            print("PASS revoke: typed registry productionReady mutation invalidates coverage")
+
+            row_container_mutation = copy.deepcopy(intact_registry)
+            row_container_mutation["records"] = {"unexpected": copy.deepcopy(overlay)}
+            write_json(overlay_registry, row_container_mutation)
+            require(writer.typed_non_resurrection_covered(evidence_id) is False, "typed registry records container drift must revoke coverage")
+            print("PASS revoke: typed registry records container mutation invalidates coverage")
+
             digest_mutation = copy.deepcopy(intact_registry)
             digest_mutation["records"][0]["securityReviewSha256"] = "0" * 64
             write_json(overlay_registry, digest_mutation)
@@ -175,6 +205,11 @@ def main() -> int:
         print("Memory OS generation candidate registry-row mutation negative suite PASS")
         print("canonical registries mutated: false")
         print("repository-local canonical simulation: true")
+        print("typed registry schema drift accepted: false")
+        print("typed registry append-only boundary mutation accepted: false")
+        print("typed registry productionEvidence mutation accepted: false")
+        print("typed registry productionReady mutation accepted: false")
+        print("typed registry records container mutation accepted: false")
         print("typed registry row stale mutation accepted: false")
         print("typed production boundary mutation accepted: false")
         print("typed unresolved finding mutation accepted: false")
