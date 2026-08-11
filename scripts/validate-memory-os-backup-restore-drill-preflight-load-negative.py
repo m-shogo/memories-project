@@ -10,6 +10,7 @@ from typing import Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight.py"
+RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-drill-preflight.py"
 TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 
 
@@ -22,9 +23,9 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
-def load_validator():
-    spec = importlib.util.spec_from_file_location("memory_os_restore_drill_preflight_load_negative", VALIDATOR)
-    require(spec is not None and spec.loader is not None, "cannot load preflight validator")
+def load_module(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load {path.name}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -43,8 +44,10 @@ def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[
 
 def main() -> int:
     require(VALIDATOR.is_file(), "preflight validator missing")
+    require(RECONCILER.is_file(), "preflight reconciler missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
-    validator = load_validator()
+    validator = load_module(VALIDATOR, "memory_os_restore_drill_preflight_load_negative")
+    reconciler = load_module(RECONCILER, "memory_os_restore_drill_preflight_reconcile_load_negative")
 
     with tempfile.TemporaryDirectory(prefix=".tmp-preflight-load-", dir=TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
@@ -52,12 +55,20 @@ def main() -> int:
         invalid_utf8 = tmp / "invalid-utf8.json"
         invalid_utf8.write_bytes(b"{\xff}")
         expect_domain_fail("invalid UTF-8 preflight authority JSON", lambda: validator.load(invalid_utf8), validator.Fail)
+        expect_domain_fail("invalid UTF-8 preflight reconcile authority JSON", lambda: reconciler.load(invalid_utf8), reconciler.Fail)
 
         directory_authority = tmp / "directory-authority.json"
         directory_authority.mkdir()
         expect_domain_fail("preflight authority path is unreadable directory", lambda: validator.load(directory_authority), validator.Fail)
+        expect_domain_fail("preflight reconcile authority path is unreadable directory", lambda: reconciler.load(directory_authority), reconciler.Fail)
+
+    escaped = Path("/tmp/memory-os-preflight-reconcile-escaped.json")
+    expect_domain_fail("preflight reconcile authority path escapes repository", lambda: reconciler.load(escaped), reconciler.Fail)
 
     print("Preflight unreadable-authority negative suite PASS")
+    print("reconciler invalid UTF-8 authority leaked raw exception: false")
+    print("reconciler unreadable directory authority leaked raw exception: false")
+    print("reconciler escaped authority accepted: false")
     return 0
 
 
