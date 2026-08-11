@@ -241,11 +241,11 @@ def validate_request(record: dict[str, Any], *, require_current: bool = True) ->
         require_preflight_eligible_generation(target["generationId"], "restoreTargetEnvironmentGenerationId")
     for value, field in (
         (record.get("sourceEnvironmentManifestSha256"), "sourceEnvironmentManifestSha256"),
-        (record.get("restoreTargetEnvironmentManifestSha256"), "restoreTargetEnvironmentManifestSha256"),
+        (record.get("restoreTargetManifestSha256"), "restoreTargetManifestSha256"),
     ):
         require(isinstance(value, str) and DIGEST.fullmatch(value), f"{field} invalid")
     require(record["sourceEnvironmentManifestSha256"] == source.get("environmentManifestSha256"), "source environment manifest digest mismatch")
-    require(record["restoreTargetEnvironmentManifestSha256"] == target.get("environmentManifestSha256"), "restore-target environment manifest digest mismatch")
+    require(record["restoreTargetManifestSha256"] == target.get("environmentManifestSha256"), "restore-target environment manifest digest mismatch")
 
     if require_current:
         objective = current_objective()
