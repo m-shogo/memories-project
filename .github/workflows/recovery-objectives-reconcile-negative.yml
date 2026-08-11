@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/recovery-objectives-reconcile-negative.yml"
       - "scripts/reconcile-memory-os-recovery-objectives.py"
+      - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/validate-memory-os-recovery-objectives-reconcile-negative.py"
       - "contracts/operations/recovery-objectives-admission-contract.v1.json"
       - "contracts/operations/recovery-objectives-registry.v1.json"
@@ -15,6 +16,7 @@ on:
     paths:
       - ".github/workflows/recovery-objectives-reconcile-negative.yml"
       - "scripts/reconcile-memory-os-recovery-objectives.py"
+      - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/validate-memory-os-recovery-objectives-reconcile-negative.py"
       - "contracts/operations/recovery-objectives-admission-contract.v1.json"
       - "contracts/operations/recovery-objectives-registry.v1.json"
@@ -44,6 +46,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$expected"
           python -m py_compile \
             scripts/reconcile-memory-os-recovery-objectives.py \
+            scripts/memory_os_backup_restore_blockers.py \
             scripts/validate-memory-os-recovery-objectives-reconcile-negative.py
           python scripts/validate-memory-os-recovery-objectives-reconcile-negative.py
           git diff --exit-code
