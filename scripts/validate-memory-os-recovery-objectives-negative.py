@@ -105,6 +105,9 @@ def main() -> int:
             escape_link = root_path / "escaped-owner.json"
             escape_link.symlink_to(external_path)
             expect_rejected(writer, "objective authority symlink escapes repository root", lambda: writer.repo_ref("escaped-owner.json", "ownerRef"))
+            loop_link = root_path / "loop-owner.json"
+            loop_link.symlink_to(loop_link.name)
+            expect_rejected(writer, "objective authority symlink loop", lambda: writer.repo_ref("loop-owner.json", "ownerRef"))
         finally:
             writer.ROOT = real_root
 
@@ -122,6 +125,9 @@ def main() -> int:
             escape_link = root_path / "escaped-authority.py"
             escape_link.symlink_to(external_path)
             expect_validator_rejected(validator, "validator authority symlink escapes repository root", lambda: validator.repo_file("escaped-authority.py", "validator"))
+            loop_link = root_path / "loop-authority.py"
+            loop_link.symlink_to(loop_link.name)
+            expect_validator_rejected(validator, "validator authority symlink loop", lambda: validator.repo_file("loop-authority.py", "validator"))
         finally:
             validator.ROOT = real_validator_root
 
@@ -285,7 +291,9 @@ def main() -> int:
     print("objective values invented/defaulted: false")
     print("arbitrary repository file approval accepted: false")
     print("objective authority refs escape repository: false")
+    print("objective authority ref symlink loops accepted: false")
     print("validator contract refs escape repository: false")
+    print("validator contract ref symlink loops accepted: false")
     print("malformed typed approval authority accepted: false")
     print("invalid UTF-8 typed approval authority accepted: false")
     print("whitespace-aliased reviewer identity accepted: false")
