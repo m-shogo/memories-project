@@ -42,17 +42,63 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def repo_relative(path: Path) -> Path:
+    try:
+        return path.resolve(strict=False).relative_to(ROOT.resolve())
+    except (OSError, ValueError) as exc:
+        raise Fail(f"authority path escapes repository: {path}") from exc
+
+
+def require_repo_file(path: Path, message: str) -> Path:
+    relative = repo_relative(path)
+    require((ROOT / relative).is_file(), message)
+    return relative
+
+
+def canonical_repo_ref(ref: object, message: str) -> Path:
+    require(isinstance(ref, str) and bool(ref), message)
+    raw = Path(ref)
+    require(not raw.is_absolute() and ".." not in raw.parts, message)
+    relative = require_repo_file(ROOT / raw, message)
+    require(relative.as_posix() == ref, message)
+    return ROOT / relative
+
+
+def read_text(path: Path) -> str:
+    relative = repo_relative(path)
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise Fail(f"cannot read {relative}: {exc}") from exc
+
+
+def write_text(path: Path, text: str) -> None:
+    relative = repo_relative(path)
+    try:
+        path.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        raise Fail(f"cannot write {relative}: {exc}") from exc
+
+
 def load(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+    relative = repo_relative(path)
+    try:
+        value = json.loads(read_text(path))
+    except json.JSONDecodeError as exc:
+        raise Fail(f"cannot load {relative}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be object: {relative}")
     return value
 
 
 def load_writer():
+    relative = require_repo_file(WRITER, "environment generation writer missing")
     spec = importlib.util.spec_from_file_location("memory_os_environment_generation_writer_for_reconcile", WRITER)
-    require(spec is not None and spec.loader is not None, "cannot load environment generation writer")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    require(spec is not None and spec.loader is not None, f"cannot load {relative}")
+    try:
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except (FileNotFoundError, OSError) as exc:
+        raise Fail(f"cannot load {relative}: {exc}") from exc
     return module
 
 
@@ -62,12 +108,15 @@ def append_once(values: list[Any], value: str) -> None:
 
 
 def main() -> int:
+    original_contract_text = read_text(CONTRACT)
+    original_status_text = read_text(STATUS)
     contract = load(CONTRACT)
     registry = load(REGISTRY)
+    status = load(STATUS)
     writer = load_writer()
     rows = registry.get("generations")
     count = registry.get("registeredGenerationCount")
-    require(isinstance(rows, list) and isinstance(count, int) and len(rows) == count, "generation registry count drift")
+    require(isinstance(rows, list) and isinstance(count, int) and not isinstance(count, bool) and count >= 0 and len(rows) == count, "generation registry count drift")
     current_id = registry.get("currentGenerationId")
     current_env: dict[str, Any] | None = None
     eligibility_by_id: dict[str, bool] = {}
@@ -81,9 +130,8 @@ def main() -> int:
             raise Fail(f"generation record validation failed for {generation_id}: {exc}") from exc
     if count:
         require(isinstance(rows[-1], dict) and rows[-1].get("generationId") == current_id, "current generation must equal latest append-only record")
-        env_ref = rows[-1].get("environmentRecordRef")
-        require(isinstance(env_ref, str) and (ROOT / env_ref).is_file(), "current environment record missing")
-        current_env = load(ROOT / env_ref)
+        env_path = canonical_repo_ref(rows[-1].get("environmentRecordRef"), "current environment record ref must be canonical repository file")
+        current_env = load(env_path)
     else:
         require(current_id is None, "empty generation registry requires null currentGenerationId")
 
@@ -95,6 +143,15 @@ def main() -> int:
     validated = status_value == "VALIDATED_LOCAL_NONPRODUCTION"
     reviewed = bool(current_eligible and boundary_value.get("independentReviewCompleted") is True)
     equivalent = current_eligible
+
+    for path, message in (
+        (GEN_SCHEMA, "generation record schema missing"),
+        (ENV_VALIDATOR, "environment semantic validator missing"),
+        (WRITER, "environment generation writer missing"),
+        (VALIDATOR, "environment generation validator missing"),
+        (NEGATIVE, "environment generation negative suite missing"),
+    ):
+        require_repo_file(path, message)
 
     boundary = contract.get("currentBoundary")
     readiness = contract.get("readiness")
@@ -110,11 +167,11 @@ def main() -> int:
     boundary["productionDecision"] = "NO_GO"
     readiness["contractDefined"] = True
     readiness["registryDefined"] = True
-    readiness["registryRecordSchemaDefined"] = GEN_SCHEMA.is_file()
-    readiness["environmentRecordSemanticValidatorImplemented"] = ENV_VALIDATOR.is_file()
-    readiness["writerImplemented"] = WRITER.is_file()
-    readiness["validatorImplemented"] = VALIDATOR.is_file()
-    readiness["negativeAdmissionSuiteImplemented"] = NEGATIVE.is_file()
+    readiness["registryRecordSchemaDefined"] = True
+    readiness["environmentRecordSemanticValidatorImplemented"] = True
+    readiness["writerImplemented"] = True
+    readiness["validatorImplemented"] = True
+    readiness["negativeAdmissionSuiteImplemented"] = True
     readiness["automaticWorkflowImplemented"] = True
     readiness["generationRegistered"] = count > 0
     readiness["preflightEligibleGenerationAvailable"] = preflight_eligible_count > 0
@@ -137,12 +194,7 @@ def main() -> int:
             "restore-drill preflight may use only semantically validated generations whose environment records prove production-equivalent dependencies and independent review with repository-resolvable evidence",
             "production traffic and production credentials remain outside automatic evidence generation"
         ]
-    CONTRACT.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-    require(completed.returncode == 0, f"generation validator failed:\n{completed.stdout[-9000:]}{completed.stderr[-9000:]}")
-
-    status = load(STATUS)
     require(status.get("productionDecision") == "NO_GO", "productionDecision must remain NO_GO")
     gate = next((item for item in status.get("areas", []) if isinstance(item, dict) and item.get("id") == "OPS-P0-006"), None)
     require(isinstance(gate, dict), "OPS-P0-006 missing")
@@ -159,7 +211,7 @@ def main() -> int:
     existing[:] = [item for item in existing if not (isinstance(item, str) and item.startswith(stale_prefix))]
     append_once(existing, evidence)
     for ref in REFS:
-        require((ROOT / ref).is_file(), f"generation evidence ref missing: {ref}")
+        require_repo_file(ROOT / ref, f"generation evidence ref missing: {ref}")
         append_once(refs, ref)
 
     joined = "\n".join(str(item).lower() for item in missing)
@@ -167,7 +219,18 @@ def main() -> int:
     if preflight_eligible_count == 0:
         require("production-equivalent dependency behavior" in joined, "production-equivalent dependency blocker must remain")
 
-    STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    contract_text = json.dumps(contract, indent=2, ensure_ascii=False) + "\n"
+    status_text = json.dumps(status, indent=2, ensure_ascii=False) + "\n"
+    try:
+        write_text(CONTRACT, contract_text)
+        write_text(STATUS, status_text)
+        completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        require(completed.returncode == 0, f"generation validator failed:\n{completed.stdout[-9000:]}{completed.stderr[-9000:]}")
+    except Exception:
+        write_text(CONTRACT, original_contract_text)
+        write_text(STATUS, original_status_text)
+        raise
+
     print("Memory OS production-equivalent generation status reconciliation PASS")
     print(f"generation registry entries: {count}")
     print(f"preflight-eligible generations: {preflight_eligible_count}")
@@ -175,6 +238,7 @@ def main() -> int:
     print(f"current production-equivalent dependencies: {str(equivalent).lower()}")
     print("registration implies preflight eligibility: false")
     print("cross-generation evidence reuse: forbidden")
+    print("failed post-validation leaves generation/status mutation behind: false")
     print("OPS-P0-006: PARTIAL")
     print("productionDecision: NO_GO")
     return 0
