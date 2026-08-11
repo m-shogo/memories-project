@@ -13,9 +13,12 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
-GEN_EVIDENCE_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+CANONICAL_CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
+CANONICAL_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+CANONICAL_GEN_EVIDENCE_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+CONTRACT = CANONICAL_CONTRACT
+REGISTRY = CANONICAL_REGISTRY
+GEN_EVIDENCE_REGISTRY = CANONICAL_GEN_EVIDENCE_REGISTRY
 GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
 LOCK = ROOT / "contracts/operations/.backup-restore-non-resurrection-admission.lock"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
@@ -59,6 +62,10 @@ def canonical_repo_file(path: Path, field: str) -> Path:
     require(relative == resolved and path.is_file(), f"{field} must resolve to its canonical repository file")
     return path
 
+def require_canonical_runtime_authority(path: Path, canonical: Path, field: str) -> None:
+    if path == canonical:
+        canonical_repo_file(path, field)
+
 def payload_sha256(payload: dict[str, Any]) -> str:
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     return hashlib.sha256(canonical).hexdigest()
@@ -77,6 +84,7 @@ def repo_ref(value: Any, field: str) -> str:
 
 def generation_record(evidence_id: Any) -> dict[str, Any]:
     require(isinstance(evidence_id, str) and evidence_id, "generationEvidenceId required")
+    require_canonical_runtime_authority(GEN_EVIDENCE_REGISTRY, CANONICAL_GEN_EVIDENCE_REGISTRY, "generation evidence registry")
     registry = load(GEN_EVIDENCE_REGISTRY)
     rows = registry.get("records")
     require(isinstance(rows, list), "generation evidence registry records invalid")
@@ -119,6 +127,7 @@ def review_evidence(ref: str, *, review_type: str, record_id: str, generation_ev
     return payload
 
 def validate_record(record: dict[str, Any]) -> None:
+    require_canonical_runtime_authority(CONTRACT, CANONICAL_CONTRACT, "typed non-resurrection contract")
     contract = load(CONTRACT)
     required_fields = set(contract.get("requiredRecordFields", []))
     required_domains = tuple(contract.get("requiredDomains", []))
@@ -227,6 +236,7 @@ def main() -> int:
         pass
     else:
         raise Fail("input non-resurrection evidence must be outside repository")
+    require_canonical_runtime_authority(REGISTRY, CANONICAL_REGISTRY, "typed non-resurrection registry")
     record = load(input_path)
     validate_record(record)
     try:
