@@ -97,8 +97,10 @@ def main() -> int:
     soak = load(SOAK_PATH)
     load_contract = load(LOAD_PATH)
 
-    require(load_contract.get("productionEvidence") is False, "load contract productionEvidence must remain false")
-    require(load_contract.get("productionReady") is False, "load contract productionReady must remain false")
+    load_readiness = load_contract.get("readiness")
+    require(isinstance(load_readiness, dict), "load contract readiness missing")
+    require(load_readiness.get("sustainedSoakEvidence") is False, "load contract sustainedSoakEvidence must remain false")
+    require(load_readiness.get("productionEquivalentDependencies") is False, "load contract productionEquivalentDependencies must remain false")
 
     readiness = soak.get("readiness")
     require(isinstance(readiness, dict), "sustained local soak readiness missing")
