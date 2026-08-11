@@ -64,8 +64,9 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_writer():
-    repo_relative(WRITER)
-    spec = importlib.util.spec_from_file_location("memory_os_backup_restore_generation_writer", WRITER)
+    writer_path = ROOT / repo_relative(WRITER)
+    require(writer_path.is_file(), "generation evidence writer missing")
+    spec = importlib.util.spec_from_file_location("memory_os_backup_restore_generation_writer", writer_path)
     require(spec is not None and spec.loader is not None, "cannot load generation evidence writer")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -108,6 +109,36 @@ def main() -> int:
     binding = load(GEN_BINDING)
     writer = load_writer()
 
+    typed_contract = canonical_contract_ref(contract.get("typedNonResurrectionAdmissionContract"), "typedNonResurrectionAdmissionContract")
+    typed_registry = canonical_contract_ref(contract.get("typedNonResurrectionAdmissionRegistry"), "typedNonResurrectionAdmissionRegistry")
+    typed_contract_path = ROOT / typed_contract
+    typed_registry_path = ROOT / typed_registry
+    writer_authorities = (
+        ("CONTRACT", CONTRACT, "generation evidence contract"),
+        ("REGISTRY", REGISTRY, "generation evidence registry"),
+        ("GEN_REGISTRY", GEN_REGISTRY, "environment generation registry"),
+        ("OBJECTIVES_REGISTRY", OBJECTIVES_REGISTRY, "recovery objectives registry"),
+        ("CANONICAL_OBJECTIVES_REGISTRY", OBJECTIVES_REGISTRY, "canonical recovery objectives registry"),
+        ("DRILL_REQUEST_CONTRACT", DRILL_CONTRACT, "drill request contract"),
+        ("CANONICAL_DRILL_REQUEST_CONTRACT", DRILL_CONTRACT, "canonical drill request contract"),
+        ("DRILL_REQUEST_REGISTRY", DRILL_REGISTRY, "drill request registry"),
+        ("CANONICAL_DRILL_REQUEST_REGISTRY", DRILL_REGISTRY, "canonical drill request registry"),
+        ("NON_RESURRECTION_CONTRACT", typed_contract_path, "typed non-resurrection contract"),
+        ("CANONICAL_NON_RESURRECTION_CONTRACT", typed_contract_path, "canonical typed non-resurrection contract"),
+        ("NON_RESURRECTION_REGISTRY", typed_registry_path, "typed non-resurrection registry"),
+        ("CANONICAL_NON_RESURRECTION_REGISTRY", typed_registry_path, "canonical typed non-resurrection registry"),
+    )
+    for name, expected_path, field in writer_authorities:
+        require(getattr(writer, name, None) == expected_path, f"generation evidence writer authority drift: {name}")
+        if expected_path.is_file():
+            writer.canonical_repo_file(expected_path, field)
+    non_resurrection_writer = getattr(writer, "NON_RESURRECTION_WRITER", None)
+    drill_writer = getattr(writer, "DRILL_REQUEST_WRITER", None)
+    require(non_resurrection_writer == ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py", "typed non-resurrection writer authority drift")
+    require(drill_writer == ROOT / "scripts/request-memory-os-backup-restore-drill.py", "drill request writer authority drift")
+    writer.canonical_repo_file(non_resurrection_writer, "typed non-resurrection writer")
+    writer.canonical_repo_file(drill_writer, "drill request writer")
+
     require(contract.get("schemaVersion") == "memory-os-backup-restore-generation-evidence.v1", "contract schema drift")
     expected_refs = {
         "registry": REGISTRY,
@@ -123,7 +154,7 @@ def main() -> int:
         require(contract.get(field) == str(repo_relative(path)), f"contract ref drift: {field}")
         require(path.is_file(), f"contract artifact missing: {field}")
     require(SEMANTIC_NEGATIVE_VALIDATOR.is_file(), "semantic generation negative admission validator missing")
-    for field in ("validator", "reconcile", "workflow", "typedNonResurrectionAdmissionContract", "typedNonResurrectionAdmissionRegistry"):
+    for field in ("validator", "reconcile", "workflow"):
         canonical_contract_ref(contract.get(field), field)
 
     rules = contract.get("recordRules")
@@ -268,6 +299,7 @@ def main() -> int:
     print(f"registered/drill-bound recovery evidence: {count}/{derived_bound}")
     print(f"complete generation-bound restores: {derived_restore}")
     print(f"production-equivalent recovery candidates: {derived_candidates}")
+    print("generation writer canonical cross-authority binding without evidence rows: enforced")
     print("boolean registry/contract/binding counts accepted: false")
     print("contract artifact refs canonical and repository-contained: true")
     print("candidate-level independent review cross-authority binding: enforced")
