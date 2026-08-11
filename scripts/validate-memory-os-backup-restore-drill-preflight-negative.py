@@ -221,6 +221,14 @@ def main() -> int:
         generations,
         objectives,
         drill_registry,
+        "generation registry schema drift",
+        lambda g, _o, _d: g.__setitem__("schemaVersion", "memory-os-production-equivalent-environment-generation-registry.v0"),
+    )
+    expect_state_rejected(
+        validator,
+        generations,
+        objectives,
+        drill_registry,
         "boolean approved recovery objective count",
         lambda _g, o, _d: o.__setitem__("approvedObjectiveCount", False),
     )
@@ -246,6 +254,7 @@ def main() -> int:
     print("escaped artifact path accepted: false")
     print("negative validator contract binding: true")
     print("shared semantic eligibility helper contract binding: true")
+    print("generation registry schema drift accepted: false")
     print("stable blocker ids require semantic preflight gates: true")
     print("registered generation count alone satisfies blocker: false")
     print("boolean registry/current-state counts accepted: false")
