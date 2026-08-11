@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import copy
 import importlib.util
 import tempfile
 from pathlib import Path
@@ -55,6 +56,26 @@ def exercise(label: str, module, tmp: Path, outside: Path) -> None:
     expect_domain_fail(f"{label} authority path escapes repository", lambda: module.load(outside), module.Fail)
 
 
+def exercise_registry_corruption(writer) -> None:
+    baseline = writer.load(writer.REGISTRY)
+    writer.validate_registry_for_append(copy.deepcopy(baseline))
+    cases = (
+        ("registry schema drift", "schemaVersion", "memory-os-backup-restore-drill-request-registry.corrupt"),
+        ("registry class drift", "registryClass", "CORRUPT"),
+        ("append-only disabled", "appendOnly", False),
+        ("production evidence forged", "productionEvidence", True),
+        ("production ready forged", "productionReady", True),
+        ("registered request count boolean", "registeredRequestCount", True),
+        ("registered request count drift", "registeredRequestCount", baseline.get("registeredRequestCount", 0) + 1),
+        ("current executable count boolean", "currentExecutableRequestCount", True),
+        ("current executable count drift", "currentExecutableRequestCount", baseline.get("currentExecutableRequestCount", 0) + 1),
+    )
+    for name, field, value in cases:
+        mutated = copy.deepcopy(baseline)
+        mutated[field] = value
+        expect_domain_fail(name, lambda mutated=mutated: writer.validate_registry_for_append(mutated), writer.Fail)
+
+
 def main() -> int:
     require(WRITER.is_file(), "drill-request writer missing")
     require(VALIDATOR.is_file(), "drill-request validator missing")
@@ -64,6 +85,7 @@ def main() -> int:
     validator = load_module(VALIDATOR, "memory_os_restore_drill_request_load_negative")
     reconciler = load_module(RECONCILER, "memory_os_restore_drill_request_reconcile_load_negative")
     require(writer.canonical_repo_file(writer.ELIGIBILITY_HELPER, "environment generation eligibility helper") == writer.ELIGIBILITY_HELPER, "canonical eligibility helper rejected")
+    exercise_registry_corruption(writer)
 
     with tempfile.TemporaryDirectory(prefix=".tmp-drill-request-load-", dir=TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
@@ -124,6 +146,7 @@ def main() -> int:
                 )
 
     print("Drill-request unreadable/escaped-authority negative suite PASS")
+    print("drill-request append registry corruption rejection: enforced")
     print("canonical drill contract/registry/generation/objective containment: enforced")
     return 0
 
