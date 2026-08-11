@@ -347,6 +347,45 @@ def request_currently_executable(record: dict[str, Any]) -> bool:
     return True
 
 
+def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any]]:
+    """Validate existing append-only request authority before any mutation.
+
+    A direct writer must never repair stale/corrupt aggregate authority as a side
+    effect of appending a new reviewed planning request.
+    """
+    require(registry.get("schemaVersion") == "memory-os-backup-restore-drill-request-registry.v1", "request registry schema drift")
+    require(registry.get("registryClass") == "PRODUCTION_EQUIVALENT_BACKUP_RESTORE_DRILL_REQUESTS", "request registry class drift")
+    require(registry.get("appendOnly") is True, "request registry must remain append-only")
+    require(registry.get("productionEvidence") is False, "request registry productionEvidence must remain false")
+    require(registry.get("productionReady") is False, "request registry productionReady must remain false")
+    requests = registry.get("requests")
+    require(isinstance(requests, list) and all(isinstance(row, dict) for row in requests), "request registry records invalid")
+    registered_count = registry.get("registeredRequestCount")
+    executable_count = registry.get("currentExecutableRequestCount")
+    require(isinstance(registered_count, int) and not isinstance(registered_count, bool), "registeredRequestCount must be a non-boolean integer")
+    require(registered_count == len(requests), "registeredRequestCount drift")
+    require(isinstance(executable_count, int) and not isinstance(executable_count, bool), "currentExecutableRequestCount must be a non-boolean integer")
+    request_ids: set[str] = set()
+    tuples: set[tuple[Any, Any, Any]] = set()
+    derived_executable = 0
+    for row in requests:
+        validate_request(row, require_current=False)
+        request_id = row.get("requestId")
+        require(isinstance(request_id, str) and request_id not in request_ids, f"duplicate requestId: {request_id}")
+        request_ids.add(request_id)
+        key = (
+            row.get("sourceEnvironmentGenerationId"),
+            row.get("restoreTargetEnvironmentGenerationId"),
+            row.get("recoveryObjectivesId"),
+        )
+        require(key not in tuples, f"duplicate source/target/objective drill request tuple: {key}")
+        tuples.add(key)
+        if request_currently_executable(row):
+            derived_executable += 1
+    require(executable_count == derived_executable, "currentExecutableRequestCount drift")
+    return requests
+
+
 def atomic_write(value: dict[str, Any]) -> None:
     fd, temp_name = tempfile.mkstemp(prefix=".backup-restore-drill-request.", suffix=".tmp", dir=REGISTRY.parent)
     try:
@@ -390,9 +429,7 @@ def main() -> int:
         os.write(lock_fd, (record["requestId"] + "\n").encode("ascii"))
         os.fsync(lock_fd)
         registry = load(REGISTRY)
-        require(registry.get("appendOnly") is True, "request registry must remain append-only")
-        requests = registry.get("requests")
-        require(isinstance(requests, list) and all(isinstance(row, dict) for row in requests), "request registry records invalid")
+        requests = validate_registry_for_append(registry)
         require(all(row.get("requestId") != record["requestId"] for row in requests), "requestId already registered")
         request_tuple = (
             record["sourceEnvironmentGenerationId"],
@@ -409,8 +446,6 @@ def main() -> int:
         requests.append(record)
         registry["registeredRequestCount"] = len(requests)
         registry["currentExecutableRequestCount"] = sum(1 for row in requests if request_currently_executable(row))
-        registry["productionEvidence"] = False
-        registry["productionReady"] = False
         atomic_write(registry)
     finally:
         os.close(lock_fd)
