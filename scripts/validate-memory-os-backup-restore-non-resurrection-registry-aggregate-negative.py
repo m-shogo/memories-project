@@ -186,16 +186,29 @@ def main() -> int:
         print("PASS accept: healthy generation aggregate authority")
 
         generation_cases = (
+            ("generation registered evidence count drift", "registeredEvidenceCount", 0),
+            ("boolean generation registered evidence count", "registeredEvidenceCount", False),
             ("generation drill-request-bound count drift", "drillRequestBoundEvidenceCount", 0),
             ("generation complete backup count drift", "completeGenerationBoundBackupCount", 1),
             ("boolean generation candidate count at typed writer", "productionEquivalentRecoveryCandidateCount", False),
             ("generation candidate count exceeds restore count", "productionEquivalentRecoveryCandidateCount", 1),
+            ("generation productionEvidence boundary drift", "productionEvidence", True),
+            ("generation productionReady boundary drift", "productionReady", True),
         )
         for name, field, invalid_value in generation_cases:
             mutated = copy.deepcopy(healthy_generation)
             mutated[field] = invalid_value
             write_json(generation_registry, mutated)
             expect_rejected(name, lambda: writer.generation_record(generation_id), writer.Fail)
+
+        duplicate_generation = copy.deepcopy(healthy_generation)
+        duplicate_generation.update({
+            "registeredEvidenceCount": 2,
+            "drillRequestBoundEvidenceCount": 2,
+            "records": [{"evidenceId": generation_id}, {"evidenceId": generation_id}],
+        })
+        write_json(generation_registry, duplicate_generation)
+        expect_rejected("duplicate generation evidence identity", lambda: writer.generation_record(generation_id), writer.Fail)
 
         restore_drift = copy.deepcopy(healthy_generation)
         restore_drift["records"] = [{
@@ -218,6 +231,8 @@ def main() -> int:
     print("aggregate counters may not override row-derived authority: true")
     print("historical typed row mutation accepted before append: false")
     print("generation aggregate drift accepted by typed admission: false")
+    print("generation production boundary drift accepted by typed admission: false")
+    print("duplicate generation evidence identity accepted by typed admission: false")
     print("boolean aggregate counters accepted: false")
     print("escaped registry path accepted: false")
     print("unexpected exception accepted as valid rejection: false")
