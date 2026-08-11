@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
@@ -14,6 +15,9 @@ WRITER = ROOT / "scripts/register-memory-os-backup-restore-promotion-review.py"
 
 class Fail(RuntimeError):
     pass
+
+
+EXPECTED_FAILURE: type[Exception] = Fail
 
 
 def require(condition: bool, message: str) -> None:
@@ -32,7 +36,7 @@ def load_writer():
 def expect_rejected(name: str, action: Callable[[], Any]) -> None:
     try:
         action()
-    except Exception:
+    except EXPECTED_FAILURE:
         print(f"PASS reject: {name}")
         return
     raise Fail(f"negative case unexpectedly accepted: {name}")
@@ -58,12 +62,35 @@ def base_record() -> dict[str, Any]:
 
 
 def main() -> int:
+    global EXPECTED_FAILURE
     require(WRITER.is_file(), "promotion review writer missing")
     writer = load_writer()
+    EXPECTED_FAILURE = writer.Fail
 
     canonical = base_record()
     canonical["decisionId"] = "brpr_no_candidate"
     expect_rejected("no current final recovery candidate", lambda: writer.validate_record(canonical))
+
+    try:
+        expect_rejected("unexpected implementation TypeError", lambda: (_ for _ in ()).throw(TypeError("synthetic implementation fault")))
+    except TypeError:
+        print("PASS preserve: unexpected implementation TypeError is not normalized as domain rejection")
+    else:
+        raise Fail("unexpected implementation TypeError was accepted as a valid rejection")
+
+    expect_rejected("absolute review authority ref", lambda: writer.repo_ref(str((ROOT / "README.md").resolve()), "negative.absolute"))
+    expect_rejected("parent-traversal review authority ref", lambda: writer.repo_ref("docs/../README.md", "negative.parent"))
+
+    real_root = writer.ROOT
+    with tempfile.TemporaryDirectory(prefix="memory-os-promotion-review-path-negative-") as tmp:
+        tmp_path = Path(tmp)
+        escaped = tmp_path / "escaped-review.md"
+        escaped.symlink_to(ROOT / "README.md")
+        writer.ROOT = tmp_path
+        try:
+            expect_rejected("review authority symlink escapes repository root", lambda: writer.repo_ref("escaped-review.md", "negative.symlink"))
+        finally:
+            writer.ROOT = real_root
 
     real_candidate = writer.recovery_candidate
     writer.recovery_candidate = lambda evidence_id: {"evidenceId": evidence_id}
@@ -123,6 +150,8 @@ def main() -> int:
     print("Memory OS backup/restore promotion review negative suite PASS")
     print("canonical registry mutated: false")
     print("candidate bypass: false")
+    print("review authority path escape accepted: false")
+    print("unexpected implementation exception accepted as valid rejection: false")
     print("review can change traffic: false")
     print("GO recommendation implies production ready: false")
     print("production evidence: false")
