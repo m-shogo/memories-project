@@ -75,7 +75,14 @@ def main() -> int:
     EXPECTED_FAILURE = writer.Fail
     with tempfile.TemporaryDirectory(prefix="memory-os-non-resurrection-negative-") as tmp:
         generation_registry = Path(tmp) / "generation-evidence.json"
-        generation_registry.write_text(json.dumps({"schemaVersion": "memory-os-backup-restore-generation-evidence-registry.v1", "records": [{"evidenceId": "brge_negative_generation", "sourceCommitSha": SHA}]}) + "\n", encoding="utf-8")
+        generation_registry.write_text(json.dumps({
+            "schemaVersion": "memory-os-backup-restore-generation-evidence-registry.v1",
+            "appendOnly": True,
+            "registeredEvidenceCount": 1,
+            "records": [{"evidenceId": "brge_negative_generation", "sourceCommitSha": SHA}],
+            "productionEvidence": False,
+            "productionReady": False,
+        }) + "\n", encoding="utf-8")
         writer.GEN_EVIDENCE_REGISTRY = generation_registry
         real_repo_ref, real_load = writer.repo_ref, writer.load
         writer.repo_ref = lambda value, field: value if isinstance(value, str) and value else (_ for _ in ()).throw(writer.Fail(f"{field} invalid"))
@@ -150,6 +157,27 @@ def main() -> int:
         state["operabilityReviewer"] = "reviewer_security"; expect_rejected("security and operability reviewer identity reuse", lambda: writer.validate_record(valid)); state["operabilityReviewer"] = "reviewer_operability"
         state["reviewResult"] = "REJECTED"; expect_rejected("review result not APPROVED", lambda: writer.validate_record(valid)); state["reviewResult"] = "APPROVED"
 
+        empty_registry = {
+            "schemaVersion": "memory-os-backup-restore-non-resurrection-admission-registry.v1",
+            "appendOnly": True,
+            "registeredRecordCount": 0,
+            "completeRecordCount": 0,
+            "candidateCoveredCount": 0,
+            "records": [],
+            "productionEvidence": False,
+            "productionReady": False,
+        }
+        require(writer.validate_registry_for_append(copy.deepcopy(empty_registry)) == [], "healthy empty typed registry must remain appendable")
+        print("PASS accept: healthy empty typed registry append authority")
+        drift = copy.deepcopy(empty_registry); drift["registeredRecordCount"] = 1
+        expect_rejected("typed writer registeredRecordCount drift before append", lambda: writer.validate_registry_for_append(drift))
+        drift = copy.deepcopy(empty_registry); drift["completeRecordCount"] = True
+        expect_rejected("typed writer boolean completeRecordCount before append", lambda: writer.validate_registry_for_append(drift))
+        drift = copy.deepcopy(empty_registry); drift["candidateCoveredCount"] = 1
+        expect_rejected("typed writer candidateCoveredCount drift before append", lambda: writer.validate_registry_for_append(drift))
+        drift = copy.deepcopy(empty_registry); drift["productionReady"] = True
+        expect_rejected("typed writer production boundary drift before append", lambda: writer.validate_registry_for_append(drift))
+
         writer.repo_ref, writer.load = real_repo_ref, real_load
         expect_rejected("writer evidence ref absolute path", lambda: writer.repo_ref(str((ROOT / "SECURITY.md").resolve()), "securityReviewRef"))
         expect_rejected("writer evidence ref parent traversal alias", lambda: writer.repo_ref("docs/../SECURITY.md", "securityReviewRef"))
@@ -172,6 +200,7 @@ def main() -> int:
     print("Memory OS backup/restore non-resurrection negative admission suite PASS")
     print("typed domain and independent review evidence are generation/commit/bundle/digest bound: true")
     print("typed record immutably binds review payload digests: true")
+    print("typed writer rejects aggregate/current authority drift before append: true")
     print("writer evidence refs canonical and repository-contained: true")
     print("unexpected exception accepted as a valid rejection: false")
     print("canonical registries mutated: false")
