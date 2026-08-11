@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Prove generation-evidence authority loading fails closed on unreadable or escaped inputs."""
+"""Prove generation-evidence authority loading and append admission fail closed."""
 
 from __future__ import annotations
 
+import copy
 import importlib.util
 import tempfile
 from pathlib import Path
@@ -107,6 +108,39 @@ def exercise_writer_module_containment(writer, tmp: Path, outside_dir: Path) -> 
         writer.NON_RESURRECTION_WRITER = original_non_resurrection_writer
 
 
+def exercise_writer_registry_append_guard(writer) -> None:
+    healthy = {
+        "schemaVersion": "memory-os-backup-restore-generation-evidence-registry.v1",
+        "appendOnly": True,
+        "registeredEvidenceCount": 0,
+        "drillRequestBoundEvidenceCount": 0,
+        "completeGenerationBoundBackupCount": 0,
+        "completeGenerationBoundRestoreCount": 0,
+        "productionEquivalentRecoveryCandidateCount": 0,
+        "records": [],
+        "productionEvidence": False,
+        "productionReady": False,
+    }
+    require(writer.validate_registry_for_append(copy.deepcopy(healthy)) == [], "healthy empty generation registry append authority rejected")
+    print("PASS accept: healthy empty generation registry append authority")
+
+    def reject(name: str, mutate: Callable[[dict], None]) -> None:
+        value = copy.deepcopy(healthy)
+        mutate(value)
+        expect_domain_fail(name, lambda: writer.validate_registry_for_append(value), writer.Fail)
+
+    reject("generation writer registry schema drift before append", lambda value: value.update(schemaVersion="memory-os-backup-restore-generation-evidence-registry.v0"))
+    reject("generation writer appendOnly disabled before append", lambda value: value.update(appendOnly=False))
+    reject("generation writer registeredEvidenceCount drift before append", lambda value: value.update(registeredEvidenceCount=1))
+    reject("generation writer boolean registeredEvidenceCount before append", lambda value: value.update(registeredEvidenceCount=True))
+    reject("generation writer drillRequestBoundEvidenceCount drift before append", lambda value: value.update(drillRequestBoundEvidenceCount=1))
+    reject("generation writer boolean backup count before append", lambda value: value.update(completeGenerationBoundBackupCount=True))
+    reject("generation writer restore count drift before append", lambda value: value.update(completeGenerationBoundRestoreCount=1))
+    reject("generation writer candidate count drift before append", lambda value: value.update(productionEquivalentRecoveryCandidateCount=1))
+    reject("generation writer production evidence boundary drift before append", lambda value: value.update(productionEvidence=True))
+    reject("generation writer production ready boundary drift before append", lambda value: value.update(productionReady=True))
+
+
 def main() -> int:
     require(WRITER.is_file(), "generation evidence writer missing")
     require(VALIDATOR.is_file(), "generation evidence validator missing")
@@ -117,6 +151,8 @@ def main() -> int:
     reconciler = load_module(RECONCILER, "memory_os_generation_evidence_reconciler_load_negative")
 
     require(writer.canonical_repo_file(WRITER, "generation evidence writer") == WRITER, "canonical writer path rejected")
+    require(callable(getattr(writer, "validate_registry_for_append", None)), "generation writer append authority guard missing")
+    exercise_writer_registry_append_guard(writer)
 
     with tempfile.TemporaryDirectory(prefix=".tmp-generation-evidence-load-", dir=TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
@@ -130,6 +166,9 @@ def main() -> int:
             exercise_loads("reconciler", reconciler, tmp, outside)
 
     print("Generation evidence unreadable/escaped-authority negative suite PASS")
+    print("generation writer append authority drift accepted: false")
+    print("production evidence: false")
+    print("production decision: NO_GO")
     return 0
 
 
