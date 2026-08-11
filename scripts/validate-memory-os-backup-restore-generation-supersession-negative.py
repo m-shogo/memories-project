@@ -71,14 +71,26 @@ def reject_candidate(writer, record: dict, label: str) -> None:
     require(eligible is False, f"{label} unexpectedly remained a current candidate")
 
 
+def successor_environment_record(source_path: Path, generation_id: str, destination: Path) -> Path:
+    value = json.loads(source_path.read_text(encoding="utf-8"))
+    require(isinstance(value, dict), "successor environment fixture root must be object")
+    value["generationId"] = generation_id
+    write_json(destination, value)
+    return destination
+
+
 def main() -> int:
     require(NEGATIVE.is_file() and WRITER.is_file(), "generation negative authorities missing")
     fixture = load_module(NEGATIVE, "memory_os_generation_negative_fixture_for_supersession")
     writer = load_module(WRITER, "memory_os_generation_writer_for_supersession")
     commit_sha = fixture.head_sha()
 
-    with tempfile.TemporaryDirectory(prefix="memory-os-generation-supersession-") as tmp:
+    env_fixture_parent = fixture.SOURCE_ENV_FIXTURE.parent
+    with tempfile.TemporaryDirectory(prefix="memory-os-generation-supersession-") as tmp, tempfile.TemporaryDirectory(
+        prefix=".generation-supersession-", dir=env_fixture_parent
+    ) as env_tmp:
         tmp_path = Path(tmp)
+        env_tmp_path = Path(env_tmp)
         generation_registry = tmp_path / "generations.json"
         objectives_registry = tmp_path / "objectives.json"
         drill_registry = tmp_path / "drill-requests.json"
@@ -147,11 +159,16 @@ def main() -> int:
         writer.validate_record(record)
         require(writer.candidate(record) is True, "baseline current candidate must be derivable before authority rollover")
 
+        source_successor_env = successor_environment_record(
+            fixture.SOURCE_ENV_FIXTURE,
+            "pegen_source_v2",
+            env_tmp_path / "source-environment-record.v2.valid.json",
+        )
         source_successor = fixture.generation_record(
             generation_id="pegen_source_v2",
             environment_id="pe_source",
             environment_manifest_sha256=fixture.DIGEST_A,
-            environment_record=fixture.SOURCE_ENV_FIXTURE,
+            environment_record=source_successor_env,
             commit_sha=commit_sha,
         )
         source_successor["supersedesGenerationId"] = "pegen_source"
@@ -174,11 +191,16 @@ def main() -> int:
         writer.validate_record(record)
         require(writer.candidate(record) is True, "baseline candidate must recover after isolated source supersession fixture reset")
 
+        target_successor_env = successor_environment_record(
+            fixture.TARGET_ENV_FIXTURE,
+            "pegen_target_v2",
+            env_tmp_path / "target-environment-record.v2.valid.json",
+        )
         target_successor = fixture.generation_record(
             generation_id="pegen_target_v2",
             environment_id="pe_target",
             environment_manifest_sha256=fixture.DIGEST_B,
-            environment_record=fixture.TARGET_ENV_FIXTURE,
+            environment_record=target_successor_env,
             commit_sha=commit_sha,
         )
         target_successor["supersedesGenerationId"] = "pegen_target"
