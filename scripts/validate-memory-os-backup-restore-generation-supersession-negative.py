@@ -61,6 +61,16 @@ def reject_current_registration(writer, record: dict, label: str) -> None:
         raise Fail(f"new evidence remained admissible after {label}")
 
 
+def reject_candidate(writer, record: dict, label: str) -> None:
+    """Accept only a false predicate or an explicit domain Fail as rejection."""
+    try:
+        eligible = writer.candidate(record)
+    except Exception as exc:
+        require(type(exc).__name__ == "Fail", f"unexpected exception escaped {label} candidate rejection")
+        return
+    require(eligible is False, f"{label} unexpectedly remained a current candidate")
+
+
 def main() -> int:
     require(NEGATIVE.is_file() and WRITER.is_file(), "generation negative authorities missing")
     fixture = load_module(NEGATIVE, "memory_os_generation_negative_fixture_for_supersession")
@@ -241,7 +251,7 @@ def main() -> int:
         ]
         write_json(objectives_registry, duplicate_objectives)
 
-        require(writer.candidate(record) is False, "duplicate recovery objective identity must invalidate current candidate")
+        reject_candidate(writer, record, "duplicate recovery objective identity")
         reject_current_registration(writer, record, "duplicate recovery objective identity")
         print("PASS revoke: duplicate recovery objective identity invalidates candidate and new evidence")
 
@@ -253,7 +263,7 @@ def main() -> int:
         missing_current_objective["currentObjectiveId"] = None
         write_json(objectives_registry, missing_current_objective)
 
-        require(writer.candidate(record) is False, "missing current recovery objective authority must invalidate current candidate")
+        reject_candidate(writer, record, "missing current recovery objective authority")
         reject_current_registration(writer, record, "missing current recovery objective authority")
         print("PASS revoke: missing current recovery objective authority invalidates candidate and new evidence")
 
@@ -293,6 +303,7 @@ def main() -> int:
     print("missing current recovery objective creates current candidate: false")
     print("stale recovery objective creates current candidate: false")
     print("new evidence accepted against stale generation/objective/request authority: false")
+    print("unexpected candidate exceptions accepted as rejection: false")
     print("canonical registries mutated: false")
     print("production evidence: false")
     print("production decision: NO_GO")
