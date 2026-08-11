@@ -230,6 +230,11 @@ def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any
     complete_count = registry.get("completeRecordCount")
     covered_count = registry.get("candidateCoveredCount")
     require(valid_count(registered_count) and registered_count == len(rows), "registeredRecordCount drift")
+    for index, row in enumerate(rows):
+        try:
+            validate_record(row)
+        except Fail as exc:
+            raise Fail(f"registry records[{index}] authority invalid: {exc}") from exc
     derived_complete = sum(1 for row in rows if row.get("evidenceComplete") is True)
     require(valid_count(complete_count) and complete_count == derived_complete, "completeRecordCount drift")
     record_ids = [row.get("recordId") for row in rows]
