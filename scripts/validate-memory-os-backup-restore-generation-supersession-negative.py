@@ -100,6 +100,7 @@ def main() -> int:
         )
         baseline_generations = {
             "schemaVersion": "memory-os-production-equivalent-environment-generation-registry.v1",
+            "registryClass": "PRODUCTION_EQUIVALENT_ENVIRONMENT_GENERATIONS",
             "appendOnly": True,
             "registeredGenerationCount": 2,
             "currentGenerationId": "pegen_target",
@@ -157,6 +158,7 @@ def main() -> int:
         source_superseded = dict(baseline_generations)
         source_superseded["generations"] = [source, target, source_successor]
         source_superseded["registeredGenerationCount"] = 3
+        source_superseded["currentGenerationId"] = "pegen_source_v2"
         write_json(generation_registry, source_superseded)
         source_superseded_drill = drill_registry_value(request)
         source_superseded_drill["currentExecutableRequestCount"] = 0
