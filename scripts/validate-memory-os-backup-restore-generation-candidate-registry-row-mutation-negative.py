@@ -136,6 +136,39 @@ def main() -> int:
             require(writer.typed_non_resurrection_covered(evidence_id) is False, "mutated completion bit in registry row must revoke coverage")
             print("PASS revoke: registry-row completion mutation invalidates coverage")
 
+            production_boundary_mutation = copy.deepcopy(intact_registry)
+            production_boundary_mutation["records"][0]["productionReady"] = True
+            write_json(overlay_registry, production_boundary_mutation)
+            require(writer.typed_non_resurrection_covered(evidence_id) is False, "mutated productionReady bit in typed row must revoke coverage")
+            print("PASS revoke: registry-row production boundary mutation invalidates coverage")
+
+            findings_mutation = copy.deepcopy(intact_registry)
+            findings_mutation["records"][0]["unresolvedFindings"] = [{
+                "findingId": "finding_candidate_row_mutation",
+                "severity": "LOW",
+                "status": "OPEN",
+            }]
+            write_json(overlay_registry, findings_mutation)
+            require(writer.typed_non_resurrection_covered(evidence_id) is False, "new unresolved finding in typed row must revoke coverage")
+            print("PASS revoke: registry-row unresolved finding mutation invalidates coverage")
+
+            duplicate_binding = copy.deepcopy(intact_registry)
+            duplicate_binding.update({
+                "registeredRecordCount": 2,
+                "completeRecordCount": 2,
+                "candidateCoveredCount": 2,
+                "records": [copy.deepcopy(overlay), copy.deepcopy(overlay)],
+            })
+            write_json(overlay_registry, duplicate_binding)
+            require(writer.typed_non_resurrection_covered(evidence_id) is False, "duplicate typed coverage for one generation evidence id must revoke coverage")
+            print("PASS revoke: duplicate typed generation binding invalidates coverage")
+
+            review_independence_mutation = copy.deepcopy(intact_registry)
+            review_independence_mutation["records"][0]["operabilityReviewRef"] = review_independence_mutation["records"][0]["securityReviewRef"]
+            write_json(overlay_registry, review_independence_mutation)
+            require(writer.typed_non_resurrection_covered(evidence_id) is False, "collapsed security/operability review refs must revoke coverage")
+            print("PASS revoke: registry-row review independence mutation invalidates coverage")
+
             write_json(overlay_registry, intact_registry)
             require(writer.typed_non_resurrection_covered(evidence_id) is True, "restored intact row must restore isolated typed coverage predicate")
 
@@ -143,6 +176,10 @@ def main() -> int:
         print("canonical registries mutated: false")
         print("repository-local canonical simulation: true")
         print("typed registry row stale mutation accepted: false")
+        print("typed production boundary mutation accepted: false")
+        print("typed unresolved finding mutation accepted: false")
+        print("duplicate typed generation binding accepted: false")
+        print("collapsed independent review refs accepted: false")
         print("production evidence: false")
         print("production decision: NO_GO")
         return 0
