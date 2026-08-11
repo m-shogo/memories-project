@@ -9,7 +9,8 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+CANONICAL_GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+GEN_REGISTRY = CANONICAL_GEN_REGISTRY
 GEN_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
 
 
@@ -40,6 +41,11 @@ def canonical_repo_file(path: Path, field: str) -> Path:
     require(relative.parts and ".." not in relative.parts, f"{field} must be repository-contained")
     require(relative == resolved and path.is_file(), f"{field} must resolve to its canonical repository file")
     return path
+
+
+def require_canonical_registry(path: Path) -> None:
+    if path == CANONICAL_GEN_REGISTRY:
+        canonical_repo_file(path, "canonical environment generation registry")
 
 
 def load_generation_writer():
@@ -136,6 +142,7 @@ def derive_registry(registry: dict[str, Any]) -> dict[str, Any]:
 
 
 def derive(registry_path: Path = GEN_REGISTRY) -> dict[str, Any]:
+    require_canonical_registry(registry_path)
     return derive_registry(load(registry_path))
 
 
@@ -156,6 +163,7 @@ def main() -> int:
     print(f"unsuperseded preflight-eligible generations: {state['unsupersededPreflightEligibleGenerationCount']}")
     print(f"distinct preflight-eligible environments: {state['distinctPreflightEligibleEnvironmentCount']}")
     print(f"eligible directed restore pairs: {state['eligibleDirectedPairCount']}")
+    print("canonical generation registry identity required for default derivation: true")
     print("cross-environment supersedes accepted: false")
     print("out-of-order same-environment supersedes accepted: false")
     print("current generation pointer drift accepted: false")
