@@ -23,6 +23,7 @@ GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-eviden
 NONRES_WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
 CANDIDATE_MUTATION = ROOT / "scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py"
 NONRES_CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
+TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 
 
 class Fail(RuntimeError):
@@ -56,6 +57,7 @@ def write_json(path: Path, value: dict[str, Any]) -> None:
 def main() -> int:
     for path in (GEN_NEGATIVE, GEN_WRITER, NONRES_WRITER, CANDIDATE_MUTATION, NONRES_CONTRACT):
         require(path.is_file(), f"registry-row mutation foundation missing: {path}")
+    require(TMP_PARENT.is_dir(), "registry-row mutation repository-local temp parent missing")
 
     helpers = load_module(GEN_NEGATIVE, "memory_os_generation_negative_helpers_row_mutation")
     writer = load_module(GEN_WRITER, "memory_os_generation_writer_row_mutation")
@@ -66,7 +68,7 @@ def main() -> int:
     cleanup: list[Path] = []
 
     try:
-        with tempfile.TemporaryDirectory(prefix="memory-os-candidate-row-mutation-") as tmp:
+        with tempfile.TemporaryDirectory(prefix=".tmp-memory-os-candidate-row-mutation-", dir=TMP_PARENT) as tmp:
             tmp_path = Path(tmp)
             generation_evidence_registry = tmp_path / "generation-evidence.json"
             overlay_registry = tmp_path / "typed-overlay.json"
@@ -139,6 +141,7 @@ def main() -> int:
 
         print("Memory OS generation candidate registry-row mutation negative suite PASS")
         print("canonical registries mutated: false")
+        print("repository-local canonical simulation: true")
         print("typed registry row stale mutation accepted: false")
         print("production evidence: false")
         print("production decision: NO_GO")
