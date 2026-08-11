@@ -64,6 +64,15 @@ def exercise_writer_loads(writer, tmp: Path) -> None:
     directory_record.mkdir()
     expect_domain_fail("writer unreadable external record directory", lambda: writer.load(directory_record), writer.Fail)
 
+    ref_loop = tmp / "loop-evidence-ref.json"
+    ref_loop.symlink_to(ref_loop.name)
+    ref_loop_relative = ref_loop.relative_to(ROOT).as_posix()
+    expect_domain_fail(
+        "generation evidence repository ref symlink loop",
+        lambda: writer.repo_ref(ref_loop_relative, "negativeEvidenceRef"),
+        writer.Fail,
+    )
+
 
 def exercise_writer_module_containment(writer, tmp: Path, outside_dir: Path) -> None:
     outside_module = outside_dir / "outside-writer.py"
