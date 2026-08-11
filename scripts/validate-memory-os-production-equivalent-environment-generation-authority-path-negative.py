@@ -47,6 +47,7 @@ def main() -> int:
     writer = load_module(WRITER, "memory_os_generation_writer_authority_path_negative")
     validator = load_module(VALIDATOR, "memory_os_generation_validator_authority_path_negative")
     require(writer.canonical_repo_file(writer.ENV_VALIDATOR, "environment record semantic validator") == writer.ENV_VALIDATOR, "canonical environment validator rejected")
+    writer.require_canonical_runtime_authorities()
 
     original_root = validator.ROOT
     with tempfile.TemporaryDirectory(prefix="memory-os-generation-validator-root-") as root_tmp, tempfile.TemporaryDirectory(prefix="memory-os-generation-validator-external-") as external_tmp:
@@ -104,12 +105,40 @@ def main() -> int:
             except FileNotFoundError:
                 pass
 
+        outside_authority = external_dir / "outside-runtime-authority.json"
+        outside_authority.write_text("{}\n", encoding="utf-8")
+        escaped_authority = ROOT / ".tmp-generation-runtime-authority-escape.json"
+        loop_authority = ROOT / ".tmp-generation-runtime-authority-loop.json"
+        try:
+            escaped_authority.symlink_to(outside_authority)
+            loop_authority.symlink_to(loop_authority.name)
+            for field in (
+                "environment generation contract",
+                "environment generation registry",
+                "environment record schema",
+                "generation record schema",
+            ):
+                expect_rejected(
+                    f"{field} repository symlink escapes repository",
+                    lambda field=field: writer.require_canonical_runtime_authority(escaped_authority, escaped_authority, field),
+                    writer.Fail,
+                )
+                expect_rejected(
+                    f"{field} repository symlink loop",
+                    lambda field=field: writer.require_canonical_runtime_authority(loop_authority, loop_authority, field),
+                    writer.Fail,
+                )
+        finally:
+            escaped_authority.unlink(missing_ok=True)
+            loop_authority.unlink(missing_ok=True)
+
     print("Memory OS production-equivalent generation authority-path negative suite PASS")
     print("absolute authority refs accepted: false")
     print("parent-traversal authority refs accepted: false")
     print("repo-local symlink to external authority accepted: false")
     print("writer invalid UTF-8/I/O accepted: false")
     print("writer executable semantic validator escape accepted: false")
+    print("canonical generation contract/registry/schema containment: enforced")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
