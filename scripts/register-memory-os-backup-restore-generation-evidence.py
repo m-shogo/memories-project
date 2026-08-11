@@ -60,10 +60,21 @@ def domain_validation_failure(exc: BaseException) -> bool:
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise Fail(f"cannot load {path}: {exc}") from exc
     require(isinstance(value, dict), f"root must be object: {path}")
     return value
+
+
+def canonical_repo_file(path: Path, field: str) -> Path:
+    try:
+        relative = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(relative.parts and ".." not in relative.parts, f"{field} must be repository-contained")
+    require(relative == resolved and path.is_file(), f"{field} must resolve to its canonical repository file")
+    return path
 
 
 def git(*args: str) -> str:
@@ -132,7 +143,8 @@ def measurements_meet_objective(record: dict[str, Any], objective: dict[str, Any
 
 
 def load_drill_writer():
-    spec = importlib.util.spec_from_file_location("memory_os_restore_drill_request_writer_for_generation_evidence", DRILL_REQUEST_WRITER)
+    writer = canonical_repo_file(DRILL_REQUEST_WRITER, "restore drill request writer")
+    spec = importlib.util.spec_from_file_location("memory_os_restore_drill_request_writer_for_generation_evidence", writer)
     require(spec is not None and spec.loader is not None, "cannot load restore drill request writer")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -143,7 +155,8 @@ def load_drill_writer():
 
 
 def load_non_resurrection_writer():
-    spec = importlib.util.spec_from_file_location("memory_os_non_resurrection_writer_for_generation_evidence", NON_RESURRECTION_WRITER)
+    writer = canonical_repo_file(NON_RESURRECTION_WRITER, "typed non-resurrection writer")
+    spec = importlib.util.spec_from_file_location("memory_os_non_resurrection_writer_for_generation_evidence", writer)
     require(spec is not None and spec.loader is not None, "cannot load typed non-resurrection writer")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -293,8 +306,12 @@ def validate_record(record: dict[str, Any], *, require_current_drill_request: bo
     require(contract.get("drillRequestRegistry") == str(CANONICAL_DRILL_REQUEST_REGISTRY.relative_to(ROOT)), "drillRequestRegistry ref drift")
     require(contract.get("typedNonResurrectionAdmissionContract") == str(CANONICAL_NON_RESURRECTION_CONTRACT.relative_to(ROOT)), "typed non-resurrection contract ref drift")
     require(contract.get("typedNonResurrectionAdmissionRegistry") == str(CANONICAL_NON_RESURRECTION_REGISTRY.relative_to(ROOT)), "typed non-resurrection registry ref drift")
-    require(CANONICAL_DRILL_REQUEST_CONTRACT.is_file() and DRILL_REQUEST_REGISTRY.is_file() and DRILL_REQUEST_WRITER.is_file(), "drill request admission foundation missing")
-    require(CANONICAL_NON_RESURRECTION_CONTRACT.is_file() and NON_RESURRECTION_REGISTRY.is_file() and NON_RESURRECTION_WRITER.is_file(), "typed non-resurrection admission foundation missing")
+    canonical_repo_file(CANONICAL_DRILL_REQUEST_CONTRACT, "restore drill request contract")
+    canonical_repo_file(DRILL_REQUEST_REGISTRY, "restore drill request registry")
+    canonical_repo_file(DRILL_REQUEST_WRITER, "restore drill request writer")
+    canonical_repo_file(CANONICAL_NON_RESURRECTION_CONTRACT, "typed non-resurrection contract")
+    canonical_repo_file(NON_RESURRECTION_REGISTRY, "typed non-resurrection registry")
+    canonical_repo_file(NON_RESURRECTION_WRITER, "typed non-resurrection writer")
     require(isinstance(record.get("evidenceId"), str) and EVIDENCE_ID.fullmatch(record["evidenceId"]), "evidenceId invalid")
     source_commit = record.get("sourceCommitSha")
     require(isinstance(source_commit, str) and SHA40.fullmatch(source_commit), "sourceCommitSha invalid")
