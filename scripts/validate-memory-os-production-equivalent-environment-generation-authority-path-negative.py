@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove generation-validator authority refs cannot escape the repository."""
+"""Prove generation validator/writer authority refs cannot escape the repository."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Callable
 
 ROOT = Path(__file__).resolve().parents[1]
+WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-generation.py"
 
 
@@ -21,29 +22,37 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
-def load_validator():
-    spec = importlib.util.spec_from_file_location("memory_os_generation_validator_authority_path_negative", VALIDATOR)
-    require(spec is not None and spec.loader is not None, "cannot load generation validator")
+def load_module(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load {path.name}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-def expect_rejected(name: str, action: Callable[[], object], failure_type: type[Exception]) -> None:
+def expect_rejected(name: str, action: Callable[[], object], failure_type: type[BaseException]) -> None:
     try:
         action()
     except failure_type:
         print(f"PASS reject: {name}")
         return
+    except Exception as exc:
+        raise Fail(f"{name} leaked non-domain exception: {type(exc).__name__}: {exc}") from exc
     raise Fail(f"negative case unexpectedly accepted: {name}")
 
 
 def main() -> int:
-    validator = load_validator()
+    require(WRITER.is_file(), "generation writer missing")
+    require(VALIDATOR.is_file(), "generation validator missing")
+    writer = load_module(WRITER, "memory_os_generation_writer_authority_path_negative")
+    validator = load_module(VALIDATOR, "memory_os_generation_validator_authority_path_negative")
+    require(writer.canonical_repo_file(writer.ENV_VALIDATOR, "environment record semantic validator") == writer.ENV_VALIDATOR, "canonical environment validator rejected")
+
     original_root = validator.ROOT
     with tempfile.TemporaryDirectory(prefix="memory-os-generation-validator-root-") as root_tmp, tempfile.TemporaryDirectory(prefix="memory-os-generation-validator-external-") as external_tmp:
         root = Path(root_tmp)
-        external = Path(external_tmp) / "external.yml"
+        external_dir = Path(external_tmp)
+        external = external_dir / "external.yml"
         local = root / "workflow.yml"
         local.write_text("name: local\n", encoding="utf-8")
         external.write_text("name: external\n", encoding="utf-8")
@@ -71,10 +80,36 @@ def main() -> int:
         finally:
             validator.ROOT = original_root
 
-    print("Memory OS production-equivalent generation validator authority-path negative suite PASS")
+        invalid_utf8 = root / "invalid-writer-input.json"
+        invalid_utf8.write_bytes(b"{\xff}")
+        expect_rejected("generation writer invalid UTF-8 input", lambda: writer.load(invalid_utf8), writer.Fail)
+        unreadable = root / "writer-directory-input.json"
+        unreadable.mkdir()
+        expect_rejected("generation writer unreadable directory input", lambda: writer.load(unreadable), writer.Fail)
+
+        outside_validator = external_dir / "outside-environment-validator.py"
+        outside_validator.write_text("VALUE = 1\n", encoding="utf-8")
+        writer_escape = ROOT / ".tmp-generation-writer-validator-escape.py"
+        original_env_validator = writer.ENV_VALIDATOR
+        try:
+            writer.ENV_VALIDATOR = outside_validator
+            expect_rejected("generation writer semantic validator absolute path escapes repository", writer.load_environment_validator, writer.Fail)
+            writer_escape.symlink_to(outside_validator)
+            writer.ENV_VALIDATOR = writer_escape
+            expect_rejected("generation writer semantic validator symlink escapes repository", writer.load_environment_validator, writer.Fail)
+        finally:
+            writer.ENV_VALIDATOR = original_env_validator
+            try:
+                writer_escape.unlink()
+            except FileNotFoundError:
+                pass
+
+    print("Memory OS production-equivalent generation authority-path negative suite PASS")
     print("absolute authority refs accepted: false")
     print("parent-traversal authority refs accepted: false")
     print("repo-local symlink to external authority accepted: false")
+    print("writer invalid UTF-8/I/O accepted: false")
+    print("writer executable semantic validator escape accepted: false")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
