@@ -100,7 +100,31 @@ def main() -> int:
             finally:
                 writer.ELIGIBILITY_HELPER = original_helper
 
+            outside_authority = outside_dir / "outside-runtime-authority.json"
+            outside_authority.write_text("{}\n", encoding="utf-8")
+            escaped_authority = tmp / "escaped-runtime-authority.json"
+            escaped_authority.symlink_to(outside_authority)
+            loop_authority = tmp / "loop-runtime-authority.json"
+            loop_authority.symlink_to(loop_authority.name)
+            for field in (
+                "restore drill request contract",
+                "restore drill request registry",
+                "environment generation registry",
+                "recovery objectives registry",
+            ):
+                expect_domain_fail(
+                    f"{field} repository symlink escapes repository",
+                    lambda field=field: writer.require_canonical_runtime_authority(escaped_authority, escaped_authority, field),
+                    writer.Fail,
+                )
+                expect_domain_fail(
+                    f"{field} repository symlink loop",
+                    lambda field=field: writer.require_canonical_runtime_authority(loop_authority, loop_authority, field),
+                    writer.Fail,
+                )
+
     print("Drill-request unreadable/escaped-authority negative suite PASS")
+    print("canonical drill contract/registry/generation/objective containment: enforced")
     return 0
 
 
