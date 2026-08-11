@@ -44,10 +44,20 @@ def require(condition: bool, message: str) -> None:
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise Fail(f"cannot load {path}: {exc}") from exc
     require(isinstance(value, dict), f"root must be object: {path}")
     return value
+
+def canonical_repo_file(path: Path, field: str) -> Path:
+    try:
+        relative = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(relative.parts and ".." not in relative.parts, f"{field} must be repository-contained")
+    require(relative == resolved and path.is_file(), f"{field} must resolve to its canonical repository file")
+    return path
 
 def payload_sha256(payload: dict[str, Any]) -> str:
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
@@ -175,7 +185,8 @@ def validate_record(record: dict[str, Any]) -> None:
         require(forbidden not in serialized, f"record contains forbidden recovery material: {forbidden}")
 
 def load_generation_writer():
-    spec = importlib.util.spec_from_file_location("memory_os_generation_recovery_writer", GEN_WRITER)
+    writer = canonical_repo_file(GEN_WRITER, "generation recovery writer")
+    spec = importlib.util.spec_from_file_location("memory_os_generation_recovery_writer", writer)
     require(spec is not None and spec.loader is not None, "cannot load generation recovery writer")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
