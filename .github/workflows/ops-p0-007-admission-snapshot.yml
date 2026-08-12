@@ -1,6 +1,19 @@
 name: OPS P0 007 Admission Snapshot
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/ops-p0-007-admission-snapshot.yml"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json"
+      - "contracts/operations/recovery-objectives-registry.v1.json"
+      - "contracts/operations/backup-restore-drill-request-registry.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "scripts/memory_os_environment_generation_eligibility.py"
+      - "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py"
+      - "scripts/validate-memory-os-ops-p0-007-admission-snapshot.py"
   push:
     branches:
       - so
@@ -22,7 +35,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: ops-p0-007-admission-snapshot-so
+  group: ops-p0-007-admission-snapshot-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
@@ -32,7 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -40,10 +53,12 @@ jobs:
       - name: Capture exact OPS-P0-007 snapshot source
         run: |
           set -euo pipefail
-          git fetch origin so
-          test "$(git branch --show-current)" = "so"
-          test -z "$(git status --porcelain)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            git fetch origin so
+            test "$(git branch --show-current)" = "so"
+            test -z "$(git status --porcelain)"
+            test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          fi
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - name: Generate and validate strict snapshot
         id: snapshot
@@ -63,7 +78,7 @@ jobs:
           cat "$log"
           exit 0
       - name: Commit deterministic strict snapshot
-        if: steps.snapshot.outputs.exit_code == '0'
+        if: steps.snapshot.outputs.exit_code == '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
           git fetch origin so
@@ -91,7 +106,7 @@ jobs:
             exit 1
           fi
       - name: Record privacy-safe snapshot diagnostic
-        if: steps.snapshot.outputs.exit_code != '0'
+        if: steps.snapshot.outputs.exit_code != '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         env:
           SNAPSHOT_EXIT_CODE: ${{ steps.snapshot.outputs.exit_code }}
         run: |
