@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+TYPED_WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
 GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
@@ -101,7 +102,19 @@ def main() -> int:
     registry = load(REGISTRY)
     generation_registry = load(GEN_REGISTRY)
     status = load(STATUS)
+    typed_writer = load_module(TYPED_WRITER, "memory_os_non_resurrection_writer_reconcile")
     generation_writer = load_module(GEN_WRITER, "memory_os_generation_recovery_writer_reconcile")
+
+    # Reconciliation may refresh derived contract/status projections, but it
+    # must never repair a corrupt append-only evidence registry. Reuse the same
+    # writer admission validators before any derived field is rewritten.
+    try:
+        typed_writer.validate_registry_for_append(registry)
+        generation_writer.validate_registry_for_append(generation_registry)
+    except RuntimeError as exc:
+        if exc.__class__.__name__ != "Fail":
+            raise
+        raise Fail(f"append-only recovery authority invalid before reconcile: {exc}") from exc
 
     typed_rows = registry.get("records")
     generation_rows = generation_registry.get("records")
@@ -201,6 +214,7 @@ def main() -> int:
     print(f"pre-overlay eligible generation records: {len(base_candidate_ids)}")
     print(f"final production-equivalent recovery candidates: {len(final_candidate_ids)}")
     print(f"pending typed coverage: {len(pending_typed_ids)}")
+    print("corrupt append-only registry auto-healed by reconcile: false")
     print("failed post-validation leaves typed/generation/status mutation behind: false")
     print("OPS-P0-007: incomplete")
     print("production evidence: false")
