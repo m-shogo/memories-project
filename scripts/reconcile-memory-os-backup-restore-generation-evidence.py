@@ -122,6 +122,17 @@ def main() -> int:
     status = load(STATUS)
     writer = load_writer()
 
+    # Derived projections may be refreshed only from an already-valid
+    # append-only evidence registry. Reuse writer admission validation before
+    # rewriting any counts or production-boundary fields so reconcile cannot
+    # normalize corruption that a direct append would reject.
+    try:
+        writer.validate_registry_for_append(registry)
+    except RuntimeError as exc:
+        if exc.__class__.__name__ != "Fail":
+            raise
+        raise Fail(f"append-only generation recovery authority invalid before reconcile: {exc}") from exc
+
     rows = registry.get("records")
     count = registry.get("registeredEvidenceCount")
     generation_count = gen_registry.get("registeredGenerationCount")
@@ -130,8 +141,8 @@ def main() -> int:
     drill_rows = drill_registry.get("requests")
     drill_count = drill_registry.get("registeredRequestCount")
     current_drill_count = drill_registry.get("currentExecutableRequestCount")
-    require(isinstance(rows, list) and isinstance(count, int) and len(rows) == count, "recovery evidence registry count drift")
-    require(all(isinstance(value, int) and value >= 0 for value in (generation_count, objective_count, drill_count, current_drill_count)), "recovery dependency counts invalid")
+    require(isinstance(rows, list) and writer.valid_count(count) and len(rows) == count, "recovery evidence registry count drift")
+    require(all(writer.valid_count(value) for value in (generation_count, objective_count, drill_count, current_drill_count)), "recovery dependency counts invalid")
     require(isinstance(drill_rows, list) and drill_count == len(drill_rows), "drill request registry count drift")
     require(current_drill_count <= drill_count, "current drill request count invalid")
 
@@ -284,6 +295,7 @@ def main() -> int:
     print("human production-promotion review completed: false")
     print("human production promotion authorized: false")
     print("candidate counters rederived from append-only records: true")
+    print("corrupt append-only registry auto-healed by reconcile: false")
     print("failed post-validation leaves derived generation/status mutation behind: false")
     print("production evidence: false")
     print("OPS-P0-007: incomplete")
