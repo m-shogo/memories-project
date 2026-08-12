@@ -24,6 +24,7 @@ REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 OBJECTIVES_REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
 ELIGIBILITY_HELPER = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
+OBJECTIVES_WRITER = ROOT / "scripts/register-memory-os-recovery-objectives.py"
 WRITER = ROOT / "scripts/request-memory-os-backup-restore-drill.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-request.py"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
@@ -134,6 +135,7 @@ def main() -> int:
         (VALIDATOR, "drill request validator missing"),
         (WRITER, "drill request writer missing"),
         (ELIGIBILITY_HELPER, "semantic generation eligibility helper missing"),
+        (OBJECTIVES_WRITER, "recovery objectives writer missing"),
     ):
         require_repo_file(path, message)
 
@@ -148,6 +150,7 @@ def main() -> int:
     status = load(STATUS)
     writer = load_module(WRITER, "memory_os_restore_drill_request_writer_reconcile")
     eligibility = load_module(ELIGIBILITY_HELPER, "memory_os_restore_generation_eligibility_reconcile")
+    objectives_writer = load_module(OBJECTIVES_WRITER, "memory_os_recovery_objectives_writer_reconcile")
 
     generation_rows = generations.get("generations")
     generation_count = generations.get("registeredGenerationCount")
@@ -174,23 +177,18 @@ def main() -> int:
     if distinct_eligible_environment_count < 2:
         require(eligible_pair_count == 0, "eligible directed pair requires two distinct semantic environments")
 
-    objective_rows = objectives.get("records")
+    try:
+        objective_rows = objectives_writer.validate_registry_for_append(objectives)
+    except objectives_writer.Fail as exc:
+        raise Fail(f"recovery objectives registry authority invalid: {exc}") from exc
     objective_count = objectives.get("approvedObjectiveCount")
     current_objective_id = objectives.get("currentObjectiveId")
-    require(isinstance(objective_rows, list) and all(isinstance(row, dict) for row in objective_rows), "recovery objective rows invalid")
     require(isinstance(objective_count, int) and not isinstance(objective_count, bool) and objective_count == len(objective_rows), "recovery objective count drift")
-    require(objectives.get("appendOnly") is True and objectives.get("productionEvidence") is False and objectives.get("productionReady") is False, "recovery objective boundary drift")
-    objective_ids = [row.get("objectiveId") for row in objective_rows]
-    require(
-        all(isinstance(objective_id, str) and objective_id for objective_id in objective_ids)
-        and len(objective_ids) == len(set(objective_ids)),
-        "recovery objective identity authority invalid",
-    )
     if objective_count == 0:
         require(current_objective_id is None, "empty recovery objective registry cannot declare a current objective")
         current_objective_available = False
     else:
-        require(current_objective_id == objective_ids[-1], "currentObjectiveId must equal latest append-only recovery objective")
+        require(current_objective_id == objective_rows[-1].get("objectiveId"), "currentObjectiveId must equal latest append-only recovery objective")
         current_objective_available = True
 
     require(registry.get("schemaVersion") == "memory-os-backup-restore-drill-request-registry.v1", "drill request registry schema drift")
@@ -320,6 +318,7 @@ def main() -> int:
     print("failed post-validation leaves registry/contract/status mutation behind: false")
     print("boolean generation/objective aggregate counts accepted: false")
     print("corrupt drill-request aggregate authority auto-healed: false")
+    print("recovery objective append-only authority validated through canonical writer: true")
     print("registered generation or historical objective count alone creates planning authority: false")
     print("canonical OPS-P0-007 blockers preserved: 6")
     print("restore executed: false")
