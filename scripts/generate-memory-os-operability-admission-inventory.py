@@ -24,6 +24,10 @@ def exists(relative: str) -> bool:
     return (ROOT / relative).is_file()
 
 
+def valid_count(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
 def p0_status(status: dict[str, Any], area_id: str) -> dict[str, Any]:
     rows = status.get("areas")
     if not isinstance(rows, list):
@@ -77,11 +81,14 @@ def main() -> int:
     if not isinstance(preflight_state, dict):
         raise SystemExit("backup drill preflight state missing")
 
+    generation_count = generations.get("registeredGenerationCount")
     objective_count = recovery_objectives.get("approvedObjectiveCount")
-    if not isinstance(objective_count, int) or objective_count < 0:
-        raise SystemExit("approved recovery objective count invalid")
     release_pair_count = release_pairs.get("approvedPairCount")
-    if not isinstance(release_pair_count, int) or release_pair_count < 0:
+    if not valid_count(generation_count):
+        raise SystemExit("registered environment generation count invalid")
+    if not valid_count(objective_count):
+        raise SystemExit("approved recovery objective count invalid")
+    if not valid_count(release_pair_count):
         raise SystemExit("approved release pair count invalid")
     soak_approved_criteria_count = soak_review.get("approvedLeakStabilityCriteriaCount")
     soak_passing_review_count = soak_review.get("passingIndependentReviewCount")
@@ -94,6 +101,9 @@ def main() -> int:
     executable_drill_request_count = backup_drill_requests.get("currentExecutableRequestCount")
     generation_evidence_count = backup_recovery.get("registeredEvidenceCount")
     drill_bound_generation_evidence_count = backup_recovery.get("drillRequestBoundEvidenceCount")
+    final_recovery_candidate_count = backup_recovery.get("productionEquivalentRecoveryCandidateCount")
+    generation_bound_backup_count = backup_boundary.get("generationBoundBackupCount")
+    generation_bound_restore_count = backup_boundary.get("generationBoundRestoreCount")
     preflight_eligible_generation_count = preflight_state.get("preflightEligibleGenerationCount")
     unsuperseded_generation_count = preflight_state.get("unsupersededGenerationCount")
     unsuperseded_preflight_eligible_generation_count = preflight_state.get("unsupersededPreflightEligibleGenerationCount")
@@ -116,13 +126,16 @@ def main() -> int:
         (executable_drill_request_count, "current executable backup/restore drill request"),
         (generation_evidence_count, "generation recovery evidence"),
         (drill_bound_generation_evidence_count, "drill-request-bound generation recovery evidence"),
+        (final_recovery_candidate_count, "final production-equivalent recovery candidate"),
+        (generation_bound_backup_count, "generation-bound backup"),
+        (generation_bound_restore_count, "generation-bound restore"),
         (preflight_eligible_generation_count, "preflight-eligible environment generation"),
         (unsuperseded_generation_count, "unsuperseded environment generation"),
         (unsuperseded_preflight_eligible_generation_count, "unsuperseded preflight-eligible environment generation"),
         (distinct_unsuperseded_preflight_eligible_environment_count, "distinct unsuperseded preflight-eligible environment"),
         (eligible_pair_count, "eligible restore drill source-target pair"),
     ):
-        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        if not valid_count(value):
             raise SystemExit(f"{field} count invalid")
     for value, field in (
         (soak_leak_proof, "sustained-soak leak proof"),
@@ -148,6 +161,10 @@ def main() -> int:
         raise SystemExit("drill request executable count exceeds request history")
     if drill_bound_generation_evidence_count != generation_evidence_count:
         raise SystemExit("every generation recovery evidence row must be drill-request-bound")
+    if generation_bound_restore_count > generation_bound_backup_count:
+        raise SystemExit("generation-bound restore count exceeds generation-bound backup count")
+    if final_recovery_candidate_count > generation_evidence_count:
+        raise SystemExit("final recovery candidate count exceeds generation recovery evidence history")
     if drill_request_state.get("registeredRequestCount") != drill_request_count:
         raise SystemExit("drill request contract/registry request count drift")
     if drill_request_state.get("currentExecutableRequestCount") != executable_drill_request_count:
@@ -158,7 +175,7 @@ def main() -> int:
         raise SystemExit("drill request/preflight unsuperseded semantic generation count drift")
     if drill_request_state.get("productionEvidence") is not False or drill_request_state.get("productionReady") is not False:
         raise SystemExit("drill request authority cannot promote production")
-    if preflight_state.get("registeredGenerationCount") != generations.get("registeredGenerationCount"):
+    if preflight_state.get("registeredGenerationCount") != generation_count:
         raise SystemExit("restore drill preflight generation count drift")
     if preflight_state.get("approvedRecoveryObjectiveCount") != objective_count:
         raise SystemExit("restore drill preflight objective count drift")
@@ -198,7 +215,7 @@ def main() -> int:
             "dependencyCounts": {
                 "approvedReleases": releases.get("approvedReleaseCount", 0),
                 "approvedReleasePairs": release_pair_count,
-                "environmentGenerations": generations.get("registeredGenerationCount", 0),
+                "environmentGenerations": generation_count,
             },
             "nextGate": "registered production-equivalent generation plus an approved predecessor/successor release pair before production-shaped migration rehearsal admission",
         },
@@ -254,7 +271,7 @@ def main() -> int:
             "passingIndependentReviewCount": soak_passing_review_count,
             "leakProof": soak_leak_proof,
             "dependencyCounts": {
-                "environmentGenerations": generations.get("registeredGenerationCount", 0),
+                "environmentGenerations": generation_count,
                 "localSustainedSoakEvidence": local_soak_complete,
                 "repeatableLocalDegradationSignalObserved": bool(load_ready.get("repeatableLocalDegradationSignalObserved")),
                 "approvedLeakStabilityCriteria": soak_approved_criteria_count,
@@ -300,14 +317,14 @@ def main() -> int:
                 ".github/workflows/backup-restore-drill-request.yml",
                 ".github/workflows/backup-restore-drill-preflight.yml",
             )),
-            "admittedEvidenceCount": backup_boundary.get("generationBoundRestoreCount", 0),
+            "admittedEvidenceCount": generation_bound_restore_count,
             "preflightDecision": preflight_decision,
             "preflightEligible": preflight_eligible,
             "independentEvidenceReviewCompleted": independent_evidence_review_completed,
             "humanProductionPromotionReviewCompleted": human_promotion_review_completed,
             "humanProductionPromotionAuthorized": human_promotion_authorized,
             "dependencyCounts": {
-                "environmentGenerations": generations.get("registeredGenerationCount", 0),
+                "environmentGenerations": generation_count,
                 "preflightEligibleEnvironmentGenerations": preflight_eligible_generation_count,
                 "unsupersededEnvironmentGenerations": unsuperseded_generation_count,
                 "unsupersededPreflightEligibleEnvironmentGenerations": unsuperseded_preflight_eligible_generation_count,
@@ -318,13 +335,13 @@ def main() -> int:
                 "currentExecutableRestoreDrillRequests": executable_drill_request_count,
                 "generationRecoveryEvidenceRecords": generation_evidence_count,
                 "drillRequestBoundGenerationEvidence": drill_bound_generation_evidence_count,
-                "generationBoundBackups": backup_boundary.get("generationBoundBackupCount", 0),
-                "generationBoundRestores": backup_boundary.get("generationBoundRestoreCount", 0),
+                "generationBoundBackups": generation_bound_backup_count,
+                "generationBoundRestores": generation_bound_restore_count,
                 "typedNonResurrectionRecords": typed_record_count,
                 "completeTypedNonResurrectionRecords": typed_complete_count,
                 "preOverlayEligiblePendingTypedCoverage": pending_typed_count,
                 "typedCoveredRecoveryCandidates": typed_covered_count,
-                "productionEquivalentRecoveryCandidates": backup_recovery.get("productionEquivalentRecoveryCandidateCount", 0),
+                "productionEquivalentRecoveryCandidates": final_recovery_candidate_count,
             },
             "nextGate": backup_next_gate,
         },
@@ -356,7 +373,7 @@ def main() -> int:
             "admittedEvidenceCount": failure_drills.get("registeredDrillCount", 0),
             "requiredEvidenceCount": 4,
             "dependencyCounts": {
-                "environmentGenerations": generations.get("registeredGenerationCount", 0),
+                "environmentGenerations": generation_count,
                 "approvedReleasePairs": release_pair_count,
             },
             "nextGate": "generation-bound multi-instance, object-store, PostgreSQL failover and parser durable-spool restart drills; mixed-version failure evidence additionally requires an approved release pair",
@@ -375,7 +392,7 @@ def main() -> int:
         "schemaVersion": "memory-os-operability-admission-inventory.v1",
         "deterministic": True,
         "areas": areas,
-        "productionEquivalentEnvironmentGenerationCount": generations.get("registeredGenerationCount", 0),
+        "productionEquivalentEnvironmentGenerationCount": generation_count,
         "approvedLeakStabilityCriteriaCount": soak_approved_criteria_count,
         "passingIndependentSustainedSoakReviewCount": soak_passing_review_count,
         "sustainedSoakLeakProof": soak_leak_proof,
@@ -431,7 +448,7 @@ def main() -> int:
     print(f"currently executable backup/restore drill requests: {executable_drill_request_count}")
     print(f"generation/drill-bound recovery evidence: {generation_evidence_count}/{drill_bound_generation_evidence_count}")
     print(f"typed non-resurrection records: {typed_record_count}")
-    print(f"final recovery candidates: {backup_recovery.get('productionEquivalentRecoveryCandidateCount', 0)}")
+    print(f"final recovery candidates: {final_recovery_candidate_count}")
     print(f"candidate evidence review/human promotion review/authorization: {str(independent_evidence_review_completed).lower()}/{str(human_promotion_review_completed).lower()}/{str(human_promotion_authorized).lower()}")
     print(f"approved release compatibility pairs: {release_pair_count}")
     print(f"local repeated soak complete: {str(local_soak_complete).lower()}")
