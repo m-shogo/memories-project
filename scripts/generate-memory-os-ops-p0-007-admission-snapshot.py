@@ -11,6 +11,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "contracts/operations/ops-p0-007-admission-snapshot.v1.json"
 ELIGIBILITY_HELPER = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
+BLOCKER_HELPER = ROOT / "scripts/memory_os_backup_restore_blockers.py"
 OBJECTIVES = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
 DRILL_REQUESTS = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
 GEN_EVIDENCE = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
@@ -67,6 +68,7 @@ def load_helper():
 
 def main() -> int:
     helper = load_helper()
+    blocker_helper = load_module(BLOCKER_HELPER, "memory_os_backup_restore_blockers_ops_p0_007_snapshot")
     eligibility = helper.derive()
     objectives = load(OBJECTIVES)
     requests = load(DRILL_REQUESTS)
@@ -114,8 +116,14 @@ def main() -> int:
     if not isinstance(ops7, dict):
         raise SystemExit("OPS-P0-007 status missing")
     missing = ops7.get("missingEvidence")
-    if not isinstance(missing, list) or len(missing) != 6:
-        raise SystemExit("canonical OPS-P0-007 six-blocker boundary drift")
+    require_canonical_gaps = getattr(blocker_helper, "require_canonical_gaps", None)
+    canonical_gaps = getattr(blocker_helper, "CANONICAL_GAPS", None)
+    if not callable(require_canonical_gaps) or not isinstance(canonical_gaps, tuple) or len(canonical_gaps) != 6:
+        raise SystemExit("canonical OPS-P0-007 blocker authority invalid")
+    try:
+        require_canonical_gaps(missing, RuntimeError)
+    except RuntimeError as exc:
+        raise SystemExit(f"canonical OPS-P0-007 blocker authority invalid: {exc}") from exc
     if status.get("productionDecision") != "NO_GO":
         raise SystemExit("production decision must remain NO_GO")
 
@@ -162,7 +170,7 @@ def main() -> int:
         "drillRequestBoundGenerationRecoveryEvidenceCount": drill_bound_count,
         "completeTypedNonResurrectionRecordCount": typed_complete,
         "finalProductionEquivalentRecoveryCandidateCount": candidate_count,
-        "canonicalMissingEvidenceCount": len(missing),
+        "canonicalMissingEvidenceCount": len(canonical_gaps),
         "downstreamRequirements": [
             "submit one externally reviewed planning-only restore drill request bound to an eligible source/target generation pair and the current approved recovery objective",
             "revalidate the drill request immediately before any isolated restore execution",
@@ -184,7 +192,7 @@ def main() -> int:
     print(f"stage: {stage}")
     print(f"strict prerequisite blockers: {len(strict_blockers)}")
     print(f"eligible directed restore pairs: {eligibility['eligibleDirectedPairCount']}")
-    print(f"canonical blockers: {len(missing)}")
+    print(f"canonical blockers: {len(canonical_gaps)}")
     print("production decision: NO_GO")
     return 0
 
