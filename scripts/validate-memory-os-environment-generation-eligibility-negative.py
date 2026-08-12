@@ -42,12 +42,48 @@ def load_helper():
 
 
 class FakeWriter:
+    Fail = Fail
+
     @staticmethod
     def validate_record(row: dict[str, Any]) -> bool:
         value = row.get("syntheticEligible")
         if not isinstance(value, bool):
             raise Fail("syntheticEligible missing")
         return value
+
+    @staticmethod
+    def validate_registry_for_append(value: dict[str, Any]) -> list[dict[str, Any]]:
+        require(
+            value.get("schemaVersion") == "memory-os-production-equivalent-environment-generation-registry.v1",
+            "registry schema drift",
+        )
+        require(value.get("registryClass") == "PRODUCTION_EQUIVALENT_ENVIRONMENT_GENERATIONS", "registry class drift")
+        require(value.get("appendOnly") is True, "registry must remain append-only")
+        require(value.get("productionEvidence") is False, "registry production evidence boundary drift")
+        rows = value.get("generations")
+        count = value.get("registeredGenerationCount")
+        require(isinstance(rows, list) and all(isinstance(item, dict) for item in rows), "registry generations invalid")
+        require(isinstance(count, int) and not isinstance(count, bool) and count == len(rows), "registeredGenerationCount drift")
+
+        ids: set[str] = set()
+        prior_by_environment: dict[str, str] = {}
+        for index, item in enumerate(rows):
+            generation_id = item.get("generationId")
+            environment_id = item.get("environmentId")
+            require(isinstance(generation_id, str) and generation_id and generation_id not in ids, f"registry generations[{index}] generationId authority invalid")
+            require(isinstance(environment_id, str) and environment_id, f"registry generations[{index}] environmentId invalid")
+            ids.add(generation_id)
+            expected_supersedes = prior_by_environment.get(environment_id)
+            require(item.get("supersedesGenerationId") == expected_supersedes, f"supersedes chain drift for environment {environment_id}")
+            prior_by_environment[environment_id] = generation_id
+            FakeWriter.validate_record(item)
+
+        current_id = value.get("currentGenerationId")
+        if count == 0:
+            require(current_id is None, "empty generation registry must have null currentGenerationId")
+        else:
+            require(current_id == rows[-1].get("generationId"), "currentGenerationId must equal latest append-only registry record")
+        return rows
 
 
 def registry(rows: list[dict[str, Any]]) -> dict[str, Any]:
