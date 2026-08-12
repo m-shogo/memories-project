@@ -123,9 +123,30 @@ def main() -> int:
         )
         corrupt_and_expect_rollback(
             reconciler,
+            name="drill registry boolean currentExecutableRequestCount",
+            registry_path=drill_copy,
+            mutate=lambda value: value.__setitem__("currentExecutableRequestCount", False),
+            contract_copy=contract_copy,
+        )
+        corrupt_and_expect_rollback(
+            reconciler,
             name="drill registry productionEvidence promotion",
             registry_path=drill_copy,
             mutate=lambda value: value.__setitem__("productionEvidence", True),
+            contract_copy=contract_copy,
+        )
+        corrupt_and_expect_rollback(
+            reconciler,
+            name="drill registry productionReady promotion",
+            registry_path=drill_copy,
+            mutate=lambda value: value.__setitem__("productionReady", True),
+            contract_copy=contract_copy,
+        )
+        corrupt_and_expect_rollback(
+            reconciler,
+            name="generation registry boolean registeredEvidenceCount",
+            registry_path=gen_copy,
+            mutate=lambda value: value.__setitem__("registeredEvidenceCount", False),
             contract_copy=contract_copy,
         )
         corrupt_and_expect_rollback(
@@ -137,9 +158,23 @@ def main() -> int:
         )
         corrupt_and_expect_rollback(
             reconciler,
+            name="generation registry productionEvidence promotion",
+            registry_path=gen_copy,
+            mutate=lambda value: value.__setitem__("productionEvidence", True),
+            contract_copy=contract_copy,
+        )
+        corrupt_and_expect_rollback(
+            reconciler,
             name="generation registry productionReady promotion",
             registry_path=gen_copy,
             mutate=lambda value: value.__setitem__("productionReady", True),
+            contract_copy=contract_copy,
+        )
+        corrupt_and_expect_rollback(
+            reconciler,
+            name="typed registry boolean registeredRecordCount",
+            registry_path=typed_copy,
+            mutate=lambda value: value.__setitem__("registeredRecordCount", False),
             contract_copy=contract_copy,
         )
         corrupt_and_expect_rollback(
@@ -154,6 +189,20 @@ def main() -> int:
             name="typed registry appendOnly corruption",
             registry_path=typed_copy,
             mutate=lambda value: value.__setitem__("appendOnly", False),
+            contract_copy=contract_copy,
+        )
+        corrupt_and_expect_rollback(
+            reconciler,
+            name="typed registry productionEvidence promotion",
+            registry_path=typed_copy,
+            mutate=lambda value: value.__setitem__("productionEvidence", True),
+            contract_copy=contract_copy,
+        )
+        corrupt_and_expect_rollback(
+            reconciler,
+            name="typed registry productionReady promotion",
+            registry_path=typed_copy,
+            mutate=lambda value: value.__setitem__("productionReady", True),
             contract_copy=contract_copy,
         )
 
