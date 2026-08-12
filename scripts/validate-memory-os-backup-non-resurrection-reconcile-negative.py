@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import shutil
 import tempfile
 from pathlib import Path
@@ -69,11 +70,39 @@ def main() -> int:
             expect_domain_fail("typed reconciler authority escapes repository", lambda: reconciler.load(outside), reconciler.Fail)
 
         originals: dict[Path, bytes] = {}
+        targets: dict[str, Path] = {}
         for attr, source in CANONICAL.items():
             target = tmp / source.name
             shutil.copyfile(source, target)
             setattr(reconciler, attr, target)
             originals[target] = target.read_bytes()
+            targets[attr] = target
+
+        # Reconcile may project valid append-only authority into derived contract
+        # status, but corrupt registry authority must remain corrupt and be
+        # rejected rather than silently normalized by the next reconcile.
+        corruption_cases = (
+            ("typed registeredRecordCount drift", "REGISTRY", "registeredRecordCount", 1),
+            ("typed boolean completeRecordCount", "REGISTRY", "completeRecordCount", True),
+            ("typed productionEvidence boundary drift", "REGISTRY", "productionEvidence", True),
+            ("generation registeredEvidenceCount drift", "GEN_REGISTRY", "registeredEvidenceCount", 1),
+            ("generation boolean candidate count", "GEN_REGISTRY", "productionEquivalentRecoveryCandidateCount", True),
+            ("generation productionReady boundary drift", "GEN_REGISTRY", "productionReady", True),
+        )
+        for name, attr, field, invalid_value in corruption_cases:
+            for path, expected in originals.items():
+                path.write_bytes(expected)
+            target = targets[attr]
+            payload = json.loads(target.read_text(encoding="utf-8"))
+            payload[field] = invalid_value
+            target.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            before = {path: path.read_bytes() for path in originals}
+            expect_domain_fail(name, reconciler.main, reconciler.Fail)
+            for path, expected in before.items():
+                require(path.read_bytes() == expected, f"reconcile auto-healed corrupt authority: {path.name} during {name}")
+
+        for path, expected in originals.items():
+            path.write_bytes(expected)
 
         failing_validator = tmp / "forced-validator-failure.py"
         failing_validator.write_text("#!/usr/bin/env python3\nraise SystemExit(29)\n", encoding="utf-8")
@@ -89,6 +118,7 @@ def main() -> int:
         for path, expected in originals.items():
             require(path.read_bytes() == expected, f"rollback drifted typed authority: {path.name}")
 
+    print("PASS reject: corrupt typed/generation append-only authority is never auto-healed by reconcile")
     print("PASS rollback: typed reconcile restores typed registry/generation registry/contract/status byte-for-byte")
     print("Typed non-resurrection reconcile negative suite PASS")
     return 0
