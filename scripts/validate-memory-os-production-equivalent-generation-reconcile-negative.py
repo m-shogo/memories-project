@@ -4,15 +4,17 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-production-equivalent-generation-status.py"
 TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
+REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 
 
@@ -69,13 +71,44 @@ def main() -> int:
         expect_domain_fail("parent traversal current environment ref", lambda: reconciler.canonical_repo_ref("scripts/../README.md", "invalid ref"), reconciler.Fail)
 
         contract_copy = tmp / CONTRACT.name
+        registry_copy = tmp / REGISTRY.name
         status_copy = tmp / STATUS.name
         shutil.copyfile(CONTRACT, contract_copy)
+        shutil.copyfile(REGISTRY, registry_copy)
         shutil.copyfile(STATUS, status_copy)
         reconciler.CONTRACT = contract_copy
+        reconciler.REGISTRY = registry_copy
         reconciler.STATUS = status_copy
         original_contract = contract_copy.read_bytes()
+        original_registry = registry_copy.read_bytes()
         original_status = status_copy.read_bytes()
+        canonical_registry: dict[str, Any] = json.loads(original_registry.decode("utf-8"))
+
+        corruption_cases: tuple[tuple[str, Callable[[dict[str, Any]], None]], ...] = (
+            ("registry schema drift", lambda value: value.__setitem__("schemaVersion", "broken")),
+            ("registry class drift", lambda value: value.__setitem__("registryClass", "BROKEN")),
+            ("append-only disabled", lambda value: value.__setitem__("appendOnly", False)),
+            ("production evidence promoted", lambda value: value.__setitem__("productionEvidence", True)),
+            ("registered generation boolean count", lambda value: value.__setitem__("registeredGenerationCount", True)),
+            ("registered generation count drift", lambda value: value.__setitem__("registeredGenerationCount", 1)),
+            ("empty registry current pointer drift", lambda value: value.__setitem__("currentGenerationId", "pegen_invalid_current")),
+        )
+        for name, mutate in corruption_cases:
+            corrupted = json.loads(json.dumps(canonical_registry))
+            mutate(corrupted)
+            registry_copy.write_text(json.dumps(corrupted, indent=2) + "\n", encoding="utf-8")
+            try:
+                reconciler.main()
+            except reconciler.Fail as exc:
+                require("generation registry append-only authority invalid" in str(exc), f"{name} rejected at wrong boundary: {exc}")
+            except Exception as exc:
+                raise Fail(f"{name} leaked non-domain exception: {type(exc).__name__}: {exc}") from exc
+            else:
+                raise Fail(f"corrupt generation registry unexpectedly reconciled: {name}")
+            require(contract_copy.read_bytes() == original_contract, f"{name} mutated generation contract")
+            require(status_copy.read_bytes() == original_status, f"{name} mutated operability status")
+            print(f"PASS reject before reconcile: {name}")
+        registry_copy.write_bytes(original_registry)
 
         failing_validator = tmp / "forced-validator-failure.py"
         failing_validator.write_text("#!/usr/bin/env python3\nraise SystemExit(31)\n", encoding="utf-8")
@@ -89,9 +122,10 @@ def main() -> int:
             raise Fail("forced generation post-validation failure unexpectedly accepted")
 
         require(contract_copy.read_bytes() == original_contract, "generation contract rollback drift")
+        require(registry_copy.read_bytes() == original_registry, "generation registry mutation drift")
         require(status_copy.read_bytes() == original_status, "operability status rollback drift")
 
-    print("PASS rollback: environment generation contract/status restored byte-for-byte")
+    print("PASS rollback: environment generation contract/registry/status preserved byte-for-byte")
     print("Environment generation reconcile negative suite PASS")
     return 0
 
