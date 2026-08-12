@@ -16,6 +16,7 @@ OBJECTIVES = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
 REQUESTS = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
 GENERATION = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 TYPED = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+STATUS = ROOT / "contracts/operations/production-operability-status.json"
 
 
 class Fail(RuntimeError):
@@ -59,12 +60,30 @@ def mutate_field(field: str, value: Any) -> Callable[[dict[str, Any]], None]:
     return apply
 
 
+def mutate_ops7_missing(reorder: bool) -> Callable[[dict[str, Any]], None]:
+    def apply(status: dict[str, Any]) -> None:
+        areas = status.get("areas")
+        if not isinstance(areas, list):
+            raise Fail("status areas missing")
+        ops7 = next((row for row in areas if isinstance(row, dict) and row.get("id") == "OPS-P0-007"), None)
+        if not isinstance(ops7, dict) or not isinstance(ops7.get("missingEvidence"), list):
+            raise Fail("OPS-P0-007 missingEvidence missing")
+        if reorder:
+            ops7["missingEvidence"] = list(reversed(ops7["missingEvidence"]))
+        else:
+            replacement = list(ops7["missingEvidence"])
+            replacement[0] = "fabricated replacement blocker with unchanged list length"
+            ops7["missingEvidence"] = replacement
+    return apply
+
+
 def main() -> int:
     originals = {
         OBJECTIVES: OBJECTIVES.read_bytes(),
         REQUESTS: REQUESTS.read_bytes(),
         GENERATION: GENERATION.read_bytes(),
         TYPED: TYPED.read_bytes(),
+        STATUS: STATUS.read_bytes(),
     }
     cases: list[tuple[str, Path, Callable[[dict[str, Any]], None]]] = [
         ("objective boolean aggregate count", OBJECTIVES, mutate_field("approvedObjectiveCount", True)),
@@ -81,6 +100,9 @@ def main() -> int:
         ("typed boolean aggregate count", TYPED, mutate_field("completeRecordCount", True)),
         ("typed append-only boundary", TYPED, mutate_field("appendOnly", False)),
         ("typed production evidence boundary", TYPED, mutate_field("productionEvidence", True)),
+        ("canonical blocker replacement with unchanged count", STATUS, mutate_ops7_missing(False)),
+        ("canonical blocker ordering drift", STATUS, mutate_ops7_missing(True)),
+        ("production decision promotion", STATUS, mutate_field("productionDecision", "GO")),
     ]
 
     try:
@@ -88,9 +110,9 @@ def main() -> int:
         for label, path, mutate in cases:
             for restore_path, payload in originals.items():
                 restore_path.write_bytes(payload)
-            registry = copy.deepcopy(load(path))
-            mutate(registry)
-            write(path, registry)
+            authority = copy.deepcopy(load(path))
+            mutate(authority)
+            write(path, authority)
             run_validator(False, label)
         for restore_path, payload in originals.items():
             restore_path.write_bytes(payload)
@@ -106,7 +128,8 @@ def main() -> int:
     print("Memory OS OPS-P0-007 strict admission snapshot negative validation PASS")
     print(f"controlled authority corruption cases rejected: {len(cases)}")
     print("canonical authority files preserved byte-for-byte: true")
-    print("production evidence/readiness promotion rejected: true")
+    print("canonical six-blocker content and ordering preserved: true")
+    print("production evidence/readiness/decision promotion rejected: true")
     return 0
 
 
