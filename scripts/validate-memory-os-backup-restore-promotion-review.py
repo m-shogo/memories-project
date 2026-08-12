@@ -15,6 +15,7 @@ CONTRACT = ROOT / "contracts/operations/backup-restore-promotion-review-contract
 REGISTRY = ROOT / "contracts/operations/backup-restore-promotion-review-registry.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 TYPED_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+INVENTORY = ROOT / "contracts/operations/operability-admission-inventory.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-backup-restore-promotion-review.py"
 NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-promotion-review-negative.py"
 
@@ -49,11 +50,20 @@ def load_writer():
     return module
 
 
+def inventory_area(inventory: dict[str, Any], area_id: str) -> dict[str, Any]:
+    rows = inventory.get("areas")
+    require(isinstance(rows, list), "operability inventory areas missing")
+    matches = [row for row in rows if isinstance(row, dict) and row.get("id") == area_id]
+    require(len(matches) == 1, f"operability inventory area missing/duplicate: {area_id}")
+    return matches[0]
+
+
 def main() -> int:
     contract = load(CONTRACT)
     registry = load(REGISTRY)
     generation = load(GEN_REGISTRY)
     typed = load(TYPED_REGISTRY)
+    inventory = load(INVENTORY)
     writer = load_writer()
     require(contract.get("schemaVersion") == "memory-os-backup-restore-promotion-review-contract.v1", "promotion review contract schema drift")
     refs = {
@@ -106,6 +116,14 @@ def main() -> int:
         require(boundary.get(field) == value, f"promotion review boundary drift: {field}")
     require(boundary.get("productionTrafficChanged") is False and boundary.get("productionEvidence") is False and boundary.get("productionReady") is False and boundary.get("productionDecision") == "NO_GO", "promotion review boundary cannot promote production")
 
+    inventory_review_completed = current_id is not None
+    backup_area = inventory_area(inventory, "OPS-P0-007")
+    require(inventory.get("productionDecision") == "NO_GO", "operability inventory production decision drift")
+    require(inventory.get("humanProductionPromotionReviewCompleted") is inventory_review_completed, "operability inventory human promotion review must derive from current promotion-review registry authority")
+    require(backup_area.get("humanProductionPromotionReviewCompleted") is inventory_review_completed, "OPS-P0-007 inventory human promotion review must derive from current promotion-review registry authority")
+    require(inventory.get("humanProductionPromotionAuthorized") is False, "promotion review cannot authorize production in operability inventory")
+    require(backup_area.get("humanProductionPromotionAuthorized") is False, "promotion review cannot authorize production in OPS-P0-007 inventory")
+
     completed = subprocess.run([sys.executable, str(NEGATIVE)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     require(completed.returncode == 0, f"promotion review negative suite failed:\n{completed.stdout[-7000:]}{completed.stderr[-7000:]}")
     print("Memory OS backup/restore promotion review validation PASS")
@@ -115,8 +133,10 @@ def main() -> int:
     print(f"latest historical decision: {latest_id}")
     print(f"current promotion authority decision: {current_id}")
     print("historical review/current authority separation: PASS")
+    print("operability inventory current human review source: promotion-review registry")
     print("review changes production traffic: false")
     print("review creates production ready: false")
+    print("review authorizes production: false")
     print("negative admission suite: PASS")
     print("production decision: NO_GO")
     return 0
