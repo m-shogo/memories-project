@@ -26,6 +26,7 @@ GEN_REGISTRY = CANONICAL_GEN_REGISTRY
 CANONICAL_OBJECTIVES_REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
 OBJECTIVES_REGISTRY = CANONICAL_OBJECTIVES_REGISTRY
 ELIGIBILITY_HELPER = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
+OBJECTIVES_WRITER = ROOT / "scripts/register-memory-os-recovery-objectives.py"
 LOCK = ROOT / "contracts/operations/.backup-restore-drill-request.lock"
 REQUEST_ID = re.compile(r"^brrq_[a-z0-9][a-z0-9_-]{7,63}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
@@ -133,15 +134,17 @@ def load_eligibility_helper():
     return module
 
 
-def generations() -> list[dict[str, Any]]:
-    """Return registered history only after the shared generation authority validates it.
+def load_objectives_writer():
+    helper = canonical_repo_file(OBJECTIVES_WRITER, "recovery objectives writer")
+    spec = importlib.util.spec_from_file_location("memory_os_recovery_objectives_for_restore_request", helper)
+    require(spec is not None and spec.loader is not None, "cannot load recovery objectives writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
-    Historical drill requests may bind superseded rows, but neither current nor
-    historical validation may consume a corrupt generation registry. Reusing the
-    shared semantic authority keeps schema/class/count/supersession/current-pointer
-    checks aligned with restore preflight without treating superseded history as
-    current eligibility.
-    """
+
+def generations() -> list[dict[str, Any]]:
+    """Return registered history only after the shared generation authority validates it."""
     require_canonical_runtime_authority(GEN_REGISTRY, CANONICAL_GEN_REGISTRY, "environment generation registry")
     registry = load(GEN_REGISTRY)
     helper = load_eligibility_helper()
@@ -173,14 +176,27 @@ def require_preflight_eligible_generation(generation_id: str, field: str) -> Non
         raise Fail(f"{field} is not an unsuperseded restore-preflight-eligible generation: {exc}") from exc
 
 
-def objective_by_id(objective_id: Any) -> dict[str, Any]:
+def objective_registry_state() -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Validate objective history through its canonical append-only authority."""
     require_canonical_runtime_authority(OBJECTIVES_REGISTRY, CANONICAL_OBJECTIVES_REGISTRY, "recovery objectives registry")
     registry = load(OBJECTIVES_REGISTRY)
-    require(registry.get("appendOnly") is True and registry.get("productionEvidence") is False and registry.get("productionReady") is False, "recovery objective registry boundary drift")
-    rows = registry.get("records")
-    count = registry.get("approvedObjectiveCount")
-    require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "recovery objective registry invalid")
-    require(isinstance(count, int) and not isinstance(count, bool) and count == len(rows), "recovery objective registry count drift")
+    if ROOT == CANONICAL_ROOT and OBJECTIVES_REGISTRY == CANONICAL_OBJECTIVES_REGISTRY:
+        helper = load_objectives_writer()
+        try:
+            rows = helper.validate_registry_for_append(registry)
+        except helper.Fail as exc:
+            raise Fail(f"recovery objectives registry authority invalid: {exc}") from exc
+    else:
+        rows = registry.get("records")
+        count = registry.get("approvedObjectiveCount")
+        require(registry.get("appendOnly") is True and registry.get("productionEvidence") is False and registry.get("productionReady") is False, "recovery objective registry boundary drift")
+        require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "recovery objective registry invalid")
+        require(isinstance(count, int) and not isinstance(count, bool) and count == len(rows), "recovery objective registry count drift")
+    return registry, rows
+
+
+def objective_by_id(objective_id: Any) -> dict[str, Any]:
+    _, rows = objective_registry_state()
     require(isinstance(objective_id, str) and objective_id, "recoveryObjectivesId required")
     matches = [row for row in rows if row.get("objectiveId") == objective_id]
     require(len(matches) == 1, "recoveryObjectivesId is not uniquely registered")
@@ -188,11 +204,12 @@ def objective_by_id(objective_id: Any) -> dict[str, Any]:
 
 
 def current_objective() -> dict[str, Any]:
-    require_canonical_runtime_authority(OBJECTIVES_REGISTRY, CANONICAL_OBJECTIVES_REGISTRY, "recovery objectives registry")
-    registry = load(OBJECTIVES_REGISTRY)
+    registry, rows = objective_registry_state()
     objective_id = registry.get("currentObjectiveId")
     require(isinstance(objective_id, str) and objective_id, "no current approved recovery objective")
-    return objective_by_id(objective_id)
+    matches = [row for row in rows if row.get("objectiveId") == objective_id]
+    require(len(matches) == 1, "currentObjectiveId is not uniquely registered")
+    return matches[0]
 
 
 def approval_document(ref: Any, field: str) -> dict[str, Any]:
@@ -204,10 +221,7 @@ def approval_document(ref: Any, field: str) -> dict[str, Any]:
     reviewer = document.get("reviewerPseudonym")
     require(isinstance(reviewer, str), f"{field} reviewerPseudonym required")
     canonical_reviewer = reviewer.strip()
-    require(
-        1 <= len(canonical_reviewer) <= 128 and reviewer == canonical_reviewer,
-        f"{field} reviewerPseudonym must be canonical non-empty text",
-    )
+    require(1 <= len(canonical_reviewer) <= 128 and reviewer == canonical_reviewer, f"{field} reviewerPseudonym must be canonical non-empty text")
     require(document.get("decision") == "APPROVED", f"{field} approval decision must be APPROVED")
     for boundary in ("productionTraffic", "productionCredentials", "automaticPromotion"):
         require(document.get(boundary) is False, f"{field} approval {boundary} must remain false")
@@ -223,12 +237,7 @@ def validate_request_approval(document: dict[str, Any], record: dict[str, Any], 
     approved_at = parse_timestamp(document.get("approvedAt"), f"{field}.approvedAt")
     requested_at = parse_timestamp(record.get("requestedAt"), "requestedAt")
     require(approved_at >= requested_at, f"{field} approval predates the request")
-    for approval_field, request_field in (
-        ("requestId", "requestId"),
-        ("sourceEnvironmentGenerationId", "sourceEnvironmentGenerationId"),
-        ("restoreTargetEnvironmentGenerationId", "restoreTargetEnvironmentGenerationId"),
-        ("recoveryObjectivesId", "recoveryObjectivesId"),
-    ):
+    for approval_field, request_field in (("requestId", "requestId"), ("sourceEnvironmentGenerationId", "sourceEnvironmentGenerationId"), ("restoreTargetEnvironmentGenerationId", "restoreTargetEnvironmentGenerationId"), ("recoveryObjectivesId", "recoveryObjectivesId")):
         require(document.get(approval_field) == record.get(request_field), f"{field} {approval_field} binding mismatch")
     return str(document["reviewerPseudonym"])
 
@@ -264,10 +273,7 @@ def validate_request(record: dict[str, Any], *, require_current: bool = True) ->
         require(generation_is_unsuperseded(rows, target["generationId"]), "restore-target generation has been superseded")
         require_preflight_eligible_generation(source["generationId"], "sourceEnvironmentGenerationId")
         require_preflight_eligible_generation(target["generationId"], "restoreTargetEnvironmentGenerationId")
-    for value, field in (
-        (record.get("sourceEnvironmentManifestSha256"), "sourceEnvironmentManifestSha256"),
-        (record.get("restoreTargetManifestSha256"), "restoreTargetManifestSha256"),
-    ):
+    for value, field in ((record.get("sourceEnvironmentManifestSha256"), "sourceEnvironmentManifestSha256"), (record.get("restoreTargetManifestSha256"), "restoreTargetManifestSha256")):
         require(isinstance(value, str) and DIGEST.fullmatch(value), f"{field} invalid")
     require(record["sourceEnvironmentManifestSha256"] == source.get("environmentManifestSha256"), "source environment manifest digest mismatch")
     require(record["restoreTargetManifestSha256"] == target.get("environmentManifestSha256"), "restore-target environment manifest digest mismatch")
@@ -348,11 +354,7 @@ def request_currently_executable(record: dict[str, Any]) -> bool:
 
 
 def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any]]:
-    """Validate existing append-only request authority before any mutation.
-
-    A direct writer must never repair stale/corrupt aggregate authority as a side
-    effect of appending a new reviewed planning request.
-    """
+    """Validate existing append-only request authority before any mutation."""
     require(registry.get("schemaVersion") == "memory-os-backup-restore-drill-request-registry.v1", "request registry schema drift")
     require(registry.get("registryClass") == "PRODUCTION_EQUIVALENT_BACKUP_RESTORE_DRILL_REQUESTS", "request registry class drift")
     require(registry.get("appendOnly") is True, "request registry must remain append-only")
@@ -373,11 +375,7 @@ def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any
         request_id = row.get("requestId")
         require(isinstance(request_id, str) and request_id not in request_ids, f"duplicate requestId: {request_id}")
         request_ids.add(request_id)
-        key = (
-            row.get("sourceEnvironmentGenerationId"),
-            row.get("restoreTargetEnvironmentGenerationId"),
-            row.get("recoveryObjectivesId"),
-        )
+        key = (row.get("sourceEnvironmentGenerationId"), row.get("restoreTargetEnvironmentGenerationId"), row.get("recoveryObjectivesId"))
         require(key not in tuples, f"duplicate source/target/objective drill request tuple: {key}")
         tuples.add(key)
         if request_currently_executable(row):
@@ -431,17 +429,9 @@ def main() -> int:
         registry = load(REGISTRY)
         requests = validate_registry_for_append(registry)
         require(all(row.get("requestId") != record["requestId"] for row in requests), "requestId already registered")
-        request_tuple = (
-            record["sourceEnvironmentGenerationId"],
-            record["restoreTargetEnvironmentGenerationId"],
-            record["recoveryObjectivesId"],
-        )
+        request_tuple = (record["sourceEnvironmentGenerationId"], record["restoreTargetEnvironmentGenerationId"], record["recoveryObjectivesId"])
         for row in requests:
-            existing_tuple = (
-                row.get("sourceEnvironmentGenerationId"),
-                row.get("restoreTargetEnvironmentGenerationId"),
-                row.get("recoveryObjectivesId"),
-            )
+            existing_tuple = (row.get("sourceEnvironmentGenerationId"), row.get("restoreTargetEnvironmentGenerationId"), row.get("recoveryObjectivesId"))
             require(existing_tuple != request_tuple, "source/target/objective tuple already has an admitted drill request")
         requests.append(record)
         registry["registeredRequestCount"] = len(requests)
