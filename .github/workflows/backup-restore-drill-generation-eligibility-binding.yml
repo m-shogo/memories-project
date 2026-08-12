@@ -41,6 +41,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Capture exact semantic binding authority source
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - name: Reconcile and validate semantic generation binding
         id: validation
         run: |
@@ -68,6 +76,11 @@ jobs:
         if: steps.validation.outputs.exit_code == '0'
         run: |
           set -euo pipefail
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Semantic binding authority HEAD changed during reconciliation; refusing stale derived authority."
+            exit 75
+          fi
           git rm -f docs/fixtures/memory-os-operability/backup-restore-drill-generation-eligibility-binding-diagnostic.last.json 2>/dev/null || true
           git add contracts/operations/backup-restore-drill-generation-eligibility-binding-contract.v1.json
           git add -u docs/fixtures/memory-os-operability/backup-restore-drill-generation-eligibility-binding-diagnostic.last.json 2>/dev/null || true
@@ -77,7 +90,11 @@ jobs:
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(restore): reconcile drill generation eligibility binding"
             for attempt in 1 2 3 4; do
-              git pull --rebase origin so
+              git fetch origin so
+              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+                echo "Semantic binding authority HEAD changed after validation; refusing stale derived authority."
+                exit 75
+              fi
               if git push origin HEAD:so; then exit 0; fi
               sleep 2
             done
@@ -90,7 +107,10 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin so
-          git reset --hard origin/so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Semantic binding authority HEAD changed after validation; refusing stale diagnostic."
+            exit 75
+          fi
           python - <<'PY'
           import json, os
           from pathlib import Path
@@ -98,6 +118,7 @@ jobs:
           value = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'backup-restore-drill-generation-eligibility-binding',
+              'sourceCommitSha': os.environ['SOURCE_SHA'],
               'result': 'FAIL',
               'exitCode': int(os.environ['VALIDATION_EXIT_CODE']),
               'output': text[-12000:],
@@ -118,7 +139,11 @@ jobs:
           if ! git diff --cached --quiet; then
             git commit -m "test(restore): record drill generation eligibility binding diagnostic"
             for attempt in 1 2 3; do
-              git pull --rebase origin so
+              git fetch origin so
+              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+                echo "Semantic binding authority HEAD changed before diagnostic push; refusing stale diagnostic."
+                exit 75
+              fi
               if git push origin HEAD:so; then exit 0; fi
               sleep 2
             done
