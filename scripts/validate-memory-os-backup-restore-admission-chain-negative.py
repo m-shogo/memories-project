@@ -88,6 +88,9 @@ def main() -> int:
     contract = copy.deepcopy(real_load(module.CONTRACT))
     inventory = copy.deepcopy(real_load(module.INVENTORY))
     preflight_contract = copy.deepcopy(real_load(module.PREFLIGHT_CONTRACT))
+    drill_registry = copy.deepcopy(real_load(module.DRILL_REGISTRY))
+    generation_registry = copy.deepcopy(real_load(module.GEN_REGISTRY))
+    typed_registry = copy.deepcopy(real_load(module.TYPED_REGISTRY))
 
     require(run_with_overrides(module, {}) == 0, "canonical admission-chain baseline must validate")
     print("PASS baseline: canonical end-to-end admission chain validates")
@@ -102,6 +105,54 @@ def main() -> int:
         module,
         "admission-chain module authority path escapes repository root",
         lambda: module.load_module(escaped_authority, "memory_os_escaped_admission_chain_authority"),
+    )
+
+    drill_class_drift = copy.deepcopy(drill_registry)
+    drill_class_drift["registryClass"] = "CORRUPT_RESTORE_REQUEST_AUTHORITY"
+    expect_rejected(
+        module,
+        "drill request registry class drift at chain boundary",
+        lambda: run_with_overrides(module, {module.DRILL_REGISTRY: drill_class_drift}),
+    )
+
+    drill_append_only_drift = copy.deepcopy(drill_registry)
+    drill_append_only_drift["appendOnly"] = False
+    expect_rejected(
+        module,
+        "drill request append-only boundary disabled at chain boundary",
+        lambda: run_with_overrides(module, {module.DRILL_REGISTRY: drill_append_only_drift}),
+    )
+
+    generation_schema_drift = copy.deepcopy(generation_registry)
+    generation_schema_drift["schemaVersion"] = "memory-os-backup-restore-generation-evidence-registry.v0"
+    expect_rejected(
+        module,
+        "generation evidence registry schema drift at chain boundary",
+        lambda: run_with_overrides(module, {module.GEN_REGISTRY: generation_schema_drift}),
+    )
+
+    generation_append_only_drift = copy.deepcopy(generation_registry)
+    generation_append_only_drift["appendOnly"] = False
+    expect_rejected(
+        module,
+        "generation evidence append-only boundary disabled at chain boundary",
+        lambda: run_with_overrides(module, {module.GEN_REGISTRY: generation_append_only_drift}),
+    )
+
+    typed_schema_drift = copy.deepcopy(typed_registry)
+    typed_schema_drift["schemaVersion"] = "memory-os-backup-restore-non-resurrection-admission-registry.v0"
+    expect_rejected(
+        module,
+        "typed non-resurrection registry schema drift at chain boundary",
+        lambda: run_with_overrides(module, {module.TYPED_REGISTRY: typed_schema_drift}),
+    )
+
+    typed_append_only_drift = copy.deepcopy(typed_registry)
+    typed_append_only_drift["appendOnly"] = False
+    expect_rejected(
+        module,
+        "typed non-resurrection append-only boundary disabled at chain boundary",
+        lambda: run_with_overrides(module, {module.TYPED_REGISTRY: typed_append_only_drift}),
     )
 
     missing_restore_stage = copy.deepcopy(contract)
@@ -303,6 +354,30 @@ def main() -> int:
         lambda: reconciler.load_generation_writer(),
     )
 
+    reconcile_drill_class_drift = copy.deepcopy(reconcile_drill)
+    reconcile_drill_class_drift["registryClass"] = "CORRUPT_RESTORE_REQUEST_AUTHORITY"
+    expect_reconciler_rejected_without_contract_write(
+        reconciler,
+        "reconciler drill request registry class drift",
+        lambda: run_with_overrides(reconciler, {reconciler.DRILL_REGISTRY: reconcile_drill_class_drift}),
+    )
+
+    reconcile_generation_append_only = copy.deepcopy(reconcile_generation)
+    reconcile_generation_append_only["appendOnly"] = False
+    expect_reconciler_rejected_without_contract_write(
+        reconciler,
+        "reconciler generation evidence append-only boundary disabled",
+        lambda: run_with_overrides(reconciler, {reconciler.GEN_REGISTRY: reconcile_generation_append_only}),
+    )
+
+    reconcile_typed_append_only = copy.deepcopy(reconcile_typed)
+    reconcile_typed_append_only["appendOnly"] = False
+    expect_reconciler_rejected_without_contract_write(
+        reconciler,
+        "reconciler typed non-resurrection append-only boundary disabled",
+        lambda: run_with_overrides(reconciler, {reconciler.TYPED_REGISTRY: reconcile_typed_append_only}),
+    )
+
     manufactured_reconcile_backup = copy.deepcopy(reconcile_generation)
     manufactured_reconcile_backup["completeGenerationBoundBackupCount"] = 1
     expect_reconciler_rejected_without_contract_write(
@@ -368,7 +443,9 @@ def main() -> int:
 
     print("Memory OS backup/restore admission-chain negative suite PASS")
     print("escaped JSON/module authority path accepted: false")
+    print("shared drill/generation/typed registry shape corruption accepted: false")
     print("escaped reconciler contract/module authority path accepted: false")
+    print("reconciler shared registry shape corruption repaired before rejection: false")
     print("reconciler manufactured recovery aggregates accepted before contract write: false")
     print("chain stage deletion/reordering accepted: false")
     print("backup/restore aggregate rederivation downgrade accepted: false")
