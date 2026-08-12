@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "backup-restore-drill-preflight",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "PASS baseline: canonical preflight negative authority and field sets are exact\nPASS reject: preflight contract path escapes repository root\nPASS reject: semantic eligibility helper authority drift\nPASS reject: legacy distinct unsuperseded environment alias\nPASS reject: legacy two-generation readiness alias\nPASS reject: unexpected future currentState field\nPASS reject: boolean canonical registered generation count\nPASS reject: boolean canonical approved objective count\nPASS reject: unexpected future readiness field\nPASS reject: generation blocker without semantic preflight eligibility\nPASS reject: generation blocker without distinct environment binding\nPASS reject: generation blocker weakened to one generation\nPASS reject: objective blocker without current approved objective binding\nPASS reject: generation registry schema drift\nPASS reject: boolean approved recovery objective count\nPASS reject: boolean registered drill request count\nPASS reject: boolean current executable drill request count\nPASS preserve: unexpected semantic helper TypeError\nMemory OS restore drill preflight negative authority-shape suite PASS\nescaped artifact path accepted: false\nnegative validator contract binding: true\nshared semantic eligibility helper contract binding: true\ngeneration registry schema drift accepted: false\nstable blocker ids require semantic preflight gates: true\nregistered generation count alone satisfies blocker: false\nboolean registry/current-state counts accepted: false\nunexpected semantic helper exceptions normalized as domain rejection: false\nstale state aliases accepted: false\nunexpected readiness aliases accepted: false\ncanonical authority mutated: false\nproduction evidence: false\nproduction decision: NO_GO\nPASS reject: invalid UTF-8 preflight authority JSON\nPASS reject: invalid UTF-8 preflight reconcile authority JSON\nPASS reject: preflight authority path is unreadable directory\nPASS reject: preflight reconcile authority path is unreadable directory\nPREFLIGHT LOAD NEGATIVE FAILED: forced post-reconcile validation failure leaked non-domain exception: Fail: environment generation validator failed:\nforced post-reconcile validator failure\n",
+  "containsSecrets": false,
+  "requestCreated": false,
+  "generationCreated": false,
+  "recoveryObjectiveCreated": false,
+  "restoreExecuted": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
