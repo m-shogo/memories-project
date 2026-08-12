@@ -72,23 +72,9 @@ jobs:
         if: steps.validation.outputs.exit_code == '0'
         run: |
           set -euo pipefail
-          authority_paths=(
-            .github/workflows/recovery-objectives-admission.yml
-            contracts/operations/recovery-objectives-admission-contract.v1.json
-            contracts/operations/recovery-objectives-registry.v1.json
-            contracts/operations/production-operability-status.json
-            docs/evidence/recovery-objectives/approvals
-            docs/fixtures/memory-os-operability/recovery-objectives-approval
-            scripts/memory_os_backup_restore_blockers.py
-            scripts/register-memory-os-recovery-objectives.py
-            scripts/validate-memory-os-recovery-objectives.py
-            scripts/validate-memory-os-recovery-objectives-negative.py
-            scripts/reconcile-memory-os-recovery-objectives.py
-            scripts/validate-memory-os-operability.py
-          )
           git fetch origin so
-          if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
-            echo "Recovery objective authority source changed during reconciliation; refusing stale derived authority."
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Recovery objective authority source HEAD changed during reconciliation; refusing stale derived authority."
             exit 75
           fi
           git rm -f docs/fixtures/memory-os-operability/recovery-objectives-admission-diagnostic.last.json 2>/dev/null || true
@@ -101,19 +87,12 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(backup): reconcile recovery objectives authority"
-            for attempt in 1 2 3 4; do
-              git fetch origin so
-              if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
-                echo "Recovery objective authority changed after validation; refusing stale derived authority."
-                exit 75
-              fi
-              if [[ "$(git rev-parse origin/so)" != "$(git rev-parse HEAD^)" ]]; then
-                git rebase origin/so
-              fi
-              if git push origin HEAD:so; then exit 0; fi
-              sleep 2
-            done
-            exit 1
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              echo "Recovery objective authority source HEAD changed after validation; refusing stale derived authority."
+              exit 75
+            fi
+            git push origin HEAD:so
           fi
       - name: Record privacy-safe recovery objective diagnostic
         if: steps.validation.outputs.exit_code != '0'
@@ -121,23 +100,9 @@ jobs:
           VALIDATION_EXIT_CODE: ${{ steps.validation.outputs.exit_code }}
         run: |
           set -euo pipefail
-          authority_paths=(
-            .github/workflows/recovery-objectives-admission.yml
-            contracts/operations/recovery-objectives-admission-contract.v1.json
-            contracts/operations/recovery-objectives-registry.v1.json
-            contracts/operations/production-operability-status.json
-            docs/evidence/recovery-objectives/approvals
-            docs/fixtures/memory-os-operability/recovery-objectives-approval
-            scripts/memory_os_backup_restore_blockers.py
-            scripts/register-memory-os-recovery-objectives.py
-            scripts/validate-memory-os-recovery-objectives.py
-            scripts/validate-memory-os-recovery-objectives-negative.py
-            scripts/reconcile-memory-os-recovery-objectives.py
-            scripts/validate-memory-os-operability.py
-          )
           git fetch origin so
-          if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
-            echo "Recovery objective authority changed after validation; refusing stale recovery objective diagnostic."
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Recovery objective authority source HEAD changed after validation; refusing stale recovery objective diagnostic."
             exit 75
           fi
           python - <<'PY'
@@ -147,6 +112,7 @@ jobs:
           value = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'recovery-objectives-admission',
+              'sourceCommitSha': os.environ['SOURCE_SHA'],
               'result': 'FAIL',
               'exitCode': int(os.environ['VALIDATION_EXIT_CODE']),
               'output': text[-12000:],
@@ -166,19 +132,12 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --cached --quiet; then
             git commit -m "test(restore): record recovery objective admission diagnostic"
-            for attempt in 1 2 3; do
-              git fetch origin so
-              if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
-                echo "Recovery objective authority changed after diagnostic capture; refusing stale recovery objective diagnostic."
-                exit 75
-              fi
-              if [[ "$(git rev-parse origin/so)" != "$(git rev-parse HEAD^)" ]]; then
-                git rebase origin/so
-              fi
-              if git push origin HEAD:so; then exit 0; fi
-              sleep 2
-            done
-            exit 1
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              echo "Recovery objective authority source HEAD changed after diagnostic capture; refusing stale recovery objective diagnostic."
+              exit 75
+            fi
+            git push origin HEAD:so
           fi
       - name: Enforce recovery objective admission
         run: test "${{ steps.validation.outputs.exit_code }}" = "0"
