@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove the standalone OPS-P0-007 snapshot validator rejects corrupt authorities."""
+"""Prove OPS-P0-007 snapshot generation and validation reject corrupt authorities."""
 
 from __future__ import annotations
 
@@ -11,7 +11,9 @@ from pathlib import Path
 from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
+GENERATOR = ROOT / "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-ops-p0-007-admission-snapshot.py"
+SNAPSHOT = ROOT / "contracts/operations/ops-p0-007-admission-snapshot.v1.json"
 OBJECTIVES = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
 REQUESTS = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
 GENERATION = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
@@ -54,6 +56,26 @@ def run_validator(expect_success: bool, label: str) -> None:
         raise Fail(f"{label}: rejection surfaced an implementation exception instead of a controlled failure")
 
 
+def run_generator_rejects(label: str, expected_message: str) -> None:
+    before = SNAPSHOT.read_bytes()
+    proc = subprocess.run(
+        [sys.executable, str(GENERATOR)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if proc.returncode != 1:
+        raise Fail(f"{label}: expected generator fail-closed exit 1, got {proc.returncode}: {proc.stderr or proc.stdout}")
+    output = proc.stderr or proc.stdout
+    if expected_message not in output:
+        raise Fail(f"{label}: generator rejection did not use expected authority boundary: {output}")
+    if "Traceback (most recent call last)" in output:
+        raise Fail(f"{label}: generator rejection surfaced an implementation exception")
+    if SNAPSHOT.read_bytes() != before:
+        raise Fail(f"{label}: rejected generator attempt mutated deterministic snapshot")
+
+
 def mutate_field(field: str, value: Any) -> Callable[[dict[str, Any]], None]:
     def apply(registry: dict[str, Any]) -> None:
         registry[field] = value
@@ -77,8 +99,14 @@ def mutate_ops7_missing(reorder: bool) -> Callable[[dict[str, Any]], None]:
     return apply
 
 
+def restore_all(originals: dict[Path, bytes]) -> None:
+    for path, payload in originals.items():
+        path.write_bytes(payload)
+
+
 def main() -> int:
     originals = {
+        SNAPSHOT: SNAPSHOT.read_bytes(),
         OBJECTIVES: OBJECTIVES.read_bytes(),
         REQUESTS: REQUESTS.read_bytes(),
         GENERATION: GENERATION.read_bytes(),
@@ -104,30 +132,54 @@ def main() -> int:
         ("canonical blocker ordering drift", STATUS, mutate_ops7_missing(True)),
         ("production decision promotion", STATUS, mutate_field("productionDecision", "GO")),
     ]
+    generator_cases: list[tuple[str, Callable[[dict[str, Any]], None], str]] = [
+        (
+            "generator canonical blocker replacement",
+            mutate_ops7_missing(False),
+            "canonical OPS-P0-007 blocker authority invalid",
+        ),
+        (
+            "generator canonical blocker ordering drift",
+            mutate_ops7_missing(True),
+            "canonical OPS-P0-007 blocker authority invalid",
+        ),
+        (
+            "generator production decision promotion",
+            mutate_field("productionDecision", "GO"),
+            "production decision must remain NO_GO",
+        ),
+    ]
 
     try:
         run_validator(True, "clean baseline")
         for label, path, mutate in cases:
-            for restore_path, payload in originals.items():
-                restore_path.write_bytes(payload)
+            restore_all(originals)
             authority = copy.deepcopy(load(path))
             mutate(authority)
             write(path, authority)
             run_validator(False, label)
-        for restore_path, payload in originals.items():
-            restore_path.write_bytes(payload)
+
+        for label, mutate, expected_message in generator_cases:
+            restore_all(originals)
+            status = copy.deepcopy(load(STATUS))
+            mutate(status)
+            write(STATUS, status)
+            run_generator_rejects(label, expected_message)
+
+        restore_all(originals)
         run_validator(True, "restored baseline")
     finally:
-        for path, payload in originals.items():
-            path.write_bytes(payload)
+        restore_all(originals)
 
     for path, payload in originals.items():
         if path.read_bytes() != payload:
             raise Fail(f"negative suite mutated canonical authority: {path.relative_to(ROOT)}")
 
     print("Memory OS OPS-P0-007 strict admission snapshot negative validation PASS")
-    print(f"controlled authority corruption cases rejected: {len(cases)}")
+    print(f"controlled validator corruption cases rejected: {len(cases)}")
+    print(f"controlled generator corruption cases rejected: {len(generator_cases)}")
     print("canonical authority files preserved byte-for-byte: true")
+    print("rejected generator attempts leave snapshot byte-for-byte unchanged: true")
     print("canonical six-blocker content and ordering preserved: true")
     print("production evidence/readiness/decision promotion rejected: true")
     return 0
