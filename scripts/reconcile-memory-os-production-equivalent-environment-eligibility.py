@@ -30,7 +30,7 @@ def require(condition: bool, message: str) -> None:
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise Fail(f"cannot load {path.relative_to(ROOT)}: {exc}") from exc
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
     return value
@@ -45,6 +45,10 @@ def load_helper():
 
 
 def main() -> int:
+    try:
+        original_contract_text = CONTRACT.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise Fail(f"cannot read {CONTRACT.relative_to(ROOT)}: {exc}") from exc
     contract = load(CONTRACT)
     generation_contract = load(GEN_CONTRACT)
     helper = load_helper()
@@ -75,21 +79,29 @@ def main() -> int:
     readiness["twoDistinctEligibleEnvironmentsAvailable"] = mapping["distinctPreflightEligibleEnvironmentCount"] >= 2
     readiness["eligibleDirectedRestorePairAvailable"] = mapping["eligibleDirectedRestorePairCount"] > 0
     readiness["productionReady"] = False
-    CONTRACT.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     gen_boundary = generation_contract.get("currentBoundary")
     require(isinstance(gen_boundary, dict), "generation boundary missing")
     require(gen_boundary.get("registeredGenerationCount") == mapping["registeredGenerationCount"], "generation registered count drift")
     require(gen_boundary.get("preflightEligibleGenerationCount") == mapping["preflightEligibleGenerationCount"], "generation eligible count drift")
 
-    completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-    require(completed.returncode == 0, f"post-reconcile eligibility validator failed:\n{completed.stdout[-8000:]}{completed.stderr[-8000:]}")
+    try:
+        CONTRACT.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        require(completed.returncode == 0, f"post-reconcile eligibility validator failed:\n{completed.stdout[-8000:]}{completed.stderr[-8000:]}")
+    except Exception:
+        try:
+            CONTRACT.write_text(original_contract_text, encoding="utf-8")
+        except OSError as restore_exc:
+            raise Fail(f"eligibility contract rollback failed: {restore_exc}") from restore_exc
+        raise
 
     print("Memory OS production-equivalent environment eligibility reconciliation PASS")
     print(f"registered generations: {mapping['registeredGenerationCount']}")
     print(f"preflight-eligible generations: {mapping['preflightEligibleGenerationCount']}")
     print(f"distinct eligible environments: {mapping['distinctPreflightEligibleEnvironmentCount']}")
     print(f"eligible directed restore pairs: {mapping['eligibleDirectedRestorePairCount']}")
+    print("failed post-validation leaves eligibility authority mutation behind: false")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
