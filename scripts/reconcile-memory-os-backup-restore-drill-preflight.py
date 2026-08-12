@@ -103,6 +103,13 @@ def main() -> int:
     drill_registry = load(DRILL_REGISTRY)
     status = load(STATUS)
     validator = load_validator_module()
+
+    # Validate every upstream append-only authority before deriving or mutating
+    # preflight state. Reconcile must never turn corrupt source authority into a
+    # canonical-looking derived contract, even transiently before rollback.
+    validator.run_validator(validator.GEN_VALIDATOR, "environment generation")
+    validator.run_validator(validator.OBJECTIVE_VALIDATOR, "recovery objectives")
+    validator.run_validator(validator.DRILL_VALIDATOR, "restore drill request")
     state = validator.derive_state(generations, objectives, drill_registry)
 
     pair_available = state["eligibleDirectedSourceTargetPairCount"] > 0
@@ -175,6 +182,7 @@ def main() -> int:
     print(f"eligible directed source-target pairs: {state['eligibleDirectedSourceTargetPairCount']}")
     print(f"reviewed/current drill requests: {state['reviewedDrillRequestCount']}/{state['currentExecutableDrillRequestCount']}")
     print("preflight authority state canonicalized: true")
+    print("upstream authority validated before reconcile mutation: true")
     print("failed post-validation leaves derived preflight/status mutation behind: false")
     print("registered generation inventory alone creates restore-planning authority: false")
     print("automatic prerequisite/request creation: false")
