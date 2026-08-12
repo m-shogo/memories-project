@@ -1,6 +1,6 @@
 {
   "schemaVersion": "memory-os-operability-status.0.1",
-  "asOf": "2026-08-11",
+  "asOf": "2026-08-12",
   "productionDecision": "NO_GO",
   "authority": "docs/memory-os-production-operability-audit-2026-07-24.md",
   "rules": {
@@ -821,7 +821,11 @@
         "approved source and rollback-target release pair with verified rollback eligibility and retained exact artifacts",
         "admitted isolated rollback rehearsal request with distinct Release Owner and Database Recovery Owner approvals",
         "executed rollback rehearsal proving startup, session, tenant, deletion, idempotency, parser artifact and exact object-version invariants",
-        "traffic-drain and rollback timing evidence with monitored stop conditions and independent review"
+        "traffic-drain and rollback timing evidence with monitored stop conditions and independent review",
+        "reviewed PostgreSQL minor-version support window and patch-upgrade rehearsal",
+        "production-shaped in-place pg_upgrade or approved blue-green database cutover rehearsal with connection-pool drain and rollback decision evidence",
+        "physical replication, WAL continuity, replication-slot and failover verification across the approved PostgreSQL upgrade path",
+        "approved rollback boundary for irreversible database-format changes and independent database recovery review"
       ],
       "evidenceRefs": [
         ".github/workflows/security-contracts.yml",
