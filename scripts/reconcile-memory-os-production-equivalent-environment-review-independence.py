@@ -27,7 +27,10 @@ def require(condition: bool, message: str) -> None:
 
 
 def load(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise Fail(f"cannot load {path.relative_to(ROOT)}: {exc}") from exc
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
     return value
 
@@ -41,6 +44,10 @@ def load_helper():
 
 
 def main() -> int:
+    try:
+        original_contract_text = CONTRACT.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise Fail(f"cannot read {CONTRACT.relative_to(ROOT)}: {exc}") from exc
     contract = load(CONTRACT)
     helper = load_helper()
     state = helper.derive(GEN_REGISTRY)
@@ -53,12 +60,20 @@ def main() -> int:
     boundary["productionEvidence"] = False
     boundary["productionReady"] = False
     boundary["productionDecision"] = "NO_GO"
-    CONTRACT.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-    require(completed.returncode == 0, f"post-reconcile review independence validator failed:\n{completed.stdout[-8000:]}{completed.stderr[-8000:]}")
+    try:
+        CONTRACT.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        require(completed.returncode == 0, f"post-reconcile review independence validator failed:\n{completed.stdout[-8000:]}{completed.stderr[-8000:]}")
+    except Exception:
+        try:
+            CONTRACT.write_text(original_contract_text, encoding="utf-8")
+        except OSError as restore_exc:
+            raise Fail(f"review independence contract rollback failed: {restore_exc}") from restore_exc
+        raise
     print("Memory OS production-equivalent environment review independence reconciliation PASS")
     print(f"eligible/reviewed generations: {eligible_count}/{eligible_count}")
     print("review reuse violations: 0")
+    print("failed post-validation leaves review-independence authority mutation behind: false")
     print("production decision: NO_GO")
     return 0
 
