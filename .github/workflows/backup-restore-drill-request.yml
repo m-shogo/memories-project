@@ -224,6 +224,7 @@ jobs:
           value = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'backup-restore-drill-request',
+              'sourceCommitSha': os.environ['SOURCE_SHA'],
               'result': 'FAIL',
               'exitCode': int(os.environ['ADMISSION_EXIT_CODE']),
               'output': text[-12000:],
