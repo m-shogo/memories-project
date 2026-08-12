@@ -12,6 +12,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 SNAPSHOT = ROOT / "contracts/operations/ops-p0-007-admission-snapshot.v1.json"
 ELIGIBILITY_HELPER = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
+BLOCKER_HELPER = ROOT / "scripts/memory_os_backup_restore_blockers.py"
 OBJECTIVES = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
 DRILL_REQUESTS = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
 GEN_EVIDENCE = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
@@ -23,14 +24,6 @@ GEN_EVIDENCE_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generati
 TYPED_WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
 GEN_BLOCKER = "TWO_DISTINCT_SEMANTICALLY_ELIGIBLE_ENVIRONMENTS"
 OBJECTIVE_BLOCKER = "CURRENT_APPROVED_RECOVERY_OBJECTIVE"
-CANONICAL_OPS_P0_007_MISSING_EVIDENCE = [
-    "production PostgreSQL backup and PITR schedule with encrypted independent retention, WAL continuity and tested point-in-time recovery selection",
-    "production independent object backup retention with TLS, restore-only credential separation, deletion protection, immutability, lifecycle controls and provider durability evidence",
-    "approved and measured RPO and RTO under production-shaped recovery, with coherent PostgreSQL/object recovery-point skew measurement plus backup monitoring, freshness enforcement and paging",
-    "production-shaped cross-cluster isolated restore drill with an approved recovery owner, coherent PostgreSQL and exact object-version recovery points, and an explicit promotion decision",
-    "production deletion, expired/revoked-session, replay, idempotency and lease non-resurrection verification after restore",
-    "independent review of generation-bound recovery evidence, security/privacy invariants, measured objectives and the restore promotion decision",
-]
 
 
 class Fail(RuntimeError):
@@ -85,6 +78,7 @@ def load_helper():
 def main() -> int:
     snapshot = load(SNAPSHOT)
     helper = load_helper()
+    blocker_helper = load_module(BLOCKER_HELPER, "memory_os_backup_restore_blockers_ops_p0_007_snapshot_validator")
     eligibility = helper.derive()
     objectives = load(OBJECTIVES)
     requests = load(DRILL_REQUESTS)
@@ -159,8 +153,17 @@ def main() -> int:
     ops7 = next((row for row in status.get("areas", []) if isinstance(row, dict) and row.get("id") == "OPS-P0-007"), None)
     require(isinstance(ops7, dict), "OPS-P0-007 status missing")
     missing = ops7.get("missingEvidence")
-    require(missing == CANONICAL_OPS_P0_007_MISSING_EVIDENCE, "canonical OPS-P0-007 six-blocker authority drift")
-    require(snapshot.get("canonicalMissingEvidenceCount") == len(CANONICAL_OPS_P0_007_MISSING_EVIDENCE), "snapshot canonical blocker count drift")
+    require_canonical_gaps = getattr(blocker_helper, "require_canonical_gaps", None)
+    canonical_gaps = getattr(blocker_helper, "CANONICAL_GAPS", None)
+    require(callable(require_canonical_gaps), "canonical OPS-P0-007 blocker validator missing")
+    require(isinstance(canonical_gaps, tuple) and len(canonical_gaps) == 6, "canonical OPS-P0-007 blocker authority invalid")
+    try:
+        require_canonical_gaps(missing, Fail)
+    except Fail:
+        raise
+    except Exception as exc:
+        raise Fail(f"canonical OPS-P0-007 blocker authority invalid: {exc}") from exc
+    require(snapshot.get("canonicalMissingEvidenceCount") == len(canonical_gaps), "snapshot canonical blocker count drift")
     require(ops7.get("blocking") is True, "OPS-P0-007 must remain blocking")
     require(status.get("productionDecision") == "NO_GO", "status production decision drift")
 
@@ -188,13 +191,14 @@ def main() -> int:
 
     print("Memory OS OPS-P0-007 strict admission snapshot validation PASS")
     print("canonical append-only registry validators enforced: true")
+    print("canonical production blocker authority enforced: true")
     print(f"stage: {expected_stage}")
     print(f"strict prerequisite blockers: {len(strict_blockers)}")
     print(f"eligible directed restore pairs: {eligibility['eligibleDirectedPairCount']}")
     print(f"reviewed/current drill requests: {request_count}/{current_request_count}")
     print(f"generation recovery evidence: {generation_evidence_count}")
     print(f"final recovery candidates: {candidate_count}")
-    print(f"canonical OPS-P0-007 blockers preserved: {len(CANONICAL_OPS_P0_007_MISSING_EVIDENCE)}")
+    print(f"canonical OPS-P0-007 blockers preserved: {len(canonical_gaps)}")
     print("production decision: NO_GO")
     return 0
 
