@@ -21,6 +21,7 @@ TYPED_CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-ad
 TYPED_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
 INVENTORY = ROOT / "contracts/operations/operability-admission-inventory.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
+DRILL_WRITER = ROOT / "scripts/request-memory-os-backup-restore-drill.py"
 GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
 TYPED_WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
 BLOCKER_AUTHORITY = ROOT / "scripts/memory_os_backup_restore_blockers.py"
@@ -74,6 +75,20 @@ def load_module(path: Path, name: str):
     return module
 
 
+def validate_shared_registry(module: Any, registry: dict[str, Any], label: str) -> list[dict[str, Any]]:
+    validator = getattr(module, "validate_registry_for_append", None)
+    require(callable(validator), f"{label} shared registry validator missing")
+    try:
+        rows = validator(registry)
+    except Exception as exc:
+        fail_type = getattr(module, "Fail", None)
+        if isinstance(fail_type, type) and isinstance(exc, fail_type):
+            raise Fail(f"{label} registry authority invalid: {exc}") from exc
+        raise
+    require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), f"{label} shared registry rows invalid")
+    return rows
+
+
 def main() -> int:
     contract = load(CONTRACT)
     preflight_contract = load(PREFLIGHT_CONTRACT)
@@ -86,6 +101,7 @@ def main() -> int:
     typed_registry = load(TYPED_REGISTRY)
     inventory = load(INVENTORY)
     status = load(STATUS)
+    drill_writer = load_module(DRILL_WRITER, "memory_os_drill_writer_admission_chain")
     gen_writer = load_module(GEN_WRITER, "memory_os_generation_writer_admission_chain")
     typed_writer = load_module(TYPED_WRITER, "memory_os_typed_writer_admission_chain")
     blocker_authority = load_module(BLOCKER_AUTHORITY, "memory_os_backup_restore_blockers_admission_chain")
@@ -109,8 +125,18 @@ def main() -> int:
         candidate = path if path.is_absolute() else ROOT / path
         expected = str(require_repo_file(candidate, f"chain artifact missing: {path}"))
         require(contract.get(field) == expected, f"chain ref drift: {field}")
+    require_repo_file(DRILL_WRITER, "restore drill request writer authority missing")
+    require_repo_file(GEN_WRITER, "generation evidence writer authority missing")
     require_repo_file(TYPED_WRITER, "typed non-resurrection writer authority missing")
     require_repo_file(BLOCKER_AUTHORITY, "canonical OPS-P0-007 blocker authority missing")
+
+    # Chain validation must begin from each layer's canonical append-only registry
+    # authority. The cross-chain checks below intentionally remain independent and
+    # re-derive relationships; they must not substitute a partial local copy of
+    # schema/class/append-only/current-authority validation.
+    drill_rows = validate_shared_registry(drill_writer, drill_registry, "drill request")
+    gen_rows = validate_shared_registry(gen_writer, gen_registry, "generation evidence")
+    typed_rows = validate_shared_registry(typed_writer, typed_registry, "typed non-resurrection")
 
     expected_chain = [
         "readOnlyDrillPreflight",
@@ -177,13 +203,10 @@ def main() -> int:
     require(all(preflight.get(field) is False for field in ("requestCreated", "backupExecuted", "restoreExecuted", "productionTrafficChanged", "productionEvidence", "productionReady")), "preflight may not create prerequisites, execute restore or promote production")
     require(preflight.get("productionDecision") == "NO_GO", "preflight production decision drift")
 
-    drill_rows = drill_registry.get("requests")
     drill_count = drill_registry.get("registeredRequestCount")
     current_drill_count = drill_registry.get("currentExecutableRequestCount")
-    require(isinstance(drill_rows, list) and all(isinstance(row, dict) for row in drill_rows), "drill request rows invalid")
     require(valid_count(drill_count) and drill_count == len(drill_rows), "drill request count drift")
     require(valid_count(current_drill_count) and current_drill_count <= drill_count, "current drill request count invalid")
-    require(drill_registry.get("productionEvidence") is False and drill_registry.get("productionReady") is False, "drill request registry production boundary drift")
     require(preflight.get("reviewedDrillRequestCount") == drill_count, "preflight reviewed request count drift")
     require(preflight.get("currentExecutableDrillRequestCount") == current_drill_count, "preflight current request count drift")
     if current_drill_count > 0:
@@ -214,19 +237,16 @@ def main() -> int:
     require(isinstance(gen_promotion, dict) and gen_promotion.get("completeReviewedRecordAlsoRequiresAdmittedDrillRequestBinding") is True, "generation promotion is not drill-request-bound")
     require(gen_promotion.get("completeReviewedRecordAlsoRequiresTypedNonResurrectionCoverage") is True, "generation promotion is not typed-overlay-bound")
 
-    gen_rows = gen_registry.get("records")
     gen_count = gen_registry.get("registeredEvidenceCount")
     bound_count = gen_registry.get("drillRequestBoundEvidenceCount")
     registry_backup_count = gen_registry.get("completeGenerationBoundBackupCount")
     registry_restore_count = gen_registry.get("completeGenerationBoundRestoreCount")
     candidate_count = gen_registry.get("productionEquivalentRecoveryCandidateCount")
-    require(isinstance(gen_rows, list) and all(isinstance(row, dict) for row in gen_rows), "generation evidence rows invalid")
     require(valid_count(gen_count) and gen_count == len(gen_rows), "generation evidence count drift")
     require(valid_count(bound_count) and bound_count == gen_count, "every generation evidence row must be drill-request-bound")
     for value, field in ((registry_backup_count, "backup"), (registry_restore_count, "restore"), (candidate_count, "candidate")):
         require(valid_count(value) and value <= gen_count, f"generation evidence {field} count invalid")
     require(candidate_count <= registry_restore_count <= registry_backup_count, "generation evidence recovery aggregate ordering drift")
-    require(gen_registry.get("productionEvidence") is False and gen_registry.get("productionReady") is False, "generation evidence registry production boundary drift")
 
     drill_ids = {row.get("requestId") for row in drill_rows if isinstance(row.get("requestId"), str)}
     require(len(drill_ids) == drill_count, "drill request IDs must be unique")
@@ -234,7 +254,6 @@ def main() -> int:
     derived_backup_count = 0
     derived_restore_count = 0
     for row in gen_rows:
-        gen_writer.validate_record(row, require_current_drill_request=False)
         request_id = row.get("drillRequestId")
         require(request_id in drill_ids, f"generation evidence references missing drill request: {request_id}")
         if row.get("evidenceComplete") is True:
@@ -258,19 +277,15 @@ def main() -> int:
     typed_rules = typed_contract.get("candidateCoverageRule")
     require(isinstance(typed_rules, dict) and typed_rules.get("genericNonResurrectionPassAloneIsInsufficient") is True, "typed generic PASS bypass guard missing")
     require(typed_rules.get("everyProductionEquivalentRecoveryCandidateRequiresOneCompleteTypedRecord") is True, "typed candidate coverage rule missing")
-    typed_rows = typed_registry.get("records")
     typed_count = typed_registry.get("registeredRecordCount")
     typed_complete_count = typed_registry.get("completeRecordCount")
     typed_covered_count = typed_registry.get("candidateCoveredCount")
-    require(isinstance(typed_rows, list) and all(isinstance(row, dict) for row in typed_rows), "typed non-resurrection rows invalid")
     require(valid_count(typed_count) and typed_count == len(typed_rows), "typed record count drift")
     require(valid_count(typed_complete_count) and typed_complete_count <= typed_count, "typed complete count invalid")
     require(valid_count(typed_covered_count) and typed_covered_count <= typed_complete_count, "typed candidate coverage count invalid")
-    require(typed_registry.get("productionEvidence") is False and typed_registry.get("productionReady") is False, "typed registry production boundary drift")
     complete_typed_ids: set[str] = set()
     derived_typed_complete_count = 0
     for row in typed_rows:
-        typed_writer.validate_record(row)
         if row.get("evidenceComplete") is True:
             derived_typed_complete_count += 1
             generation_evidence_id = row.get("generationEvidenceId")
@@ -396,6 +411,7 @@ def main() -> int:
     blocker_authority.require_canonical_gaps(status7.get("missingEvidence"), Fail)
 
     print("Memory OS backup/restore end-to-end admission chain PASS")
+    print("shared drill/generation/typed append-only registry authority validated: true")
     print(f"preflight: {preflight_decision}")
     print(f"preflight eligible pairs: {preflight_pair_count}")
     print(f"reviewed/current drill requests: {drill_count}/{current_drill_count}")
