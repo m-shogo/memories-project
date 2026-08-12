@@ -159,6 +159,8 @@ jobs:
           fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-equivalent-environment-generation.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-recovery-objectives-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-request-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-request-load-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-backup-restore-drill-request.py >> "$log" 2>&1 || code=$?; fi
@@ -262,6 +264,8 @@ jobs:
           git fetch origin so
           git reset --hard origin/so
           python scripts/validate-memory-os-backup-restore-drill-request.py
+          python scripts/validate-memory-os-recovery-objectives-negative.py
+          python scripts/validate-memory-os-backup-restore-drill-request-negative.py
           python scripts/validate-memory-os-backup-restore-drill-request-load-negative.py
           python scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py
           python scripts/validate-memory-os-backup-restore-generation-evidence.py
