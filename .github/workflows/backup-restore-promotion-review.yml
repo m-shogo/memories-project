@@ -52,6 +52,7 @@ jobs:
             >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-backup-restore-promotion-review.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-promotion-review.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-promotion-review-negative.py >> "$log" 2>&1 || code=$?; fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
