@@ -99,9 +99,33 @@ jobs:
           path.write_text(json.dumps(diagnostic, indent=2) + '\n', encoding='utf-8')
           PY
 
+      - name: Commit bounded diagnostic
+        run: |
+          git add docs/fixtures/memory-os-operability/live-load-authority-diagnostic.last.json
+          if git diff --cached --quiet; then
+            echo "Live load diagnostic is already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            if [ "${{ steps.validation.outputs.exit_code }}" = "0" ]; then
+              git commit -m "test(load): record live authority validation"
+            else
+              git commit -m "test(load): record live authority diagnostic"
+            fi
+          fi
+          git pull --rebase origin so
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/so)" ]; then
+            git push origin HEAD:so
+          fi
+
       - name: Reconcile validated evidence into status
         if: steps.validation.outputs.exit_code == '0'
         run: |
+          # The diagnostic commit may have rebased onto a concurrently advanced
+          # so branch. Revalidate the latest authority before any derived write.
+          python scripts/validate-memory-os-live-load.py
+          python scripts/validate-memory-os-live-object-load.py
+          source_head="$(git rev-parse HEAD)"
           evidence_sha="$(python - <<'PY'
           import json
           import re
@@ -127,6 +151,11 @@ jobs:
           EXPECTED_COMMIT_SHA="$evidence_sha" python scripts/reconcile-memory-os-live-load-status.py
           python scripts/validate-memory-os-live-load.py
           python scripts/validate-memory-os-live-object-load.py
+          git fetch origin so
+          if [ "$(git rev-parse origin/so)" != "$source_head" ]; then
+            echo "so advanced after validation; refusing stale derived authority write" >&2
+            exit 75
+          fi
           git add contracts/operations/production-operability-status.json contracts/operations/load-test-scenario-contract.v1.json
           if git diff --cached --quiet; then
             echo "Live dependency load authority is already current."
@@ -134,26 +163,6 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(load): reconcile live dependency evidence"
-            git pull --rebase origin so
-            git push origin HEAD:so
-          fi
-
-      - name: Commit bounded diagnostic
-        run: |
-          git fetch origin so
-          git rebase origin/so
-          git add docs/fixtures/memory-os-operability/live-load-authority-diagnostic.last.json
-          if git diff --cached --quiet; then
-            echo "Live load diagnostic is already current."
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            if [ "${{ steps.validation.outputs.exit_code }}" = "0" ]; then
-              git commit -m "test(load): record live authority validation"
-            else
-              git commit -m "test(load): record live authority diagnostic"
-            fi
-            git pull --rebase origin so
             git push origin HEAD:so
           fi
 
