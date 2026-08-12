@@ -102,10 +102,32 @@ jobs:
       - name: Reconcile validated evidence into status
         if: steps.validation.outputs.exit_code == '0'
         run: |
-          python scripts/reconcile-memory-os-live-load-status.py
+          evidence_sha="$(python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          paths = (
+              Path('docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json'),
+              Path('docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json'),
+          )
+          shas = []
+          for path in paths:
+              document = json.loads(path.read_text(encoding='utf-8'))
+              sha = document.get('commitSha')
+              if not isinstance(sha, str) or re.fullmatch(r'[0-9a-f]{40}', sha) is None:
+                  raise SystemExit(f'{path}: commitSha must be a full lowercase SHA')
+              shas.append(sha)
+          if len(set(shas)) != 1:
+              raise SystemExit('live PostgreSQL and object-load evidence must bind to one source commit')
+          print(shas[0])
+          PY
+          )"
+          git cat-file -e "${evidence_sha}^{commit}"
+          EXPECTED_COMMIT_SHA="$evidence_sha" python scripts/reconcile-memory-os-live-load-status.py
           python scripts/validate-memory-os-live-load.py
           python scripts/validate-memory-os-live-object-load.py
-          git add contracts/operations/production-operability-status.json
+          git add contracts/operations/production-operability-status.json contracts/operations/load-test-scenario-contract.v1.json
           if git diff --cached --quiet; then
             echo "Live dependency load authority is already current."
           else
