@@ -37,6 +37,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Capture exact promotion authority source
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - name: Reconcile and validate human promotion review
         id: validation
         run: |
@@ -60,6 +68,24 @@ jobs:
         if: steps.validation.outputs.exit_code == '0'
         run: |
           set -euo pipefail
+          authority_paths=(
+            .github/workflows/backup-restore-promotion-review.yml
+            contracts/operations/backup-restore-promotion-review-contract.v1.json
+            contracts/operations/backup-restore-promotion-review-registry.v1.json
+            contracts/operations/backup-restore-generation-evidence-registry.v1.json
+            contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json
+            contracts/operations/production-operability-status.json
+            scripts/register-memory-os-backup-restore-generation-evidence.py
+            scripts/register-memory-os-backup-restore-promotion-review.py
+            scripts/validate-memory-os-backup-restore-promotion-review-negative.py
+            scripts/validate-memory-os-backup-restore-promotion-review.py
+            scripts/reconcile-memory-os-backup-restore-promotion-review.py
+          )
+          git fetch origin so
+          if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
+            echo "Promotion review authority changed after validation; refusing stale derived authority."
+            exit 75
+          fi
           git rm -f docs/fixtures/memory-os-operability/backup-restore-promotion-review-diagnostic.last.json 2>/dev/null || true
           git add \
             contracts/operations/backup-restore-promotion-review-contract.v1.json \
@@ -71,7 +97,14 @@ jobs:
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(restore): reconcile recovery promotion review authority"
             for attempt in 1 2 3 4; do
-              git pull --rebase origin so
+              git fetch origin so
+              if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
+                echo "Promotion review authority changed after validation; refusing stale derived authority."
+                exit 75
+              fi
+              if [[ "$(git rev-parse origin/so)" != "$(git rev-parse HEAD^)" ]]; then
+                git rebase origin/so
+              fi
               if git push origin HEAD:so; then exit 0; fi
               sleep 2
             done
@@ -83,7 +116,24 @@ jobs:
           VALIDATION_EXIT_CODE: ${{ steps.validation.outputs.exit_code }}
         run: |
           set -euo pipefail
+          authority_paths=(
+            .github/workflows/backup-restore-promotion-review.yml
+            contracts/operations/backup-restore-promotion-review-contract.v1.json
+            contracts/operations/backup-restore-promotion-review-registry.v1.json
+            contracts/operations/backup-restore-generation-evidence-registry.v1.json
+            contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json
+            contracts/operations/production-operability-status.json
+            scripts/register-memory-os-backup-restore-generation-evidence.py
+            scripts/register-memory-os-backup-restore-promotion-review.py
+            scripts/validate-memory-os-backup-restore-promotion-review-negative.py
+            scripts/validate-memory-os-backup-restore-promotion-review.py
+            scripts/reconcile-memory-os-backup-restore-promotion-review.py
+          )
           git fetch origin so
+          if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
+            echo "Promotion review authority changed after failed validation; refusing stale diagnostic."
+            exit 75
+          fi
           git reset --hard origin/so
           python - <<'PY'
           import json, os
@@ -92,6 +142,7 @@ jobs:
           value = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'backup-restore-promotion-review',
+              'sourceCommitSha': os.environ['SOURCE_SHA'],
               'result': 'FAIL',
               'exitCode': int(os.environ['VALIDATION_EXIT_CODE']),
               'output': text[-12000:],
@@ -111,7 +162,14 @@ jobs:
           if ! git diff --cached --quiet; then
             git commit -m "test(restore): record recovery promotion review diagnostic"
             for attempt in 1 2 3; do
-              git pull --rebase origin so
+              git fetch origin so
+              if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
+                echo "Promotion review authority changed after diagnostic capture; refusing stale diagnostic."
+                exit 75
+              fi
+              if [[ "$(git rev-parse origin/so)" != "$(git rev-parse HEAD^)" ]]; then
+                git rebase origin/so
+              fi
               if git push origin HEAD:so; then exit 0; fi
               sleep 2
             done
