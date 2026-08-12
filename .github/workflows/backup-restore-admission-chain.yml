@@ -280,10 +280,9 @@ jobs:
         if: steps.chain.outputs.exit_code == '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
-          mapfile -t authority_paths < "$RUNNER_TEMP/backup-restore-chain-authority-paths"
           git fetch origin so
-          if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
-            echo "Recovery admission chain source changed during reconciliation; refusing stale derived authority."
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Repository HEAD changed during recovery admission chain reconciliation; refusing stale derived authority."
             exit 75
           fi
           git rm -f docs/fixtures/memory-os-operability/backup-restore-admission-chain-diagnostic.last.json 2>/dev/null || true
@@ -296,12 +295,9 @@ jobs:
             git commit -m "docs(restore): reconcile end-to-end admission chain"
             for attempt in 1 2 3 4; do
               git fetch origin so
-              if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
-                echo "Recovery admission chain authority changed after validation; refusing stale derived authority."
+              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+                echo "Repository HEAD changed after recovery admission chain validation; refusing stale derived authority."
                 exit 75
-              fi
-              if [[ "$(git rev-parse origin/so)" != "$(git rev-parse HEAD^)" ]]; then
-                git rebase origin/so
               fi
               if git push origin HEAD:so; then exit 0; fi
               sleep 2
@@ -315,10 +311,9 @@ jobs:
           CHAIN_EXIT_CODE: ${{ steps.chain.outputs.exit_code }}
         run: |
           set -euo pipefail
-          mapfile -t authority_paths < "$RUNNER_TEMP/backup-restore-chain-authority-paths"
           git fetch origin so
-          if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
-            echo "Recovery admission chain authority changed after validation; refusing stale failure diagnostic."
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Repository HEAD changed after recovery admission chain validation; refusing stale failure diagnostic."
             exit 75
           fi
           python - <<'PY'
@@ -330,6 +325,7 @@ jobs:
               'workflow': 'backup-restore-admission-chain',
               'result': 'FAIL',
               'exitCode': int(os.environ['CHAIN_EXIT_CODE']),
+              'sourceCommitSha': os.environ['SOURCE_SHA'],
               'output': text[-12000:],
               'containsSecrets': False,
               'preflightCreatedPrerequisite': False,
@@ -351,12 +347,9 @@ jobs:
             git commit -m "test(restore): record end-to-end admission chain diagnostic"
             for attempt in 1 2 3; do
               git fetch origin so
-              if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
-                echo "Recovery admission chain authority changed before diagnostic push; refusing stale failure diagnostic."
+              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+                echo "Repository HEAD changed before recovery admission chain diagnostic push; refusing stale failure diagnostic."
                 exit 75
-              fi
-              if [[ "$(git rev-parse origin/so)" != "$(git rev-parse HEAD^)" ]]; then
-                git rebase origin/so
               fi
               if git push origin HEAD:so; then exit 0; fi
               sleep 2
