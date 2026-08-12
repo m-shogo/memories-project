@@ -201,10 +201,12 @@ jobs:
       - name: Commit exact-source result and clear stale diagnostic
         if: github.event_name != 'pull_request'
         run: |
-          rm -f docs/fixtures/memory-os-operability/mixed-version-candidate-diagnostic.last.json
-          git add -A \
-            docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json \
-            docs/fixtures/memory-os-operability/mixed-version-candidate-diagnostic.last.json
+          diagnostic_path="docs/fixtures/memory-os-operability/mixed-version-candidate-diagnostic.last.json"
+          rm -f "$diagnostic_path"
+          git add docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json
+          if git ls-files --error-unmatch "$diagnostic_path" >/dev/null 2>&1; then
+            git add -u -- "$diagnostic_path"
+          fi
           if git diff --cached --quiet; then
             echo "Candidate compatibility evidence is already current."
           else
