@@ -114,14 +114,15 @@ def main() -> int:
     registry = load(REGISTRY)
     status = load(STATUS)
     writer = load_writer()
-    rows = registry.get("generations")
-    count = registry.get("registeredGenerationCount")
-    require(isinstance(rows, list) and isinstance(count, int) and not isinstance(count, bool) and count >= 0 and len(rows) == count, "generation registry count drift")
+    try:
+        rows = writer.validate_registry_for_append(registry)
+    except Exception as exc:
+        raise Fail(f"generation registry append-only authority invalid: {exc}") from exc
+    count = registry["registeredGenerationCount"]
     current_id = registry.get("currentGenerationId")
     current_env: dict[str, Any] | None = None
     eligibility_by_id: dict[str, bool] = {}
     for row in rows:
-        require(isinstance(row, dict), "generation registry row invalid")
         generation_id = row.get("generationId")
         require(isinstance(generation_id, str), "generationId invalid")
         try:
@@ -129,11 +130,8 @@ def main() -> int:
         except Exception as exc:
             raise Fail(f"generation record validation failed for {generation_id}: {exc}") from exc
     if count:
-        require(isinstance(rows[-1], dict) and rows[-1].get("generationId") == current_id, "current generation must equal latest append-only record")
         env_path = canonical_repo_ref(rows[-1].get("environmentRecordRef"), "current environment record ref must be canonical repository file")
         current_env = load(env_path)
-    else:
-        require(current_id is None, "empty generation registry requires null currentGenerationId")
 
     preflight_eligible_count = sum(1 for value in eligibility_by_id.values() if value)
     current_eligible = bool(current_id and eligibility_by_id.get(current_id) is True)
