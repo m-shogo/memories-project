@@ -1,6 +1,20 @@
 name: Production Equivalent Environment Eligibility
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/production-equivalent-environment-eligibility.yml"
+      - "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
+      - "scripts/validate-memory-os-production-equivalent-environment-record.py"
+      - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/memory_os_environment_generation_eligibility.py"
+      - "scripts/validate-memory-os-environment-generation-eligibility-negative.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-eligibility-reconcile-negative.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-eligibility.py"
+      - "scripts/reconcile-memory-os-production-equivalent-environment-eligibility.py"
   push:
     branches:
       - so
@@ -23,7 +37,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: production-equivalent-environment-eligibility-so
+  group: production-equivalent-environment-eligibility-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
@@ -33,7 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -41,10 +55,12 @@ jobs:
       - name: Capture exact semantic eligibility source
         run: |
           set -euo pipefail
-          git fetch origin so
-          test "$(git branch --show-current)" = "so"
-          test -z "$(git status --porcelain)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            git fetch origin so
+            test "$(git branch --show-current)" = "so"
+            test -z "$(git status --porcelain)"
+            test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          fi
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - name: Derive and validate restore-preflight generation eligibility
         id: eligibility
@@ -70,7 +86,7 @@ jobs:
           cat "$log"
           exit 0
       - name: Commit bounded generation eligibility authority
-        if: steps.eligibility.outputs.exit_code == '0'
+        if: steps.eligibility.outputs.exit_code == '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
           # Generation records can reference repository-contained environment
@@ -102,7 +118,7 @@ jobs:
             exit 1
           fi
       - name: Record privacy-safe eligibility diagnostic
-        if: steps.eligibility.outputs.exit_code != '0'
+        if: steps.eligibility.outputs.exit_code != '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         env:
           ELIGIBILITY_EXIT_CODE: ${{ steps.eligibility.outputs.exit_code }}
         run: |
@@ -112,7 +128,6 @@ jobs:
             echo "so advanced after failed semantic eligibility validation; refusing stale diagnostic."
             exit 75
           fi
-          git reset --hard origin/so
           python - <<'PY'
           import json, os
           from pathlib import Path
