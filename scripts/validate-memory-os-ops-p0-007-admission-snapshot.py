@@ -23,6 +23,14 @@ GEN_EVIDENCE_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generati
 TYPED_WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
 GEN_BLOCKER = "TWO_DISTINCT_SEMANTICALLY_ELIGIBLE_ENVIRONMENTS"
 OBJECTIVE_BLOCKER = "CURRENT_APPROVED_RECOVERY_OBJECTIVE"
+CANONICAL_OPS_P0_007_MISSING_EVIDENCE = [
+    "production PostgreSQL backup and PITR schedule with encrypted independent retention, WAL continuity and tested point-in-time recovery selection",
+    "production independent object backup retention with TLS, restore-only credential separation, deletion protection, immutability, lifecycle controls and provider durability evidence",
+    "approved and measured RPO and RTO under production-shaped recovery, with coherent PostgreSQL/object recovery-point skew measurement plus backup monitoring, freshness enforcement and paging",
+    "production-shaped cross-cluster isolated restore drill with an approved recovery owner, coherent PostgreSQL and exact object-version recovery points, and an explicit promotion decision",
+    "production deletion, expired/revoked-session, replay, idempotency and lease non-resurrection verification after restore",
+    "independent review of generation-bound recovery evidence, security/privacy invariants, measured objectives and the restore promotion decision",
+]
 
 
 class Fail(RuntimeError):
@@ -151,8 +159,8 @@ def main() -> int:
     ops7 = next((row for row in status.get("areas", []) if isinstance(row, dict) and row.get("id") == "OPS-P0-007"), None)
     require(isinstance(ops7, dict), "OPS-P0-007 status missing")
     missing = ops7.get("missingEvidence")
-    require(isinstance(missing, list) and len(missing) == 6, "canonical OPS-P0-007 six-blocker boundary drift")
-    require(snapshot.get("canonicalMissingEvidenceCount") == 6, "snapshot canonical blocker count drift")
+    require(missing == CANONICAL_OPS_P0_007_MISSING_EVIDENCE, "canonical OPS-P0-007 six-blocker authority drift")
+    require(snapshot.get("canonicalMissingEvidenceCount") == len(CANONICAL_OPS_P0_007_MISSING_EVIDENCE), "snapshot canonical blocker count drift")
     require(ops7.get("blocking") is True, "OPS-P0-007 must remain blocking")
     require(status.get("productionDecision") == "NO_GO", "status production decision drift")
 
@@ -186,7 +194,7 @@ def main() -> int:
     print(f"reviewed/current drill requests: {request_count}/{current_request_count}")
     print(f"generation recovery evidence: {generation_evidence_count}")
     print(f"final recovery candidates: {candidate_count}")
-    print("canonical OPS-P0-007 blockers preserved: 6")
+    print(f"canonical OPS-P0-007 blockers preserved: {len(CANONICAL_OPS_P0_007_MISSING_EVIDENCE)}")
     print("production decision: NO_GO")
     return 0
 
