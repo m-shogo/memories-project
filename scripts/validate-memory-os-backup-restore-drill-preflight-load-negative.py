@@ -57,13 +57,18 @@ def prove_transactional_rollback(reconciler: object, tmp: Path) -> None:
     original_contract = reconciler.CONTRACT
     original_status = reconciler.STATUS
     original_run = reconciler.subprocess.run
+    call_count = 0
+
+    def fail_only_post_reconcile(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count <= 3:
+            return SimpleNamespace(returncode=0, stdout="upstream authority validator pass", stderr="")
+        return SimpleNamespace(returncode=1, stdout="forced post-reconcile validator failure", stderr="")
+
     reconciler.CONTRACT = contract
     reconciler.STATUS = status
-    reconciler.subprocess.run = lambda *args, **kwargs: SimpleNamespace(
-        returncode=1,
-        stdout="forced post-reconcile validator failure",
-        stderr="",
-    )
+    reconciler.subprocess.run = fail_only_post_reconcile
     try:
         expect_domain_fail("forced post-reconcile validation failure", reconciler.main, reconciler.Fail)
     finally:
@@ -71,8 +76,10 @@ def prove_transactional_rollback(reconciler: object, tmp: Path) -> None:
         reconciler.STATUS = original_status
         reconciler.subprocess.run = original_run
 
+    require(call_count == 4, "expected three upstream validators before one post-reconcile validation")
     require(contract.read_bytes() == before_contract, "preflight contract was not rolled back byte-for-byte")
     require(status.read_bytes() == before_status, "production status was not rolled back byte-for-byte")
+    print("PASS boundary: three upstream authority validators ran before reconcile mutation")
     print("PASS rollback: preflight contract restored byte-for-byte")
     print("PASS rollback: production status restored byte-for-byte")
 
@@ -108,6 +115,7 @@ def main() -> int:
     print("reconciler invalid UTF-8 authority leaked raw exception: false")
     print("reconciler unreadable directory authority leaked raw exception: false")
     print("reconciler escaped authority accepted: false")
+    print("upstream append-only authorities validated before derived mutation: true")
     print("failed post-validation leaves derived authority mutation behind: false")
     print("production evidence created: false")
     print("production decision: NO_GO")
