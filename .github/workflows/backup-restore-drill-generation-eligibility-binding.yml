@@ -18,6 +18,7 @@ on:
       - "scripts/request-memory-os-backup-restore-drill.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding.py"
+      - "scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding-reconcile-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-drill-generation-eligibility-binding.py"
   workflow_dispatch:
 
@@ -54,8 +55,10 @@ jobs:
             scripts/request-memory-os-backup-restore-drill.py \
             scripts/validate-memory-os-backup-restore-drill-request-negative.py \
             scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding.py \
+            scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding-reconcile-negative.py \
             scripts/reconcile-memory-os-backup-restore-drill-generation-eligibility-binding.py \
             >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding-reconcile-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-backup-restore-drill-generation-eligibility-binding.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding.py >> "$log" 2>&1 || code=$?; fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
