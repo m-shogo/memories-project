@@ -38,6 +38,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Capture exact semantic eligibility source
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - name: Derive and validate restore-preflight generation eligibility
         id: eligibility
         run: |
@@ -65,6 +73,15 @@ jobs:
         if: steps.eligibility.outputs.exit_code == '0'
         run: |
           set -euo pipefail
+          # Generation records can reference repository-contained environment
+          # evidence dynamically. Require the exact validated branch head before
+          # committing semantic eligibility so a concurrent change can never be
+          # replayed as current preflight authority.
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "so advanced after semantic eligibility validation; refusing stale derived authority."
+            exit 75
+          fi
           git rm -f docs/fixtures/memory-os-operability/production-equivalent-environment-eligibility-diagnostic.last.json 2>/dev/null || true
           git add contracts/operations/production-equivalent-environment-eligibility-contract.v1.json
           git add -u docs/fixtures/memory-os-operability/production-equivalent-environment-eligibility-diagnostic.last.json 2>/dev/null || true
@@ -74,7 +91,11 @@ jobs:
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(ops): reconcile environment generation eligibility"
             for attempt in 1 2 3 4; do
-              git pull --rebase origin so
+              git fetch origin so
+              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+                echo "so advanced after semantic eligibility validation; refusing stale derived authority."
+                exit 75
+              fi
               if git push origin HEAD:so; then exit 0; fi
               sleep 2
             done
@@ -87,6 +108,10 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "so advanced after failed semantic eligibility validation; refusing stale diagnostic."
+            exit 75
+          fi
           git reset --hard origin/so
           python - <<'PY'
           import json, os
@@ -95,6 +120,7 @@ jobs:
           value = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'production-equivalent-environment-eligibility',
+              'sourceCommitSha': os.environ['SOURCE_SHA'],
               'result': 'FAIL',
               'exitCode': int(os.environ['ELIGIBILITY_EXIT_CODE']),
               'output': text[-12000:],
@@ -114,10 +140,15 @@ jobs:
           if ! git diff --cached --quiet; then
             git commit -m "test(ops): record environment generation eligibility diagnostic"
             for attempt in 1 2 3; do
-              git pull --rebase origin so
+              git fetch origin so
+              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+                echo "so advanced after semantic eligibility diagnostic capture; refusing stale diagnostic."
+                exit 75
+              fi
               if git push origin HEAD:so; then exit 0; fi
               sleep 2
             done
+            exit 1
           fi
       - name: Enforce generation eligibility authority
         run: test "${{ steps.eligibility.outputs.exit_code }}" = "0"
