@@ -58,6 +58,7 @@ def main() -> int:
     backup_drill_request_contract = load("contracts/operations/backup-restore-drill-request-contract.v1.json")
     backup_drill_requests = load("contracts/operations/backup-restore-drill-request-registry.v1.json")
     backup_drill_preflight = load("contracts/operations/backup-restore-drill-preflight-contract.v1.json")
+    backup_promotion_reviews = load("contracts/operations/backup-restore-promotion-review-registry.v1.json")
     releases = load("contracts/operations/release-baseline-registry.v1.json")
     release_pairs = load("contracts/operations/release-compatibility-pair-registry.v1.json")
     clients = load("contracts/operations/client-baseline-registry.v1.json")
@@ -80,6 +81,24 @@ def main() -> int:
     preflight_state = backup_drill_preflight.get("currentState")
     if not isinstance(preflight_state, dict):
         raise SystemExit("backup drill preflight state missing")
+
+    promotion_rows = backup_promotion_reviews.get("records")
+    promotion_count = backup_promotion_reviews.get("registeredReviewCount")
+    if backup_promotion_reviews.get("schemaVersion") != "memory-os-backup-restore-promotion-review-registry.v1":
+        raise SystemExit("backup promotion review registry schema drift")
+    if backup_promotion_reviews.get("appendOnly") is not True:
+        raise SystemExit("backup promotion review registry must remain append-only")
+    if any(backup_promotion_reviews.get(field) is not False for field in ("productionTrafficChanged", "productionEvidence", "productionReady")):
+        raise SystemExit("backup promotion review registry cannot promote production")
+    if not isinstance(promotion_rows, list) or not all(isinstance(row, dict) for row in promotion_rows):
+        raise SystemExit("backup promotion review registry rows invalid")
+    if not valid_count(promotion_count) or promotion_count != len(promotion_rows):
+        raise SystemExit("backup promotion review registry count drift")
+    current_promotion_decision_id = backup_promotion_reviews.get("currentDecisionId")
+    if current_promotion_decision_id is not None:
+        current_matches = [row for row in promotion_rows if row.get("decisionId") == current_promotion_decision_id]
+        if len(current_matches) != 1:
+            raise SystemExit("backup promotion review currentDecisionId authority drift")
 
     generation_count = generations.get("registeredGenerationCount")
     objective_count = recovery_objectives.get("approvedObjectiveCount")
@@ -112,8 +131,8 @@ def main() -> int:
     preflight_eligible = preflight_state.get("eligibleToSubmitReviewedDrillRequest")
     preflight_decision = preflight_state.get("preflightDecision")
     independent_evidence_review_completed = backup_boundary.get("independentReviewCompleted")
-    human_promotion_review_completed = backup_boundary.get("humanProductionPromotionReviewCompleted")
-    human_promotion_authorized = backup_boundary.get("humanProductionPromotionAuthorized")
+    human_promotion_review_completed = current_promotion_decision_id is not None
+    human_promotion_authorized = False
 
     for value, field in (
         (soak_approved_criteria_count, "approved leak/stability criteria"),
@@ -300,6 +319,7 @@ def main() -> int:
                 "contracts/operations/backup-restore-drill-request-contract.v1.json",
                 "contracts/operations/backup-restore-drill-request-registry.v1.json",
                 "contracts/operations/backup-restore-drill-preflight-contract.v1.json",
+                "contracts/operations/backup-restore-promotion-review-registry.v1.json",
                 "docs/runbooks/memory-os-production-equivalent-backup-restore-drill.md",
                 "scripts/register-memory-os-backup-restore-generation-evidence.py",
                 "scripts/validate-memory-os-backup-restore-generation-evidence.py",
@@ -311,11 +331,13 @@ def main() -> int:
                 "scripts/reconcile-memory-os-backup-restore-drill-request.py",
                 "scripts/validate-memory-os-backup-restore-drill-preflight.py",
                 "scripts/reconcile-memory-os-backup-restore-drill-preflight.py",
+                "scripts/register-memory-os-backup-restore-promotion-review.py",
                 ".github/workflows/backup-restore-generation-evidence.yml",
                 ".github/workflows/recovery-objectives-admission.yml",
                 ".github/workflows/backup-restore-non-resurrection-admission.yml",
                 ".github/workflows/backup-restore-drill-request.yml",
                 ".github/workflows/backup-restore-drill-preflight.yml",
+                ".github/workflows/backup-restore-promotion-review.yml",
             )),
             "admittedEvidenceCount": generation_bound_restore_count,
             "preflightDecision": preflight_decision,
@@ -428,7 +450,7 @@ def main() -> int:
             "backup/restore drill requests are planning authority only; historical requests remain auditable after supersession while current executable count requires immediate generation/objective revalidation",
             "every generation recovery evidence record must remain bound to one admitted restore drill request; an unbound record is an inventory validation failure",
             "a generic generation recovery nonResurrectionVerification PASS cannot create a final recovery candidate; complete typed coverage of all eight non-resurrection domains is independently required",
-            "candidate-level independent evidence review is separate from human production-promotion review; neither a recovery candidate nor this inventory may complete or authorize promotion",
+            "candidate-level independent evidence review is separate from human production-promotion review; human promotion review completion is sourced only from the append-only promotion-review registry and never authorizes production automatically",
             "candidate/local mixed-version execution remains separate from the approved release-pair registry and can never create an approved predecessor/successor pair"
         ]
     }
