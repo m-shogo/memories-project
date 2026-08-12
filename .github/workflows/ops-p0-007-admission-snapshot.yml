@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/ops-p0-007-admission-snapshot.yml"
+      - "contracts/operations/ops-p0-007-admission-snapshot.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json"
       - "contracts/operations/recovery-objectives-registry.v1.json"
@@ -26,6 +27,7 @@ on:
       - so
     paths:
       - ".github/workflows/ops-p0-007-admission-snapshot.yml"
+      - "contracts/operations/ops-p0-007-admission-snapshot.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json"
       - "contracts/operations/recovery-objectives-registry.v1.json"
