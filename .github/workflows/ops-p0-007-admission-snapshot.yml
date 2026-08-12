@@ -11,6 +11,7 @@ on:
       - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
       - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
+      - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/request-memory-os-backup-restore-drill.py"
@@ -30,6 +31,7 @@ on:
       - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
       - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
+      - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/request-memory-os-backup-restore-drill.py"
@@ -76,6 +78,7 @@ jobs:
           : > "$log"
           code=0
           python -m py_compile \
+            scripts/register-memory-os-production-equivalent-environment-generation.py \
             scripts/memory_os_environment_generation_eligibility.py \
             scripts/register-memory-os-recovery-objectives.py \
             scripts/request-memory-os-backup-restore-drill.py \
