@@ -12,6 +12,10 @@ on:
       - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
       - "scripts/memory_os_environment_generation_eligibility.py"
+      - "scripts/register-memory-os-recovery-objectives.py"
+      - "scripts/request-memory-os-backup-restore-drill.py"
+      - "scripts/register-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py"
       - "scripts/validate-memory-os-ops-p0-007-admission-snapshot.py"
   push:
@@ -27,6 +31,10 @@ on:
       - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
       - "scripts/memory_os_environment_generation_eligibility.py"
+      - "scripts/register-memory-os-recovery-objectives.py"
+      - "scripts/request-memory-os-backup-restore-drill.py"
+      - "scripts/register-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py"
       - "scripts/validate-memory-os-ops-p0-007-admission-snapshot.py"
   workflow_dispatch:
@@ -69,6 +77,10 @@ jobs:
           code=0
           python -m py_compile \
             scripts/memory_os_environment_generation_eligibility.py \
+            scripts/register-memory-os-recovery-objectives.py \
+            scripts/request-memory-os-backup-restore-drill.py \
+            scripts/register-memory-os-backup-restore-generation-evidence.py \
+            scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
             scripts/generate-memory-os-ops-p0-007-admission-snapshot.py \
             scripts/validate-memory-os-ops-p0-007-admission-snapshot.py \
             >> "$log" 2>&1 || code=$?
