@@ -10,6 +10,7 @@ on:
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/validate-memory-os-production-equivalent-environment-review-independence.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-review-independence-reconcile-negative.py"
       - "scripts/reconcile-memory-os-production-equivalent-environment-review-independence.py"
   workflow_dispatch:
 
@@ -42,8 +43,10 @@ jobs:
           python -m py_compile \
             scripts/memory_os_environment_generation_eligibility.py \
             scripts/validate-memory-os-production-equivalent-environment-review-independence.py \
+            scripts/validate-memory-os-production-equivalent-environment-review-independence-reconcile-negative.py \
             scripts/reconcile-memory-os-production-equivalent-environment-review-independence.py \
             >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-equivalent-environment-review-independence-reconcile-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-production-equivalent-environment-review-independence.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-equivalent-environment-review-independence.py >> "$log" 2>&1 || code=$?; fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
