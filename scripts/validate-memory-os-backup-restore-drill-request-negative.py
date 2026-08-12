@@ -164,6 +164,41 @@ def main() -> int:
         def validate_record(record: dict[str, Any]) -> bool:
             return True
 
+        @classmethod
+        def validate_registry_for_append(cls, registry: dict[str, Any]) -> list[dict[str, Any]]:
+            if registry.get("schemaVersion") != "memory-os-production-equivalent-environment-generation-registry.v1":
+                raise cls.Fail("registry schema drift")
+            if registry.get("registryClass") != "PRODUCTION_EQUIVALENT_ENVIRONMENT_GENERATIONS":
+                raise cls.Fail("registry class drift")
+            if registry.get("appendOnly") is not True:
+                raise cls.Fail("registry must remain append-only")
+            if registry.get("productionEvidence") is not False:
+                raise cls.Fail("registry production evidence boundary drift")
+            rows = registry.get("generations")
+            count = registry.get("registeredGenerationCount")
+            if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
+                raise cls.Fail("registry generations invalid")
+            if not isinstance(count, int) or isinstance(count, bool) or count != len(rows):
+                raise cls.Fail("registeredGenerationCount drift")
+            ids: set[str] = set()
+            previous_by_environment: dict[str, str] = {}
+            for row in rows:
+                generation_id = row.get("generationId")
+                environment_id = row.get("environmentId")
+                if not isinstance(generation_id, str) or not generation_id or generation_id in ids:
+                    raise cls.Fail("generationId authority invalid")
+                if not isinstance(environment_id, str) or not environment_id:
+                    raise cls.Fail("environmentId authority invalid")
+                ids.add(generation_id)
+                if row.get("supersedesGenerationId") != previous_by_environment.get(environment_id):
+                    raise cls.Fail("generation supersession chain drift")
+                previous_by_environment[environment_id] = generation_id
+                cls.validate_record(row)
+            expected_current = rows[-1].get("generationId") if rows else None
+            if registry.get("currentGenerationId") != expected_current:
+                raise cls.Fail("currentGenerationId must equal latest append-only record")
+            return rows
+
     shared_eligibility_helper.load_generation_writer = lambda: SyntheticGenerationWriter
 
     with tempfile.TemporaryDirectory(prefix="memory-os-restore-drill-request-negative-") as tmp:
