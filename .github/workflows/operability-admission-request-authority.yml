@@ -20,6 +20,8 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
+      - "scripts/validate-memory-os-backup-restore-admission-chain-negative.py"
+      - "scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py"
       - ".github/workflows/backup-restore-generation-binding.yml"
       - ".github/workflows/backup-restore-drill-preflight.yml"
       - ".github/workflows/operability-admission-request-authority.yml"
@@ -40,6 +42,8 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
+      - "scripts/validate-memory-os-backup-restore-admission-chain-negative.py"
+      - "scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py"
       - ".github/workflows/backup-restore-generation-binding.yml"
       - ".github/workflows/backup-restore-drill-preflight.yml"
       - ".github/workflows/operability-admission-request-authority.yml"
@@ -61,6 +65,10 @@ jobs:
         run: |
           python scripts/generate-memory-os-operability-admission-inventory.py
           python scripts/validate-memory-os-operability-admission-inventory.py
+      - name: Validate backup/restore admission chain negatives
+        run: |
+          python scripts/validate-memory-os-backup-restore-admission-chain-negative.py
+          python scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py
       - name: Validate request and promotion separation
         run: |
           python - <<'PY'
