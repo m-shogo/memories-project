@@ -59,6 +59,8 @@ def main() -> int:
             ("request registry production ready promoted", lambda value: value.__setitem__("productionReady", True)),
             ("registered request boolean count", lambda value: value.__setitem__("registeredRequestCount", True)),
             ("current executable boolean count", lambda value: value.__setitem__("currentExecutableRequestCount", True)),
+            ("registered request count drift", lambda value: value.__setitem__("registeredRequestCount", len(value.get("requests", [])) + 1)),
+            ("current executable count drift", lambda value: value.__setitem__("currentExecutableRequestCount", len(value.get("requests", [])) + 1)),
         )
         for name, mutate in corruption_cases:
             corrupted = json.loads(json.dumps(canonical_registry))
