@@ -60,42 +60,15 @@ def load_generation_writer():
 def derive_registry(registry: dict[str, Any]) -> dict[str, Any]:
     """Derive semantic preflight authority from an already loaded registry object."""
     require(isinstance(registry, dict), "generation registry root must be object")
-    require(
-        registry.get("schemaVersion") == "memory-os-production-equivalent-environment-generation-registry.v1",
-        "generation registry schema drift",
-    )
-    require(
-        registry.get("registryClass") == "PRODUCTION_EQUIVALENT_ENVIRONMENT_GENERATIONS",
-        "generation registry class drift",
-    )
-    rows = registry.get("generations")
+
+    writer = load_generation_writer()
+    try:
+        rows = writer.validate_registry_for_append(registry)
+    except writer.Fail as exc:
+        raise Fail(f"generation registry authority validation failed: {exc}") from exc
+
     count = registry.get("registeredGenerationCount")
-    require(registry.get("appendOnly") is True and registry.get("productionEvidence") is False, "generation registry boundary drift")
-    require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "generation registry rows invalid")
-    require(isinstance(count, int) and not isinstance(count, bool) and count == len(rows), "generation registry count drift")
-
-    generation_ids = [row.get("generationId") for row in rows]
-    require(all(isinstance(value, str) and value for value in generation_ids), "generationId invalid")
-    require(len(generation_ids) == len(set(generation_ids)), "generationId duplicate")
-
-    prior_by_environment: dict[str, str] = {}
-    for row in rows:
-        generation_id = row.get("generationId")
-        environment_id = row.get("environmentId")
-        require(isinstance(environment_id, str) and environment_id, "environmentId invalid")
-        expected_supersedes = prior_by_environment.get(environment_id)
-        require(
-            row.get("supersedesGenerationId") == expected_supersedes,
-            f"supersedes chain drift for environment {environment_id}",
-        )
-        prior_by_environment[environment_id] = generation_id
-
-    current_generation_id = registry.get("currentGenerationId")
-    if count == 0:
-        require(current_generation_id is None, "empty generation registry must have null currentGenerationId")
-    else:
-        require(current_generation_id == rows[-1].get("generationId"), "currentGenerationId must equal latest append-only registry record")
-
+    generation_ids = [row["generationId"] for row in rows]
     superseded_ids = {
         row.get("supersedesGenerationId")
         for row in rows
@@ -103,7 +76,6 @@ def derive_registry(registry: dict[str, Any]) -> dict[str, Any]:
     }
     unsuperseded_rows = [row for row in rows if row.get("generationId") not in superseded_ids]
 
-    writer = load_generation_writer()
     eligible_by_id: dict[str, bool] = {}
     for row in rows:
         generation_id = row["generationId"]
@@ -172,6 +144,7 @@ def main() -> int:
     print(f"distinct preflight-eligible environments: {state['distinctPreflightEligibleEnvironmentCount']}")
     print(f"eligible directed restore pairs: {state['eligibleDirectedPairCount']}")
     print("canonical generation registry identity required for default derivation: true")
+    print("generation registry validation delegated to canonical writer: true")
     print("generation registry schema drift accepted: false")
     print("generation registry class drift accepted: false")
     print("cross-environment supersedes accepted: false")
