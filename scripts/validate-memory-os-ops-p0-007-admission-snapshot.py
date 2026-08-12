@@ -17,6 +17,10 @@ DRILL_REQUESTS = ROOT / "contracts/operations/backup-restore-drill-request-regis
 GEN_EVIDENCE = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 TYPED = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
+OBJECTIVE_WRITER = ROOT / "scripts/register-memory-os-recovery-objectives.py"
+DRILL_REQUEST_WRITER = ROOT / "scripts/request-memory-os-backup-restore-drill.py"
+GEN_EVIDENCE_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
+TYPED_WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
 GEN_BLOCKER = "TWO_DISTINCT_SEMANTICALLY_ELIGIBLE_ENVIRONMENTS"
 OBJECTIVE_BLOCKER = "CURRENT_APPROVED_RECOVERY_OBJECTIVE"
 
@@ -39,12 +43,35 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def load_helper():
-    spec = importlib.util.spec_from_file_location("memory_os_generation_eligibility_ops_p0_007_snapshot_validator", ELIGIBILITY_HELPER)
-    require(spec is not None and spec.loader is not None, "cannot load generation eligibility helper")
+def load_module(path: Path, name: str):
+    try:
+        relative = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"cannot resolve canonical authority module: {path}") from exc
+    require(relative == resolved and path.is_file(), f"authority module escapes canonical repository path: {relative}")
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load authority module: {relative}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def validate_registry(module, registry: dict[str, Any], label: str) -> list[dict[str, Any]]:
+    validator = getattr(module, "validate_registry_for_append", None)
+    failure_type = getattr(module, "Fail", RuntimeError)
+    require(callable(validator), f"{label} canonical registry validator missing")
+    require(isinstance(failure_type, type) and issubclass(failure_type, BaseException), f"{label} failure type invalid")
+    try:
+        rows = validator(registry)
+    except failure_type as exc:
+        raise Fail(f"{label} canonical registry authority invalid: {exc}") from exc
+    require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), f"{label} canonical registry validator returned invalid rows")
+    return rows
+
+
+def load_helper():
+    return load_module(ELIGIBILITY_HELPER, "memory_os_generation_eligibility_ops_p0_007_snapshot_validator")
 
 
 def main() -> int:
@@ -56,6 +83,15 @@ def main() -> int:
     generation_evidence = load(GEN_EVIDENCE)
     typed = load(TYPED)
     status = load(STATUS)
+
+    objective_writer = load_module(OBJECTIVE_WRITER, "memory_os_objective_writer_ops_p0_007_snapshot_validator")
+    request_writer = load_module(DRILL_REQUEST_WRITER, "memory_os_drill_request_writer_ops_p0_007_snapshot_validator")
+    generation_writer = load_module(GEN_EVIDENCE_WRITER, "memory_os_generation_evidence_writer_ops_p0_007_snapshot_validator")
+    typed_writer = load_module(TYPED_WRITER, "memory_os_typed_non_resurrection_writer_ops_p0_007_snapshot_validator")
+    validate_registry(objective_writer, objectives, "recovery objective")
+    validate_registry(request_writer, requests, "restore drill request")
+    validate_registry(generation_writer, generation_evidence, "generation recovery evidence")
+    validate_registry(typed_writer, typed, "typed non-resurrection")
 
     require(snapshot.get("schemaVersion") == "memory-os-ops-p0-007-admission-snapshot.v1", "snapshot schema drift")
     require(snapshot.get("deterministic") is True and snapshot.get("areaId") == "OPS-P0-007", "snapshot identity drift")
@@ -143,6 +179,7 @@ def main() -> int:
         require(typed_complete > 0 and current_request_count > 0, "final candidate requires typed evidence and current request")
 
     print("Memory OS OPS-P0-007 strict admission snapshot validation PASS")
+    print("canonical append-only registry validators enforced: true")
     print(f"stage: {expected_stage}")
     print(f"strict prerequisite blockers: {len(strict_blockers)}")
     print(f"eligible directed restore pairs: {eligibility['eligibleDirectedPairCount']}")
