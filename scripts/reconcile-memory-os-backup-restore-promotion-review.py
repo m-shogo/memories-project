@@ -10,6 +10,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from memory_os_backup_restore_blockers import require_canonical_gaps
+
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/backup-restore-promotion-review-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/backup-restore-promotion-review-registry.v1.json"
@@ -32,26 +34,81 @@ def valid_count(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
+def repo_relative(path: Path) -> Path:
+    try:
+        return path.resolve(strict=False).relative_to(ROOT.resolve())
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"authority path escapes repository: {path}") from exc
+
+
+def read_text(path: Path) -> str:
+    relative = repo_relative(path)
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise Fail(f"cannot read {relative}: {exc}") from exc
+
+
+def write_text(path: Path, text: str) -> None:
+    relative = repo_relative(path)
+    try:
+        path.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        raise Fail(f"cannot write {relative}: {exc}") from exc
+
+
 def load(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+    relative = repo_relative(path)
+    try:
+        value = json.loads(read_text(path))
+    except json.JSONDecodeError as exc:
+        raise Fail(f"cannot load {relative}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be object: {relative}")
     return value
 
 
 def load_writer():
+    relative = repo_relative(WRITER)
+    require((ROOT / relative).is_file(), "promotion review writer missing")
     spec = importlib.util.spec_from_file_location("memory_os_promotion_review_writer_reconcile", WRITER)
-    require(spec is not None and spec.loader is not None, "cannot load promotion review writer")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    require(spec is not None and spec.loader is not None, f"cannot load {relative}")
+    try:
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except (FileNotFoundError, OSError) as exc:
+        raise Fail(f"cannot load {relative}: {exc}") from exc
     return module
 
 
+def validate_generation_registry(writer: Any, registry: dict[str, Any]) -> tuple[Any, list[dict[str, Any]]]:
+    generation_writer = writer.load_generation_writer()
+    try:
+        rows = generation_writer.validate_registry_for_append(registry)
+    except Exception as exc:
+        if writer.domain_validation_failure(exc):
+            raise Fail(f"generation recovery evidence registry authority invalid: {exc}") from exc
+        raise
+    require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "generation recovery evidence registry rows invalid")
+    return generation_writer, rows
+
+
 def main() -> int:
+    original_contract_text = read_text(CONTRACT)
+    original_registry_text = read_text(REGISTRY)
     contract = load(CONTRACT)
     registry = load(REGISTRY)
     generation = load(GEN_REGISTRY)
     status = load(STATUS)
     writer = load_writer()
+
+    # A human-review reconcile may revoke stale current authority, but it must
+    # never repair malformed upstream recovery authority or infer promotion from
+    # stale aggregate counters. Validate immutable generation evidence first and
+    # re-derive the current final-candidate count from the canonical predicate.
+    generation_writer, generation_rows = validate_generation_registry(writer, generation)
+    candidate_count = sum(1 for row in generation_rows if generation_writer.candidate(row))
+    require(generation.get("productionEquivalentRecoveryCandidateCount") == candidate_count, "recovery candidate aggregate drift")
+
     rows, expected_current = writer.reconcile_current_decision(registry)
     count = registry.get("registeredReviewCount")
     go_count = registry.get("goRecommendationCount")
@@ -60,14 +117,17 @@ def main() -> int:
     latest_id = registry.get("latestDecisionId")
     current_id = registry.get("currentDecisionId")
     require(expected_current == current_id, "promotion review current authority reconcile drift")
-    candidate_count = generation.get("productionEquivalentRecoveryCandidateCount")
-    require(valid_count(candidate_count), "recovery candidate count invalid")
     if candidate_count == 0:
         require(current_id is None, "zero final recovery candidates must revoke current promotion authority")
     if current_id is not None:
         require(current_id == latest_id, "only latest historical review may remain current")
 
-    REGISTRY.write_text(json.dumps(registry, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    require(status.get("productionDecision") == "NO_GO", "global production decision must remain NO_GO")
+    ops7 = next((row for row in status.get("areas", []) if isinstance(row, dict) and row.get("id") == "OPS-P0-007"), None)
+    require(isinstance(ops7, dict), "OPS-P0-007 status missing")
+    require(ops7.get("status") == "PARTIAL_FOUNDATIONS_ONLY" and ops7.get("blocking") is True, "OPS-P0-007 must remain blocking foundation-only")
+    require_canonical_gaps(ops7.get("missingEvidence"), Fail)
+
     boundary = contract.get("currentBoundary")
     require(isinstance(boundary, dict), "promotion review currentBoundary missing")
     boundary["registeredReviewCount"] = count
@@ -80,23 +140,29 @@ def main() -> int:
     boundary["productionEvidence"] = False
     boundary["productionReady"] = False
     boundary["productionDecision"] = "NO_GO"
-    CONTRACT.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
-    require(status.get("productionDecision") == "NO_GO", "global production decision must remain NO_GO")
-    ops7 = next((row for row in status.get("areas", []) if isinstance(row, dict) and row.get("id") == "OPS-P0-007"), None)
-    require(isinstance(ops7, dict), "OPS-P0-007 status missing")
-    missing = ops7.get("missingEvidence")
-    require(isinstance(missing, list) and len(missing) == 6, "canonical OPS-P0-007 six-blocker boundary drift")
-    completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-    require(completed.returncode == 0, f"post-reconcile promotion review validator failed:\n{completed.stdout[-9000:]}{completed.stderr[-9000:]}")
+    registry_text = json.dumps(registry, indent=2, ensure_ascii=False) + "\n"
+    contract_text = json.dumps(contract, indent=2, ensure_ascii=False) + "\n"
+    try:
+        write_text(REGISTRY, registry_text)
+        write_text(CONTRACT, contract_text)
+        completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        require(completed.returncode == 0, f"post-reconcile promotion review validator failed:\n{completed.stdout[-9000:]}{completed.stderr[-9000:]}")
+    except Exception:
+        write_text(REGISTRY, original_registry_text)
+        write_text(CONTRACT, original_contract_text)
+        raise
+
     print("Memory OS backup/restore promotion review reconciliation PASS")
     print(f"final recovery candidates: {candidate_count}")
     print(f"registered historical promotion reviews: {count}")
     print(f"GO/NO_GO/DEFER: {go_count}/{no_go_count}/{defer_count}")
     print(f"latest historical decision: {latest_id}")
     print(f"current promotion authority decision: {current_id}")
+    print("generation candidate authority re-derived before promotion reconcile: true")
     print("historical review rows retained: true")
     print("current authority may only be revoked automatically: true")
+    print("failed post-validation leaves promotion registry/contract mutation behind: false")
     print("canonical OPS-P0-007 blockers preserved: 6")
     print("production traffic changed: false")
     print("production ready: false")
