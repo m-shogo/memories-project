@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import sys
@@ -14,6 +15,7 @@ from memory_os_backup_restore_blockers import require_canonical_gaps
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/recovery-objectives-admission-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
+WRITER = ROOT / "scripts/register-memory-os-recovery-objectives.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-recovery-objectives.py"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 EVIDENCE_PREFIX = "recovery objectives approval is append-only:"
@@ -75,6 +77,18 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def load_writer():
+    relative = require_repo_file(WRITER, "recovery objective writer missing")
+    spec = importlib.util.spec_from_file_location("memory_os_recovery_objectives_reconcile_writer", WRITER)
+    require(spec is not None and spec.loader is not None, f"cannot load {relative}")
+    try:
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except (FileNotFoundError, OSError) as exc:
+        raise Fail(f"cannot load {relative}: {exc}") from exc
+    return module
+
+
 def append_once(values: list[Any], value: str) -> None:
     if value not in values:
         values.append(value)
@@ -86,11 +100,23 @@ def main() -> int:
     registry = load(REGISTRY)
     contract = load(CONTRACT)
     status = load(STATUS)
-    rows = registry.get("records")
+    writer = load_writer()
+
+    # Reconciliation may update derived contract/status projections only from
+    # an already-valid append-only human approval registry. Reuse the direct
+    # writer validator before reading or projecting counters so schema,
+    # production-boundary, duplicate/supersession, and current-pointer
+    # corruption can never be normalized by reconcile.
+    try:
+        rows = writer.validate_registry_for_append(registry)
+    except RuntimeError as exc:
+        if exc.__class__.__name__ != "Fail":
+            raise
+        raise Fail(f"append-only recovery objective authority invalid before reconcile: {exc}") from exc
+
     count = registry.get("approvedObjectiveCount")
     current_id = registry.get("currentObjectiveId")
-    require(isinstance(rows, list) and isinstance(count, int) and not isinstance(count, bool) and count >= 0 and len(rows) == count, "recovery objective registry count drift")
-    require(all(isinstance(row, dict) for row in rows), "recovery objective registry row invalid")
+    require(isinstance(count, int) and not isinstance(count, bool) and count >= 0 and len(rows) == count, "recovery objective registry count drift")
     require(current_id == (rows[-1].get("objectiveId") if rows else None), "current objective drift")
     if count == 0:
         require(current_id is None, "empty objective registry requires null currentObjectiveId")
@@ -144,6 +170,7 @@ def main() -> int:
     print("Memory OS recovery objectives reconciliation PASS")
     print(f"approved objective records: {count}")
     print(f"current objective: {current_id or 'none'}")
+    print("corrupt append-only objective registry auto-healed by reconcile: false")
     print("failed post-validation leaves objective/status mutation behind: false")
     print("canonical OPS-P0-007 blockers preserved: 6")
     print("production evidence: false")
