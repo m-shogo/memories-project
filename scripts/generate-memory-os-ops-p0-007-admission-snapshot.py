@@ -16,6 +16,10 @@ DRILL_REQUESTS = ROOT / "contracts/operations/backup-restore-drill-request-regis
 GEN_EVIDENCE = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 TYPED = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
+OBJECTIVE_WRITER = ROOT / "scripts/register-memory-os-recovery-objectives.py"
+DRILL_REQUEST_WRITER = ROOT / "scripts/request-memory-os-backup-restore-drill.py"
+GEN_EVIDENCE_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
+TYPED_WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
 GEN_BLOCKER = "TWO_DISTINCT_SEMANTICALLY_ELIGIBLE_ENVIRONMENTS"
 OBJECTIVE_BLOCKER = "CURRENT_APPROVED_RECOVERY_OBJECTIVE"
 
@@ -27,13 +31,38 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def load_helper():
-    spec = importlib.util.spec_from_file_location("memory_os_generation_eligibility_ops_p0_007_snapshot", ELIGIBILITY_HELPER)
+def load_module(path: Path, name: str):
+    try:
+        relative = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise SystemExit(f"cannot resolve canonical authority module: {path}") from exc
+    if relative != resolved or not path.is_file():
+        raise SystemExit(f"authority module escapes canonical repository path: {relative}")
+    spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
-        raise SystemExit("cannot load generation eligibility helper")
+        raise SystemExit(f"cannot load authority module: {relative}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def validate_registry(module, registry: dict[str, Any], label: str) -> list[dict[str, Any]]:
+    validator = getattr(module, "validate_registry_for_append", None)
+    failure_type = getattr(module, "Fail", RuntimeError)
+    if not callable(validator) or not isinstance(failure_type, type) or not issubclass(failure_type, BaseException):
+        raise SystemExit(f"{label} canonical registry validator interface invalid")
+    try:
+        rows = validator(registry)
+    except failure_type as exc:
+        raise SystemExit(f"{label} canonical registry authority invalid: {exc}") from exc
+    if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
+        raise SystemExit(f"{label} canonical registry validator returned invalid rows")
+    return rows
+
+
+def load_helper():
+    return load_module(ELIGIBILITY_HELPER, "memory_os_generation_eligibility_ops_p0_007_snapshot")
 
 
 def main() -> int:
@@ -44,6 +73,15 @@ def main() -> int:
     generation_evidence = load(GEN_EVIDENCE)
     typed = load(TYPED)
     status = load(STATUS)
+
+    objective_writer = load_module(OBJECTIVE_WRITER, "memory_os_objective_writer_ops_p0_007_snapshot")
+    request_writer = load_module(DRILL_REQUEST_WRITER, "memory_os_drill_request_writer_ops_p0_007_snapshot")
+    generation_writer = load_module(GEN_EVIDENCE_WRITER, "memory_os_generation_evidence_writer_ops_p0_007_snapshot")
+    typed_writer = load_module(TYPED_WRITER, "memory_os_typed_non_resurrection_writer_ops_p0_007_snapshot")
+    validate_registry(objective_writer, objectives, "recovery objective")
+    validate_registry(request_writer, requests, "restore drill request")
+    validate_registry(generation_writer, generation_evidence, "generation recovery evidence")
+    validate_registry(typed_writer, typed, "typed non-resurrection")
 
     objective_count = objectives.get("approvedObjectiveCount")
     current_objective = objectives.get("currentObjectiveId")
