@@ -84,6 +84,21 @@ def main() -> int:
     drill_request_contract = load(ROOT / "contracts/operations/backup-restore-drill-request-contract.v1.json")
     drill_request_registry = load(ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json")
     preflight_contract = load(ROOT / "contracts/operations/backup-restore-drill-preflight-contract.v1.json")
+    promotion_registry = load(ROOT / "contracts/operations/backup-restore-promotion-review-registry.v1.json")
+
+    promotion_rows = promotion_registry.get("records")
+    promotion_count = promotion_registry.get("registeredReviewCount")
+    require(promotion_registry.get("schemaVersion") == "memory-os-backup-restore-promotion-review-registry.v1", "promotion review registry schema drift")
+    require(promotion_registry.get("appendOnly") is True, "promotion review registry must remain append-only")
+    require(all(promotion_registry.get(field) is False for field in ("productionTrafficChanged", "productionEvidence", "productionReady")), "promotion review registry cannot promote production")
+    require(isinstance(promotion_rows, list) and all(isinstance(row, dict) for row in promotion_rows), "promotion review registry rows invalid")
+    require(valid_count(promotion_count) and promotion_count == len(promotion_rows), "promotion review registry count drift")
+    current_promotion_decision_id = promotion_registry.get("currentDecisionId")
+    if current_promotion_decision_id is not None:
+        current_matches = [row for row in promotion_rows if row.get("decisionId") == current_promotion_decision_id]
+        require(len(current_matches) == 1, "promotion review currentDecisionId authority drift")
+    human_promotion_review_completed = current_promotion_decision_id is not None
+    human_promotion_authorized = False
 
     generation_count = generations.get("registeredGenerationCount")
     objective_count = recovery_objectives.get("approvedObjectiveCount")
@@ -223,16 +238,16 @@ def main() -> int:
     require(binding_candidate_count == final_candidate_count, "backup generation candidate count drift")
     require(final_candidate_count <= restore_count <= backup_count <= generation_evidence_count, "backup recovery aggregate ordering drift")
     independent_review_completed = backup_boundary.get("independentReviewCompleted")
-    human_promotion_review_completed = backup_boundary.get("humanProductionPromotionReviewCompleted")
-    human_promotion_authorized = backup_boundary.get("humanProductionPromotionAuthorized")
-    require(all(isinstance(value, bool) for value in (independent_review_completed, human_promotion_review_completed, human_promotion_authorized)), "backup promotion boundary flags invalid")
-    require(not human_promotion_authorized or human_promotion_review_completed, "human production promotion cannot be authorized before human review")
+    automated_human_review = backup_boundary.get("humanProductionPromotionReviewCompleted")
+    automated_human_authorization = backup_boundary.get("humanProductionPromotionAuthorized")
+    require(isinstance(independent_review_completed, bool), "independent evidence review flag invalid")
+    require(automated_human_review is False and automated_human_authorization is False, "automated generation binding cannot complete or authorize human production promotion")
     require(inventory.get("backupRestoreIndependentEvidenceReviewCompleted") is independent_review_completed, "inventory independent evidence review drift")
     require(inventory.get("humanProductionPromotionReviewCompleted") is human_promotion_review_completed, "inventory human promotion review drift")
     require(inventory.get("humanProductionPromotionAuthorized") is human_promotion_authorized, "inventory human promotion authorization drift")
     if final_candidate_count > 0:
         require(independent_review_completed is True, "recovery candidate requires independent evidence review")
-    require(human_promotion_review_completed is False and human_promotion_authorized is False, "current automated backup/restore authority cannot complete or authorize human production promotion")
+    require(human_promotion_authorized is False, "human promotion review remains separate from production authorization")
 
     backup_row = inventory_rows.get("OPS-P0-007")
     require(isinstance(backup_row, dict), "OPS-P0-007 inventory row missing")
@@ -308,6 +323,7 @@ def main() -> int:
     print(f"final recovery candidates: {final_candidate_count}")
     print("boolean cross-authority counts accepted: false")
     print(f"candidate evidence review/human promotion review/authorization: {str(independent_review_completed).lower()}/{str(human_promotion_review_completed).lower()}/{str(human_promotion_authorized).lower()}")
+    print("automated generation binding substitutes for human promotion review: false")
     print("preflight auto-creates prerequisites: false")
     print("unbound generation recovery evidence accepted: false")
     print("drill planning request implies execution: false")
