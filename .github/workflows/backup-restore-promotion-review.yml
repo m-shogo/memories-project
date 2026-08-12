@@ -20,6 +20,7 @@ on:
       - "docs/evidence/backup-restore/**"
       - "docs/evidence/recovery-objectives/approvals/**"
       - "docs/fixtures/memory-os-operability/backup-restore-generation-evidence/**"
+      - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/request-memory-os-backup-restore-drill.py"
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
@@ -64,6 +65,7 @@ jobs:
           : > "$log"
           code=0
           python -m py_compile \
+            scripts/memory_os_environment_generation_eligibility.py \
             scripts/request-memory-os-backup-restore-drill.py \
             scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
             scripts/register-memory-os-backup-restore-generation-evidence.py \
@@ -82,33 +84,14 @@ jobs:
         if: steps.validation.outputs.exit_code == '0'
         run: |
           set -euo pipefail
-          authority_paths=(
-            .github/workflows/backup-restore-promotion-review.yml
-            contracts/operations/backup-restore-promotion-review-contract.v1.json
-            contracts/operations/backup-restore-promotion-review-registry.v1.json
-            contracts/operations/backup-restore-generation-evidence-contract.v1.json
-            contracts/operations/backup-restore-generation-evidence-registry.v1.json
-            contracts/operations/backup-restore-drill-request-contract.v1.json
-            contracts/operations/backup-restore-drill-request-registry.v1.json
-            contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json
-            contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json
-            contracts/operations/production-equivalent-environment-generation-registry.v1.json
-            contracts/operations/recovery-objectives-registry.v1.json
-            contracts/operations/production-operability-status.json
-            docs/evidence/backup-restore
-            docs/evidence/recovery-objectives/approvals
-            docs/fixtures/memory-os-operability/backup-restore-generation-evidence
-            scripts/request-memory-os-backup-restore-drill.py
-            scripts/register-memory-os-backup-restore-non-resurrection-evidence.py
-            scripts/register-memory-os-backup-restore-generation-evidence.py
-            scripts/register-memory-os-backup-restore-promotion-review.py
-            scripts/validate-memory-os-backup-restore-promotion-review-negative.py
-            scripts/validate-memory-os-backup-restore-promotion-review.py
-            scripts/reconcile-memory-os-backup-restore-promotion-review.py
-          )
+          # Promotion review refs are dynamic repository-relative evidence paths.
+          # A path allowlist cannot prove that an arbitrary referenced review file
+          # stayed unchanged, so require the entire branch head to remain exactly
+          # the source that was validated. Any concurrent commit makes this run
+          # stale and requires a fresh validation instead of replaying authority.
           git fetch origin so
-          if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
-            echo "Promotion review authority changed after validation; refusing stale derived authority."
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "so advanced after promotion validation; refusing stale derived authority."
             exit 75
           fi
           git rm -f docs/fixtures/memory-os-operability/backup-restore-promotion-review-diagnostic.last.json 2>/dev/null || true
@@ -123,12 +106,9 @@ jobs:
             git commit -m "docs(restore): reconcile recovery promotion review authority"
             for attempt in 1 2 3 4; do
               git fetch origin so
-              if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
-                echo "Promotion review authority changed after validation; refusing stale derived authority."
+              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+                echo "so advanced after promotion validation; refusing stale derived authority."
                 exit 75
-              fi
-              if [[ "$(git rev-parse origin/so)" != "$(git rev-parse HEAD^)" ]]; then
-                git rebase origin/so
               fi
               if git push origin HEAD:so; then exit 0; fi
               sleep 2
@@ -141,33 +121,9 @@ jobs:
           VALIDATION_EXIT_CODE: ${{ steps.validation.outputs.exit_code }}
         run: |
           set -euo pipefail
-          authority_paths=(
-            .github/workflows/backup-restore-promotion-review.yml
-            contracts/operations/backup-restore-promotion-review-contract.v1.json
-            contracts/operations/backup-restore-promotion-review-registry.v1.json
-            contracts/operations/backup-restore-generation-evidence-contract.v1.json
-            contracts/operations/backup-restore-generation-evidence-registry.v1.json
-            contracts/operations/backup-restore-drill-request-contract.v1.json
-            contracts/operations/backup-restore-drill-request-registry.v1.json
-            contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json
-            contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json
-            contracts/operations/production-equivalent-environment-generation-registry.v1.json
-            contracts/operations/recovery-objectives-registry.v1.json
-            contracts/operations/production-operability-status.json
-            docs/evidence/backup-restore
-            docs/evidence/recovery-objectives/approvals
-            docs/fixtures/memory-os-operability/backup-restore-generation-evidence
-            scripts/request-memory-os-backup-restore-drill.py
-            scripts/register-memory-os-backup-restore-non-resurrection-evidence.py
-            scripts/register-memory-os-backup-restore-generation-evidence.py
-            scripts/register-memory-os-backup-restore-promotion-review.py
-            scripts/validate-memory-os-backup-restore-promotion-review-negative.py
-            scripts/validate-memory-os-backup-restore-promotion-review.py
-            scripts/reconcile-memory-os-backup-restore-promotion-review.py
-          )
           git fetch origin so
-          if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
-            echo "Promotion review authority changed after failed validation; refusing stale diagnostic."
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "so advanced after failed promotion validation; refusing stale diagnostic."
             exit 75
           fi
           git reset --hard origin/so
@@ -199,16 +155,14 @@ jobs:
             git commit -m "test(restore): record recovery promotion review diagnostic"
             for attempt in 1 2 3; do
               git fetch origin so
-              if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
-                echo "Promotion review authority changed after diagnostic capture; refusing stale diagnostic."
+              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+                echo "so advanced after promotion diagnostic capture; refusing stale diagnostic."
                 exit 75
-              fi
-              if [[ "$(git rev-parse origin/so)" != "$(git rev-parse HEAD^)" ]]; then
-                git rebase origin/so
               fi
               if git push origin HEAD:so; then exit 0; fi
               sleep 2
             done
+            exit 1
           fi
       - name: Enforce promotion review authority
         run: test "${{ steps.validation.outputs.exit_code }}" = "0"
