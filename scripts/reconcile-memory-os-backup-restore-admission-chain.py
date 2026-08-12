@@ -19,7 +19,9 @@ DRILL_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-regis
 GEN_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 BINDING_CONTRACT = ROOT / "contracts/operations/backup-restore-generation-binding-contract.v1.json"
 TYPED_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+DRILL_WRITER = ROOT / "scripts/request-memory-os-backup-restore-drill.py"
 GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
+TYPED_WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-admission-chain.py"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 
@@ -76,9 +78,9 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def load_generation_writer():
-    relative = require_repo_file(GEN_WRITER, "generation evidence writer missing")
-    spec = importlib.util.spec_from_file_location("memory_os_generation_writer_admission_chain_reconcile", GEN_WRITER)
+def load_writer(path: Path, name: str, label: str):
+    relative = require_repo_file(path, f"{label} writer missing")
+    spec = importlib.util.spec_from_file_location(name, path)
     require(spec is not None and spec.loader is not None, f"cannot load {relative}")
     try:
         module = importlib.util.module_from_spec(spec)
@@ -86,6 +88,25 @@ def load_generation_writer():
     except (FileNotFoundError, OSError) as exc:
         raise Fail(f"cannot load {relative}: {exc}") from exc
     return module
+
+
+def load_generation_writer():
+    """Compatibility entry point retained for existing negative-suite path checks."""
+    return load_writer(GEN_WRITER, "memory_os_generation_writer_admission_chain_reconcile", "generation evidence")
+
+
+def validate_shared_registry(module: Any, registry: dict[str, Any], label: str) -> list[dict[str, Any]]:
+    validator = getattr(module, "validate_registry_for_append", None)
+    require(callable(validator), f"{label} shared registry validator missing")
+    try:
+        rows = validator(registry)
+    except Exception as exc:
+        fail_type = getattr(module, "Fail", None)
+        if isinstance(fail_type, type) and isinstance(exc, fail_type):
+            raise Fail(f"{label} registry authority invalid: {exc}") from exc
+        raise
+    require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), f"{label} shared registry rows invalid")
+    return rows
 
 
 def main() -> int:
@@ -96,7 +117,9 @@ def main() -> int:
         (GEN_REGISTRY, "generation evidence registry missing"),
         (BINDING_CONTRACT, "generation binding contract missing"),
         (TYPED_REGISTRY, "typed non-resurrection registry missing"),
+        (DRILL_WRITER, "drill request writer missing"),
         (GEN_WRITER, "generation evidence writer missing"),
+        (TYPED_WRITER, "typed non-resurrection writer missing"),
         (VALIDATOR, "admission-chain validator missing"),
         (STATUS, "operability status missing"),
     ):
@@ -110,7 +133,16 @@ def main() -> int:
     binding_contract = load(BINDING_CONTRACT)
     typed_registry = load(TYPED_REGISTRY)
     status = load(STATUS)
+    drill_writer = load_writer(DRILL_WRITER, "memory_os_drill_writer_admission_chain_reconcile", "drill request")
     gen_writer = load_generation_writer()
+    typed_writer = load_writer(TYPED_WRITER, "memory_os_typed_writer_admission_chain_reconcile", "typed non-resurrection")
+
+    # Fail before any derived contract mutation when an upstream append-only
+    # authority is malformed or stale. Reconciliation is never a repair path for
+    # registry schema/class/count/current-authority corruption.
+    drill_rows = validate_shared_registry(drill_writer, drill_registry, "drill request")
+    gen_rows = validate_shared_registry(gen_writer, gen_registry, "generation evidence")
+    typed_rows = validate_shared_registry(typed_writer, typed_registry, "typed non-resurrection")
 
     preflight = preflight_contract.get("currentState")
     require(isinstance(preflight, dict), "preflight currentState missing")
@@ -125,10 +157,9 @@ def main() -> int:
     require(all(preflight.get(field) is False for field in ("requestCreated", "backupExecuted", "restoreExecuted", "productionTrafficChanged", "productionEvidence", "productionReady")), "preflight execution boundary drift")
     require(preflight.get("productionDecision") == "NO_GO", "preflight production decision drift")
 
-    drill_rows = drill_registry.get("requests")
     drill_count = drill_registry.get("registeredRequestCount")
     current_drill_count = drill_registry.get("currentExecutableRequestCount")
-    require(isinstance(drill_rows, list) and valid_count(drill_count) and drill_count == len(drill_rows), "drill request registry count drift")
+    require(valid_count(drill_count) and drill_count == len(drill_rows), "drill request registry count drift")
     require(valid_count(current_drill_count) and current_drill_count <= drill_count, "current drill request count invalid")
     require(preflight.get("reviewedDrillRequestCount") == drill_count, "preflight reviewed request count drift")
     require(preflight.get("currentExecutableDrillRequestCount") == current_drill_count, "preflight current request count drift")
@@ -142,28 +173,25 @@ def main() -> int:
             "BLOCKED_NEEDS_CURRENT_APPROVED_RECOVERY_OBJECTIVE",
         } and current_drill_count == 0, "blocked preflight/current request mismatch")
 
-    gen_rows = gen_registry.get("records")
     gen_count = gen_registry.get("registeredEvidenceCount")
     bound_count = gen_registry.get("drillRequestBoundEvidenceCount")
     registry_backup_count = gen_registry.get("completeGenerationBoundBackupCount")
     registry_restore_count = gen_registry.get("completeGenerationBoundRestoreCount")
     registry_candidate_count = gen_registry.get("productionEquivalentRecoveryCandidateCount")
-    require(isinstance(gen_rows, list) and valid_count(gen_count) and gen_count == len(gen_rows), "generation evidence count drift")
+    require(valid_count(gen_count) and gen_count == len(gen_rows), "generation evidence count drift")
     require(valid_count(bound_count) and bound_count == gen_count, "every generation evidence row must be drill-request-bound")
     for value, field in ((registry_backup_count, "backup"), (registry_restore_count, "restore"), (registry_candidate_count, "candidate")):
         require(valid_count(value) and value <= gen_count, f"generation {field} count invalid")
 
-    derived_backup_count = 0
-    derived_restore_count = 0
-    candidate_count = 0
-    for row in gen_rows:
-        gen_writer.validate_record(row, require_current_drill_request=False)
-        if row.get("evidenceComplete") is True:
-            derived_backup_count += 1
-        if row.get("evidenceComplete") is True and row.get("isolatedRestoreVerified") is True and row.get("restoredBackupArtifactSha256") == row.get("backupArtifactSha256"):
-            derived_restore_count += 1
-        if gen_writer.candidate(row):
-            candidate_count += 1
+    derived_backup_count = sum(1 for row in gen_rows if row.get("evidenceComplete") is True)
+    derived_restore_count = sum(
+        1
+        for row in gen_rows
+        if row.get("evidenceComplete") is True
+        and row.get("isolatedRestoreVerified") is True
+        and row.get("restoredBackupArtifactSha256") == row.get("backupArtifactSha256")
+    )
+    candidate_count = sum(1 for row in gen_rows if gen_writer.candidate(row))
 
     require(registry_backup_count == derived_backup_count, "generation backup count drift from immutable evidence rows")
     require(registry_restore_count == derived_restore_count, "generation restore count drift from immutable evidence rows")
@@ -187,10 +215,8 @@ def main() -> int:
     require(binding_boundary.get("humanProductionPromotionAuthorized") is False, "generation binding human production-promotion authorization must remain unclaimed")
     require(binding_boundary.get("productionEvidence") is False and binding_boundary.get("productionReady") is False and binding_boundary.get("productionDecision") == "NO_GO", "generation binding production boundary drift")
 
-    typed_rows = typed_registry.get("records")
     typed_complete_count = typed_registry.get("completeRecordCount")
     typed_covered_count = typed_registry.get("candidateCoveredCount")
-    require(isinstance(typed_rows, list), "typed registry rows invalid")
     require(valid_count(typed_complete_count), "typed complete count invalid")
     require(valid_count(typed_covered_count), "typed covered count invalid")
     require(typed_covered_count <= typed_complete_count <= len(typed_rows), "typed registry count ordering invalid")
@@ -232,6 +258,7 @@ def main() -> int:
         raise
 
     print("Memory OS backup/restore admission chain reconciliation PASS")
+    print("shared drill/generation/typed append-only registry authority validated before contract write: true")
     print(f"preflight: {preflight_decision}")
     print(f"preflight eligible pairs: {preflight_pair_count}")
     print(f"reviewed/current drill requests: {drill_count}/{current_drill_count}")
