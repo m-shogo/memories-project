@@ -79,13 +79,14 @@ def main() -> int:
     require(eligibility_boundary.get("eligibleDirectedRestorePairCount") == pair_count, "generation eligibility pair count drift")
     require(eligibility_boundary.get("productionEvidence") is False and eligibility_boundary.get("productionReady") is False, "generation eligibility cannot promote production")
 
-    requests = drill_registry.get("requests")
+    try:
+        requests = writer.validate_registry_for_append(drill_registry)
+    except Exception as exc:
+        raise Fail(f"drill request registry authority invalid: {exc}") from exc
     request_count = drill_registry.get("registeredRequestCount")
     current_count = drill_registry.get("currentExecutableRequestCount")
-    require(isinstance(requests, list) and all(isinstance(row, dict) for row in requests), "drill request rows invalid")
-    require(isinstance(request_count, int) and request_count == len(requests), "drill request count drift")
-    require(isinstance(current_count, int) and 0 <= current_count <= request_count, "current drill request count invalid")
-    require(drill_registry.get("productionEvidence") is False and drill_registry.get("productionReady") is False, "drill request registry cannot promote production")
+    require(isinstance(request_count, int) and not isinstance(request_count, bool), "drill request count must be a non-boolean integer")
+    require(isinstance(current_count, int) and not isinstance(current_count, bool), "current drill request count must be a non-boolean integer")
 
     derived_current = 0
     historical_auditable = 0
