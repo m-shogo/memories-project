@@ -211,7 +211,7 @@
     "backup/restore drill requests are planning authority only; historical requests remain auditable after supersession while current executable count requires immediate generation/objective revalidation",
     "every generation recovery evidence record must remain bound to one admitted restore drill request; an unbound record is an inventory validation failure",
     "a generic generation recovery nonResurrectionVerification PASS cannot create a final recovery candidate; complete typed coverage of all eight non-resurrection domains is independently required",
-    "candidate-level independent evidence review is separate from human production-promotion review; neither a recovery candidate nor this inventory may complete or authorize promotion",
+    "candidate-level independent evidence review is separate from human production-promotion review; human promotion review completion is sourced only from the append-only promotion-review registry and never authorizes production automatically",
     "candidate/local mixed-version execution remains separate from the approved release-pair registry and can never create an approved predecessor/successor pair"
   ]
 }
