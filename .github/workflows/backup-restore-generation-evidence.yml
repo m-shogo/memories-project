@@ -192,10 +192,9 @@ jobs:
         if: steps.validation.outputs.exit_code == '0'
         run: |
           set -euo pipefail
-          mapfile -t authority_paths < "$RUNNER_TEMP/backup-restore-generation-evidence-authority-paths"
           git fetch origin so
-          if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
-            echo "Generation recovery authority source changed during reconciliation; refusing stale derived authority."
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Repository HEAD changed during generation recovery reconciliation; refusing stale derived authority."
             exit 75
           fi
           git rm -f docs/fixtures/memory-os-operability/backup-restore-generation-evidence-diagnostic.last.json 2>/dev/null || true
@@ -214,12 +213,9 @@ jobs:
             git commit -m "docs(restore): reconcile drill-bound generation recovery authority"
             for attempt in 1 2 3 4; do
               git fetch origin so
-              if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
-                echo "Generation recovery authority changed after validation; refusing stale derived authority."
+              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+                echo "Repository HEAD changed after generation recovery validation; refusing stale derived authority."
                 exit 75
-              fi
-              if [[ "$(git rev-parse origin/so)" != "$(git rev-parse HEAD^)" ]]; then
-                git rebase origin/so
               fi
               if git push origin HEAD:so; then exit 0; fi
               sleep 2
@@ -233,10 +229,9 @@ jobs:
           VALIDATION_EXIT_CODE: ${{ steps.validation.outputs.exit_code }}
         run: |
           set -euo pipefail
-          mapfile -t authority_paths < "$RUNNER_TEMP/backup-restore-generation-evidence-authority-paths"
           git fetch origin so
-          if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
-            echo "Generation recovery authority changed after validation; refusing stale diagnostic."
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Repository HEAD changed after generation recovery validation; refusing stale diagnostic."
             exit 75
           fi
           python - <<'PY'
@@ -248,6 +243,7 @@ jobs:
               'workflow': 'backup-restore-generation-evidence',
               'result': 'FAIL',
               'exitCode': int(os.environ['VALIDATION_EXIT_CODE']),
+              'sourceCommitSha': os.environ['SOURCE_SHA'],
               'output': text[-12000:],
               'containsSecrets': False,
               'drillRequestCreated': False,
@@ -267,12 +263,9 @@ jobs:
             git commit -m "test(restore): record generation recovery admission diagnostic"
             for attempt in 1 2 3; do
               git fetch origin so
-              if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
-                echo "Generation recovery authority changed before diagnostic push; refusing stale diagnostic."
+              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+                echo "Repository HEAD changed before generation recovery diagnostic push; refusing stale diagnostic."
                 exit 75
-              fi
-              if [[ "$(git rev-parse origin/so)" != "$(git rev-parse HEAD^)" ]]; then
-                git rebase origin/so
               fi
               if git push origin HEAD:so; then exit 0; fi
               sleep 2
