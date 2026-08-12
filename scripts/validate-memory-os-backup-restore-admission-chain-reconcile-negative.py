@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Prove admission-chain validation/reconciliation load boundaries and contract rollback."""
+"""Prove admission-chain validation/reconciliation load boundaries and transactional rollback."""
 
 from __future__ import annotations
 
 import importlib.util
+import json
 import shutil
 import tempfile
 from pathlib import Path
@@ -14,6 +15,9 @@ VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-admission-chain.py
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-admission-chain.py"
 TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 CONTRACT = ROOT / "contracts/operations/backup-restore-admission-chain-contract.v1.json"
+DRILL_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
+GEN_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+TYPED_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
 
 
 class Fail(RuntimeError):
@@ -42,6 +46,31 @@ def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[
     except Exception as exc:
         raise Fail(f"{name} leaked non-domain exception: {type(exc).__name__}: {exc}") from exc
     raise Fail(f"negative case unexpectedly accepted: {name}")
+
+
+def write_json(path: Path, value: dict[str, object]) -> None:
+    path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+
+
+def corrupt_and_expect_rollback(
+    reconciler: object,
+    *,
+    name: str,
+    registry_path: Path,
+    mutate: Callable[[dict[str, object]], None],
+    contract_copy: Path,
+) -> None:
+    canonical = json.loads(registry_path.read_text(encoding="utf-8"))
+    require(isinstance(canonical, dict), f"{name} canonical registry root invalid")
+    bad = json.loads(json.dumps(canonical))
+    mutate(bad)
+    write_json(registry_path, bad)
+    original_registry = registry_path.read_bytes()
+    original_contract = contract_copy.read_bytes()
+    expect_domain_fail(name, reconciler.main, reconciler.Fail)
+    require(registry_path.read_bytes() == original_registry, f"{name} registry was healed/mutated")
+    require(contract_copy.read_bytes() == original_contract, f"{name} contract changed before failure")
+    write_json(registry_path, canonical)
 
 
 def main() -> int:
@@ -73,10 +102,62 @@ def main() -> int:
             expect_domain_fail("admission-chain reconciler authority escapes repository", lambda: reconciler.load(outside), reconciler.Fail)
 
         contract_copy = tmp / CONTRACT.name
+        drill_copy = tmp / DRILL_REGISTRY.name
+        gen_copy = tmp / GEN_REGISTRY.name
+        typed_copy = tmp / TYPED_REGISTRY.name
         shutil.copyfile(CONTRACT, contract_copy)
+        shutil.copyfile(DRILL_REGISTRY, drill_copy)
+        shutil.copyfile(GEN_REGISTRY, gen_copy)
+        shutil.copyfile(TYPED_REGISTRY, typed_copy)
         reconciler.CONTRACT = contract_copy
-        original_contract = contract_copy.read_bytes()
+        reconciler.DRILL_REGISTRY = drill_copy
+        reconciler.GEN_REGISTRY = gen_copy
+        reconciler.TYPED_REGISTRY = typed_copy
 
+        corrupt_and_expect_rollback(
+            reconciler,
+            name="drill registry boolean registeredRequestCount",
+            registry_path=drill_copy,
+            mutate=lambda value: value.__setitem__("registeredRequestCount", False),
+            contract_copy=contract_copy,
+        )
+        corrupt_and_expect_rollback(
+            reconciler,
+            name="drill registry productionEvidence promotion",
+            registry_path=drill_copy,
+            mutate=lambda value: value.__setitem__("productionEvidence", True),
+            contract_copy=contract_copy,
+        )
+        corrupt_and_expect_rollback(
+            reconciler,
+            name="generation registry boolean productionEquivalentRecoveryCandidateCount",
+            registry_path=gen_copy,
+            mutate=lambda value: value.__setitem__("productionEquivalentRecoveryCandidateCount", False),
+            contract_copy=contract_copy,
+        )
+        corrupt_and_expect_rollback(
+            reconciler,
+            name="generation registry productionReady promotion",
+            registry_path=gen_copy,
+            mutate=lambda value: value.__setitem__("productionReady", True),
+            contract_copy=contract_copy,
+        )
+        corrupt_and_expect_rollback(
+            reconciler,
+            name="typed registry boolean candidateCoveredCount",
+            registry_path=typed_copy,
+            mutate=lambda value: value.__setitem__("candidateCoveredCount", False),
+            contract_copy=contract_copy,
+        )
+        corrupt_and_expect_rollback(
+            reconciler,
+            name="typed registry appendOnly corruption",
+            registry_path=typed_copy,
+            mutate=lambda value: value.__setitem__("appendOnly", False),
+            contract_copy=contract_copy,
+        )
+
+        original_contract = contract_copy.read_bytes()
         failing_validator = tmp / "forced-validator-failure.py"
         failing_validator.write_text("#!/usr/bin/env python3\nraise SystemExit(41)\n", encoding="utf-8")
         reconciler.VALIDATOR = failing_validator
@@ -90,7 +171,8 @@ def main() -> int:
 
         require(contract_copy.read_bytes() == original_contract, "admission-chain contract rollback drift")
 
-    print("PASS rollback: admission-chain contract restored byte-for-byte")
+    print("PASS rollback: admission-chain registries remain byte-for-byte corrupt until explicit repair")
+    print("PASS rollback: admission-chain contract restored byte-for-byte after post-validation failure")
     print("Admission-chain validator/reconcile negative suite PASS")
     return 0
 
