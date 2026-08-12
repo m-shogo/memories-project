@@ -1,6 +1,53 @@
 name: Backup Restore Generation Binding
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/backup-restore-generation-binding.yml"
+      - "contracts/operations/backup-restore-generation-binding-contract.v1.json"
+      - "contracts/operations/backup-restore-drill-contract.v1.json"
+      - "contracts/operations/backup-restore-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
+      - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
+      - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+      - "contracts/operations/backup-restore-drill-request-contract.v1.json"
+      - "contracts/operations/backup-restore-drill-request-registry.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
+      - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+      - "contracts/operations/recovery-objectives-admission-contract.v1.json"
+      - "contracts/operations/recovery-objectives-registry.v1.json"
+      - "contracts/operations/requests/backup-restore-generation-reconcile.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "docs/evidence/backup-restore/**"
+      - "docs/evidence/recovery-objectives/approvals/**"
+      - "docs/fixtures/memory-os-operability/backup-restore-generation-evidence/**"
+      - "docs/fixtures/memory-os-operability/recovery-objectives-approval/**"
+      - "scripts/memory_os_backup_restore_blockers.py"
+      - "scripts/memory_os_environment_generation_eligibility.py"
+      - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-record.py"
+      - "scripts/register-memory-os-recovery-objectives.py"
+      - "scripts/validate-memory-os-recovery-objectives.py"
+      - "scripts/validate-memory-os-recovery-objectives-negative.py"
+      - "scripts/request-memory-os-backup-restore-drill.py"
+      - "scripts/register-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
+      - "scripts/validate-memory-os-backup-restore-semantic-generation-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py"
+      - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-binding.py"
+      - "scripts/validate-memory-os-backup-restore-generation-binding-negative.py"
+      - "scripts/reconcile-memory-os-backup-restore-generation-status.py"
+      - "scripts/validate-memory-os-backup-restore.py"
+      - "scripts/validate-memory-os-operability.py"
   push:
     branches:
       - so
@@ -56,7 +103,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: backup-restore-generation-binding-so
+  group: backup-restore-generation-binding-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
@@ -66,7 +113,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -74,10 +121,12 @@ jobs:
       - name: Capture exact generation binding authority source
         run: |
           set -euo pipefail
-          git fetch origin so
-          test "$(git branch --show-current)" = "so"
-          test -z "$(git status --porcelain)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            git fetch origin so
+            test "$(git branch --show-current)" = "so"
+            test -z "$(git status --porcelain)"
+            test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          fi
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - name: Validate and reconcile restore generation admission
         id: restore
@@ -140,7 +189,7 @@ jobs:
           cat "$log"
           exit 0
       - name: Commit bounded restore-generation authority
-        if: steps.restore.outputs.exit_code == '0'
+        if: steps.restore.outputs.exit_code == '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
           git fetch origin so
@@ -168,7 +217,7 @@ jobs:
             exit 1
           fi
       - name: Record privacy-safe reconcile diagnostic
-        if: steps.restore.outputs.exit_code != '0'
+        if: steps.restore.outputs.exit_code != '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         env:
           RESTORE_EXIT_CODE: ${{ steps.restore.outputs.exit_code }}
         run: |
