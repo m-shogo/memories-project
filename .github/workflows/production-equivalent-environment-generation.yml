@@ -78,26 +78,12 @@ jobs:
         if: steps.validation.outputs.exit_code == '0'
         run: |
           set -euo pipefail
-          authority_paths=(
-            .github/workflows/production-equivalent-environment-generation.yml
-            contracts/operations/production-equivalent-environment-generation-contract.v1.json
-            contracts/operations/production-equivalent-environment-generation-registry.v1.json
-            contracts/operations/production-equivalent-environment-record.v1.schema.json
-            contracts/operations/production-equivalent-environment-generation-record.v1.schema.json
-            contracts/operations/production-operability-status.json
-            scripts/memory_os_environment_generation_eligibility.py
-            scripts/validate-memory-os-environment-generation-eligibility-negative.py
-            scripts/validate-memory-os-production-equivalent-environment-record.py
-            scripts/register-memory-os-production-equivalent-environment-generation.py
-            scripts/validate-memory-os-production-equivalent-environment-generation.py
-            scripts/validate-memory-os-production-equivalent-environment-generation-negative.py
-            scripts/validate-memory-os-production-equivalent-environment-generation-authority-path-negative.py
-            scripts/reconcile-memory-os-production-equivalent-generation-status.py
-            scripts/validate-memory-os-operability.py
-          )
+          # Generation rows bind repository-contained environment records whose
+          # paths are data, not a closed workflow allowlist. Require the entire
+          # branch to remain the exact validated source before any derived write.
           git fetch origin so
-          if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
-            echo "Environment generation authority source changed during reconciliation; refusing stale derived authority."
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "so advanced after generation validation; refusing stale derived authority."
             exit 75
           fi
           git rm -f docs/fixtures/memory-os-operability/production-equivalent-environment-generation-diagnostic.last.json 2>/dev/null || true
@@ -112,12 +98,9 @@ jobs:
             git commit -m "docs(load): reconcile environment generation authority"
             for attempt in 1 2 3 4; do
               git fetch origin so
-              if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
-                echo "Environment generation authority changed after validation; refusing stale derived authority."
+              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+                echo "so advanced after generation validation; refusing stale derived authority."
                 exit 75
-              fi
-              if [[ "$(git rev-parse origin/so)" != "$(git rev-parse HEAD^)" ]]; then
-                git rebase origin/so
               fi
               if git push origin HEAD:so; then exit 0; fi
               sleep 2
@@ -130,28 +113,12 @@ jobs:
           VALIDATION_EXIT_CODE: ${{ steps.validation.outputs.exit_code }}
         run: |
           set -euo pipefail
-          authority_paths=(
-            .github/workflows/production-equivalent-environment-generation.yml
-            contracts/operations/production-equivalent-environment-generation-contract.v1.json
-            contracts/operations/production-equivalent-environment-generation-registry.v1.json
-            contracts/operations/production-equivalent-environment-record.v1.schema.json
-            contracts/operations/production-equivalent-environment-generation-record.v1.schema.json
-            contracts/operations/production-operability-status.json
-            scripts/memory_os_environment_generation_eligibility.py
-            scripts/validate-memory-os-environment-generation-eligibility-negative.py
-            scripts/validate-memory-os-production-equivalent-environment-record.py
-            scripts/register-memory-os-production-equivalent-environment-generation.py
-            scripts/validate-memory-os-production-equivalent-environment-generation.py
-            scripts/validate-memory-os-production-equivalent-environment-generation-negative.py
-            scripts/validate-memory-os-production-equivalent-environment-generation-authority-path-negative.py
-            scripts/reconcile-memory-os-production-equivalent-generation-status.py
-            scripts/validate-memory-os-operability.py
-          )
           git fetch origin so
-          if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
-            echo "Environment generation authority changed after validation; refusing stale environment generation diagnostic."
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "so advanced after failed generation validation; refusing stale environment generation diagnostic."
             exit 75
           fi
+          git reset --hard origin/so
           python - <<'PY'
           import json, os
           from pathlib import Path
@@ -159,6 +126,7 @@ jobs:
           value = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'production-equivalent-environment-generation',
+              'sourceCommitSha': os.environ['SOURCE_SHA'],
               'result': 'FAIL',
               'exitCode': int(os.environ['VALIDATION_EXIT_CODE']),
               'output': text[-12000:],
@@ -179,12 +147,9 @@ jobs:
             git commit -m "test(ops): record environment generation admission diagnostic"
             for attempt in 1 2 3; do
               git fetch origin so
-              if ! git diff --quiet "$SOURCE_SHA" origin/so -- "${authority_paths[@]}"; then
-                echo "Environment generation authority changed after diagnostic capture; refusing stale environment generation diagnostic."
+              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+                echo "so advanced after generation diagnostic capture; refusing stale environment generation diagnostic."
                 exit 75
-              fi
-              if [[ "$(git rev-parse origin/so)" != "$(git rev-parse HEAD^)" ]]; then
-                git rebase origin/so
               fi
               if git push origin HEAD:so; then exit 0; fi
               sleep 2
