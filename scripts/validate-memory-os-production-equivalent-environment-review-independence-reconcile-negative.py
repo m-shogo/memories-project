@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+"""Prove environment review-independence reconciliation rolls back failed validation."""
+
+from __future__ import annotations
+
+import importlib.util
+import shutil
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+RECONCILER = ROOT / "scripts/reconcile-memory-os-production-equivalent-environment-review-independence.py"
+TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
+CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-review-independence-contract.v1.json"
+GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+
+
+class Fail(RuntimeError):
+    pass
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise Fail(message)
+
+
+def load_reconciler():
+    spec = importlib.util.spec_from_file_location("memory_os_environment_review_reconcile_negative", RECONCILER)
+    require(spec is not None and spec.loader is not None, "cannot load environment review reconciler")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def main() -> int:
+    require(RECONCILER.is_file(), "environment review reconciler missing")
+    require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
+    reconciler = load_reconciler()
+
+    with tempfile.TemporaryDirectory(prefix=".tmp-environment-review-reconcile-", dir=TMP_PARENT) as tmpdir:
+        tmp = Path(tmpdir)
+        contract_copy = tmp / CONTRACT.name
+        shutil.copyfile(CONTRACT, contract_copy)
+        original_contract = contract_copy.read_bytes()
+        failing_validator = tmp / "forced-validator-failure.py"
+        failing_validator.write_text("#!/usr/bin/env python3\nraise SystemExit(41)\n", encoding="utf-8")
+
+        reconciler.CONTRACT = contract_copy
+        reconciler.GEN_REGISTRY = GEN_REGISTRY
+        reconciler.VALIDATOR = failing_validator
+        try:
+            reconciler.main()
+        except reconciler.Fail as exc:
+            require("post-reconcile review independence validator failed" in str(exc), f"post-validation failure rejected at wrong boundary: {exc}")
+        except Exception as exc:
+            raise Fail(f"post-validation failure leaked non-domain exception: {type(exc).__name__}: {exc}") from exc
+        else:
+            raise Fail("forced review-independence post-validation failure unexpectedly accepted")
+        require(contract_copy.read_bytes() == original_contract, "failed review-independence validation left contract mutation")
+
+    print("Environment review-independence reconcile negative suite PASS")
+    print("failed post-validation leaves authority mutation behind: false")
+    print("review evidence created: false")
+    print("production evidence: false")
+    print("production ready: false")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except Fail as exc:
+        print(f"ENVIRONMENT REVIEW RECONCILE NEGATIVE FAILED: {exc}")
+        raise SystemExit(1)
