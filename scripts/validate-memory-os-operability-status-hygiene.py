@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 INVENTORY = ROOT / "contracts/operations/operability-admission-inventory.v1.json"
 BACKUP_BINDING = ROOT / "contracts/operations/backup-restore-generation-binding-contract.v1.json"
+PROMOTION_REGISTRY = ROOT / "contracts/operations/backup-restore-promotion-review-registry.v1.json"
 CANONICAL_SCHEMA = "memory-os-operability-status.0.1"
 INVENTORY_SCHEMA = "memory-os-operability-admission-inventory.v1"
 SOAK_REVIEW_REFS = {
@@ -56,6 +57,10 @@ def unique_strings(value: Any, field: str) -> list[str]:
     require(all(isinstance(item, str) and item.strip() for item in value), f"{field} contains empty/non-string value")
     require(len(value) == len(set(value)), f"{field} contains exact duplicates")
     return value
+
+
+def valid_count(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
 def main() -> int:
@@ -106,12 +111,30 @@ def main() -> int:
 
     inventory = load(INVENTORY)
     backup_binding = load(BACKUP_BINDING)
+    promotion_registry = load(PROMOTION_REGISTRY)
     require(inventory.get("schemaVersion") == INVENTORY_SCHEMA, "operability admission inventory schema drift")
     require(inventory.get("productionDecision") == "NO_GO", "inventory production decision must remain NO_GO")
     require(inventory.get("productionEvidence") is False, "inventory productionEvidence must remain false")
     require(inventory.get("productionReady") is False, "inventory productionReady must remain false")
     backup_independent_review = inventory.get("backupRestoreIndependentEvidenceReviewCompleted")
     require(isinstance(backup_independent_review, bool), "inventory backup/restore independent evidence review flag invalid")
+
+    promotion_rows = promotion_registry.get("records")
+    promotion_count = promotion_registry.get("registeredReviewCount")
+    require(promotion_registry.get("schemaVersion") == "memory-os-backup-restore-promotion-review-registry.v1", "promotion review registry schema drift")
+    require(promotion_registry.get("appendOnly") is True, "promotion review registry must remain append-only")
+    require(all(promotion_registry.get(field) is False for field in ("productionTrafficChanged", "productionEvidence", "productionReady")), "promotion review registry cannot promote production")
+    require(isinstance(promotion_rows, list) and all(isinstance(row, dict) for row in promotion_rows), "promotion review registry rows invalid")
+    require(valid_count(promotion_count) and promotion_count == len(promotion_rows), "promotion review registry count drift")
+    current_promotion_decision_id = promotion_registry.get("currentDecisionId")
+    if current_promotion_decision_id is not None:
+        current_matches = [row for row in promotion_rows if row.get("decisionId") == current_promotion_decision_id]
+        require(len(current_matches) == 1, "promotion review currentDecisionId authority drift")
+    human_promotion_review_completed = current_promotion_decision_id is not None
+    human_promotion_authorized = False
+    require(inventory.get("humanProductionPromotionReviewCompleted") is human_promotion_review_completed, "inventory human promotion review drift from append-only promotion authority")
+    require(inventory.get("humanProductionPromotionAuthorized") is human_promotion_authorized, "inventory cannot authorize human production promotion")
+
     binding_boundary = backup_binding.get("currentBoundary")
     require(isinstance(binding_boundary, dict), "backup/restore generation binding currentBoundary missing")
     binding_backup_count = binding_boundary.get("generationBoundBackupCount")
@@ -126,8 +149,8 @@ def main() -> int:
     require(isinstance(binding_independent_review, bool), "backup/restore generation binding independent review flag invalid")
     require(binding_independent_review is (binding_candidate_count > 0), "backup/restore generation binding candidate/review authority drift")
     require(backup_independent_review is binding_independent_review, "inventory backup/restore independent evidence review drift from generation binding authority")
-    require(inventory.get("humanProductionPromotionReviewCompleted") is False, "inventory cannot manufacture human production-promotion review")
-    require(inventory.get("humanProductionPromotionAuthorized") is False, "inventory cannot authorize human production promotion")
+    require(binding_boundary.get("humanProductionPromotionReviewCompleted") is False, "automated generation binding cannot complete human production-promotion review")
+    require(binding_boundary.get("humanProductionPromotionAuthorized") is False, "automated generation binding cannot authorize human production promotion")
 
     inventory_areas = inventory.get("areas")
     require(isinstance(inventory_areas, list), "inventory areas missing")
@@ -187,8 +210,8 @@ def main() -> int:
         ), "OPS-P0-006 must preserve the independent leak/stability review blocker while current review authority is absent")
 
     require(inventory_p0_007.get("independentEvidenceReviewCompleted") is backup_independent_review, "OPS-P0-007 row/top-level independent evidence review drift")
-    require(inventory_p0_007.get("humanProductionPromotionReviewCompleted") is False, "OPS-P0-007 inventory cannot manufacture promotion review")
-    require(inventory_p0_007.get("humanProductionPromotionAuthorized") is False, "OPS-P0-007 inventory cannot authorize promotion")
+    require(inventory_p0_007.get("humanProductionPromotionReviewCompleted") is human_promotion_review_completed, "OPS-P0-007 row human promotion review drift from append-only promotion authority")
+    require(inventory_p0_007.get("humanProductionPromotionAuthorized") is human_promotion_authorized, "OPS-P0-007 inventory cannot authorize promotion")
     require(inventory_p0_007.get("blocking") is True, "OPS-P0-007 inventory must remain blocking")
     require(inventory_p0_007.get("status") == p0_007.get("status"), "OPS-P0-007 status/inventory status drift")
 
@@ -218,7 +241,8 @@ def main() -> int:
     require(isinstance(existing, list), "OPS-P0-007 existingEvidence missing")
     require(any(isinstance(item, str) and "registered generation inventory alone" in item and "restore-planning authority" in item for item in existing), "OPS-P0-007 must state that registered generation inventory alone creates no restore-planning authority")
     require(any(isinstance(item, str) and "human production-promotion review" in item and "separate non-automatic decision" in item for item in existing), "OPS-P0-007 must preserve separate non-automatic human promotion review")
-    require(any(isinstance(item, str) and "human production-promotion review/authorization=false/false" in item for item in existing), "OPS-P0-007 must expose current false/false human promotion authority")
+    expected_promotion_projection = f"human production-promotion review/authorization={str(human_promotion_review_completed).lower()}/{str(human_promotion_authorized).lower()}"
+    require(any(isinstance(item, str) and expected_promotion_projection in item for item in existing), "OPS-P0-007 current human promotion authority text drift")
 
     print("Memory OS operability status hygiene validation PASS")
     print(f"status schema: {CANONICAL_SCHEMA}")
@@ -231,7 +255,8 @@ def main() -> int:
     print("OPS-P0-007 semantic generation authority: bound to deterministic inventory")
     print("OPS-P0-007 backup/restore/candidate counts: bound to generation binding authority")
     print("OPS-P0-007 candidate count/review authority: bound to generation binding, top-level inventory and area row")
-    print("OPS-P0-007 human production-promotion authority: separate and false")
+    print(f"OPS-P0-007 human production-promotion review/authorization: {str(human_promotion_review_completed).lower()}/{str(human_promotion_authorized).lower()} from append-only promotion-review authority")
+    print("OPS-P0-007 automated binding substitutes for human promotion review: false")
     print("exact duplicate authority entries: none")
     print("failure diagnostics referenced as proof: none")
     print("production decision: NO_GO")
