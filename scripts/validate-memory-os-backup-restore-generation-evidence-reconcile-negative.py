@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Prove generation-evidence reconciliation rolls back every derived authority on post-validation failure."""
+"""Prove generation-evidence reconcile fails closed and rolls back derived authority."""
 
 from __future__ import annotations
 
 import importlib.util
+import json
 import shutil
 import tempfile
 from pathlib import Path
+from typing import Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
@@ -36,6 +38,17 @@ def load_reconciler():
     return module
 
 
+def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[BaseException]) -> None:
+    try:
+        action()
+    except fail_type:
+        print(f"PASS reject: {name}")
+        return
+    except Exception as exc:
+        raise Fail(f"{name} leaked non-domain exception: {type(exc).__name__}: {exc}") from exc
+    raise Fail(f"negative case unexpectedly accepted: {name}")
+
+
 def main() -> int:
     require(RECONCILER.is_file(), "generation evidence reconciler missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
@@ -44,11 +57,37 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix=".tmp-generation-evidence-reconcile-", dir=TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
         originals: dict[Path, bytes] = {}
+        targets: dict[str, Path] = {}
         for attr, source in CANONICAL.items():
             target = tmp / source.name
             shutil.copyfile(source, target)
             setattr(reconciler, attr, target)
             originals[target] = target.read_bytes()
+            targets[attr] = target
+
+        corruption_cases = (
+            ("registeredEvidenceCount drift", "registeredEvidenceCount", 1),
+            ("boolean drillRequestBoundEvidenceCount", "drillRequestBoundEvidenceCount", True),
+            ("completeGenerationBoundBackupCount drift", "completeGenerationBoundBackupCount", 1),
+            ("completeGenerationBoundRestoreCount drift", "completeGenerationBoundRestoreCount", 1),
+            ("boolean productionEquivalentRecoveryCandidateCount", "productionEquivalentRecoveryCandidateCount", True),
+            ("productionEvidence boundary drift", "productionEvidence", True),
+            ("productionReady boundary drift", "productionReady", True),
+        )
+        registry_path = targets["REGISTRY"]
+        for name, field, invalid_value in corruption_cases:
+            for path, expected in originals.items():
+                path.write_bytes(expected)
+            payload = json.loads(registry_path.read_text(encoding="utf-8"))
+            payload[field] = invalid_value
+            registry_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            before = {path: path.read_bytes() for path in originals}
+            expect_domain_fail(name, reconciler.main, reconciler.Fail)
+            for path, expected in before.items():
+                require(path.read_bytes() == expected, f"reconcile auto-healed corrupt authority: {path.name} during {name}")
+
+        for path, expected in originals.items():
+            path.write_bytes(expected)
 
         failing_validator = tmp / "forced-validator-failure.py"
         failing_validator.write_text("#!/usr/bin/env python3\nraise SystemExit(23)\n", encoding="utf-8")
@@ -65,6 +104,7 @@ def main() -> int:
         for path, expected in originals.items():
             require(path.read_bytes() == expected, f"rollback drifted derived authority: {path.name}")
 
+    print("PASS reject: corrupt generation append-only authority is never auto-healed by reconcile")
     print("PASS rollback: generation evidence reconcile restores registry/contract/binding/status byte-for-byte")
     print("Generation evidence reconcile negative suite PASS")
     return 0
