@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -47,6 +48,32 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def canonical_registry_validator(script_name: str, module_name: str):
+    path = ROOT / "scripts" / script_name
+    try:
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"canonical registry validator missing or escapes repository: {script_name}") from exc
+    require(resolved == Path("scripts") / script_name and path.is_file(), f"canonical registry validator path drift: {script_name}")
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load canonical registry validator: {script_name}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    validator = getattr(module, "validate_registry_for_append", None)
+    require(callable(validator), f"canonical registry validator missing validate_registry_for_append: {script_name}")
+    return validator
+
+
+def require_canonical_registry(script_name: str, module_name: str, registry: dict[str, Any], label: str) -> None:
+    validator = canonical_registry_validator(script_name, module_name)
+    try:
+        validator(registry)
+    except RuntimeError as exc:
+        if exc.__class__.__name__ == "Fail":
+            raise Fail(f"{label} invalid: {exc}") from exc
+        raise
+
+
 def main() -> int:
     inventory = load(INVENTORY)
     status = load(STATUS)
@@ -85,6 +112,31 @@ def main() -> int:
     drill_request_registry = load(ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json")
     preflight_contract = load(ROOT / "contracts/operations/backup-restore-drill-preflight-contract.v1.json")
     promotion_registry = load(ROOT / "contracts/operations/backup-restore-promotion-review-registry.v1.json")
+
+    require_canonical_registry(
+        "register-memory-os-recovery-objectives.py",
+        "memory_os_recovery_objective_inventory_authority",
+        recovery_objectives,
+        "recovery objective registry",
+    )
+    require_canonical_registry(
+        "request-memory-os-backup-restore-drill.py",
+        "memory_os_drill_request_inventory_authority",
+        drill_request_registry,
+        "drill request registry",
+    )
+    require_canonical_registry(
+        "register-memory-os-backup-restore-generation-evidence.py",
+        "memory_os_generation_evidence_inventory_authority",
+        backup_recovery,
+        "generation recovery evidence registry",
+    )
+    require_canonical_registry(
+        "register-memory-os-backup-restore-non-resurrection-evidence.py",
+        "memory_os_typed_non_resurrection_inventory_authority",
+        non_resurrection_registry,
+        "typed non-resurrection registry",
+    )
 
     promotion_rows = promotion_registry.get("records")
     promotion_count = promotion_registry.get("registeredReviewCount")
