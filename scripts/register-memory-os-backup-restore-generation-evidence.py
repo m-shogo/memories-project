@@ -16,7 +16,9 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
-GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+CANONICAL_GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+GEN_REGISTRY = CANONICAL_GEN_REGISTRY
+GEN_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
 CANONICAL_OBJECTIVES_REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
 OBJECTIVES_REGISTRY = CANONICAL_OBJECTIVES_REGISTRY
 OBJECTIVES_WRITER = ROOT / "scripts/register-memory-os-recovery-objectives.py"
@@ -121,6 +123,15 @@ def generation_by_id(generations: list[Any], generation_id: Any, field: str) -> 
     return matches[0]
 
 
+def load_generation_writer():
+    writer = canonical_repo_file(GEN_WRITER, "environment generation writer")
+    spec = importlib.util.spec_from_file_location("memory_os_environment_generation_writer_for_generation_evidence", writer)
+    require(spec is not None and spec.loader is not None, "cannot load environment generation writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def load_objectives_writer():
     writer = canonical_repo_file(OBJECTIVES_WRITER, "recovery objectives writer")
     spec = importlib.util.spec_from_file_location("memory_os_recovery_objectives_writer_for_generation_evidence", writer)
@@ -214,6 +225,31 @@ def load_non_resurrection_writer():
     spec.loader.exec_module(module)
     module.CONTRACT = NON_RESURRECTION_CONTRACT
     return module
+
+
+def validate_upstream_authorities_for_append() -> None:
+    """Validate canonical upstream append-only authorities even when evidence is empty."""
+    if GEN_REGISTRY == CANONICAL_GEN_REGISTRY:
+        try:
+            load_generation_writer().validate_registry_for_append(load(GEN_REGISTRY))
+        except Exception as exc:
+            if domain_validation_failure(exc):
+                raise Fail(f"environment generation registry authority invalid: {exc}") from exc
+            raise
+    if OBJECTIVES_REGISTRY == CANONICAL_OBJECTIVES_REGISTRY:
+        try:
+            load_objectives_writer().validate_registry_for_append(load(OBJECTIVES_REGISTRY))
+        except Exception as exc:
+            if domain_validation_failure(exc):
+                raise Fail(f"recovery objectives registry authority invalid: {exc}") from exc
+            raise
+    if DRILL_REQUEST_REGISTRY == CANONICAL_DRILL_REQUEST_REGISTRY:
+        try:
+            load_drill_writer().validate_registry_for_append(load(DRILL_REQUEST_REGISTRY))
+        except Exception as exc:
+            if domain_validation_failure(exc):
+                raise Fail(f"restore drill request registry authority invalid: {exc}") from exc
+            raise
 
 
 def drill_request_for_record(record: dict[str, Any], *, require_current: bool) -> dict[str, Any]:
@@ -476,6 +512,7 @@ def validate_record(record: dict[str, Any], *, require_current_drill_request: bo
 
 
 def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any]]:
+    validate_upstream_authorities_for_append()
     require(registry.get("schemaVersion") == "memory-os-backup-restore-generation-evidence-registry.v1", "registry schema drift")
     require(registry.get("appendOnly") is True, "registry must remain append-only")
     require(registry.get("productionEvidence") is False and registry.get("productionReady") is False, "registry production boundary drift")
