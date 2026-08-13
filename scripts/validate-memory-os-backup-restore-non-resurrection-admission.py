@@ -31,6 +31,16 @@ def require(condition: bool, message: str) -> None:
 def valid_count(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
+def domain_validation_failure(exc: BaseException) -> bool:
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, RuntimeError) and current.__class__.__name__ == "Fail":
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
 def repo_relative(path: Path) -> Path:
     try:
         return path.resolve().relative_to(ROOT.resolve())
@@ -102,6 +112,17 @@ def main() -> int:
     require(getattr(generation_writer, "NON_RESURRECTION_WRITER", None) == WRITER, "generation writer typed overlay executable drift")
     generation_writer.canonical_repo_file(WRITER, "typed non-resurrection writer")
 
+    # Standalone validation must reuse the same append-only/upstream guard as
+    # the direct typed writer. In particular, an empty typed registry must not
+    # make environment-generation, objective, or drill-request corruption
+    # invisible merely because no typed row is available to trigger lookup.
+    try:
+        validated_rows = writer.validate_registry_for_append(registry)
+    except Exception as exc:
+        if domain_validation_failure(exc):
+            raise Fail(f"typed writer append authority invalid: {exc}") from exc
+        raise
+
     require(contract.get("schemaVersion") == "memory-os-backup-restore-non-resurrection-admission.v1", "contract schema drift")
     for field in ("registry", "generationEvidenceRegistry", "writer", "validator", "negativeAdmissionValidator", "reconcile", "workflow"):
         canonical_repo_file_ref(contract.get(field), f"contract.{field}")
@@ -136,6 +157,7 @@ def main() -> int:
     complete_count = registry.get("completeRecordCount")
     covered_count = registry.get("candidateCoveredCount")
     require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "typed registry records invalid")
+    require(validated_rows == rows, "typed writer append authority row projection drift")
     require(valid_count(count) and count == len(rows), "registeredRecordCount drift")
     require(valid_count(complete_count), "completeRecordCount invalid")
     require(valid_count(covered_count), "candidateCoveredCount invalid")
@@ -201,6 +223,7 @@ def main() -> int:
     print(f"final production-equivalent recovery candidates: {len(final_candidate_ids)}")
     print(f"pending typed coverage: {len(pending_typed_ids)}")
     print("typed/generation writer canonical cross-authority binding without records: enforced")
+    print("standalone typed validator delegates append/upstream authority: true")
     print("boolean typed/generation/boundary counts accepted: false")
     print("generic PASS candidate bypass: false")
     print("production evidence: false")
