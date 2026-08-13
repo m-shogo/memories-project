@@ -47,6 +47,16 @@ def require(condition: bool, message: str) -> None:
 def valid_count(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
+def domain_validation_failure(exc: BaseException) -> bool:
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, RuntimeError) and current.__class__.__name__ == "Fail":
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -85,8 +95,15 @@ def repo_ref(value: Any, field: str) -> str:
     require(resolved == relative and path.is_file(), f"{field} must resolve to the canonical repository file")
     return value
 
-def generation_record(evidence_id: Any) -> dict[str, Any]:
-    require(isinstance(evidence_id, str) and evidence_id, "generationEvidenceId required")
+def load_generation_writer():
+    writer = canonical_repo_file(GEN_WRITER, "generation recovery writer")
+    spec = importlib.util.spec_from_file_location("memory_os_generation_recovery_writer", writer)
+    require(spec is not None and spec.loader is not None, "cannot load generation recovery writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+def generation_registry_rows() -> list[dict[str, Any]]:
     require_canonical_runtime_authority(GEN_EVIDENCE_REGISTRY, CANONICAL_GEN_EVIDENCE_REGISTRY, "generation evidence registry")
     registry = load(GEN_EVIDENCE_REGISTRY)
     require(registry.get("schemaVersion") == "memory-os-backup-restore-generation-evidence-registry.v1", "generation evidence registry schema drift")
@@ -97,6 +114,13 @@ def generation_record(evidence_id: Any) -> dict[str, Any]:
     count = registry.get("registeredEvidenceCount")
     require(valid_count(count) and count == len(rows), "generation evidence registry registeredEvidenceCount drift")
     if GEN_EVIDENCE_REGISTRY == CANONICAL_GEN_EVIDENCE_REGISTRY:
+        generation_writer = load_generation_writer()
+        try:
+            generation_writer.validate_upstream_authorities_for_append()
+        except Exception as exc:
+            if domain_validation_failure(exc):
+                raise Fail(f"generation evidence upstream authority invalid: {exc}") from exc
+            raise
         bound_count = registry.get("drillRequestBoundEvidenceCount")
         backup_count = registry.get("completeGenerationBoundBackupCount")
         restore_count = registry.get("completeGenerationBoundRestoreCount")
@@ -119,6 +143,11 @@ def generation_record(evidence_id: Any) -> dict[str, Any]:
         require(0 <= candidate_count <= restore_count <= backup_count <= bound_count <= count, "generation evidence registry count ordering invalid")
     evidence_ids = [row.get("evidenceId") for row in rows]
     require(all(isinstance(value, str) and value for value in evidence_ids) and len(evidence_ids) == len(set(evidence_ids)), "generation evidence registry evidenceId authority invalid")
+    return rows
+
+def generation_record(evidence_id: Any) -> dict[str, Any]:
+    require(isinstance(evidence_id, str) and evidence_id, "generationEvidenceId required")
+    rows = generation_registry_rows()
     matches = [row for row in rows if row.get("evidenceId") == evidence_id]
     require(len(matches) == 1, "generationEvidenceId is not uniquely registered")
     return matches[0]
@@ -224,14 +253,6 @@ def validate_record(record: dict[str, Any]) -> None:
     for forbidden in ("postgres://", "postgresql://", "authorization: bearer", "password", "private_key", "access_key", "raw_ip", "account_id", "session_id", "@", "latest"):
         require(forbidden not in serialized, f"record contains forbidden recovery material: {forbidden}")
 
-def load_generation_writer():
-    writer = canonical_repo_file(GEN_WRITER, "generation recovery writer")
-    spec = importlib.util.spec_from_file_location("memory_os_generation_recovery_writer", writer)
-    require(spec is not None and spec.loader is not None, "cannot load generation recovery writer")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
 def candidate_complete(record: dict[str, Any]) -> bool:
     generation = generation_record(record.get("generationEvidenceId"))
     generation_writer = load_generation_writer()
@@ -242,6 +263,7 @@ def candidate_complete(record: dict[str, Any]) -> bool:
     return record.get("evidenceComplete") is True and generation_writer.base_candidate(generation)
 
 def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any]]:
+    generation_registry_rows()
     require(registry.get("schemaVersion") == "memory-os-backup-restore-non-resurrection-admission-registry.v1", "registry schema drift")
     require(registry.get("appendOnly") is True, "registry must remain append-only")
     require(registry.get("productionEvidence") is False and registry.get("productionReady") is False, "registry production boundary drift")
