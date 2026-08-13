@@ -20,6 +20,7 @@ VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-non-resurrection-a
 WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
 CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
 CANONICAL_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+CANONICAL_GEN_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 TEMP_PARENT = ROOT / "contracts/operations"
 
 
@@ -152,6 +153,38 @@ def main() -> int:
         require(writer.validate_registry_for_append(copy.deepcopy(base_typed)) == [], "healthy empty typed registry must remain valid")
         print("PASS accept: healthy empty typed registry with validated upstream authority")
 
+        # The standalone validator must call the writer guard directly rather
+        # than relying on workflow ordering. Inject a controlled writer-domain
+        # rejection while all canonical files remain untouched and prove the
+        # validator translates that rejection into its own fail-closed domain.
+        validator.REGISTRY = CANONICAL_REGISTRY
+        validator.GEN_REGISTRY = CANONICAL_GEN_REGISTRY
+        validator_writer = load_module(WRITER, "memory_os_non_resurrection_validator_delegation_negative")
+        original_validator_loader = validator.load_module
+        original_validator_guard = validator_writer.validate_registry_for_append
+
+        def rejecting_validator_guard(_: dict[str, Any]) -> list[dict[str, Any]]:
+            raise validator_writer.Fail("synthetic standalone upstream authority corruption")
+
+        def intercepted_validator_loader(path: Path, name: str):
+            if path == validator.WRITER:
+                return validator_writer
+            return original_validator_loader(path, name)
+
+        try:
+            validator_writer.validate_registry_for_append = rejecting_validator_guard
+            validator.load_module = intercepted_validator_loader
+            expect_rejected(
+                "standalone validator delegates empty-registry upstream authority rejection",
+                validator.main,
+                validator.Fail,
+            )
+        finally:
+            validator_writer.validate_registry_for_append = original_validator_guard
+            validator.load_module = original_validator_loader
+            validator.REGISTRY = typed_registry
+            validator.GEN_REGISTRY = generation_registry
+
         # A historical typed row whose identity/counters still look internally
         # consistent must not be trusted merely because evidenceComplete=false
         # makes candidate derivation short-circuit. The append writer must
@@ -255,6 +288,7 @@ def main() -> int:
     print("Memory OS typed non-resurrection registry aggregate negative suite PASS")
     print("aggregate counters may not override row-derived authority: true")
     print("empty typed registry bypasses upstream generation authority: false")
+    print("standalone validator bypasses writer upstream authority: false")
     print("historical typed row mutation accepted before append: false")
     print("generation aggregate drift accepted by typed admission: false")
     print("generation production boundary drift accepted by typed admission: false")
