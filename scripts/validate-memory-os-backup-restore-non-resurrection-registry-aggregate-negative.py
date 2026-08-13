@@ -127,6 +127,31 @@ def main() -> int:
         write_json(generation_registry, generation_mutated)
         expect_rejected("boolean generation final candidate count", validator.main, validator.Fail)
 
+        # Even with zero typed rows, canonical typed admission must not bypass
+        # the upstream generation/objective/drill authority chain. This pins the
+        # delegation directly without creating synthetic production evidence.
+        writer.GEN_EVIDENCE_REGISTRY = generation_registry
+        writer.CANONICAL_GEN_EVIDENCE_REGISTRY = generation_registry
+        write_json(generation_registry, base_generation)
+        original_generation_loader = writer.load_generation_writer
+
+        class RejectingGenerationWriter:
+            @staticmethod
+            def validate_upstream_authorities_for_append() -> None:
+                raise writer.Fail("synthetic upstream authority corruption")
+
+        try:
+            writer.load_generation_writer = lambda: RejectingGenerationWriter
+            expect_rejected(
+                "empty typed registry rejects generation upstream authority failure",
+                lambda: writer.validate_registry_for_append(copy.deepcopy(base_typed)),
+                writer.Fail,
+            )
+        finally:
+            writer.load_generation_writer = original_generation_loader
+        require(writer.validate_registry_for_append(copy.deepcopy(base_typed)) == [], "healthy empty typed registry must remain valid")
+        print("PASS accept: healthy empty typed registry with validated upstream authority")
+
         # A historical typed row whose identity/counters still look internally
         # consistent must not be trusted merely because evidenceComplete=false
         # makes candidate derivation short-circuit. The append writer must
@@ -229,10 +254,11 @@ def main() -> int:
 
     print("Memory OS typed non-resurrection registry aggregate negative suite PASS")
     print("aggregate counters may not override row-derived authority: true")
+    print("empty typed registry bypasses upstream generation authority: false")
     print("historical typed row mutation accepted before append: false")
     print("generation aggregate drift accepted by typed admission: false")
     print("generation production boundary drift accepted by typed admission: false")
-    print("duplicate generation evidence identity accepted by typed admission: false")
+    print("duplicate generation evidence identity accepted: false")
     print("boolean aggregate counters accepted: false")
     print("escaped registry path accepted: false")
     print("unexpected exception accepted as valid rejection: false")
