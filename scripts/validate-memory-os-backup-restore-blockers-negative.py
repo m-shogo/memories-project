@@ -36,16 +36,23 @@ def expect_rejected(name: str, action: Callable[[], Any]) -> None:
     try:
         result = action()
     except Exception as exc:
-        # Only domain-level fail-closed errors count as an expected rejection.
-        # Never let TypeError/AttributeError/etc. make a broken negative case pass.
-        if exc.__class__.__name__ not in {"ValidationFailure", "ReconcileFailure"}:
+        # Only domain-level fail-closed errors from the dynamically loaded
+        # authority targets count as expected rejection. In particular, never
+        # let this suite's own Fail or implementation errors such as TypeError
+        # make a broken negative case pass.
+        exc_module = exc.__class__.__module__
+        controlled = (
+            exc_module.startswith("memory_os_backup_restore_")
+            and exc.__class__.__name__ in {"ValidationFailure", "ReconcileFailure", "Fail"}
+        )
+        if not controlled:
             raise Fail(
                 f"negative case raised unexpected {exc.__class__.__name__}: {name}: {exc}"
             ) from exc
         print(f"PASS reject: {name}")
         return
 
-    # CLI-style validators catch their domain exception and return 1.  Accept
+    # CLI-style validators catch their domain exception and return 1. Accept
     # exactly that controlled rejection; booleans and arbitrary nonzero values
     # are not valid substitutes for the expected validator contract.
     if type(result) is int and result == 1:
