@@ -34,8 +34,21 @@ def load_module(path: Path, name: str):
 
 def expect_rejected(name: str, action: Callable[[], Any]) -> None:
     try:
-        action()
-    except Exception:
+        result = action()
+    except Exception as exc:
+        # Only domain-level fail-closed errors count as an expected rejection.
+        # Never let TypeError/AttributeError/etc. make a broken negative case pass.
+        if exc.__class__.__name__ not in {"ValidationFailure", "ReconcileFailure"}:
+            raise Fail(
+                f"negative case raised unexpected {exc.__class__.__name__}: {name}: {exc}"
+            ) from exc
+        print(f"PASS reject: {name}")
+        return
+
+    # CLI-style validators catch their domain exception and return 1.  Accept
+    # exactly that controlled rejection; booleans and arbitrary nonzero values
+    # are not valid substitutes for the expected validator contract.
+    if type(result) is int and result == 1:
         print(f"PASS reject: {name}")
         return
     raise Fail(f"negative case unexpectedly accepted: {name}")
