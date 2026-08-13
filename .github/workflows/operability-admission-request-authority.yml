@@ -90,6 +90,9 @@ jobs:
       - name: Regenerate deterministic inventory
         run: |
           python scripts/generate-memory-os-operability-admission-inventory.py
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git diff --exit-code -- contracts/operations/operability-admission-inventory.v1.json
+          fi
           python scripts/validate-memory-os-operability-admission-inventory.py
       - name: Validate backup/restore admission chain negatives
         run: |
