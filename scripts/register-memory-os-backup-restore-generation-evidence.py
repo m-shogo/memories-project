@@ -19,6 +19,7 @@ REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-regis
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 CANONICAL_OBJECTIVES_REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
 OBJECTIVES_REGISTRY = CANONICAL_OBJECTIVES_REGISTRY
+OBJECTIVES_WRITER = ROOT / "scripts/register-memory-os-recovery-objectives.py"
 CANONICAL_DRILL_REQUEST_CONTRACT = ROOT / "contracts/operations/backup-restore-drill-request-contract.v1.json"
 DRILL_REQUEST_CONTRACT = CANONICAL_DRILL_REQUEST_CONTRACT
 CANONICAL_DRILL_REQUEST_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
@@ -120,38 +121,25 @@ def generation_by_id(generations: list[Any], generation_id: Any, field: str) -> 
     return matches[0]
 
 
+def load_objectives_writer():
+    writer = canonical_repo_file(OBJECTIVES_WRITER, "recovery objectives writer")
+    spec = importlib.util.spec_from_file_location("memory_os_recovery_objectives_writer_for_generation_evidence", writer)
+    require(spec is not None and spec.loader is not None, "cannot load recovery objectives writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def objective_for_record(record: dict[str, Any]) -> dict[str, Any] | None:
     require_canonical_runtime_authority(OBJECTIVES_REGISTRY, CANONICAL_OBJECTIVES_REGISTRY, "recovery objectives registry")
     registry = load(OBJECTIVES_REGISTRY)
-    require(registry.get("schemaVersion") == "memory-os-recovery-objectives-registry.v1", "recovery objectives registry schema drift")
-    require(registry.get("appendOnly") is True, "recovery objectives registry must remain append-only")
-    require(
-        registry.get("productionEvidence") is False and registry.get("productionReady") is False,
-        "recovery objectives registry production boundary drift",
-    )
-    rows = registry.get("records")
-    require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "recovery objectives registry invalid")
-    approved_count = registry.get("approvedObjectiveCount")
-    require(
-        isinstance(approved_count, int)
-        and not isinstance(approved_count, bool)
-        and approved_count == len(rows),
-        "recovery objectives registry approvedObjectiveCount drift",
-    )
-    objective_ids = [row.get("objectiveId") for row in rows]
-    require(
-        all(isinstance(value, str) and value for value in objective_ids)
-        and len(objective_ids) == len(set(objective_ids)),
-        "recovery objectives registry objectiveId authority invalid",
-    )
-    current_objective_id = registry.get("currentObjectiveId")
-    if rows:
-        require(
-            current_objective_id == objective_ids[-1],
-            "recovery objectives registry currentObjectiveId drift",
-        )
-    else:
-        require(current_objective_id is None, "empty recovery objectives registry must not declare currentObjectiveId")
+    objectives_writer = load_objectives_writer()
+    try:
+        rows = objectives_writer.validate_registry_for_append(registry)
+    except Exception as exc:
+        if domain_validation_failure(exc):
+            raise Fail(f"recovery objectives registry authority invalid: {exc}") from exc
+        raise
 
     objective_id = record.get("recoveryObjectivesId")
     measurements = (
@@ -408,6 +396,7 @@ def validate_record(record: dict[str, Any], *, require_current_drill_request: bo
     require_canonical_runtime_authority(DRILL_REQUEST_REGISTRY, CANONICAL_DRILL_REQUEST_REGISTRY, "restore drill request registry")
     require_canonical_runtime_authority(NON_RESURRECTION_CONTRACT, CANONICAL_NON_RESURRECTION_CONTRACT, "typed non-resurrection contract")
     require_canonical_runtime_authority(NON_RESURRECTION_REGISTRY, CANONICAL_NON_RESURRECTION_REGISTRY, "typed non-resurrection registry")
+    canonical_repo_file(OBJECTIVES_WRITER, "recovery objectives writer")
     canonical_repo_file(DRILL_REQUEST_WRITER, "restore drill request writer")
     canonical_repo_file(NON_RESURRECTION_WRITER, "typed non-resurrection writer")
     require(isinstance(record.get("evidenceId"), str) and EVIDENCE_ID.fullmatch(record["evidenceId"]), "evidenceId invalid")
