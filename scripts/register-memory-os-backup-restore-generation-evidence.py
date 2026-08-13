@@ -133,13 +133,36 @@ def load_objectives_writer():
 def objective_for_record(record: dict[str, Any]) -> dict[str, Any] | None:
     require_canonical_runtime_authority(OBJECTIVES_REGISTRY, CANONICAL_OBJECTIVES_REGISTRY, "recovery objectives registry")
     registry = load(OBJECTIVES_REGISTRY)
-    objectives_writer = load_objectives_writer()
-    try:
-        rows = objectives_writer.validate_registry_for_append(registry)
-    except Exception as exc:
-        if domain_validation_failure(exc):
-            raise Fail(f"recovery objectives registry authority invalid: {exc}") from exc
-        raise
+    if OBJECTIVES_REGISTRY == CANONICAL_OBJECTIVES_REGISTRY:
+        objectives_writer = load_objectives_writer()
+        try:
+            rows = objectives_writer.validate_registry_for_append(registry)
+        except Exception as exc:
+            if domain_validation_failure(exc):
+                raise Fail(f"recovery objectives registry authority invalid: {exc}") from exc
+            raise
+    else:
+        require(registry.get("schemaVersion") == "memory-os-recovery-objectives-registry.v1", "recovery objectives registry schema drift")
+        require(registry.get("appendOnly") is True, "recovery objectives registry must remain append-only")
+        require(
+            registry.get("productionEvidence") is False and registry.get("productionReady") is False,
+            "recovery objectives registry production boundary drift",
+        )
+        rows = registry.get("records")
+        require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "recovery objectives registry invalid")
+        approved_count = registry.get("approvedObjectiveCount")
+        require(valid_count(approved_count) and approved_count == len(rows), "recovery objectives registry approvedObjectiveCount drift")
+        objective_ids = [row.get("objectiveId") for row in rows]
+        require(
+            all(isinstance(value, str) and value for value in objective_ids)
+            and len(objective_ids) == len(set(objective_ids)),
+            "recovery objectives registry objectiveId authority invalid",
+        )
+        current_objective_id = registry.get("currentObjectiveId")
+        if rows:
+            require(current_objective_id == objective_ids[-1], "recovery objectives registry currentObjectiveId drift")
+        else:
+            require(current_objective_id is None, "empty recovery objectives registry must not declare currentObjectiveId")
 
     objective_id = record.get("recoveryObjectivesId")
     measurements = (
@@ -303,11 +326,6 @@ def typed_non_resurrection_covered(evidence_id: Any) -> bool:
         return False
     row = matches[0]
 
-    # Canonical candidate derivation reuses the typed writer's full registry
-    # validator. Its candidate counter is evaluated against this generation
-    # writer's currently bound authorities, so isolated negative harnesses and
-    # canonical runtime use the same fail-closed derivation without hardcoded
-    # production fixtures leaking into the test boundary.
     if NON_RESURRECTION_REGISTRY == CANONICAL_NON_RESURRECTION_REGISTRY:
         try:
             overlay_writer = load_non_resurrection_writer()
@@ -458,7 +476,6 @@ def validate_record(record: dict[str, Any], *, require_current_drill_request: bo
 
 
 def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any]]:
-    """Reject corrupted append-only authority instead of silently healing counters on the next write."""
     require(registry.get("schemaVersion") == "memory-os-backup-restore-generation-evidence-registry.v1", "registry schema drift")
     require(registry.get("appendOnly") is True, "registry must remain append-only")
     require(registry.get("productionEvidence") is False and registry.get("productionReady") is False, "registry production boundary drift")
