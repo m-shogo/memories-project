@@ -49,6 +49,7 @@ on:
       - "scripts/generate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py"
+      - "scripts/validate-memory-os-operability-admission-inventory-registry-negative.py"
       - "scripts/validate-memory-os-sustained-soak-independent-review.py"
       - "scripts/validate-memory-os-sustained-soak-independent-review-negative.py"
       - "scripts/validate-memory-os-sustained-local-soak-result.py"
@@ -137,6 +138,7 @@ jobs:
             scripts/generate-memory-os-operability-admission-inventory.py \
             scripts/validate-memory-os-operability-admission-inventory.py \
             scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py \
+            scripts/validate-memory-os-operability-admission-inventory-registry-negative.py \
             scripts/validate-memory-os-sustained-soak-independent-review.py \
             scripts/validate-memory-os-sustained-soak-independent-review-negative.py \
             scripts/validate-memory-os-sustained-local-soak-result.py \
@@ -223,6 +225,9 @@ jobs:
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-operability-admission-inventory.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-operability-admission-inventory-registry-negative.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py >> "$log" 2>&1 || code=$?
