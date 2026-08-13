@@ -17,7 +17,11 @@ on:
       - "scripts/validate-memory-os-local-logical-restore.py"
       - "scripts/reconcile-memory-os-local-logical-restore.py"
       - "scripts/validate-memory-os-backup-restore.py"
+      - "scripts/validate-memory-os-backup-restore-blockers-negative.py"
       - "scripts/reconcile-memory-os-backup-restore.py"
+      - "scripts/reconcile-memory-os-backup-authority.py"
+      - "scripts/reconcile-memory-os-backup-semantic-overlay.py"
+      - "scripts/reconcile-memory-os-backup-coherent-authority.py"
   push:
     branches:
       - so
@@ -36,7 +40,11 @@ on:
       - "scripts/validate-memory-os-local-logical-restore.py"
       - "scripts/reconcile-memory-os-local-logical-restore.py"
       - "scripts/validate-memory-os-backup-restore.py"
+      - "scripts/validate-memory-os-backup-restore-blockers-negative.py"
       - "scripts/reconcile-memory-os-backup-restore.py"
+      - "scripts/reconcile-memory-os-backup-authority.py"
+      - "scripts/reconcile-memory-os-backup-semantic-overlay.py"
+      - "scripts/reconcile-memory-os-backup-coherent-authority.py"
   workflow_dispatch:
 
 permissions:
@@ -66,11 +74,18 @@ jobs:
             scripts/validate-memory-os-local-logical-restore.py \
             scripts/reconcile-memory-os-local-logical-restore.py \
             scripts/validate-memory-os-backup-restore.py \
-            scripts/reconcile-memory-os-backup-restore.py
+            scripts/validate-memory-os-backup-restore-blockers-negative.py \
+            scripts/reconcile-memory-os-backup-restore.py \
+            scripts/reconcile-memory-os-backup-authority.py \
+            scripts/reconcile-memory-os-backup-semantic-overlay.py \
+            scripts/reconcile-memory-os-backup-coherent-authority.py
           bash -n scripts/run-memory-os-local-logical-restore.sh
 
       - name: Validate backup and restore policy
         run: python scripts/validate-memory-os-backup-restore.py
+
+      - name: Validate canonical blocker negatives
+        run: python scripts/validate-memory-os-backup-restore-blockers-negative.py
 
       - name: Validate local logical restore foundation
         run: python scripts/validate-memory-os-local-logical-restore.py
