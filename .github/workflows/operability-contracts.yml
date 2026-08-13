@@ -18,6 +18,7 @@ on:
       - "docs/memory-os-current-authority-order-round-10-operability.md"
       - "docs/memory-os-current-authority-order-round-9-security.md"
       - "docs/memory-os-production-operability-audit-2026-07-24.md"
+      - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/validate-memory-os-operability.py"
       - "scripts/validate-memory-os-observability.py"
       - "scripts/validate-memory-os-observability-access.py"
@@ -100,6 +101,7 @@ on:
       - "docs/memory-os-current-authority-order-round-10-operability.md"
       - "docs/memory-os-current-authority-order-round-9-security.md"
       - "docs/memory-os-production-operability-audit-2026-07-24.md"
+      - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/validate-memory-os-operability.py"
       - "scripts/validate-memory-os-observability.py"
       - "scripts/validate-memory-os-observability-access.py"
@@ -189,6 +191,7 @@ jobs:
 
       - name: Compile validators
         run: |
+          python -m py_compile scripts/memory_os_backup_restore_blockers.py
           python -m py_compile scripts/validate-memory-os-operability.py
           python -m py_compile scripts/validate-memory-os-observability.py
           python -m py_compile scripts/validate-memory-os-observability-access.py
