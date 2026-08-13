@@ -114,6 +114,12 @@ def main() -> int:
     promotion_registry = load(ROOT / "contracts/operations/backup-restore-promotion-review-registry.v1.json")
 
     require_canonical_registry(
+        "register-memory-os-production-equivalent-environment-generation.py",
+        "memory_os_environment_generation_inventory_authority",
+        generations,
+        "environment generation registry",
+    )
+    require_canonical_registry(
         "register-memory-os-recovery-objectives.py",
         "memory_os_recovery_objective_inventory_authority",
         recovery_objectives,
@@ -136,6 +142,12 @@ def main() -> int:
         "memory_os_typed_non_resurrection_inventory_authority",
         non_resurrection_registry,
         "typed non-resurrection registry",
+    )
+    require_canonical_registry(
+        "register-memory-os-backup-restore-promotion-review.py",
+        "memory_os_promotion_review_inventory_authority",
+        promotion_registry,
+        "human promotion review registry",
     )
 
     promotion_rows = promotion_registry.get("records")
