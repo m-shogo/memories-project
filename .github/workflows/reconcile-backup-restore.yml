@@ -10,6 +10,7 @@ on:
       - "contracts/operations/local-logical-restore-contract.v1.json"
       - "contracts/operations/local-object-version-restore-contract.v1.json"
       - "docs/runbooks/memory-os-backup-restore.md"
+      - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/validate-memory-os-backup-restore.py"
       - "scripts/reconcile-memory-os-backup-restore.py"
   workflow_dispatch:
@@ -42,10 +43,12 @@ jobs:
           test "$(git branch --show-current)" = "so"
           test -z "$(git status --porcelain)"
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Compile backup authority tools
         run: |
           python -m py_compile \
+            scripts/memory_os_backup_restore_blockers.py \
             scripts/validate-memory-os-backup-restore.py \
             scripts/reconcile-memory-os-backup-restore.py
 
@@ -65,8 +68,18 @@ jobs:
             echo "Backup/restore authority is already current."
             exit 0
           fi
+
+          # The derived status is valid only for the exact repository snapshot
+          # that was reconciled and validated above. Never rebase it onto a
+          # newer authority state; a later run must recompute from that state.
+          git fetch origin so
+          if [ "$(git rev-parse HEAD)" != "$SOURCE_SHA" ] || \
+             [ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]; then
+            echo "Refusing stale backup/restore authority write: validated $SOURCE_SHA but so advanced." >&2
+            exit 75
+          fi
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "docs(backup): reconcile restore policy authority"
-          git pull --rebase origin so
           git push origin HEAD:so
