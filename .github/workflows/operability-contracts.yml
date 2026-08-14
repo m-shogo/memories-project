@@ -42,6 +42,7 @@ on:
       - "scripts/reconcile-memory-os-recovery-objectives.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
@@ -130,6 +131,7 @@ on:
       - "scripts/reconcile-memory-os-recovery-objectives.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
@@ -225,6 +227,7 @@ jobs:
           python -m py_compile scripts/reconcile-memory-os-recovery-objectives.py
           python -m py_compile scripts/register-memory-os-backup-restore-generation-evidence.py
           python -m py_compile scripts/validate-memory-os-backup-restore-generation-evidence.py
+          python -m py_compile scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py
           python -m py_compile scripts/reconcile-memory-os-backup-restore-generation-evidence.py
           python -m py_compile scripts/validate-memory-os-backup-restore-generation-binding.py
           python -m py_compile scripts/register-memory-os-backup-restore-non-resurrection-evidence.py
@@ -327,6 +330,9 @@ jobs:
 
       - name: Validate generation-bound backup/restore evidence registry
         run: python scripts/validate-memory-os-backup-restore-generation-evidence.py
+
+      - name: Validate generation-evidence upstream writer authority
+        run: python scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py
 
       - name: Validate typed non-resurrection recovery admission
         run: python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py
