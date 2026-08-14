@@ -28,6 +28,7 @@ on:
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
       - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-recovery-objectives-negative.py"
@@ -82,6 +83,7 @@ on:
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
       - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-recovery-objectives-negative.py"
@@ -149,6 +151,7 @@ jobs:
             scripts/memory_os_backup_restore_blockers.py \
             scripts/memory_os_environment_generation_eligibility.py \
             scripts/register-memory-os-production-equivalent-environment-generation.py \
+            scripts/validate-memory-os-production-equivalent-environment-generation.py \
             scripts/register-memory-os-recovery-objectives.py \
             scripts/validate-memory-os-recovery-objectives.py \
             scripts/validate-memory-os-recovery-objectives-negative.py \
@@ -175,6 +178,7 @@ jobs:
             scripts/validate-memory-os-local-coherent-recovery-set.py \
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-equivalent-environment-generation.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py >> "$log" 2>&1 || code=$?; fi
