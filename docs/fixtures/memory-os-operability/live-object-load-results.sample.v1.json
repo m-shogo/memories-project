@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-live-object-load-results.v1",
-  "commitSha": "c97ee7c1786df51409791a3184429495ddc9e505",
-  "generatedAt": "2026-08-13T19:28:20Z",
+  "commitSha": "66eb3e28629cf7a8eab4815ea981817231beef54",
+  "generatedAt": "2026-08-14T19:16:23Z",
   "environment": {
     "os": "linux",
     "arch": "amd64",
@@ -17,7 +17,7 @@
       "scenarioId": "signed-upload-lifecycle-local-minio-postgres",
       "workloadType": "STEADY",
       "dependencyMode": "LOCAL_POSTGRES_MINIO",
-      "startedAt": "2026-08-13T19:28:19Z",
+      "startedAt": "2026-08-14T19:16:23Z",
       "batch": {
         "requests": 32,
         "concurrency": 8,
@@ -26,11 +26,11 @@
         "statusClassCounts": {
           "2xx": 32
         },
-        "durationSeconds": 0.167523836,
-        "throughput": 191.01759346055087,
-        "latencyP50Ms": 37.107,
-        "latencyP95Ms": 54.085,
-        "latencyP99Ms": 54.39
+        "durationSeconds": 0.24051132,
+        "throughput": 133.04987058405402,
+        "latencyP50Ms": 54.659,
+        "latencyP95Ms": 78.402,
+        "latencyP99Ms": 81.555
       },
       "integrityResult": "PASS",
       "databaseAssertions": {
