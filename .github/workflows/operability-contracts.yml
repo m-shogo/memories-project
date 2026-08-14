@@ -44,6 +44,10 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
+      - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py"
+      - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
       - "scripts/register-memory-os-release-compatibility-pair.py"
       - "scripts/validate-memory-os-release-compatibility-pair.py"
       - "scripts/reconcile-memory-os-release-compatibility-pair.py"
@@ -80,6 +84,7 @@ on:
       - ".github/workflows/recovery-objectives-admission.yml"
       - ".github/workflows/backup-restore-generation-binding.yml"
       - ".github/workflows/backup-restore-generation-evidence.yml"
+      - ".github/workflows/backup-restore-non-resurrection-admission.yml"
       - ".github/workflows/release-compatibility-pair.yml"
       - ".github/workflows/rate-limit-local-multiprocess-shared-store.yml"
   push:
@@ -127,6 +132,10 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
+      - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py"
+      - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
       - "scripts/register-memory-os-release-compatibility-pair.py"
       - "scripts/validate-memory-os-release-compatibility-pair.py"
       - "scripts/reconcile-memory-os-release-compatibility-pair.py"
@@ -163,6 +172,7 @@ on:
       - ".github/workflows/recovery-objectives-admission.yml"
       - ".github/workflows/backup-restore-generation-binding.yml"
       - ".github/workflows/backup-restore-generation-evidence.yml"
+      - ".github/workflows/backup-restore-non-resurrection-admission.yml"
       - ".github/workflows/release-compatibility-pair.yml"
       - ".github/workflows/rate-limit-local-multiprocess-shared-store.yml"
   workflow_dispatch:
@@ -217,6 +227,10 @@ jobs:
           python -m py_compile scripts/validate-memory-os-backup-restore-generation-evidence.py
           python -m py_compile scripts/reconcile-memory-os-backup-restore-generation-evidence.py
           python -m py_compile scripts/validate-memory-os-backup-restore-generation-binding.py
+          python -m py_compile scripts/register-memory-os-backup-restore-non-resurrection-evidence.py
+          python -m py_compile scripts/validate-memory-os-backup-restore-non-resurrection-admission.py
+          python -m py_compile scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py
+          python -m py_compile scripts/reconcile-memory-os-backup-non-resurrection-authority.py
           python -m py_compile scripts/register-memory-os-release-compatibility-pair.py
           python -m py_compile scripts/validate-memory-os-release-compatibility-pair.py
           python -m py_compile scripts/reconcile-memory-os-release-compatibility-pair.py
@@ -313,6 +327,12 @@ jobs:
 
       - name: Validate generation-bound backup/restore evidence registry
         run: python scripts/validate-memory-os-backup-restore-generation-evidence.py
+
+      - name: Validate typed non-resurrection recovery admission
+        run: python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py
+
+      - name: Validate typed non-resurrection registry corruption negatives
+        run: python scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py
 
       - name: Validate load-test scenario contract and results
         run: python scripts/validate-memory-os-load.py
