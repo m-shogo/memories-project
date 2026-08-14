@@ -95,7 +95,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: ${{ github.event_name == 'pull_request' && format('backup-restore-drill-request-pr-{0}', github.event.pull_request.number) || 'backup-restore-admission-chain-so' }}
+  group: backup-restore-drill-request-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
