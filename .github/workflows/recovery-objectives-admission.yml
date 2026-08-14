@@ -37,7 +37,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: ${{ github.event_name == 'pull_request' && format('recovery-objectives-admission-pr-{0}', github.event.pull_request.number) || 'backup-restore-admission-chain-so' }}
+  group: recovery-objectives-admission-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
