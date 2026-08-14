@@ -103,7 +103,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: backup-restore-generation-binding-${{ github.event.pull_request.number || 'so' }}
+  group: ${{ github.event_name == 'pull_request' && format('backup-restore-generation-binding-pr-{0}', github.event.pull_request.number) || 'backup-restore-admission-chain-so' }}
   cancel-in-progress: false
 
 jobs:
