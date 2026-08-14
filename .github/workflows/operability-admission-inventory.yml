@@ -104,7 +104,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: operability-admission-inventory-so
+  group: backup-restore-admission-chain-so
   cancel-in-progress: false
 
 jobs:
