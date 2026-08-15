@@ -22,6 +22,7 @@ EXPECTED_DRILL_REQUEST_WRITER = ROOT / "scripts/request-memory-os-backup-restore
 EXPECTED_NON_RESURRECTION_CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
 EXPECTED_NON_RESURRECTION_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
 EXPECTED_NON_RESURRECTION_WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
+EXPECTED_INDEPENDENT_REVIEW_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
 EXPECTED_LOCK = ROOT / "contracts/operations/.backup-restore-generation-evidence.lock"
 
 
@@ -38,6 +39,18 @@ def load_writer() -> Any:
     require(WRITER.is_file(), "canonical generation-evidence writer missing")
     spec = importlib.util.spec_from_file_location("memory_os_generation_evidence_writer_authority", WRITER)
     require(spec is not None and spec.loader is not None, "cannot load canonical generation-evidence writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def load_independent_review_validator() -> Any:
+    require(EXPECTED_INDEPENDENT_REVIEW_VALIDATOR.is_file(), "canonical generation independent-review validator missing")
+    spec = importlib.util.spec_from_file_location(
+        "memory_os_generation_independent_review_authority",
+        EXPECTED_INDEPENDENT_REVIEW_VALIDATOR,
+    )
+    require(spec is not None and spec.loader is not None, "cannot load generation independent-review validator")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -74,11 +87,25 @@ def main() -> int:
     require(lock == EXPECTED_LOCK, "generation-evidence append lock authority drift")
     require(lock.parent == EXPECTED_REGISTRY.parent, "generation-evidence append lock must share registry authority directory")
 
+    independent_review_validator = load_independent_review_validator()
+    require(
+        getattr(independent_review_validator, "REGISTRY", None) == EXPECTED_REGISTRY,
+        "generation independent-review registry authority drift",
+    )
+    try:
+        result = independent_review_validator.main()
+    except Exception as exc:
+        if isinstance(exc, RuntimeError) and exc.__class__.__name__ == "Fail":
+            raise Fail(f"generation independent-review authority invalid: {exc}") from exc
+        raise
+    require(result == 0, "generation independent-review validator did not complete successfully")
+
     print("Memory OS generation-evidence executable/data authority validation PASS")
     print("environment-generation authority substitution accepted: false")
     print("recovery-objectives authority substitution accepted: false")
     print("drill-request authority substitution accepted: false")
     print("typed non-resurrection authority substitution accepted: false")
+    print("independent review authority substitution accepted: false")
     print("append lock authority substitution accepted: false")
     print("production evidence: false")
     print("production decision: NO_GO")
