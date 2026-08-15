@@ -36,6 +36,12 @@ def load_writer() -> ModuleType:
     require(spec is not None and spec.loader is not None, "cannot load contact routing writer")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    require(getattr(module, "CONTRACT", None) == CONTRACT,
+            "contact routing writer contract authority drift")
+    require(getattr(module, "REGISTRY", None) == REGISTRY,
+            "contact routing writer registry authority drift")
+    require(callable(getattr(module, "validate_registry_for_append", None)),
+            "contact routing writer registry validator missing")
     return module
 
 
@@ -64,32 +70,15 @@ def main() -> int:
         else:
             require(value is False, f"unsafe contact routing promotion enabled: {key}")
 
-    require(registry.get("schemaVersion") == "memory-os-incident-contact-routing-admission-registry.v1", "registry schema drift")
-    require(registry.get("appendOnly") is True, "registry must remain append-only")
-    routings = registry.get("routings")
-    require(isinstance(routings, list), "registry routings missing")
     writer = load_writer()
-    ids: set[str] = set()
-    identities: set[str] = set()
-    pe = 0
-    prod = 0
-    for index, record in enumerate(routings):
-        require(isinstance(record, dict), f"routings[{index}] invalid")
-        confirmation = writer.PRODUCTION_CONFIRMATION if record.get("environmentClass") == "PRODUCTION" else ""
-        try:
-            writer.validate_record(record, confirmation)
-        except Exception as exc:
-            raise Fail(f"routings[{index}] invalid: {exc}") from exc
-        require(record["contactRoutingId"] not in ids, f"duplicate contactRoutingId: {record['contactRoutingId']}")
-        require(record["environmentIdentityDigest"] not in identities, "duplicate environment identity digest")
-        ids.add(record["contactRoutingId"])
-        identities.add(record["environmentIdentityDigest"])
-        pe += 1 if record["environmentClass"] == "PRODUCTION_EQUIVALENT" else 0
-        prod += 1 if record["environmentClass"] == "PRODUCTION" else 0
-    require(registry.get("admittedRoutingCount") == len(routings), "admittedRoutingCount drift")
-    require(registry.get("productionEquivalentRoutingCount") == pe, "productionEquivalentRoutingCount drift")
-    require(registry.get("productionRoutingCount") == prod, "productionRoutingCount drift")
-    require(registry.get("productionReady") is False, "registry cannot make application productionReady")
+    try:
+        writer.validate_registry_for_append(registry)
+    except Exception as exc:
+        raise Fail(f"contact routing registry invalid: {exc}") from exc
+
+    routings = registry["routings"]
+    pe = registry["productionEquivalentRoutingCount"]
+    prod = registry["productionRoutingCount"]
 
     current = contract.get("currentAuthority")
     readiness = contract.get("readiness")
