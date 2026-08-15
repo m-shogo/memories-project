@@ -20,6 +20,25 @@ WRITER = ROOT / "scripts/register-memory-os-backup-restore-promotion-review.py"
 GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
 EXPECTED_LOCK = ROOT / "contracts/operations/.backup-restore-promotion-review.lock"
 NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-promotion-review-negative.py"
+EXPECTED_RECORD_SCHEMA = "memory-os-backup-restore-promotion-review-record.v2"
+EXPECTED_REVIEW_SCHEMA = "memory-os-backup-restore-promotion-review-evidence.v1"
+EXPECTED_REVIEW_FIELDS = {
+    "schemaVersion", "decisionId", "recoveryEvidenceId", "reviewRole", "reviewResult",
+    "reviewedAt", "reviewerPseudonym", "productionTrafficChanged",
+    "productionCredentialsUsed", "automaticPromotion",
+}
+EXPECTED_REVIEW_ROLES = {
+    "recoveryOwnerReviewRef": "RECOVERY_OWNER",
+    "securityReviewRef": "SECURITY",
+    "operabilityReviewRef": "OPERABILITY",
+}
+EXPECTED_RECORD_FIELDS = {
+    "schemaVersion", "decisionId", "recoveryEvidenceId", "decidedAt", "decision",
+    "rationaleRef", "rationaleSha256", "recoveryOwnerReviewRef", "recoveryOwnerReviewSha256",
+    "securityReviewRef", "securityReviewSha256", "operabilityReviewRef", "operabilityReviewSha256",
+    "unresolvedFindings", "productionTrafficChanged", "productionCredentialsUsed",
+    "productionEvidence", "productionReady",
+}
 
 
 class Fail(RuntimeError):
@@ -71,6 +90,8 @@ def main() -> int:
     require(getattr(writer, "REGISTRY", None) == REGISTRY, "promotion review writer registry authority drift")
     require(getattr(writer, "GEN_REGISTRY", None) == GEN_REGISTRY, "promotion review writer generation registry authority drift")
     require(getattr(writer, "GEN_WRITER", None) == GEN_WRITER, "promotion review candidate writer authority drift")
+    require(getattr(writer, "REVIEW_EVIDENCE_SCHEMA", None) == EXPECTED_REVIEW_SCHEMA, "promotion review writer evidence schema drift")
+    require(getattr(writer, "REVIEW_RESULT", None) == "APPROVED", "promotion review writer approval authority drift")
     writer_lock = getattr(writer, "LOCK", None)
     require(writer_lock == EXPECTED_LOCK, "promotion review writer append lock authority drift")
     require(writer_lock.parent == REGISTRY.parent, "promotion review append lock must share registry authority directory")
@@ -80,6 +101,13 @@ def main() -> int:
     writer.canonical_repo_file(GEN_WRITER, "generation recovery evidence writer")
 
     require(contract.get("schemaVersion") == "memory-os-backup-restore-promotion-review-contract.v1", "promotion review contract schema drift")
+    require(contract.get("recordSchemaVersion") == EXPECTED_RECORD_SCHEMA, "promotion review record schema authority drift")
+    require(contract.get("reviewEvidenceSchemaVersion") == EXPECTED_REVIEW_SCHEMA, "promotion review evidence schema authority drift")
+    record_fields = contract.get("requiredRecordFields")
+    require(isinstance(record_fields, list) and len(record_fields) == len(set(record_fields)) and set(record_fields) == EXPECTED_RECORD_FIELDS, "promotion review record field authority drift")
+    review_fields = contract.get("requiredReviewEvidenceFields")
+    require(isinstance(review_fields, list) and len(review_fields) == len(set(review_fields)) and set(review_fields) == EXPECTED_REVIEW_FIELDS, "promotion review evidence field authority drift")
+    require(contract.get("reviewRoles") == EXPECTED_REVIEW_ROLES, "promotion review role authority drift")
     refs = {
         "registry": REGISTRY,
         "generationEvidenceRegistry": GEN_REGISTRY,
@@ -95,6 +123,18 @@ def main() -> int:
         require((ROOT / expected).is_file(), f"promotion review artifact missing: {expected}")
     rules = contract.get("rules")
     require(isinstance(rules, dict) and rules and all(value is True for value in rules.values()), "promotion review rules must remain fail-closed")
+    for rule in (
+        "threeDistinctHumanReviewerPseudonymsRequired",
+        "typedHumanReviewEvidenceRequired",
+        "humanReviewMustBindDecisionId",
+        "humanReviewMustBindRecoveryEvidenceId",
+        "humanReviewRoleMustMatchReference",
+        "humanReviewMustBeApproved",
+        "humanReviewMustNotPostdateDecision",
+        "humanReviewPayloadSha256BindingRequired",
+        "rationalePayloadSha256BindingRequired",
+    ):
+        require(rules.get(rule) is True, f"typed promotion review rule missing: {rule}")
     decisions = contract.get("decisionValues")
     require(isinstance(decisions, list) and set(decisions) == {"GO_RECOMMENDATION", "NO_GO", "DEFER"}, "promotion review decision values drift")
 
@@ -147,6 +187,10 @@ def main() -> int:
     print(f"latest historical decision: {latest_id}")
     print(f"current promotion authority decision: {current_id}")
     print("historical review/current authority separation: PASS")
+    print("typed human review evidence schema authority: PASS")
+    print("typed human review role authority: PASS")
+    print("human review payload digest binding required: true")
+    print("rationale payload digest binding required: true")
     print("promotion review candidate writer identity canonical: true")
     print("promotion review append lock authority canonical: true")
     print("operability inventory current human review source: promotion-review registry")
