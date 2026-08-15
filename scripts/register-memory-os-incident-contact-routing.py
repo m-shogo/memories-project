@@ -151,6 +151,49 @@ def validate_record(record: dict[str, Any], confirmation: str) -> None:
         require(forbidden not in serialized, f"record contains forbidden contact or credential material: {forbidden}")
 
 
+def validate_registry_for_append(registry: dict[str, Any], *, validate_rows: bool = True) -> None:
+    require(registry.get("schemaVersion") == "memory-os-incident-contact-routing-admission-registry.v1",
+            "registry schema drift")
+    require(registry.get("appendOnly") is True, "registry must remain append-only")
+    routings = registry.get("routings")
+    require(isinstance(routings, list) and all(isinstance(item, dict) for item in routings),
+            "registry routings invalid")
+
+    ids: set[str] = set()
+    identities: set[str] = set()
+    pe = 0
+    prod = 0
+    for index, record in enumerate(routings):
+        if validate_rows:
+            confirmation = PRODUCTION_CONFIRMATION if record.get("environmentClass") == "PRODUCTION" else ""
+            try:
+                validate_record(record, confirmation)
+            except Exception as exc:
+                raise Fail(f"routings[{index}] invalid: {exc}") from exc
+        routing_id = record.get("contactRoutingId")
+        identity = record.get("environmentIdentityDigest")
+        require(isinstance(routing_id, str) and routing_id not in ids,
+                f"duplicate/invalid contactRoutingId at routings[{index}]")
+        require(isinstance(identity, str) and identity not in identities,
+                f"duplicate/invalid environment identity at routings[{index}]")
+        ids.add(routing_id)
+        identities.add(identity)
+        pe += 1 if record.get("environmentClass") == "PRODUCTION_EQUIVALENT" else 0
+        prod += 1 if record.get("environmentClass") == "PRODUCTION" else 0
+
+    expected_counts = {
+        "admittedRoutingCount": len(routings),
+        "productionEquivalentRoutingCount": pe,
+        "productionRoutingCount": prod,
+    }
+    for field, expected in expected_counts.items():
+        value = registry.get(field)
+        require(type(value) is int and value == expected,
+                f"{field} drift")
+    require(registry.get("productionReady") is False,
+            "registry cannot make application productionReady")
+
+
 def atomic_write(value: dict[str, Any]) -> None:
     descriptor, temp_name = tempfile.mkstemp(prefix=".incident-contact-routing.", suffix=".tmp", dir=REGISTRY.parent)
     try:
@@ -191,9 +234,8 @@ def main() -> int:
         os.write(lock_fd, (record["contactRoutingId"] + "\n").encode("ascii"))
         os.fsync(lock_fd)
         registry = load(REGISTRY)
-        routings = registry.get("routings")
-        require(isinstance(routings, list), "registry routings missing")
-        require(all(isinstance(item, dict) for item in routings), "registry contains invalid routing")
+        validate_registry_for_append(registry)
+        routings = registry["routings"]
         require(all(item.get("contactRoutingId") != record["contactRoutingId"] for item in routings), "contactRoutingId already registered")
         require(all(item.get("environmentIdentityDigest") != record["environmentIdentityDigest"] for item in routings), "environment identity already has contact routing admission")
         routings.append(record)
