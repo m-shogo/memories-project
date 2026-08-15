@@ -122,9 +122,19 @@ def main() -> int:
             lambda value: value.__setitem__("registryClass", "NOT_PRODUCTION_EQUIVALENT_GENERATIONS"),
         ),
         (
+            AUTHORITIES["environment generation"],
+            "environment generation boolean count",
+            lambda value: value.__setitem__("registeredGenerationCount", True),
+        ),
+        (
             AUTHORITIES["recovery objective"],
             "recovery objective schema drift",
             lambda value: value.__setitem__("schemaVersion", "invalid"),
+        ),
+        (
+            AUTHORITIES["recovery objective"],
+            "recovery objective boolean count",
+            lambda value: value.__setitem__("approvedObjectiveCount", True),
         ),
         (
             AUTHORITIES["drill request"],
@@ -132,9 +142,19 @@ def main() -> int:
             lambda value: value.__setitem__("appendOnly", False),
         ),
         (
+            AUTHORITIES["drill request"],
+            "drill request boolean executable count",
+            lambda value: value.__setitem__("currentExecutableRequestCount", True),
+        ),
+        (
             AUTHORITIES["generation recovery evidence"],
             "generation recovery evidence schema drift",
             lambda value: value.__setitem__("schemaVersion", "invalid"),
+        ),
+        (
+            AUTHORITIES["generation recovery evidence"],
+            "generation recovery evidence boolean count",
+            lambda value: value.__setitem__("registeredEvidenceCount", True),
         ),
         (
             AUTHORITIES["typed non-resurrection"],
@@ -142,9 +162,19 @@ def main() -> int:
             lambda value: value.__setitem__("productionReady", True),
         ),
         (
+            AUTHORITIES["typed non-resurrection"],
+            "typed non-resurrection boolean count",
+            lambda value: value.__setitem__("registeredRecordCount", True),
+        ),
+        (
             AUTHORITIES["human promotion review"],
             "human promotion latest decision manufactured",
             lambda value: value.__setitem__("latestDecisionId", "brpr_manufactured_authority"),
+        ),
+        (
+            AUTHORITIES["human promotion review"],
+            "human promotion boolean count",
+            lambda value: value.__setitem__("registeredReviewCount", True),
         ),
     ]
     for path, name, mutate in cases:
