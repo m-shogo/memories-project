@@ -58,6 +58,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py"
       - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
       - "scripts/register-memory-os-release-compatibility-pair.py"
@@ -161,6 +162,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py"
       - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
       - "scripts/register-memory-os-release-compatibility-pair.py"
@@ -271,6 +273,7 @@ jobs:
           python -m py_compile scripts/validate-memory-os-backup-restore-generation-binding.py
           python -m py_compile scripts/register-memory-os-backup-restore-non-resurrection-evidence.py
           python -m py_compile scripts/validate-memory-os-backup-restore-non-resurrection-admission.py
+          python -m py_compile scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py
           python -m py_compile scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py
           python -m py_compile scripts/reconcile-memory-os-backup-non-resurrection-authority.py
           python -m py_compile scripts/register-memory-os-release-compatibility-pair.py
@@ -390,6 +393,9 @@ jobs:
 
       - name: Validate typed non-resurrection recovery admission
         run: python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py
+
+      - name: Validate typed non-resurrection source binding negatives
+        run: python scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py
 
       - name: Validate typed non-resurrection registry corruption negatives
         run: python scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py
