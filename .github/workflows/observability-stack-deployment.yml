@@ -13,6 +13,7 @@ on:
       - "scripts/register-memory-os-observability-stack-deployment.py"
       - "scripts/validate-memory-os-observability-stack-deployment.py"
       - "scripts/reconcile-memory-os-observability-stack-deployment.py"
+      - "scripts/validate-memory-os-observability-stack-reconcile-negative.py"
   workflow_dispatch:
 
 permissions:
@@ -50,7 +51,11 @@ jobs:
             scripts/register-memory-os-observability-stack-deployment.py \
             scripts/validate-memory-os-observability-stack-deployment.py \
             scripts/reconcile-memory-os-observability-stack-deployment.py \
+            scripts/validate-memory-os-observability-stack-reconcile-negative.py \
             >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-observability-stack-reconcile-negative.py >> "$log" 2>&1 || code=$?
+          fi
           if [[ "$code" == "0" ]]; then
             python scripts/reconcile-memory-os-observability-stack-deployment.py >> "$log" 2>&1 || code=$?
           fi
