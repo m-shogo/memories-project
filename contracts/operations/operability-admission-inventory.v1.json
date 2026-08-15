@@ -93,7 +93,7 @@
       "nextGate": "local repeated 60-minute soak and descriptive trend review are complete; next require independent leak/stability criteria plus generation-bound production-equivalent capacity, dependency and host-failure evidence",
       "status": "PARTIAL",
       "blocking": true,
-      "missingEvidenceCount": 10,
+      "missingEvidenceCount": 9,
       "productionEvidence": false,
       "productionReady": false
     },
@@ -170,7 +170,7 @@
       "nextGate": "generation-bound multi-instance, object-store, PostgreSQL failover and parser durable-spool restart drills; mixed-version failure evidence additionally requires an approved release pair",
       "status": "PARTIAL",
       "blocking": true,
-      "missingEvidenceCount": 12,
+      "missingEvidenceCount": 8,
       "productionEvidence": false,
       "productionReady": false
     }
