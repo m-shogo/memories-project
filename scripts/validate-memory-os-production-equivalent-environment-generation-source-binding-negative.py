@@ -138,17 +138,18 @@ def main() -> int:
     print("PASS accept: all unchanged repository evidence fields match sourceCommitSha")
 
     with tempfile.TemporaryDirectory(prefix=".source-binding-untracked-evidence-", dir=ROOT) as tmp:
-        untracked_evidence = Path(tmp) / "evidence-created-after-source.json"
-        untracked_evidence.write_text("{}\n", encoding="utf-8")
-        post_source_refs = list(refs)
-        post_source_refs[0] = untracked_evidence.relative_to(ROOT).as_posix()
-        post_source_env = evidence_env(tuple(post_source_refs))
-        expect_rejected(
-            writer,
-            "postgresql.restoreEvidenceRef did not exist at sourceCommitSha",
-            lambda: writer.require_environment_evidence_bound_to_source(source, post_source_env),
-        )
-    print("PASS reject: post-source untracked evidence cannot acquire historical authority")
+        for index, (field, _) in enumerate(EVIDENCE_CASES):
+            untracked_evidence = Path(tmp) / f"evidence-created-after-source-{index}.json"
+            untracked_evidence.write_text("{}\n", encoding="utf-8")
+            post_source_refs = list(refs)
+            post_source_refs[index] = untracked_evidence.relative_to(ROOT).as_posix()
+            post_source_env = evidence_env(tuple(post_source_refs))
+            expect_rejected(
+                writer,
+                f"{field} did not exist at sourceCommitSha",
+                lambda env_case=post_source_env: writer.require_environment_evidence_bound_to_source(source, env_case),
+            )
+    print(f"PASS reject: post-source untracked evidence cannot acquire historical authority across {len(EVIDENCE_CASES)} fields")
 
     originals = {path: path.read_bytes() for _, path in EVIDENCE_CASES}
     for field, path in EVIDENCE_CASES:
@@ -169,7 +170,7 @@ def main() -> int:
     print("environment record independently source-bound: true")
     print(f"independently source-bound evidence fields tested: {len(EVIDENCE_CASES)}")
     print("post-source environment record accepted as historical authority: false")
-    print("post-source evidence accepted as historical authority: false")
+    print(f"post-source evidence fields accepted as historical authority: 0/{len(EVIDENCE_CASES)}")
     print("source-binding fixtures are immutable validator/source files, not reconciled derived authority: true")
     print("source-bound environment record contract rule required: true")
     print("source-bound evidence contract rule required: true")
