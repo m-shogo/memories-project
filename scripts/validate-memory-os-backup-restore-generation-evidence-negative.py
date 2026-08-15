@@ -257,6 +257,22 @@ def main() -> int:
     }
     commit_sha = head_sha()
 
+    original_drill_loader = writer.load_drill_writer
+
+    class RejectingCanonicalDrillAuthority:
+        @staticmethod
+        def validate_registry_for_append(_registry: dict[str, Any]) -> list[dict[str, Any]]:
+            raise writer.Fail("approval evidence digest authority drift")
+
+    try:
+        writer.load_drill_writer = lambda: RejectingCanonicalDrillAuthority()
+        expect_rejected(
+            "direct candidate path delegates canonical drill registry authority",
+            lambda: writer.drill_request_for_record({"drillRequestId": "brrq_negative_probe"}, require_current=False),
+        )
+    finally:
+        writer.load_drill_writer = original_drill_loader
+
     no_generation = base_record(commit_sha)
     no_generation["evidenceId"] = "brge_no_generation"
     expect_rejected("no registered production-equivalent generation", lambda: writer.validate_record(no_generation))
@@ -477,6 +493,7 @@ def main() -> int:
     print("Memory OS drill-request-bound generation negative admission suite PASS")
     print("canonical registries mutated: false")
     print("request bypass to generation evidence: false")
+    print("direct candidate bypasses canonical drill registry authority: false")
     print("recovery objective aggregate/current authority drift accepted: false")
     print("stale request creates current candidate: false")
     print("generic non-resurrection PASS creates candidate: false")
