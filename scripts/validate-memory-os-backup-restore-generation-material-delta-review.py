@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +26,6 @@ EXPECTED_VALIDATOR = "scripts/validate-memory-os-backup-restore-generation-mater
 EXPECTED_NEGATIVE = "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
 REVIEW_RESULT = "APPROVED"
 REVIEWER = re.compile(r"^[a-z0-9][a-z0-9_-]{2,63}$")
-RFC3339_SECONDS = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 
 
 class Fail(RuntimeError):
@@ -149,6 +149,17 @@ def require_append_only_review(ref: str, path: Path, field: str) -> None:
     require(path.read_bytes() == completed.stdout, f"{field} bytes drift from initial committed material-delta review evidence")
 
 
+def require_utc_rfc3339(value: Any, field: str) -> str:
+    require(isinstance(value, str) and value, f"{field} required")
+    require(len(value) == 20 and value.endswith("Z"), f"{field} must be canonical UTC RFC3339 seconds")
+    try:
+        parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError as exc:
+        raise Fail(f"{field} must be canonical UTC RFC3339 seconds") from exc
+    require(parsed.strftime("%Y-%m-%dT%H:%M:%SZ") == value, f"{field} must be canonical UTC RFC3339 seconds")
+    return value
+
+
 def validate_material_delta_payload(row: dict[str, Any], payload: dict[str, Any], index: int, required_fields: list[str]) -> None:
     field = f"records[{index}].materialDeltaReviewRef"
     require(set(payload) == set(required_fields), f"{field} typed review fields drift")
@@ -165,8 +176,7 @@ def validate_material_delta_payload(row: dict[str, Any], payload: dict[str, Any]
         f"{field} restoreTargetGenerationId mismatch",
     )
     require(payload.get("reviewResult") == REVIEW_RESULT, f"{field} reviewResult must be APPROVED")
-    reviewed_at = payload.get("reviewedAt")
-    require(isinstance(reviewed_at, str) and RFC3339_SECONDS.fullmatch(reviewed_at), f"{field} reviewedAt invalid")
+    require_utc_rfc3339(payload.get("reviewedAt"), f"{field} reviewedAt")
     reviewer = payload.get("reviewerPseudonym")
     require(isinstance(reviewer, str) and REVIEWER.fullmatch(reviewer), f"{field} reviewerPseudonym invalid")
     require(payload.get("productionTrafficChanged") is False, f"{field} productionTrafficChanged must remain false")
