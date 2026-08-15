@@ -118,6 +118,19 @@ def main() -> int:
     require(lock == EXPECTED_LOCK, "generation-evidence append lock authority drift")
     require(lock.parent == EXPECTED_REGISTRY.parent, "generation-evidence append lock must share registry authority directory")
 
+    independent_reviews_satisfied = getattr(writer, "independent_reviews_satisfied", None)
+    require(callable(independent_reviews_satisfied), "candidate independent-review delegation missing")
+    require(
+        independent_reviews_satisfied(
+            {
+                "securityReviewRef": "README.md",
+                "operabilityReviewRef": "SECURITY.md",
+            }
+        )
+        is False,
+        "generic repository review refs bypass strict candidate review authority",
+    )
+
     run_review_validator(
         EXPECTED_INDEPENDENT_REVIEW_VALIDATOR,
         "memory_os_generation_independent_review_authority",
@@ -145,6 +158,7 @@ def main() -> int:
     print("drill-request authority substitution accepted: false")
     print("typed non-resurrection authority substitution accepted: false")
     print("independent review authority substitution accepted: false")
+    print("generic repository review refs create candidate eligibility: false")
     print("material-delta review authority substitution accepted: false")
     print("append lock authority substitution accepted: false")
     print("production evidence: false")
