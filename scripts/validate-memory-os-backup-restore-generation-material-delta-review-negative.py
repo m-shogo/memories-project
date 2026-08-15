@@ -54,6 +54,22 @@ def expect_registry_fail(module, row: dict, label: str) -> None:
         path.unlink(missing_ok=True)
 
 
+def expect_contract_fail(module, mutate, label: str) -> None:
+    canonical = json.loads(module.CONTRACT.read_text(encoding="utf-8"))
+    mutated = json.loads(json.dumps(canonical))
+    mutate(mutated)
+    original_load_json = module.load_json
+    try:
+        module.load_json = lambda path, field: mutated if path == module.CONTRACT else original_load_json(path, field)
+        try:
+            module.validate_contract_authority()
+        except module.Fail:
+            return
+        raise Fail(f"contract authority negative unexpectedly passed: {label}")
+    finally:
+        module.load_json = original_load_json
+
+
 def main() -> int:
     module = load_validator()
 
@@ -85,13 +101,29 @@ def main() -> int:
         "path traversal",
     )
 
-    original_canonical = module.canonical_material_delta_ref
+    expect_contract_fail(
+        module,
+        lambda contract: contract.__setitem__("materialDeltaReviewEvidenceRoot", "docs/evidence/backup-restore"),
+        "material-delta evidence root widened",
+    )
+    expect_contract_fail(
+        module,
+        lambda contract: contract["recordRules"].__setitem__("crossGenerationMaterialDeltaReviewMustRemainInsideMonitoredNamespace", False),
+        "material-delta namespace rule disabled",
+    )
+    expect_contract_fail(
+        module,
+        lambda contract: contract["recordRules"].__setitem__("crossGenerationMaterialDeltaReviewMustRemainAppendOnlyAfterFirstCommit", False),
+        "material-delta append-only rule disabled",
+    )
+    expect_contract_fail(
+        module,
+        lambda contract: contract.__setitem__("materialDeltaReviewValidator", "scripts/validate-memory-os-backup-restore-generation-evidence.py"),
+        "material-delta validator substituted",
+    )
+
     original_history = module.git_history
     try:
-        module.canonical_material_delta_ref = lambda _value, _field: (
-            "docs/evidence/backup-restore/material-delta/synthetic.json",
-            Path("/tmp/synthetic-material-delta-review.json"),
-        )
         module.git_history = lambda _ref, _field: ["a" * 40, "b" * 40]
         try:
             module.require_append_only_review(
@@ -104,10 +136,9 @@ def main() -> int:
         else:
             raise Fail("post-commit material-delta review edit was accepted")
     finally:
-        module.canonical_material_delta_ref = original_canonical
         module.git_history = original_history
 
-    print("PASS: material-delta review negatives reject generic refs, same-generation refs, traversal, and post-commit edits")
+    print("PASS: material-delta review negatives reject generic refs, same-generation refs, traversal, contract drift, and post-commit edits")
     return 0
 
 
