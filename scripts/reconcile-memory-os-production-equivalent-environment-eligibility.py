@@ -37,6 +37,12 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_helper():
+    try:
+        expected = (ROOT / "scripts/memory_os_environment_generation_eligibility.py").resolve(strict=True)
+        actual = HELPER.resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError) as exc:
+        raise Fail("environment generation eligibility helper missing") from exc
+    require(actual == expected and HELPER.is_file(), "environment generation eligibility helper executable authority drift")
     spec = importlib.util.spec_from_file_location("memory_os_environment_generation_eligibility_reconcile", HELPER)
     require(spec is not None and spec.loader is not None, "cannot load environment generation eligibility helper")
     module = importlib.util.module_from_spec(spec)
@@ -101,6 +107,7 @@ def main() -> int:
     print(f"preflight-eligible generations: {mapping['preflightEligibleGenerationCount']}")
     print(f"distinct eligible environments: {mapping['distinctPreflightEligibleEnvironmentCount']}")
     print(f"eligible directed restore pairs: {mapping['eligibleDirectedRestorePairCount']}")
+    print("eligibility helper executable authority pinned: true")
     print("failed post-validation leaves eligibility authority mutation behind: false")
     print("production evidence: false")
     print("production decision: NO_GO")
