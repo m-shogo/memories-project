@@ -51,9 +51,21 @@ def commit_exists(sha: str) -> bool:
     return completed.returncode == 0
 
 
+def source_is_ancestor(sha: str) -> bool:
+    completed = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", sha, "HEAD"],
+        cwd=ROOT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    return completed.returncode == 0
+
+
 def validate_human_record(record: dict[str, Any]) -> str:
     source_sha = record.get("sourceCommitSha")
     require(isinstance(source_sha, str) and SHA40.fullmatch(source_sha) and commit_exists(source_sha), "sourceCommitSha must bind repository history")
+    require(source_is_ancestor(source_sha), "sourceCommitSha must be an ancestor of current HEAD")
     require(record.get("status") == "COMPLETED", "only COMPLETED tabletop records may be registered")
     require(record.get("productionEvidence") is False, "tabletop completion cannot be production evidence")
 
