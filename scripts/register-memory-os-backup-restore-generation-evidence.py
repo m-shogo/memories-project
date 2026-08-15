@@ -329,7 +329,13 @@ def independent_reviews_satisfied(record: dict[str, Any]) -> bool:
     operability = record.get("operabilityReviewRef")
     if not isinstance(security, str) or not isinstance(operability, str) or security == operability:
         return False
-    if REGISTRY != CANONICAL_REGISTRY:
+    canonical_runtime = (
+        REGISTRY == CANONICAL_REGISTRY
+        and GEN_REGISTRY == CANONICAL_GEN_REGISTRY
+        and OBJECTIVES_REGISTRY == CANONICAL_OBJECTIVES_REGISTRY
+        and DRILL_REQUEST_REGISTRY == CANONICAL_DRILL_REQUEST_REGISTRY
+    )
+    if not canonical_runtime:
         return True
     try:
         return load_independent_review_validator().candidate_reviews_approved(record) is True
