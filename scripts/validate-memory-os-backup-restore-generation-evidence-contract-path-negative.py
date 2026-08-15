@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Negative proof for canonical generation-evidence contract artifact refs."""
+"""Negative proof for canonical generation-evidence contract artifact refs and writer authority."""
 
 from __future__ import annotations
 
@@ -38,6 +38,19 @@ def expect_rejected(module: Any, name: str, action: Callable[[], Any]) -> None:
     raise Fail(f"negative case unexpectedly accepted: {name}")
 
 
+def reject_writer_substitution(module: Any, attribute: str, replacement: Path, name: str) -> None:
+    writer = module.load_writer()
+    original = getattr(writer, attribute)
+    setattr(writer, attribute, replacement)
+    original_loader = module.load_writer
+    module.load_writer = lambda: writer
+    try:
+        expect_rejected(module, name, module.main)
+    finally:
+        module.load_writer = original_loader
+        setattr(writer, attribute, original)
+
+
 def main() -> int:
     module = load_validator()
     canonical_ref = "scripts/validate-memory-os-backup-restore-generation-evidence.py"
@@ -70,10 +83,24 @@ def main() -> int:
         finally:
             link_path.unlink(missing_ok=True)
 
+    reject_writer_substitution(
+        module,
+        "GEN_WRITER",
+        ROOT / "scripts/register-memory-os-recovery-objectives.py",
+        "repository-contained environment generation writer substitution",
+    )
+    reject_writer_substitution(
+        module,
+        "OBJECTIVES_WRITER",
+        ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py",
+        "repository-contained recovery objectives writer substitution",
+    )
+
     print("Memory OS generation evidence contract path negative suite PASS")
     print("absolute contract artifact ref accepted: false")
     print("parent-traversal contract artifact alias accepted: false")
     print("repo-local symlink to external artifact accepted: false")
+    print("repository-contained upstream writer substitution accepted: false")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
