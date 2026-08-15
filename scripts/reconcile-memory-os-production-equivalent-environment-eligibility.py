@@ -11,11 +11,13 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json"
+CANONICAL_CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json"
+CONTRACT = CANONICAL_CONTRACT
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 GEN_CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
 HELPER = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
-VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-eligibility.py"
+CANONICAL_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-eligibility.py"
+VALIDATOR = CANONICAL_VALIDATOR
 
 
 class Fail(RuntimeError):
@@ -50,7 +52,24 @@ def load_helper():
     return module
 
 
+def validate_runtime_executable_authorities() -> None:
+    try:
+        canonical_contract = CANONICAL_CONTRACT.resolve(strict=True)
+        current_contract = CONTRACT.resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError) as exc:
+        raise Fail("eligibility reconcile contract authority missing") from exc
+    if current_contract != canonical_contract:
+        return
+    try:
+        canonical_validator = CANONICAL_VALIDATOR.resolve(strict=True)
+        current_validator = VALIDATOR.resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError) as exc:
+        raise Fail("eligibility reconcile validator authority missing") from exc
+    require(current_validator == canonical_validator and VALIDATOR.is_file(), "eligibility reconcile validator executable authority drift")
+
+
 def main() -> int:
+    validate_runtime_executable_authorities()
     try:
         original_contract_text = CONTRACT.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
@@ -108,6 +127,7 @@ def main() -> int:
     print(f"distinct eligible environments: {mapping['distinctPreflightEligibleEnvironmentCount']}")
     print(f"eligible directed restore pairs: {mapping['eligibleDirectedRestorePairCount']}")
     print("eligibility helper executable authority pinned: true")
+    print("canonical runtime validator authority pinned: true")
     print("failed post-validation leaves eligibility authority mutation behind: false")
     print("production evidence: false")
     print("production decision: NO_GO")
