@@ -60,6 +60,10 @@ def base_row() -> dict:
     return {
         "evidenceId": "brge_negative_review_authority",
         "sourceCommitSha": head_sha(),
+        "drillRequestId": "brrq_negative_review_authority",
+        "recoveryObjectivesId": "ro_negative_review_authority",
+        "sourceEnvironmentGenerationId": "pegen_negative_source",
+        "restoreTargetGenerationId": "pegen_negative_target",
         "securityReviewRef": "README.md",
         "operabilityReviewRef": "SECURITY.md",
     }
@@ -80,6 +84,49 @@ def registry(row: dict) -> dict:
     }
 
 
+def typed_payload(row: dict, role: str) -> dict:
+    return {
+        "schemaVersion": "memory-os-backup-restore-generation-review-evidence.v1",
+        "evidenceId": row["evidenceId"],
+        "drillRequestId": row["drillRequestId"],
+        "recoveryObjectivesId": row["recoveryObjectivesId"],
+        "sourceEnvironmentGenerationId": row["sourceEnvironmentGenerationId"],
+        "restoreTargetGenerationId": row["restoreTargetGenerationId"],
+        "reviewRole": role,
+        "reviewResult": "APPROVED",
+        "reviewedAt": "2026-08-15T00:00:00Z",
+        "reviewerPseudonym": "reviewer-security" if role == "SECURITY" else "reviewer-operability",
+        "productionTrafficChanged": False,
+        "productionCredentialsUsed": False,
+        "automaticPromotion": False,
+    }
+
+
+def expect_bound_field_fail(module, field: str) -> None:
+    row = base_row()
+    payload = typed_payload(row, "SECURITY")
+    payload[field] = "mismatched-authority"
+    original_canonical_ref = module.canonical_ref
+    original_append_only = module.require_append_only_review
+    original_load_json = module.load_json
+    try:
+        module.canonical_ref = lambda _value, _field: (
+            "docs/evidence/backup-restore/synthetic-review.json",
+            Path("/tmp/synthetic-generation-review.json"),
+        )
+        module.require_append_only_review = lambda _ref, _path, _field: None
+        module.load_json = lambda _path, _field: payload
+        try:
+            module.validate_review(row, "securityReviewRef", "SECURITY")
+        except module.Fail:
+            return
+        raise Fail(f"review authority mismatch unexpectedly passed: {field}")
+    finally:
+        module.canonical_ref = original_canonical_ref
+        module.require_append_only_review = original_append_only
+        module.load_json = original_load_json
+
+
 def main() -> int:
     module = load_validator()
 
@@ -93,6 +140,9 @@ def main() -> int:
     production_boundary = registry(base_row())
     production_boundary["productionReady"] = True
     expect_fail(module, production_boundary, "productionReady promotion")
+
+    for field in module.BOUND_FIELDS:
+        expect_bound_field_fail(module, field)
 
     original_history = module.git_history
     try:
@@ -110,7 +160,7 @@ def main() -> int:
     finally:
         module.git_history = original_history
 
-    print("PASS: generation independent review negatives reject generic refs, review reuse, post-commit edits, and production promotion")
+    print("PASS: generation independent review negatives reject generic refs, review reuse, authority mismatch, post-commit edits, and production promotion")
     return 0
 
 
