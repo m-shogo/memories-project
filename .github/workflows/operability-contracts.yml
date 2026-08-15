@@ -19,6 +19,7 @@ on:
       - "docs/memory-os-current-authority-order-round-9-security.md"
       - "docs/memory-os-production-operability-audit-2026-07-24.md"
       - "scripts/memory_os_backup_restore_blockers.py"
+      - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/validate-memory-os-operability.py"
       - "scripts/validate-memory-os-observability.py"
       - "scripts/validate-memory-os-observability-access.py"
@@ -40,6 +41,12 @@ on:
       - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-recovery-objectives.py"
       - "scripts/reconcile-memory-os-recovery-objectives.py"
+      - "scripts/request-memory-os-backup-restore-drill.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request.py"
+      - "scripts/reconcile-memory-os-backup-restore-drill-request.py"
+      - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
+      - "scripts/reconcile-memory-os-backup-restore-drill-preflight.py"
+      - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py"
@@ -83,6 +90,9 @@ on:
       - ".github/workflows/local-migration-recovery-artifact.yml"
       - ".github/workflows/production-equivalent-environment-generation.yml"
       - ".github/workflows/recovery-objectives-admission.yml"
+      - ".github/workflows/backup-restore-drill-request.yml"
+      - ".github/workflows/backup-restore-drill-preflight.yml"
+      - ".github/workflows/backup-restore-preflight-generation-eligibility-consistency.yml"
       - ".github/workflows/backup-restore-generation-binding.yml"
       - ".github/workflows/backup-restore-generation-evidence.yml"
       - ".github/workflows/backup-restore-non-resurrection-admission.yml"
@@ -108,6 +118,7 @@ on:
       - "docs/memory-os-current-authority-order-round-9-security.md"
       - "docs/memory-os-production-operability-audit-2026-07-24.md"
       - "scripts/memory_os_backup_restore_blockers.py"
+      - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/validate-memory-os-operability.py"
       - "scripts/validate-memory-os-observability.py"
       - "scripts/validate-memory-os-observability-access.py"
@@ -129,6 +140,12 @@ on:
       - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-recovery-objectives.py"
       - "scripts/reconcile-memory-os-recovery-objectives.py"
+      - "scripts/request-memory-os-backup-restore-drill.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request.py"
+      - "scripts/reconcile-memory-os-backup-restore-drill-request.py"
+      - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
+      - "scripts/reconcile-memory-os-backup-restore-drill-preflight.py"
+      - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py"
@@ -172,6 +189,9 @@ on:
       - ".github/workflows/local-migration-recovery-artifact.yml"
       - ".github/workflows/production-equivalent-environment-generation.yml"
       - ".github/workflows/recovery-objectives-admission.yml"
+      - ".github/workflows/backup-restore-drill-request.yml"
+      - ".github/workflows/backup-restore-drill-preflight.yml"
+      - ".github/workflows/backup-restore-preflight-generation-eligibility-consistency.yml"
       - ".github/workflows/backup-restore-generation-binding.yml"
       - ".github/workflows/backup-restore-generation-evidence.yml"
       - ".github/workflows/backup-restore-non-resurrection-admission.yml"
@@ -204,6 +224,7 @@ jobs:
       - name: Compile validators
         run: |
           python -m py_compile scripts/memory_os_backup_restore_blockers.py
+          python -m py_compile scripts/memory_os_environment_generation_eligibility.py
           python -m py_compile scripts/validate-memory-os-operability.py
           python -m py_compile scripts/validate-memory-os-observability.py
           python -m py_compile scripts/validate-memory-os-observability-access.py
@@ -225,6 +246,12 @@ jobs:
           python -m py_compile scripts/register-memory-os-recovery-objectives.py
           python -m py_compile scripts/validate-memory-os-recovery-objectives.py
           python -m py_compile scripts/reconcile-memory-os-recovery-objectives.py
+          python -m py_compile scripts/request-memory-os-backup-restore-drill.py
+          python -m py_compile scripts/validate-memory-os-backup-restore-drill-request.py
+          python -m py_compile scripts/reconcile-memory-os-backup-restore-drill-request.py
+          python -m py_compile scripts/validate-memory-os-backup-restore-drill-preflight.py
+          python -m py_compile scripts/reconcile-memory-os-backup-restore-drill-preflight.py
+          python -m py_compile scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py
           python -m py_compile scripts/register-memory-os-backup-restore-generation-evidence.py
           python -m py_compile scripts/validate-memory-os-backup-restore-generation-evidence.py
           python -m py_compile scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py
@@ -324,6 +351,15 @@ jobs:
 
       - name: Validate explicit recovery objectives authority
         run: python scripts/validate-memory-os-recovery-objectives.py
+
+      - name: Validate restore drill planning authority
+        run: python scripts/validate-memory-os-backup-restore-drill-request.py
+
+      - name: Validate restore drill preflight authority
+        run: python scripts/validate-memory-os-backup-restore-drill-preflight.py
+
+      - name: Validate restore preflight semantic consistency
+        run: python scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py
 
       - name: Validate generation-bound backup/restore binding
         run: python scripts/validate-memory-os-backup-restore-generation-binding.py
