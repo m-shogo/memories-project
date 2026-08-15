@@ -151,6 +151,7 @@ def main() -> int:
     expect_payload_fail(module, lambda payload: payload.__setitem__("productionTrafficChanged", True), "production traffic claim")
     expect_payload_fail(module, lambda payload: payload.__setitem__("productionCredentialsUsed", True), "production credentials claim")
     expect_payload_fail(module, lambda payload: payload.__setitem__("reviewedAt", "2026-08-15"), "non-canonical review timestamp")
+    expect_payload_fail(module, lambda payload: payload.__setitem__("reviewedAt", "2026-99-99T99:99:99Z"), "invalid calendar review timestamp")
     expect_payload_fail(module, lambda payload: payload.__setitem__("reviewerPseudonym", "Reviewer Name"), "unsafe reviewer pseudonym")
     expect_payload_fail(module, lambda payload: payload.__setitem__("unexpectedField", True), "unexpected typed review field")
 
