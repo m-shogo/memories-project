@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import copy
 import datetime as dt
+import importlib.util
 import json
 import re
 import subprocess
@@ -17,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/incident-control-exercise-contract.v1.json"
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/incident-control-exercise-results.sample.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-incident-control-exercise.py"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 EVIDENCE_REFS = (
@@ -81,33 +83,36 @@ def unique(values: list[Any]) -> list[Any]:
     return result
 
 
-def validate_result(result: dict[str, Any]) -> None:
-    require(result.get("schemaVersion") ==
-            "memory-os-incident-control-exercise-results.v1",
-            "incident control result schema drift")
+def load_canonical_validator() -> Any:
+    require(VALIDATOR_PATH.is_file(), "canonical incident validator missing")
+    spec = importlib.util.spec_from_file_location("memory_os_incident_control_validator", VALIDATOR_PATH)
+    require(spec is not None and spec.loader is not None,
+            "canonical incident validator cannot be loaded")
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except Exception as exc:  # pragma: no cover - import failures are fail-closed
+        raise ReconcileFailure(f"canonical incident validator load failed: {exc}") from exc
+    require(getattr(module, "CONTRACT_PATH", None) == CONTRACT_PATH,
+            "canonical incident validator contract authority drift")
+    require(getattr(module, "RESULT_PATH", None) == RESULT_PATH,
+            "canonical incident validator result authority drift")
+    require(callable(getattr(module, "validate_contract", None)),
+            "canonical incident contract validator missing")
+    require(callable(getattr(module, "validate_result", None)),
+            "canonical incident result validator missing")
+    return module
+
+
+def validate_result(result: dict[str, Any], contract: dict[str, Any]) -> None:
     require(source_is_ancestor(result.get("commitSha")),
             "incident control source SHA is not an ancestor")
-    environment = result.get("environment")
-    require(isinstance(environment, dict), "incident control environment missing")
-    require(environment.get("productionEvidence") is False and
-            environment.get("humanTabletopCompleted") is False and
-            environment.get("pagingConfigured") is False and
-            environment.get("containsSecrets") is False,
-            "incident control evidence boundary drift")
-    exercise = result.get("exercise")
-    require(isinstance(exercise, dict), "incident control exercise body missing")
-    require(exercise.get("overallResult") == "AUTOMATED_CONTROL_EXERCISE_PASS",
-            "incident control exercise is not PASS")
-    require(exercise.get("humanTabletopResult") == "NOT_COMPLETED" and
-            exercise.get("productionDrillResult") == "NOT_COMPLETED" and
-            exercise.get("closureResult") == "BLOCKED_PENDING_HUMAN_APPROVAL",
-            "incident control exercise overclaims completion")
-    scenarios = exercise.get("scenarios")
-    require(isinstance(scenarios, list) and len(scenarios) == 6,
-            "incident control result must contain six scenarios")
-    require(all(isinstance(item, dict) and item.get("controlResult") == "CONTROL_PATH_PASS"
-                for item in scenarios),
-            "incident control result contains a failed scenario")
+    validator = load_canonical_validator()
+    try:
+        validator.validate_contract(contract)
+        validator.validate_result(result, contract, None)
+    except Exception as exc:
+        raise ReconcileFailure(f"canonical incident result validation failed: {exc}") from exc
 
 
 def normalize_contract(contract: dict[str, Any]) -> dict[str, Any]:
@@ -187,8 +192,8 @@ def main() -> int:
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
 
-    validate_result(load(RESULT_PATH))
     current_contract = load(CONTRACT_PATH)
+    validate_result(load(RESULT_PATH), current_contract)
     current_status = load(STATUS_PATH)
     candidate_contract = normalize_contract(copy.deepcopy(current_contract))
     candidate_status = normalize_status(copy.deepcopy(current_status))
