@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove every registered environment evidence field remains byte-bound to sourceCommitSha."""
+"""Prove generation records and referenced evidence remain byte-bound to sourceCommitSha."""
 
 from __future__ import annotations
 
@@ -12,7 +12,9 @@ from typing import Any, Callable
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
+ENVIRONMENT_RECORD_FIXTURE = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
 SOURCE_BINDING_RULE = "allNonNullEnvironmentEvidenceRefsMustMatchSourceCommitSha"
+ENVIRONMENT_RECORD_BINDING_RULE = "environmentRecordMustMatchSourceCommitSha"
 EVIDENCE_CASES: tuple[tuple[str, Path], ...] = (
     ("postgresql.restoreEvidenceRef", ROOT / "README.md"),
     ("objectStorage.restoreEvidenceRef", ROOT / "SECURITY.md"),
@@ -67,7 +69,7 @@ def expect_rejected(writer: Any, name: str, action: Callable[[], Any]) -> None:
         return
     except Exception as exc:
         raise Fail(f"{name}: leaked non-domain exception: {type(exc).__name__}: {exc}") from exc
-    raise Fail(f"{name}: source-bound evidence drift unexpectedly accepted")
+    raise Fail(f"{name}: source-bound authority drift unexpectedly accepted")
 
 
 def evidence_env(refs: tuple[str, ...]) -> dict[str, Any]:
@@ -84,18 +86,42 @@ def evidence_env(refs: tuple[str, ...]) -> dict[str, Any]:
 
 
 def main() -> int:
-    require(CONTRACT.is_file() and WRITER.is_file(), "generation source-binding authority fixture missing")
+    require(
+        CONTRACT.is_file() and WRITER.is_file() and ENVIRONMENT_RECORD_FIXTURE.is_file(),
+        "generation source-binding authority fixture missing",
+    )
     require(all(path.is_file() for _, path in EVIDENCE_CASES), "generation source-binding evidence fixture missing")
     contract = load_contract()
     bindings = contract.get("bindingRules")
     require(isinstance(bindings, dict), "generation bindingRules required")
     require(bindings.get(SOURCE_BINDING_RULE) is True, f"generation contract must require {SOURCE_BINDING_RULE}")
+    require(
+        bindings.get(ENVIRONMENT_RECORD_BINDING_RULE) is True,
+        f"generation contract must require {ENVIRONMENT_RECORD_BINDING_RULE}",
+    )
 
     writer = load_writer()
     source = head_sha()
     refs = tuple(path.relative_to(ROOT).as_posix() for _, path in EVIDENCE_CASES)
     require(len(set(refs)) == len(refs), "source-binding negative suite requires distinct evidence refs")
     env = evidence_env(refs)
+
+    writer.require_repo_file_bound_to_source(source, ENVIRONMENT_RECORD_FIXTURE, "environmentRecordRef")
+    print("PASS accept: unchanged environment record fixture matches sourceCommitSha")
+    environment_original = ENVIRONMENT_RECORD_FIXTURE.read_bytes()
+    try:
+        ENVIRONMENT_RECORD_FIXTURE.write_bytes(environment_original + b"\nsource-binding-negative-environment-record-mutation\n")
+        expect_rejected(
+            writer,
+            "environmentRecordRef changed after sourceCommitSha",
+            lambda: writer.require_repo_file_bound_to_source(source, ENVIRONMENT_RECORD_FIXTURE, "environmentRecordRef"),
+        )
+    finally:
+        ENVIRONMENT_RECORD_FIXTURE.write_bytes(environment_original)
+    require(
+        ENVIRONMENT_RECORD_FIXTURE.read_bytes() == environment_original,
+        "source-binding negative suite failed to restore environment record fixture",
+    )
 
     writer.require_environment_evidence_bound_to_source(source, env)
     print("PASS accept: all unchanged repository evidence fields match sourceCommitSha")
@@ -116,9 +142,11 @@ def main() -> int:
 
     require(all(path.read_bytes() == original for path, original in originals.items()), "source-binding negative suite left a canonical evidence fixture mutated")
     print("Environment generation source-binding negative suite PASS")
+    print("environment record independently source-bound: true")
     print(f"independently source-bound evidence fields tested: {len(EVIDENCE_CASES)}")
+    print("source-bound environment record contract rule required: true")
     print("source-bound evidence contract rule required: true")
-    print("source-bound evidence mutation accepted: false")
+    print("source-bound authority mutation accepted: false")
     print("canonical evidence left mutated: false")
     print("generation created: false")
     print("production evidence: false")
