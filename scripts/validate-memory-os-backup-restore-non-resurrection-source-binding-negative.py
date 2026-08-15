@@ -50,6 +50,59 @@ def expect_rejected(writer, source_commit: str, ref: str, field: str) -> None:
     raise Fail(f"post-source evidence unexpectedly accepted: {field}")
 
 
+def validate_historical_generation_delegation(writer) -> None:
+    """Pin canonical typed admission to historical generation row semantics without file writes."""
+    canonical_registry = writer.CANONICAL_GEN_EVIDENCE_REGISTRY
+    original_load = writer.load
+    original_generation_loader = writer.load_generation_writer
+    sentinel_row = {"evidenceId": "brge_history_sentinel"}
+    sentinel_registry = {
+        "schemaVersion": "memory-os-backup-restore-generation-evidence-registry.v1",
+        "appendOnly": True,
+        "registeredEvidenceCount": 1,
+        "drillRequestBoundEvidenceCount": 1,
+        "completeGenerationBoundBackupCount": 0,
+        "completeGenerationBoundRestoreCount": 0,
+        "productionEquivalentRecoveryCandidateCount": 0,
+        "records": [sentinel_row],
+        "productionEvidence": False,
+        "productionReady": False,
+    }
+
+    class SentinelGenerationWriter:
+        @staticmethod
+        def validate_upstream_authorities_for_append() -> None:
+            return None
+
+        @staticmethod
+        def validate_record(record, *, require_current_drill_request: bool = True) -> None:
+            require(record is sentinel_row, "sentinel generation row identity drift")
+            require(require_current_drill_request is False, "typed admission must validate generation history without current-request promotion")
+            raise writer.Fail("sentinel historical generation semantic drift")
+
+    def fake_load(path: Path):
+        if path == canonical_registry:
+            return sentinel_registry
+        return original_load(path)
+
+    try:
+        writer.GEN_EVIDENCE_REGISTRY = canonical_registry
+        writer.load = fake_load
+        writer.load_generation_writer = lambda: SentinelGenerationWriter
+        try:
+            writer.generation_registry_rows()
+        except writer.Fail as exc:
+            require("historical authority invalid" in str(exc), "historical generation semantic failure was not preserved")
+            require("sentinel historical generation semantic drift" in str(exc), "historical generation validator sentinel was not propagated")
+            print("PASS reject: typed admission historical generation semantic drift")
+        else:
+            raise Fail("typed admission skipped historical generation row validation")
+    finally:
+        writer.GEN_EVIDENCE_REGISTRY = canonical_registry
+        writer.load = original_load
+        writer.load_generation_writer = original_generation_loader
+
+
 def main() -> int:
     writer = load_writer()
     source_commit = git("rev-parse", "HEAD")
@@ -66,8 +119,11 @@ def main() -> int:
     finally:
         POST_SOURCE_PATH.unlink(missing_ok=True)
 
+    validate_historical_generation_delegation(writer)
+
     print("Memory OS backup/restore non-resurrection source-binding negative suite PASS")
     print("post-source typed evidence accepted: false")
+    print("historical generation semantic validation delegated: true")
     print("canonical registries mutated: false")
     print("production evidence: false")
     print("production decision: NO_GO")
