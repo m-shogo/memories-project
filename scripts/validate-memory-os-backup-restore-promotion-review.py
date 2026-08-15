@@ -17,6 +17,7 @@ GEN_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-r
 TYPED_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
 INVENTORY = ROOT / "contracts/operations/operability-admission-inventory.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-backup-restore-promotion-review.py"
+GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
 NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-promotion-review-negative.py"
 
 
@@ -65,6 +66,15 @@ def main() -> int:
     typed = load(TYPED_REGISTRY)
     inventory = load(INVENTORY)
     writer = load_writer()
+    require(getattr(writer, "CONTRACT", None) == CONTRACT, "promotion review writer contract authority drift")
+    require(getattr(writer, "REGISTRY", None) == REGISTRY, "promotion review writer registry authority drift")
+    require(getattr(writer, "GEN_REGISTRY", None) == GEN_REGISTRY, "promotion review writer generation registry authority drift")
+    require(getattr(writer, "GEN_WRITER", None) == GEN_WRITER, "promotion review candidate writer authority drift")
+    writer.canonical_repo_file(CONTRACT, "promotion review contract")
+    writer.canonical_repo_file(REGISTRY, "promotion review registry")
+    writer.canonical_repo_file(GEN_REGISTRY, "generation recovery evidence registry")
+    writer.canonical_repo_file(GEN_WRITER, "generation recovery evidence writer")
+
     require(contract.get("schemaVersion") == "memory-os-backup-restore-promotion-review-contract.v1", "promotion review contract schema drift")
     refs = {
         "registry": REGISTRY,
@@ -133,6 +143,7 @@ def main() -> int:
     print(f"latest historical decision: {latest_id}")
     print(f"current promotion authority decision: {current_id}")
     print("historical review/current authority separation: PASS")
+    print("promotion review candidate writer identity canonical: true")
     print("operability inventory current human review source: promotion-review registry")
     print("review changes production traffic: false")
     print("review creates production ready: false")
