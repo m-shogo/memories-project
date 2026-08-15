@@ -36,7 +36,9 @@ on:
       - "scripts/validate-memory-os-backup-restore.py"
       - "scripts/validate-memory-os-backup-local-foundations.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-generation-negative.py"
       - "scripts/reconcile-memory-os-production-equivalent-generation-status.py"
       - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-recovery-objectives.py"
@@ -136,7 +138,9 @@ on:
       - "scripts/validate-memory-os-backup-restore.py"
       - "scripts/validate-memory-os-backup-local-foundations.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-generation-negative.py"
       - "scripts/reconcile-memory-os-production-equivalent-generation-status.py"
       - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-recovery-objectives.py"
@@ -243,7 +247,9 @@ jobs:
           python -m py_compile scripts/validate-memory-os-backup-restore.py
           python -m py_compile scripts/validate-memory-os-backup-local-foundations.py
           python -m py_compile scripts/register-memory-os-production-equivalent-environment-generation.py
+          python -m py_compile scripts/validate-memory-os-production-equivalent-environment-record.py
           python -m py_compile scripts/validate-memory-os-production-equivalent-environment-generation.py
+          python -m py_compile scripts/validate-memory-os-production-equivalent-environment-generation-negative.py
           python -m py_compile scripts/reconcile-memory-os-production-equivalent-generation-status.py
           python -m py_compile scripts/register-memory-os-recovery-objectives.py
           python -m py_compile scripts/validate-memory-os-recovery-objectives.py
@@ -351,6 +357,9 @@ jobs:
 
       - name: Validate immutable production-equivalent environment generations
         run: python scripts/validate-memory-os-production-equivalent-environment-generation.py
+
+      - name: Validate immutable environment generation negatives
+        run: python scripts/validate-memory-os-production-equivalent-environment-generation-negative.py
 
       - name: Validate explicit recovery objectives authority
         run: python scripts/validate-memory-os-recovery-objectives.py
