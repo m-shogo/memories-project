@@ -175,6 +175,18 @@ def main() -> int:
         payload["reviewedAt"] = invalid_reviewed_at
         expect_review_payload_fail(module, payload, f"non-canonical reviewedAt: {invalid_reviewed_at}")
 
+    for invalid_reviewer in (
+        "ab",
+        "Security Reviewer",
+        "security@example.com",
+        "../security",
+        "SECURITY_REVIEWER",
+        " reviewer-security",
+    ):
+        payload = typed_payload(base_row(), "SECURITY")
+        payload["reviewerPseudonym"] = invalid_reviewer
+        expect_review_payload_fail(module, payload, f"unsafe reviewer pseudonym: {invalid_reviewer}")
+
     expect_contract_fail(
         module,
         lambda contract: contract["requiredIndependentReviewEvidenceFields"].remove("drillRequestId"),
@@ -207,7 +219,7 @@ def main() -> int:
     finally:
         module.git_history = original_history
 
-    print("PASS: generation independent review negatives reject generic refs, review reuse, authority mismatch, malformed timestamps, contract drift, post-commit edits, and production promotion")
+    print("PASS: generation independent review negatives reject generic refs, review reuse, authority mismatch, malformed timestamps, unsafe reviewer identities, contract drift, post-commit edits, and production promotion")
     return 0
 
 
