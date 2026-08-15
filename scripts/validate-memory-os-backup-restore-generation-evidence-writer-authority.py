@@ -22,6 +22,7 @@ EXPECTED_DRILL_REQUEST_WRITER = ROOT / "scripts/request-memory-os-backup-restore
 EXPECTED_NON_RESURRECTION_CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
 EXPECTED_NON_RESURRECTION_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
 EXPECTED_NON_RESURRECTION_WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
+EXPECTED_LOCK = ROOT / "contracts/operations/.backup-restore-generation-evidence.lock"
 
 
 class Fail(RuntimeError):
@@ -69,11 +70,16 @@ def main() -> int:
     ):
         require_authority(writer, name, expected, label)
 
+    lock = getattr(writer, "LOCK", None)
+    require(lock == EXPECTED_LOCK, "generation-evidence append lock authority drift")
+    require(lock.parent == EXPECTED_REGISTRY.parent, "generation-evidence append lock must share registry authority directory")
+
     print("Memory OS generation-evidence executable/data authority validation PASS")
     print("environment-generation authority substitution accepted: false")
     print("recovery-objectives authority substitution accepted: false")
     print("drill-request authority substitution accepted: false")
     print("typed non-resurrection authority substitution accepted: false")
+    print("append lock authority substitution accepted: false")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
