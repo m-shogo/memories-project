@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,7 @@ EXPECTED_NON_RESURRECTION_CONTRACT = ROOT / "contracts/operations/backup-restore
 EXPECTED_NON_RESURRECTION_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
 EXPECTED_NON_RESURRECTION_WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
 EXPECTED_INDEPENDENT_REVIEW_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
+EXPECTED_INDEPENDENT_REVIEW_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py"
 EXPECTED_LOCK = ROOT / "contracts/operations/.backup-restore-generation-evidence.lock"
 
 
@@ -35,25 +37,32 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def load_module(path: Path, module_name: str, label: str) -> Any:
+    require(path.is_file(), f"canonical {label} missing")
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load {label}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def load_writer() -> Any:
-    require(WRITER.is_file(), "canonical generation-evidence writer missing")
-    spec = importlib.util.spec_from_file_location("memory_os_generation_evidence_writer_authority", WRITER)
-    require(spec is not None and spec.loader is not None, "cannot load canonical generation-evidence writer")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return load_module(WRITER, "memory_os_generation_evidence_writer_authority", "generation-evidence writer")
 
 
-def load_independent_review_validator() -> Any:
-    require(EXPECTED_INDEPENDENT_REVIEW_VALIDATOR.is_file(), "canonical generation independent-review validator missing")
-    spec = importlib.util.spec_from_file_location(
-        "memory_os_generation_independent_review_authority",
-        EXPECTED_INDEPENDENT_REVIEW_VALIDATOR,
-    )
-    require(spec is not None and spec.loader is not None, "cannot load generation independent-review validator")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+def load_contract() -> dict[str, Any]:
+    try:
+        value = json.loads(EXPECTED_CONTRACT.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise Fail(f"generation-evidence contract unreadable or invalid: {exc}") from exc
+    require(isinstance(value, dict), "generation-evidence contract root must be object")
+    return value
+
+
+def require_contract_ref(contract: dict[str, Any], field: str, expected: Path, label: str) -> None:
+    expected_ref = expected.relative_to(ROOT).as_posix()
+    require(contract.get(field) == expected_ref, f"generation-evidence contract {label} ref drift")
+    require(expected.is_file(), f"canonical {label} missing")
 
 
 def require_authority(writer: Any, name: str, expected: Path, label: str) -> None:
@@ -64,8 +73,22 @@ def require_authority(writer: Any, name: str, expected: Path, label: str) -> Non
     canonical_repo_file(actual, label)
 
 
+def run_review_validator(path: Path, module_name: str, label: str) -> None:
+    module = load_module(path, module_name, label)
+    if hasattr(module, "REGISTRY"):
+        require(getattr(module, "REGISTRY") == EXPECTED_REGISTRY, f"{label} registry authority drift")
+    try:
+        result = module.main()
+    except Exception as exc:
+        if isinstance(exc, RuntimeError) and exc.__class__.__name__ == "Fail":
+            raise Fail(f"{label} invalid: {exc}") from exc
+        raise
+    require(result == 0, f"{label} did not complete successfully")
+
+
 def main() -> int:
     writer = load_writer()
+    contract = load_contract()
 
     for name, expected, label in (
         ("CONTRACT", EXPECTED_CONTRACT, "contract"),
@@ -83,22 +106,23 @@ def main() -> int:
     ):
         require_authority(writer, name, expected, label)
 
+    require_contract_ref(contract, "independentReviewValidator", EXPECTED_INDEPENDENT_REVIEW_VALIDATOR, "independent-review validator")
+    require_contract_ref(contract, "independentReviewNegativeValidator", EXPECTED_INDEPENDENT_REVIEW_NEGATIVE, "independent-review negative validator")
+
     lock = getattr(writer, "LOCK", None)
     require(lock == EXPECTED_LOCK, "generation-evidence append lock authority drift")
     require(lock.parent == EXPECTED_REGISTRY.parent, "generation-evidence append lock must share registry authority directory")
 
-    independent_review_validator = load_independent_review_validator()
-    require(
-        getattr(independent_review_validator, "REGISTRY", None) == EXPECTED_REGISTRY,
-        "generation independent-review registry authority drift",
+    run_review_validator(
+        EXPECTED_INDEPENDENT_REVIEW_VALIDATOR,
+        "memory_os_generation_independent_review_authority",
+        "generation independent-review validator",
     )
-    try:
-        result = independent_review_validator.main()
-    except Exception as exc:
-        if isinstance(exc, RuntimeError) and exc.__class__.__name__ == "Fail":
-            raise Fail(f"generation independent-review authority invalid: {exc}") from exc
-        raise
-    require(result == 0, "generation independent-review validator did not complete successfully")
+    run_review_validator(
+        EXPECTED_INDEPENDENT_REVIEW_NEGATIVE,
+        "memory_os_generation_independent_review_negative_authority",
+        "generation independent-review negative validator",
+    )
 
     print("Memory OS generation-evidence executable/data authority validation PASS")
     print("environment-generation authority substitution accepted: false")
