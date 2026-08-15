@@ -15,8 +15,10 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 EVIDENCE_ROOT = Path("docs/evidence/backup-restore")
+REVIEW_SCHEMA = "memory-os-backup-restore-generation-review-evidence.v1"
 REQUIRED_FIELDS = {
     "schemaVersion",
     "evidenceId",
@@ -43,6 +45,13 @@ ROLE_BY_REF = {
     "securityReviewRef": "SECURITY",
     "operabilityReviewRef": "OPERABILITY",
 }
+BOUND_RULE_BY_FIELD = {
+    "evidenceId": "independentReviewMustBindEvidenceId",
+    "drillRequestId": "independentReviewMustBindDrillRequestId",
+    "recoveryObjectivesId": "independentReviewMustBindRecoveryObjectivesId",
+    "sourceEnvironmentGenerationId": "independentReviewMustBindSourceEnvironmentGenerationId",
+    "restoreTargetGenerationId": "independentReviewMustBindRestoreTargetGenerationId",
+}
 
 
 class Fail(RuntimeError):
@@ -61,6 +70,42 @@ def load_json(path: Path, field: str) -> dict[str, Any]:
         raise Fail(f"{field} unreadable or invalid JSON: {exc}") from exc
     require(isinstance(value, dict), f"{field} root must be object")
     return value
+
+
+def validate_contract_authority() -> None:
+    contract = load_json(CONTRACT, "generation evidence contract")
+    require(
+        contract.get("independentReviewEvidenceSchemaVersion") == REVIEW_SCHEMA,
+        "independent review evidence schema authority drift",
+    )
+    require(
+        contract.get("independentReviewEvidenceRoot") == EVIDENCE_ROOT.as_posix(),
+        "independent review evidence root authority drift",
+    )
+    fields = contract.get("requiredIndependentReviewEvidenceFields")
+    require(
+        isinstance(fields, list)
+        and all(isinstance(field, str) and field for field in fields)
+        and len(fields) == len(set(fields))
+        and set(fields) == REQUIRED_FIELDS,
+        "independent review required field authority drift",
+    )
+    require(contract.get("independentReviewRoles") == ROLE_BY_REF, "independent review role authority drift")
+    rules = contract.get("recordRules")
+    require(isinstance(rules, dict), "generation evidence recordRules missing")
+    for rule in (
+        "independentSecurityAndOperabilityReviewsRequired",
+        "typedIndependentReviewEvidenceRequired",
+        "independentReviewEvidenceMustRemainInsideMonitoredNamespace",
+        "independentReviewRoleMustMatchReference",
+        "independentReviewMustBeApproved",
+        "independentReviewReviewerPseudonymsMustBeDistinct",
+        "independentReviewPayloadMustRemainAppendOnlyAfterFirstCommit",
+        "independentReviewCannotAuthorizeAutomaticPromotion",
+    ):
+        require(rules.get(rule) is True, f"independent review contract rule drift: {rule}")
+    for field, rule in BOUND_RULE_BY_FIELD.items():
+        require(rules.get(rule) is True, f"independent review binding rule drift: {field}")
 
 
 def canonical_ref(value: Any, field: str) -> tuple[str, Path]:
@@ -111,7 +156,7 @@ def validate_review(row: dict[str, Any], ref_field: str, expected_role: str) -> 
     require_append_only_review(ref, path, ref_field)
     payload = load_json(path, ref_field)
     require(set(payload) == REQUIRED_FIELDS, f"{ref_field} typed review fields drift")
-    require(payload.get("schemaVersion") == "memory-os-backup-restore-generation-review-evidence.v1", f"{ref_field} schemaVersion drift")
+    require(payload.get("schemaVersion") == REVIEW_SCHEMA, f"{ref_field} schemaVersion drift")
     for field in BOUND_FIELDS:
         require(payload.get(field) == row.get(field), f"{ref_field} {field} mismatch")
     require(payload.get("reviewRole") == expected_role, f"{ref_field} reviewRole mismatch")
@@ -127,6 +172,7 @@ def validate_review(row: dict[str, Any], ref_field: str, expected_role: str) -> 
 
 
 def main() -> int:
+    validate_contract_authority()
     registry = load_json(REGISTRY, "generation evidence registry")
     require(registry.get("schemaVersion") == "memory-os-backup-restore-generation-evidence-registry.v1", "generation evidence registry schema drift")
     require(registry.get("appendOnly") is True, "generation evidence registry must remain append-only")
