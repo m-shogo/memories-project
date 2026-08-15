@@ -9,6 +9,8 @@ on:
       - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
       - "scripts/reconcile-memory-os-backup-restore-drill-preflight.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py"
+      - "scripts/request-memory-os-backup-restore-drill.py"
+      - "scripts/reconcile-memory-os-backup-restore-drill-request.py"
       - "scripts/validate-memory-os-backup-restore-drill-request.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-load-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-writer-authority.py"
@@ -29,6 +31,8 @@ on:
       - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
       - "scripts/reconcile-memory-os-backup-restore-drill-preflight.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py"
+      - "scripts/request-memory-os-backup-restore-drill.py"
+      - "scripts/reconcile-memory-os-backup-restore-drill-request.py"
       - "scripts/validate-memory-os-backup-restore-drill-request.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-load-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-writer-authority.py"
@@ -63,6 +67,8 @@ jobs:
             scripts/validate-memory-os-backup-restore-drill-preflight.py \
             scripts/reconcile-memory-os-backup-restore-drill-preflight.py \
             scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py \
+            scripts/request-memory-os-backup-restore-drill.py \
+            scripts/reconcile-memory-os-backup-restore-drill-request.py \
             scripts/validate-memory-os-backup-restore-drill-request.py \
             scripts/validate-memory-os-backup-restore-drill-request-load-negative.py \
             scripts/validate-memory-os-backup-restore-drill-request-writer-authority.py \
