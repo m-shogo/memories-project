@@ -53,12 +53,47 @@ def git(*args: str) -> str:
     return completed.stdout.strip()
 
 
-def evidence_refs(value: Any, field: str) -> list[str]:
+def source_is_ancestor(source: str) -> bool:
+    completed = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", source, "HEAD"],
+        cwd=ROOT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    return completed.returncode == 0
+
+
+def source_bound_ref(item: str, source: str, field: str) -> None:
+    ref = Path(item)
+    require(item and not ref.is_absolute() and ".." not in ref.parts,
+            f"{field} evidence path invalid: {item}")
+    path = ROOT / ref
+    require(not path.is_symlink(), f"{field} evidence cannot be a symlink: {item}")
+    require(path.is_file(), f"{field} evidence path missing: {item}")
+    try:
+        path.resolve().relative_to(ROOT.resolve())
+    except ValueError as exc:
+        raise Fail(f"{field} evidence escapes repository: {item}") from exc
+    completed = subprocess.run(
+        ["git", "show", f"{source}:{item}"],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    require(completed.returncode == 0,
+            f"{field} evidence did not exist at sourceCommitSha: {item}")
+    require(completed.stdout == path.read_bytes(),
+            f"{field} evidence changed after sourceCommitSha: {item}")
+
+
+def evidence_refs(value: Any, field: str, source: str) -> list[str]:
     require(isinstance(value, list) and value, f"{field} must be non-empty")
-    require(all(isinstance(item, str) and item and not Path(item).is_absolute() and ".." not in Path(item).parts for item in value), f"{field} invalid")
+    require(all(isinstance(item, str) for item in value), f"{field} invalid")
     require(len(value) == len(set(value)), f"{field} contains duplicates")
     for item in value:
-        require((ROOT / item).is_file(), f"{field} evidence path missing: {item}")
+        source_bound_ref(item, source, field)
     return value
 
 
@@ -73,13 +108,17 @@ def validate_record(record: dict[str, Any], confirmation: str) -> None:
     source = record.get("sourceCommitSha")
     require(isinstance(source, str) and SHA40.fullmatch(source), "sourceCommitSha invalid")
     require(git("cat-file", "-e", source + "^{commit}") == "", "source commit does not exist")
+    require(source_is_ancestor(source), "sourceCommitSha must be an ancestor of current HEAD")
     for field in DIGEST_FIELDS:
         require(isinstance(record.get(field), str) and DIGEST.fullmatch(record[field]), f"{field} must be SHA-256 digest")
     for field in REF_FIELDS:
-        evidence_refs(record.get(field), field)
+        evidence_refs(record.get(field), field, source)
     for field in ("securityReviewRef", "operabilityReviewRef"):
         value = record.get(field)
-        require(isinstance(value, str) and value and not Path(value).is_absolute() and ".." not in Path(value).parts and (ROOT / value).is_file(), f"{field} invalid")
+        require(isinstance(value, str), f"{field} invalid")
+        source_bound_ref(value, source, field)
+    require(record["securityReviewRef"] != record["operabilityReviewRef"],
+            "security and operability review evidence must be distinct")
     findings = record.get("unresolvedFindings")
     require(isinstance(findings, list), "unresolvedFindings must be a list")
     for index, finding in enumerate(findings):
