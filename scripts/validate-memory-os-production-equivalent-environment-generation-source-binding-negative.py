@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
@@ -123,6 +124,16 @@ def main() -> int:
         "source-binding negative suite failed to restore environment record fixture",
     )
 
+    with tempfile.TemporaryDirectory(prefix=".source-binding-untracked-", dir=ROOT) as tmp:
+        untracked = Path(tmp) / "environment-record-created-after-source.json"
+        untracked.write_text("{}\n", encoding="utf-8")
+        expect_rejected(
+            writer,
+            "environmentRecordRef did not exist at sourceCommitSha",
+            lambda: writer.require_repo_file_bound_to_source(source, untracked, "environmentRecordRef"),
+        )
+    print("PASS reject: post-source untracked environment record cannot acquire historical authority")
+
     writer.require_environment_evidence_bound_to_source(source, env)
     print("PASS accept: all unchanged repository evidence fields match sourceCommitSha")
 
@@ -144,6 +155,7 @@ def main() -> int:
     print("Environment generation source-binding negative suite PASS")
     print("environment record independently source-bound: true")
     print(f"independently source-bound evidence fields tested: {len(EVIDENCE_CASES)}")
+    print("post-source environment record accepted as historical authority: false")
     print("source-binding fixtures are immutable validator/source files, not reconciled derived authority: true")
     print("source-bound environment record contract rule required: true")
     print("source-bound evidence contract rule required: true")
