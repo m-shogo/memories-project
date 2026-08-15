@@ -105,6 +105,7 @@ def main() -> int:
         ("NON_RESURRECTION_CONTRACT", EXPECTED_NON_RESURRECTION_CONTRACT, "typed non-resurrection contract"),
         ("NON_RESURRECTION_REGISTRY", EXPECTED_NON_RESURRECTION_REGISTRY, "typed non-resurrection registry"),
         ("NON_RESURRECTION_WRITER", EXPECTED_NON_RESURRECTION_WRITER, "typed non-resurrection writer"),
+        ("INDEPENDENT_REVIEW_VALIDATOR", EXPECTED_INDEPENDENT_REVIEW_VALIDATOR, "independent-review validator"),
     ):
         require_authority(writer, name, expected, label)
 
