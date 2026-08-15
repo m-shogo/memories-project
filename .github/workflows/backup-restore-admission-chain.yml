@@ -31,6 +31,8 @@ on:
       - "scripts/validate-memory-os-recovery-objectives-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight-negative.py"
+      - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py"
+      - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-drill-preflight.py"
       - "scripts/request-memory-os-backup-restore-drill.py"
       - "scripts/validate-memory-os-backup-restore-drill-request.py"
@@ -89,6 +91,8 @@ on:
       - "scripts/validate-memory-os-recovery-objectives-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight-negative.py"
+      - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py"
+      - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-drill-preflight.py"
       - "scripts/request-memory-os-backup-restore-drill.py"
       - "scripts/validate-memory-os-backup-restore-drill-request.py"
@@ -182,6 +186,8 @@ jobs:
           scripts/validate-memory-os-recovery-objectives-negative.py
           scripts/validate-memory-os-backup-restore-drill-preflight.py
           scripts/validate-memory-os-backup-restore-drill-preflight-negative.py
+          scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py
+          scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py
           scripts/reconcile-memory-os-backup-restore-drill-preflight.py
           scripts/request-memory-os-backup-restore-drill.py
           scripts/validate-memory-os-backup-restore-drill-request.py
@@ -226,6 +232,8 @@ jobs:
             scripts/validate-memory-os-recovery-objectives-negative.py \
             scripts/validate-memory-os-backup-restore-drill-preflight.py \
             scripts/validate-memory-os-backup-restore-drill-preflight-negative.py \
+            scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py \
+            scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py \
             scripts/reconcile-memory-os-backup-restore-drill-preflight.py \
             scripts/request-memory-os-backup-restore-drill.py \
             scripts/validate-memory-os-backup-restore-drill-request.py \
@@ -257,6 +265,8 @@ jobs:
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-preflight.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-preflight-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py >> "$log" 2>&1 || code=$?; fi
@@ -292,6 +302,8 @@ jobs:
             python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-drill-preflight.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-drill-preflight-negative.py >> "$log" 2>&1
+            python scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py >> "$log" 2>&1
+            python scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py >> "$log" 2>&1
