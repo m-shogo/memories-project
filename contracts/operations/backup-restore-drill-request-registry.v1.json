@@ -5,12 +5,14 @@
   "registeredRequestCount": 0,
   "currentExecutableRequestCount": 0,
   "requests": [],
+  "approvalEvidenceDigestsByRequestId": {},
   "productionEvidence": false,
   "productionReady": false,
   "limitations": [
     "no production-equivalent backup/restore drill request has been admitted",
     "a request is planning authority only and cannot execute backup, restore or traffic changes",
     "execution requires immediate revalidation of both environment generations and the current approved recovery objective",
+    "typed Recovery Owner/Security/Operability approval evidence bytes must remain SHA-256 bound to the append-only request authority",
     "local restore evidence cannot be relabeled as an admitted production-equivalent drill request",
     "this registry never establishes production evidence or application production readiness"
   ]
