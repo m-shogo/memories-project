@@ -19,6 +19,9 @@ DRILL_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-regis
 TEMP_PARENT = ROOT / "contracts/operations"
 NEGATIVE_REF = "scripts/validate-memory-os-backup-restore-drill-preflight-negative.py"
 SEMANTIC_HELPER_REF = "scripts/memory_os_environment_generation_eligibility.py"
+GEN_VALIDATOR_REF = "scripts/validate-memory-os-production-equivalent-environment-generation.py"
+OBJECTIVE_VALIDATOR_REF = "scripts/validate-memory-os-recovery-objectives.py"
+DRILL_VALIDATOR_REF = "scripts/validate-memory-os-backup-restore-drill-request.py"
 
 
 class Fail(RuntimeError):
@@ -139,6 +142,10 @@ def main() -> int:
     require((ROOT / NEGATIVE_REF).is_file(), "preflight negativeAdmissionValidator artifact missing")
     require(canonical.get("semanticEligibilityHelper") == SEMANTIC_HELPER_REF, "preflight semanticEligibilityHelper drift")
     require((ROOT / SEMANTIC_HELPER_REF).is_file(), "preflight semanticEligibilityHelper artifact missing")
+    require(validator.ELIGIBILITY_HELPER.resolve() == (ROOT / SEMANTIC_HELPER_REF).resolve(), "preflight semantic helper executable authority drift")
+    require(validator.GEN_VALIDATOR.resolve() == (ROOT / GEN_VALIDATOR_REF).resolve(), "preflight generation validator executable authority drift")
+    require(validator.OBJECTIVE_VALIDATOR.resolve() == (ROOT / OBJECTIVE_VALIDATOR_REF).resolve(), "preflight objective validator executable authority drift")
+    require(validator.DRILL_VALIDATOR.resolve() == (ROOT / DRILL_VALIDATOR_REF).resolve(), "preflight drill validator executable authority drift")
     current_state = canonical.get("currentState")
     readiness = canonical.get("readiness")
     require(isinstance(current_state, dict) and set(current_state) == validator.STATE_FIELDS, "canonical preflight currentState is not exact")
@@ -254,6 +261,7 @@ def main() -> int:
     print("escaped artifact path accepted: false")
     print("negative validator contract binding: true")
     print("shared semantic eligibility helper contract binding: true")
+    print("preflight executable authorities exact: true")
     print("generation registry schema drift accepted: false")
     print("stable blocker ids require semantic preflight gates: true")
     print("registered generation count alone satisfies blocker: false")
