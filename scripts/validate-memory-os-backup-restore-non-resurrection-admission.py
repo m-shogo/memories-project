@@ -96,6 +96,8 @@ def main() -> int:
         require(runtime_path == expected_path, f"typed writer runtime authority drift: {runtime_name}")
         require(canonical_path == expected_path, f"typed writer canonical authority drift: {canonical_name}")
         writer.require_canonical_runtime_authority(runtime_path, canonical_path, field)
+    require(getattr(writer, "GEN_WRITER", None) == GEN_WRITER, "typed writer generation recovery executable drift")
+    writer.canonical_repo_file(GEN_WRITER, "generation recovery writer")
 
     generation_writer_authorities = (
         ("CONTRACT", GEN_CONTRACT, "generation evidence contract"),
@@ -109,8 +111,18 @@ def main() -> int:
         require(getattr(generation_writer, name, None) == expected_path, f"generation writer typed-overlay authority drift: {name}")
         if hasattr(generation_writer, "canonical_repo_file") and expected_path.is_file():
             generation_writer.canonical_repo_file(expected_path, field)
-    require(getattr(generation_writer, "NON_RESURRECTION_WRITER", None) == WRITER, "generation writer typed overlay executable drift")
-    generation_writer.canonical_repo_file(WRITER, "typed non-resurrection writer")
+    generation_environment_writer = getattr(generation_writer, "GEN_WRITER", None)
+    generation_objectives_writer = getattr(generation_writer, "OBJECTIVES_WRITER", None)
+    generation_drill_writer = getattr(generation_writer, "DRILL_REQUEST_WRITER", None)
+    generation_non_resurrection_writer = getattr(generation_writer, "NON_RESURRECTION_WRITER", None)
+    require(generation_environment_writer == ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py", "generation writer environment authority executable drift")
+    require(generation_objectives_writer == ROOT / "scripts/register-memory-os-recovery-objectives.py", "generation writer recovery objectives executable drift")
+    require(generation_drill_writer == ROOT / "scripts/request-memory-os-backup-restore-drill.py", "generation writer drill request executable drift")
+    require(generation_non_resurrection_writer == WRITER, "generation writer typed overlay executable drift")
+    generation_writer.canonical_repo_file(generation_environment_writer, "environment generation writer")
+    generation_writer.canonical_repo_file(generation_objectives_writer, "recovery objectives writer")
+    generation_writer.canonical_repo_file(generation_drill_writer, "restore drill request writer")
+    generation_writer.canonical_repo_file(generation_non_resurrection_writer, "typed non-resurrection writer")
 
     # Standalone validation must reuse the same append-only/upstream guard as
     # the direct typed writer. In particular, an empty typed registry must not
@@ -224,6 +236,7 @@ def main() -> int:
     print(f"pending typed coverage: {len(pending_typed_ids)}")
     print("typed/generation writer canonical cross-authority binding without records: enforced")
     print("standalone typed validator delegates append/upstream authority: true")
+    print("typed/generation upstream writer identities canonical: true")
     print("boolean typed/generation/boundary counts accepted: false")
     print("generic PASS candidate bypass: false")
     print("production evidence: false")
