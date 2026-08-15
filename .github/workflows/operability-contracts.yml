@@ -45,6 +45,7 @@ on:
       - "scripts/reconcile-memory-os-recovery-objectives.py"
       - "scripts/request-memory-os-backup-restore-drill.py"
       - "scripts/validate-memory-os-backup-restore-drill-request.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request-writer-authority.py"
       - "scripts/reconcile-memory-os-backup-restore-drill-request.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
       - "scripts/reconcile-memory-os-backup-restore-drill-preflight.py"
@@ -147,6 +148,7 @@ on:
       - "scripts/reconcile-memory-os-recovery-objectives.py"
       - "scripts/request-memory-os-backup-restore-drill.py"
       - "scripts/validate-memory-os-backup-restore-drill-request.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request-writer-authority.py"
       - "scripts/reconcile-memory-os-backup-restore-drill-request.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
       - "scripts/reconcile-memory-os-backup-restore-drill-preflight.py"
@@ -256,6 +258,7 @@ jobs:
           python -m py_compile scripts/reconcile-memory-os-recovery-objectives.py
           python -m py_compile scripts/request-memory-os-backup-restore-drill.py
           python -m py_compile scripts/validate-memory-os-backup-restore-drill-request.py
+          python -m py_compile scripts/validate-memory-os-backup-restore-drill-request-writer-authority.py
           python -m py_compile scripts/reconcile-memory-os-backup-restore-drill-request.py
           python -m py_compile scripts/validate-memory-os-backup-restore-drill-preflight.py
           python -m py_compile scripts/reconcile-memory-os-backup-restore-drill-preflight.py
@@ -363,6 +366,9 @@ jobs:
 
       - name: Validate restore drill planning authority
         run: python scripts/validate-memory-os-backup-restore-drill-request.py
+
+      - name: Validate restore drill writer authority
+        run: python scripts/validate-memory-os-backup-restore-drill-request-writer-authority.py
 
       - name: Validate restore drill preflight authority
         run: python scripts/validate-memory-os-backup-restore-drill-preflight.py
