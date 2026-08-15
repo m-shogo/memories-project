@@ -122,27 +122,65 @@ jobs:
       - name: Commit normalized backup authority
         run: |
           set -euo pipefail
-          git fetch origin so
-          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
-            echo "Branch advanced after validation; refusing stale local backup authority."
-            exit 75
-          fi
-          git add contracts/operations/production-operability-status.json
-          if git diff --cached --quiet; then
-            echo "Backup authority is already normalized."
-            exit 0
-          fi
-          git diff --cached --check
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "docs(backup): normalize local restore foundations"
-          for attempt in 1 2 3 4; do
+
+          revalidate_latest_backup_authority() {
+            git fetch origin so
+            git reset --hard origin/so
+            SOURCE_SHA="$(git rev-parse HEAD)"
+            export SOURCE_SHA
+            python scripts/validate-memory-os-local-apple-replay-restore.py
+            python scripts/validate-memory-os-local-logical-restore.py
+            python scripts/validate-memory-os-local-object-version-restore.py
+            python scripts/validate-memory-os-local-coherent-recovery-set.py
+            python scripts/validate-memory-os-backup-local-foundations.py
+            python scripts/reconcile-memory-os-backup-authority.py
+            python scripts/reconcile-memory-os-backup-authority.py --check
+            python scripts/reconcile-memory-os-backup-semantic-overlay.py
+            python scripts/reconcile-memory-os-backup-semantic-overlay.py --check
+            python scripts/reconcile-memory-os-backup-coherent-authority.py
+            python scripts/reconcile-memory-os-backup-coherent-authority.py --check
+            python scripts/validate-memory-os-backup-restore.py
+            python scripts/validate-memory-os-backup-restore-blockers-negative.py
+            python scripts/validate-memory-os-operability.py
+          }
+
+          for reconcile_attempt in 1 2; do
             git fetch origin so
             if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
-              echo "Branch advanced after authority capture; refusing stale local backup authority."
-              exit 75
+              if [[ "$reconcile_attempt" == "2" ]]; then
+                echo "Branch advanced again during bounded backup-authority retry; refusing stale local backup authority."
+                exit 75
+              fi
+              echo "Branch advanced after validation; regenerating and revalidating local backup authority once from latest so."
+              revalidate_latest_backup_authority
             fi
-            if git push origin HEAD:so; then exit 0; fi
-            sleep 2
+
+            git add contracts/operations/production-operability-status.json
+            if git diff --cached --quiet; then
+              echo "Backup authority is already normalized."
+              exit 0
+            fi
+            git diff --cached --check
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(backup): normalize local restore foundations"
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              if [[ "$reconcile_attempt" == "2" ]]; then
+                echo "Branch advanced again after bounded backup-authority validation; refusing stale local backup authority."
+                exit 75
+              fi
+              echo "Branch advanced after authority capture; discarding stale backup-authority commit and retrying from latest so."
+              revalidate_latest_backup_authority
+              continue
+            fi
+            if git push origin HEAD:so; then
+              exit 0
+            fi
+            if [[ "$reconcile_attempt" == "2" ]]; then
+              exit 1
+            fi
+            echo "Backup-authority push raced with another writer; retrying once from latest so."
+            revalidate_latest_backup_authority
           done
-          exit 1
+          exit 75
