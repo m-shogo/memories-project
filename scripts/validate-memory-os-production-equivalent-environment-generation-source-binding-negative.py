@@ -24,7 +24,7 @@ EVIDENCE_CASES: tuple[tuple[str, Path], ...] = (
     ("identityAndSecrets.credentialScopeRef", ROOT / "scripts/validate-memory-os-production-equivalent-environment-record.py"),
     ("backupRestore.evidenceRef", ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"),
     ("materialDeltas[0].independentReviewRef", ROOT / ".github/workflows/operability-contracts.yml"),
-    ("evidenceBoundary.independentReviewRef", ROOT / "contracts/operations/production-equivalent-environment-generation-contract.v1.json"),
+    ("evidenceBoundary.independentReviewRef", ROOT / "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"),
 )
 
 
