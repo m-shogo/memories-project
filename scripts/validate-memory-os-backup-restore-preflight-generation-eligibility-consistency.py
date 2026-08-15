@@ -37,12 +37,19 @@ def canonical_repo_file(path: Path, field: str) -> Path:
     return path
 
 
+def display_path(path: Path) -> str:
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (FileNotFoundError, OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise Fail(f"cannot load {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+        raise Fail(f"cannot load {display_path(path)}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be object: {display_path(path)}")
     return value
 
 
