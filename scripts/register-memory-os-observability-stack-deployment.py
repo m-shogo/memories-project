@@ -4,18 +4,21 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import re
 import subprocess
 import tempfile
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/observability-stack-deployment-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/observability-stack-deployment-registry.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+GEN_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
 LOCK = ROOT / "contracts/operations/.observability-stack-deployment.lock"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
@@ -51,6 +54,19 @@ def git(*args: str) -> str:
     completed = subprocess.run(["git", *args], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     require(completed.returncode == 0, f"git {' '.join(args)} failed")
     return completed.stdout.strip()
+
+
+def load_generation_writer() -> ModuleType:
+    require(GEN_WRITER.is_file(), "canonical environment-generation writer missing")
+    spec = importlib.util.spec_from_file_location("memory_os_generation_writer_for_observability", GEN_WRITER)
+    require(spec is not None and spec.loader is not None, "cannot load environment-generation writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    require(getattr(module, "REGISTRY", None) == GEN_REGISTRY,
+            "environment-generation writer registry authority drift")
+    require(callable(getattr(module, "validate_registry_for_append", None)),
+            "environment-generation registry validator missing")
+    return module
 
 
 def source_is_ancestor(source: str) -> bool:
@@ -97,6 +113,17 @@ def evidence_refs(value: Any, field: str, source: str) -> list[str]:
     return value
 
 
+def generation_exists(generation_id: str) -> None:
+    registry = load(GEN_REGISTRY)
+    writer = load_generation_writer()
+    try:
+        rows = writer.validate_registry_for_append(registry)
+    except Exception as exc:
+        raise Fail(f"environment-generation authority invalid: {exc}") from exc
+    require(isinstance(rows, list) and any(isinstance(row, dict) and row.get("generationId") == generation_id for row in rows),
+            "environmentGenerationId is not registered")
+
+
 def validate_record(record: dict[str, Any], confirmation: str) -> None:
     contract = load(CONTRACT)
     required = set(contract.get("requiredRecordFields", []))
@@ -131,9 +158,7 @@ def validate_record(record: dict[str, Any], confirmation: str) -> None:
     generation = record.get("environmentGenerationId")
     if environment == "PRODUCTION_EQUIVALENT":
         require(isinstance(generation, str) and generation, "production-equivalent stack requires environmentGenerationId")
-        generations = load(GEN_REGISTRY)
-        rows = generations.get("generations")
-        require(isinstance(rows, list) and any(isinstance(row, dict) and row.get("generationId") == generation for row in rows), "environmentGenerationId is not registered")
+        generation_exists(generation)
         require(record.get("productionEvidence") is False, "production-equivalent stack cannot be production evidence")
     else:
         require(generation is None, "production stack must not borrow a production-equivalent generation id")
