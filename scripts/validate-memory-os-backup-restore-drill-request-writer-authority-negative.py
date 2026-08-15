@@ -65,6 +65,7 @@ def canonical_writer_module(
     gen_registry: str = "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
     objectives_registry: str = "contracts/operations/recovery-objectives-registry.v1.json",
     eligibility: str = "memory_os_environment_generation_eligibility.py",
+    lock: str = "contracts/operations/.backup-restore-drill-request.lock",
 ) -> str:
     return (
         "from pathlib import Path\n"
@@ -75,6 +76,7 @@ def canonical_writer_module(
         f"OBJECTIVES_REGISTRY = ROOT / '{objectives_registry}'\n"
         f"ELIGIBILITY_HELPER = ROOT / 'scripts/{eligibility}'\n"
         "OBJECTIVES_WRITER = ROOT / 'scripts/register-memory-os-recovery-objectives.py'\n"
+        f"LOCK = ROOT / '{lock}'\n"
     )
 
 
@@ -141,6 +143,15 @@ def substitute_writer_objectives_registry(module, cleanup: list[Path]) -> None:
     fake = repo_temp_module(
         ".drill-writer-data-authority-negative-",
         canonical_writer_module(objectives_registry="contracts/operations/production-equivalent-environment-generation-registry.v1.json"),
+    )
+    cleanup.append(fake)
+    module.WRITER = fake
+
+
+def substitute_writer_lock(module, cleanup: list[Path]) -> None:
+    fake = repo_temp_module(
+        ".drill-writer-lock-authority-negative-",
+        canonical_writer_module(lock="contracts/operations/.backup-restore-generation-evidence.lock"),
     )
     cleanup.append(fake)
     module.WRITER = fake
@@ -228,6 +239,11 @@ def main() -> int:
         "drill request writer authority drift: OBJECTIVES_REGISTRY",
     )
     expect_rejection(
+        "writer-lock-substitution",
+        substitute_writer_lock,
+        "drill request writer authority drift: LOCK",
+    )
+    expect_rejection(
         "reconciler-objective-substitution",
         substitute_reconciler_objective,
         "drill request reconciler authority drift: OBJECTIVES_WRITER",
@@ -253,7 +269,7 @@ def main() -> int:
         "drill request reconciler authority drift: STATUS",
     )
 
-    print("PASS: drill request executable/data authority substitutions are rejected")
+    print("PASS: drill request executable/data/lock authority substitutions are rejected")
     return 0
 
 
