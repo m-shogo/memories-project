@@ -36,6 +36,8 @@
     "authorityRefsMustBeCanonicalRepositoryFiles": true,
     "exactlyTwoTypedApprovalEvidenceRefsRequired": true,
     "approvalEvidenceMustUseDedicatedAuthorityDirectory": true,
+    "approvalEvidenceContentMustBeSha256BoundInRegistry": true,
+    "approvalEvidenceDigestMapMustExactlyMatchRegisteredObjectives": true,
     "recoveryOwnerAndOperabilityApprovalRolesRequired": true,
     "approvalReviewersMustBeDistinct": true,
     "reviewerPseudonymsMustBeCanonicalNonEmptyText": true,
@@ -56,6 +58,8 @@
   "negativeAdmissionCases": [
     "arbitrary repository files used as approval evidence",
     "absolute, parent-traversal or symlinked authority refs",
+    "typed approval evidence content changed after registration",
+    "approval evidence digest map missing, stale or contains unknown objectives",
     "typed approval bound to a different objectiveId",
     "typed approval bound to different RPO/RTO/skew values",
     "zero or negative RPO/RTO",
