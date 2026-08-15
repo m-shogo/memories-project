@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "production-equivalent-environment-generation",
+  "sourceCommitSha": "bf2b94cecc45e15e7a800600bf678cb830b423eb",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "PRODUCTION-EQUIVALENT GENERATION STATUS FAILED: generation validator failed:\nPRODUCTION-EQUIVALENT GENERATION FAILED: environment generation source-binding negative suite failed:\nPASS accept: unchanged environment record fixture matches sourceCommitSha\nPASS reject: environmentRecordRef changed after sourceCommitSha\nPASS reject: environmentRecordRef did not exist at sourceCommitSha\nPASS reject: post-source untracked environment record cannot acquire historical authority\nTraceback (most recent call last):\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-production-equivalent-environment-generation-source-binding-negative.py\", line 187, in <module>\n    raise SystemExit(main())\n                     ^^^^^^\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-production-equivalent-environment-generation-source-binding-negative.py\", line 137, in main\n    writer.require_environment_evidence_bound_to_source(source, env)\n  File \"/home/runner/work/memories-project/memories-project/scripts/register-memory-os-production-equivalent-environment-generation.py\", line 187, in require_environment_evidence_bound_to_source\n    require_repo_file_bound_to_source(source_commit, repo_ref(value, field), field)\n  File \"/home/runner/work/memories-project/memories-project/scripts/register-memory-os-production-equivalent-environment-generation.py\", line 160, in require_repo_file_bound_to_source\n    require(current == historical, f\"{field} changed since sourceCommitSha\")\n  File \"/home/runner/work/memories-project/memories-project/scripts/register-memory-os-production-equivalent-environment-generation.py\", line 50, in require\n    raise Fail(message)\nmemory_os_environment_generation_source_binding_negative.Fail: evidenceBoundary.independentReviewRef changed since sourceCommitSha\n\n\n",
+  "containsSecrets": false,
+  "generationCreated": false,
+  "preflightEligibilityFabricated": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
