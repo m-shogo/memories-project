@@ -58,27 +58,41 @@ def expect_rejection(label: str, configure, expected_message: str) -> None:
             path.unlink(missing_ok=True)
 
 
-def canonical_writer_module(*, eligibility: str = "memory_os_environment_generation_eligibility.py", registry: str = "contracts/operations/backup-restore-drill-request-registry.v1.json") -> str:
+def canonical_writer_module(
+    *,
+    contract: str = "contracts/operations/backup-restore-drill-request-contract.v1.json",
+    registry: str = "contracts/operations/backup-restore-drill-request-registry.v1.json",
+    gen_registry: str = "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+    objectives_registry: str = "contracts/operations/recovery-objectives-registry.v1.json",
+    eligibility: str = "memory_os_environment_generation_eligibility.py",
+) -> str:
     return (
         "from pathlib import Path\n"
         "ROOT = Path(__file__).resolve().parents[1]\n"
-        "CONTRACT = ROOT / 'contracts/operations/backup-restore-drill-request-contract.v1.json'\n"
+        f"CONTRACT = ROOT / '{contract}'\n"
         f"REGISTRY = ROOT / '{registry}'\n"
-        "GEN_REGISTRY = ROOT / 'contracts/operations/production-equivalent-environment-generation-registry.v1.json'\n"
-        "OBJECTIVES_REGISTRY = ROOT / 'contracts/operations/recovery-objectives-registry.v1.json'\n"
+        f"GEN_REGISTRY = ROOT / '{gen_registry}'\n"
+        f"OBJECTIVES_REGISTRY = ROOT / '{objectives_registry}'\n"
         f"ELIGIBILITY_HELPER = ROOT / 'scripts/{eligibility}'\n"
         "OBJECTIVES_WRITER = ROOT / 'scripts/register-memory-os-recovery-objectives.py'\n"
     )
 
 
-def canonical_reconciler_module(*, objectives_writer: str = "register-memory-os-recovery-objectives.py", status: str = "contracts/operations/production-operability-status.json") -> str:
+def canonical_reconciler_module(
+    *,
+    contract: str = "contracts/operations/backup-restore-drill-request-contract.v1.json",
+    gen_registry: str = "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+    objectives_registry: str = "contracts/operations/recovery-objectives-registry.v1.json",
+    objectives_writer: str = "register-memory-os-recovery-objectives.py",
+    status: str = "contracts/operations/production-operability-status.json",
+) -> str:
     return (
         "from pathlib import Path\n"
         "ROOT = Path(__file__).resolve().parents[1]\n"
-        "CONTRACT = ROOT / 'contracts/operations/backup-restore-drill-request-contract.v1.json'\n"
+        f"CONTRACT = ROOT / '{contract}'\n"
         "REGISTRY = ROOT / 'contracts/operations/backup-restore-drill-request-registry.v1.json'\n"
-        "GEN_REGISTRY = ROOT / 'contracts/operations/production-equivalent-environment-generation-registry.v1.json'\n"
-        "OBJECTIVES_REGISTRY = ROOT / 'contracts/operations/recovery-objectives-registry.v1.json'\n"
+        f"GEN_REGISTRY = ROOT / '{gen_registry}'\n"
+        f"OBJECTIVES_REGISTRY = ROOT / '{objectives_registry}'\n"
         f"STATUS = ROOT / '{status}'\n"
         "WRITER = ROOT / 'scripts/request-memory-os-backup-restore-drill.py'\n"
         "VALIDATOR = ROOT / 'scripts/validate-memory-os-backup-restore-drill-request.py'\n"
@@ -96,6 +110,15 @@ def substitute_writer_eligibility(module, cleanup: list[Path]) -> None:
     module.WRITER = fake
 
 
+def substitute_writer_contract(module, cleanup: list[Path]) -> None:
+    fake = repo_temp_module(
+        ".drill-writer-data-authority-negative-",
+        canonical_writer_module(contract="contracts/operations/recovery-objectives-admission-contract.v1.json"),
+    )
+    cleanup.append(fake)
+    module.WRITER = fake
+
+
 def substitute_writer_registry(module, cleanup: list[Path]) -> None:
     fake = repo_temp_module(
         ".drill-writer-data-authority-negative-",
@@ -105,10 +128,55 @@ def substitute_writer_registry(module, cleanup: list[Path]) -> None:
     module.WRITER = fake
 
 
+def substitute_writer_gen_registry(module, cleanup: list[Path]) -> None:
+    fake = repo_temp_module(
+        ".drill-writer-data-authority-negative-",
+        canonical_writer_module(gen_registry="contracts/operations/backup-restore-drill-request-registry.v1.json"),
+    )
+    cleanup.append(fake)
+    module.WRITER = fake
+
+
+def substitute_writer_objectives_registry(module, cleanup: list[Path]) -> None:
+    fake = repo_temp_module(
+        ".drill-writer-data-authority-negative-",
+        canonical_writer_module(objectives_registry="contracts/operations/production-equivalent-environment-generation-registry.v1.json"),
+    )
+    cleanup.append(fake)
+    module.WRITER = fake
+
+
 def substitute_reconciler_objective(module, cleanup: list[Path]) -> None:
     fake = repo_temp_module(
         ".drill-reconcile-authority-negative-",
         canonical_reconciler_module(objectives_writer="validate-memory-os-backup-restore-drill-request.py"),
+    )
+    cleanup.append(fake)
+    module.RECONCILER = fake
+
+
+def substitute_reconciler_contract(module, cleanup: list[Path]) -> None:
+    fake = repo_temp_module(
+        ".drill-reconcile-data-authority-negative-",
+        canonical_reconciler_module(contract="contracts/operations/recovery-objectives-admission-contract.v1.json"),
+    )
+    cleanup.append(fake)
+    module.RECONCILER = fake
+
+
+def substitute_reconciler_gen_registry(module, cleanup: list[Path]) -> None:
+    fake = repo_temp_module(
+        ".drill-reconcile-data-authority-negative-",
+        canonical_reconciler_module(gen_registry="contracts/operations/backup-restore-drill-request-registry.v1.json"),
+    )
+    cleanup.append(fake)
+    module.RECONCILER = fake
+
+
+def substitute_reconciler_objectives_registry(module, cleanup: list[Path]) -> None:
+    fake = repo_temp_module(
+        ".drill-reconcile-data-authority-negative-",
+        canonical_reconciler_module(objectives_registry="contracts/operations/production-equivalent-environment-generation-registry.v1.json"),
     )
     cleanup.append(fake)
     module.RECONCILER = fake
@@ -140,14 +208,44 @@ def main() -> int:
         "drill request writer authority drift: ELIGIBILITY_HELPER",
     )
     expect_rejection(
+        "writer-contract-substitution",
+        substitute_writer_contract,
+        "drill request writer authority drift: CONTRACT",
+    )
+    expect_rejection(
         "writer-registry-substitution",
         substitute_writer_registry,
         "drill request writer authority drift: REGISTRY",
     )
     expect_rejection(
+        "writer-generation-registry-substitution",
+        substitute_writer_gen_registry,
+        "drill request writer authority drift: GEN_REGISTRY",
+    )
+    expect_rejection(
+        "writer-objectives-registry-substitution",
+        substitute_writer_objectives_registry,
+        "drill request writer authority drift: OBJECTIVES_REGISTRY",
+    )
+    expect_rejection(
         "reconciler-objective-substitution",
         substitute_reconciler_objective,
         "drill request reconciler authority drift: OBJECTIVES_WRITER",
+    )
+    expect_rejection(
+        "reconciler-contract-substitution",
+        substitute_reconciler_contract,
+        "drill request reconciler authority drift: CONTRACT",
+    )
+    expect_rejection(
+        "reconciler-generation-registry-substitution",
+        substitute_reconciler_gen_registry,
+        "drill request reconciler authority drift: GEN_REGISTRY",
+    )
+    expect_rejection(
+        "reconciler-objectives-registry-substitution",
+        substitute_reconciler_objectives_registry,
+        "drill request reconciler authority drift: OBJECTIVES_REGISTRY",
     )
     expect_rejection(
         "reconciler-status-substitution",
