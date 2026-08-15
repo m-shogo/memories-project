@@ -19,9 +19,9 @@ EVIDENCE_CASES: tuple[tuple[str, Path], ...] = (
     ("postgresql.restoreEvidenceRef", ROOT / "README.md"),
     ("objectStorage.restoreEvidenceRef", ROOT / "SECURITY.md"),
     ("network.latencyProfileRef", ROOT / "services/import-api/README.md"),
-    ("network.failureInjectionRef", ROOT / "contracts/operations/production-operability-status.json"),
-    ("identityAndSecrets.credentialScopeRef", ROOT / "docs/memory-os-current-authority-order-round-10-operability.md"),
-    ("backupRestore.evidenceRef", ROOT / "scripts/validate-memory-os-operability.py"),
+    ("network.failureInjectionRef", ROOT / "scripts/validate-memory-os-operability.py"),
+    ("identityAndSecrets.credentialScopeRef", ROOT / "scripts/validate-memory-os-production-equivalent-environment-record.py"),
+    ("backupRestore.evidenceRef", ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"),
     ("materialDeltas[0].independentReviewRef", ROOT / ".github/workflows/operability-contracts.yml"),
     ("evidenceBoundary.independentReviewRef", ROOT / "contracts/operations/production-equivalent-environment-generation-contract.v1.json"),
 )
@@ -144,6 +144,7 @@ def main() -> int:
     print("Environment generation source-binding negative suite PASS")
     print("environment record independently source-bound: true")
     print(f"independently source-bound evidence fields tested: {len(EVIDENCE_CASES)}")
+    print("source-binding fixtures are immutable validator/source files, not reconciled derived authority: true")
     print("source-bound environment record contract rule required: true")
     print("source-bound evidence contract rule required: true")
     print("source-bound authority mutation accepted: false")
