@@ -105,6 +105,48 @@ def validate_record(record: dict[str, Any], confirmation: str) -> None:
         require(forbidden not in serialized, f"record contains forbidden material: {forbidden}")
 
 
+def validate_registry_for_append(registry: dict[str, Any], *, validate_rows: bool = True) -> None:
+    require(registry.get("schemaVersion") == "memory-os-observability-stack-deployment-registry.v1",
+            "registry schema drift")
+    require(registry.get("appendOnly") is True, "registry must remain append-only")
+    stacks = registry.get("stacks")
+    require(isinstance(stacks, list) and all(isinstance(item, dict) for item in stacks),
+            "registry stacks invalid")
+
+    ids: set[str] = set()
+    identities: set[str] = set()
+    pe = 0
+    prod = 0
+    for index, record in enumerate(stacks):
+        if validate_rows:
+            confirmation = PRODUCTION_CONFIRMATION if record.get("environmentClass") == "PRODUCTION" else ""
+            try:
+                validate_record(record, confirmation)
+            except Exception as exc:
+                raise Fail(f"stacks[{index}] invalid: {exc}") from exc
+        stack_id = record.get("stackId")
+        identity = record.get("environmentIdentityDigest")
+        require(isinstance(stack_id, str) and stack_id not in ids,
+                f"duplicate/invalid stackId at stacks[{index}]")
+        require(isinstance(identity, str) and identity not in identities,
+                f"duplicate/invalid environment identity at stacks[{index}]")
+        ids.add(stack_id)
+        identities.add(identity)
+        pe += 1 if record.get("environmentClass") == "PRODUCTION_EQUIVALENT" else 0
+        prod += 1 if record.get("environmentClass") == "PRODUCTION" else 0
+
+    expected_counts = {
+        "admittedStackCount": len(stacks),
+        "productionEquivalentStackCount": pe,
+        "productionStackCount": prod,
+    }
+    for field, expected in expected_counts.items():
+        value = registry.get(field)
+        require(type(value) is int and value == expected, f"{field} drift")
+    require(registry.get("productionReady") is False,
+            "stack registry cannot make application productionReady")
+
+
 def atomic_write(value: dict[str, Any]) -> None:
     descriptor, temp_name = tempfile.mkstemp(prefix=".observability-stack.", suffix=".tmp", dir=REGISTRY.parent)
     try:
@@ -145,9 +187,8 @@ def main() -> int:
         os.write(lock_fd, (record["stackId"] + "\n").encode("ascii"))
         os.fsync(lock_fd)
         registry = load(REGISTRY)
-        stacks = registry.get("stacks")
-        require(isinstance(stacks, list), "registry stacks invalid")
-        require(all(isinstance(item, dict) for item in stacks), "registry contains invalid stack")
+        validate_registry_for_append(registry)
+        stacks = registry["stacks"]
         require(all(item.get("stackId") != record["stackId"] for item in stacks), "stackId already registered")
         require(all(item.get("environmentIdentityDigest") != record["environmentIdentityDigest"] for item in stacks), "environment identity already registered")
         stacks.append(record)
