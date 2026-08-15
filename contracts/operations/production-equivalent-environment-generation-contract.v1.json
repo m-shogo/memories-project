@@ -16,6 +16,7 @@
     "dependencyInventorySha256Required": true,
     "evidenceBundleManifestSha256Required": true,
     "sourceCommitShaRequired": true,
+    "sourceCommitShaMustBeAncestorOfCurrentHead": true,
     "materialDeltaLedgerSha256Required": true,
     "environmentRecordSha256Required": true,
     "environmentRecordFullSemanticValidationRequired": true,
@@ -71,6 +72,7 @@
     "mutable generation alias",
     "environment record digest mismatch",
     "missing environment record path",
+    "source commit exists but is not an ancestor of the current validation HEAD",
     "production evidence relabel"
   ],
   "currentBoundary": {
