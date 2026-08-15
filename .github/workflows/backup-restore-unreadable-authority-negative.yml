@@ -15,7 +15,10 @@ on:
       - "scripts/validate-memory-os-backup-restore-drill-request-load-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-writer-authority.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-writer-authority-negative.py"
+      - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py"
@@ -37,7 +40,10 @@ on:
       - "scripts/validate-memory-os-backup-restore-drill-request-load-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-writer-authority.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-writer-authority-negative.py"
+      - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py"
@@ -73,7 +79,10 @@ jobs:
             scripts/validate-memory-os-backup-restore-drill-request-load-negative.py \
             scripts/validate-memory-os-backup-restore-drill-request-writer-authority.py \
             scripts/validate-memory-os-backup-restore-drill-request-writer-authority-negative.py \
+            scripts/register-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py \
+            scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority-negative.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py \
@@ -85,6 +94,8 @@ jobs:
           python scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py
           python scripts/validate-memory-os-backup-restore-drill-request-load-negative.py
           python scripts/validate-memory-os-backup-restore-drill-request-writer-authority-negative.py
+          python scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py
+          python scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority-negative.py
           python scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py
           python scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py
           python scripts/validate-memory-os-backup-restore-admission-chain-load-negative.py
