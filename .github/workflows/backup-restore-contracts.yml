@@ -7,9 +7,11 @@ on:
       - ".github/workflows/local-logical-restore.yml"
       - ".github/workflows/reconcile-backup-restore.yml"
       - "contracts/operations/backup-restore-contract.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
       - "contracts/operations/local-logical-restore-contract.v1.json"
       - "contracts/operations/migration-lifecycle-contract.v1.json"
       - "contracts/operations/production-operability-status.json"
+      - "docs/evidence/backup-restore/**"
       - "docs/runbooks/memory-os-backup-restore.md"
       - "infra/postgresql/security/**"
       - "scripts/memory_os_backup_restore_blockers.py"
@@ -18,6 +20,7 @@ on:
       - "scripts/reconcile-memory-os-local-logical-restore.py"
       - "scripts/validate-memory-os-backup-restore.py"
       - "scripts/validate-memory-os-backup-restore-blockers-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
       - "scripts/reconcile-memory-os-backup-restore.py"
       - "scripts/reconcile-memory-os-backup-authority.py"
       - "scripts/reconcile-memory-os-backup-semantic-overlay.py"
@@ -30,9 +33,11 @@ on:
       - ".github/workflows/local-logical-restore.yml"
       - ".github/workflows/reconcile-backup-restore.yml"
       - "contracts/operations/backup-restore-contract.v1.json"
+      - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
       - "contracts/operations/local-logical-restore-contract.v1.json"
       - "contracts/operations/migration-lifecycle-contract.v1.json"
       - "contracts/operations/production-operability-status.json"
+      - "docs/evidence/backup-restore/**"
       - "docs/runbooks/memory-os-backup-restore.md"
       - "infra/postgresql/security/**"
       - "scripts/memory_os_backup_restore_blockers.py"
@@ -41,6 +46,7 @@ on:
       - "scripts/reconcile-memory-os-local-logical-restore.py"
       - "scripts/validate-memory-os-backup-restore.py"
       - "scripts/validate-memory-os-backup-restore-blockers-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
       - "scripts/reconcile-memory-os-backup-restore.py"
       - "scripts/reconcile-memory-os-backup-authority.py"
       - "scripts/reconcile-memory-os-backup-semantic-overlay.py"
@@ -77,6 +83,7 @@ jobs:
             scripts/reconcile-memory-os-local-logical-restore.py \
             scripts/validate-memory-os-backup-restore.py \
             scripts/validate-memory-os-backup-restore-blockers-negative.py \
+            scripts/validate-memory-os-backup-restore-generation-independent-review.py \
             scripts/reconcile-memory-os-backup-restore.py \
             scripts/reconcile-memory-os-backup-authority.py \
             scripts/reconcile-memory-os-backup-semantic-overlay.py \
@@ -88,6 +95,9 @@ jobs:
 
       - name: Validate canonical blocker negatives
         run: python scripts/validate-memory-os-backup-restore-blockers-negative.py
+
+      - name: Validate generation recovery independent reviews
+        run: python scripts/validate-memory-os-backup-restore-generation-independent-review.py
 
       - name: Validate local logical restore foundation
         run: python scripts/validate-memory-os-local-logical-restore.py
