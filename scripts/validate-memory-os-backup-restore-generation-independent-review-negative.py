@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Negative suite for typed, append-only generation independent reviews."""
+"""Negative suite for typed, append-only generation candidate reviews."""
 
 from __future__ import annotations
 
@@ -64,6 +64,7 @@ def base_row() -> dict:
         "recoveryObjectivesId": "ro_negative_review_authority",
         "sourceEnvironmentGenerationId": "pegen_negative_source",
         "restoreTargetGenerationId": "pegen_negative_target",
+        "materialDeltaReviewRef": "docs/evidence/backup-restore/material-delta/synthetic-review.json",
         "securityReviewRef": "README.md",
         "operabilityReviewRef": "SECURITY.md",
     }
@@ -148,6 +149,44 @@ def expect_contract_fail(module, mutate, label: str) -> None:
         module.load_json = original_load_json
 
 
+def expect_material_delta_candidate_delegation(module) -> None:
+    class RejectMaterialDelta:
+        @staticmethod
+        def material_delta_review_approved(_row):
+            raise module.Fail("synthetic material-delta rejection")
+
+    original_loader = module.load_material_delta_validator
+    original_validate_review = module.validate_review
+    try:
+        module.load_material_delta_validator = lambda: RejectMaterialDelta()
+        module.validate_review = lambda _row, ref_field, _role: (
+            f"docs/evidence/backup-restore/{ref_field}.json",
+            "reviewer-security" if ref_field == "securityReviewRef" else "reviewer-operability",
+        )
+        try:
+            module.candidate_reviews_approved(base_row())
+        except module.Fail as exc:
+            require("material-delta review authority invalid" in str(exc), f"unexpected material-delta delegation rejection: {exc}")
+            return
+        raise Fail("candidate review authority bypassed material-delta rejection")
+    finally:
+        module.load_material_delta_validator = original_loader
+        module.validate_review = original_validate_review
+
+
+def expect_material_delta_validator_substitution(module) -> None:
+    original = module.MATERIAL_DELTA_VALIDATOR
+    try:
+        module.MATERIAL_DELTA_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+        try:
+            module.load_material_delta_validator()
+        except module.Fail:
+            return
+        raise Fail("substituted candidate material-delta validator was accepted")
+    finally:
+        module.MATERIAL_DELTA_VALIDATOR = original
+
+
 def main() -> int:
     module = load_validator()
 
@@ -161,6 +200,9 @@ def main() -> int:
     production_boundary = registry(base_row())
     production_boundary["productionReady"] = True
     expect_fail(module, production_boundary, "productionReady promotion")
+
+    expect_material_delta_candidate_delegation(module)
+    expect_material_delta_validator_substitution(module)
 
     for field in module.BOUND_FIELDS:
         expect_bound_field_fail(module, field)
@@ -204,6 +246,11 @@ def main() -> int:
     )
     expect_contract_fail(
         module,
+        lambda contract: contract.__setitem__("materialDeltaReviewValidator", "scripts/validate-memory-os-backup-restore-generation-evidence.py"),
+        "candidate material-delta validator substituted",
+    )
+    expect_contract_fail(
+        module,
         lambda contract: contract["independentReviewRoles"].__setitem__("securityReviewRef", "OPERABILITY"),
         "review role map substituted",
     )
@@ -224,7 +271,7 @@ def main() -> int:
     finally:
         module.git_history = original_history
 
-    print("PASS: generation independent review negatives reject generic refs, review reuse, authority mismatch, malformed timestamps, unsafe reviewer identities, candidate authority delegation drift, contract drift, post-commit edits, and production promotion")
+    print("PASS: generation candidate review negatives reject generic refs, review reuse, material-delta bypass/substitution, authority mismatch, malformed timestamps, unsafe reviewer identities, contract drift, post-commit edits, and production promotion")
     return 0
 
 
