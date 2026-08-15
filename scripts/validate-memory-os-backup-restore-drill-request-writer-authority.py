@@ -90,7 +90,14 @@ def main() -> int:
         "drill request reconciler",
     )
 
+    try:
+        registry = writer.load(EXPECTED_REGISTRY)
+        writer.validate_registry_for_append(registry)
+    except writer.Fail as exc:
+        raise Fail(f"canonical drill request append-only registry authority invalid: {exc}") from exc
+
     print("PASS: drill request writer and reconciler executable/data/lock authorities are canonical")
+    print("PASS: canonical drill request append-only registry including approval evidence digests is valid")
     return 0
 
 
