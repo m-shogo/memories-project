@@ -50,6 +50,20 @@ def main() -> int:
     validator = load_module(VALIDATOR, "memory_os_typed_non_resurrection_load_negative")
     require(writer.canonical_repo_file(WRITER, "typed evidence writer") == WRITER, "canonical typed writer path rejected")
 
+    original_lock = writer.LOCK
+    original_validator_loader = validator.load_module
+    try:
+        writer.LOCK = ROOT / "contracts/operations/.backup-restore-generation-evidence.lock"
+        def substituted_loader(path: Path, name: str):
+            if path == WRITER:
+                return writer
+            return original_validator_loader(path, name)
+        validator.load_module = substituted_loader
+        expect_domain_fail("typed writer append lock authority substitution", validator.main, validator.Fail)
+    finally:
+        writer.LOCK = original_lock
+        validator.load_module = original_validator_loader
+
     with tempfile.TemporaryDirectory(prefix=".tmp-typed-load-", dir=TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
 
@@ -117,6 +131,7 @@ def main() -> int:
 
     print("Typed unreadable/escaped-authority negative suite PASS")
     print("canonical typed contract/registry/generation registry containment: enforced")
+    print("typed append lock authority substitution accepted: false")
     return 0
 
 
