@@ -89,34 +89,62 @@ jobs:
         if: steps.eligibility.outputs.exit_code == '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
-          # Generation records can reference repository-contained environment
-          # evidence dynamically. Require the exact validated branch head before
-          # committing semantic eligibility so a concurrent change can never be
-          # replayed as current preflight authority.
-          git fetch origin so
-          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
-            echo "so advanced after semantic eligibility validation; refusing stale derived authority."
-            exit 75
-          fi
-          git rm -f docs/fixtures/memory-os-operability/production-equivalent-environment-eligibility-diagnostic.last.json 2>/dev/null || true
-          git add contracts/operations/production-equivalent-environment-eligibility-contract.v1.json
-          git add -u docs/fixtures/memory-os-operability/production-equivalent-environment-eligibility-diagnostic.last.json 2>/dev/null || true
-          if ! git diff --cached --quiet; then
+          log=/tmp/production-equivalent-environment-eligibility.log
+
+          revalidate_latest_eligibility() {
+            git fetch origin so
+            git reset --hard origin/so
+            SOURCE_SHA="$(git rev-parse HEAD)"
+            export SOURCE_SHA
+            : > "$log"
+            python scripts/validate-memory-os-environment-generation-eligibility-negative.py >> "$log" 2>&1
+            python scripts/validate-memory-os-production-equivalent-environment-eligibility-reconcile-negative.py >> "$log" 2>&1
+            python scripts/reconcile-memory-os-production-equivalent-environment-eligibility.py >> "$log" 2>&1
+            python scripts/validate-memory-os-production-equivalent-environment-eligibility.py >> "$log" 2>&1
+          }
+
+          for reconcile_attempt in 1 2; do
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              if [[ "$reconcile_attempt" == "2" ]]; then
+                echo "Semantic eligibility source HEAD changed again during bounded retry; refusing stale derived authority."
+                exit 75
+              fi
+              echo "Semantic eligibility source advanced; regenerating and revalidating once from latest so."
+              revalidate_latest_eligibility
+            fi
+
+            git rm -f docs/fixtures/memory-os-operability/production-equivalent-environment-eligibility-diagnostic.last.json 2>/dev/null || true
+            git add contracts/operations/production-equivalent-environment-eligibility-contract.v1.json
+            git add -u docs/fixtures/memory-os-operability/production-equivalent-environment-eligibility-diagnostic.last.json 2>/dev/null || true
+            if git diff --cached --quiet; then
+              exit 0
+            fi
+
             git diff --cached --check
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(ops): reconcile environment generation eligibility"
-            for attempt in 1 2 3 4; do
-              git fetch origin so
-              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
-                echo "so advanced after semantic eligibility validation; refusing stale derived authority."
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              if [[ "$reconcile_attempt" == "2" ]]; then
+                echo "Semantic eligibility source HEAD changed again after bounded retry validation; refusing stale derived authority."
                 exit 75
               fi
-              if git push origin HEAD:so; then exit 0; fi
-              sleep 2
-            done
-            exit 1
-          fi
+              echo "Semantic eligibility source advanced after validation; discarding stale eligibility commit and retrying from latest so."
+              revalidate_latest_eligibility
+              continue
+            fi
+            if git push origin HEAD:so; then
+              exit 0
+            fi
+            if [[ "$reconcile_attempt" == "2" ]]; then
+              exit 1
+            fi
+            echo "Semantic eligibility push raced with another writer; retrying once from latest so."
+            revalidate_latest_eligibility
+          done
+          exit 75
       - name: Record privacy-safe eligibility diagnostic
         if: steps.eligibility.outputs.exit_code != '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         env:
