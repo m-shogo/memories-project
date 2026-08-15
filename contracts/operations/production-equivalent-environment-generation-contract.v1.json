@@ -22,6 +22,7 @@
     "environmentRecordRefMustBeCanonicalRepositoryFile": true,
     "semanticValidatorImplementationErrorsMustSurface": true,
     "allNonNullEnvironmentEvidenceRefsMustResolveInRepository": true,
+    "allNonNullEnvironmentEvidenceRefsMustMatchSourceCommitSha": true,
     "equivalentEnvironmentRequiresIndependentReviewEvidence": true,
     "restoreEvidenceGenerationMustMatch": true,
     "loadEvidenceGenerationMustMatch": true,
