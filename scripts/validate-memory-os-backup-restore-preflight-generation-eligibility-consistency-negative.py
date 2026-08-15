@@ -153,8 +153,16 @@ def main() -> int:
             lambda state: state["objectives"].__setitem__("appendOnly", False),
         ),
         (
+            "objective production evidence promotion",
+            lambda state: state["objectives"].__setitem__("productionEvidence", True),
+        ),
+        (
             "objective production readiness promotion",
             lambda state: state["objectives"].__setitem__("productionReady", True),
+        ),
+        (
+            "boolean registered request count",
+            lambda state: state["drill"].__setitem__("registeredRequestCount", True),
         ),
         (
             "boolean current executable request count",
@@ -175,6 +183,10 @@ def main() -> int:
         (
             "drill production evidence promotion",
             lambda state: state["drill"].__setitem__("productionEvidence", True),
+        ),
+        (
+            "drill production readiness promotion",
+            lambda state: state["drill"].__setitem__("productionReady", True),
         ),
     ]
 
