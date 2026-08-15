@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,35 @@ def exists(relative: str) -> bool:
 
 def valid_count(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def canonical_registry_validator(script_name: str, module_name: str):
+    path = ROOT / "scripts" / script_name
+    try:
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise SystemExit(f"canonical registry validator missing or escapes repository: {script_name}") from exc
+    if resolved != Path("scripts") / script_name or not path.is_file():
+        raise SystemExit(f"canonical registry validator path drift: {script_name}")
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"cannot load canonical registry validator: {script_name}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    validator = getattr(module, "validate_registry_for_append", None)
+    if not callable(validator):
+        raise SystemExit(f"canonical registry validator missing validate_registry_for_append: {script_name}")
+    return validator
+
+
+def require_canonical_registry(script_name: str, module_name: str, registry: dict[str, Any], label: str) -> None:
+    validator = canonical_registry_validator(script_name, module_name)
+    try:
+        validator(registry)
+    except RuntimeError as exc:
+        if exc.__class__.__name__ == "Fail":
+            raise SystemExit(f"{label} invalid: {exc}") from exc
+        raise
 
 
 def p0_status(status: dict[str, Any], area_id: str) -> dict[str, Any]:
@@ -64,6 +94,43 @@ def main() -> int:
     clients = load("contracts/operations/client-baseline-registry.v1.json")
     parsers = load("contracts/operations/parser-artifact-registry.v1.json")
     failure_drills = load("contracts/operations/production-shaped-failure-drill-registry.v1.json")
+
+    require_canonical_registry(
+        "register-memory-os-production-equivalent-environment-generation.py",
+        "memory_os_environment_generation_inventory_generator_authority",
+        generations,
+        "environment generation registry",
+    )
+    require_canonical_registry(
+        "register-memory-os-recovery-objectives.py",
+        "memory_os_recovery_objective_inventory_generator_authority",
+        recovery_objectives,
+        "recovery objective registry",
+    )
+    require_canonical_registry(
+        "request-memory-os-backup-restore-drill.py",
+        "memory_os_drill_request_inventory_generator_authority",
+        backup_drill_requests,
+        "drill request registry",
+    )
+    require_canonical_registry(
+        "register-memory-os-backup-restore-generation-evidence.py",
+        "memory_os_generation_evidence_inventory_generator_authority",
+        backup_recovery,
+        "generation recovery evidence registry",
+    )
+    require_canonical_registry(
+        "register-memory-os-backup-restore-non-resurrection-evidence.py",
+        "memory_os_typed_non_resurrection_inventory_generator_authority",
+        backup_non_resurrection,
+        "typed non-resurrection registry",
+    )
+    require_canonical_registry(
+        "register-memory-os-backup-restore-promotion-review.py",
+        "memory_os_promotion_review_inventory_generator_authority",
+        backup_promotion_reviews,
+        "human promotion review registry",
+    )
 
     human_tabletop_count = len(list((ROOT / "docs/evidence/incident-tabletops").glob("IR-DRILL-*.json")))
     load_ready = load_contract.get("readiness")
