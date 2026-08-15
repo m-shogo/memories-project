@@ -50,6 +50,8 @@ def require_canonical_registry(path: Path) -> None:
 
 def load_generation_writer():
     writer = canonical_repo_file(GEN_WRITER, "generation writer")
+    expected = (ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py").resolve(strict=True)
+    require(writer.resolve(strict=True) == expected, "generation writer executable authority drift")
     spec = importlib.util.spec_from_file_location("memory_os_generation_writer_for_eligibility", writer)
     require(spec is not None and spec.loader is not None, "cannot load generation writer")
     module = importlib.util.module_from_spec(spec)
@@ -144,6 +146,7 @@ def main() -> int:
     print(f"distinct preflight-eligible environments: {state['distinctPreflightEligibleEnvironmentCount']}")
     print(f"eligible directed restore pairs: {state['eligibleDirectedPairCount']}")
     print("canonical generation registry identity required for default derivation: true")
+    print("generation writer executable authority pinned: true")
     print("generation registry validation delegated to canonical writer: true")
     print("generation registry schema drift accepted: false")
     print("generation registry class drift accepted: false")
