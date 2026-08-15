@@ -17,6 +17,7 @@ EXPECTED_OBJECTIVES_REGISTRY = ROOT / "contracts/operations/recovery-objectives-
 EXPECTED_STATUS = ROOT / "contracts/operations/production-operability-status.json"
 EXPECTED_ELIGIBILITY_HELPER = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
 EXPECTED_OBJECTIVES_WRITER = ROOT / "scripts/register-memory-os-recovery-objectives.py"
+EXPECTED_LOCK = ROOT / "contracts/operations/.backup-restore-drill-request.lock"
 
 
 class Fail(RuntimeError):
@@ -69,6 +70,9 @@ def main() -> int:
         },
         "drill request writer",
     )
+    writer_lock = getattr(writer, "LOCK", None)
+    require(writer_lock == EXPECTED_LOCK, "drill request writer authority drift: LOCK")
+    require(writer_lock.parent == EXPECTED_REGISTRY.parent, "drill request writer lock must share registry authority directory")
 
     require_module_authorities(
         reconciler,
@@ -86,7 +90,7 @@ def main() -> int:
         "drill request reconciler",
     )
 
-    print("PASS: drill request writer and reconciler executable/data authorities are canonical")
+    print("PASS: drill request writer and reconciler executable/data/lock authorities are canonical")
     return 0
 
 
