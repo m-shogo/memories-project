@@ -33,6 +33,8 @@ on:
       - "scripts/reconcile-memory-os-backup-restore-drill-request.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py"
@@ -83,6 +85,8 @@ on:
       - "scripts/reconcile-memory-os-backup-restore-drill-request.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py"
@@ -165,6 +169,8 @@ jobs:
           scripts/reconcile-memory-os-backup-restore-drill-request.py
           scripts/register-memory-os-backup-restore-generation-evidence.py
           scripts/validate-memory-os-backup-restore-generation-evidence.py
+          scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py
+          scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority-negative.py
           scripts/validate-memory-os-backup-restore-generation-evidence-negative.py
           scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py
           scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py
@@ -204,6 +210,8 @@ jobs:
             scripts/reconcile-memory-os-backup-restore-drill-request.py \
             scripts/register-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py \
+            scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority-negative.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-negative.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py \
@@ -224,6 +232,8 @@ jobs:
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-equivalent-environment-generation.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-request.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-backup-non-resurrection-authority.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1 || code=$?; fi
@@ -256,6 +266,8 @@ jobs:
             python scripts/validate-memory-os-production-equivalent-environment-generation.py >> "$log" 2>&1
             python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-drill-request.py >> "$log" 2>&1
+            python scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py >> "$log" 2>&1
+            python scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority-negative.py >> "$log" 2>&1
             python scripts/reconcile-memory-os-backup-non-resurrection-authority.py >> "$log" 2>&1
             python scripts/reconcile-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1
