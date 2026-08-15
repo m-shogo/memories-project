@@ -59,6 +59,7 @@ jobs:
 
       - name: Commit normalized incident authority
         run: |
+          source_sha="$(git rev-parse HEAD)"
           git add \
             contracts/operations/incident-control-exercise-contract.v1.json \
             contracts/operations/production-operability-status.json
@@ -69,5 +70,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "docs(incident): normalize automated control exercise"
-          git pull --rebase origin so
+          remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
+          if [ "$remote_sha" != "$source_sha" ]; then
+            echo "Incident authority source is stale: validated $source_sha but so is $remote_sha" >&2
+            exit 75
+          fi
           git push origin HEAD:so
