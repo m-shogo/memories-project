@@ -22,10 +22,13 @@ on:
       - "scripts/validate-memory-os-operability-admission-inventory.py"
       - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/request-memory-os-backup-restore-drill.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request.py"
+      - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
+      - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding-negative.py"
-      - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
       - "scripts/reconcile-memory-os-backup-restore-admission-chain.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-negative.py"
@@ -35,7 +38,9 @@ on:
       - "scripts/validate-memory-os-backup-restore-promotion-review-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-promotion-review.py"
       - ".github/workflows/backup-restore-generation-binding.yml"
+      - ".github/workflows/backup-restore-drill-request.yml"
       - ".github/workflows/backup-restore-drill-preflight.yml"
+      - ".github/workflows/backup-restore-preflight-generation-eligibility-consistency.yml"
       - ".github/workflows/backup-restore-promotion-review.yml"
       - ".github/workflows/operability-admission-request-authority.yml"
   pull_request:
@@ -57,10 +62,13 @@ on:
       - "scripts/validate-memory-os-operability-admission-inventory.py"
       - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/request-memory-os-backup-restore-drill.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request.py"
+      - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
+      - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding-negative.py"
-      - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
       - "scripts/reconcile-memory-os-backup-restore-admission-chain.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-negative.py"
@@ -70,7 +78,9 @@ on:
       - "scripts/validate-memory-os-backup-restore-promotion-review-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-promotion-review.py"
       - ".github/workflows/backup-restore-generation-binding.yml"
+      - ".github/workflows/backup-restore-drill-request.yml"
       - ".github/workflows/backup-restore-drill-preflight.yml"
+      - ".github/workflows/backup-restore-preflight-generation-eligibility-consistency.yml"
       - ".github/workflows/backup-restore-promotion-review.yml"
       - ".github/workflows/operability-admission-request-authority.yml"
   workflow_dispatch:
@@ -94,6 +104,11 @@ jobs:
             git diff --exit-code -- contracts/operations/operability-admission-inventory.v1.json
           fi
           python scripts/validate-memory-os-operability-admission-inventory.py
+      - name: Validate restore planning and preflight authorities
+        run: |
+          python scripts/validate-memory-os-backup-restore-drill-request.py
+          python scripts/validate-memory-os-backup-restore-drill-preflight.py
+          python scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py
       - name: Validate backup/restore admission chain negatives
         run: |
           python scripts/validate-memory-os-backup-restore-admission-chain-negative.py
