@@ -8,6 +8,7 @@ on:
       - ".github/workflows/reconcile-incident-control-authority.yml"
       - "docs/fixtures/memory-os-operability/incident-control-exercise-results.sample.v1.json"
       - "scripts/reconcile-memory-os-incident-control-authority.py"
+      - "scripts/validate-memory-os-incident-control-authority-reconcile-negative.py"
       - "scripts/validate-memory-os-incident-control-exercise.py"
   schedule:
     - cron: "37 22 * * *"
@@ -46,7 +47,9 @@ jobs:
         run: |
           python -m py_compile \
             scripts/reconcile-memory-os-incident-control-authority.py \
+            scripts/validate-memory-os-incident-control-authority-reconcile-negative.py \
             scripts/validate-memory-os-incident-control-exercise.py
+          python scripts/validate-memory-os-incident-control-authority-reconcile-negative.py
           python scripts/reconcile-memory-os-incident-control-authority.py
           python scripts/reconcile-memory-os-incident-control-authority.py --check
           python scripts/validate-memory-os-incident-control-exercise.py
