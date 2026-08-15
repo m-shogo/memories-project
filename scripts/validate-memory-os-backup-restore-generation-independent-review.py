@@ -2,8 +2,9 @@
 """Fail-closed validation for generation recovery candidate independent reviews.
 
 Security and Operability review payloads must be typed, distinct, repository-contained,
-and append-only in Git history after their first committed version. This validator never
-creates review evidence or production authority.
+append-only in Git history after their first committed version, and bound to the exact
+recovery authority they approve. This validator never creates review evidence or
+production authority.
 """
 
 from __future__ import annotations
@@ -19,6 +20,10 @@ EVIDENCE_ROOT = Path("docs/evidence/backup-restore")
 REQUIRED_FIELDS = {
     "schemaVersion",
     "evidenceId",
+    "drillRequestId",
+    "recoveryObjectivesId",
+    "sourceEnvironmentGenerationId",
+    "restoreTargetGenerationId",
     "reviewRole",
     "reviewResult",
     "reviewedAt",
@@ -27,6 +32,13 @@ REQUIRED_FIELDS = {
     "productionCredentialsUsed",
     "automaticPromotion",
 }
+BOUND_FIELDS = (
+    "evidenceId",
+    "drillRequestId",
+    "recoveryObjectivesId",
+    "sourceEnvironmentGenerationId",
+    "restoreTargetGenerationId",
+)
 ROLE_BY_REF = {
     "securityReviewRef": "SECURITY",
     "operabilityReviewRef": "OPERABILITY",
@@ -95,14 +107,13 @@ def require_append_only_review(ref: str, path: Path, field: str) -> None:
 
 
 def validate_review(row: dict[str, Any], ref_field: str, expected_role: str) -> tuple[str, str]:
-    evidence_id = row.get("evidenceId")
-    require(isinstance(evidence_id, str) and evidence_id, "evidenceId required")
     ref, path = canonical_ref(row.get(ref_field), ref_field)
     require_append_only_review(ref, path, ref_field)
     payload = load_json(path, ref_field)
     require(set(payload) == REQUIRED_FIELDS, f"{ref_field} typed review fields drift")
     require(payload.get("schemaVersion") == "memory-os-backup-restore-generation-review-evidence.v1", f"{ref_field} schemaVersion drift")
-    require(payload.get("evidenceId") == evidence_id, f"{ref_field} evidenceId mismatch")
+    for field in BOUND_FIELDS:
+        require(payload.get(field) == row.get(field), f"{ref_field} {field} mismatch")
     require(payload.get("reviewRole") == expected_role, f"{ref_field} reviewRole mismatch")
     require(payload.get("reviewResult") == "APPROVED", f"{ref_field} review must be APPROVED")
     reviewer = payload.get("reviewerPseudonym")
