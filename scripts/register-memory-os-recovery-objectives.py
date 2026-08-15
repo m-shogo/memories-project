@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -23,6 +24,7 @@ LOCK = CANONICAL_LOCK
 CANONICAL_APPROVAL_DIR = ROOT / "docs/evidence/recovery-objectives/approvals"
 APPROVAL_DIR = CANONICAL_APPROVAL_DIR
 OBJECTIVE_ID = re.compile(r"^ro_[a-z0-9][a-z0-9_-]{7,63}$")
+SHA256 = re.compile(r"^[0-9a-f]{64}$")
 PLACEHOLDER_METHODS = {
     "tbd", "todo", "unknown", "default", "n/a", "na", "later", "pending",
     "none", "not defined", "not_defined",
@@ -139,6 +141,14 @@ def approval_ref(value: Any) -> str:
     return ref
 
 
+def approval_sha256(ref: str) -> str:
+    try:
+        payload = (ROOT / ref).read_bytes()
+    except (FileNotFoundError, OSError) as exc:
+        raise Fail(f"approval evidence cannot be hashed: {ref}") from exc
+    return hashlib.sha256(payload).hexdigest()
+
+
 def approval_document(ref: str, record: dict[str, Any], approved_at: datetime) -> dict[str, Any]:
     document = load(ROOT / ref)
     require(set(document) == APPROVAL_FIELDS, "approval evidence field drift")
@@ -221,9 +231,11 @@ def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any
     require(registry.get("productionReady") is False, "objectives registry productionReady must remain false")
     rows = registry.get("records")
     count = registry.get("approvedObjectiveCount")
+    digest_map = registry.get("approvalEvidenceDigestsByObjectiveId")
     require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "objectives records invalid")
     require(isinstance(count, int) and not isinstance(count, bool), "approvedObjectiveCount must be a non-boolean integer")
     require(count == len(rows), "approvedObjectiveCount drift")
+    require(isinstance(digest_map, dict), "approval evidence digest map invalid")
     ids: set[str] = set()
     previous: str | None = None
     for row in rows:
@@ -232,7 +244,16 @@ def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any
         require(isinstance(objective_id, str) and objective_id not in ids, f"duplicate objectiveId: {objective_id}")
         ids.add(objective_id)
         require(row.get("supersedesObjectiveId") == previous, "recovery objective supersession chain drift")
+        refs = row.get("approvalEvidenceRefs")
+        digests = digest_map.get(objective_id)
+        require(isinstance(refs, list) and isinstance(digests, dict), f"approval evidence digest authority missing: {objective_id}")
+        require(set(digests) == set(refs), f"approval evidence digest refs drift: {objective_id}")
+        for ref in refs:
+            digest = digests.get(ref)
+            require(isinstance(digest, str) and SHA256.fullmatch(digest), f"approval evidence digest invalid: {objective_id}")
+            require(digest == approval_sha256(ref), f"approval evidence content drift: {objective_id}: {ref}")
         previous = objective_id
+    require(set(digest_map) == ids, "approval evidence digest objective set drift")
     require(registry.get("currentObjectiveId") == previous, "currentObjectiveId must equal latest append-only record")
     limitations = registry.get("limitations")
     require(
@@ -287,14 +308,20 @@ def main() -> int:
         require(all(row.get("objectiveId") != record["objectiveId"] for row in rows), "objectiveId already registered")
         expected_supersedes = rows[-1].get("objectiveId") if rows else None
         require(record.get("supersedesObjectiveId") == expected_supersedes, "supersedesObjectiveId must reference current approved objectives")
+        objective_id = record["objectiveId"]
+        refs = record["approvalEvidenceRefs"]
+        digest_map = registry["approvalEvidenceDigestsByObjectiveId"]
+        require(objective_id not in digest_map, "objective approval digest authority already registered")
+        digest_map[objective_id] = {ref: approval_sha256(ref) for ref in refs}
         rows.append(record)
         registry["approvedObjectiveCount"] = len(rows)
-        registry["currentObjectiveId"] = record["objectiveId"]
+        registry["currentObjectiveId"] = objective_id
         registry["limitations"] = [
             "approved objectives are policy targets, not restore evidence",
             "objective values are supplied by reviewed human authority and are never chosen or defaulted by this writer",
             "the current objective requires distinct typed Recovery Owner and Operability approvals bound to the exact objectiveId and RPO/RTO/skew values",
             "production approval evidence is accepted only from the dedicated recovery-objective approval authority directory; arbitrary repository files are forbidden",
+            "typed approval evidence bytes are SHA-256 bound into the append-only objective registry and later mutation is rejected",
             "measurement methods must be concrete non-placeholder descriptions and owner evidence must remain distinct from approval evidence",
             "measured recovery evidence must reference the exact current objectiveId",
             "objective approval does not establish production readiness"
@@ -308,6 +335,7 @@ def main() -> int:
             pass
     print(f"Registered recovery objectives: {record['objectiveId']}")
     print("Typed Recovery Owner/Operability approvals bound to objective: true")
+    print("Approval evidence content SHA-256 bound: true")
     print("Arbitrary repository approval files accepted: false")
     print("Objective values chosen by writer: false")
     print("Production evidence: false")
