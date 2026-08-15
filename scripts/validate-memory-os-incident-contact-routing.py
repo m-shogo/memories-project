@@ -14,6 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/incident-contact-routing-admission-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/incident-contact-routing-admission-registry.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-incident-contact-routing.py"
+OBS_REGISTRY = ROOT / "contracts/operations/observability-stack-deployment-registry.v1.json"
+OBS_WRITER = ROOT / "scripts/register-memory-os-observability-stack-deployment.py"
 
 
 class Fail(RuntimeError):
@@ -40,6 +42,10 @@ def load_writer() -> ModuleType:
             "contact routing writer contract authority drift")
     require(getattr(module, "REGISTRY", None) == REGISTRY,
             "contact routing writer registry authority drift")
+    require(getattr(module, "OBS_REGISTRY", None) == OBS_REGISTRY,
+            "contact routing observability registry authority drift")
+    require(getattr(module, "OBS_WRITER", None) == OBS_WRITER,
+            "contact routing observability executable authority drift")
     require(callable(getattr(module, "validate_registry_for_append", None)),
             "contact routing writer registry validator missing")
     return module
@@ -52,6 +58,7 @@ def main() -> int:
     require(contract.get("recordSchemaVersion") == "memory-os-incident-contact-routing-record.v1", "record schema drift")
     require(contract.get("registryPath") == str(REGISTRY.relative_to(ROOT)), "registry binding drift")
     require(contract.get("writer") == str(WRITER.relative_to(ROOT)), "writer binding drift")
+    require(contract.get("sourceObservabilityStackRegistry") == str(OBS_REGISTRY.relative_to(ROOT)), "observability registry contract binding drift")
     required_classes = contract.get("requiredContactClasses")
     require(required_classes == [
         "INCIDENT_COMMAND",
