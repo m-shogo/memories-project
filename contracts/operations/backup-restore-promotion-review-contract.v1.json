@@ -3,7 +3,8 @@
   "schemaVersion": "memory-os-backup-restore-promotion-review-contract.v1",
   "recordSchemaVersion": "memory-os-backup-restore-promotion-review-record.v2",
   "reviewEvidenceSchemaVersion": "memory-os-backup-restore-promotion-review-evidence.v1",
-  "description": "Append-only human review authority after a final production-equivalent recovery candidate exists. Historical review rows remain auditable after legitimate upstream supersession, while current promotion authority is revoked fail-closed. Every review row binds one rationale payload and three distinct typed human review payloads (Recovery Owner, Security and Operability) by immutable SHA-256 digests. Human review evidence must bind the exact decisionId and final recovery candidate and must remain non-automatic. A review may recommend GO, NO_GO or DEFER, but this authority never changes traffic, never writes production credentials, never creates production evidence, and never makes the application production-ready. Application production promotion remains governed separately.",
+  "reviewEvidenceRoot": "docs/evidence/backup-restore",
+  "description": "Append-only human review authority after a final production-equivalent recovery candidate exists. Historical review rows remain auditable after legitimate upstream supersession, while current promotion authority is revoked fail-closed. Every review row binds one rationale payload and three distinct typed human review payloads (Recovery Owner, Security and Operability) by immutable SHA-256 digests. Human review evidence must bind the exact decisionId and final recovery candidate, remain inside the monitored backup/restore evidence namespace and remain non-automatic. A review may recommend GO, NO_GO or DEFER, but this authority never changes traffic, never writes production credentials, never creates production evidence, and never makes the application production-ready. Application production promotion remains governed separately.",
   "registry": "contracts/operations/backup-restore-promotion-review-registry.v1.json",
   "generationEvidenceRegistry": "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
   "typedNonResurrectionRegistry": "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json",
@@ -51,6 +52,7 @@
   "rules": {
     "finalRecoveryCandidateRequired": true,
     "currentCandidatePredicateMustBeRevalidated": true,
+    "promotionEvidenceMustRemainInsideMonitoredNamespace": true,
     "threeDistinctHumanReviewRefsRequired": true,
     "threeDistinctHumanReviewerPseudonymsRequired": true,
     "typedHumanReviewEvidenceRequired": true,
