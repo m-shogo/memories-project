@@ -199,6 +199,11 @@ def main() -> int:
     )
     expect_contract_fail(
         module,
+        lambda contract: contract["recordRules"].__setitem__("candidateDerivationMustUseTypedIndependentReviewAuthority", False),
+        "candidate review authority delegation disabled",
+    )
+    expect_contract_fail(
+        module,
         lambda contract: contract["independentReviewRoles"].__setitem__("securityReviewRef", "OPERABILITY"),
         "review role map substituted",
     )
@@ -219,7 +224,7 @@ def main() -> int:
     finally:
         module.git_history = original_history
 
-    print("PASS: generation independent review negatives reject generic refs, review reuse, authority mismatch, malformed timestamps, unsafe reviewer identities, contract drift, post-commit edits, and production promotion")
+    print("PASS: generation independent review negatives reject generic refs, review reuse, authority mismatch, malformed timestamps, unsafe reviewer identities, candidate authority delegation drift, contract drift, post-commit edits, and production promotion")
     return 0
 
 
