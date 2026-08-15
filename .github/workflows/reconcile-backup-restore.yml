@@ -13,6 +13,10 @@ on:
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/validate-memory-os-backup-restore.py"
       - "scripts/reconcile-memory-os-backup-restore.py"
+      - "scripts/validate-memory-os-local-logical-restore.py"
+      - "scripts/validate-memory-os-local-object-version-restore.py"
+      - "scripts/validate-memory-os-operability.py"
+      - "scripts/validate-memory-os-entry-docs.py"
   workflow_dispatch:
 
 permissions:
