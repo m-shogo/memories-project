@@ -130,8 +130,36 @@ def main() -> int:
             lambda state: state["objectives"].__setitem__("approvedObjectiveCount", True),
         ),
         (
+            "objective schema drift",
+            lambda state: state["objectives"].__setitem__("schemaVersion", "memory-os-recovery-objectives-registry.corrupt"),
+        ),
+        (
+            "objective append-only disabled",
+            lambda state: state["objectives"].__setitem__("appendOnly", False),
+        ),
+        (
+            "objective production readiness promotion",
+            lambda state: state["objectives"].__setitem__("productionReady", True),
+        ),
+        (
             "boolean current executable request count",
             lambda state: state["drill"].__setitem__("currentExecutableRequestCount", True),
+        ),
+        (
+            "drill schema drift",
+            lambda state: state["drill"].__setitem__("schemaVersion", "memory-os-backup-restore-drill-request-registry.corrupt"),
+        ),
+        (
+            "drill registry class drift",
+            lambda state: state["drill"].__setitem__("registryClass", "CORRUPT"),
+        ),
+        (
+            "drill append-only disabled",
+            lambda state: state["drill"].__setitem__("appendOnly", False),
+        ),
+        (
+            "drill production evidence promotion",
+            lambda state: state["drill"].__setitem__("productionEvidence", True),
         ),
     ]
 
