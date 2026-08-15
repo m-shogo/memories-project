@@ -125,7 +125,8 @@ def normalize_contract(contract: dict[str, Any]) -> dict[str, Any]:
         "externalContactTreeExercised", "productionRecoveryDrillCompleted",
         "independentReviewCompleted", "productionReady",
     ):
-        readiness[field] = False
+        require(readiness.get(field) is False,
+                f"incident authority cannot auto-heal unproven readiness.{field}")
     refs = contract.get("evidenceRefs")
     require(isinstance(refs, list), "incident control evidenceRefs must be a list")
     for ref in EVIDENCE_REFS:
