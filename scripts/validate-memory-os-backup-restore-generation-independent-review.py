@@ -87,7 +87,8 @@ def validate_contract_authority() -> None:
     )
     fields = contract.get("requiredIndependentReviewEvidenceFields")
     require(
-        isinstance(fields, list)\n        and all(isinstance(field, str) and field for field in fields)
+        isinstance(fields, list)
+        and all(isinstance(field, str) and field for field in fields)
         and len(fields) == len(set(fields))
         and set(fields) == REQUIRED_FIELDS,
         "independent review required field authority drift",
