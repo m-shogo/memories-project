@@ -30,16 +30,58 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def validate_immutable_ledger_path(path: Path) -> None:
+    relative = str(path.relative_to(ROOT))
+    tracked = subprocess.run(
+        ["git", "ls-files", "--error-unmatch", "--", relative],
+        cwd=ROOT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    require(tracked.returncode == 0, f"accepted tabletop record must be committed: {path.name}")
+    history = subprocess.run(
+        ["git", "log", "--format=%H", "--", relative],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    require(history.returncode == 0, f"cannot inspect tabletop history: {path.name}")
+    commits = [line.strip() for line in history.stdout.splitlines() if line.strip()]
+    require(len(commits) == 1,
+            f"accepted tabletop record must be single-commit append-only evidence: {path.name}")
+    creation = commits[0]
+    original = subprocess.run(
+        ["git", "show", f"{creation}:{relative}"],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    require(original.returncode == 0,
+            f"accepted tabletop creation blob missing: {path.name}")
+    require(original.stdout == path.read_bytes(),
+            f"accepted tabletop record changed after admission: {path.name}")
+
+
 def main() -> int:
     contract = load(CONTRACT)
     require(contract.get("schemaVersion") == "memory-os-incident-human-tabletop-evidence.v1", "contract schema drift")
     require(contract.get("ledgerDirectory") == str(LEDGER.relative_to(ROOT)), "ledger directory drift")
     require(contract.get("writer") == str(WRITER.relative_to(ROOT)), "writer binding drift")
+    rules = contract.get("completionRules")
+    require(isinstance(rules, dict) and rules.get("sourceCommitMustBeAncestorOfAdmissionHead") is True,
+            "tabletop source lineage rule missing")
+    require(rules.get("acceptedLedgerRecordMustBeSingleCommitImmutable") is True,
+            "tabletop append-only history rule missing")
     required = set(contract.get("requiredScenarioIds", []))
     require(len(required) == 6, "required scenario count drift")
     LEDGER.mkdir(parents=True, exist_ok=True)
     scenarios: set[str] = set()
     for path in sorted(LEDGER.glob("IR-DRILL-*.json")):
+        validate_immutable_ledger_path(path)
         completed = subprocess.run(
             ["python", str(WRITER), "--record", str(path), "--validate-only"],
             cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
