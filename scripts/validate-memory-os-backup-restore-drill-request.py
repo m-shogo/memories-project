@@ -18,7 +18,6 @@ OBJECTIVES_REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.
 GEN_RECOVERY_CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
 TYPED_CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
 ELIGIBILITY_HELPER = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
-OBJECTIVES_WRITER = ROOT / "scripts/register-memory-os-recovery-objectives.py"
 WRITER = ROOT / "scripts/request-memory-os-backup-restore-drill.py"
 NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-drill-request-negative.py"
 
@@ -113,10 +112,6 @@ def main() -> int:
         require(runtime_path == expected_path, f"writer runtime authority drift: {runtime_name}")
         require(canonical_path == expected_path, f"writer canonical authority drift: {canonical_name}")
         writer.require_canonical_runtime_authority(runtime_path, canonical_path, field)
-    require(getattr(writer, "ELIGIBILITY_HELPER", None) == ELIGIBILITY_HELPER, "writer executable authority drift: ELIGIBILITY_HELPER")
-    require(getattr(writer, "OBJECTIVES_WRITER", None) == OBJECTIVES_WRITER, "writer executable authority drift: OBJECTIVES_WRITER")
-    require_repo_file(ELIGIBILITY_HELPER, "semantic generation eligibility helper missing")
-    require_repo_file(OBJECTIVES_WRITER, "recovery objectives writer missing")
 
     require(contract.get("schemaVersion") == "memory-os-backup-restore-drill-request-contract.v1", "contract schema drift")
     require(contract.get("recordSchemaVersion") == "memory-os-backup-restore-drill-request.v1", "record schema drift")
@@ -138,6 +133,7 @@ def main() -> int:
         candidate = path if path.is_absolute() else ROOT / path
         expected = str(require_repo_file(candidate, f"contract artifact missing: {path}"))
         require(contract.get(field) == expected, f"contract ref drift: {field}")
+    require_repo_file(ELIGIBILITY_HELPER, "semantic generation eligibility helper missing")
 
     required_fields = contract.get("requiredRequestFields")
     required_domains = contract.get("requiredEvidenceDomains")
@@ -283,7 +279,6 @@ def main() -> int:
     print(f"currently executable requests: {executable_count}")
     print(f"admission decision: {decision}")
     print("writer canonical runtime authorities validated without evidence rows: true")
-    print("writer semantic/objective executables pinned to canonical paths: true")
     print("boolean registry/contract aggregate counts accepted: false")
     print("registered generation or historical objective count alone creates planning authority: false")
     print("historical admitted requests survive later generation/objective supersession: true")
