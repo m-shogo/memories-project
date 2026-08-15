@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import os
@@ -21,6 +22,9 @@ GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-eviden
 LOCK = ROOT / "contracts/operations/.backup-restore-promotion-review.lock"
 DECISION_ID = re.compile(r"^brpr_[a-z0-9][a-z0-9_-]{7,63}$")
 EVIDENCE_ID = re.compile(r"^brge_[a-z0-9][a-z0-9_-]{7,63}$")
+SHA256 = re.compile(r"^[0-9a-f]{64}$")
+REVIEW_EVIDENCE_SCHEMA = "memory-os-backup-restore-promotion-review-evidence.v1"
+REVIEW_RESULT = "APPROVED"
 
 
 class Fail(RuntimeError):
@@ -89,13 +93,26 @@ def repo_ref(value: Any, field: str) -> str:
     return value
 
 
-def parse_timestamp(value: Any) -> None:
-    require(isinstance(value, str) and value.endswith("Z"), "decidedAt must be UTC RFC3339 ending in Z")
+def payload_sha256(ref: str) -> str:
+    return hashlib.sha256((ROOT / ref).read_bytes()).hexdigest()
+
+
+def require_payload_digest(record: dict[str, Any], ref_field: str, digest_field: str) -> str:
+    ref = repo_ref(record.get(ref_field), ref_field)
+    digest = record.get(digest_field)
+    require(isinstance(digest, str) and SHA256.fullmatch(digest), f"{digest_field} invalid")
+    require(digest == payload_sha256(ref), f"{digest_field} binding mismatch")
+    return ref
+
+
+def parse_timestamp(value: Any, field: str = "decidedAt") -> datetime:
+    require(isinstance(value, str) and value.endswith("Z"), f"{field} must be UTC RFC3339 ending in Z")
     try:
         parsed = datetime.fromisoformat(value[:-1] + "+00:00")
     except ValueError as exc:
-        raise Fail("decidedAt invalid") from exc
-    require(parsed.utcoffset() is not None and parsed.utcoffset().total_seconds() == 0, "decidedAt must be UTC")
+        raise Fail(f"{field} invalid") from exc
+    require(parsed.utcoffset() is not None and parsed.utcoffset().total_seconds() == 0, f"{field} must be UTC")
+    return parsed
 
 
 def registered_recovery_evidence(evidence_id: Any) -> dict[str, Any]:
@@ -132,27 +149,85 @@ def review_current(record: dict[str, Any]) -> bool:
     return True
 
 
+def validate_review_evidence(
+    record: dict[str, Any],
+    *,
+    ref_field: str,
+    digest_field: str,
+    expected_role: str,
+    required_fields: set[str],
+    decided_at: datetime,
+) -> str:
+    ref = require_payload_digest(record, ref_field, digest_field)
+    document = load(ROOT / ref)
+    require(set(document) == required_fields, f"{ref_field} review evidence field drift")
+    require(document.get("schemaVersion") == REVIEW_EVIDENCE_SCHEMA, f"{ref_field} review evidence schema drift")
+    require(document.get("decisionId") == record.get("decisionId"), f"{ref_field} decisionId binding mismatch")
+    require(document.get("recoveryEvidenceId") == record.get("recoveryEvidenceId"), f"{ref_field} recoveryEvidenceId binding mismatch")
+    require(document.get("reviewRole") == expected_role, f"{ref_field} reviewRole mismatch")
+    require(document.get("reviewResult") == REVIEW_RESULT, f"{ref_field} reviewResult must be APPROVED")
+    reviewed_at = parse_timestamp(document.get("reviewedAt"), f"{ref_field}.reviewedAt")
+    require(reviewed_at <= decided_at, f"{ref_field} review cannot post-date decision")
+    reviewer = document.get("reviewerPseudonym")
+    require(isinstance(reviewer, str), f"{ref_field} reviewerPseudonym required")
+    canonical_reviewer = reviewer.strip()
+    require(1 <= len(canonical_reviewer) <= 128 and reviewer == canonical_reviewer, f"{ref_field} reviewerPseudonym must be canonical non-empty text")
+    for field in ("productionTrafficChanged", "productionCredentialsUsed", "automaticPromotion"):
+        require(document.get(field) is False, f"{ref_field} {field} must remain false")
+    return reviewer
+
+
 def validate_record(record: dict[str, Any], *, require_current_candidate: bool = True) -> None:
     """Validate immutable review data; history does not regain current authority automatically."""
     contract = load(CONTRACT)
     required = set(contract.get("requiredRecordFields", []))
     require(required and set(record) == required, f"promotion review field set drift: {sorted(set(record) ^ required)}")
     require(record.get("schemaVersion") == contract.get("recordSchemaVersion"), "promotion review schemaVersion drift")
+    require(contract.get("reviewEvidenceSchemaVersion") == REVIEW_EVIDENCE_SCHEMA, "promotion review evidence schema contract/writer drift")
+    review_fields = set(contract.get("requiredReviewEvidenceFields", []))
+    require(review_fields, "promotion review requiredReviewEvidenceFields missing")
+    roles = contract.get("reviewRoles")
+    require(
+        isinstance(roles, dict)
+        and roles == {
+            "recoveryOwnerReviewRef": "RECOVERY_OWNER",
+            "securityReviewRef": "SECURITY",
+            "operabilityReviewRef": "OPERABILITY",
+        },
+        "promotion review role authority drift",
+    )
     decision_id = record.get("decisionId")
     require(isinstance(decision_id, str) and DECISION_ID.fullmatch(decision_id), "decisionId invalid")
     if require_current_candidate:
         recovery_candidate(record.get("recoveryEvidenceId"))
     else:
         registered_recovery_evidence(record.get("recoveryEvidenceId"))
-    parse_timestamp(record.get("decidedAt"))
+    decided_at = parse_timestamp(record.get("decidedAt"))
     decisions = contract.get("decisionValues")
     require(isinstance(decisions, list) and record.get("decision") in decisions, "decision invalid")
-    rationale = repo_ref(record.get("rationaleRef"), "rationaleRef")
-    owner = repo_ref(record.get("recoveryOwnerReviewRef"), "recoveryOwnerReviewRef")
-    security = repo_ref(record.get("securityReviewRef"), "securityReviewRef")
-    operability = repo_ref(record.get("operabilityReviewRef"), "operabilityReviewRef")
-    require(len({owner, security, operability}) == 3, "Recovery Owner, Security and Operability review refs must be distinct")
-    require(rationale not in {owner, security, operability}, "rationaleRef must be distinct from reviewer evidence")
+
+    rationale = require_payload_digest(record, "rationaleRef", "rationaleSha256")
+    review_specs = (
+        ("recoveryOwnerReviewRef", "recoveryOwnerReviewSha256"),
+        ("securityReviewRef", "securityReviewSha256"),
+        ("operabilityReviewRef", "operabilityReviewSha256"),
+    )
+    review_refs = [repo_ref(record.get(ref_field), ref_field) for ref_field, _ in review_specs]
+    require(len(set(review_refs)) == 3, "Recovery Owner, Security and Operability review refs must be distinct")
+    require(rationale not in set(review_refs), "rationaleRef must be distinct from reviewer evidence")
+    reviewers = [
+        validate_review_evidence(
+            record,
+            ref_field=ref_field,
+            digest_field=digest_field,
+            expected_role=roles[ref_field],
+            required_fields=review_fields,
+            decided_at=decided_at,
+        )
+        for ref_field, digest_field in review_specs
+    ]
+    require(len(set(reviewers)) == 3, "Recovery Owner, Security and Operability reviewers must be distinct")
+
     findings = record.get("unresolvedFindings")
     require(isinstance(findings, list), "unresolvedFindings must be list")
     finding_ids: set[str] = set()
@@ -290,6 +365,8 @@ def main() -> int:
             pass
     print(f"Registered backup/restore promotion review: {record['decisionId']}")
     print(f"review decision: {record['decision']}")
+    print("typed human review evidence: true")
+    print("human review payload digests bound: true")
     print("historical review retained on later supersession: true")
     print("traffic changed: false")
     print("production evidence: false")
