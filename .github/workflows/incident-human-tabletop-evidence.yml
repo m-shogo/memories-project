@@ -5,8 +5,13 @@ on:
     branches:
       - so
     paths:
+      - ".github/workflows/incident-human-tabletop-evidence.yml"
       - "contracts/operations/requests/incident-human-tabletop-evidence-foundation.v1.json"
+      - "contracts/operations/incident-human-tabletop-evidence-contract.v1.json"
       - "docs/evidence/incident-tabletops/*.json"
+      - "scripts/register-memory-os-incident-human-tabletop.py"
+      - "scripts/validate-memory-os-incident-human-tabletops.py"
+      - "scripts/reconcile-memory-os-incident-human-tabletops.py"
   workflow_dispatch:
 
 permissions:
@@ -28,6 +33,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Confirm exact clean authority source
+        run: |
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
       - name: Reconcile and validate human tabletop admission
         id: tabletop
         run: |
@@ -55,6 +65,7 @@ jobs:
         if: steps.tabletop.outputs.exit_code == '0'
         run: |
           set -euo pipefail
+          source_sha="$(git rev-parse HEAD)"
           git rm -f docs/fixtures/memory-os-operability/incident-human-tabletop-diagnostic.last.json 2>/dev/null || true
           git add \
             contracts/operations/incident-human-tabletop-evidence-contract.v1.json \
@@ -65,7 +76,11 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(incident): register human tabletop admission"
-            git pull --rebase origin so
+            remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
+            if [[ "$remote_sha" != "$source_sha" ]]; then
+              echo "Human-tabletop authority source is stale: validated $source_sha but so is $remote_sha" >&2
+              exit 75
+            fi
             git push origin HEAD:so
           fi
       - name: Record privacy-safe diagnostic
@@ -74,16 +89,17 @@ jobs:
           TABLETOP_EXIT_CODE: ${{ steps.tabletop.outputs.exit_code }}
         run: |
           set -euo pipefail
-          git fetch origin so
-          git reset --hard origin/so
+          source_sha="$(git rev-parse HEAD)"
           python - <<'PY'
-          import json, os
+          import json, os, subprocess
           from pathlib import Path
           text = Path('/tmp/incident-human-tabletop.log').read_text(encoding='utf-8', errors='replace')
+          source_sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
           value = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'incident-human-tabletop-evidence',
               'result': 'FAIL',
+              'sourceCommitSha': source_sha,
               'exitCode': int(os.environ['TABLETOP_EXIT_CODE']),
               'output': text[-12000:],
               'containsSecrets': False,
@@ -101,7 +117,11 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --cached --quiet; then
             git commit -m "test(incident): record human tabletop diagnostic"
-            git pull --rebase origin so
+            remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
+            if [[ "$remote_sha" != "$source_sha" ]]; then
+              echo "Human-tabletop diagnostic source is stale: validated $source_sha but so is $remote_sha" >&2
+              exit 75
+            fi
             git push origin HEAD:so
           fi
       - name: Enforce validation
