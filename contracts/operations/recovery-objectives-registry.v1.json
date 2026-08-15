@@ -4,11 +4,13 @@
   "approvedObjectiveCount": 0,
   "currentObjectiveId": null,
   "records": [],
+  "approvalEvidenceDigestsByObjectiveId": {},
   "productionEvidence": false,
   "productionReady": false,
   "limitations": [
     "no RPO, RTO or object/database skew target has been approved",
     "restore evidence cannot invent recovery objectives",
+    "typed approval evidence must remain byte-bound to the append-only objective authority",
     "objective approval does not establish production readiness"
   ]
 }
