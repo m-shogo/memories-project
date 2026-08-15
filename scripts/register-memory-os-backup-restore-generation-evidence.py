@@ -15,7 +15,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+CANONICAL_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+REGISTRY = CANONICAL_REGISTRY
 CANONICAL_GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 GEN_REGISTRY = CANONICAL_GEN_REGISTRY
 GEN_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
@@ -32,6 +33,7 @@ NON_RESURRECTION_CONTRACT = CANONICAL_NON_RESURRECTION_CONTRACT
 CANONICAL_NON_RESURRECTION_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
 NON_RESURRECTION_REGISTRY = CANONICAL_NON_RESURRECTION_REGISTRY
 NON_RESURRECTION_WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
+INDEPENDENT_REVIEW_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
 LOCK = ROOT / "contracts/operations/.backup-restore-generation-evidence.lock"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
@@ -227,6 +229,18 @@ def load_non_resurrection_writer():
     return module
 
 
+def load_independent_review_validator():
+    validator = canonical_repo_file(INDEPENDENT_REVIEW_VALIDATOR, "generation independent-review validator")
+    spec = importlib.util.spec_from_file_location("memory_os_generation_independent_review_for_candidate", validator)
+    require(spec is not None and spec.loader is not None, "cannot load generation independent-review validator")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    require(getattr(module, "CONTRACT", None) == CONTRACT, "generation independent-review contract authority drift")
+    require(getattr(module, "REGISTRY", None) == CANONICAL_REGISTRY, "generation independent-review registry authority drift")
+    require(callable(getattr(module, "candidate_reviews_approved", None)), "generation independent-review candidate authority missing")
+    return module
+
+
 def validate_upstream_authorities_for_append() -> None:
     """Validate canonical upstream append-only authorities even when evidence is empty."""
     if GEN_REGISTRY == CANONICAL_GEN_REGISTRY:
@@ -310,6 +324,21 @@ def drill_request_current(record: dict[str, Any]) -> bool:
     return True
 
 
+def independent_reviews_satisfied(record: dict[str, Any]) -> bool:
+    security = record.get("securityReviewRef")
+    operability = record.get("operabilityReviewRef")
+    if not isinstance(security, str) or not isinstance(operability, str) or security == operability:
+        return False
+    if REGISTRY != CANONICAL_REGISTRY:
+        return True
+    try:
+        return load_independent_review_validator().candidate_reviews_approved(record) is True
+    except Exception as exc:
+        if domain_validation_failure(exc):
+            return False
+        raise
+
+
 def base_candidate(record: dict[str, Any]) -> bool:
     """Return whether generation evidence satisfies every pre-overlay candidate gate."""
     objective = objective_for_record(record)
@@ -329,9 +358,7 @@ def base_candidate(record: dict[str, Any]) -> bool:
         and record.get("restoreOnlyCredentialSeparationVerified") is True
         and record.get("databaseObjectRecoveryCoherenceVerified") is True
         and record.get("nonResurrectionVerification") == "PASS"
-        and isinstance(record.get("securityReviewRef"), str)
-        and isinstance(record.get("operabilityReviewRef"), str)
-        and record.get("securityReviewRef") != record.get("operabilityReviewRef")
+        and independent_reviews_satisfied(record)
         and not record.get("unresolvedFindings")
     )
 
@@ -445,6 +472,7 @@ def validate_record(record: dict[str, Any], *, require_current_drill_request: bo
     require(contract.get("drillRequestRegistry") == str(CANONICAL_DRILL_REQUEST_REGISTRY.relative_to(ROOT)), "drillRequestRegistry ref drift")
     require(contract.get("typedNonResurrectionAdmissionContract") == str(CANONICAL_NON_RESURRECTION_CONTRACT.relative_to(ROOT)), "typed non-resurrection contract ref drift")
     require(contract.get("typedNonResurrectionAdmissionRegistry") == str(CANONICAL_NON_RESURRECTION_REGISTRY.relative_to(ROOT)), "typed non-resurrection registry ref drift")
+    require(contract.get("independentReviewValidator") == str(INDEPENDENT_REVIEW_VALIDATOR.relative_to(ROOT)), "independent review validator ref drift")
     require_canonical_runtime_authority(OBJECTIVES_REGISTRY, CANONICAL_OBJECTIVES_REGISTRY, "recovery objectives registry")
     require_canonical_runtime_authority(DRILL_REQUEST_CONTRACT, CANONICAL_DRILL_REQUEST_CONTRACT, "restore drill request contract")
     require_canonical_runtime_authority(DRILL_REQUEST_REGISTRY, CANONICAL_DRILL_REQUEST_REGISTRY, "restore drill request registry")
@@ -453,6 +481,7 @@ def validate_record(record: dict[str, Any], *, require_current_drill_request: bo
     canonical_repo_file(OBJECTIVES_WRITER, "recovery objectives writer")
     canonical_repo_file(DRILL_REQUEST_WRITER, "restore drill request writer")
     canonical_repo_file(NON_RESURRECTION_WRITER, "typed non-resurrection writer")
+    canonical_repo_file(INDEPENDENT_REVIEW_VALIDATOR, "generation independent-review validator")
     require(isinstance(record.get("evidenceId"), str) and EVIDENCE_ID.fullmatch(record["evidenceId"]), "evidenceId invalid")
     source_commit = record.get("sourceCommitSha")
     require(isinstance(source_commit, str) and SHA40.fullmatch(source_commit), "sourceCommitSha invalid")
@@ -608,7 +637,7 @@ def main() -> int:
             "a generation record can satisfy all pre-overlay recovery controls without becoming a production-equivalent recovery candidate until complete typed non-resurrection evidence is separately registered",
             "historical evidence remains valid against the approved objective ID recorded at execution time, but only evidence bound to the current objective ID and a currently executable drill request can become a current production-equivalent recovery candidate",
             "failed RPO/RTO/object-database-skew measurements remain admissible evidence but cannot become production-equivalent recovery candidates",
-            "production-equivalent recovery candidates require current approved recovery objectives, a current drill request, all fail-closed controls, complete typed non-resurrection coverage and independent reviews",
+            "production-equivalent recovery candidates require current approved recovery objectives, a current drill request, all fail-closed controls, complete typed non-resurrection coverage and typed append-only independent Security/Operability reviews",
             "this registry never establishes application production readiness"
         ]
         atomic_write(registry)
