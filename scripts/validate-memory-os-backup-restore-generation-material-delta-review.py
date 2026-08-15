@@ -95,6 +95,12 @@ def validate_contract_authority() -> dict[str, Any]:
         "candidateDerivationMustUseTypedMaterialDeltaReviewAuthority",
     ):
         require(rules.get(rule) is True, f"material-delta review contract rule drift: {rule}")
+    promotion = contract.get("promotionBoundary")
+    require(isinstance(promotion, dict), "generation evidence promotionBoundary missing")
+    require(
+        promotion.get("completeReviewedRecordAlsoRequiresTypedAppendOnlyMaterialDeltaReviewForCrossGenerationRestore") is True,
+        "material-delta promotion boundary drift",
+    )
     return contract
 
 
