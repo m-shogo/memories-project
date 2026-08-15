@@ -6,6 +6,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -15,6 +16,8 @@ CONTRACT = ROOT / "contracts/operations/observability-stack-deployment-contract.
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 WRITER = ROOT / "scripts/register-memory-os-observability-stack-deployment.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-observability-stack-deployment.py"
+TEMP_POST_SOURCE = ROOT / "docs/fixtures/memory-os-operability/.observability-stack-post-source-negative.tmp"
+TEMP_SYMLINK = ROOT / "docs/fixtures/memory-os-operability/.observability-stack-symlink-negative.tmp"
 
 
 def load_writer():
@@ -32,6 +35,31 @@ def expect_writer_rejected(writer, registry, label: str) -> None:
     except writer.Fail:
         return
     raise RuntimeError(f"writer accepted corrupt observability stack registry: {label}")
+
+
+def expect_ref_rejected(writer, ref: str, source: str, label: str) -> None:
+    try:
+        writer.source_bound_ref(ref, source, "negativeEvidenceRef")
+    except writer.Fail:
+        return
+    raise RuntimeError(f"writer accepted invalid source-bound stack evidence: {label}")
+
+
+def create_descendant_commit() -> str:
+    tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], cwd=ROOT, text=True).strip()
+    env = os.environ.copy()
+    env.update({
+        "GIT_AUTHOR_NAME": "observability-negative",
+        "GIT_AUTHOR_EMAIL": "observability-negative@example.invalid",
+        "GIT_COMMITTER_NAME": "observability-negative",
+        "GIT_COMMITTER_EMAIL": "observability-negative@example.invalid",
+    })
+    return subprocess.check_output(
+        ["git", "commit-tree", tree, "-p", "HEAD", "-m", "observability stack non-ancestor fixture"],
+        cwd=ROOT,
+        env=env,
+        text=True,
+    ).strip()
 
 
 def main() -> int:
@@ -58,6 +86,36 @@ def main() -> int:
     for label, candidate in cases:
         expect_writer_rejected(writer, candidate, label)
 
+    source = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+    if not writer.source_is_ancestor(source):
+        raise RuntimeError("current HEAD must be accepted as source ancestor")
+    descendant = create_descendant_commit()
+    if writer.source_is_ancestor(descendant):
+        raise RuntimeError("future descendant commit was accepted as source ancestor")
+
+    try:
+        TEMP_POST_SOURCE.write_text("created after source commit\n", encoding="utf-8")
+        expect_ref_rejected(
+            writer,
+            str(TEMP_POST_SOURCE.relative_to(ROOT)),
+            source,
+            "post-source evidence",
+        )
+        try:
+            TEMP_SYMLINK.symlink_to(ROOT / "README.md")
+        except (OSError, NotImplementedError):
+            pass
+        else:
+            expect_ref_rejected(
+                writer,
+                str(TEMP_SYMLINK.relative_to(ROOT)),
+                source,
+                "symlink evidence",
+            )
+    finally:
+        TEMP_POST_SOURCE.unlink(missing_ok=True)
+        TEMP_SYMLINK.unlink(missing_ok=True)
+
     try:
         corrupted = copy.deepcopy(registry)
         corrupted["admittedStackCount"] = True
@@ -81,7 +139,7 @@ def main() -> int:
         CONTRACT.write_bytes(contract_bytes)
         STATUS.write_bytes(status_bytes)
 
-    print("PASS: observability stack registry corruption is rejected without mutation")
+    print("PASS: observability stack registry/source-binding corruption is rejected without mutation")
     return 0
 
 
