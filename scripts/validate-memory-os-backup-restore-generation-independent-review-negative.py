@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Negative suite for typed, source-bound generation independent reviews."""
+"""Negative suite for typed, append-only generation independent reviews."""
 
 from __future__ import annotations
 
@@ -94,7 +94,23 @@ def main() -> int:
     production_boundary["productionReady"] = True
     expect_fail(module, production_boundary, "productionReady promotion")
 
-    print("PASS: generation independent review negatives reject generic refs, review reuse, and production promotion")
+    original_history = module.git_history
+    try:
+        module.git_history = lambda _ref, _field: ["a" * 40, "b" * 40]
+        try:
+            module.require_append_only_review(
+                "docs/evidence/backup-restore/synthetic-review.json",
+                Path("/tmp/not-read-after-history-rejection"),
+                "securityReviewRef",
+            )
+        except module.Fail:
+            pass
+        else:
+            raise Fail("review evidence edited after first commit was accepted")
+    finally:
+        module.git_history = original_history
+
+    print("PASS: generation independent review negatives reject generic refs, review reuse, post-commit edits, and production promotion")
     return 0
 
 
