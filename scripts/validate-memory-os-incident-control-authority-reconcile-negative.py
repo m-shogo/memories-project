@@ -11,6 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER_PATH = ROOT / "scripts/reconcile-memory-os-incident-control-authority.py"
 CONTRACT_PATH = ROOT / "contracts/operations/incident-control-exercise-contract.v1.json"
+RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/incident-control-exercise-results.sample.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 UNPROVEN_READINESS = (
     "humanTabletopCompleted",
@@ -31,11 +32,21 @@ def load_module():
     return module
 
 
+def expect_result_rejected(reconciler, result, contract, label: str) -> None:
+    try:
+        reconciler.validate_result(result, contract)
+    except reconciler.ReconcileFailure:
+        return
+    raise RuntimeError(f"reconciler accepted malformed incident result: {label}")
+
+
 def main() -> int:
     reconciler = load_module()
     original_contract_bytes = CONTRACT_PATH.read_bytes()
+    original_result_bytes = RESULT_PATH.read_bytes()
     original_status_bytes = STATUS_PATH.read_bytes()
     contract = json.loads(original_contract_bytes.decode("utf-8"))
+    result = json.loads(original_result_bytes.decode("utf-8"))
 
     for field in UNPROVEN_READINESS:
         candidate = copy.deepcopy(contract)
@@ -47,12 +58,30 @@ def main() -> int:
         else:
             raise RuntimeError(f"reconciler auto-healed unproven readiness: {field}")
 
+    malformed = copy.deepcopy(result)
+    malformed["exercise"]["scenarios"][0]["decisions"]["promotionDecision"] = "ALLOW"
+    expect_result_rejected(reconciler, malformed, contract, "promotion decision bypass")
+
+    malformed = copy.deepcopy(result)
+    malformed["exercise"]["scenarios"][0]["decisions"]["stopConditions"] = []
+    expect_result_rejected(reconciler, malformed, contract, "stop-condition removal")
+
+    malformed = copy.deepcopy(result)
+    malformed["exercise"]["scenarios"][0]["controls"][0]["outputSha256"] = "0" * 63
+    expect_result_rejected(reconciler, malformed, contract, "invalid validator output digest")
+
+    malformed = copy.deepcopy(result)
+    malformed["environment"]["syntheticScenariosOnly"] = False
+    expect_result_rejected(reconciler, malformed, contract, "synthetic scenario boundary")
+
     if CONTRACT_PATH.read_bytes() != original_contract_bytes:
         raise RuntimeError("negative validation mutated incident control contract")
+    if RESULT_PATH.read_bytes() != original_result_bytes:
+        raise RuntimeError("negative validation mutated incident control result")
     if STATUS_PATH.read_bytes() != original_status_bytes:
         raise RuntimeError("negative validation mutated production operability status")
 
-    print("PASS: incident authority reconcile rejects unproven readiness without mutation")
+    print("PASS: incident authority reconcile rejects unproven readiness and malformed results without mutation")
     return 0
 
 
