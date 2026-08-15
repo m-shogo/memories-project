@@ -43,6 +43,7 @@ def repo_temp_module(prefix: str, overrides: dict[str, str]) -> Path:
         "NON_RESURRECTION_CONTRACT": "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json",
         "NON_RESURRECTION_REGISTRY": "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json",
         "NON_RESURRECTION_WRITER": "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py",
+        "LOCK": "contracts/operations/.backup-restore-generation-evidence.lock",
     }
     values.update(overrides)
     lines = [
@@ -113,11 +114,16 @@ def main() -> int:
             {"NON_RESURRECTION_WRITER": "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"},
             "generation-evidence typed non-resurrection writer authority drift",
         ),
+        (
+            "append-lock",
+            {"LOCK": "contracts/operations/.backup-restore-drill-request.lock"},
+            "generation-evidence append lock authority drift",
+        ),
     )
     for label, overrides, expected in cases:
         expect_rejection(label, overrides, expected)
 
-    print("PASS: generation-evidence executable/data authority substitutions are rejected")
+    print("PASS: generation-evidence executable/data/lock authority substitutions are rejected")
     return 0
 
 
