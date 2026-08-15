@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-"""Fail closed on mutable or generic material-delta review references.
+"""Fail closed on mutable, generic, or semantically unbound material-delta review references.
 
-Cross-generation recovery evidence must reference one committed, append-only file under
-`docs/evidence/backup-restore/material-delta/`. Same-generation evidence must keep the
-reference null. This validator does not create review evidence or production authority.
+Cross-generation recovery evidence must reference one committed, append-only typed review
+under `docs/evidence/backup-restore/material-delta/`. The review must bind the exact
+recovery evidence, drill request, recovery objective, source generation, and target
+generation. Same-generation evidence must keep the reference null. This validator does
+not create review evidence or production authority.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -17,8 +20,12 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 MATERIAL_DELTA_ROOT = Path("docs/evidence/backup-restore/material-delta")
+EXPECTED_SCHEMA = "memory-os-backup-restore-material-delta-review.v1"
 EXPECTED_VALIDATOR = "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
 EXPECTED_NEGATIVE = "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
+REVIEW_RESULT = "APPROVED"
+REVIEWER = re.compile(r"^[a-z0-9][a-z0-9_-]{2,63}$")
+RFC3339_SECONDS = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 
 
 class Fail(RuntimeError):
@@ -39,14 +46,37 @@ def load_json(path: Path, field: str) -> dict[str, Any]:
     return value
 
 
-def validate_contract_authority() -> None:
+def validate_contract_authority() -> dict[str, Any]:
     contract = load_json(CONTRACT, "generation evidence contract")
     require(
         contract.get("materialDeltaReviewEvidenceRoot") == MATERIAL_DELTA_ROOT.as_posix(),
         "material-delta review evidence root authority drift",
     )
+    require(
+        contract.get("materialDeltaReviewEvidenceSchemaVersion") == EXPECTED_SCHEMA,
+        "material-delta review evidence schema authority drift",
+    )
     require(contract.get("materialDeltaReviewValidator") == EXPECTED_VALIDATOR, "material-delta review validator authority drift")
     require(contract.get("materialDeltaReviewNegativeValidator") == EXPECTED_NEGATIVE, "material-delta review negative validator authority drift")
+    required_fields = contract.get("requiredMaterialDeltaReviewEvidenceFields")
+    require(
+        required_fields
+        == [
+            "schemaVersion",
+            "evidenceId",
+            "drillRequestId",
+            "recoveryObjectivesId",
+            "sourceEnvironmentGenerationId",
+            "restoreTargetGenerationId",
+            "reviewResult",
+            "reviewedAt",
+            "reviewerPseudonym",
+            "productionTrafficChanged",
+            "productionCredentialsUsed",
+            "automaticPromotion",
+        ],
+        "material-delta review required fields authority drift",
+    )
     rules = contract.get("recordRules")
     require(isinstance(rules, dict), "generation evidence recordRules missing")
     for rule in (
@@ -54,8 +84,17 @@ def validate_contract_authority() -> None:
         "sameGenerationRestoreMayUseNullMaterialDeltaReview",
         "crossGenerationMaterialDeltaReviewMustRemainInsideMonitoredNamespace",
         "crossGenerationMaterialDeltaReviewMustRemainAppendOnlyAfterFirstCommit",
+        "crossGenerationMaterialDeltaReviewMustBeTyped",
+        "crossGenerationMaterialDeltaReviewMustBindEvidenceId",
+        "crossGenerationMaterialDeltaReviewMustBindDrillRequestId",
+        "crossGenerationMaterialDeltaReviewMustBindRecoveryObjectivesId",
+        "crossGenerationMaterialDeltaReviewMustBindSourceGenerationId",
+        "crossGenerationMaterialDeltaReviewMustBindRestoreTargetGenerationId",
+        "crossGenerationMaterialDeltaReviewMustBeApproved",
+        "crossGenerationMaterialDeltaReviewCannotAuthorizeAutomaticPromotion",
     ):
         require(rules.get(rule) is True, f"material-delta review contract rule drift: {rule}")
+    return contract
 
 
 def canonical_material_delta_ref(value: Any, field: str) -> tuple[str, Path]:
@@ -110,7 +149,32 @@ def require_append_only_review(ref: str, path: Path, field: str) -> None:
     require(path.read_bytes() == completed.stdout, f"{field} bytes drift from initial committed material-delta review evidence")
 
 
-def validate_row(row: dict[str, Any], index: int) -> None:
+def validate_material_delta_payload(row: dict[str, Any], payload: dict[str, Any], index: int, required_fields: list[str]) -> None:
+    field = f"records[{index}].materialDeltaReviewRef"
+    require(set(payload) == set(required_fields), f"{field} typed review fields drift")
+    require(payload.get("schemaVersion") == EXPECTED_SCHEMA, f"{field} schemaVersion drift")
+    require(payload.get("evidenceId") == row.get("evidenceId"), f"{field} evidenceId mismatch")
+    require(payload.get("drillRequestId") == row.get("drillRequestId"), f"{field} drillRequestId mismatch")
+    require(payload.get("recoveryObjectivesId") == row.get("recoveryObjectivesId"), f"{field} recoveryObjectivesId mismatch")
+    require(
+        payload.get("sourceEnvironmentGenerationId") == row.get("sourceEnvironmentGenerationId"),
+        f"{field} sourceEnvironmentGenerationId mismatch",
+    )
+    require(
+        payload.get("restoreTargetGenerationId") == row.get("restoreTargetGenerationId"),
+        f"{field} restoreTargetGenerationId mismatch",
+    )
+    require(payload.get("reviewResult") == REVIEW_RESULT, f"{field} reviewResult must be APPROVED")
+    reviewed_at = payload.get("reviewedAt")
+    require(isinstance(reviewed_at, str) and RFC3339_SECONDS.fullmatch(reviewed_at), f"{field} reviewedAt invalid")
+    reviewer = payload.get("reviewerPseudonym")
+    require(isinstance(reviewer, str) and REVIEWER.fullmatch(reviewer), f"{field} reviewerPseudonym invalid")
+    require(payload.get("productionTrafficChanged") is False, f"{field} productionTrafficChanged must remain false")
+    require(payload.get("productionCredentialsUsed") is False, f"{field} productionCredentialsUsed must remain false")
+    require(payload.get("automaticPromotion") is False, f"{field} automaticPromotion must remain false")
+
+
+def validate_row(row: dict[str, Any], index: int, required_fields: list[str]) -> None:
     source = row.get("sourceEnvironmentGenerationId")
     target = row.get("restoreTargetGenerationId")
     require(isinstance(source, str) and source, f"records[{index}] sourceEnvironmentGenerationId required")
@@ -121,10 +185,13 @@ def validate_row(row: dict[str, Any], index: int) -> None:
         return
     ref, path = canonical_material_delta_ref(value, f"records[{index}].materialDeltaReviewRef")
     require_append_only_review(ref, path, f"records[{index}].materialDeltaReviewRef")
+    payload = load_json(path, f"records[{index}].materialDeltaReviewRef")
+    validate_material_delta_payload(row, payload, index, required_fields)
 
 
 def main() -> int:
-    validate_contract_authority()
+    contract = validate_contract_authority()
+    required_fields = contract["requiredMaterialDeltaReviewEvidenceFields"]
     registry = load_json(REGISTRY, "generation evidence registry")
     require(registry.get("schemaVersion") == "memory-os-backup-restore-generation-evidence-registry.v1", "generation evidence registry schema drift")
     require(registry.get("appendOnly") is True, "generation evidence registry must remain append-only")
@@ -132,8 +199,8 @@ def main() -> int:
     rows = registry.get("records")
     require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "generation evidence registry records invalid")
     for index, row in enumerate(rows):
-        validate_row(row, index)
-    print(f"PASS: generation material-delta review authority records={len(rows)} productionEvidence=false productionReady=false")
+        validate_row(row, index, required_fields)
+    print(f"PASS: typed generation material-delta review authority records={len(rows)} productionEvidence=false productionReady=false")
     return 0
 
 
