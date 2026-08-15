@@ -20,6 +20,7 @@ WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-ge
 EXPECTED_LOCK = ROOT / "contracts/operations/.production-equivalent-environment-generation.lock"
 NEGATIVE = ROOT / "scripts/validate-memory-os-production-equivalent-environment-generation-negative.py"
 SOURCE_BINDING_NEGATIVE = ROOT / "scripts/validate-memory-os-production-equivalent-environment-generation-source-binding-negative.py"
+LINEAGE_NEGATIVE = ROOT / "scripts/validate-memory-os-production-equivalent-environment-generation-lineage-negative.py"
 EXPECTED_NEGATIVE_CASES = {
     "environment record missing required nested section",
     "environment record unknown nested field",
@@ -35,6 +36,7 @@ EXPECTED_NEGATIVE_CASES = {
     "mutable generation alias",
     "environment record digest mismatch",
     "missing environment record path",
+    "source commit exists but is not an ancestor of the current validation HEAD",
     "production evidence relabel",
 }
 
@@ -128,6 +130,7 @@ def main() -> int:
         require(contract.get(field) == str(path.relative_to(ROOT)), f"contract ref drift: {field}")
         require(repo_file(str(path.relative_to(ROOT)), field) == path.resolve(), f"generation artifact canonical path drift: {field}")
     repo_file(str(SOURCE_BINDING_NEGATIVE.relative_to(ROOT)), "source-binding negative validator")
+    repo_file(str(LINEAGE_NEGATIVE.relative_to(ROOT)), "source-lineage negative validator")
     for field in ("validator", "workflow"):
         repo_file(contract.get(field), field)
     require(env_schema.get("$schema") == "https://json-schema.org/draft/2020-12/schema", "environment schema draft drift")
@@ -138,6 +141,7 @@ def main() -> int:
     bindings = contract.get("bindingRules")
     require(isinstance(bindings, dict) and bindings and all(value is True for value in bindings.values()), "generation binding rules must remain fail-closed")
     for key in (
+        "sourceCommitShaMustBeAncestorOfCurrentHead",
         "environmentRecordFullSemanticValidationRequired",
         "environmentRecordRefMustBeCanonicalRepositoryFile",
         "environmentRecordMustMatchSourceCommitSha",
@@ -239,6 +243,7 @@ def main() -> int:
 
     run_suite(NEGATIVE, "environment generation negative admission suite")
     run_suite(SOURCE_BINDING_NEGATIVE, "environment generation source-binding negative suite")
+    run_suite(LINEAGE_NEGATIVE, "environment generation source-lineage negative suite")
 
     print("Memory OS production-equivalent environment generation validation PASS")
     print(f"registered generations: {count}")
@@ -250,6 +255,7 @@ def main() -> int:
     print("canonical environmentRecordRef required: true")
     print("environmentRecordRef source-bound: true")
     print("environment evidence refs source-bound: true")
+    print("sourceCommitSha ancestor-only: true")
     print("canonical writer runtime authorities validated without generation rows: true")
     print("canonical writer append lock authority validated: true")
     print("semantic environment evidence refs canonical: true")
@@ -259,6 +265,7 @@ def main() -> int:
     print("negative admission case authority exact: true")
     print("negative admission suite: PASS")
     print("source-binding negative suite: PASS")
+    print("source-lineage negative suite: PASS")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
