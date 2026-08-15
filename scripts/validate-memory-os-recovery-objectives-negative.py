@@ -106,6 +106,17 @@ def main() -> int:
     writer = load_writer()
     validator = load_module(VALIDATOR, "memory_os_recovery_objectives_validator_negative")
 
+    canonical_lock = writer.LOCK
+    writer.LOCK = ROOT / "contracts/operations/.backup-restore-generation-evidence.lock"
+    try:
+        expect_rejected(
+            writer,
+            "recovery objective runtime lock substitution",
+            writer.require_canonical_runtime_authorities,
+        )
+    finally:
+        writer.LOCK = canonical_lock
+
     valid = base_record()
     writer.validate_record(valid)
     print("PASS accept: explicit typed reviewed recovery objective")
@@ -288,6 +299,7 @@ def main() -> int:
     print("Memory OS recovery objectives negative admission suite PASS")
     print("canonical registry mutated: false")
     print("objective registry append corruption rejection: enforced")
+    print("runtime lock substitution accepted: false")
     print("objective values invented/defaulted: false")
     print("arbitrary repository file approval accepted: false")
     print("objective authority refs escape repository: false")
