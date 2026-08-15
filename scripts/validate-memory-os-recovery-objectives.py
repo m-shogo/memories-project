@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/recovery-objectives-admission-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-recovery-objectives.py"
+EXPECTED_LOCK = ROOT / "contracts/operations/.recovery-objectives.lock"
 NEGATIVE = ROOT / "scripts/validate-memory-os-recovery-objectives-negative.py"
 EXPECTED_NEGATIVE_CASES = {
     "arbitrary repository files used as approval evidence",
@@ -110,6 +111,9 @@ def main() -> int:
         require(runtime_path == expected_path, f"writer runtime authority drift: {runtime_name}")
         require(canonical_path == expected_path, f"writer canonical authority drift: {canonical_name}")
         writer.canonical_repo_file(runtime_path, field)
+    writer_lock = getattr(writer, "LOCK", None)
+    require(writer_lock == EXPECTED_LOCK, "writer append lock authority drift")
+    require(writer_lock.parent == REGISTRY.parent, "writer append lock must share registry authority directory")
     approval_dir = getattr(writer, "APPROVAL_DIR", None)
     canonical_approval_dir = getattr(writer, "CANONICAL_APPROVAL_DIR", None)
     require(approval_dir == canonical_approval_dir, "writer approval authority directory drift")
@@ -200,6 +204,7 @@ def main() -> int:
     print("arbitrary repository approval files accepted: false")
     print("canonical repository authority refs required: true")
     print("canonical writer contract/registry/approval authority validated without objective rows: true")
+    print("canonical writer append lock authority validated: true")
     print("empty canonical approval authority directory permitted before first evidence file: true")
     print("canonical reviewer pseudonyms required: true")
     print("objective values chosen/defaulted by validator: false")
