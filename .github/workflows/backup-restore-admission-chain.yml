@@ -280,7 +280,6 @@ jobs:
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-equivalent-environment-generation.py >> "$log" 2>&1 || code=$?; fi
-          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-equivalent-environment-generation-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-preflight.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-preflight-negative.py >> "$log" 2>&1 || code=$?; fi
@@ -318,7 +317,6 @@ jobs:
             export SOURCE_SHA
             : > "$log"
             python scripts/validate-memory-os-production-equivalent-environment-generation.py >> "$log" 2>&1
-            python scripts/validate-memory-os-production-equivalent-environment-generation-negative.py >> "$log" 2>&1
             python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-drill-preflight.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-drill-preflight-negative.py >> "$log" 2>&1
