@@ -4,12 +4,15 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import subprocess
 from pathlib import Path
 from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
+CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
+SOURCE_BINDING_RULE = "allNonNullEnvironmentEvidenceRefsMustMatchSourceCommitSha"
 EVIDENCE_CASES: tuple[tuple[str, Path], ...] = (
     ("postgresql.restoreEvidenceRef", ROOT / "README.md"),
     ("objectStorage.restoreEvidenceRef", ROOT / "SECURITY.md"),
@@ -37,6 +40,15 @@ def load_writer():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def load_contract() -> dict[str, Any]:
+    try:
+        value = json.loads(CONTRACT.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise Fail(f"cannot load generation contract: {exc}") from exc
+    require(isinstance(value, dict), "generation contract root must be object")
+    return value
 
 
 def head_sha() -> str:
@@ -72,8 +84,13 @@ def evidence_env(refs: tuple[str, ...]) -> dict[str, Any]:
 
 
 def main() -> int:
-    require(WRITER.is_file(), "generation writer fixture missing")
+    require(CONTRACT.is_file() and WRITER.is_file(), "generation source-binding authority fixture missing")
     require(all(path.is_file() for _, path in EVIDENCE_CASES), "generation source-binding evidence fixture missing")
+    contract = load_contract()
+    bindings = contract.get("bindingRules")
+    require(isinstance(bindings, dict), "generation bindingRules required")
+    require(bindings.get(SOURCE_BINDING_RULE) is True, f"generation contract must require {SOURCE_BINDING_RULE}")
+
     writer = load_writer()
     source = head_sha()
     refs = tuple(path.relative_to(ROOT).as_posix() for _, path in EVIDENCE_CASES)
@@ -100,6 +117,7 @@ def main() -> int:
     require(all(path.read_bytes() == original for path, original in originals.items()), "source-binding negative suite left a canonical evidence fixture mutated")
     print("Environment generation source-binding negative suite PASS")
     print(f"independently source-bound evidence fields tested: {len(EVIDENCE_CASES)}")
+    print("source-bound evidence contract rule required: true")
     print("source-bound evidence mutation accepted: false")
     print("canonical evidence left mutated: false")
     print("generation created: false")
