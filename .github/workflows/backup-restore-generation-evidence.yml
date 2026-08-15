@@ -35,6 +35,10 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
+      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py"
@@ -87,6 +91,10 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
+      - "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py"
@@ -171,6 +179,10 @@ jobs:
           scripts/validate-memory-os-backup-restore-generation-evidence.py
           scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py
           scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority-negative.py
+          scripts/validate-memory-os-backup-restore-generation-independent-review.py
+          scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py
+          scripts/validate-memory-os-backup-restore-generation-material-delta-review.py
+          scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py
           scripts/validate-memory-os-backup-restore-generation-evidence-negative.py
           scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py
           scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py
@@ -212,6 +224,10 @@ jobs:
             scripts/validate-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority-negative.py \
+            scripts/validate-memory-os-backup-restore-generation-independent-review.py \
+            scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py \
+            scripts/validate-memory-os-backup-restore-generation-material-delta-review.py \
+            scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-negative.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py \
