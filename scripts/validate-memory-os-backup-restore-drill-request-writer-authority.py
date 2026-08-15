@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail closed if drill-request executable authorities drift."""
+"""Fail closed if drill-request executable or data authorities drift."""
 
 from __future__ import annotations
 
@@ -10,6 +10,11 @@ ROOT = Path(__file__).resolve().parents[1]
 WRITER = ROOT / "scripts/request-memory-os-backup-restore-drill.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-drill-request.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-request.py"
+EXPECTED_CONTRACT = ROOT / "contracts/operations/backup-restore-drill-request-contract.v1.json"
+EXPECTED_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
+EXPECTED_GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+EXPECTED_OBJECTIVES_REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
+EXPECTED_STATUS = ROOT / "contracts/operations/production-operability-status.json"
 EXPECTED_ELIGIBILITY_HELPER = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
 EXPECTED_OBJECTIVES_WRITER = ROOT / "scripts/register-memory-os-recovery-objectives.py"
 
@@ -41,29 +46,47 @@ def load_module(path: Path, name: str, field: str):
     return module
 
 
+def require_module_authorities(module, expected: dict[str, Path], prefix: str) -> None:
+    for name, canonical in expected.items():
+        actual = getattr(module, name, None)
+        require(actual == canonical, f"{prefix} authority drift: {name}")
+        canonical_repo_file(actual, f"{prefix} {name}")
+
+
 def main() -> int:
     writer = load_module(WRITER, "memory_os_restore_drill_request_writer_authority", "drill request writer")
     reconciler = load_module(RECONCILER, "memory_os_restore_drill_request_reconcile_authority", "drill request reconciler")
 
-    writer_eligibility = getattr(writer, "ELIGIBILITY_HELPER", None)
-    writer_objectives = getattr(writer, "OBJECTIVES_WRITER", None)
-    require(writer_eligibility == EXPECTED_ELIGIBILITY_HELPER, "drill request eligibility helper authority drift")
-    require(writer_objectives == EXPECTED_OBJECTIVES_WRITER, "drill request recovery-objectives writer authority drift")
-    canonical_repo_file(writer_eligibility, "drill request eligibility helper")
-    canonical_repo_file(writer_objectives, "drill request recovery-objectives writer")
+    require_module_authorities(
+        writer,
+        {
+            "CONTRACT": EXPECTED_CONTRACT,
+            "REGISTRY": EXPECTED_REGISTRY,
+            "GEN_REGISTRY": EXPECTED_GEN_REGISTRY,
+            "OBJECTIVES_REGISTRY": EXPECTED_OBJECTIVES_REGISTRY,
+            "ELIGIBILITY_HELPER": EXPECTED_ELIGIBILITY_HELPER,
+            "OBJECTIVES_WRITER": EXPECTED_OBJECTIVES_WRITER,
+        },
+        "drill request writer",
+    )
 
-    expected_reconcile_authorities = {
-        "WRITER": WRITER,
-        "VALIDATOR": VALIDATOR,
-        "ELIGIBILITY_HELPER": EXPECTED_ELIGIBILITY_HELPER,
-        "OBJECTIVES_WRITER": EXPECTED_OBJECTIVES_WRITER,
-    }
-    for name, expected in expected_reconcile_authorities.items():
-        actual = getattr(reconciler, name, None)
-        require(actual == expected, f"drill request reconciler authority drift: {name}")
-        canonical_repo_file(actual, f"drill request reconciler {name}")
+    require_module_authorities(
+        reconciler,
+        {
+            "CONTRACT": EXPECTED_CONTRACT,
+            "REGISTRY": EXPECTED_REGISTRY,
+            "GEN_REGISTRY": EXPECTED_GEN_REGISTRY,
+            "OBJECTIVES_REGISTRY": EXPECTED_OBJECTIVES_REGISTRY,
+            "STATUS": EXPECTED_STATUS,
+            "WRITER": WRITER,
+            "VALIDATOR": VALIDATOR,
+            "ELIGIBILITY_HELPER": EXPECTED_ELIGIBILITY_HELPER,
+            "OBJECTIVES_WRITER": EXPECTED_OBJECTIVES_WRITER,
+        },
+        "drill request reconciler",
+    )
 
-    print("PASS: drill request writer and reconciler executable authorities are canonical")
+    print("PASS: drill request writer and reconciler executable/data authorities are canonical")
     return 0
 
 
