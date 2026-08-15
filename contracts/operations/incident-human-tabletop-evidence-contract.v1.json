@@ -55,6 +55,7 @@
     "resultCannotBeNotRun": true,
     "oneAcceptedCompletionPerScenario": true,
     "appendOnlyWriterRequired": true,
+    "acceptedLedgerRecordMustBeSingleCommitImmutable": true,
     "rawSecretsUrlsTokensAndPersonalContentForbidden": true
   },
   "forbiddenPromotion": [
