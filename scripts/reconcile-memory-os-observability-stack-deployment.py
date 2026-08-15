@@ -53,9 +53,16 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
+def validate_current_authority() -> None:
+    completed = subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=False)
+    require(completed.returncode == 0,
+            "canonical observability stack authority is invalid before reconcile")
+
+
 def main() -> int:
     for path in (REGISTRY, WRITER, VALIDATOR, WORKFLOW):
         require(path.is_file(), f"observability stack foundation missing: {path.relative_to(ROOT)}")
+    validate_current_authority()
     registry = load(REGISTRY)
     stacks = registry.get("stacks")
     require(isinstance(stacks, list), "registry stacks missing")
