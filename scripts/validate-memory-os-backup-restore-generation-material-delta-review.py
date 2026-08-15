@@ -92,6 +92,7 @@ def validate_contract_authority() -> dict[str, Any]:
         "crossGenerationMaterialDeltaReviewMustBindRestoreTargetGenerationId",
         "crossGenerationMaterialDeltaReviewMustBeApproved",
         "crossGenerationMaterialDeltaReviewCannotAuthorizeAutomaticPromotion",
+        "candidateDerivationMustUseTypedMaterialDeltaReviewAuthority",
     ):
         require(rules.get(rule) is True, f"material-delta review contract rule drift: {rule}")
     return contract
