@@ -95,6 +95,8 @@ def minimal_record(source_commit: str) -> dict[str, Any]:
 
 
 def main() -> int:
+    workspace_before = git("status", "--porcelain")
+    refs_before = git("for-each-ref", "--format=%(refname) %(objectname)", "refs/heads")
     writer = load_writer()
     head = git("rev-parse", "HEAD")
     writer.require_source_commit_ancestor(head)
@@ -126,8 +128,13 @@ def main() -> int:
     finally:
         writer.require_source_commit_ancestor = original
 
-    require(git("status", "--porcelain") == "", "negative suite mutated working tree")
+    require(git("status", "--porcelain") == workspace_before, "negative suite changed preexisting workspace state")
+    require(
+        git("for-each-ref", "--format=%(refname) %(objectname)", "refs/heads") == refs_before,
+        "negative suite mutated branch refs",
+    )
     print("Memory OS environment generation lineage negative suite PASS")
+    print("preexisting workspace state preserved: true")
     print("git refs mutated: false")
     print("production generation created: false")
     print("production evidence: false")
