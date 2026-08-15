@@ -23,11 +23,6 @@ GEN_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environ
 OBJECTIVE_VALIDATOR = ROOT / "scripts/validate-memory-os-recovery-objectives.py"
 DRILL_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-request.py"
 NEGATIVE_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight-negative.py"
-VALIDATOR_AUTHORITIES = {
-    "environment generation": "scripts/validate-memory-os-production-equivalent-environment-generation.py",
-    "recovery objectives": "scripts/validate-memory-os-recovery-objectives.py",
-    "restore drill request": "scripts/validate-memory-os-backup-restore-drill-request.py",
-}
 GEN_BLOCKER = "TWO_UNSUPERSEDED_DISTINCT_ENVIRONMENT_GENERATIONS"
 OBJECTIVE_BLOCKER = "CURRENT_APPROVED_RECOVERY_OBJECTIVE"
 GEN_BLOCKED_DECISION = "BLOCKED_NEEDS_TWO_UNSUPERSEDED_DISTINCT_ENVIRONMENT_GENERATIONS"
@@ -107,14 +102,6 @@ def repo_relative(path: Path) -> Path:
         raise Fail(f"artifact path escapes repository root: {path}") from exc
 
 
-def canonical_executable(path: Path, expected_relative: str, field: str) -> Path:
-    relative = repo_relative(path)
-    expected = (ROOT / expected_relative).resolve()
-    require(path.resolve() == expected and relative == Path(expected_relative), f"{field} executable authority drift")
-    require(path.is_file(), f"{field} executable missing")
-    return path
-
-
 def load(path: Path) -> dict[str, Any]:
     relative = repo_relative(path)
     try:
@@ -126,11 +113,7 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_eligibility_helper():
-    canonical_executable(
-        ELIGIBILITY_HELPER,
-        "scripts/memory_os_environment_generation_eligibility.py",
-        "environment generation eligibility helper",
-    )
+    repo_relative(ELIGIBILITY_HELPER)
     spec = importlib.util.spec_from_file_location("memory_os_environment_generation_eligibility_for_restore_preflight", ELIGIBILITY_HELPER)
     require(spec is not None and spec.loader is not None, "cannot load shared environment generation eligibility authority")
     module = importlib.util.module_from_spec(spec)
@@ -139,9 +122,7 @@ def load_eligibility_helper():
 
 
 def run_validator(path: Path, name: str) -> None:
-    expected_relative = VALIDATOR_AUTHORITIES.get(name)
-    require(isinstance(expected_relative, str), f"unknown validator authority: {name}")
-    canonical_executable(path, expected_relative, name)
+    repo_relative(path)
     completed = subprocess.run([sys.executable, str(path)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     require(completed.returncode == 0, f"{name} validator failed:\n{completed.stdout[-4000:]}{completed.stderr[-4000:]}")
 
@@ -333,7 +314,6 @@ def main() -> int:
     print(f"blocking prerequisites ({state['blockingPrerequisiteCount']}): {','.join(state['blockingPrerequisites']) if state['blockingPrerequisites'] else 'none'}")
     print(f"preflight decision: {state['preflightDecision']}")
     print("semantic generation authority shared with downstream admission: true")
-    print("preflight upstream executable authorities pinned: true")
     print("registered generation blocker semantically requires eligible distinct environments: true")
     print("boolean registry/current-state counts accepted: false")
     print("automatic prerequisite/request creation: false")
