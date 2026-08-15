@@ -197,6 +197,11 @@ def main() -> int:
     )
     expect_contract_fail(
         module,
+        lambda contract: contract["promotionBoundary"].__setitem__("completeReviewedRecordAlsoRequiresTypedAppendOnlyMaterialDeltaReviewForCrossGenerationRestore", False),
+        "material-delta promotion boundary disabled",
+    )
+    expect_contract_fail(
+        module,
         lambda contract: contract.__setitem__("materialDeltaReviewValidator", "scripts/validate-memory-os-backup-restore-generation-evidence.py"),
         "material-delta validator substituted",
     )
@@ -217,7 +222,7 @@ def main() -> int:
     finally:
         module.git_history = original_history
 
-    print("PASS: material-delta review negatives reject generic refs, semantic binding drift, candidate delegation drift, unsafe claims, contract drift, and post-commit edits")
+    print("PASS: material-delta review negatives reject generic refs, semantic binding drift, candidate/promotion drift, unsafe claims, contract drift, and post-commit edits")
     return 0
 
 
