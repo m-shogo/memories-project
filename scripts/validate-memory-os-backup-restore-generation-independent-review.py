@@ -2,14 +2,13 @@
 """Fail-closed validation for generation recovery candidate independent reviews.
 
 Security and Operability review payloads must be typed, distinct, repository-contained,
-and byte-identical to the generation evidence record's source commit. This validator
-never creates review evidence or production authority.
+and append-only in Git history after their first committed version. This validator never
+creates review evidence or production authority.
 """
 
 from __future__ import annotations
 
 import json
-import re
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -17,7 +16,6 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 EVIDENCE_ROOT = Path("docs/evidence/backup-restore")
-SHA40 = re.compile(r"^[0-9a-f]{40}$")
 REQUIRED_FIELDS = {
     "schemaVersion",
     "evidenceId",
@@ -67,26 +65,40 @@ def canonical_ref(value: Any, field: str) -> tuple[str, Path]:
     return value, path
 
 
-def git_blob(source_sha: str, ref: str, field: str) -> bytes:
+def git_history(ref: str, field: str) -> list[str]:
     completed = subprocess.run(
-        ["git", "show", f"{source_sha}:{ref}"],
+        ["git", "log", "--format=%H", "--follow", "--", ref],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    require(completed.returncode == 0, f"cannot inspect {field} Git history")
+    commits = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+    require(commits, f"{field} must be committed review evidence")
+    return commits
+
+
+def require_append_only_review(ref: str, path: Path, field: str) -> None:
+    commits = git_history(ref, field)
+    require(len(commits) == 1, f"{field} must remain append-only after its first committed version")
+    completed = subprocess.run(
+        ["git", "show", f"{commits[0]}:{ref}"],
         cwd=ROOT,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=False,
     )
-    require(completed.returncode == 0, f"{field} must exist at sourceCommitSha")
-    return completed.stdout
+    require(completed.returncode == 0, f"cannot read initial committed bytes for {field}")
+    require(path.read_bytes() == completed.stdout, f"{field} bytes drift from initial committed review evidence")
 
 
 def validate_review(row: dict[str, Any], ref_field: str, expected_role: str) -> tuple[str, str]:
     evidence_id = row.get("evidenceId")
-    source_sha = row.get("sourceCommitSha")
     require(isinstance(evidence_id, str) and evidence_id, "evidenceId required")
-    require(isinstance(source_sha, str) and SHA40.fullmatch(source_sha), "sourceCommitSha invalid")
     ref, path = canonical_ref(row.get(ref_field), ref_field)
-    current_bytes = path.read_bytes()
-    require(current_bytes == git_blob(source_sha, ref, ref_field), f"{ref_field} bytes drift from sourceCommitSha")
+    require_append_only_review(ref, path, ref_field)
     payload = load_json(path, ref_field)
     require(set(payload) == REQUIRED_FIELDS, f"{ref_field} typed review fields drift")
     require(payload.get("schemaVersion") == "memory-os-backup-restore-generation-review-evidence.v1", f"{ref_field} schemaVersion drift")
