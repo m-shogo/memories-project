@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "backup-restore-generation-evidence",
+  "result": "FAIL",
+  "exitCode": 1,
+  "sourceCommitSha": "4491f7c9970c017a1c97f95a129fa1801a3b0cf7",
+  "output": "Memory OS production-equivalent environment generation validation PASS\nregistered generations: 0\npreflight-eligible generations: 0\ncurrent generation: none\ncurrent production-equivalent dependencies: false\nregistration implies preflight eligibility: false\nboolean generation counts accepted: false\ncanonical environmentRecordRef required: true\nenvironmentRecordRef source-bound: true\nenvironment evidence refs source-bound: true\nsourceCommitSha ancestor-only: true\ncanonical writer runtime authorities validated without generation rows: true\ncanonical writer append lock authority validated: true\nsemantic environment evidence refs canonical: true\nsemantic validator implementation exceptions surfaced: true\nunexpected generation-writer exceptions normalized as expected rejection: false\ncross-generation evidence reuse: forbidden\nnegative admission case authority exact: true\nnegative admission suite: PASS\nsource-binding negative suite: PASS\nsource-lineage negative suite: PASS\nproduction evidence: false\nproduction decision: NO_GO\nRECOVERY OBJECTIVES VALIDATION FAILED: negative admission case authority drift\n",
+  "containsSecrets": false,
+  "drillRequestCreated": false,
+  "generationEvidenceCreated": false,
+  "restoreExecuted": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
