@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove registered environment evidence remains byte-bound to sourceCommitSha."""
+"""Prove every registered environment evidence field remains byte-bound to sourceCommitSha."""
 
 from __future__ import annotations
 
@@ -10,7 +10,16 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
-EVIDENCE = ROOT / "README.md"
+EVIDENCE_CASES: tuple[tuple[str, Path], ...] = (
+    ("postgresql.restoreEvidenceRef", ROOT / "README.md"),
+    ("objectStorage.restoreEvidenceRef", ROOT / "SECURITY.md"),
+    ("network.latencyProfileRef", ROOT / "services/import-api/README.md"),
+    ("network.failureInjectionRef", ROOT / "contracts/operations/production-operability-status.json"),
+    ("identityAndSecrets.credentialScopeRef", ROOT / "docs/memory-os-current-authority-order-round-10-operability.md"),
+    ("backupRestore.evidenceRef", ROOT / "scripts/validate-memory-os-operability.py"),
+    ("materialDeltas[0].independentReviewRef", ROOT / ".github/workflows/operability-contracts.yml"),
+    ("evidenceBoundary.independentReviewRef", ROOT / "contracts/operations/production-equivalent-environment-generation-contract.v1.json"),
+)
 
 
 class Fail(RuntimeError):
@@ -49,41 +58,48 @@ def expect_rejected(writer: Any, name: str, action: Callable[[], Any]) -> None:
     raise Fail(f"{name}: source-bound evidence drift unexpectedly accepted")
 
 
-def evidence_env(ref: str) -> dict[str, Any]:
+def evidence_env(refs: tuple[str, ...]) -> dict[str, Any]:
+    require(len(refs) == len(EVIDENCE_CASES), "source-binding evidence fixture count drift")
     return {
-        "postgresql": {"restoreEvidenceRef": ref},
-        "objectStorage": {"restoreEvidenceRef": ref},
-        "network": {"latencyProfileRef": ref, "failureInjectionRef": ref},
-        "identityAndSecrets": {"credentialScopeRef": ref},
-        "backupRestore": {"evidenceRef": ref},
-        "materialDeltas": [{"independentReviewRef": ref}],
-        "evidenceBoundary": {"independentReviewRef": ref},
+        "postgresql": {"restoreEvidenceRef": refs[0]},
+        "objectStorage": {"restoreEvidenceRef": refs[1]},
+        "network": {"latencyProfileRef": refs[2], "failureInjectionRef": refs[3]},
+        "identityAndSecrets": {"credentialScopeRef": refs[4]},
+        "backupRestore": {"evidenceRef": refs[5]},
+        "materialDeltas": [{"independentReviewRef": refs[6]}],
+        "evidenceBoundary": {"independentReviewRef": refs[7]},
     }
 
 
 def main() -> int:
-    require(WRITER.is_file() and EVIDENCE.is_file(), "generation source-binding fixture missing")
+    require(WRITER.is_file(), "generation writer fixture missing")
+    require(all(path.is_file() for _, path in EVIDENCE_CASES), "generation source-binding evidence fixture missing")
     writer = load_writer()
     source = head_sha()
-    ref = EVIDENCE.relative_to(ROOT).as_posix()
-    env = evidence_env(ref)
+    refs = tuple(path.relative_to(ROOT).as_posix() for _, path in EVIDENCE_CASES)
+    require(len(set(refs)) == len(refs), "source-binding negative suite requires distinct evidence refs")
+    env = evidence_env(refs)
 
     writer.require_environment_evidence_bound_to_source(source, env)
-    print("PASS accept: unchanged repository evidence matches sourceCommitSha")
+    print("PASS accept: all unchanged repository evidence fields match sourceCommitSha")
 
-    original = EVIDENCE.read_bytes()
-    try:
-        EVIDENCE.write_bytes(original + b"\nsource-binding-negative-mutation\n")
-        expect_rejected(
-            writer,
-            "environment evidence changed after sourceCommitSha",
-            lambda: writer.require_environment_evidence_bound_to_source(source, env),
-        )
-    finally:
-        EVIDENCE.write_bytes(original)
+    originals = {path: path.read_bytes() for _, path in EVIDENCE_CASES}
+    for field, path in EVIDENCE_CASES:
+        original = originals[path]
+        try:
+            path.write_bytes(original + b"\nsource-binding-negative-mutation\n")
+            expect_rejected(
+                writer,
+                f"{field} changed after sourceCommitSha",
+                lambda: writer.require_environment_evidence_bound_to_source(source, env),
+            )
+        finally:
+            path.write_bytes(original)
+        require(path.read_bytes() == original, f"source-binding negative suite failed to restore fixture: {field}")
 
-    require(EVIDENCE.read_bytes() == original, "source-binding negative suite failed to restore evidence fixture")
+    require(all(path.read_bytes() == original for path, original in originals.items()), "source-binding negative suite left a canonical evidence fixture mutated")
     print("Environment generation source-binding negative suite PASS")
+    print(f"independently source-bound evidence fields tested: {len(EVIDENCE_CASES)}")
     print("source-bound evidence mutation accepted: false")
     print("canonical evidence left mutated: false")
     print("generation created: false")
