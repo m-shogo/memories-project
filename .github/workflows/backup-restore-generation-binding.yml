@@ -192,30 +192,68 @@ jobs:
         if: steps.restore.outputs.exit_code == '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
-          git fetch origin so
-          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
-            echo "Repository HEAD changed during generation binding reconciliation; refusing stale derived authority."
-            exit 75
-          fi
-          git rm -f docs/fixtures/memory-os-operability/backup-restore-generation-reconcile-diagnostic.last.json 2>/dev/null || true
-          git add contracts/operations/production-operability-status.json
-          git add -u docs/fixtures/memory-os-operability/backup-restore-generation-reconcile-diagnostic.last.json 2>/dev/null || true
-          if ! git diff --cached --quiet; then
+          log=/tmp/backup-restore-generation-binding.log
+
+          revalidate_latest_generation_binding() {
+            git fetch origin so
+            git reset --hard origin/so
+            SOURCE_SHA="$(git rev-parse HEAD)"
+            export SOURCE_SHA
+            : > "$log"
+            python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1
+            python scripts/validate-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1
+            python scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py >> "$log" 2>&1
+            python scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py >> "$log" 2>&1
+            python scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py >> "$log" 2>&1
+            python scripts/validate-memory-os-backup-restore-generation-binding.py >> "$log" 2>&1
+            python scripts/validate-memory-os-backup-restore-generation-binding-negative.py >> "$log" 2>&1
+            python scripts/reconcile-memory-os-backup-restore-generation-status.py >> "$log" 2>&1
+            python scripts/validate-memory-os-backup-restore.py >> "$log" 2>&1
+            python scripts/validate-memory-os-operability.py >> "$log" 2>&1
+          }
+
+          for reconcile_attempt in 1 2; do
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              if [[ "$reconcile_attempt" == "2" ]]; then
+                echo "Repository HEAD changed again during bounded generation-binding retry; refusing stale derived authority."
+                exit 75
+              fi
+              echo "Repository HEAD advanced; regenerating and revalidating generation binding once from latest so."
+              revalidate_latest_generation_binding
+            fi
+
+            git rm -f docs/fixtures/memory-os-operability/backup-restore-generation-reconcile-diagnostic.last.json 2>/dev/null || true
+            git add contracts/operations/production-operability-status.json
+            git add -u docs/fixtures/memory-os-operability/backup-restore-generation-reconcile-diagnostic.last.json 2>/dev/null || true
+            if git diff --cached --quiet; then
+              exit 0
+            fi
+
             git diff --cached --check
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(restore): reconcile generation evidence authority"
-            for attempt in 1 2 3 4; do
-              git fetch origin so
-              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
-                echo "Repository HEAD changed after generation binding validation; refusing stale derived authority."
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              if [[ "$reconcile_attempt" == "2" ]]; then
+                echo "Repository HEAD changed again after bounded generation-binding validation; refusing stale derived authority."
                 exit 75
               fi
-              if git push origin HEAD:so; then exit 0; fi
-              sleep 2
-            done
-            exit 1
-          fi
+              echo "Repository HEAD advanced after validation; discarding stale generation-binding commit and retrying from latest so."
+              revalidate_latest_generation_binding
+              continue
+            fi
+            if git push origin HEAD:so; then
+              exit 0
+            fi
+            if [[ "$reconcile_attempt" == "2" ]]; then
+              exit 1
+            fi
+            echo "Generation-binding push raced with another writer; retrying once from latest so."
+            revalidate_latest_generation_binding
+          done
+          exit 75
       - name: Record privacy-safe reconcile diagnostic
         if: steps.restore.outputs.exit_code != '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         env:
