@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import tempfile
 from pathlib import Path
@@ -81,6 +82,24 @@ def expect_rejection(label: str, overrides: dict[str, str], expected_message: st
         fake.unlink(missing_ok=True)
 
 
+def expect_contract_ref_rejection(field: str, replacement: str, expected_message: str) -> None:
+    module = load_authority_validator(f"generation_evidence_contract_ref_negative_{field}")
+    canonical = module.load_contract()
+    mutated = json.loads(json.dumps(canonical))
+    mutated[field] = replacement
+    original = module.load_contract
+    try:
+        module.load_contract = lambda: mutated
+        try:
+            module.main()
+        except module.Fail as exc:
+            require(expected_message in str(exc), f"{field}: unexpected rejection: {exc}")
+        else:
+            raise Fail(f"{field}: substituted contract review authority was accepted")
+    finally:
+        module.load_contract = original
+
+
 def main() -> int:
     require(AUTHORITY_VALIDATOR.is_file(), "authority validator missing")
     cases = (
@@ -153,7 +172,18 @@ def main() -> int:
     for label, overrides, expected in cases:
         expect_rejection(label, overrides, expected)
 
-    print("PASS: complete generation-evidence executable/data/lock authority substitution matrix is rejected")
+    expect_contract_ref_rejection(
+        "independentReviewValidator",
+        "scripts/validate-memory-os-backup-restore-generation-evidence.py",
+        "contract independent-review validator ref drift",
+    )
+    expect_contract_ref_rejection(
+        "independentReviewNegativeValidator",
+        "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py",
+        "contract independent-review negative validator ref drift",
+    )
+
+    print("PASS: complete generation-evidence executable/data/lock/review authority substitution matrix is rejected")
     return 0
 
 
