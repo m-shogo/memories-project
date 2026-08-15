@@ -10,6 +10,7 @@ production authority.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -20,6 +21,7 @@ CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contr
 REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 EVIDENCE_ROOT = Path("docs/evidence/backup-restore")
 REVIEW_SCHEMA = "memory-os-backup-restore-generation-review-evidence.v1"
+REVIEWER_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{2,63}$")
 REQUIRED_FIELDS = {
     "schemaVersion",
     "evidenceId",
@@ -85,8 +87,7 @@ def validate_contract_authority() -> None:
     )
     fields = contract.get("requiredIndependentReviewEvidenceFields")
     require(
-        isinstance(fields, list)
-        and all(isinstance(field, str) and field for field in fields)
+        isinstance(fields, list)\n        and all(isinstance(field, str) and field for field in fields)
         and len(fields) == len(set(fields))
         and set(fields) == REQUIRED_FIELDS,
         "independent review required field authority drift",
@@ -174,7 +175,7 @@ def validate_review(row: dict[str, Any], ref_field: str, expected_role: str) -> 
     require(payload.get("reviewRole") == expected_role, f"{ref_field} reviewRole mismatch")
     require(payload.get("reviewResult") == "APPROVED", f"{ref_field} review must be APPROVED")
     reviewer = payload.get("reviewerPseudonym")
-    require(isinstance(reviewer, str) and reviewer.strip(), f"{ref_field} reviewerPseudonym required")
+    require(isinstance(reviewer, str) and REVIEWER_ID.fullmatch(reviewer), f"{ref_field} reviewerPseudonym invalid")
     require_utc_rfc3339(payload.get("reviewedAt"), f"{ref_field} reviewedAt")
     require(payload.get("productionTrafficChanged") is False, f"{ref_field} cannot change production traffic")
     require(payload.get("productionCredentialsUsed") is False, f"{ref_field} cannot use production credentials")
