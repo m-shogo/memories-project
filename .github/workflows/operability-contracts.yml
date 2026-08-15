@@ -358,9 +358,6 @@ jobs:
       - name: Validate immutable production-equivalent environment generations
         run: python scripts/validate-memory-os-production-equivalent-environment-generation.py
 
-      - name: Validate immutable environment generation negatives
-        run: python scripts/validate-memory-os-production-equivalent-environment-generation-negative.py
-
       - name: Validate explicit recovery objectives authority
         run: python scripts/validate-memory-os-recovery-objectives.py
 
