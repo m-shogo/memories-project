@@ -271,36 +271,44 @@ def drill_request_for_record(record: dict[str, Any], *, require_current: bool) -
     request_id = record.get("drillRequestId")
     require(isinstance(request_id, str) and REQUEST_ID.fullmatch(request_id), "drillRequestId invalid")
     registry = load(DRILL_REQUEST_REGISTRY)
-    require(registry.get("schemaVersion") == "memory-os-backup-restore-drill-request-registry.v1", "drill request registry schema drift")
-    require(registry.get("appendOnly") is True, "drill request registry must remain append-only")
-    require(registry.get("productionEvidence") is False and registry.get("productionReady") is False, "drill request registry production boundary drift")
-    rows = registry.get("requests")
-    require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "drill request registry rows invalid")
-    registered_count = registry.get("registeredRequestCount")
-    current_count = registry.get("currentExecutableRequestCount")
-    require(
-        isinstance(registered_count, int) and not isinstance(registered_count, bool) and registered_count == len(rows),
-        "drill request registry registeredRequestCount drift",
-    )
-    require(isinstance(current_count, int) and not isinstance(current_count, bool), "drill request registry currentExecutableRequestCount invalid")
-
     drill_writer = load_drill_writer()
-    current_executable = 0
-    for index, row in enumerate(rows):
+    if DRILL_REQUEST_REGISTRY == CANONICAL_DRILL_REQUEST_REGISTRY:
         try:
-            drill_writer.validate_request(row, require_current=False)
+            rows = drill_writer.validate_registry_for_append(registry)
         except Exception as exc:
             if domain_validation_failure(exc):
-                raise Fail(f"drill request registry requests[{index}] historical authority invalid") from exc
+                raise Fail(f"restore drill request registry authority invalid: {exc}") from exc
             raise
-        try:
-            drill_writer.validate_request(row, require_current=True)
-        except Exception as exc:
-            if domain_validation_failure(exc):
-                continue
-            raise
-        current_executable += 1
-    require(current_count == current_executable, "drill request registry currentExecutableRequestCount drift")
+    else:
+        require(registry.get("schemaVersion") == "memory-os-backup-restore-drill-request-registry.v1", "drill request registry schema drift")
+        require(registry.get("appendOnly") is True, "drill request registry must remain append-only")
+        require(registry.get("productionEvidence") is False and registry.get("productionReady") is False, "drill request registry production boundary drift")
+        rows = registry.get("requests")
+        require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "drill request registry rows invalid")
+        registered_count = registry.get("registeredRequestCount")
+        current_count = registry.get("currentExecutableRequestCount")
+        require(
+            isinstance(registered_count, int) and not isinstance(registered_count, bool) and registered_count == len(rows),
+            "drill request registry registeredRequestCount drift",
+        )
+        require(isinstance(current_count, int) and not isinstance(current_count, bool), "drill request registry currentExecutableRequestCount invalid")
+
+        current_executable = 0
+        for index, row in enumerate(rows):
+            try:
+                drill_writer.validate_request(row, require_current=False)
+            except Exception as exc:
+                if domain_validation_failure(exc):
+                    raise Fail(f"drill request registry requests[{index}] historical authority invalid") from exc
+                raise
+            try:
+                drill_writer.validate_request(row, require_current=True)
+            except Exception as exc:
+                if domain_validation_failure(exc):
+                    continue
+                raise
+            current_executable += 1
+        require(current_count == current_executable, "drill request registry currentExecutableRequestCount drift")
 
     matches = [row for row in rows if row.get("requestId") == request_id]
     require(len(matches) == 1, "drillRequestId is not uniquely registered")
