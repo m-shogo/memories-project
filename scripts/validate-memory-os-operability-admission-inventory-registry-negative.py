@@ -127,6 +127,11 @@ def main() -> int:
             lambda value: value.__setitem__("registeredGenerationCount", True),
         ),
         (
+            AUTHORITIES["environment generation"],
+            "environment generation empty current pointer manufactured",
+            lambda value: value.__setitem__("currentGenerationId", "pegen_manufactured_current"),
+        ),
+        (
             AUTHORITIES["recovery objective"],
             "recovery objective schema drift",
             lambda value: value.__setitem__("schemaVersion", "invalid"),
@@ -135,6 +140,11 @@ def main() -> int:
             AUTHORITIES["recovery objective"],
             "recovery objective boolean count",
             lambda value: value.__setitem__("approvedObjectiveCount", True),
+        ),
+        (
+            AUTHORITIES["recovery objective"],
+            "recovery objective empty current pointer manufactured",
+            lambda value: value.__setitem__("currentObjectiveId", "bro_manufactured_current"),
         ),
         (
             AUTHORITIES["drill request"],
@@ -147,6 +157,11 @@ def main() -> int:
             lambda value: value.__setitem__("currentExecutableRequestCount", True),
         ),
         (
+            AUTHORITIES["drill request"],
+            "drill request executable count manufactured without history",
+            lambda value: value.__setitem__("currentExecutableRequestCount", 1),
+        ),
+        (
             AUTHORITIES["generation recovery evidence"],
             "generation recovery evidence schema drift",
             lambda value: value.__setitem__("schemaVersion", "invalid"),
@@ -157,6 +172,11 @@ def main() -> int:
             lambda value: value.__setitem__("registeredEvidenceCount", True),
         ),
         (
+            AUTHORITIES["generation recovery evidence"],
+            "generation recovery final candidate manufactured without evidence",
+            lambda value: value.__setitem__("productionEquivalentRecoveryCandidateCount", 1),
+        ),
+        (
             AUTHORITIES["typed non-resurrection"],
             "typed non-resurrection production readiness manufactured",
             lambda value: value.__setitem__("productionReady", True),
@@ -165,6 +185,11 @@ def main() -> int:
             AUTHORITIES["typed non-resurrection"],
             "typed non-resurrection boolean count",
             lambda value: value.__setitem__("registeredRecordCount", True),
+        ),
+        (
+            AUTHORITIES["typed non-resurrection"],
+            "typed non-resurrection candidate coverage manufactured without records",
+            lambda value: value.__setitem__("candidateCoveredCount", 1),
         ),
         (
             AUTHORITIES["human promotion review"],
