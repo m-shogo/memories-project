@@ -19,6 +19,7 @@ ENV_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environ
 WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
 EXPECTED_LOCK = ROOT / "contracts/operations/.production-equivalent-environment-generation.lock"
 NEGATIVE = ROOT / "scripts/validate-memory-os-production-equivalent-environment-generation-negative.py"
+SOURCE_BINDING_NEGATIVE = ROOT / "scripts/validate-memory-os-production-equivalent-environment-generation-source-binding-negative.py"
 EXPECTED_NEGATIVE_CASES = {
     "environment record missing required nested section",
     "environment record unknown nested field",
@@ -84,9 +85,10 @@ def load_writer():
     return module
 
 
-def run_negative() -> None:
-    completed = subprocess.run([sys.executable, str(NEGATIVE)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-    require(completed.returncode == 0, f"environment generation negative admission suite failed:\n{completed.stdout[-8000:]}{completed.stderr[-8000:]}")
+def run_suite(path: Path, label: str) -> None:
+    repo_file(str(path.relative_to(ROOT)), label)
+    completed = subprocess.run([sys.executable, str(path)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    require(completed.returncode == 0, f"{label} failed:\n{completed.stdout[-8000:]}{completed.stderr[-8000:]}")
 
 
 def main() -> int:
@@ -125,6 +127,7 @@ def main() -> int:
     for field, path in expected_refs.items():
         require(contract.get(field) == str(path.relative_to(ROOT)), f"contract ref drift: {field}")
         require(repo_file(str(path.relative_to(ROOT)), field) == path.resolve(), f"generation artifact canonical path drift: {field}")
+    repo_file(str(SOURCE_BINDING_NEGATIVE.relative_to(ROOT)), "source-binding negative validator")
     for field in ("validator", "workflow"):
         repo_file(contract.get(field), field)
     require(env_schema.get("$schema") == "https://json-schema.org/draft/2020-12/schema", "environment schema draft drift")
@@ -137,8 +140,10 @@ def main() -> int:
     for key in (
         "environmentRecordFullSemanticValidationRequired",
         "environmentRecordRefMustBeCanonicalRepositoryFile",
+        "environmentRecordMustMatchSourceCommitSha",
         "semanticValidatorImplementationErrorsMustSurface",
         "allNonNullEnvironmentEvidenceRefsMustResolveInRepository",
+        "allNonNullEnvironmentEvidenceRefsMustMatchSourceCommitSha",
         "equivalentEnvironmentRequiresIndependentReviewEvidence",
         "registrationDoesNotImplyPreflightEligibility",
         "preflightEligibilityRequiresValidatedEquivalentDependenciesAndIndependentReview",
@@ -232,7 +237,8 @@ def main() -> int:
     require(readiness.get("productionEquivalentDependencies") is derived_equivalent, "readiness productionEquivalentDependencies drift")
     require(readiness.get("productionReady") is False, "generation authority cannot make application production ready")
 
-    run_negative()
+    run_suite(NEGATIVE, "environment generation negative admission suite")
+    run_suite(SOURCE_BINDING_NEGATIVE, "environment generation source-binding negative suite")
 
     print("Memory OS production-equivalent environment generation validation PASS")
     print(f"registered generations: {count}")
@@ -242,6 +248,8 @@ def main() -> int:
     print("registration implies preflight eligibility: false")
     print("boolean generation counts accepted: false")
     print("canonical environmentRecordRef required: true")
+    print("environmentRecordRef source-bound: true")
+    print("environment evidence refs source-bound: true")
     print("canonical writer runtime authorities validated without generation rows: true")
     print("canonical writer append lock authority validated: true")
     print("semantic environment evidence refs canonical: true")
@@ -250,6 +258,7 @@ def main() -> int:
     print("cross-generation evidence reuse: forbidden")
     print("negative admission case authority exact: true")
     print("negative admission suite: PASS")
+    print("source-binding negative suite: PASS")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
