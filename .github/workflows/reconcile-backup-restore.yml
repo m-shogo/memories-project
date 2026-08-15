@@ -50,7 +50,11 @@ jobs:
           python -m py_compile \
             scripts/memory_os_backup_restore_blockers.py \
             scripts/validate-memory-os-backup-restore.py \
-            scripts/reconcile-memory-os-backup-restore.py
+            scripts/reconcile-memory-os-backup-restore.py \
+            scripts/validate-memory-os-local-logical-restore.py \
+            scripts/validate-memory-os-local-object-version-restore.py \
+            scripts/validate-memory-os-operability.py \
+            scripts/validate-memory-os-entry-docs.py
 
       - name: Reconcile then validate status authority
         run: |
@@ -63,23 +67,59 @@ jobs:
 
       - name: Commit reconciled status
         run: |
-          git add contracts/operations/production-operability-status.json
-          if git diff --cached --quiet; then
-            echo "Backup/restore authority is already current."
-            exit 0
-          fi
+          set -euo pipefail
 
-          # The derived status is valid only for the exact repository snapshot
-          # that was reconciled and validated above. Never rebase it onto a
-          # newer authority state; a later run must recompute from that state.
-          git fetch origin so
-          if [ "$(git rev-parse HEAD)" != "$SOURCE_SHA" ] || \
-             [ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]; then
-            echo "Refusing stale backup/restore authority write: validated $SOURCE_SHA but so advanced." >&2
-            exit 75
-          fi
+          revalidate_latest_restore_policy() {
+            git fetch origin so
+            git reset --hard origin/so
+            SOURCE_SHA="$(git rev-parse HEAD)"
+            export SOURCE_SHA
+            python scripts/reconcile-memory-os-backup-restore.py
+            python scripts/validate-memory-os-backup-restore.py
+            python scripts/validate-memory-os-local-logical-restore.py
+            python scripts/validate-memory-os-local-object-version-restore.py
+            python scripts/validate-memory-os-operability.py
+            python scripts/validate-memory-os-entry-docs.py
+          }
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "docs(backup): reconcile restore policy authority"
-          git push origin HEAD:so
+          for reconcile_attempt in 1 2; do
+            git fetch origin so
+            if [[ "$(git rev-parse HEAD)" != "$SOURCE_SHA" || "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              if [[ "$reconcile_attempt" == "2" ]]; then
+                echo "Backup/restore source changed again during bounded retry; refusing stale authority write." >&2
+                exit 75
+              fi
+              echo "Backup/restore source advanced; recomputing and revalidating once from latest so."
+              revalidate_latest_restore_policy
+            fi
+
+            git add contracts/operations/production-operability-status.json
+            if git diff --cached --quiet; then
+              echo "Backup/restore authority is already current."
+              exit 0
+            fi
+
+            git diff --cached --check
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "docs(backup): reconcile restore policy authority"
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              if [[ "$reconcile_attempt" == "2" ]]; then
+                echo "Backup/restore source changed again after bounded retry validation; refusing stale authority write." >&2
+                exit 75
+              fi
+              echo "Backup/restore source advanced after validation; discarding stale commit and retrying from latest so."
+              revalidate_latest_restore_policy
+              continue
+            fi
+            if git push origin HEAD:so; then
+              exit 0
+            fi
+            if [[ "$reconcile_attempt" == "2" ]]; then
+              exit 1
+            fi
+            echo "Backup/restore authority push raced with another writer; retrying once from latest so."
+            revalidate_latest_restore_policy
+          done
+          exit 75
