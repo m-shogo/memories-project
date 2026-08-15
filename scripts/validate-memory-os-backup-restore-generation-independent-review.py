@@ -3,12 +3,14 @@
 
 Security and Operability review payloads must be typed, distinct, repository-contained,
 append-only in Git history after their first committed version, and bound to the exact
-recovery authority they approve. This validator never creates review evidence or
-production authority.
+recovery authority they approve. Cross-generation candidates must also satisfy the
+canonical typed material-delta review authority. This validator never creates review
+evidence or production authority.
 """
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
 import subprocess
@@ -21,6 +23,7 @@ CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contr
 REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 EVIDENCE_ROOT = Path("docs/evidence/backup-restore")
 REVIEW_SCHEMA = "memory-os-backup-restore-generation-review-evidence.v1"
+MATERIAL_DELTA_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
 REVIEWER_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{2,63}$")
 REQUIRED_FIELDS = {
     "schemaVersion",
@@ -84,6 +87,10 @@ def validate_contract_authority() -> None:
     require(
         contract.get("independentReviewEvidenceRoot") == EVIDENCE_ROOT.as_posix(),
         "independent review evidence root authority drift",
+    )
+    require(
+        contract.get("materialDeltaReviewValidator") == MATERIAL_DELTA_VALIDATOR.relative_to(ROOT).as_posix(),
+        "candidate material-delta review validator authority drift",
     )
     fields = contract.get("requiredIndependentReviewEvidenceFields")
     require(
@@ -185,9 +192,33 @@ def validate_review(row: dict[str, Any], ref_field: str, expected_role: str) -> 
     return ref, reviewer
 
 
+def load_material_delta_validator():
+    try:
+        relative = MATERIAL_DELTA_VALIDATOR.relative_to(ROOT)
+        resolved = MATERIAL_DELTA_VALIDATOR.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail("candidate material-delta review validator missing or escapes repository") from exc
+    require(relative == resolved and MATERIAL_DELTA_VALIDATOR.is_file(), "candidate material-delta review validator authority drift")
+    spec = importlib.util.spec_from_file_location("memory_os_generation_material_delta_review_for_candidate_reviews", MATERIAL_DELTA_VALIDATOR)
+    require(spec is not None and spec.loader is not None, "cannot load candidate material-delta review validator")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    require(getattr(module, "CONTRACT", None) == CONTRACT, "candidate material-delta review contract authority drift")
+    require(getattr(module, "REGISTRY", None) == REGISTRY, "candidate material-delta review registry authority drift")
+    require(callable(getattr(module, "material_delta_review_approved", None)), "candidate material-delta review authority missing")
+    return module
+
+
 def candidate_reviews_approved(row: dict[str, Any]) -> bool:
-    """Validate the exact typed independent-review authority for one candidate row."""
+    """Validate exact typed candidate review authorities for one generation evidence row."""
     validate_contract_authority()
+    try:
+        material_delta_ok = load_material_delta_validator().material_delta_review_approved(row)
+    except Exception as exc:
+        if isinstance(exc, RuntimeError) and exc.__class__.__name__ == "Fail":
+            raise Fail(f"material-delta review authority invalid: {exc}") from exc
+        raise
+    require(material_delta_ok is True, "material-delta review authority did not approve candidate")
     security_ref, security_reviewer = validate_review(row, "securityReviewRef", ROLE_BY_REF["securityReviewRef"])
     operability_ref, operability_reviewer = validate_review(row, "operabilityReviewRef", ROLE_BY_REF["operabilityReviewRef"])
     require(security_ref != operability_ref, "Security and Operability review refs must remain distinct")
@@ -210,7 +241,7 @@ def main() -> int:
         except Fail as exc:
             raise Fail(f"records[{index}] independent review authority invalid: {exc}") from exc
 
-    print(f"PASS: generation independent review authority records={len(rows)} productionEvidence=false productionReady=false")
+    print(f"PASS: generation candidate review authority records={len(rows)} productionEvidence=false productionReady=false")
     return 0
 
 
