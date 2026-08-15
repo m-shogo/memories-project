@@ -27,16 +27,29 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def display_path(path: Path) -> str:
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
-        raise Fail(f"cannot load {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+    except (FileNotFoundError, OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise Fail(f"cannot load {display_path(path)}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be object: {display_path(path)}")
     return value
 
 
 def load_helper():
+    try:
+        expected = (ROOT / "scripts/memory_os_environment_generation_eligibility.py").resolve(strict=True)
+        actual = HELPER.resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError) as exc:
+        raise Fail("environment generation eligibility helper missing") from exc
+    require(actual == expected and HELPER.is_file(), "environment generation eligibility helper executable authority drift")
     spec = importlib.util.spec_from_file_location("memory_os_environment_generation_eligibility_validator", HELPER)
     require(spec is not None and spec.loader is not None, "cannot load environment generation eligibility helper")
     module = importlib.util.module_from_spec(spec)
@@ -124,6 +137,8 @@ def main() -> int:
     print(f"unsuperseded preflight-eligible generations: {unsuperseded_eligible}")
     print(f"distinct preflight-eligible environments: {distinct_eligible}")
     print(f"eligible directed restore pairs: {pair_count}")
+    print("eligibility helper executable authority pinned: true")
+    print("unreadable eligibility authority accepted: false")
     print("registration implies eligibility: false")
     print("production evidence: false")
     print("production decision: NO_GO")
