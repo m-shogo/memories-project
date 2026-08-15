@@ -103,85 +103,46 @@ def expect_contract_ref_rejection(field: str, replacement: str, expected_message
 def main() -> int:
     require(AUTHORITY_VALIDATOR.is_file(), "authority validator missing")
     cases = (
-        (
-            "contract",
-            {"CONTRACT": "contracts/operations/backup-restore-drill-request-contract.v1.json"},
-            "generation-evidence contract authority drift",
-        ),
-        (
-            "registry",
-            {"REGISTRY": "contracts/operations/backup-restore-drill-request-registry.v1.json"},
-            "generation-evidence registry authority drift",
-        ),
-        (
-            "generation-registry",
-            {"GEN_REGISTRY": "contracts/operations/backup-restore-drill-request-registry.v1.json"},
-            "generation-evidence environment-generation registry authority drift",
-        ),
-        (
-            "generation-writer",
-            {"GEN_WRITER": "scripts/validate-memory-os-production-equivalent-environment-generation.py"},
-            "generation-evidence environment-generation writer authority drift",
-        ),
-        (
-            "objectives-registry",
-            {"OBJECTIVES_REGISTRY": "contracts/operations/production-equivalent-environment-generation-registry.v1.json"},
-            "generation-evidence recovery-objectives registry authority drift",
-        ),
-        (
-            "objectives-writer",
-            {"OBJECTIVES_WRITER": "scripts/validate-memory-os-recovery-objectives.py"},
-            "generation-evidence recovery-objectives writer authority drift",
-        ),
-        (
-            "drill-request-contract",
-            {"DRILL_REQUEST_CONTRACT": "contracts/operations/backup-restore-generation-evidence-contract.v1.json"},
-            "generation-evidence drill-request contract authority drift",
-        ),
-        (
-            "drill-request-registry",
-            {"DRILL_REQUEST_REGISTRY": "contracts/operations/recovery-objectives-registry.v1.json"},
-            "generation-evidence drill-request registry authority drift",
-        ),
-        (
-            "drill-request-writer",
-            {"DRILL_REQUEST_WRITER": "scripts/validate-memory-os-backup-restore-drill-request.py"},
-            "generation-evidence drill-request writer authority drift",
-        ),
-        (
-            "typed-contract",
-            {"NON_RESURRECTION_CONTRACT": "contracts/operations/backup-restore-generation-evidence-contract.v1.json"},
-            "generation-evidence typed non-resurrection contract authority drift",
-        ),
-        (
-            "typed-registry",
-            {"NON_RESURRECTION_REGISTRY": "contracts/operations/backup-restore-generation-evidence-registry.v1.json"},
-            "generation-evidence typed non-resurrection registry authority drift",
-        ),
-        (
-            "typed-writer",
-            {"NON_RESURRECTION_WRITER": "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"},
-            "generation-evidence typed non-resurrection writer authority drift",
-        ),
-        (
-            "append-lock",
-            {"LOCK": "contracts/operations/.backup-restore-drill-request.lock"},
-            "generation-evidence append lock authority drift",
-        ),
+        ("contract", {"CONTRACT": "contracts/operations/backup-restore-drill-request-contract.v1.json"}, "generation-evidence contract authority drift"),
+        ("registry", {"REGISTRY": "contracts/operations/backup-restore-drill-request-registry.v1.json"}, "generation-evidence registry authority drift"),
+        ("generation-registry", {"GEN_REGISTRY": "contracts/operations/backup-restore-drill-request-registry.v1.json"}, "generation-evidence environment-generation registry authority drift"),
+        ("generation-writer", {"GEN_WRITER": "scripts/validate-memory-os-production-equivalent-environment-generation.py"}, "generation-evidence environment-generation writer authority drift"),
+        ("objectives-registry", {"OBJECTIVES_REGISTRY": "contracts/operations/production-equivalent-environment-generation-registry.v1.json"}, "generation-evidence recovery-objectives registry authority drift"),
+        ("objectives-writer", {"OBJECTIVES_WRITER": "scripts/validate-memory-os-recovery-objectives.py"}, "generation-evidence recovery-objectives writer authority drift"),
+        ("drill-request-contract", {"DRILL_REQUEST_CONTRACT": "contracts/operations/backup-restore-generation-evidence-contract.v1.json"}, "generation-evidence drill-request contract authority drift"),
+        ("drill-request-registry", {"DRILL_REQUEST_REGISTRY": "contracts/operations/recovery-objectives-registry.v1.json"}, "generation-evidence drill-request registry authority drift"),
+        ("drill-request-writer", {"DRILL_REQUEST_WRITER": "scripts/validate-memory-os-backup-restore-drill-request.py"}, "generation-evidence drill-request writer authority drift"),
+        ("typed-contract", {"NON_RESURRECTION_CONTRACT": "contracts/operations/backup-restore-generation-evidence-contract.v1.json"}, "generation-evidence typed non-resurrection contract authority drift"),
+        ("typed-registry", {"NON_RESURRECTION_REGISTRY": "contracts/operations/backup-restore-generation-evidence-registry.v1.json"}, "generation-evidence typed non-resurrection registry authority drift"),
+        ("typed-writer", {"NON_RESURRECTION_WRITER": "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"}, "generation-evidence typed non-resurrection writer authority drift"),
+        ("append-lock", {"LOCK": "contracts/operations/.backup-restore-drill-request.lock"}, "generation-evidence append lock authority drift"),
     )
     for label, overrides, expected in cases:
         expect_rejection(label, overrides, expected)
 
-    expect_contract_ref_rejection(
-        "independentReviewValidator",
-        "scripts/validate-memory-os-backup-restore-generation-evidence.py",
-        "contract independent-review validator ref drift",
-    )
-    expect_contract_ref_rejection(
-        "independentReviewNegativeValidator",
-        "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py",
-        "contract independent-review negative validator ref drift",
-    )
+    for field, replacement, expected in (
+        (
+            "independentReviewValidator",
+            "scripts/validate-memory-os-backup-restore-generation-evidence.py",
+            "contract independent-review validator ref drift",
+        ),
+        (
+            "independentReviewNegativeValidator",
+            "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py",
+            "contract independent-review negative validator ref drift",
+        ),
+        (
+            "materialDeltaReviewValidator",
+            "scripts/validate-memory-os-backup-restore-generation-evidence.py",
+            "contract material-delta review validator ref drift",
+        ),
+        (
+            "materialDeltaReviewNegativeValidator",
+            "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py",
+            "contract material-delta review negative validator ref drift",
+        ),
+    ):
+        expect_contract_ref_rejection(field, replacement, expected)
 
     print("PASS: complete generation-evidence executable/data/lock/review authority substitution matrix is rejected")
     return 0
