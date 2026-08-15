@@ -173,8 +173,18 @@ def main() -> int:
         ),
         (
             AUTHORITIES["human promotion review"],
+            "human promotion current decision manufactured",
+            lambda value: value.__setitem__("currentDecisionId", "brpr_manufactured_current_authority"),
+        ),
+        (
+            AUTHORITIES["human promotion review"],
             "human promotion boolean count",
             lambda value: value.__setitem__("registeredReviewCount", True),
+        ),
+        (
+            AUTHORITIES["human promotion review"],
+            "human promotion production traffic manufactured",
+            lambda value: value.__setitem__("productionTrafficChanged", True),
         ),
     ]
     for path, name, mutate in cases:
