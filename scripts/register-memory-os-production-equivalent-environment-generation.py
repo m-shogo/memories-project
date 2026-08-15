@@ -134,6 +134,17 @@ def repo_ref(value: Any, field: str) -> Path:
     return absolute
 
 
+def require_repo_file_bound_to_source(source_commit: str, path: Path, field: str) -> None:
+    """Require one canonical repository file to match its bytes at sourceCommitSha."""
+    try:
+        relative = path.relative_to(ROOT).as_posix()
+    except ValueError as exc:
+        raise Fail(f"{field} escapes repository") from exc
+    current = path.read_bytes()
+    historical = git_blob(source_commit, relative, field)
+    require(current == historical, f"{field} changed since sourceCommitSha")
+
+
 def require_environment_evidence_bound_to_source(source_commit: str, env: dict[str, Any]) -> None:
     """Keep semantic generation evidence immutable against the registered source commit."""
     refs: list[tuple[Any, str]] = [
@@ -158,9 +169,7 @@ def require_environment_evidence_bound_to_source(source_commit: str, env: dict[s
         require(isinstance(value, str) and value, f"{field} invalid")
         if value in checked:
             continue
-        current = repo_ref(value, field).read_bytes()
-        historical = git_blob(source_commit, value, field)
-        require(current == historical, f"{field} changed since sourceCommitSha")
+        require_repo_file_bound_to_source(source_commit, repo_ref(value, field), field)
         checked.add(value)
 
 
@@ -194,6 +203,7 @@ def validate_record(record: dict[str, Any]) -> bool:
 
     env_path = repo_ref(record.get("environmentRecordRef"), "environmentRecordRef")
     require(record["environmentRecordSha256"] == sha256(env_path), "environmentRecordSha256 mismatch")
+    require_repo_file_bound_to_source(source, env_path, "environmentRecordRef")
     env = load(env_path)
     env_validator = load_environment_validator()
     try:
