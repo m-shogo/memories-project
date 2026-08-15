@@ -117,6 +117,12 @@ def validate_contract_authority() -> None:
         require(rules.get(rule) is True, f"independent review contract rule drift: {rule}")
     for field, rule in BOUND_RULE_BY_FIELD.items():
         require(rules.get(rule) is True, f"independent review binding rule drift: {field}")
+    promotion = contract.get("promotionBoundary")
+    require(isinstance(promotion, dict), "generation evidence promotionBoundary missing")
+    require(
+        promotion.get("completeReviewedRecordAlsoRequiresTypedAppendOnlyIndependentReviews") is True,
+        "independent review promotion boundary drift",
+    )
 
 
 def canonical_ref(value: Any, field: str) -> tuple[str, Path]:
