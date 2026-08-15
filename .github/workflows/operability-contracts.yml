@@ -47,6 +47,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
       - "scripts/reconcile-memory-os-backup-restore-drill-preflight.py"
       - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py"
+      - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py"
@@ -146,6 +147,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
       - "scripts/reconcile-memory-os-backup-restore-drill-preflight.py"
       - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py"
+      - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py"
@@ -252,6 +254,7 @@ jobs:
           python -m py_compile scripts/validate-memory-os-backup-restore-drill-preflight.py
           python -m py_compile scripts/reconcile-memory-os-backup-restore-drill-preflight.py
           python -m py_compile scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py
+          python -m py_compile scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py
           python -m py_compile scripts/register-memory-os-backup-restore-generation-evidence.py
           python -m py_compile scripts/validate-memory-os-backup-restore-generation-evidence.py
           python -m py_compile scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py
@@ -360,6 +363,9 @@ jobs:
 
       - name: Validate restore preflight semantic consistency
         run: python scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py
+
+      - name: Validate restore preflight semantic consistency negatives
+        run: python scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py
 
       - name: Validate generation-bound backup/restore binding
         run: python scripts/validate-memory-os-backup-restore-generation-binding.py
