@@ -14,6 +14,7 @@ on:
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-eligibility.py"
+      - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py"
       - "scripts/request-memory-os-backup-restore-drill.py"
   push:
@@ -31,6 +32,7 @@ on:
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-eligibility.py"
+      - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py"
       - "scripts/request-memory-os-backup-restore-drill.py"
   workflow_dispatch:
@@ -76,6 +78,7 @@ jobs:
             scripts/register-memory-os-production-equivalent-environment-generation.py \
             scripts/memory_os_environment_generation_eligibility.py \
             scripts/validate-memory-os-production-equivalent-environment-eligibility.py \
+            scripts/register-memory-os-recovery-objectives.py \
             scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py \
             scripts/request-memory-os-backup-restore-drill.py \
             >> "$log" 2>&1 || code=$?
