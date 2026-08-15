@@ -14,6 +14,7 @@ on:
       - "scripts/register-memory-os-incident-contact-routing.py"
       - "scripts/validate-memory-os-incident-contact-routing.py"
       - "scripts/reconcile-memory-os-incident-contact-routing.py"
+      - "scripts/validate-memory-os-incident-contact-routing-reconcile-negative.py"
   workflow_dispatch:
 
 permissions:
@@ -51,7 +52,11 @@ jobs:
             scripts/register-memory-os-incident-contact-routing.py \
             scripts/validate-memory-os-incident-contact-routing.py \
             scripts/reconcile-memory-os-incident-contact-routing.py \
+            scripts/validate-memory-os-incident-contact-routing-reconcile-negative.py \
             >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-incident-contact-routing-reconcile-negative.py >> "$log" 2>&1 || code=$?
+          fi
           if [[ "$code" == "0" ]]; then
             python scripts/reconcile-memory-os-incident-contact-routing.py >> "$log" 2>&1 || code=$?
           fi
