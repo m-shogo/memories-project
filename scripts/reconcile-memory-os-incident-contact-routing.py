@@ -53,9 +53,20 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
+def validate_current_authority() -> None:
+    completed = subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=False)
+    require(completed.returncode == 0,
+            "canonical contact routing authority is invalid before reconcile")
+
+
 def main() -> int:
     for path in (REGISTRY, WRITER, VALIDATOR, WORKFLOW):
         require(path.is_file(), f"contact routing admission missing: {path.relative_to(ROOT)}")
+
+    # Fail closed before any derived contract/status mutation. The standalone
+    # validator owns registry row semantics and aggregate count authority.
+    validate_current_authority()
+
     registry = load(REGISTRY)
     routings = registry.get("routings")
     require(isinstance(routings, list), "contact routing registry missing")
