@@ -11,6 +11,7 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 WRITER = ROOT / "scripts/register-memory-os-backup-restore-promotion-review.py"
+VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-promotion-review.py"
 
 
 class Fail(RuntimeError):
@@ -28,6 +29,14 @@ def require(condition: bool, message: str) -> None:
 def load_writer():
     spec = importlib.util.spec_from_file_location("memory_os_promotion_review_writer_negative", WRITER)
     require(spec is not None and spec.loader is not None, "cannot load promotion review writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def load_validator():
+    spec = importlib.util.spec_from_file_location("memory_os_promotion_review_validator_negative", VALIDATOR)
+    require(spec is not None and spec.loader is not None, "cannot load promotion review validator")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -82,8 +91,27 @@ def base_registry() -> dict[str, Any]:
 def main() -> int:
     global EXPECTED_FAILURE
     require(WRITER.is_file(), "promotion review writer missing")
+    require(VALIDATOR.is_file(), "promotion review validator missing")
     writer = load_writer()
     EXPECTED_FAILURE = writer.Fail
+
+    validator = load_validator()
+    original_lock = writer.LOCK
+    original_load_writer = validator.load_writer
+    try:
+        writer.LOCK = ROOT / "contracts/operations/.backup-restore-generation-evidence.lock"
+        validator.load_writer = lambda: writer
+        try:
+            validator.main()
+        except validator.Fail as exc:
+            require("promotion review writer append lock authority drift" in str(exc), f"unexpected promotion lock rejection: {exc}")
+            print("PASS reject: promotion review append lock authority substitution")
+        else:
+            raise Fail("promotion review append lock substitution unexpectedly accepted")
+    finally:
+        writer.LOCK = original_lock
+        validator.load_writer = original_load_writer
+
     canonical = base_record()
     canonical["decisionId"] = "brpr_no_candidate"
     expect_rejected("no current final recovery candidate", lambda: writer.validate_record(canonical))
@@ -210,6 +238,7 @@ def main() -> int:
     print("historical review deleted on supersession: false")
     print("current promotion authority retained after supersession: false")
     print("review authority path escape accepted: false")
+    print("promotion review lock substitution accepted: false")
     print("corrupt promotion registry accepted on append: false")
     print("unexpected implementation exception accepted as valid rejection: false")
     print("review can change traffic: false")
