@@ -18,6 +18,7 @@ TYPED_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-ad
 INVENTORY = ROOT / "contracts/operations/operability-admission-inventory.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-backup-restore-promotion-review.py"
 GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
+EXPECTED_EVIDENCE_ROOT = ROOT / "docs/evidence/backup-restore"
 EXPECTED_LOCK = ROOT / "contracts/operations/.backup-restore-promotion-review.lock"
 NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-promotion-review-negative.py"
 EXPECTED_RECORD_SCHEMA = "memory-os-backup-restore-promotion-review-record.v2"
@@ -90,6 +91,7 @@ def main() -> int:
     require(getattr(writer, "REGISTRY", None) == REGISTRY, "promotion review writer registry authority drift")
     require(getattr(writer, "GEN_REGISTRY", None) == GEN_REGISTRY, "promotion review writer generation registry authority drift")
     require(getattr(writer, "GEN_WRITER", None) == GEN_WRITER, "promotion review candidate writer authority drift")
+    require(getattr(writer, "EVIDENCE_ROOT", None) == EXPECTED_EVIDENCE_ROOT, "promotion review evidence namespace drift")
     require(getattr(writer, "REVIEW_EVIDENCE_SCHEMA", None) == EXPECTED_REVIEW_SCHEMA, "promotion review writer evidence schema drift")
     require(getattr(writer, "REVIEW_RESULT", None) == "APPROVED", "promotion review writer approval authority drift")
     writer_lock = getattr(writer, "LOCK", None)
@@ -99,10 +101,12 @@ def main() -> int:
     writer.canonical_repo_file(REGISTRY, "promotion review registry")
     writer.canonical_repo_file(GEN_REGISTRY, "generation recovery evidence registry")
     writer.canonical_repo_file(GEN_WRITER, "generation recovery evidence writer")
+    require(EXPECTED_EVIDENCE_ROOT.is_dir(), "promotion review evidence namespace missing")
 
     require(contract.get("schemaVersion") == "memory-os-backup-restore-promotion-review-contract.v1", "promotion review contract schema drift")
     require(contract.get("recordSchemaVersion") == EXPECTED_RECORD_SCHEMA, "promotion review record schema authority drift")
     require(contract.get("reviewEvidenceSchemaVersion") == EXPECTED_REVIEW_SCHEMA, "promotion review evidence schema authority drift")
+    require(contract.get("reviewEvidenceRoot") == str(EXPECTED_EVIDENCE_ROOT.relative_to(ROOT)), "promotion review evidence root contract drift")
     record_fields = contract.get("requiredRecordFields")
     require(isinstance(record_fields, list) and len(record_fields) == len(set(record_fields)) and set(record_fields) == EXPECTED_RECORD_FIELDS, "promotion review record field authority drift")
     review_fields = contract.get("requiredReviewEvidenceFields")
@@ -124,6 +128,7 @@ def main() -> int:
     rules = contract.get("rules")
     require(isinstance(rules, dict) and rules and all(value is True for value in rules.values()), "promotion review rules must remain fail-closed")
     for rule in (
+        "promotionEvidenceMustRemainInsideMonitoredNamespace",
         "threeDistinctHumanReviewerPseudonymsRequired",
         "typedHumanReviewEvidenceRequired",
         "humanReviewMustBindDecisionId",
@@ -189,6 +194,7 @@ def main() -> int:
     print("historical review/current authority separation: PASS")
     print("typed human review evidence schema authority: PASS")
     print("typed human review role authority: PASS")
+    print("human promotion evidence namespace monitored: true")
     print("human review payload digest binding required: true")
     print("rationale payload digest binding required: true")
     print("promotion review candidate writer identity canonical: true")
