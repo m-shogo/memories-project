@@ -275,46 +275,53 @@ def main() -> int:
         env_path = tmp_path / "environment.json"
         env_path.write_text(json.dumps(planned, indent=2) + "\n", encoding="utf-8")
         real_repo_ref = writer.repo_ref
+        real_source_binding = writer.require_repo_file_bound_to_source
         writer.repo_ref = lambda value, field: env_path if field == "environmentRecordRef" else real_repo_ref(value, field)
-
-        valid_generation = generation_record(commit_sha, env_path, planned)
-        require(writer.validate_record(valid_generation) is False, "PLANNED generation registration must remain preflight-ineligible")
-        print("PASS registration: PLANNED generation history is allowed without preflight eligibility")
-
-        real_loader = writer.load_environment_validator
-        class BrokenValidator:
-            class Fail(RuntimeError):
-                pass
-
-            @staticmethod
-            def validate_environment_record(*args: Any, **kwargs: Any) -> bool:
-                raise TypeError("synthetic implementation failure")
-
-        writer.load_environment_validator = lambda: BrokenValidator
+        writer.require_repo_file_bound_to_source = (
+            lambda source_commit, path, field: None
+            if field == "environmentRecordRef" and path == env_path
+            else real_source_binding(source_commit, path, field)
+        )
         try:
-            writer.validate_record(valid_generation)
-        except TypeError:
-            print("PASS implementation boundary: semantic validator TypeError surfaced")
-        except writer.Fail as exc:
-            raise Fail(f"semantic validator implementation failure was folded into domain rejection: {exc}") from exc
-        else:
-            raise Fail("semantic validator implementation failure was unexpectedly accepted")
+            valid_generation = generation_record(commit_sha, env_path, planned)
+            require(writer.validate_record(valid_generation) is False, "PLANNED generation registration must remain preflight-ineligible")
+            print("PASS registration: PLANNED generation history is allowed without preflight eligibility")
+
+            real_loader = writer.load_environment_validator
+            class BrokenValidator:
+                class Fail(RuntimeError):
+                    pass
+
+                @staticmethod
+                def validate_environment_record(*args: Any, **kwargs: Any) -> bool:
+                    raise TypeError("synthetic implementation failure")
+
+            writer.load_environment_validator = lambda: BrokenValidator
+            try:
+                writer.validate_record(valid_generation)
+            except TypeError:
+                print("PASS implementation boundary: semantic validator TypeError surfaced")
+            except writer.Fail as exc:
+                raise Fail(f"semantic validator implementation failure was folded into domain rejection: {exc}") from exc
+            else:
+                raise Fail("semantic validator implementation failure was unexpectedly accepted")
+            finally:
+                writer.load_environment_validator = real_loader
+
+            mutable_alias = copy.deepcopy(valid_generation)
+            mutable_alias["generationId"] = "pegen-latest-negative"
+            expect_rejected("mutable generation alias", lambda: writer.validate_record(mutable_alias))
+
+            digest_mismatch = copy.deepcopy(valid_generation)
+            digest_mismatch["environmentRecordSha256"] = "f" * 64
+            expect_rejected("environment record digest mismatch", lambda: writer.validate_record(digest_mismatch))
+
+            production_flag = copy.deepcopy(valid_generation)
+            production_flag["productionEvidence"] = True
+            expect_rejected("production evidence relabel", lambda: writer.validate_record(production_flag))
         finally:
-            writer.load_environment_validator = real_loader
-
-        mutable_alias = copy.deepcopy(valid_generation)
-        mutable_alias["generationId"] = "pegen-latest-negative"
-        expect_rejected("mutable generation alias", lambda: writer.validate_record(mutable_alias))
-
-        digest_mismatch = copy.deepcopy(valid_generation)
-        digest_mismatch["environmentRecordSha256"] = "f" * 64
-        expect_rejected("environment record digest mismatch", lambda: writer.validate_record(digest_mismatch))
-
-        production_flag = copy.deepcopy(valid_generation)
-        production_flag["productionEvidence"] = True
-        expect_rejected("production evidence relabel", lambda: writer.validate_record(production_flag))
-
-        writer.repo_ref = real_repo_ref
+            writer.require_repo_file_bound_to_source = real_source_binding
+            writer.repo_ref = real_repo_ref
 
     healthy_registry = {
         "schemaVersion": "memory-os-production-equivalent-environment-generation-registry.v1",
