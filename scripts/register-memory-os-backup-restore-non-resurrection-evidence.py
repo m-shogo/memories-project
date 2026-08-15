@@ -8,6 +8,7 @@ import importlib.util
 import json
 import os
 import re
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -95,6 +96,24 @@ def repo_ref(value: Any, field: str) -> str:
     require(resolved == relative and path.is_file(), f"{field} must resolve to the canonical repository file")
     return value
 
+def require_ref_bound_to_source(source_commit: str, ref: str, field: str) -> None:
+    """Require canonical typed evidence bytes to exist unchanged at sourceCommitSha."""
+    require(isinstance(source_commit, str) and SHA40.fullmatch(source_commit), f"{field} sourceCommitSha invalid")
+    require(isinstance(ref, str) and ref and ":" not in ref, f"{field} invalid for immutable source binding")
+    path = ROOT / ref
+    try:
+        current = path.read_bytes()
+    except (OSError, RuntimeError) as exc:
+        raise Fail(f"{field} cannot be read for immutable source binding") from exc
+    completed = subprocess.run(
+        ["git", "show", f"{source_commit}:{ref}"],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    require(completed.returncode == 0, f"{field} evidence missing from sourceCommitSha")
+    require(current == completed.stdout, f"{field} evidence changed since sourceCommitSha")
+
 def load_generation_writer():
     writer = canonical_repo_file(GEN_WRITER, "generation recovery writer")
     spec = importlib.util.spec_from_file_location("memory_os_generation_recovery_writer", writer)
@@ -153,6 +172,8 @@ def generation_record(evidence_id: Any) -> dict[str, Any]:
     return matches[0]
 
 def domain_evidence(ref: str, *, domain: str, generation_evidence_id: str, source_commit_sha: str) -> dict[str, Any]:
+    if GEN_EVIDENCE_REGISTRY == CANONICAL_GEN_EVIDENCE_REGISTRY:
+        require_ref_bound_to_source(source_commit_sha, ref, f"domain {domain} evidence")
     payload = load(ROOT / ref)
     require(set(payload) == DOMAIN_EVIDENCE_FIELDS, f"domain {domain} evidence field set drift: {sorted(set(payload) ^ DOMAIN_EVIDENCE_FIELDS)}")
     require(payload.get("schemaVersion") == DOMAIN_EVIDENCE_SCHEMA, f"domain {domain} evidence schemaVersion drift")
@@ -165,6 +186,8 @@ def domain_evidence(ref: str, *, domain: str, generation_evidence_id: str, sourc
     return payload
 
 def review_evidence(ref: str, *, review_type: str, record_id: str, generation_evidence_id: str, source_commit_sha: str, domain_digests: dict[str, str]) -> dict[str, Any]:
+    if GEN_EVIDENCE_REGISTRY == CANONICAL_GEN_EVIDENCE_REGISTRY:
+        require_ref_bound_to_source(source_commit_sha, ref, f"{review_type} review evidence")
     payload = load(ROOT / ref)
     require(set(payload) == REVIEW_EVIDENCE_FIELDS, f"{review_type} review field set drift: {sorted(set(payload) ^ REVIEW_EVIDENCE_FIELDS)}")
     require(payload.get("schemaVersion") == REVIEW_EVIDENCE_SCHEMA, f"{review_type} review schemaVersion drift")
