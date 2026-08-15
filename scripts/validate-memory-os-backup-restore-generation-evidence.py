@@ -117,6 +117,7 @@ def main() -> int:
         ("CONTRACT", CONTRACT, "generation evidence contract"),
         ("REGISTRY", REGISTRY, "generation evidence registry"),
         ("GEN_REGISTRY", GEN_REGISTRY, "environment generation registry"),
+        ("CANONICAL_GEN_REGISTRY", GEN_REGISTRY, "canonical environment generation registry"),
         ("OBJECTIVES_REGISTRY", OBJECTIVES_REGISTRY, "recovery objectives registry"),
         ("CANONICAL_OBJECTIVES_REGISTRY", OBJECTIVES_REGISTRY, "canonical recovery objectives registry"),
         ("DRILL_REQUEST_CONTRACT", DRILL_CONTRACT, "drill request contract"),
@@ -132,10 +133,16 @@ def main() -> int:
         require(getattr(writer, name, None) == expected_path, f"generation evidence writer authority drift: {name}")
         if expected_path.is_file():
             writer.canonical_repo_file(expected_path, field)
+    generation_writer = getattr(writer, "GEN_WRITER", None)
+    objectives_writer = getattr(writer, "OBJECTIVES_WRITER", None)
     non_resurrection_writer = getattr(writer, "NON_RESURRECTION_WRITER", None)
     drill_writer = getattr(writer, "DRILL_REQUEST_WRITER", None)
+    require(generation_writer == ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py", "environment generation writer authority drift")
+    require(objectives_writer == ROOT / "scripts/register-memory-os-recovery-objectives.py", "recovery objectives writer authority drift")
     require(non_resurrection_writer == ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py", "typed non-resurrection writer authority drift")
     require(drill_writer == ROOT / "scripts/request-memory-os-backup-restore-drill.py", "drill request writer authority drift")
+    writer.canonical_repo_file(generation_writer, "environment generation writer")
+    writer.canonical_repo_file(objectives_writer, "recovery objectives writer")
     writer.canonical_repo_file(non_resurrection_writer, "typed non-resurrection writer")
     writer.canonical_repo_file(drill_writer, "drill request writer")
     require(callable(getattr(writer, "validate_registry_for_append", None)), "generation writer append authority guard missing")
@@ -303,6 +310,7 @@ def main() -> int:
     print(f"production-equivalent recovery candidates: {derived_candidates}")
     print("generation writer canonical cross-authority binding without evidence rows: enforced")
     print("generation writer append authority guard executed: true")
+    print("upstream writer identities canonical: true")
     print("boolean registry/contract/binding counts accepted: false")
     print("contract artifact refs canonical and repository-contained: true")
     print("candidate-level independent review cross-authority binding: enforced")
