@@ -14,8 +14,11 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 MATERIAL_DELTA_ROOT = Path("docs/evidence/backup-restore/material-delta")
+EXPECTED_VALIDATOR = "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
+EXPECTED_NEGATIVE = "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
 
 
 class Fail(RuntimeError):
@@ -34,6 +37,25 @@ def load_json(path: Path, field: str) -> dict[str, Any]:
         raise Fail(f"{field} unreadable or invalid JSON: {exc}") from exc
     require(isinstance(value, dict), f"{field} root must be object")
     return value
+
+
+def validate_contract_authority() -> None:
+    contract = load_json(CONTRACT, "generation evidence contract")
+    require(
+        contract.get("materialDeltaReviewEvidenceRoot") == MATERIAL_DELTA_ROOT.as_posix(),
+        "material-delta review evidence root authority drift",
+    )
+    require(contract.get("materialDeltaReviewValidator") == EXPECTED_VALIDATOR, "material-delta review validator authority drift")
+    require(contract.get("materialDeltaReviewNegativeValidator") == EXPECTED_NEGATIVE, "material-delta review negative validator authority drift")
+    rules = contract.get("recordRules")
+    require(isinstance(rules, dict), "generation evidence recordRules missing")
+    for rule in (
+        "crossGenerationRestoreRequiresMaterialDeltaReview",
+        "sameGenerationRestoreMayUseNullMaterialDeltaReview",
+        "crossGenerationMaterialDeltaReviewMustRemainInsideMonitoredNamespace",
+        "crossGenerationMaterialDeltaReviewMustRemainAppendOnlyAfterFirstCommit",
+    ):
+        require(rules.get(rule) is True, f"material-delta review contract rule drift: {rule}")
 
 
 def canonical_material_delta_ref(value: Any, field: str) -> tuple[str, Path]:
@@ -102,6 +124,7 @@ def validate_row(row: dict[str, Any], index: int) -> None:
 
 
 def main() -> int:
+    validate_contract_authority()
     registry = load_json(REGISTRY, "generation evidence registry")
     require(registry.get("schemaVersion") == "memory-os-backup-restore-generation-evidence-registry.v1", "generation evidence registry schema drift")
     require(registry.get("appendOnly") is True, "generation evidence registry must remain append-only")
