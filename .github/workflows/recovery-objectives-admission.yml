@@ -13,6 +13,7 @@ on:
       - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-recovery-objectives-negative.py"
+      - "scripts/validate-memory-os-recovery-objectives-digest-negative.py"
       - "scripts/reconcile-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-operability.py"
   push:
@@ -29,6 +30,7 @@ on:
       - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-recovery-objectives-negative.py"
+      - "scripts/validate-memory-os-recovery-objectives-digest-negative.py"
       - "scripts/reconcile-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
@@ -74,10 +76,12 @@ jobs:
             scripts/register-memory-os-recovery-objectives.py \
             scripts/validate-memory-os-recovery-objectives.py \
             scripts/validate-memory-os-recovery-objectives-negative.py \
+            scripts/validate-memory-os-recovery-objectives-digest-negative.py \
             scripts/reconcile-memory-os-recovery-objectives.py \
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-recovery-objectives-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-recovery-objectives-digest-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-recovery-objectives.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?; fi
