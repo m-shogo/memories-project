@@ -75,30 +75,61 @@ jobs:
         if: steps.validation.outputs.exit_code == '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
-          git fetch origin so
-          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
-            echo "Review-independence authority HEAD changed during reconciliation; refusing stale derived authority."
-            exit 75
-          fi
-          git rm -f docs/fixtures/memory-os-operability/production-equivalent-environment-review-independence-diagnostic.last.json 2>/dev/null || true
-          git add contracts/operations/production-equivalent-environment-review-independence-contract.v1.json
-          git add -u docs/fixtures/memory-os-operability/production-equivalent-environment-review-independence-diagnostic.last.json 2>/dev/null || true
-          if ! git diff --cached --quiet; then
+          log=/tmp/production-equivalent-environment-review-independence.log
+
+          revalidate_latest_review_independence() {
+            git fetch origin so
+            git reset --hard origin/so
+            SOURCE_SHA="$(git rev-parse HEAD)"
+            export SOURCE_SHA
+            : > "$log"
+            python scripts/validate-memory-os-production-equivalent-environment-review-independence-reconcile-negative.py >> "$log" 2>&1
+            python scripts/reconcile-memory-os-production-equivalent-environment-review-independence.py >> "$log" 2>&1
+            python scripts/validate-memory-os-production-equivalent-environment-review-independence.py >> "$log" 2>&1
+          }
+
+          for reconcile_attempt in 1 2; do
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              if [[ "$reconcile_attempt" == "2" ]]; then
+                echo "Review-independence authority HEAD changed again during bounded retry; refusing stale derived authority."
+                exit 75
+              fi
+              echo "Review-independence authority advanced; regenerating and revalidating once from latest so."
+              revalidate_latest_review_independence
+            fi
+
+            git rm -f docs/fixtures/memory-os-operability/production-equivalent-environment-review-independence-diagnostic.last.json 2>/dev/null || true
+            git add contracts/operations/production-equivalent-environment-review-independence-contract.v1.json
+            git add -u docs/fixtures/memory-os-operability/production-equivalent-environment-review-independence-diagnostic.last.json 2>/dev/null || true
+            if git diff --cached --quiet; then
+              exit 0
+            fi
+
             git diff --cached --check
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(ops): reconcile environment review independence"
-            for attempt in 1 2 3 4; do
-              git fetch origin so
-              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
-                echo "Review-independence authority HEAD changed after validation; refusing stale derived authority."
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              if [[ "$reconcile_attempt" == "2" ]]; then
+                echo "Review-independence authority HEAD changed again after bounded retry validation; refusing stale derived authority."
                 exit 75
               fi
-              if git push origin HEAD:so; then exit 0; fi
-              sleep 2
-            done
-            exit 1
-          fi
+              echo "Review-independence authority advanced after validation; discarding stale review-independence commit and retrying from latest so."
+              revalidate_latest_review_independence
+              continue
+            fi
+            if git push origin HEAD:so; then
+              exit 0
+            fi
+            if [[ "$reconcile_attempt" == "2" ]]; then
+              exit 1
+            fi
+            echo "Review-independence push raced with another writer; retrying once from latest so."
+            revalidate_latest_review_independence
+          done
+          exit 75
       - name: Record privacy-safe review-independence diagnostic
         if: steps.validation.outputs.exit_code != '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         env:
