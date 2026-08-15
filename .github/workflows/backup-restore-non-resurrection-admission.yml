@@ -38,6 +38,7 @@ on:
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py"
@@ -93,6 +94,7 @@ on:
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
+      - "scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py"
       - "scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py"
@@ -161,6 +163,7 @@ jobs:
             scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-admission.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-negative.py \
+            scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py \
             scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py \
@@ -180,6 +183,7 @@ jobs:
             >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-equivalent-environment-generation.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py >> "$log" 2>&1 || code=$?; fi
@@ -209,6 +213,7 @@ jobs:
             : > "$log"
             python scripts/validate-memory-os-production-equivalent-environment-generation.py >> "$log" 2>&1
             python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1
+            python scripts/validate-memory-os-backup-restore-non-resurrection-source-binding-negative.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py >> "$log" 2>&1
