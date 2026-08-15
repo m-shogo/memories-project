@@ -62,6 +62,7 @@ on:
       - "scripts/validate-memory-os-recovery-objectives-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight-negative.py"
+      - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py"
       - "scripts/reconcile-memory-os-backup-restore-drill-preflight.py"
       - "scripts/request-memory-os-backup-restore-drill.py"
       - "scripts/validate-memory-os-backup-restore-drill-request.py"
@@ -91,6 +92,7 @@ on:
       - "scripts/validate-memory-os-operability-status-hygiene.py"
       - ".github/workflows/operability-admission-inventory.yml"
       - ".github/workflows/backup-restore-drill-preflight.yml"
+      - ".github/workflows/backup-restore-preflight-generation-eligibility-consistency.yml"
       - ".github/workflows/backup-restore-drill-request.yml"
       - ".github/workflows/backup-restore-drill-request-reconcile-rollback.yml"
       - ".github/workflows/backup-restore-generation-evidence.yml"
@@ -148,6 +150,7 @@ jobs:
             scripts/validate-memory-os-recovery-objectives-negative.py \
             scripts/validate-memory-os-backup-restore-drill-preflight.py \
             scripts/validate-memory-os-backup-restore-drill-preflight-negative.py \
+            scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py \
             scripts/request-memory-os-backup-restore-drill.py \
             scripts/validate-memory-os-backup-restore-drill-request.py \
             scripts/validate-memory-os-backup-restore-drill-request-negative.py \
@@ -186,6 +189,9 @@ jobs:
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-backup-restore-drill-preflight.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/reconcile-memory-os-backup-restore-drill-request.py >> "$log" 2>&1 || code=$?
@@ -258,6 +264,7 @@ jobs:
             : > "$log"
             python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-drill-preflight.py >> "$log" 2>&1
+            python scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py >> "$log" 2>&1
             python scripts/reconcile-memory-os-backup-restore-drill-request.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1
