@@ -100,6 +100,18 @@ def git(*args: str) -> str:
     return completed.stdout.strip()
 
 
+def git_blob(source_commit: str, relative: str, field: str) -> bytes:
+    require(isinstance(relative, str) and relative and ":" not in relative, f"{field} invalid for immutable source binding")
+    completed = subprocess.run(
+        ["git", "show", f"{source_commit}:{relative}"],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    require(completed.returncode == 0, f"{field} evidence missing from sourceCommitSha")
+    return completed.stdout
+
+
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -120,6 +132,36 @@ def repo_ref(value: Any, field: str) -> Path:
         raise Fail(f"{field} missing or escapes repository: {value}") from exc
     require(resolved == relative and absolute.is_file(), f"{field} must resolve to the canonical repository file")
     return absolute
+
+
+def require_environment_evidence_bound_to_source(source_commit: str, env: dict[str, Any]) -> None:
+    """Keep semantic generation evidence immutable against the registered source commit."""
+    refs: list[tuple[Any, str]] = [
+        (env.get("postgresql", {}).get("restoreEvidenceRef"), "postgresql.restoreEvidenceRef"),
+        (env.get("objectStorage", {}).get("restoreEvidenceRef"), "objectStorage.restoreEvidenceRef"),
+        (env.get("network", {}).get("latencyProfileRef"), "network.latencyProfileRef"),
+        (env.get("network", {}).get("failureInjectionRef"), "network.failureInjectionRef"),
+        (env.get("identityAndSecrets", {}).get("credentialScopeRef"), "identityAndSecrets.credentialScopeRef"),
+        (env.get("backupRestore", {}).get("evidenceRef"), "backupRestore.evidenceRef"),
+        (env.get("evidenceBoundary", {}).get("independentReviewRef"), "evidenceBoundary.independentReviewRef"),
+    ]
+    deltas = env.get("materialDeltas")
+    if isinstance(deltas, list):
+        for index, delta in enumerate(deltas):
+            if isinstance(delta, dict):
+                refs.append((delta.get("independentReviewRef"), f"materialDeltas[{index}].independentReviewRef"))
+
+    checked: set[str] = set()
+    for value, field in refs:
+        if value is None:
+            continue
+        require(isinstance(value, str) and value, f"{field} invalid")
+        if value in checked:
+            continue
+        current = repo_ref(value, field).read_bytes()
+        historical = git_blob(source_commit, value, field)
+        require(current == historical, f"{field} changed since sourceCommitSha")
+        checked.add(value)
 
 
 def validate_record(record: dict[str, Any]) -> bool:
@@ -162,6 +204,7 @@ def validate_record(record: dict[str, Any]) -> bool:
         )
     except env_validator.Fail as exc:
         raise Fail(f"environment record semantic validation failed: {exc}") from exc
+    require_environment_evidence_bound_to_source(source, env)
 
     require(contract.get("environmentRecordSchema") == str(ENV_SCHEMA.relative_to(ROOT)), "environment record schema ref drift")
     require(contract.get("environmentRecordSemanticValidator") == str(ENV_VALIDATOR.relative_to(ROOT)), "environment semantic validator ref drift")
