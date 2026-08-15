@@ -16,6 +16,7 @@ GEN_CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-c
 GEN_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
 WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
+EXPECTED_LOCK = ROOT / "contracts/operations/.backup-restore-non-resurrection-admission.lock"
 NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py"
 PATH_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-non-resurrection-contract-path-negative.py"
 LOCAL_APPLE_VALIDATOR = ROOT / "scripts/validate-memory-os-local-apple-replay-restore.py"
@@ -96,6 +97,9 @@ def main() -> int:
         require(runtime_path == expected_path, f"typed writer runtime authority drift: {runtime_name}")
         require(canonical_path == expected_path, f"typed writer canonical authority drift: {canonical_name}")
         writer.require_canonical_runtime_authority(runtime_path, canonical_path, field)
+    writer_lock = getattr(writer, "LOCK", None)
+    require(writer_lock == EXPECTED_LOCK, "typed writer append lock authority drift")
+    require(writer_lock.parent == REGISTRY.parent, "typed writer append lock must share registry authority directory")
     require(getattr(writer, "GEN_WRITER", None) == GEN_WRITER, "typed writer generation recovery executable drift")
     writer.canonical_repo_file(GEN_WRITER, "generation recovery writer")
 
@@ -124,10 +128,6 @@ def main() -> int:
     generation_writer.canonical_repo_file(generation_drill_writer, "restore drill request writer")
     generation_writer.canonical_repo_file(generation_non_resurrection_writer, "typed non-resurrection writer")
 
-    # Standalone validation must reuse the same append-only/upstream guard as
-    # the direct typed writer. In particular, an empty typed registry must not
-    # make environment-generation, objective, or drill-request corruption
-    # invisible merely because no typed row is available to trigger lookup.
     try:
         validated_rows = writer.validate_registry_for_append(registry)
     except Exception as exc:
@@ -237,6 +237,7 @@ def main() -> int:
     print("typed/generation writer canonical cross-authority binding without records: enforced")
     print("standalone typed validator delegates append/upstream authority: true")
     print("typed/generation upstream writer identities canonical: true")
+    print("canonical typed writer append lock authority validated: true")
     print("boolean typed/generation/boundary counts accepted: false")
     print("generic PASS candidate bypass: false")
     print("production evidence: false")
