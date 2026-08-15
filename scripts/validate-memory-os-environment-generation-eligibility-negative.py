@@ -133,6 +133,15 @@ def main() -> int:
     helper = load_helper()
     require(helper.canonical_repo_file(helper.GEN_WRITER, "generation writer") == helper.GEN_WRITER, "canonical generation writer rejected")
 
+    repo_substitute = ROOT / "scripts/validate-memory-os-operability.py"
+    require(repo_substitute.is_file(), "repo-contained writer substitute missing")
+    original_writer = helper.GEN_WRITER
+    try:
+        helper.GEN_WRITER = repo_substitute
+        expect_rejected("semantic generation writer repo-contained substitution", helper.load_generation_writer, helper.Fail)
+    finally:
+        helper.GEN_WRITER = original_writer
+
     with tempfile.TemporaryDirectory(prefix="memory-os-generation-writer-outside-") as outside_tmp:
         outside_writer = Path(outside_tmp) / "outside-generation-writer.py"
         outside_writer.write_text("VALUE = 1\n", encoding="utf-8")
@@ -296,6 +305,7 @@ def main() -> int:
     print("current generation pointer drift accepted: false")
     print("boolean registered generation counts accepted: false")
     print("malformed or missing generation registries accepted: false")
+    print("generation writer repo-contained substitution accepted: false")
     print("generation writer import escape accepted: false")
     print("generation writer symlink loop accepted: false")
     print("production evidence: false")
