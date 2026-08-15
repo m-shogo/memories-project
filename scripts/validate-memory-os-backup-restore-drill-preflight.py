@@ -23,6 +23,11 @@ GEN_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environ
 OBJECTIVE_VALIDATOR = ROOT / "scripts/validate-memory-os-recovery-objectives.py"
 DRILL_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-request.py"
 NEGATIVE_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight-negative.py"
+VALIDATOR_AUTHORITIES = {
+    "environment generation": "scripts/validate-memory-os-production-equivalent-environment-generation.py",
+    "recovery objectives": "scripts/validate-memory-os-recovery-objectives.py",
+    "restore drill request": "scripts/validate-memory-os-backup-restore-drill-request.py",
+}
 GEN_BLOCKER = "TWO_UNSUPERSEDED_DISTINCT_ENVIRONMENT_GENERATIONS"
 OBJECTIVE_BLOCKER = "CURRENT_APPROVED_RECOVERY_OBJECTIVE"
 GEN_BLOCKED_DECISION = "BLOCKED_NEEDS_TWO_UNSUPERSEDED_DISTINCT_ENVIRONMENT_GENERATIONS"
@@ -133,7 +138,9 @@ def load_eligibility_helper():
     return module
 
 
-def run_validator(path: Path, name: str, expected_relative: str) -> None:
+def run_validator(path: Path, name: str) -> None:
+    expected_relative = VALIDATOR_AUTHORITIES.get(name)
+    require(isinstance(expected_relative, str), f"unknown validator authority: {name}")
     canonical_executable(path, expected_relative, name)
     completed = subprocess.run([sys.executable, str(path)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     require(completed.returncode == 0, f"{name} validator failed:\n{completed.stdout[-4000:]}{completed.stderr[-4000:]}")
@@ -312,9 +319,9 @@ def main() -> int:
     require(readiness.get("currentExecutableDrillRequestAvailable") is (state["currentExecutableDrillRequestCount"] > 0), "preflight current request readiness drift")
     require(readiness.get("drillExecuted") is False and readiness.get("productionReady") is False, "preflight cannot claim execution or production readiness")
 
-    run_validator(GEN_VALIDATOR, "environment generation", "scripts/validate-memory-os-production-equivalent-environment-generation.py")
-    run_validator(OBJECTIVE_VALIDATOR, "recovery objectives", "scripts/validate-memory-os-recovery-objectives.py")
-    run_validator(DRILL_VALIDATOR, "restore drill request", "scripts/validate-memory-os-backup-restore-drill-request.py")
+    run_validator(GEN_VALIDATOR, "environment generation")
+    run_validator(OBJECTIVE_VALIDATOR, "recovery objectives")
+    run_validator(DRILL_VALIDATOR, "restore drill request")
 
     print("Memory OS production-equivalent restore drill preflight PASS")
     print(f"registered/preflight-eligible generations: {state['registeredGenerationCount']}/{state['preflightEligibleGenerationCount']}")
