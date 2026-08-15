@@ -34,6 +34,28 @@ def expect_rejected(module: Any, name: str, action: Callable[[], Any]) -> None:
         raise Fail(f"{name} leaked non-domain exception: {type(exc).__name__}: {exc}") from exc
     raise Fail(f"negative case unexpectedly accepted: {name}")
 
+def reject_typed_writer_substitution(validator: Any) -> None:
+    original_loader = validator.load_module
+    typed_writer = original_loader(validator.WRITER, "memory_os_non_resurrection_writer_negative")
+    original_generation_writer = typed_writer.GEN_WRITER
+    typed_writer.GEN_WRITER = ROOT / "scripts/register-memory-os-recovery-objectives.py"
+
+    def substituted_loader(path: Path, name: str):
+        if path == validator.WRITER:
+            return typed_writer
+        return original_loader(path, name)
+
+    validator.load_module = substituted_loader
+    try:
+        expect_rejected(
+            validator,
+            "repository-contained generation recovery writer substitution",
+            validator.main,
+        )
+    finally:
+        validator.load_module = original_loader
+        typed_writer.GEN_WRITER = original_generation_writer
+
 def main() -> int:
     validator = load_validator()
     canonical = "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
@@ -63,11 +85,14 @@ def main() -> int:
             link.unlink(missing_ok=True)
             loop.unlink(missing_ok=True)
 
+    reject_typed_writer_substitution(validator)
+
     print("Memory OS backup/restore non-resurrection contract path negative suite PASS")
     print("absolute authority aliases accepted: false")
     print("parent traversal authority aliases accepted: false")
     print("repository-escaping authority symlinks accepted: false")
     print("authority symlink loops accepted: false")
+    print("repository-contained generation recovery writer substitution accepted: false")
     print("non-domain authority resolution exceptions leaked: false")
     print("canonical authorities mutated: false")
     print("production evidence: false")
