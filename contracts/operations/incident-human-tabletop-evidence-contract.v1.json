@@ -40,6 +40,7 @@
     "sourcePlanExerciseMustExist": true,
     "scenarioIdAndPlannedSeverityMustMatchPlan": true,
     "sourceCommitMustExist": true,
+    "sourceCommitMustBeAncestorOfAdmissionHead": true,
     "startedAndCompletedUtcRequired": true,
     "completedMustNotPrecedeStarted": true,
     "everyPlannedInjectRequiresObservedResponse": true,
