@@ -4,18 +4,21 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import re
 import subprocess
 import tempfile
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/incident-contact-routing-admission-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/incident-contact-routing-admission-registry.v1.json"
 OBS_REGISTRY = ROOT / "contracts/operations/observability-stack-deployment-registry.v1.json"
+OBS_WRITER = ROOT / "scripts/register-memory-os-observability-stack-deployment.py"
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 LOCK = ROOT / "contracts/operations/.incident-contact-routing.lock"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
@@ -48,6 +51,19 @@ def git(*args: str) -> str:
     completed = subprocess.run(["git", *args], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     require(completed.returncode == 0, f"git {' '.join(args)} failed")
     return completed.stdout.strip()
+
+
+def load_observability_writer() -> ModuleType:
+    require(OBS_WRITER.is_file(), "canonical observability stack writer missing")
+    spec = importlib.util.spec_from_file_location("memory_os_observability_writer_for_contact_routing", OBS_WRITER)
+    require(spec is not None and spec.loader is not None, "cannot load observability stack writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    require(getattr(module, "REGISTRY", None) == OBS_REGISTRY,
+            "observability stack writer registry authority drift")
+    require(callable(getattr(module, "validate_registry_for_append", None)),
+            "observability stack registry validator missing")
+    return module
 
 
 def source_is_ancestor(source: str) -> bool:
@@ -96,9 +112,13 @@ def refs(value: Any, field: str, source: str) -> list[str]:
 
 def observability_stack(stack_id: str) -> dict[str, Any]:
     registry = load(OBS_REGISTRY)
-    rows = registry.get("stacks")
-    require(isinstance(rows, list), "observability stack registry missing")
-    matches = [row for row in rows if isinstance(row, dict) and row.get("stackId") == stack_id]
+    writer = load_observability_writer()
+    try:
+        writer.validate_registry_for_append(registry)
+    except Exception as exc:
+        raise Fail(f"observability stack authority invalid: {exc}") from exc
+    rows = registry["stacks"]
+    matches = [row for row in rows if row.get("stackId") == stack_id]
     require(len(matches) == 1, "observabilityStackId is not admitted exactly once")
     require(matches[0].get("evidenceComplete") is True, "observability stack evidence incomplete")
     return matches[0]
