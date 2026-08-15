@@ -18,7 +18,8 @@ CANONICAL_CONTRACT = ROOT / "contracts/operations/recovery-objectives-admission-
 CANONICAL_REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
 CONTRACT = CANONICAL_CONTRACT
 REGISTRY = CANONICAL_REGISTRY
-LOCK = ROOT / "contracts/operations/.recovery-objectives.lock"
+CANONICAL_LOCK = ROOT / "contracts/operations/.recovery-objectives.lock"
+LOCK = CANONICAL_LOCK
 CANONICAL_APPROVAL_DIR = ROOT / "docs/evidence/recovery-objectives/approvals"
 APPROVAL_DIR = CANONICAL_APPROVAL_DIR
 OBJECTIVE_ID = re.compile(r"^ro_[a-z0-9][a-z0-9_-]{7,63}$")
@@ -88,6 +89,8 @@ def canonical_repo_directory(path: Path, field: str) -> Path:
 def require_canonical_runtime_authorities() -> None:
     if ROOT != CANONICAL_ROOT:
         return
+    require(LOCK == CANONICAL_LOCK, "recovery objective lock authority drift")
+    require(LOCK.parent == CANONICAL_REGISTRY.parent, "recovery objective lock must share registry authority directory")
     if CONTRACT == CANONICAL_CONTRACT:
         canonical_repo_file(CONTRACT, "recovery objective contract")
     if REGISTRY == CANONICAL_REGISTRY:
