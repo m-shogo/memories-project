@@ -199,6 +199,13 @@ def validate_row(row: dict[str, Any], index: int, required_fields: list[str]) ->
     validate_material_delta_payload(row, payload, index, required_fields)
 
 
+def material_delta_review_approved(row: dict[str, Any]) -> bool:
+    """Validate the exact typed material-delta authority for one generation evidence row."""
+    contract = validate_contract_authority()
+    validate_row(row, 0, contract["requiredMaterialDeltaReviewEvidenceFields"])
+    return True
+
+
 def main() -> int:
     contract = validate_contract_authority()
     required_fields = contract["requiredMaterialDeltaReviewEvidenceFields"]
