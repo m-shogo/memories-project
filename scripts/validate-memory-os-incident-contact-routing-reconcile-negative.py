@@ -12,6 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / "contracts/operations/incident-contact-routing-admission-registry.v1.json"
+OBS_REGISTRY = ROOT / "contracts/operations/observability-stack-deployment-registry.v1.json"
 CONTRACT = ROOT / "contracts/operations/incident-contact-routing-admission-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 WRITER = ROOT / "scripts/register-memory-os-incident-contact-routing.py"
@@ -65,6 +66,7 @@ def create_descendant_commit() -> str:
 def main() -> int:
     writer = load_writer()
     registry_bytes = REGISTRY.read_bytes()
+    observability_registry_bytes = OBS_REGISTRY.read_bytes()
     contract_bytes = CONTRACT.read_bytes()
     status_bytes = STATUS.read_bytes()
     registry = json.loads(registry_bytes.decode("utf-8"))
@@ -117,6 +119,20 @@ def main() -> int:
         TEMP_SYMLINK.unlink(missing_ok=True)
 
     try:
+        observability_registry = json.loads(observability_registry_bytes.decode("utf-8"))
+        observability_registry["admittedStackCount"] = True
+        OBS_REGISTRY.write_text(json.dumps(observability_registry, indent=2) + "\n", encoding="utf-8")
+        try:
+            writer.observability_stack("obsstack_missing_negative")
+        except writer.Fail as exc:
+            if "observability stack authority invalid" not in str(exc):
+                raise RuntimeError(f"unexpected observability delegation failure: {exc}") from exc
+        else:
+            raise RuntimeError("contact routing accepted corrupt observability stack authority")
+    finally:
+        OBS_REGISTRY.write_bytes(observability_registry_bytes)
+
+    try:
         corrupted = copy.deepcopy(registry)
         corrupted["admittedRoutingCount"] = True
         REGISTRY.write_text(json.dumps(corrupted, indent=2) + "\n", encoding="utf-8")
@@ -142,7 +158,9 @@ def main() -> int:
 
     if REGISTRY.read_bytes() != registry_bytes:
         raise RuntimeError("negative validation failed to restore contact routing registry")
-    print("PASS: contact routing registry/source-binding corruption is rejected without mutation")
+    if OBS_REGISTRY.read_bytes() != observability_registry_bytes:
+        raise RuntimeError("negative validation failed to restore observability stack registry")
+    print("PASS: contact routing rejects local/upstream authority corruption without mutation")
     return 0
 
 
