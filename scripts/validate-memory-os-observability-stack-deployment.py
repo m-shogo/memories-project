@@ -36,6 +36,12 @@ def load_writer() -> ModuleType:
     require(spec is not None and spec.loader is not None, "cannot load stack writer")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    require(getattr(module, "CONTRACT", None) == CONTRACT,
+            "stack writer contract authority drift")
+    require(getattr(module, "REGISTRY", None) == REGISTRY,
+            "stack writer registry authority drift")
+    require(callable(getattr(module, "validate_registry_for_append", None)),
+            "stack writer registry validator missing")
     return module
 
 
@@ -51,32 +57,14 @@ def main() -> int:
     promotion = contract.get("promotionRules")
     require(isinstance(promotion, dict) and promotion and all(value is False or key == "automaticProductionReadyForbidden" and value is True for key, value in promotion.items()), "promotion rules drift")
 
-    require(registry.get("schemaVersion") == "memory-os-observability-stack-deployment-registry.v1", "registry schema drift")
-    require(registry.get("appendOnly") is True, "registry must be append-only")
-    stacks = registry.get("stacks")
-    require(isinstance(stacks, list), "registry stacks missing")
     writer = load_writer()
-    ids: set[str] = set()
-    identities: set[str] = set()
-    pe = 0
-    prod = 0
-    for index, record in enumerate(stacks):
-        require(isinstance(record, dict), f"stacks[{index}] invalid")
-        confirmation = writer.PRODUCTION_CONFIRMATION if record.get("environmentClass") == "PRODUCTION" else ""
-        try:
-            writer.validate_record(record, confirmation)
-        except Exception as exc:
-            raise Fail(f"stacks[{index}] validation failed: {exc}") from exc
-        require(record["stackId"] not in ids, f"duplicate stackId: {record['stackId']}")
-        require(record["environmentIdentityDigest"] not in identities, "duplicate environment identity digest")
-        ids.add(record["stackId"])
-        identities.add(record["environmentIdentityDigest"])
-        pe += 1 if record["environmentClass"] == "PRODUCTION_EQUIVALENT" else 0
-        prod += 1 if record["environmentClass"] == "PRODUCTION" else 0
-    require(registry.get("admittedStackCount") == len(stacks), "admittedStackCount drift")
-    require(registry.get("productionEquivalentStackCount") == pe, "productionEquivalentStackCount drift")
-    require(registry.get("productionStackCount") == prod, "productionStackCount drift")
-    require(registry.get("productionReady") is False, "stack registry cannot make application productionReady")
+    try:
+        writer.validate_registry_for_append(registry)
+    except Exception as exc:
+        raise Fail(f"stack registry invalid: {exc}") from exc
+    stacks = registry["stacks"]
+    pe = registry["productionEquivalentStackCount"]
+    prod = registry["productionStackCount"]
 
     current = contract.get("currentAuthority")
     readiness = contract.get("readiness")
