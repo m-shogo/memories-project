@@ -25,6 +25,8 @@ EXPECTED_NON_RESURRECTION_REGISTRY = ROOT / "contracts/operations/backup-restore
 EXPECTED_NON_RESURRECTION_WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
 EXPECTED_INDEPENDENT_REVIEW_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
 EXPECTED_INDEPENDENT_REVIEW_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-generation-independent-review-negative.py"
+EXPECTED_MATERIAL_DELTA_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py"
+EXPECTED_MATERIAL_DELTA_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py"
 EXPECTED_LOCK = ROOT / "contracts/operations/.backup-restore-generation-evidence.lock"
 
 
@@ -108,6 +110,8 @@ def main() -> int:
 
     require_contract_ref(contract, "independentReviewValidator", EXPECTED_INDEPENDENT_REVIEW_VALIDATOR, "independent-review validator")
     require_contract_ref(contract, "independentReviewNegativeValidator", EXPECTED_INDEPENDENT_REVIEW_NEGATIVE, "independent-review negative validator")
+    require_contract_ref(contract, "materialDeltaReviewValidator", EXPECTED_MATERIAL_DELTA_VALIDATOR, "material-delta review validator")
+    require_contract_ref(contract, "materialDeltaReviewNegativeValidator", EXPECTED_MATERIAL_DELTA_NEGATIVE, "material-delta review negative validator")
 
     lock = getattr(writer, "LOCK", None)
     require(lock == EXPECTED_LOCK, "generation-evidence append lock authority drift")
@@ -123,6 +127,16 @@ def main() -> int:
         "memory_os_generation_independent_review_negative_authority",
         "generation independent-review negative validator",
     )
+    run_review_validator(
+        EXPECTED_MATERIAL_DELTA_VALIDATOR,
+        "memory_os_generation_material_delta_review_authority",
+        "generation material-delta review validator",
+    )
+    run_review_validator(
+        EXPECTED_MATERIAL_DELTA_NEGATIVE,
+        "memory_os_generation_material_delta_review_negative_authority",
+        "generation material-delta review negative validator",
+    )
 
     print("Memory OS generation-evidence executable/data authority validation PASS")
     print("environment-generation authority substitution accepted: false")
@@ -130,6 +144,7 @@ def main() -> int:
     print("drill-request authority substitution accepted: false")
     print("typed non-resurrection authority substitution accepted: false")
     print("independent review authority substitution accepted: false")
+    print("material-delta review authority substitution accepted: false")
     print("append lock authority substitution accepted: false")
     print("production evidence: false")
     print("production decision: NO_GO")
