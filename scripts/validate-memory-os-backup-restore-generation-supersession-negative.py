@@ -10,6 +10,8 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import os
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -77,6 +79,49 @@ def successor_environment_record(source_path: Path, generation_id: str, destinat
     value["generationId"] = generation_id
     write_json(destination, value)
     return destination
+
+
+def temporary_source_commit(base_commit: str, path: Path) -> str:
+    """Create an unreferenced local commit containing one synthetic environment record.
+
+    This exercises real sourceCommitSha byte binding without moving any branch/ref or
+    weakening the production writer. The object is intentionally unreachable after
+    the test process exits.
+    """
+    try:
+        relative = path.relative_to(ROOT).as_posix()
+    except ValueError as exc:
+        raise Fail("temporary source-bound environment fixture must remain inside repository") from exc
+    require(path.is_file(), "temporary source-bound environment fixture missing")
+
+    with tempfile.TemporaryDirectory(prefix="memory-os-generation-source-index-") as index_tmp:
+        index_path = Path(index_tmp) / "index"
+        env = dict(os.environ)
+        env["GIT_INDEX_FILE"] = str(index_path)
+        env["GIT_AUTHOR_NAME"] = "memory-os-negative-suite"
+        env["GIT_AUTHOR_EMAIL"] = "memory-os-negative-suite@example.invalid"
+        env["GIT_COMMITTER_NAME"] = env["GIT_AUTHOR_NAME"]
+        env["GIT_COMMITTER_EMAIL"] = env["GIT_AUTHOR_EMAIL"]
+
+        def run(*args: str) -> str:
+            completed = subprocess.run(
+                ["git", *args],
+                cwd=ROOT,
+                env=env,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            require(completed.returncode == 0, f"temporary source commit git {' '.join(args)} failed: {completed.stderr.strip()}")
+            return completed.stdout.strip()
+
+        run("read-tree", base_commit)
+        run("add", "-f", "--", relative)
+        tree = run("write-tree")
+        commit = run("commit-tree", tree, "-p", base_commit, "-m", "memory-os synthetic source-bound supersession fixture")
+        require(len(commit) == 40, "temporary source commit must be full SHA")
+        return commit
 
 
 def main() -> int:
@@ -164,12 +209,13 @@ def main() -> int:
             "pegen_source_v2",
             env_tmp_path / "source-environment-record.v2.valid.json",
         )
+        source_successor_commit = temporary_source_commit(commit_sha, source_successor_env)
         source_successor = fixture.generation_record(
             generation_id="pegen_source_v2",
             environment_id="pe_source",
             environment_manifest_sha256=fixture.DIGEST_A,
             environment_record=source_successor_env,
-            commit_sha=commit_sha,
+            commit_sha=source_successor_commit,
         )
         source_successor["supersedesGenerationId"] = "pegen_source"
         source_superseded = dict(baseline_generations)
@@ -196,12 +242,13 @@ def main() -> int:
             "pegen_target_v2",
             env_tmp_path / "target-environment-record.v2.valid.json",
         )
+        target_successor_commit = temporary_source_commit(commit_sha, target_successor_env)
         target_successor = fixture.generation_record(
             generation_id="pegen_target_v2",
             environment_id="pe_target",
             environment_manifest_sha256=fixture.DIGEST_B,
             environment_record=target_successor_env,
-            commit_sha=commit_sha,
+            commit_sha=target_successor_commit,
         )
         target_successor["supersedesGenerationId"] = "pegen_target"
         target_superseded = dict(baseline_generations)
@@ -359,6 +406,8 @@ def main() -> int:
 
     print("Memory OS generation/objective/request rollover candidate negative suite PASS")
     print("historical evidence remains auditable after valid supersession: true")
+    print("synthetic successor environment records source-bound via unreferenced commits: true")
+    print("branch or ref updated by synthetic source commits: false")
     print("superseded source generation creates current candidate: false")
     print("superseded restore-target generation creates current candidate: false")
     print("replaced review approval path creates current candidate: false")
