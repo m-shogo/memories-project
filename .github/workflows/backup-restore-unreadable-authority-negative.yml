@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - ".github/workflows/backup-restore-unreadable-authority-negative.yml"
+      - "scripts/validate-memory-os-production-equivalent-environment-eligibility.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-eligibility-load-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
       - "scripts/reconcile-memory-os-backup-restore-drill-preflight.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py"
@@ -20,6 +22,8 @@ on:
       - so
     paths:
       - ".github/workflows/backup-restore-unreadable-authority-negative.yml"
+      - "scripts/validate-memory-os-production-equivalent-environment-eligibility.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-eligibility-load-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
       - "scripts/reconcile-memory-os-backup-restore-drill-preflight.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py"
@@ -50,6 +54,8 @@ jobs:
       - name: Compile unreadable-authority boundaries
         run: |
           python -m py_compile \
+            scripts/validate-memory-os-production-equivalent-environment-eligibility.py \
+            scripts/validate-memory-os-production-equivalent-environment-eligibility-load-negative.py \
             scripts/validate-memory-os-backup-restore-drill-preflight.py \
             scripts/reconcile-memory-os-backup-restore-drill-preflight.py \
             scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py \
@@ -63,6 +69,7 @@ jobs:
             scripts/validate-memory-os-backup-restore-admission-chain-load-negative.py
       - name: Prove unreadable authorities fail closed
         run: |
+          python scripts/validate-memory-os-production-equivalent-environment-eligibility-load-negative.py
           python scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py
           python scripts/validate-memory-os-backup-restore-drill-request-load-negative.py
           python scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py
