@@ -82,6 +82,9 @@
   },
   "recordRequirements": {
     "sourceCommitShaRequired": true,
+    "sourceCommitMustBeAncestorOfAdmissionHead": true,
+    "evidenceRefsMustExistAtSourceCommitAndRemainByteStable": true,
+    "evidenceRefsMustStayInsideRepositoryWithoutSymlinks": true,
     "environmentIdentityDigestRequired": true,
     "environmentGenerationRequiredForProductionEquivalent": true,
     "infrastructureAsCodeRefsRequired": true,
