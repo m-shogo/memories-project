@@ -20,6 +20,7 @@
     "environmentRecordSha256Required": true,
     "environmentRecordFullSemanticValidationRequired": true,
     "environmentRecordRefMustBeCanonicalRepositoryFile": true,
+    "environmentRecordMustMatchSourceCommitSha": true,
     "semanticValidatorImplementationErrorsMustSurface": true,
     "allNonNullEnvironmentEvidenceRefsMustResolveInRepository": true,
     "allNonNullEnvironmentEvidenceRefsMustMatchSourceCommitSha": true,
