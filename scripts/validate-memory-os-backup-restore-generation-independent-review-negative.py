@@ -246,6 +246,11 @@ def main() -> int:
     )
     expect_contract_fail(
         module,
+        lambda contract: contract["promotionBoundary"].__setitem__("completeReviewedRecordAlsoRequiresTypedAppendOnlyIndependentReviews", False),
+        "independent review promotion boundary disabled",
+    )
+    expect_contract_fail(
+        module,
         lambda contract: contract.__setitem__("materialDeltaReviewValidator", "scripts/validate-memory-os-backup-restore-generation-evidence.py"),
         "candidate material-delta validator substituted",
     )
@@ -271,7 +276,7 @@ def main() -> int:
     finally:
         module.git_history = original_history
 
-    print("PASS: generation candidate review negatives reject generic refs, review reuse, material-delta bypass/substitution, authority mismatch, malformed timestamps, unsafe reviewer identities, contract drift, post-commit edits, and production promotion")
+    print("PASS: generation candidate review negatives reject generic refs, review reuse, material-delta bypass/substitution, authority mismatch, malformed timestamps, unsafe reviewer identities, candidate/promotion contract drift, post-commit edits, and production promotion")
     return 0
 
 
