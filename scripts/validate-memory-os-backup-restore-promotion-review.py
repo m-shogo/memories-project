@@ -18,6 +18,7 @@ TYPED_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-ad
 INVENTORY = ROOT / "contracts/operations/operability-admission-inventory.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-backup-restore-promotion-review.py"
 GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
+EXPECTED_LOCK = ROOT / "contracts/operations/.backup-restore-promotion-review.lock"
 NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-promotion-review-negative.py"
 
 
@@ -70,6 +71,9 @@ def main() -> int:
     require(getattr(writer, "REGISTRY", None) == REGISTRY, "promotion review writer registry authority drift")
     require(getattr(writer, "GEN_REGISTRY", None) == GEN_REGISTRY, "promotion review writer generation registry authority drift")
     require(getattr(writer, "GEN_WRITER", None) == GEN_WRITER, "promotion review candidate writer authority drift")
+    writer_lock = getattr(writer, "LOCK", None)
+    require(writer_lock == EXPECTED_LOCK, "promotion review writer append lock authority drift")
+    require(writer_lock.parent == REGISTRY.parent, "promotion review append lock must share registry authority directory")
     writer.canonical_repo_file(CONTRACT, "promotion review contract")
     writer.canonical_repo_file(REGISTRY, "promotion review registry")
     writer.canonical_repo_file(GEN_REGISTRY, "generation recovery evidence registry")
@@ -144,6 +148,7 @@ def main() -> int:
     print(f"current promotion authority decision: {current_id}")
     print("historical review/current authority separation: PASS")
     print("promotion review candidate writer identity canonical: true")
+    print("promotion review append lock authority canonical: true")
     print("operability inventory current human review source: promotion-review registry")
     print("review changes production traffic: false")
     print("review creates production ready: false")
