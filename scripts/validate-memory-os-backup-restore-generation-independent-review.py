@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -151,6 +152,17 @@ def require_append_only_review(ref: str, path: Path, field: str) -> None:
     require(path.read_bytes() == completed.stdout, f"{field} bytes drift from initial committed review evidence")
 
 
+def require_utc_rfc3339(value: Any, field: str) -> str:
+    require(isinstance(value, str) and value, f"{field} required")
+    require(len(value) == 20 and value.endswith("Z"), f"{field} must be canonical UTC RFC3339 seconds")
+    try:
+        parsed = datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError as exc:
+        raise Fail(f"{field} must be canonical UTC RFC3339 seconds") from exc
+    require(parsed.strftime("%Y-%m-%dT%H:%M:%SZ") == value, f"{field} must be canonical UTC RFC3339 seconds")
+    return value
+
+
 def validate_review(row: dict[str, Any], ref_field: str, expected_role: str) -> tuple[str, str]:
     ref, path = canonical_ref(row.get(ref_field), ref_field)
     require_append_only_review(ref, path, ref_field)
@@ -162,9 +174,8 @@ def validate_review(row: dict[str, Any], ref_field: str, expected_role: str) -> 
     require(payload.get("reviewRole") == expected_role, f"{ref_field} reviewRole mismatch")
     require(payload.get("reviewResult") == "APPROVED", f"{ref_field} review must be APPROVED")
     reviewer = payload.get("reviewerPseudonym")
-    reviewed_at = payload.get("reviewedAt")
     require(isinstance(reviewer, str) and reviewer.strip(), f"{ref_field} reviewerPseudonym required")
-    require(isinstance(reviewed_at, str) and reviewed_at.strip(), f"{ref_field} reviewedAt required")
+    require_utc_rfc3339(payload.get("reviewedAt"), f"{ref_field} reviewedAt")
     require(payload.get("productionTrafficChanged") is False, f"{ref_field} cannot change production traffic")
     require(payload.get("productionCredentialsUsed") is False, f"{ref_field} cannot use production credentials")
     require(payload.get("automaticPromotion") is False, f"{ref_field} cannot authorize automatic promotion")
