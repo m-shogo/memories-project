@@ -19,6 +19,8 @@ NEGATIVE = ROOT / "scripts/validate-memory-os-recovery-objectives-negative.py"
 EXPECTED_NEGATIVE_CASES = {
     "arbitrary repository files used as approval evidence",
     "absolute, parent-traversal or symlinked authority refs",
+    "typed approval evidence content changed after registration",
+    "approval evidence digest map missing, stale or contains unknown objectives",
     "typed approval bound to a different objectiveId",
     "typed approval bound to different RPO/RTO/skew values",
     "zero or negative RPO/RTO",
@@ -140,6 +142,8 @@ def main() -> int:
         "authorityRefsMustBeCanonicalRepositoryFiles",
         "exactlyTwoTypedApprovalEvidenceRefsRequired",
         "approvalEvidenceMustUseDedicatedAuthorityDirectory",
+        "approvalEvidenceContentMustBeSha256BoundInRegistry",
+        "approvalEvidenceDigestMapMustExactlyMatchRegisteredObjectives",
         "recoveryOwnerAndOperabilityApprovalRolesRequired",
         "approvalReviewersMustBeDistinct",
         "reviewerPseudonymsMustBeCanonicalNonEmptyText",
@@ -162,24 +166,10 @@ def main() -> int:
         "negative admission case authority drift",
     )
 
-    require(registry.get("schemaVersion") == "memory-os-recovery-objectives-registry.v1", "registry schema drift")
-    require(registry.get("appendOnly") is True, "objectives registry must remain append-only")
-    require(registry.get("productionEvidence") is False and registry.get("productionReady") is False, "objectives registry cannot promote production")
-    rows = registry.get("records")
+    rows = writer.validate_registry_for_append(registry)
     count = registry.get("approvedObjectiveCount")
-    require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows), "objectives records invalid")
-    require(isinstance(count, int) and not isinstance(count, bool) and count == len(rows), "approvedObjectiveCount drift")
-    ids: set[str] = set()
-    previous: str | None = None
-    for row in rows:
-        writer.validate_record(row)
-        objective_id = row.get("objectiveId")
-        require(isinstance(objective_id, str) and objective_id not in ids, f"duplicate objectiveId: {objective_id}")
-        ids.add(objective_id)
-        require(row.get("supersedesObjectiveId") == previous, "recovery objective supersession chain drift")
-        previous = objective_id
     current_id = registry.get("currentObjectiveId")
-    require(current_id == previous, "currentObjectiveId must equal latest append-only record")
+    require(isinstance(count, int) and not isinstance(count, bool) and count == len(rows), "approvedObjectiveCount drift")
 
     authority = contract.get("currentAuthority")
     require(isinstance(authority, dict), "currentAuthority required")
@@ -201,6 +191,7 @@ def main() -> int:
     print(f"current objective: {current_id or 'none'}")
     print(f"RPO/RTO defined: {str(defined).lower()}")
     print("typed Recovery Owner/Operability approval binding: required")
+    print("approval evidence SHA-256 binding: required")
     print("arbitrary repository approval files accepted: false")
     print("canonical repository authority refs required: true")
     print("canonical writer contract/registry/approval authority validated without objective rows: true")
