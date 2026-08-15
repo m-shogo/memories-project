@@ -17,6 +17,7 @@ ENV_SCHEMA = ROOT / "contracts/operations/production-equivalent-environment-reco
 GEN_SCHEMA = ROOT / "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
 ENV_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-record.py"
 WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
+EXPECTED_LOCK = ROOT / "contracts/operations/.production-equivalent-environment-generation.lock"
 NEGATIVE = ROOT / "scripts/validate-memory-os-production-equivalent-environment-generation-negative.py"
 EXPECTED_NEGATIVE_CASES = {
     "environment record missing required nested section",
@@ -108,6 +109,9 @@ def main() -> int:
         require(runtime_path == expected_path, f"writer runtime authority drift: {runtime_name}")
         require(canonical_path == expected_path, f"writer canonical authority drift: {canonical_name}")
         writer.require_canonical_runtime_authority(runtime_path, canonical_path, field)
+    writer_lock = getattr(writer, "LOCK", None)
+    require(writer_lock == EXPECTED_LOCK, "writer append lock authority drift")
+    require(writer_lock.parent == REGISTRY.parent, "writer append lock must share registry authority directory")
 
     require(contract.get("schemaVersion") == "memory-os-production-equivalent-environment-generation.v1", "contract schema drift")
     expected_refs = {
@@ -239,6 +243,7 @@ def main() -> int:
     print("boolean generation counts accepted: false")
     print("canonical environmentRecordRef required: true")
     print("canonical writer runtime authorities validated without generation rows: true")
+    print("canonical writer append lock authority validated: true")
     print("semantic environment evidence refs canonical: true")
     print("semantic validator implementation exceptions surfaced: true")
     print("unexpected generation-writer exceptions normalized as expected rejection: false")
