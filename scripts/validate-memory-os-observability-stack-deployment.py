@@ -14,6 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/observability-stack-deployment-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/observability-stack-deployment-registry.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-observability-stack-deployment.py"
+GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+GEN_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
 
 
 class Fail(RuntimeError):
@@ -40,6 +42,10 @@ def load_writer() -> ModuleType:
             "stack writer contract authority drift")
     require(getattr(module, "REGISTRY", None) == REGISTRY,
             "stack writer registry authority drift")
+    require(getattr(module, "GEN_REGISTRY", None) == GEN_REGISTRY,
+            "stack writer generation registry authority drift")
+    require(getattr(module, "GEN_WRITER", None) == GEN_WRITER,
+            "stack writer generation executable authority drift")
     require(callable(getattr(module, "validate_registry_for_append", None)),
             "stack writer registry validator missing")
     return module
@@ -52,6 +58,7 @@ def main() -> int:
     require(contract.get("recordSchemaVersion") == "memory-os-observability-stack-deployment-record.v1", "record schema drift")
     require(contract.get("registryPath") == str(REGISTRY.relative_to(ROOT)), "registry binding drift")
     require(contract.get("writer") == str(WRITER.relative_to(ROOT)), "writer binding drift")
+    require(contract.get("environmentGenerationRegistry") == str(GEN_REGISTRY.relative_to(ROOT)), "generation registry contract binding drift")
     requirements = contract.get("recordRequirements")
     require(isinstance(requirements, dict) and requirements and all(value is True for value in requirements.values()), "record requirements must remain fail-closed")
     promotion = contract.get("promotionRules")
