@@ -127,6 +127,22 @@ def expect_bound_field_fail(module, field: str) -> None:
         module.load_json = original_load_json
 
 
+def expect_contract_fail(module, mutate, label: str) -> None:
+    canonical = json.loads(module.CONTRACT.read_text(encoding="utf-8"))
+    mutated = json.loads(json.dumps(canonical))
+    mutate(mutated)
+    original_load_json = module.load_json
+    try:
+        module.load_json = lambda path, field: mutated if path == module.CONTRACT else original_load_json(path, field)
+        try:
+            module.validate_contract_authority()
+        except module.Fail:
+            return
+        raise Fail(f"contract authority negative unexpectedly passed: {label}")
+    finally:
+        module.load_json = original_load_json
+
+
 def main() -> int:
     module = load_validator()
 
@@ -144,6 +160,22 @@ def main() -> int:
     for field in module.BOUND_FIELDS:
         expect_bound_field_fail(module, field)
 
+    expect_contract_fail(
+        module,
+        lambda contract: contract["requiredIndependentReviewEvidenceFields"].remove("drillRequestId"),
+        "required review field removed",
+    )
+    expect_contract_fail(
+        module,
+        lambda contract: contract["recordRules"].__setitem__("independentReviewMustBindRecoveryObjectivesId", False),
+        "binding rule disabled",
+    )
+    expect_contract_fail(
+        module,
+        lambda contract: contract["independentReviewRoles"].__setitem__("securityReviewRef", "OPERABILITY"),
+        "review role map substituted",
+    )
+
     original_history = module.git_history
     try:
         module.git_history = lambda _ref, _field: ["a" * 40, "b" * 40]
@@ -160,7 +192,7 @@ def main() -> int:
     finally:
         module.git_history = original_history
 
-    print("PASS: generation independent review negatives reject generic refs, review reuse, authority mismatch, post-commit edits, and production promotion")
+    print("PASS: generation independent review negatives reject generic refs, review reuse, authority mismatch, contract drift, post-commit edits, and production promotion")
     return 0
 
 
