@@ -27,9 +27,17 @@ def require(condition: bool, message: str) -> None:
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
-        raise Fail(f"cannot load {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+    except (FileNotFoundError, OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        try:
+            label = path.relative_to(ROOT)
+        except ValueError:
+            label = path
+        raise Fail(f"cannot load {label}: {exc}") from exc
+    try:
+        label = path.relative_to(ROOT)
+    except ValueError:
+        label = path
+    require(isinstance(value, dict), f"root must be object: {label}")
     return value
 
 
@@ -42,9 +50,15 @@ def load_helper():
 
 
 def repo_ref(value: Any, field: str) -> str:
-    require(isinstance(value, str) and value and not Path(value).is_absolute(), f"{field} invalid")
-    path = Path(value)
-    require(".." not in path.parts and (ROOT / path).is_file(), f"{field} evidence missing")
+    require(isinstance(value, str) and value, f"{field} invalid")
+    relative = Path(value)
+    require(not relative.is_absolute() and ".." not in relative.parts and relative.as_posix() == value, f"{field} invalid")
+    path = ROOT / relative
+    try:
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} evidence missing or escapes repository") from exc
+    require(resolved == relative and path.is_file(), f"{field} must resolve to the canonical repository file")
     return value
 
 
