@@ -15,7 +15,7 @@ TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json"
 GEN_CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
-HELPER_SUBSTITUTE = ROOT / "scripts/validate-memory-os-operability.py"
+REPO_SUBSTITUTE = ROOT / "scripts/validate-memory-os-operability.py"
 
 
 class Fail(RuntimeError):
@@ -38,11 +38,11 @@ def load_reconciler():
 def main() -> int:
     require(RECONCILER.is_file(), "generation eligibility reconciler missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
-    require(HELPER_SUBSTITUTE.is_file(), "repo-contained helper substitute missing")
+    require(REPO_SUBSTITUTE.is_file(), "repo-contained executable substitute missing")
     reconciler = load_reconciler()
 
     original_helper = reconciler.HELPER
-    reconciler.HELPER = HELPER_SUBSTITUTE
+    reconciler.HELPER = REPO_SUBSTITUTE
     try:
         try:
             reconciler.load_helper()
@@ -54,6 +54,20 @@ def main() -> int:
             raise Fail("eligibility reconciler helper substitution unexpectedly accepted")
     finally:
         reconciler.HELPER = original_helper
+
+    original_validator = reconciler.VALIDATOR
+    reconciler.VALIDATOR = REPO_SUBSTITUTE
+    try:
+        try:
+            reconciler.validate_runtime_executable_authorities()
+        except reconciler.Fail:
+            print("PASS reject before write: eligibility reconciler validator substitution")
+        except Exception as exc:
+            raise Fail(f"validator substitution leaked non-domain exception: {type(exc).__name__}: {exc}") from exc
+        else:
+            raise Fail("eligibility reconciler validator substitution unexpectedly accepted")
+    finally:
+        reconciler.VALIDATOR = original_validator
 
     with tempfile.TemporaryDirectory(prefix=".tmp-environment-eligibility-reconcile-", dir=TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
@@ -100,6 +114,7 @@ def main() -> int:
 
     print("Environment generation eligibility reconcile negative suite PASS")
     print("reconciler helper substitution accepted: false")
+    print("canonical runtime validator substitution accepted: false")
     print("generation contract drift can mutate eligibility authority: false")
     print("failed post-validation leaves eligibility authority mutation behind: false")
     print("production evidence: false")
