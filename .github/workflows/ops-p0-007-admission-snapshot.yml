@@ -105,30 +105,61 @@ jobs:
         if: steps.snapshot.outputs.exit_code == '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
-          git fetch origin so
-          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
-            echo "OPS-P0-007 source HEAD changed after validation; refusing stale strict snapshot."
-            exit 75
-          fi
-          git rm -f docs/fixtures/memory-os-operability/ops-p0-007-admission-snapshot-diagnostic.last.json 2>/dev/null || true
-          git add contracts/operations/ops-p0-007-admission-snapshot.v1.json
-          git add -u docs/fixtures/memory-os-operability/ops-p0-007-admission-snapshot-diagnostic.last.json 2>/dev/null || true
-          if ! git diff --cached --quiet; then
+          log=/tmp/ops-p0-007-admission-snapshot.log
+
+          revalidate_latest_snapshot() {
+            git fetch origin so
+            git reset --hard origin/so
+            SOURCE_SHA="$(git rev-parse HEAD)"
+            export SOURCE_SHA
+            : > "$log"
+            python scripts/generate-memory-os-ops-p0-007-admission-snapshot.py >> "$log" 2>&1
+            python scripts/validate-memory-os-ops-p0-007-admission-snapshot.py >> "$log" 2>&1
+            python scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py >> "$log" 2>&1
+          }
+
+          for reconcile_attempt in 1 2; do
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              if [[ "$reconcile_attempt" == "2" ]]; then
+                echo "OPS-P0-007 source HEAD changed again during bounded retry; refusing stale strict snapshot."
+                exit 75
+              fi
+              echo "OPS-P0-007 source advanced; regenerating and revalidating strict snapshot once from latest so."
+              revalidate_latest_snapshot
+            fi
+
+            git rm -f docs/fixtures/memory-os-operability/ops-p0-007-admission-snapshot-diagnostic.last.json 2>/dev/null || true
+            git add contracts/operations/ops-p0-007-admission-snapshot.v1.json
+            git add -u docs/fixtures/memory-os-operability/ops-p0-007-admission-snapshot-diagnostic.last.json 2>/dev/null || true
+            if git diff --cached --quiet; then
+              exit 0
+            fi
+
             git diff --cached --check
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(restore): refresh OPS-P0-007 strict admission snapshot"
-            for attempt in 1 2 3 4; do
-              git fetch origin so
-              if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
-                echo "OPS-P0-007 source HEAD changed before snapshot push; refusing stale strict snapshot."
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              if [[ "$reconcile_attempt" == "2" ]]; then
+                echo "OPS-P0-007 source HEAD changed again before bounded retry snapshot push; refusing stale strict snapshot."
                 exit 75
               fi
-              if git push origin HEAD:so; then exit 0; fi
-              sleep 2
-            done
-            exit 1
-          fi
+              echo "OPS-P0-007 source advanced after validation; discarding stale snapshot commit and retrying from latest so."
+              revalidate_latest_snapshot
+              continue
+            fi
+            if git push origin HEAD:so; then
+              exit 0
+            fi
+            if [[ "$reconcile_attempt" == "2" ]]; then
+              exit 1
+            fi
+            echo "OPS-P0-007 snapshot push raced with another writer; retrying once from latest so."
+            revalidate_latest_snapshot
+          done
+          exit 75
       - name: Record privacy-safe snapshot diagnostic
         if: steps.snapshot.outputs.exit_code != '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         env:
