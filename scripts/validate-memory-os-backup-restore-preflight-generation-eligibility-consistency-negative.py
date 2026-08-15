@@ -17,6 +17,7 @@ PREFLIGHT = ROOT / "contracts/operations/backup-restore-drill-preflight-contract
 ELIGIBILITY = ROOT / "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json"
 OBJECTIVES = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
 DRILL_REQUESTS = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
+SUBSTITUTE = ROOT / "scripts/validate-memory-os-operability.py"
 
 
 class Fail(RuntimeError):
@@ -87,6 +88,20 @@ def expect_rejection(
                 validator.OBJECTIVES,
                 validator.DRILL_REQUESTS,
             ) = original
+
+
+def expect_executable_rejection(validator, field: str, substitute: Path) -> None:
+    original = getattr(validator, field)
+    setattr(validator, field, substitute)
+    try:
+        try:
+            validator.main()
+        except validator.Fail:
+            pass
+        else:
+            raise Fail(f"executable authority substitution unexpectedly accepted: {field}")
+    finally:
+        setattr(validator, field, original)
 
 
 def main() -> int:
@@ -166,8 +181,12 @@ def main() -> int:
     for name, mutate in cases:
         expect_rejection(validator, baseline, name, mutate)
 
+    for field in ("HELPER", "OBJECTIVES_WRITER", "DRILL_WRITER"):
+        expect_executable_rejection(validator, field, SUBSTITUTE)
+
     print("Memory OS restore preflight generation-eligibility consistency negative PASS")
-    print(f"negative cases: {len(cases)}")
+    print(f"authority corruption cases: {len(cases)}")
+    print("executable substitution cases: 3")
     print("canonical authority mutated: false")
     print("production evidence created: false")
     print("production decision changed: false")
