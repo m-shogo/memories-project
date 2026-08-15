@@ -15,6 +15,8 @@ on:
       - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
+      - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
       - "contracts/operations/recovery-objectives-admission-contract.v1.json"
       - "contracts/operations/recovery-objectives-registry.v1.json"
       - "contracts/operations/operability-admission-inventory.v1.json"
@@ -28,6 +30,7 @@ on:
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-generation-negative.py"
       - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-recovery-objectives-negative.py"
@@ -77,6 +80,8 @@ on:
       - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
+      - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
       - "contracts/operations/recovery-objectives-admission-contract.v1.json"
       - "contracts/operations/recovery-objectives-registry.v1.json"
       - "contracts/operations/operability-admission-inventory.v1.json"
@@ -90,6 +95,7 @@ on:
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-generation-negative.py"
       - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-recovery-objectives-negative.py"
@@ -174,6 +180,8 @@ jobs:
           contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json
           contracts/operations/production-equivalent-environment-generation-contract.v1.json
           contracts/operations/production-equivalent-environment-generation-registry.v1.json
+          contracts/operations/production-equivalent-environment-record.v1.schema.json
+          contracts/operations/production-equivalent-environment-generation-record.v1.schema.json
           contracts/operations/recovery-objectives-admission-contract.v1.json
           contracts/operations/recovery-objectives-registry.v1.json
           contracts/operations/operability-admission-inventory.v1.json
@@ -187,6 +195,7 @@ jobs:
           scripts/register-memory-os-production-equivalent-environment-generation.py
           scripts/validate-memory-os-production-equivalent-environment-record.py
           scripts/validate-memory-os-production-equivalent-environment-generation.py
+          scripts/validate-memory-os-production-equivalent-environment-generation-negative.py
           scripts/register-memory-os-recovery-objectives.py
           scripts/validate-memory-os-recovery-objectives.py
           scripts/validate-memory-os-recovery-objectives-negative.py
@@ -235,6 +244,7 @@ jobs:
             scripts/register-memory-os-production-equivalent-environment-generation.py \
             scripts/validate-memory-os-production-equivalent-environment-record.py \
             scripts/validate-memory-os-production-equivalent-environment-generation.py \
+            scripts/validate-memory-os-production-equivalent-environment-generation-negative.py \
             scripts/register-memory-os-recovery-objectives.py \
             scripts/validate-memory-os-recovery-objectives.py \
             scripts/validate-memory-os-recovery-objectives-negative.py \
@@ -270,6 +280,7 @@ jobs:
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-equivalent-environment-generation.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-equivalent-environment-generation-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-preflight.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-preflight-negative.py >> "$log" 2>&1 || code=$?; fi
@@ -307,6 +318,7 @@ jobs:
             export SOURCE_SHA
             : > "$log"
             python scripts/validate-memory-os-production-equivalent-environment-generation.py >> "$log" 2>&1
+            python scripts/validate-memory-os-production-equivalent-environment-generation-negative.py >> "$log" 2>&1
             python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-drill-preflight.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-drill-preflight-negative.py >> "$log" 2>&1
