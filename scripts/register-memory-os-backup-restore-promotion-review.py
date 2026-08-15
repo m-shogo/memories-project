@@ -19,6 +19,7 @@ CONTRACT = ROOT / "contracts/operations/backup-restore-promotion-review-contract
 REGISTRY = ROOT / "contracts/operations/backup-restore-promotion-review-registry.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
+EVIDENCE_ROOT = ROOT / "docs/evidence/backup-restore"
 LOCK = ROOT / "contracts/operations/.backup-restore-promotion-review.lock"
 DECISION_ID = re.compile(r"^brpr_[a-z0-9][a-z0-9_-]{7,63}$")
 EVIDENCE_ID = re.compile(r"^brge_[a-z0-9][a-z0-9_-]{7,63}$")
@@ -93,12 +94,22 @@ def repo_ref(value: Any, field: str) -> str:
     return value
 
 
+def promotion_evidence_ref(value: Any, field: str) -> str:
+    ref = repo_ref(value, field)
+    evidence_root = EVIDENCE_ROOT.relative_to(ROOT)
+    try:
+        Path(ref).relative_to(evidence_root)
+    except ValueError as exc:
+        raise Fail(f"{field} must remain inside monitored backup/restore evidence namespace") from exc
+    return ref
+
+
 def payload_sha256(ref: str) -> str:
     return hashlib.sha256((ROOT / ref).read_bytes()).hexdigest()
 
 
 def require_payload_digest(record: dict[str, Any], ref_field: str, digest_field: str) -> str:
-    ref = repo_ref(record.get(ref_field), ref_field)
+    ref = promotion_evidence_ref(record.get(ref_field), ref_field)
     digest = record.get(digest_field)
     require(isinstance(digest, str) and SHA256.fullmatch(digest), f"{digest_field} invalid")
     require(digest == payload_sha256(ref), f"{digest_field} binding mismatch")
@@ -180,6 +191,7 @@ def validate_review_evidence(
 def validate_record(record: dict[str, Any], *, require_current_candidate: bool = True) -> None:
     """Validate immutable review data; history does not regain current authority automatically."""
     contract = load(CONTRACT)
+    require(contract.get("reviewEvidenceRoot") == str(EVIDENCE_ROOT.relative_to(ROOT)), "promotion review evidence root authority drift")
     required = set(contract.get("requiredRecordFields", []))
     require(required and set(record) == required, f"promotion review field set drift: {sorted(set(record) ^ required)}")
     require(record.get("schemaVersion") == contract.get("recordSchemaVersion"), "promotion review schemaVersion drift")
@@ -212,7 +224,7 @@ def validate_record(record: dict[str, Any], *, require_current_candidate: bool =
         ("securityReviewRef", "securityReviewSha256"),
         ("operabilityReviewRef", "operabilityReviewSha256"),
     )
-    review_refs = [repo_ref(record.get(ref_field), ref_field) for ref_field, _ in review_specs]
+    review_refs = [promotion_evidence_ref(record.get(ref_field), ref_field) for ref_field, _ in review_specs]
     require(len(set(review_refs)) == 3, "Recovery Owner, Security and Operability review refs must be distinct")
     require(rationale not in set(review_refs), "rationaleRef must be distinct from reviewer evidence")
     reviewers = [
@@ -366,6 +378,7 @@ def main() -> int:
     print(f"Registered backup/restore promotion review: {record['decisionId']}")
     print(f"review decision: {record['decision']}")
     print("typed human review evidence: true")
+    print("human review evidence namespace monitored: true")
     print("human review payload digests bound: true")
     print("historical review retained on later supersession: true")
     print("traffic changed: false")
