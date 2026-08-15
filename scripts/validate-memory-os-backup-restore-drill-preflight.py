@@ -102,6 +102,14 @@ def repo_relative(path: Path) -> Path:
         raise Fail(f"artifact path escapes repository root: {path}") from exc
 
 
+def canonical_executable(path: Path, expected_relative: str, field: str) -> Path:
+    relative = repo_relative(path)
+    expected = (ROOT / expected_relative).resolve()
+    require(path.resolve() == expected and relative == Path(expected_relative), f"{field} executable authority drift")
+    require(path.is_file(), f"{field} executable missing")
+    return path
+
+
 def load(path: Path) -> dict[str, Any]:
     relative = repo_relative(path)
     try:
@@ -113,7 +121,11 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_eligibility_helper():
-    repo_relative(ELIGIBILITY_HELPER)
+    canonical_executable(
+        ELIGIBILITY_HELPER,
+        "scripts/memory_os_environment_generation_eligibility.py",
+        "environment generation eligibility helper",
+    )
     spec = importlib.util.spec_from_file_location("memory_os_environment_generation_eligibility_for_restore_preflight", ELIGIBILITY_HELPER)
     require(spec is not None and spec.loader is not None, "cannot load shared environment generation eligibility authority")
     module = importlib.util.module_from_spec(spec)
@@ -121,8 +133,8 @@ def load_eligibility_helper():
     return module
 
 
-def run_validator(path: Path, name: str) -> None:
-    repo_relative(path)
+def run_validator(path: Path, name: str, expected_relative: str) -> None:
+    canonical_executable(path, expected_relative, name)
     completed = subprocess.run([sys.executable, str(path)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
     require(completed.returncode == 0, f"{name} validator failed:\n{completed.stdout[-4000:]}{completed.stderr[-4000:]}")
 
@@ -300,9 +312,9 @@ def main() -> int:
     require(readiness.get("currentExecutableDrillRequestAvailable") is (state["currentExecutableDrillRequestCount"] > 0), "preflight current request readiness drift")
     require(readiness.get("drillExecuted") is False and readiness.get("productionReady") is False, "preflight cannot claim execution or production readiness")
 
-    run_validator(GEN_VALIDATOR, "environment generation")
-    run_validator(OBJECTIVE_VALIDATOR, "recovery objectives")
-    run_validator(DRILL_VALIDATOR, "restore drill request")
+    run_validator(GEN_VALIDATOR, "environment generation", "scripts/validate-memory-os-production-equivalent-environment-generation.py")
+    run_validator(OBJECTIVE_VALIDATOR, "recovery objectives", "scripts/validate-memory-os-recovery-objectives.py")
+    run_validator(DRILL_VALIDATOR, "restore drill request", "scripts/validate-memory-os-backup-restore-drill-request.py")
 
     print("Memory OS production-equivalent restore drill preflight PASS")
     print(f"registered/preflight-eligible generations: {state['registeredGenerationCount']}/{state['preflightEligibleGenerationCount']}")
@@ -314,6 +326,7 @@ def main() -> int:
     print(f"blocking prerequisites ({state['blockingPrerequisiteCount']}): {','.join(state['blockingPrerequisites']) if state['blockingPrerequisites'] else 'none'}")
     print(f"preflight decision: {state['preflightDecision']}")
     print("semantic generation authority shared with downstream admission: true")
+    print("preflight upstream executable authorities pinned: true")
     print("registered generation blocker semantically requires eligible distinct environments: true")
     print("boolean registry/current-state counts accepted: false")
     print("automatic prerequisite/request creation: false")
