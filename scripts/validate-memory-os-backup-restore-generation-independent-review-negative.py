@@ -102,10 +102,8 @@ def typed_payload(row: dict, role: str) -> dict:
     }
 
 
-def expect_bound_field_fail(module, field: str) -> None:
+def expect_review_payload_fail(module, payload: dict, label: str) -> None:
     row = base_row()
-    payload = typed_payload(row, "SECURITY")
-    payload[field] = "mismatched-authority"
     original_canonical_ref = module.canonical_ref
     original_append_only = module.require_append_only_review
     original_load_json = module.load_json
@@ -120,11 +118,18 @@ def expect_bound_field_fail(module, field: str) -> None:
             module.validate_review(row, "securityReviewRef", "SECURITY")
         except module.Fail:
             return
-        raise Fail(f"review authority mismatch unexpectedly passed: {field}")
+        raise Fail(f"review payload negative unexpectedly passed: {label}")
     finally:
         module.canonical_ref = original_canonical_ref
         module.require_append_only_review = original_append_only
         module.load_json = original_load_json
+
+
+def expect_bound_field_fail(module, field: str) -> None:
+    row = base_row()
+    payload = typed_payload(row, "SECURITY")
+    payload[field] = "mismatched-authority"
+    expect_review_payload_fail(module, payload, f"authority mismatch: {field}")
 
 
 def expect_contract_fail(module, mutate, label: str) -> None:
@@ -160,6 +165,16 @@ def main() -> int:
     for field in module.BOUND_FIELDS:
         expect_bound_field_fail(module, field)
 
+    for invalid_reviewed_at in (
+        "2026-08-15",
+        "2026-08-15T00:00:00+00:00",
+        "2026-08-15T00:00:00.000Z",
+        "2026-13-15T00:00:00Z",
+    ):
+        payload = typed_payload(base_row(), "SECURITY")
+        payload["reviewedAt"] = invalid_reviewed_at
+        expect_review_payload_fail(module, payload, f"non-canonical reviewedAt: {invalid_reviewed_at}")
+
     expect_contract_fail(
         module,
         lambda contract: contract["requiredIndependentReviewEvidenceFields"].remove("drillRequestId"),
@@ -192,7 +207,7 @@ def main() -> int:
     finally:
         module.git_history = original_history
 
-    print("PASS: generation independent review negatives reject generic refs, review reuse, authority mismatch, contract drift, post-commit edits, and production promotion")
+    print("PASS: generation independent review negatives reject generic refs, review reuse, authority mismatch, malformed timestamps, contract drift, post-commit edits, and production promotion")
     return 0
 
 
