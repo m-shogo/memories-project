@@ -35,7 +35,7 @@ def load_writer():
 def record() -> dict[str, Any]:
     return {
         "schemaVersion": "memory-os-recovery-objectives-record.v1",
-        "objectiveId": "ro_digest_negative",
+        "objectiveId": "ro_negative_base",
         "scope": "PRODUCTION_RECOVERY_OBJECTIVES",
         "rpoSeconds": 60,
         "rtoSeconds": 120,
