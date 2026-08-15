@@ -99,6 +99,7 @@ def validate_contract_authority() -> None:
     for rule in (
         "independentSecurityAndOperabilityReviewsRequired",
         "typedIndependentReviewEvidenceRequired",
+        "candidateDerivationMustUseTypedIndependentReviewAuthority",
         "independentReviewEvidenceMustRemainInsideMonitoredNamespace",
         "independentReviewRoleMustMatchReference",
         "independentReviewMustBeApproved",
@@ -184,6 +185,16 @@ def validate_review(row: dict[str, Any], ref_field: str, expected_role: str) -> 
     return ref, reviewer
 
 
+def candidate_reviews_approved(row: dict[str, Any]) -> bool:
+    """Validate the exact typed independent-review authority for one candidate row."""
+    validate_contract_authority()
+    security_ref, security_reviewer = validate_review(row, "securityReviewRef", ROLE_BY_REF["securityReviewRef"])
+    operability_ref, operability_reviewer = validate_review(row, "operabilityReviewRef", ROLE_BY_REF["operabilityReviewRef"])
+    require(security_ref != operability_ref, "Security and Operability review refs must remain distinct")
+    require(security_reviewer != operability_reviewer, "Security and Operability reviewers must remain distinct")
+    return True
+
+
 def main() -> int:
     validate_contract_authority()
     registry = load_json(REGISTRY, "generation evidence registry")
@@ -195,10 +206,7 @@ def main() -> int:
 
     for index, row in enumerate(rows):
         try:
-            security_ref, security_reviewer = validate_review(row, "securityReviewRef", ROLE_BY_REF["securityReviewRef"])
-            operability_ref, operability_reviewer = validate_review(row, "operabilityReviewRef", ROLE_BY_REF["operabilityReviewRef"])
-            require(security_ref != operability_ref, "Security and Operability review refs must remain distinct")
-            require(security_reviewer != operability_reviewer, "Security and Operability reviewers must remain distinct")
+            candidate_reviews_approved(row)
         except Fail as exc:
             raise Fail(f"records[{index}] independent review authority invalid: {exc}") from exc
 
