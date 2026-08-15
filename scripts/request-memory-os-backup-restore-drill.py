@@ -93,6 +93,14 @@ def canonical_request_sha256(record: dict[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def approval_sha256(ref: str) -> str:
+    try:
+        payload = (ROOT / ref).read_bytes()
+    except (FileNotFoundError, OSError) as exc:
+        raise Fail(f"approval evidence cannot be hashed: {ref}") from exc
+    return hashlib.sha256(payload).hexdigest()
+
+
 def git(*args: str) -> str:
     completed = subprocess.run(["git", *args], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     require(completed.returncode == 0, f"git {' '.join(args)} failed")
@@ -367,6 +375,10 @@ def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any
     require(isinstance(registered_count, int) and not isinstance(registered_count, bool), "registeredRequestCount must be a non-boolean integer")
     require(registered_count == len(requests), "registeredRequestCount drift")
     require(isinstance(executable_count, int) and not isinstance(executable_count, bool), "currentExecutableRequestCount must be a non-boolean integer")
+    enforce_approval_digests = ROOT == CANONICAL_ROOT and REGISTRY == CANONICAL_REGISTRY
+    digest_map = registry.get("approvalEvidenceDigestsByRequestId") if enforce_approval_digests else None
+    if enforce_approval_digests:
+        require(isinstance(digest_map, dict), "request approval evidence digest map invalid")
     request_ids: set[str] = set()
     tuples: set[tuple[Any, Any, Any]] = set()
     derived_executable = 0
@@ -375,11 +387,23 @@ def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any
         request_id = row.get("requestId")
         require(isinstance(request_id, str) and request_id not in request_ids, f"duplicate requestId: {request_id}")
         request_ids.add(request_id)
+        if enforce_approval_digests:
+            approvals = row.get("approvalRefs")
+            require(isinstance(approvals, dict) and set(approvals) == set(APPROVAL_ROLES), f"approvalRefs authority drift: {request_id}")
+            refs = set(approvals.values())
+            digests = digest_map.get(request_id) if isinstance(digest_map, dict) else None
+            require(isinstance(digests, dict) and set(digests) == refs, f"approval evidence digest refs drift: {request_id}")
+            for ref in refs:
+                digest = digests.get(ref)
+                require(isinstance(digest, str) and DIGEST.fullmatch(digest), f"approval evidence digest invalid: {request_id}")
+                require(digest == approval_sha256(ref), f"approval evidence content drift: {request_id}: {ref}")
         key = (row.get("sourceEnvironmentGenerationId"), row.get("restoreTargetEnvironmentGenerationId"), row.get("recoveryObjectivesId"))
         require(key not in tuples, f"duplicate source/target/objective drill request tuple: {key}")
         tuples.add(key)
         if request_currently_executable(row):
             derived_executable += 1
+    if enforce_approval_digests:
+        require(isinstance(digest_map, dict) and set(digest_map) == request_ids, "request approval evidence digest request set drift")
     require(executable_count == derived_executable, "currentExecutableRequestCount drift")
     return requests
 
@@ -433,6 +457,11 @@ def main() -> int:
         for row in requests:
             existing_tuple = (row.get("sourceEnvironmentGenerationId"), row.get("restoreTargetEnvironmentGenerationId"), row.get("recoveryObjectivesId"))
             require(existing_tuple != request_tuple, "source/target/objective tuple already has an admitted drill request")
+        digest_map = registry.get("approvalEvidenceDigestsByRequestId")
+        require(isinstance(digest_map, dict), "request approval evidence digest map invalid")
+        require(record["requestId"] not in digest_map, "request approval digest authority already registered")
+        approval_refs = record["approvalRefs"]
+        digest_map[record["requestId"]] = {ref: approval_sha256(ref) for ref in approval_refs.values()}
         requests.append(record)
         registry["registeredRequestCount"] = len(requests)
         registry["currentExecutableRequestCount"] = sum(1 for row in requests if request_currently_executable(row))
@@ -448,6 +477,7 @@ def main() -> int:
     print("source/target semantically preflight eligible: true")
     print("request chronology bound to generation/objective authority: true")
     print("typed human approvals bound to canonical request digest: true")
+    print("approval evidence content SHA-256 bound: true")
     print("approval chronology bound to request creation: true")
     print("planning authority only: true")
     print("execution-time revalidation required: true")
