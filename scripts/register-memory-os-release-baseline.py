@@ -95,6 +95,19 @@ def require_utc_timestamp(value: Any, field: str) -> None:
             f"{field} must be UTC")
 
 
+def validate_release_commit_lineage(commit_sha: str) -> None:
+    head = git("rev-parse", "HEAD")
+    completed = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", commit_sha, head],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    require(completed.returncode == 0,
+            f"release commit is not an ancestor of current HEAD: {commit_sha}")
+
+
 def validate_evidence_ref_binding(commit_sha: str, ref: str) -> None:
     relative = Path(ref)
     require(not relative.is_absolute() and ".." not in relative.parts,
@@ -131,6 +144,7 @@ def validate_record(record: dict[str, Any], required_fields: set[str]) -> None:
     require(isinstance(record.get("commitSha"), str) and
             SHA_RE.fullmatch(record["commitSha"]) is not None,
             "commitSha format invalid")
+    validate_release_commit_lineage(record["commitSha"])
     require_utc_timestamp(record.get("approvedAt"), "approvedAt")
     require(record.get("approvalClass") == "PRODUCTION_RELEASE_BASELINE",
             "approvalClass must be PRODUCTION_RELEASE_BASELINE")
