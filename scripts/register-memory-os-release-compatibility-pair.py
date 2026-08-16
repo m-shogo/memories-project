@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import os
@@ -23,7 +24,16 @@ RELEASE_WRITER = ROOT / "scripts/register-memory-os-release-baseline.py"
 REGISTRY = ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"
 LOCK = ROOT / "contracts/operations/.release-compatibility-pair.lock"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
+SHA256 = re.compile(r"^[0-9a-f]{64}$")
 PAIR_ID = re.compile(r"^rcp_[a-z0-9][a-z0-9_-]{7,63}$")
+EVIDENCE_FIELDS = (
+    "rollingDeploymentEvidenceRefs",
+    "applicationRollbackEvidenceRefs",
+    "persistedRouteEvidenceRefs",
+    "databaseUpgradeEvidenceRefs",
+    "artifactRetentionEvidenceRefs",
+    "independentReviewRefs",
+)
 REGISTRY_FIELDS = {
     "schemaVersion",
     "appendOnly",
@@ -77,6 +87,36 @@ def evidence_refs(value: Any, field: str, minimum: int = 1) -> list[str]:
         path = ROOT / ref
         require(path.is_file() and not path.is_symlink(), f"{field} evidence missing or symlinked: {ref}")
     return value
+
+
+def digest_file(ref: str) -> str:
+    return hashlib.sha256((ROOT / ref).read_bytes()).hexdigest()
+
+
+def compute_evidence_digests(record: dict[str, Any]) -> dict[str, dict[str, str]]:
+    result: dict[str, dict[str, str]] = {}
+    for field in EVIDENCE_FIELDS:
+        minimum = 2 if field == "independentReviewRefs" else 1
+        refs = evidence_refs(record.get(field), field, minimum=minimum)
+        result[field] = {ref: digest_file(ref) for ref in refs}
+    return result
+
+
+def bind_evidence_digests(record: dict[str, Any]) -> None:
+    record["evidenceDigestsByField"] = compute_evidence_digests(record)
+
+
+def validate_evidence_digests(record: dict[str, Any]) -> None:
+    digests = record.get("evidenceDigestsByField")
+    require(isinstance(digests, dict) and set(digests) == set(EVIDENCE_FIELDS), "pair evidence digest field set drift")
+    expected = compute_evidence_digests(record)
+    for field in EVIDENCE_FIELDS:
+        field_digests = digests.get(field)
+        require(isinstance(field_digests, dict), f"{field} digest authority must be object")
+        require(set(field_digests) == set(expected[field]), f"{field} digest reference set drift")
+        for ref, digest in field_digests.items():
+            require(isinstance(digest, str) and SHA256.fullmatch(digest), f"{field} digest invalid: {ref}")
+            require(digest == expected[field][ref], f"{field} evidence digest drift: {ref}")
 
 
 def validated_release_registry() -> dict[str, Any]:
@@ -136,6 +176,7 @@ def validate_record(record: dict[str, Any]) -> None:
     evidence_refs(record.get("artifactRetentionEvidenceRefs"), "artifactRetentionEvidenceRefs")
     reviews = evidence_refs(record.get("independentReviewRefs"), "independentReviewRefs", minimum=2)
     require(len(set(reviews)) >= 2, "independentReviewRefs must contain at least two distinct references")
+    validate_evidence_digests(record)
 
     approved_at = record.get("approvedAt")
     require(isinstance(approved_at, str), "approvedAt required")
@@ -224,6 +265,7 @@ def main() -> int:
         raise Fail("input pair record must be outside repository")
     require(git("status", "--porcelain") == "", "working tree must be clean")
     record = load(input_path)
+    bind_evidence_digests(record)
     validate_record(record)
 
     try:
@@ -246,7 +288,7 @@ def main() -> int:
         registry["productionReady"] = False
         registry["limitations"] = [
             "approved release pairs are compatibility admission evidence, not application production readiness",
-            "pair-specific rolling/rollback/persisted-route/database/artifact evidence must remain available",
+            "pair-specific rolling/rollback/persisted-route/database/artifact evidence must remain available and digest-bound to the admitted pair",
             "candidate/local mixed-version evidence cannot substitute approved release baselines"
         ]
         atomic_write(registry)
