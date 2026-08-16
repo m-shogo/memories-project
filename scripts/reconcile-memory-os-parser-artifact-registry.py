@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -12,6 +13,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/parser-artifact-registry-contract.v1.json"
 REGISTRY_PATH = ROOT / "contracts/operations/parser-artifact-registry.v1.json"
+WRITER_PATH = ROOT / "scripts/register-memory-os-parser-artifact.py"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 
 EXISTING = (
@@ -61,6 +63,22 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def load_writer() -> Any:
+    require(WRITER_PATH.is_file(), "canonical parser writer missing")
+    spec = importlib.util.spec_from_file_location(
+        "memory_os_parser_artifact_writer_for_reconcile", WRITER_PATH
+    )
+    require(spec is not None and spec.loader is not None,
+            "cannot load canonical parser writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    require(Path(module.REGISTRY_PATH).resolve() == REGISTRY_PATH.resolve(),
+            "canonical parser registry authority drift")
+    require(Path(module.CONTRACT_PATH).resolve() == CONTRACT_PATH.resolve(),
+            "canonical parser contract authority drift")
+    return module
+
+
 def append_once(items: list[Any], value: str) -> bool:
     if value in items:
         return False
@@ -71,6 +89,11 @@ def append_once(items: list[Any], value: str) -> bool:
 def main() -> int:
     contract = load(CONTRACT_PATH)
     registry = load(REGISTRY_PATH)
+    writer = load_writer()
+    try:
+        writer.validate_registry_for_append(registry)
+    except Exception as exc:
+        raise ReconcileFailure(f"parser artifact append-only authority invalid: {exc}") from exc
     readiness = contract.get("readiness")
     state = contract.get("currentAuthorityState")
     require(isinstance(readiness, dict) and isinstance(state, dict),
