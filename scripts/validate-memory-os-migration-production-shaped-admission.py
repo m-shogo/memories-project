@@ -19,6 +19,8 @@ RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
 RELEASE_CONTRACT = ROOT / "contracts/operations/release-baseline-registry-contract.v1.json"
 RELEASE_WRITER = ROOT / "scripts/register-memory-os-release-baseline.py"
 RELEASE_VALIDATOR = ROOT / "scripts/validate-memory-os-release-baseline-registry.py"
+RELEASE_PAIRS = ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"
+RELEASE_PAIR_WRITER = ROOT / "scripts/register-memory-os-release-compatibility-pair.py"
 GENERATIONS = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 GENERATION_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-generation.py"
 
@@ -67,12 +69,14 @@ def main() -> int:
     contract = load(CONTRACT)
     registry = load(REGISTRY)
     releases = load(RELEASES)
+    release_pairs = load(RELEASE_PAIRS)
     generations = load(GENERATIONS)
     release_contract = load(RELEASE_CONTRACT)
     require(contract.get("schemaVersion") == "memory-os-migration-production-shaped-admission.v1", "contract schema drift")
     require(contract.get("recordSchemaVersion") == "memory-os-migration-production-shaped-admission-record.v1", "record schema drift")
     require(contract.get("registryPath") == str(REGISTRY.relative_to(ROOT)), "registry binding drift")
     require(contract.get("writer") == str(WRITER.relative_to(ROOT)), "writer binding drift")
+    require(contract.get("sourceReleasePairRegistry") == str(RELEASE_PAIRS.relative_to(ROOT)), "release pair registry binding drift")
     rules = contract.get("admissionRules")
     require(isinstance(rules, dict) and rules and all(value is True for value in rules.values()), "admissionRules must remain true")
     promotion = contract.get("promotionRules")
@@ -93,6 +97,16 @@ def main() -> int:
     except Exception as exc:
         raise Fail(f"release baseline append-only authority invalid: {exc}") from exc
 
+    pair_writer = load_module(
+        RELEASE_PAIR_WRITER,
+        "memory_os_release_pair_writer_for_migration_admission",
+        "release compatibility pair writer",
+    )
+    try:
+        pair_writer.validate_registry_for_append(release_pairs)
+    except Exception as exc:
+        raise Fail(f"release compatibility pair append-only authority invalid: {exc}") from exc
+
     writer = load_module(
         WRITER,
         "memory_os_migration_production_admission_writer",
@@ -109,10 +123,12 @@ def main() -> int:
     require(isinstance(current, dict) and isinstance(readiness, dict), "contract authority missing")
     require(current.get("admittedRehearsalCount") in {0, len(admissions)}, "current admission count drift before reconcile")
     approved_release_count = releases.get("approvedReleaseCount")
+    approved_pair_count = release_pairs.get("approvedPairCount")
     require(isinstance(approved_release_count, int) and not isinstance(approved_release_count, bool), "approvedReleaseCount invalid")
+    require(isinstance(approved_pair_count, int) and not isinstance(approved_pair_count, bool), "approvedPairCount invalid")
     registered_generation_count = generations.get("registeredGenerationCount")
     require(isinstance(registered_generation_count, int) and not isinstance(registered_generation_count, bool), "registeredGenerationCount invalid")
-    require(current.get("approvedReleasePairCount") in {0, max(0, approved_release_count - 1)}, "approved release pair count drift")
+    require(current.get("approvedReleasePairCount") in {0, approved_pair_count}, "approved release pair count drift")
     require(current.get("registeredEnvironmentGenerationCount") in {0, registered_generation_count}, "environment generation count drift")
     require(current.get("productionEvidence") is False and current.get("productionReady") is False, "current authority cannot promote production")
     require(current.get("productionDecision") == "NO_GO", "production decision drift")
@@ -120,6 +136,7 @@ def main() -> int:
     print("Memory OS migration production-shaped admission validation PASS")
     print(f"admitted rehearsals: {len(admissions)}")
     print(f"approved releases: {approved_release_count}")
+    print(f"approved release pairs: {approved_pair_count}")
     print(f"registered environment generations: {registered_generation_count}")
     print("production evidence: false")
     print("production decision: NO_GO")
