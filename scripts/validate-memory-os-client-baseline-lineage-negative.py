@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -31,9 +32,10 @@ def load_module(path: Path, name: str) -> Any:
     return module
 
 
-def git(*args: str, input_text: str | None = None) -> str:
+def git(*args: str, input_text: str | None = None,
+        env: dict[str, str] | None = None) -> str:
     completed = subprocess.run(
-        ["git", *args], cwd=ROOT, text=True, input=input_text,
+        ["git", *args], cwd=ROOT, text=True, input=input_text, env=env,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
     )
     require(completed.returncode == 0,
@@ -45,9 +47,17 @@ def main() -> int:
     require(git("status", "--porcelain") == "", "working tree must start clean")
     head = git("rev-parse", "HEAD")
     tree = git("rev-parse", "HEAD^{tree}")
+    commit_env = os.environ.copy()
+    commit_env.update({
+        "GIT_AUTHOR_NAME": "memory-os-ci",
+        "GIT_AUTHOR_EMAIL": "memory-os-ci@example.invalid",
+        "GIT_COMMITTER_NAME": "memory-os-ci",
+        "GIT_COMMITTER_EMAIL": "memory-os-ci@example.invalid",
+    })
     side_commit = git(
         "commit-tree", tree, "-p", head,
         input_text="synthetic client baseline side commit\n",
+        env=commit_env,
     )
     require(side_commit != head, "side commit was not created")
 
