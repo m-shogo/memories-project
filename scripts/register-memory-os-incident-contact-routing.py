@@ -135,7 +135,12 @@ def validate_review(record: dict[str, Any], ref_field: str, expected_role: str, 
     ref = record.get(ref_field)
     require(isinstance(ref, str) and ref, f"{ref_field} invalid")
     source_bound_ref(ref, source, ref_field)
-    review = load(ROOT / ref)
+    review_dir = contract.get("independentReviewEvidenceDirectory")
+    require(isinstance(review_dir, str) and review_dir, "independent review evidence directory authority missing")
+    review_path = (ROOT / ref).resolve()
+    review_base = (ROOT / review_dir).resolve()
+    require(review_path.is_relative_to(review_base), f"{ref_field} must use monitored independent review evidence directory")
+    review = load(review_path)
     required = set(contract.get("independentReviewRequiredFields", []))
     require(required == {
         "schemaVersion", "contactRoutingId", "observabilityStackId", "environmentIdentityDigest", "role",
