@@ -13,6 +13,7 @@
   "workflow": ".github/workflows/incident-contact-routing-admission.yml",
   "recordSchemaVersion": "memory-os-incident-contact-routing-record.v1",
   "independentReviewSchemaVersion": "memory-os-incident-contact-routing-independent-review.v1",
+  "independentReviewEvidenceDirectory": "docs/evidence/incident-contact-routing/independent-reviews",
   "independentReviewRequiredFields": [
     "schemaVersion",
     "contactRoutingId",
@@ -74,6 +75,7 @@
     "providerContactReviewRequired": true,
     "privacyAndOperabilityReviewsMustBeDistinct": true,
     "independentReviewsMustUseTypedSchema": true,
+    "independentReviewsMustUseMonitoredEvidenceDirectory": true,
     "independentReviewsMustBindRoutingStackAndEnvironment": true,
     "independentReviewRolesMustBePrivacyAndOperability": true,
     "independentReviewersMustBeDistinct": true,
