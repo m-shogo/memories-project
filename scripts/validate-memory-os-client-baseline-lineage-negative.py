@@ -15,7 +15,9 @@ from typing import Any, Callable
 ROOT = Path(__file__).resolve().parents[1]
 WRITER_PATH = ROOT / "scripts/register-memory-os-client-baseline.py"
 VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-client-baseline-registry.py"
+CONTRACT_PATH = ROOT / "contracts/operations/client-baseline-registry-contract.v1.json"
 REGISTRY_PATH = ROOT / "contracts/operations/client-baseline-registry.v1.json"
+LOCK_PATH = ROOT / "contracts/operations/.client-baseline-registry.lock"
 
 
 class NegativeFailure(RuntimeError):
@@ -57,6 +59,18 @@ def expect_registry_rejection(writer: Any, base: dict[str, Any],
     raise NegativeFailure(f"writer accepted corrupt client registry: {label}")
 
 
+def expect_validator_rejection(label: str) -> None:
+    completed = subprocess.run(
+        [sys.executable, str(VALIDATOR_PATH)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    require(completed.returncode != 0, f"standalone validator accepted corrupt client authority: {label}")
+
+
 def main() -> int:
     require(git("status", "--porcelain") == "", "working tree must start clean")
     head = git("rev-parse", "HEAD")
@@ -76,6 +90,13 @@ def main() -> int:
     require(side_commit != head, "side commit was not created")
 
     writer = load_module(WRITER_PATH, "client_baseline_writer_lineage_negative")
+    require(Path(writer.CONTRACT).resolve() == CONTRACT_PATH.resolve(), "writer contract authority drift")
+    require(Path(writer.REGISTRY).resolve() == REGISTRY_PATH.resolve(), "writer registry authority drift")
+    require(Path(writer.LOCK).resolve() == LOCK_PATH.resolve(), "writer append lock authority drift")
+    contract_bytes = CONTRACT_PATH.read_bytes()
+    contract = json.loads(contract_bytes.decode("utf-8"))
+    require(contract.get("appendLockPath") == str(LOCK_PATH.relative_to(ROOT)), "contract append lock authority drift")
+
     try:
         writer.validate_source_commit_lineage(side_commit)
     except writer.Failure:
@@ -97,14 +118,23 @@ def main() -> int:
     for label, mutate in cases:
         expect_registry_rejection(writer, base_registry, label, mutate)
 
+    try:
+        corrupt_contract = copy.deepcopy(contract)
+        corrupt_contract["appendLockPath"] = "contracts/operations/.client-baseline-registry-alternate.lock"
+        CONTRACT_PATH.write_text(json.dumps(corrupt_contract, indent=2) + "\n", encoding="utf-8")
+        expect_validator_rejection("append lock binding drift")
+    finally:
+        CONTRACT_PATH.write_bytes(contract_bytes)
+
     validator = load_module(VALIDATOR_PATH, "client_baseline_validator_lineage_negative")
+    require(Path(validator.LOCK).resolve() == LOCK_PATH.resolve(), "standalone validator append lock authority drift")
     require(validator.commit_is_ancestor(side_commit) is False,
             "standalone validator accepted a non-ancestor source commit")
     require(validator.commit_is_ancestor(head) is True,
             "standalone validator rejected current HEAD lineage")
     require(git("status", "--porcelain") == "", "negative test mutated working tree")
 
-    print("Client baseline lineage and registry corruption negative PASS")
+    print("Client baseline lineage, registry corruption, and append lock negative PASS")
     return 0
 
 
