@@ -168,7 +168,8 @@
     "docs/evidence/migrations/recovery/mig_20260816_3840b6c6ebe3.json",
     "docs/evidence/migrations/recovery/mig_20260816_e471ca583fa5.json",
     "docs/evidence/migrations/recovery/mig_20260816_9e3132e6fe2d.json",
-    "docs/evidence/migrations/recovery/mig_20260816_17f832b6d82b.json"
+    "docs/evidence/migrations/recovery/mig_20260816_17f832b6d82b.json",
+    "docs/evidence/migrations/recovery/mig_20260816_b2768f3c37b4.json"
   ],
   "readiness": {
     "policyDefined": true,
