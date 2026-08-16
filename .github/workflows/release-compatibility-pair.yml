@@ -84,6 +84,7 @@ jobs:
             scripts/reconcile-memory-os-release-compatibility-pair.py
           python scripts/validate-memory-os-release-compatibility-pair-negative.py
           python scripts/validate-memory-os-release-compatibility-pair-independent-review-negative.py
+          python scripts/validate-memory-os-release-compatibility-pair.py
           python scripts/reconcile-memory-os-release-compatibility-pair.py
           python scripts/validate-memory-os-release-compatibility-pair.py
           python scripts/validate-memory-os-release-compatibility-pair-independent-review.py

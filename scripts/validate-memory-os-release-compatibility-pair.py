@@ -15,6 +15,7 @@ CONTRACT = ROOT / "contracts/operations/release-compatibility-pair-contract.v1.j
 RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
 REGISTRY = ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-release-compatibility-pair.py"
+RECONCILER = ROOT / "scripts/reconcile-memory-os-release-compatibility-pair.py"
 INDEPENDENT_REVIEW_VALIDATOR = ROOT / "scripts/validate-memory-os-release-compatibility-pair-independent-review.py"
 INDEPENDENT_REVIEW_NEGATIVE = ROOT / "scripts/validate-memory-os-release-compatibility-pair-independent-review-negative.py"
 EXECUTION = ROOT / "contracts/operations/version-compatibility-execution-evidence.v1.json"
@@ -47,26 +48,37 @@ def load_authority(path: Path, name: str) -> ModuleType:
     return module
 
 
+def canonical_path(value: Any, expected: Path, field: str) -> None:
+    require(isinstance(value, Path) and value.resolve() == expected.resolve(), f"{field} executable authority drift")
+
+
 def main() -> int:
     contract = load(CONTRACT)
     registry = load(REGISTRY)
     execution = load(EXECUTION)
     gaps = load(GAPS)
     writer = load_authority(WRITER, "memory_os_release_pair_writer")
+    reconciler = load_authority(RECONCILER, "memory_os_release_pair_reconciler")
     review_validator = load_authority(INDEPENDENT_REVIEW_VALIDATOR, "memory_os_release_pair_review_validator")
 
     require(contract.get("schemaVersion") == "memory-os-release-compatibility-pair.v1", "pair contract schema drift")
     require(contract.get("releaseRegistry") == str(RELEASES.relative_to(ROOT)), "release registry ref drift")
     require(contract.get("registry") == str(REGISTRY.relative_to(ROOT)), "pair registry ref drift")
     require(contract.get("writer") == str(WRITER.relative_to(ROOT)) and WRITER.is_file(), "pair writer ref drift")
+    require(contract.get("reconcile") == str(RECONCILER.relative_to(ROOT)) and RECONCILER.is_file(), "pair reconciler ref drift")
     require(contract.get("independentReviewValidator") == str(INDEPENDENT_REVIEW_VALIDATOR.relative_to(ROOT)) and INDEPENDENT_REVIEW_VALIDATOR.is_file(), "independent review validator ref drift")
     require(contract.get("independentReviewNegativeValidator") == str(INDEPENDENT_REVIEW_NEGATIVE.relative_to(ROOT)) and INDEPENDENT_REVIEW_NEGATIVE.is_file(), "independent review negative validator ref drift")
     require(contract.get("independentReviewEvidenceRoot") == "docs/evidence/release-compatibility-pairs/reviews", "independent review evidence root drift")
-    for field in ("validator", "reconcile", "workflow"):
+    for field in ("validator", "workflow"):
         ref = contract.get(field)
         require(isinstance(ref, str) and ref and (ROOT / ref).is_file(), f"pair authority artifact missing: {field}")
     rules = contract.get("rules")
     require(isinstance(rules, dict) and rules and all(value is True for value in rules.values()), "pair rules must remain fail-closed")
+
+    canonical_path(getattr(writer, "INDEPENDENT_REVIEW_VALIDATOR", None), INDEPENDENT_REVIEW_VALIDATOR, "writer independent review validator")
+    canonical_path(getattr(reconciler, "INDEPENDENT_REVIEW_VALIDATOR", None), INDEPENDENT_REVIEW_VALIDATOR, "reconciler independent review validator")
+    canonical_path(getattr(reconciler, "WRITER", None), WRITER, "reconciler writer")
+    canonical_path(getattr(reconciler, "VALIDATOR", None), Path(__file__), "reconciler validator")
 
     try:
         writer.validate_registry_for_append(registry)
@@ -131,6 +143,7 @@ def main() -> int:
     print(f"approved rollback pairs: {count}")
     print(f"release compatibility evidence: {str(count > 0).lower()}")
     print("typed independent Security/Operability review authority is mandatory for every approved pair")
+    print("release pair writer/reconciler executable authorities are canonical")
     print("candidate/local execution remains non-release evidence")
     print("production evidence: false")
     print("production decision: NO_GO")
