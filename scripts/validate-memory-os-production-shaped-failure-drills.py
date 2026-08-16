@@ -14,6 +14,15 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/production-shaped-failure-drill-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/production-shaped-failure-drill-registry.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-production-shaped-failure-drill.py"
+EXPECTED_REGISTRY_FIELDS = {
+    "schemaVersion",
+    "appendOnly",
+    "registeredDrillCount",
+    "productionEquivalentDrillCount",
+    "productionDrillCount",
+    "drills",
+    "productionReady",
+}
 
 
 class Fail(RuntimeError):
@@ -23,6 +32,11 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def require_count(value: Any, expected: int, field: str) -> None:
+    require(isinstance(value, int) and not isinstance(value, bool), f"{field} must be integer, not boolean")
+    require(value == expected, f"{field} drift")
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -37,6 +51,36 @@ def load_writer() -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any]]:
+    require(set(registry) == EXPECTED_REGISTRY_FIELDS, "registry field drift")
+    require(registry.get("schemaVersion") == "memory-os-production-shaped-failure-drill-registry.v1", "registry schema drift")
+    require(registry.get("appendOnly") is True, "registry must remain append-only")
+    drills = registry.get("drills")
+    require(isinstance(drills, list), "registry drills missing")
+    writer = load_writer()
+    ids: set[str] = set()
+    pe = 0
+    prod = 0
+    normalized: list[dict[str, Any]] = []
+    for index, record in enumerate(drills):
+        require(isinstance(record, dict), f"drills[{index}] invalid")
+        confirmation = writer.PRODUCTION_CONFIRMATION if record.get("environmentClass") == "PRODUCTION" else ""
+        try:
+            writer.validate_record(record, confirmation)
+        except Exception as exc:
+            raise Fail(f"drills[{index}] invalid: {exc}") from exc
+        require(record["drillId"] not in ids, f"duplicate drillId: {record['drillId']}")
+        ids.add(record["drillId"])
+        pe += 1 if record["environmentClass"] == "PRODUCTION_EQUIVALENT" else 0
+        prod += 1 if record["environmentClass"] == "PRODUCTION" else 0
+        normalized.append(record)
+    require_count(registry.get("registeredDrillCount"), len(drills), "registeredDrillCount")
+    require_count(registry.get("productionEquivalentDrillCount"), pe, "productionEquivalentDrillCount")
+    require_count(registry.get("productionDrillCount"), prod, "productionDrillCount")
+    require(registry.get("productionReady") is False, "registry cannot make application productionReady")
+    return normalized
 
 
 def main() -> int:
@@ -59,31 +103,10 @@ def main() -> int:
         else:
             require(value is False, f"unsafe promotion rule enabled: {key}")
 
-    require(registry.get("schemaVersion") == "memory-os-production-shaped-failure-drill-registry.v1", "registry schema drift")
-    require(registry.get("appendOnly") is True, "registry must remain append-only")
-    drills = registry.get("drills")
-    require(isinstance(drills, list), "registry drills missing")
-    writer = load_writer()
-    ids: set[str] = set()
-    pe = 0
-    prod = 0
-    completed_scenarios: set[str] = set()
-    for index, record in enumerate(drills):
-        require(isinstance(record, dict), f"drills[{index}] invalid")
-        confirmation = writer.PRODUCTION_CONFIRMATION if record.get("environmentClass") == "PRODUCTION" else ""
-        try:
-            writer.validate_record(record, confirmation)
-        except Exception as exc:
-            raise Fail(f"drills[{index}] invalid: {exc}") from exc
-        require(record["drillId"] not in ids, f"duplicate drillId: {record['drillId']}")
-        ids.add(record["drillId"])
-        completed_scenarios.add(record["scenarioId"])
-        pe += 1 if record["environmentClass"] == "PRODUCTION_EQUIVALENT" else 0
-        prod += 1 if record["environmentClass"] == "PRODUCTION" else 0
-    require(registry.get("registeredDrillCount") == len(drills), "registeredDrillCount drift")
-    require(registry.get("productionEquivalentDrillCount") == pe, "productionEquivalentDrillCount drift")
-    require(registry.get("productionDrillCount") == prod, "productionDrillCount drift")
-    require(registry.get("productionReady") is False, "registry cannot make application productionReady")
+    drills = validate_registry_for_append(registry)
+    pe = sum(1 for record in drills if record["environmentClass"] == "PRODUCTION_EQUIVALENT")
+    prod = sum(1 for record in drills if record["environmentClass"] == "PRODUCTION")
+    completed_scenarios = {record["scenarioId"] for record in drills}
 
     current = contract.get("currentAuthority")
     readiness = contract.get("readiness")
