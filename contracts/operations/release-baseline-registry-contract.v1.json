@@ -46,6 +46,7 @@
   },
   "evidenceBinding": {
     "sourceCommitField": "commitSha",
+    "sourceCommitMustBeAncestorOfCurrentHead": true,
     "repositoryTrackedRequired": true,
     "repositoryContainmentRequired": true,
     "symlinkForbidden": true,
@@ -89,6 +90,7 @@
     "repository HEAD equals the requested commit SHA",
     "working tree is clean and input record is outside the repository",
     "release tag resolves to the exact requested commit",
+    "historical release commit SHAs must remain ancestors of the current repository HEAD",
     "release ID and tag have never been registered",
     "commit SHA has never been registered under another release",
     "all evidence references are repository-relative existing files",

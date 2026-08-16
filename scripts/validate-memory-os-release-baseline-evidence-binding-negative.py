@@ -43,9 +43,22 @@ def expect_rejected(name: str, fn) -> None:
 
 def main() -> int:
     validator = load_validator()
-    head = validator.git("rev-parse", "HEAD")
+    writer = validator.load_writer()
+    head = writer.git("rev-parse", "HEAD")
 
+    validator.validate_release_commit_lineage(head)
     validator.validate_evidence_ref_binding(head, TRACKED_REF)
+
+    tree = writer.git("rev-parse", "HEAD^{tree}")
+    side_commit = writer.git(
+        "-c", "user.name=memory-os-negative",
+        "-c", "user.email=memory-os-negative@example.invalid",
+        "commit-tree", tree, "-p", head, "-m", "synthetic non-lineage release commit",
+    )
+    expect_rejected(
+        "side commit outside current HEAD ancestry",
+        lambda: validator.validate_release_commit_lineage(side_commit),
+    )
 
     tracked_path = ROOT / TRACKED_REF
     tracked_before = tracked_path.read_bytes()
@@ -98,7 +111,7 @@ def main() -> int:
             "negative suite left untracked evidence behind")
     require(not SYMLINK_PARENT.exists() and not SYMLINK_PARENT.is_symlink(),
             "negative suite left symlink evidence behind")
-    print("PASS: release baseline evidence refs are source-bound, repository-contained and symlink-safe")
+    print("PASS: release baseline rejects non-ancestor commits and unsafe evidence refs")
     return 0
 
 
