@@ -15,6 +15,7 @@ REGISTRY = ROOT / "contracts/operations/observability-stack-deployment-registry.
 CONTRACT = ROOT / "contracts/operations/observability-stack-deployment-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 WRITER = ROOT / "scripts/register-memory-os-observability-stack-deployment.py"
+VALIDATOR = ROOT / "scripts/validate-memory-os-observability-stack-deployment.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-observability-stack-deployment.py"
 TEMP_POST_SOURCE = ROOT / "docs/fixtures/memory-os-operability/.observability-stack-post-source-negative.tmp"
 TEMP_SYMLINK = ROOT / "docs/fixtures/memory-os-operability/.observability-stack-symlink-negative.tmp"
@@ -58,6 +59,20 @@ def expect_generic_reviews_rejected(writer, source: str) -> None:
     except writer.Fail:
         return
     raise RuntimeError("generic repository JSON files were accepted as typed observability independent reviews")
+
+
+def expect_validator_rejected(label: str) -> None:
+    completed = subprocess.run(
+        ["python", str(VALIDATOR)],
+        cwd=ROOT,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    if completed.returncode != 0:
+        return
+    raise RuntimeError(f"validator accepted corrupt observability stack authority: {label}")
 
 
 def create_descendant_commit() -> str:
@@ -110,6 +125,14 @@ def main() -> int:
     expect_generic_reviews_rejected(writer, source)
 
     try:
+        contract = json.loads(contract_bytes.decode("utf-8"))
+        contract["appendLockPath"] = "contracts/operations/.observability-stack-deployment-alternate.lock"
+        CONTRACT.write_text(json.dumps(contract, indent=2) + "\n", encoding="utf-8")
+        expect_validator_rejected("append lock binding drift")
+    finally:
+        CONTRACT.write_bytes(contract_bytes)
+
+    try:
         TEMP_POST_SOURCE.write_text("created after source commit\n", encoding="utf-8")
         expect_ref_rejected(
             writer,
@@ -155,7 +178,7 @@ def main() -> int:
         CONTRACT.write_bytes(contract_bytes)
         STATUS.write_bytes(status_bytes)
 
-    print("PASS: observability stack registry/source-binding/review corruption is rejected without mutation")
+    print("PASS: observability stack registry/source-binding/review/lock corruption is rejected without mutation")
     print("generic repository JSON accepted as independent review: false")
     print("automatic production promotion authorized: false")
     return 0
