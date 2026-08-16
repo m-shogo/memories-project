@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-controlled-saturation-ramp-results.v1",
-  "commitSha": "f3c0ae93eef54a3d45765ec13fd3f15ca31e2cb1",
-  "generatedAt": "2026-08-15T20:44:40Z",
+  "commitSha": "acaf60f5aaccd3ad4da8ed967e2545cee5866615",
+  "generatedAt": "2026-08-16T17:17:28Z",
   "environment": {
     "os": "linux",
     "arch": "amd64",
@@ -19,8 +19,8 @@
   "scenario": {
     "scenarioId": "signed-upload-controlled-saturation-ramp-local-dependencies",
     "workloadType": "CONTROLLED_RAMP",
-    "startedAt": "2026-08-15T20:44:37Z",
-    "completedAt": "2026-08-15T20:44:40Z",
+    "startedAt": "2026-08-16T17:17:25Z",
+    "completedAt": "2026-08-16T17:17:28Z",
     "requestsPerStep": 64,
     "steps": [
       {
@@ -33,11 +33,11 @@
           "statusClassCounts": {
             "2xx": 64
           },
-          "durationSeconds": 0.473485582,
-          "throughput": 135.16779060022148,
-          "latencyP50Ms": 27.826,
-          "latencyP95Ms": 32.721,
-          "latencyP99Ms": 58.939
+          "durationSeconds": 0.429612711,
+          "throughput": 148.97138367025644,
+          "latencyP50Ms": 24.622,
+          "latencyP95Ms": 33.922,
+          "latencyP99Ms": 50.383
         },
         "poolBefore": {
           "maxConns": 4,
@@ -46,7 +46,7 @@
           "idleConns": 1,
           "emptyAcquireCount": 1,
           "canceledAcquireCount": 0,
-          "acquireDurationMs": 3.766581
+          "acquireDurationMs": 4.029398
         },
         "poolAfter": {
           "maxConns": 4,
@@ -55,12 +55,12 @@
           "idleConns": 4,
           "emptyAcquireCount": 4,
           "canceledAcquireCount": 0,
-          "acquireDurationMs": 27.723276
+          "acquireDurationMs": 24.642953
         },
         "poolDelta": {
           "emptyAcquireCount": 3,
           "canceledAcquireCount": 0,
-          "acquireDurationMs": 23.956695
+          "acquireDurationMs": 20.613554999999998
         }
       },
       {
@@ -73,11 +73,11 @@
           "statusClassCounts": {
             "2xx": 64
           },
-          "durationSeconds": 0.410955019,
-          "throughput": 155.7348056138475,
-          "latencyP50Ms": 50.718,
-          "latencyP95Ms": 56.427,
-          "latencyP99Ms": 57.007
+          "durationSeconds": 0.356739807,
+          "throughput": 179.40246292727292,
+          "latencyP50Ms": 43.824,
+          "latencyP95Ms": 48.067,
+          "latencyP99Ms": 48.614
         },
         "poolBefore": {
           "maxConns": 4,
@@ -86,21 +86,21 @@
           "idleConns": 4,
           "emptyAcquireCount": 4,
           "canceledAcquireCount": 0,
-          "acquireDurationMs": 27.735908
+          "acquireDurationMs": 24.653942
         },
         "poolAfter": {
           "maxConns": 4,
           "totalConns": 4,
           "acquiredConns": 0,
           "idleConns": 4,
-          "emptyAcquireCount": 506,
+          "emptyAcquireCount": 512,
           "canceledAcquireCount": 0,
-          "acquireDurationMs": 1278.883428
+          "acquireDurationMs": 1124.505516
         },
         "poolDelta": {
-          "emptyAcquireCount": 502,
+          "emptyAcquireCount": 508,
           "canceledAcquireCount": 0,
-          "acquireDurationMs": 1251.14752
+          "acquireDurationMs": 1099.851574
         }
       },
       {
@@ -113,34 +113,34 @@
           "statusClassCounts": {
             "2xx": 64
           },
-          "durationSeconds": 0.426811577,
-          "throughput": 149.94907225770964,
-          "latencyP50Ms": 101.233,
-          "latencyP95Ms": 118.251,
-          "latencyP99Ms": 124.19
+          "durationSeconds": 0.360275299,
+          "throughput": 177.64193153858156,
+          "latencyP50Ms": 88.856,
+          "latencyP95Ms": 93.626,
+          "latencyP99Ms": 95.692
         },
         "poolBefore": {
           "maxConns": 4,
           "totalConns": 4,
           "acquiredConns": 0,
           "idleConns": 4,
-          "emptyAcquireCount": 506,
+          "emptyAcquireCount": 512,
           "canceledAcquireCount": 0,
-          "acquireDurationMs": 1278.896189
+          "acquireDurationMs": 1124.51783
         },
         "poolAfter": {
           "maxConns": 4,
           "totalConns": 4,
           "acquiredConns": 0,
           "idleConns": 4,
-          "emptyAcquireCount": 1014,
+          "emptyAcquireCount": 1020,
           "canceledAcquireCount": 0,
-          "acquireDurationMs": 5718.722306
+          "acquireDurationMs": 4899.88746
         },
         "poolDelta": {
           "emptyAcquireCount": 508,
           "canceledAcquireCount": 0,
-          "acquireDurationMs": 4439.826117
+          "acquireDurationMs": 3775.36963
         }
       },
       {
@@ -153,34 +153,34 @@
           "statusClassCounts": {
             "2xx": 64
           },
-          "durationSeconds": 0.395039555,
-          "throughput": 162.00909298816924,
-          "latencyP50Ms": 137.805,
-          "latencyP95Ms": 150.964,
-          "latencyP99Ms": 151.887
+          "durationSeconds": 0.357889282,
+          "throughput": 178.8262549868705,
+          "latencyP50Ms": 125.522,
+          "latencyP95Ms": 136.543,
+          "latencyP99Ms": 138.59
         },
         "poolBefore": {
           "maxConns": 4,
           "totalConns": 4,
           "acquiredConns": 0,
           "idleConns": 4,
-          "emptyAcquireCount": 1014,
+          "emptyAcquireCount": 1020,
           "canceledAcquireCount": 0,
-          "acquireDurationMs": 5718.734996
+          "acquireDurationMs": 4899.898269
         },
         "poolAfter": {
           "maxConns": 4,
           "totalConns": 4,
           "acquiredConns": 0,
           "idleConns": 4,
-          "emptyAcquireCount": 1522,
+          "emptyAcquireCount": 1528,
           "canceledAcquireCount": 0,
-          "acquireDurationMs": 12074.988779
+          "acquireDurationMs": 10777.179114
         },
         "poolDelta": {
           "emptyAcquireCount": 508,
           "canceledAcquireCount": 0,
-          "acquireDurationMs": 6356.253782999999
+          "acquireDurationMs": 5877.280845
         }
       },
       {
@@ -193,34 +193,34 @@
           "statusClassCounts": {
             "2xx": 64
           },
-          "durationSeconds": 0.401536358,
-          "throughput": 159.3878081645598,
-          "latencyP50Ms": 193.305,
-          "latencyP95Ms": 204.052,
-          "latencyP99Ms": 204.801
+          "durationSeconds": 0.356943182,
+          "throughput": 179.3002450457227,
+          "latencyP50Ms": 172.092,
+          "latencyP95Ms": 182.886,
+          "latencyP99Ms": 183.341
         },
         "poolBefore": {
           "maxConns": 4,
           "totalConns": 4,
           "acquiredConns": 0,
           "idleConns": 4,
-          "emptyAcquireCount": 1522,
+          "emptyAcquireCount": 1528,
           "canceledAcquireCount": 0,
-          "acquireDurationMs": 12075.001175
+          "acquireDurationMs": 10777.189974
         },
         "poolAfter": {
           "maxConns": 4,
           "totalConns": 4,
           "acquiredConns": 0,
           "idleConns": 4,
-          "emptyAcquireCount": 2030,
+          "emptyAcquireCount": 2036,
           "canceledAcquireCount": 0,
-          "acquireDurationMs": 21948.695649
+          "acquireDurationMs": 19580.350144
         },
         "poolDelta": {
           "emptyAcquireCount": 508,
           "canceledAcquireCount": 0,
-          "acquireDurationMs": 9873.694474000002
+          "acquireDurationMs": 8803.16017
         }
       },
       {
@@ -233,34 +233,34 @@
           "statusClassCounts": {
             "2xx": 64
           },
-          "durationSeconds": 0.39924963,
-          "throughput": 160.30071211337128,
-          "latencyP50Ms": 241.307,
-          "latencyP95Ms": 293.319,
-          "latencyP99Ms": 302.148
+          "durationSeconds": 0.372639286,
+          "throughput": 171.74786020816924,
+          "latencyP50Ms": 236.447,
+          "latencyP95Ms": 280.25,
+          "latencyP99Ms": 287.88
         },
         "poolBefore": {
           "maxConns": 4,
           "totalConns": 4,
           "acquiredConns": 0,
           "idleConns": 4,
-          "emptyAcquireCount": 2030,
+          "emptyAcquireCount": 2036,
           "canceledAcquireCount": 0,
-          "acquireDurationMs": 21948.708481
+          "acquireDurationMs": 19580.362132
         },
         "poolAfter": {
           "maxConns": 4,
           "totalConns": 4,
           "acquiredConns": 0,
           "idleConns": 4,
-          "emptyAcquireCount": 2538,
+          "emptyAcquireCount": 2544,
           "canceledAcquireCount": 0,
-          "acquireDurationMs": 34731.131584
+          "acquireDurationMs": 31741.064548
         },
         "poolDelta": {
           "emptyAcquireCount": 508,
           "canceledAcquireCount": 0,
-          "acquireDurationMs": 12782.423103000001
+          "acquireDurationMs": 12160.702416
         }
       }
     ],
@@ -277,11 +277,11 @@
       "statusClassCounts": {
         "2xx": 1
       },
-      "durationSeconds": 0.015468883,
-      "throughput": 64.64590882224657,
-      "latencyP50Ms": 15.435,
-      "latencyP95Ms": 15.435,
-      "latencyP99Ms": 15.435
+      "durationSeconds": 0.013156352,
+      "throughput": 76.00891189290162,
+      "latencyP50Ms": 13.142,
+      "latencyP95Ms": 13.142,
+      "latencyP99Ms": 13.142
     },
     "finalDatabaseAssertions": {
       "consumedAuthorizations": 385,
