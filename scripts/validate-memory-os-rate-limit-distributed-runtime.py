@@ -14,6 +14,15 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/rate-limit-distributed-runtime-admission-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-rate-limit-distributed-runtime.py"
+EXPECTED_REGISTRY_FIELDS = {
+    "schemaVersion",
+    "appendOnly",
+    "admittedRuntimeCount",
+    "productionEquivalentRuntimeCount",
+    "productionRuntimeCount",
+    "runtimes",
+    "productionReady",
+}
 
 
 class Fail(RuntimeError):
@@ -23,6 +32,11 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def require_count(value: Any, expected: int, field: str) -> None:
+    require(isinstance(value, int) and not isinstance(value, bool), f"{field} must be integer, not boolean")
+    require(value == expected, f"{field} drift")
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -37,6 +51,40 @@ def load_writer() -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any]]:
+    """Validate the append-only runtime authority without consulting derived contract state."""
+    require(set(registry) == EXPECTED_REGISTRY_FIELDS, "registry field drift")
+    require(registry.get("schemaVersion") == "memory-os-rate-limit-distributed-runtime-admission-registry.v1", "registry schema drift")
+    require(registry.get("appendOnly") is True, "registry must remain append-only")
+    runtimes = registry.get("runtimes")
+    require(isinstance(runtimes, list), "registry runtimes missing")
+    writer = load_writer()
+    ids: set[str] = set()
+    identities: set[str] = set()
+    pe = 0
+    prod = 0
+    normalized: list[dict[str, Any]] = []
+    for index, record in enumerate(runtimes):
+        require(isinstance(record, dict), f"runtimes[{index}] invalid")
+        confirmation = writer.PRODUCTION_CONFIRMATION if record.get("environmentClass") == "PRODUCTION" else ""
+        try:
+            writer.validate_record(record, confirmation)
+        except Exception as exc:
+            raise Fail(f"runtimes[{index}] invalid: {exc}") from exc
+        require(record["runtimeId"] not in ids, f"duplicate runtimeId: {record['runtimeId']}")
+        require(record["environmentIdentityDigest"] not in identities, "duplicate environment identity digest")
+        ids.add(record["runtimeId"])
+        identities.add(record["environmentIdentityDigest"])
+        pe += 1 if record["environmentClass"] == "PRODUCTION_EQUIVALENT" else 0
+        prod += 1 if record["environmentClass"] == "PRODUCTION" else 0
+        normalized.append(record)
+    require_count(registry.get("admittedRuntimeCount"), len(runtimes), "admittedRuntimeCount")
+    require_count(registry.get("productionEquivalentRuntimeCount"), pe, "productionEquivalentRuntimeCount")
+    require_count(registry.get("productionRuntimeCount"), prod, "productionRuntimeCount")
+    require(registry.get("productionReady") is False, "registry cannot make application productionReady")
+    return normalized
 
 
 def main() -> int:
@@ -65,32 +113,9 @@ def main() -> int:
         else:
             require(value is False, f"unsafe distributed-runtime promotion enabled: {key}")
 
-    require(registry.get("schemaVersion") == "memory-os-rate-limit-distributed-runtime-admission-registry.v1", "registry schema drift")
-    require(registry.get("appendOnly") is True, "registry must remain append-only")
-    runtimes = registry.get("runtimes")
-    require(isinstance(runtimes, list), "registry runtimes missing")
-    writer = load_writer()
-    ids: set[str] = set()
-    identities: set[str] = set()
-    pe = 0
-    prod = 0
-    for index, record in enumerate(runtimes):
-        require(isinstance(record, dict), f"runtimes[{index}] invalid")
-        confirmation = writer.PRODUCTION_CONFIRMATION if record.get("environmentClass") == "PRODUCTION" else ""
-        try:
-            writer.validate_record(record, confirmation)
-        except Exception as exc:
-            raise Fail(f"runtimes[{index}] invalid: {exc}") from exc
-        require(record["runtimeId"] not in ids, f"duplicate runtimeId: {record['runtimeId']}")
-        require(record["environmentIdentityDigest"] not in identities, "duplicate environment identity digest")
-        ids.add(record["runtimeId"])
-        identities.add(record["environmentIdentityDigest"])
-        pe += 1 if record["environmentClass"] == "PRODUCTION_EQUIVALENT" else 0
-        prod += 1 if record["environmentClass"] == "PRODUCTION" else 0
-    require(registry.get("admittedRuntimeCount") == len(runtimes), "admittedRuntimeCount drift")
-    require(registry.get("productionEquivalentRuntimeCount") == pe, "productionEquivalentRuntimeCount drift")
-    require(registry.get("productionRuntimeCount") == prod, "productionRuntimeCount drift")
-    require(registry.get("productionReady") is False, "registry cannot make application productionReady")
+    runtimes = validate_registry_for_append(registry)
+    pe = sum(1 for record in runtimes if record["environmentClass"] == "PRODUCTION_EQUIVALENT")
+    prod = sum(1 for record in runtimes if record["environmentClass"] == "PRODUCTION")
 
     current = contract.get("currentAuthority")
     readiness = contract.get("readiness")
