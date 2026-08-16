@@ -45,6 +45,21 @@ def expect_ref_rejected(writer, ref: str, source: str, label: str) -> None:
     raise RuntimeError(f"writer accepted invalid source-bound stack evidence: {label}")
 
 
+def expect_generic_reviews_rejected(writer, source: str) -> None:
+    contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
+    record = {
+        "stackId": "obsstack_negative_review",
+        "environmentIdentityDigest": "0" * 64,
+        "securityReviewRef": "contracts/operations/production-operability-status.json",
+        "operabilityReviewRef": "contracts/operations/observability-stack-deployment-contract.v1.json",
+    }
+    try:
+        writer.validate_independent_reviews(record, source, contract)
+    except writer.Fail:
+        return
+    raise RuntimeError("generic repository JSON files were accepted as typed observability independent reviews")
+
+
 def create_descendant_commit() -> str:
     tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], cwd=ROOT, text=True).strip()
     env = os.environ.copy()
@@ -92,6 +107,7 @@ def main() -> int:
     descendant = create_descendant_commit()
     if writer.source_is_ancestor(descendant):
         raise RuntimeError("future descendant commit was accepted as source ancestor")
+    expect_generic_reviews_rejected(writer, source)
 
     try:
         TEMP_POST_SOURCE.write_text("created after source commit\n", encoding="utf-8")
@@ -139,7 +155,9 @@ def main() -> int:
         CONTRACT.write_bytes(contract_bytes)
         STATUS.write_bytes(status_bytes)
 
-    print("PASS: observability stack registry/source-binding corruption is rejected without mutation")
+    print("PASS: observability stack registry/source-binding/review corruption is rejected without mutation")
+    print("generic repository JSON accepted as independent review: false")
+    print("automatic production promotion authorized: false")
     return 0
 
 
