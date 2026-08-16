@@ -15,6 +15,7 @@ on:
       - "contracts/operations/compatibility-admission-gaps.v1.json"
       - "scripts/register-memory-os-client-baseline.py"
       - "scripts/validate-memory-os-client-baseline-registry.py"
+      - "scripts/validate-memory-os-client-baseline-lineage-negative.py"
       - "scripts/reconcile-memory-os-client-baseline-registry.py"
       - "scripts/validate-memory-os-client-server-support-window.py"
       - "scripts/update-memory-os-compatibility-admission-gaps.py"
@@ -60,11 +61,16 @@ jobs:
           python -m py_compile \
             scripts/register-memory-os-client-baseline.py \
             scripts/validate-memory-os-client-baseline-registry.py \
+            scripts/validate-memory-os-client-baseline-lineage-negative.py \
             scripts/reconcile-memory-os-client-baseline-registry.py \
             scripts/validate-memory-os-client-server-support-window.py \
             scripts/update-memory-os-compatibility-admission-gaps.py \
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: source-lineage-negative" >> "$log"
+            python scripts/validate-memory-os-client-baseline-lineage-negative.py >> "$log" 2>&1 || code=$?
+          fi
           if [[ "$code" == "0" ]]; then
             echo "STAGE: authority-reconcile" >> "$log"
             python scripts/reconcile-memory-os-client-baseline-registry.py >> "$log" 2>&1 || code=$?
