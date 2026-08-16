@@ -30,6 +30,8 @@ STATUS = ROOT / "contracts/operations/production-operability-status.json"
 WRITER = ROOT / "scripts/register-memory-os-migration-production-shaped-admission.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-migration-production-shaped-admission.py"
 REVIEW_NEGATIVE_REF = "docs/evidence/migration-production-shaped-admission/independent-reviews/.negative-review-history.json"
+UNTRACKED_EVIDENCE_REF = "docs/fixtures/memory-os-operability/.migration-production-untracked-negative.json"
+SYMLINK_EVIDENCE_REF = "docs/fixtures/memory-os-operability/.migration-production-symlink-negative.json"
 
 
 class Fail(RuntimeError):
@@ -206,6 +208,38 @@ def run_git(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["git", *args], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False)
 
 
+def expect_external_evidence_containment_rejected(writer: ModuleType) -> None:
+    untracked = ROOT / UNTRACKED_EVIDENCE_REF
+    symlink = ROOT / SYMLINK_EVIDENCE_REF
+    untracked.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        untracked.write_text('{"negative":"untracked"}\n', encoding="utf-8")
+        try:
+            writer.evidence_refs([UNTRACKED_EVIDENCE_REF], "compatibilityEvidenceRefs")
+        except Exception as exc:
+            require("tracked at HEAD" in str(exc), "untracked migration evidence was rejected for an unrelated reason")
+        else:
+            raise Fail("untracked repository evidence was accepted as migration admission authority")
+
+        try:
+            symlink.symlink_to(CONTRACT)
+        except FileExistsError:
+            symlink.unlink()
+            symlink.symlink_to(CONTRACT)
+        try:
+            writer.evidence_refs([SYMLINK_EVIDENCE_REF], "recoveryEvidenceRefs")
+        except Exception as exc:
+            require("canonical repository path" in str(exc) or "symlink" in str(exc), "symlink migration evidence was rejected for an unrelated reason")
+        else:
+            raise Fail("symlinked migration evidence was accepted as migration admission authority")
+    finally:
+        for path in (untracked, symlink):
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+
+
 def expect_mutated_review_history_rejected(writer: ModuleType) -> None:
     original_head = run_git("rev-parse", "HEAD").stdout.strip()
     require(len(original_head) == 40, "cannot resolve original HEAD for review history negative")
@@ -260,8 +294,9 @@ def main() -> int:
     expect_release_registry_delegation(writer)
     expect_release_pair_registry_delegation(writer)
     expect_generic_review_refs_rejected(writer)
+    expect_external_evidence_containment_rejected(writer)
     expect_mutated_review_history_rejected(writer)
-    print("PASS: migration production-shaped admission registry, upstream release-pair, ledger, release, and independent-review authority drift are rejected")
+    print("PASS: migration production-shaped admission registry, upstream release-pair, ledger, release, external evidence containment, and independent-review authority drift are rejected")
     return 0
 
 
