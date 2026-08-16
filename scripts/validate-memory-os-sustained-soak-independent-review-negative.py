@@ -13,7 +13,13 @@ from typing import Any, Callable
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-sustained-soak-independent-review.py"
 REGISTER_PATH = ROOT / "scripts/register-memory-os-sustained-soak-independent-review.py"
+RECONCILE_PATH = ROOT / "scripts/reconcile-memory-os-sustained-local-soak-status.py"
 CANONICAL_REGISTRY = ROOT / "contracts/operations/sustained-soak-independent-review-registry.v1.json"
+RECONCILE_OUTPUTS = (
+    ROOT / "contracts/operations/sustained-local-soak-contract.v1.json",
+    ROOT / "contracts/operations/load-test-scenario-contract.v1.json",
+    ROOT / "contracts/operations/production-operability-status.json",
+)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -136,11 +142,40 @@ def prove_preappend_registry_guard(register) -> None:
         CANONICAL_REGISTRY.write_bytes(original)
 
 
+def prove_reconcile_rejects_corrupt_registry(reconciler) -> None:
+    """Status reconcile must stop before writing when review authority is corrupt."""
+    original_registry = CANONICAL_REGISTRY.read_bytes()
+    original_outputs = {path: path.read_bytes() for path in RECONCILE_OUTPUTS}
+    registry = json.loads(original_registry.decode("utf-8"))
+    registry["registeredCriteriaCount"] = False
+    write(CANONICAL_REGISTRY, registry)
+    corrupted_registry = CANONICAL_REGISTRY.read_bytes()
+    try:
+        try:
+            reconciler.main()
+        except reconciler.Fail:
+            pass
+        else:
+            raise RuntimeError("status reconcile accepted corrupt sustained-soak review authority")
+        if CANONICAL_REGISTRY.read_bytes() != corrupted_registry:
+            raise RuntimeError("status reconcile mutated corrupt review authority")
+        for path, original in original_outputs.items():
+            if path.read_bytes() != original:
+                raise RuntimeError(f"status reconcile wrote before rejecting corrupt review authority: {path.relative_to(ROOT)}")
+        print("PASS reconcile reject: corrupt review authority leaves derived contracts/status unchanged")
+    finally:
+        CANONICAL_REGISTRY.write_bytes(original_registry)
+        for path, original in original_outputs.items():
+            path.write_bytes(original)
+
+
 def main() -> int:
     validator = load_module(VALIDATOR_PATH, "soak_review_validator")
     register = load_module(REGISTER_PATH, "soak_review_register")
+    reconciler = load_module(RECONCILE_PATH, "soak_review_reconciler")
     prove_current_criteria_counting(register)
     prove_preappend_registry_guard(register)
+    prove_reconcile_rejects_corrupt_registry(reconciler)
 
     canonical_contract = load(ROOT / "contracts/operations/sustained-soak-independent-review-contract.v1.json")
     canonical_registry = load(CANONICAL_REGISTRY)
@@ -223,6 +258,7 @@ def main() -> int:
     print("Memory OS sustained-soak independent review negative suite PASS")
     print("historical PASS review counted as current authority: false")
     print("corrupt append-only registry normalized by append: false")
+    print("corrupt append-only registry projected by reconcile: false")
     print("boolean registry counts accepted before append: false")
     print("automatic leak proof accepted: false")
     print("automatic independent review accepted: false")
