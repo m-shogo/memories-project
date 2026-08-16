@@ -1,6 +1,17 @@
 name: Version Compatibility Execution Evidence
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/version-compatibility-execution-evidence.yml"
+      - "contracts/operations/requests/version-compatibility-status-normalize.v1.json"
+      - "contracts/operations/version-compatibility-execution-evidence.v1.json"
+      - "scripts/validate-memory-os-version-compatibility-execution-evidence.py"
+      - "scripts/reconcile-memory-os-version-compatibility-execution-status.py"
+      - "docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json"
+      - "docs/fixtures/memory-os-operability/mixed-version-session-results.sample.v1.json"
+      - "docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json"
+      - "docs/fixtures/memory-os-operability/postgresql-major-upgrade-results.sample.v1.json"
   push:
     branches:
       - so
@@ -20,7 +31,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: version-compatibility-execution-evidence-so
+  group: version-compatibility-execution-evidence-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
@@ -30,11 +41,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Confirm exact clean authority source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+          else
+            test "$(git branch --show-current)" = "so"
+            test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          fi
       - name: Validate and reconcile with bounded diagnostic
         id: reconcile
         run: |
@@ -62,11 +85,20 @@ jobs:
             [[ "$code" != "0" ]] || python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?
           fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          cat "$log"
           exit 0
+      - name: Require deterministic authority on pull requests
+        if: github.event_name == 'pull_request' && steps.reconcile.outputs.exit_code == '0'
+        run: |
+          git diff --check
+          git diff --exit-code -- \
+            contracts/operations/production-operability-status.json \
+            docs/fixtures/memory-os-operability/version-compatibility-execution-diagnostic.last.json
       - name: Commit normalized compatibility authority
-        if: steps.reconcile.outputs.exit_code == '0'
+        if: github.event_name != 'pull_request' && steps.reconcile.outputs.exit_code == '0'
         run: |
           set -euo pipefail
+          source_sha="$(git rev-parse HEAD)"
           git rm -f docs/fixtures/memory-os-operability/version-compatibility-execution-diagnostic.last.json 2>/dev/null || true
           git add contracts/operations/production-operability-status.json
           git add -u docs/fixtures/memory-os-operability/version-compatibility-execution-diagnostic.last.json 2>/dev/null || true
@@ -75,29 +107,30 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(compat): normalize compatibility blocker authority"
-            for attempt in 1 2 3 4; do
-              git pull --rebase origin so
-              if git push origin HEAD:so; then exit 0; fi
-              sleep 2
-            done
-            exit 1
+            remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
+            if [[ "$remote_sha" != "$source_sha" ]]; then
+              echo "Compatibility execution authority source is stale: validated $source_sha but so is $remote_sha" >&2
+              exit 75
+            fi
+            git push origin HEAD:so
           fi
       - name: Record privacy-safe failure diagnostic
-        if: steps.reconcile.outputs.exit_code != '0'
+        if: github.event_name != 'pull_request' && steps.reconcile.outputs.exit_code != '0'
         env:
           RECONCILE_EXIT_CODE: ${{ steps.reconcile.outputs.exit_code }}
         run: |
           set -euo pipefail
-          git fetch origin so
-          git reset --hard origin/so
+          source_sha="$(git rev-parse HEAD)"
           python - <<'PY'
-          import json, os
+          import json, os, subprocess
           from pathlib import Path
           text = Path('/tmp/version-compatibility-execution.log').read_text(encoding='utf-8', errors='replace')
+          source_sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
           value = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'version-compatibility-execution-evidence',
               'result': 'FAIL',
+              'sourceCommitSha': source_sha,
               'exitCode': int(os.environ['RECONCILE_EXIT_CODE']),
               'output': text[-12000:],
               'containsSecrets': False,
@@ -115,11 +148,12 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --cached --quiet; then
             git commit -m "test(compat): record execution authority diagnostic"
-            for attempt in 1 2 3; do
-              git pull --rebase origin so
-              if git push origin HEAD:so; then exit 0; fi
-              sleep 2
-            done
+            remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
+            if [[ "$remote_sha" != "$source_sha" ]]; then
+              echo "Compatibility execution diagnostic source is stale: validated $source_sha but so is $remote_sha" >&2
+              exit 75
+            fi
+            git push origin HEAD:so
           fi
       - name: Enforce reconciliation result
         run: test "${{ steps.reconcile.outputs.exit_code }}" = "0"
