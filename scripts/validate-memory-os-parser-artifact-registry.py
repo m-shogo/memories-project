@@ -13,6 +13,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/parser-artifact-registry-contract.v1.json"
 REGISTRY_PATH = ROOT / "contracts/operations/parser-artifact-registry.v1.json"
+PARSER_WRITER_PATH = ROOT / "scripts/register-memory-os-parser-artifact.py"
 RELEASE_REGISTRY_PATH = ROOT / "contracts/operations/release-baseline-registry.v1.json"
 RELEASE_WRITER_PATH = ROOT / "scripts/register-memory-os-release-baseline.py"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
@@ -60,6 +61,26 @@ def safe_ref(value: Any, field: str) -> str:
     return value
 
 
+def load_parser_writer() -> Any:
+    require(PARSER_WRITER_PATH.is_file(), "canonical parser writer missing")
+    spec = importlib.util.spec_from_file_location(
+        "memory_os_parser_artifact_writer_for_validator", PARSER_WRITER_PATH
+    )
+    require(spec is not None and spec.loader is not None,
+            "cannot load canonical parser writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    require(Path(module.REGISTRY_PATH).resolve() == REGISTRY_PATH.resolve(),
+            "canonical parser registry authority drift")
+    require(Path(module.CONTRACT_PATH).resolve() == CONTRACT_PATH.resolve(),
+            "canonical parser contract authority drift")
+    require(Path(module.RELEASE_REGISTRY_PATH).resolve() == RELEASE_REGISTRY_PATH.resolve(),
+            "canonical parser release registry authority drift")
+    require(Path(module.RELEASE_WRITER_PATH).resolve() == RELEASE_WRITER_PATH.resolve(),
+            "canonical parser release writer authority drift")
+    return module
+
+
 def load_release_writer() -> Any:
     require(RELEASE_WRITER_PATH.is_file(), "canonical release writer missing")
     spec = importlib.util.spec_from_file_location(
@@ -98,6 +119,7 @@ def validate_record(record: dict[str, Any], required_fields: set[str],
             DIGEST_RE.fullmatch(record["artifactSha256"]) is not None,
             "artifact digest invalid")
     require(isinstance(record.get("artifactSizeBytes"), int) and
+            not isinstance(record.get("artifactSizeBytes"), bool) and
             record["artifactSizeBytes"] > 0,
             "artifact size invalid")
     for field in (
@@ -198,6 +220,11 @@ def main() -> int:
     release_ids = approved_release_ids()
 
     registry = load(REGISTRY_PATH)
+    parser_writer = load_parser_writer()
+    try:
+        parser_writer.validate_registry_for_append(registry)
+    except Exception as exc:
+        raise ValidationFailure(f"parser artifact append-only authority invalid: {exc}") from exc
     require(registry.get("schemaVersion") == "memory-os-parser-artifact-registry.v1",
             "parser artifact registry schema drift")
     require(registry.get("registryClass") == "REVIEWED_RETAINED_PARSER_ARTIFACTS" and
@@ -254,6 +281,7 @@ def main() -> int:
     boundary = contract.get("evidenceBoundary")
     require(isinstance(boundary, dict) and
             boundary.get("testHarnessApproved") is False and
+            boundary.get("evidenceRefsDigestBoundAtAppend") is True and
             boundary.get("productionEvidence") is False and
             boundary.get("productionReady") is False,
             "parser artifact evidence boundary drift")
