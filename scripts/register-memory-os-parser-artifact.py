@@ -39,6 +39,7 @@ REGISTRY_FIELDS = {
     "retainedRollbackArtifactCount",
     "replayProvenArtifactCount",
     "latestReviewedArtifactId",
+    "evidenceDigestsByArtifactId",
     "artifacts",
     "limitations",
 }
@@ -74,6 +75,16 @@ def git(*arguments: str) -> str:
     return completed.stdout.strip()
 
 
+def git_bytes(*arguments: str) -> bytes:
+    completed = subprocess.run(
+        ["git", *arguments], cwd=ROOT,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+    )
+    require(completed.returncode == 0,
+            f"git {' '.join(arguments)} failed without registration")
+    return completed.stdout
+
+
 def strings(value: Any, field: str, minimum: int = 1) -> list[str]:
     require(isinstance(value, list) and len(value) >= minimum,
             f"{field} requires at least {minimum} entries")
@@ -99,7 +110,19 @@ def safe_ref(value: Any, field: str) -> str:
     path = Path(value)
     require(not path.is_absolute() and ".." not in path.parts,
             f"{field} contains an unsafe path")
-    require((ROOT / path).is_file(), f"{field} does not exist: {value}")
+    candidate = ROOT / path
+    current = ROOT
+    for part in path.parts:
+        current = current / part
+        require(not current.is_symlink(), f"{field} contains a symlink component: {value}")
+    require(candidate.is_file(), f"{field} does not exist: {value}")
+    try:
+        candidate.resolve().relative_to(ROOT.resolve())
+    except ValueError as exc:
+        raise RegistrationFailure(f"{field} escapes repository: {value}") from exc
+    git("ls-files", "--error-unmatch", "--", value)
+    require(candidate.read_bytes() == git_bytes("show", f"HEAD:{value}"),
+            f"{field} must match committed HEAD bytes: {value}")
     return value
 
 
@@ -111,6 +134,31 @@ def sha256_file(path: Path) -> tuple[str, int]:
             digest.update(chunk)
             size += len(chunk)
     return digest.hexdigest(), size
+
+
+def evidence_refs(record: dict[str, Any]) -> list[str]:
+    refs = [
+        record.get("buildProvenanceRef"),
+        record.get("securityReviewRef"),
+        record.get("retentionEvidenceRef"),
+        *record.get("replayEvidenceRefs", []),
+    ]
+    retention = record.get("rollbackRetentionState")
+    if isinstance(retention, dict) and retention.get("verificationEvidenceRef"):
+        refs.append(retention["verificationEvidenceRef"])
+    require(all(isinstance(ref, str) and ref for ref in refs),
+            "parser artifact evidence refs are incomplete")
+    require(len(refs) == len(set(refs)),
+            "parser artifact evidence refs contain duplicates")
+    return refs
+
+
+def evidence_digests(record: dict[str, Any]) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for ref in evidence_refs(record):
+        safe_ref(ref, "artifact evidence ref")
+        result[ref] = hashlib.sha256((ROOT / ref).read_bytes()).hexdigest()
+    return result
 
 
 def load_release_writer() -> Any:
@@ -151,6 +199,9 @@ def validate_registry_for_append(registry: dict[str, Any]) -> None:
     artifacts = registry.get("artifacts")
     require(isinstance(artifacts, list) and all(isinstance(item, dict) for item in artifacts),
             "parser artifact registry contains invalid artifacts")
+    evidence_authority = registry.get("evidenceDigestsByArtifactId")
+    require(isinstance(evidence_authority, dict),
+            "parser artifact evidence digest authority missing")
     for field in ("reviewedArtifactCount", "retainedRollbackArtifactCount", "replayProvenArtifactCount"):
         value = registry.get(field)
         require(isinstance(value, int) and not isinstance(value, bool),
@@ -189,6 +240,19 @@ def validate_registry_for_append(registry: dict[str, Any]) -> None:
         ids.add(artifact_id)
         digests.add(digest)
         adapter_versions.add(pair)
+        bound = evidence_authority.get(artifact_id)
+        expected_refs = evidence_refs(item)
+        require(isinstance(bound, dict) and set(bound) == set(expected_refs),
+                f"artifact evidence digest refs drift: {artifact_id}")
+        for ref in expected_refs:
+            expected_digest = bound.get(ref)
+            require(isinstance(expected_digest, str) and DIGEST_RE.fullmatch(expected_digest) is not None,
+                    f"artifact evidence digest invalid: {artifact_id}:{ref}")
+            safe_ref(ref, "historical artifact evidence ref")
+            require(hashlib.sha256((ROOT / ref).read_bytes()).hexdigest() == expected_digest,
+                    f"artifact evidence bytes drift: {artifact_id}:{ref}")
+    require(set(evidence_authority) == ids,
+            "parser artifact evidence digest authority contains unknown or missing artifact IDs")
     expected_latest = artifacts[-1].get("artifactId") if artifacts else None
     require(registry.get("latestReviewedArtifactId") == expected_latest,
             "latestReviewedArtifactId drift")
@@ -339,6 +403,7 @@ def main() -> int:
     releases = approved_release_ids()
     record = load(record_path)
     validate_record(record, required_fields, artifact_path, releases)
+    record_evidence_digests = evidence_digests(record)
 
     lock_fd = acquire_lock()
     try:
@@ -359,6 +424,7 @@ def main() -> int:
                 "adapter ID and version are already registered")
 
         artifacts.append(record)
+        registry["evidenceDigestsByArtifactId"][record["artifactId"]] = record_evidence_digests
         registry["reviewedArtifactCount"] = len(artifacts)
         registry["retainedRollbackArtifactCount"] = sum(
             1 for item in artifacts

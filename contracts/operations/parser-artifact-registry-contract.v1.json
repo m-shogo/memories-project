@@ -56,6 +56,8 @@
     "three required approval roles use distinct operational pseudonyms",
     "build provenance, security review and independent retention evidence exist",
     "at least one exact-source replay evidence reference exists",
+    "all evidence refs are tracked, repository-contained, symlink-free files whose current bytes equal HEAD",
+    "append-time SHA-256 digests bind every evidence ref per artifact and historical registry validation rejects later byte drift",
     "every compatible release ID already exists in the approved release registry",
     "rollback retention is RETAINED only when immutable retention evidence exists",
     "record contains no credential, infrastructure URL or user content",
@@ -93,6 +95,7 @@
     "productionArtifactApproved": false,
     "oldArtifactReplayProven": false,
     "rollbackArtifactAvailable": false,
+    "evidenceRefsDigestBoundAtAppend": true,
     "productionEvidence": false,
     "productionReady": false
   },
