@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
 import subprocess
@@ -44,6 +45,14 @@ def load(path: Path) -> dict[str, Any]:
         raise Fail(f"cannot load {path.relative_to(ROOT)}: {exc}") from exc
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
     return value
+
+
+def load_module(path: Path, name: str) -> Any:
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load {path.relative_to(ROOT)}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def commit_exists(sha: str) -> bool:
@@ -124,6 +133,15 @@ def main() -> int:
     require(contract.get("appendOnly") is True and contract.get("productionEnvironmentRegistrationImplemented") is False, "contract production boundary drift")
     require(set(contract.get("allowedEnvironmentClasses", [])) == {"LOCAL_POSTGRES_REHEARSAL", "PRODUCTION_EQUIVALENT_REHEARSAL"}, "environment classes drift")
     require(WRITER.is_file() and RECOVERY_VALIDATOR.is_file() and ARTIFACT_VALIDATOR.is_file(), "migration rehearsal writer/recovery validators missing")
+
+    writer = load_module(WRITER, "memory_os_migration_rehearsal_writer_for_registry_validation")
+    require(writer.CONTRACT.resolve() == CONTRACT.resolve(), "writer contract authority drift")
+    require(writer.REGISTRY.resolve() == REGISTRY.resolve(), "writer registry authority drift")
+    require(writer.LIFECYCLE.resolve() == LIFECYCLE.resolve(), "writer lifecycle authority drift")
+    try:
+        writer.validate_registry_for_append(registry, contract)
+    except writer.Failure as exc:
+        raise Fail(f"writer append-only authority rejected registry: {exc}") from exc
 
     canonical = lifecycle.get("migrationSequence")
     require(isinstance(canonical, list) and canonical, "canonical migration sequence missing")
