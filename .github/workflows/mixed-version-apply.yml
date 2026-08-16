@@ -98,8 +98,14 @@ jobs:
 
       - name: Capture clean exact source
         run: |
+          set -euo pipefail
           test -z "$(git status --porcelain)"
-          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          SOURCE_SHA="$(git rev-parse HEAD)"
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            git fetch origin so
+            test "$(git rev-parse origin/so)" = "$SOURCE_SHA"
+          fi
+          echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
           bash -n scripts/run-memory-os-mixed-version-apply-drill.sh
           python -m py_compile \
             scripts/validate-memory-os-mixed-version-apply.py \
@@ -208,6 +214,12 @@ jobs:
       - name: Commit result or bounded diagnostic
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         run: |
+          set -euo pipefail
+          git fetch origin so
+          if [[ "$(git rev-parse HEAD)" != "$SOURCE_SHA" ]] || [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "so advanced while mixed-version Apply ran; refusing stale evidence or diagnostic."
+            exit 75
+          fi
           git add docs/fixtures/memory-os-operability/mixed-version-apply-diagnostic.last.json
           if [ "${{ steps.execute.outputs.exit_code }}" = "0" ] && \
              [ "${{ steps.validation.outputs.exit_code }}" = "0" ]; then
@@ -215,6 +227,7 @@ jobs:
           fi
           if git diff --cached --quiet; then
             echo "Mixed-version Apply evidence is already current."
+            echo "EVIDENCE_COMMIT_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -224,9 +237,14 @@ jobs:
             else
               git commit -m "test(compat): record mixed-version Apply diagnostic"
             fi
+            EVIDENCE_COMMIT_SHA="$(git rev-parse HEAD)"
             git fetch origin so
-            git rebase origin/so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              echo "so advanced before mixed-version Apply evidence push; refusing stale evidence."
+              exit 75
+            fi
             git push origin HEAD:so
+            echo "EVIDENCE_COMMIT_SHA=$EVIDENCE_COMMIT_SHA" >> "$GITHUB_ENV"
           fi
 
       - name: Reconcile candidate-only compatibility authority
@@ -234,8 +252,13 @@ jobs:
           github.event_name != 'pull_request' && github.ref == 'refs/heads/so' &&
           steps.execute.outputs.exit_code == '0' && steps.validation.outputs.exit_code == '0'
         run: |
+          set -euo pipefail
           git fetch origin so
-          git rebase origin/so
+          test "$(git rev-parse HEAD)" = "$EVIDENCE_COMMIT_SHA"
+          if [[ "$(git rev-parse origin/so)" != "$EVIDENCE_COMMIT_SHA" ]]; then
+            echo "so advanced before mixed-version Apply authority reconciliation; refusing stale authority."
+            exit 75
+          fi
           python scripts/reconcile-memory-os-mixed-version-apply.py
           python scripts/validate-memory-os-mixed-version-apply.py \
             --expected-commit-sha "$SOURCE_SHA" --require-reconciled
@@ -249,7 +272,10 @@ jobs:
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(compat): register mixed-version Apply evidence"
             git fetch origin so
-            git rebase origin/so
+            if [[ "$(git rev-parse origin/so)" != "$EVIDENCE_COMMIT_SHA" ]]; then
+              echo "so advanced before mixed-version Apply authority push; refusing stale authority."
+              exit 75
+            fi
             git push origin HEAD:so
           fi
 
