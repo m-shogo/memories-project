@@ -70,7 +70,6 @@ def main() -> int:
     readiness["operationalThresholdApproved"] = False
     readiness["independentReviewCompleted"] = False
     readiness["productionReady"] = False
-    write(CONTRACT, contract)
 
     load_contract = load(LOAD)
     load_readiness = load_contract.get("readiness")
@@ -82,7 +81,6 @@ def main() -> int:
     require(isinstance(refs, list), "load evidenceRefs missing")
     for ref in REFS:
         append_once(refs, ref)
-    write(LOAD, load_contract)
 
     status = load(STATUS)
     require(status.get("productionDecision") == "NO_GO", "production decision must remain NO_GO")
@@ -107,6 +105,12 @@ def main() -> int:
             elif item not in rewritten:
                 rewritten.append(item)
         gate["missingEvidence"] = rewritten
+
+    # All inputs and fail-closed invariants are validated before any derived
+    # authority is written. A later validation failure must not leave a
+    # partially reconciled CONTRACT/LOAD/STATUS tuple on disk.
+    write(CONTRACT, contract)
+    write(LOAD, load_contract)
     write(STATUS, status)
 
     print("Memory OS controlled saturation repeatability reconciliation PASS")
