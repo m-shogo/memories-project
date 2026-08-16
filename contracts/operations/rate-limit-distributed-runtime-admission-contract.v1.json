@@ -8,6 +8,7 @@
   "environmentGenerationContract": "contracts/operations/production-equivalent-environment-generation-contract.v1.json",
   "environmentGenerationRegistry": "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
   "registryPath": "contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json",
+  "appendLockPath": "contracts/operations/.rate-limit-distributed-runtime.lock",
   "writer": "scripts/register-memory-os-rate-limit-distributed-runtime.py",
   "validator": "scripts/validate-memory-os-rate-limit-distributed-runtime.py",
   "reconcile": "scripts/reconcile-memory-os-rate-limit-distributed-runtime.py",
@@ -63,6 +64,7 @@
     "independentReviewsMustBeTypedRuntimeBoundApprovedAndDistinct": true,
     "independentReviewRefsMustUseMonitoredNamespace": true,
     "evidenceRefsMustBeCommittedSymlinkFreeAndDigestBound": true,
+    "appendLockMustRemainCanonical": true,
     "unresolvedCriticalOrHighFindingsForbidden": true
   },
   "requiredDrillClasses": [
