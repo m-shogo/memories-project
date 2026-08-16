@@ -35,6 +35,12 @@ BUILD = re.compile(r"^[0-9A-Za-z._-]{1,64}$")
 CLIENT_CLASSES = {"IOS_APP", "PORTAL"}
 ARTIFACT_KINDS = {"IOS_IPA", "IOS_XCARCHIVE_EXPORT", "PORTAL_BUNDLE"}
 REQUIRED_ROLES = {"CLIENT_OWNER", "SECURITY_REVIEWER", "COMPATIBILITY_REVIEWER"}
+EVIDENCE_FIELDS = (
+    "buildProvenanceEvidenceRefs",
+    "securityEvidenceRefs",
+    "compatibilityEvidenceRefs",
+    "artifactRetentionEvidenceRefs",
+)
 REGISTRY_FIELDS = {
     "schemaVersion",
     "registryClass",
@@ -108,6 +114,50 @@ def validate_source_commit_lineage(commit_sha: str) -> None:
             f"source commit is not an ancestor of current HEAD: {commit_sha}")
 
 
+def validate_evidence_ref_at_source(ref: str, source_commit_sha: str, field: str) -> None:
+    relative = Path(ref)
+    require(not relative.is_absolute() and ".." not in relative.parts,
+            f"unsafe evidence ref: {ref}")
+    current = ROOT / relative
+    require(current.is_file(), f"evidence ref missing: {ref}")
+    cursor = ROOT
+    for part in relative.parts:
+        cursor = cursor / part
+        require(not cursor.is_symlink(), f"evidence ref must be symlink-free: {ref}")
+    try:
+        current.resolve().relative_to(ROOT.resolve())
+    except ValueError as exc:
+        raise Failure(f"evidence ref escapes repository: {ref}") from exc
+    tracked = subprocess.run(
+        ["git", "ls-files", "--error-unmatch", "--", ref],
+        cwd=ROOT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    require(tracked.returncode == 0, f"evidence ref must be tracked: {ref}")
+    source = subprocess.run(
+        ["git", "show", f"{source_commit_sha}:{ref}"],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    require(source.returncode == 0,
+            f"{field} evidence did not exist at source commit: {ref}")
+    require(source.stdout == current.read_bytes(),
+            f"{field} evidence changed after source commit: {ref}")
+
+
+def validate_record_evidence(record: dict[str, Any], prefix: str = "record") -> None:
+    source = record.get("sourceCommitSha")
+    require(isinstance(source, str) and SHA40.fullmatch(source) is not None,
+            f"{prefix}.sourceCommitSha invalid")
+    for field in EVIDENCE_FIELDS:
+        for ref in strings(record.get(field), f"{prefix}.{field}"):
+            validate_evidence_ref_at_source(ref, source, f"{prefix}.{field}")
+
+
 def validate_registry_for_append(registry: dict[str, Any]) -> None:
     require(set(registry) == REGISTRY_FIELDS, "client registry field set drift")
     require(registry.get("schemaVersion") == "memory-os-client-baseline-registry.v1",
@@ -130,7 +180,7 @@ def validate_registry_for_append(registry: dict[str, Any]) -> None:
     ids: set[str] = set()
     digests: set[str] = set()
     expected_latest: dict[str, str | None] = {"IOS_APP": None, "PORTAL": None}
-    for item in clients:
+    for index, item in enumerate(clients):
         baseline_id = item.get("clientBaselineId")
         client_class = item.get("clientClass")
         artifact_digest = item.get("artifactSha256")
@@ -141,6 +191,8 @@ def validate_registry_for_append(registry: dict[str, Any]) -> None:
                 "registered artifactSha256 invalid")
         require(baseline_id not in ids, f"duplicate registered clientBaselineId: {baseline_id}")
         require(artifact_digest not in digests, f"duplicate registered artifactSha256: {artifact_digest}")
+        validate_source_commit_lineage(item.get("sourceCommitSha", ""))
+        validate_record_evidence(item, f"clients[{index}]")
         ids.add(baseline_id)
         digests.add(artifact_digest)
         expected_latest[client_class] = baseline_id
@@ -187,11 +239,7 @@ def validate_record(record: dict[str, Any], required_fields: set[str], artifact:
         identities.add(identity)
     require(roles == REQUIRED_ROLES, "required approval roles incomplete")
 
-    for field in ("buildProvenanceEvidenceRefs", "securityEvidenceRefs", "compatibilityEvidenceRefs", "artifactRetentionEvidenceRefs"):
-        for ref in strings(record.get(field), field):
-            relative = Path(ref)
-            require(not relative.is_absolute() and ".." not in relative.parts, f"unsafe evidence ref: {ref}")
-            require((ROOT / relative).is_file(), f"evidence ref missing: {ref}")
+    validate_record_evidence(record)
 
     hasher = hashlib.sha256()
     size = 0
