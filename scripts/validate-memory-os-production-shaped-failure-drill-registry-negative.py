@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 import subprocess
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Callable
 
@@ -148,6 +149,55 @@ def expect_side_commit_rejected(writer: Any) -> None:
     raise RuntimeError("detached side commit accepted as failure-drill source authority")
 
 
+def expect_review_payload_rejected(writer: Any, name: str, payload: dict[str, Any], record: dict[str, Any], role: str) -> None:
+    try:
+        writer.validate_review_payload(payload, record, name, role)
+    except writer.Fail:
+        return
+    raise RuntimeError(f"{name}: invalid independent review payload accepted")
+
+
+def validate_review_payload_negatives(writer: Any) -> int:
+    record = {
+        "drillId": "fdr_negative01",
+        "scenarioId": "FAIL-PROD-001",
+        "environmentClass": "PRODUCTION_EQUIVALENT",
+        "environmentIdentityDigest": "1" * 64,
+        "environmentGenerationId": "pegen_negative01",
+        "sourceCommitSha": "2" * 40,
+    }
+    base = {
+        "schemaVersion": "memory-os-production-shaped-failure-drill-independent-review.v1",
+        **record,
+        "role": "SECURITY",
+        "reviewerId": "security-reviewer",
+        "decision": "APPROVED",
+        "reviewedAt": "2026-08-16T09:00:00Z",
+        "productionTrafficChanged": False,
+        "credentialsIncluded": False,
+        "automaticProductionPromotion": False,
+    }
+    writer.validate_review_payload(base, record, "securityReviewRef", "SECURITY")
+    cases: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
+        ("generic review field set", lambda r: r.pop("drillId")),
+        ("review role substitution", lambda r: r.__setitem__("role", "OPERABILITY")),
+        ("reviewer pseudonym invalid", lambda r: r.__setitem__("reviewerId", "Reviewer Name")),
+        ("review decision rejected", lambda r: r.__setitem__("decision", "REJECTED")),
+        ("review drill binding drift", lambda r: r.__setitem__("drillId", "fdr_other001")),
+        ("review generation binding drift", lambda r: r.__setitem__("environmentGenerationId", "pegen_other01")),
+        ("review source binding drift", lambda r: r.__setitem__("sourceCommitSha", "3" * 40)),
+        ("review timestamp invalid", lambda r: r.__setitem__("reviewedAt", "2026-99-99T99:99:99Z")),
+        ("review production traffic mutation", lambda r: r.__setitem__("productionTrafficChanged", True)),
+        ("review credential inclusion", lambda r: r.__setitem__("credentialsIncluded", True)),
+        ("review automatic promotion", lambda r: r.__setitem__("automaticProductionPromotion", True)),
+    ]
+    for name, mutate in cases:
+        payload = deepcopy(base)
+        mutate(payload)
+        expect_review_payload_rejected(writer, name, payload, record, "SECURITY")
+    return len(cases)
+
+
 def main() -> int:
     writer = load_module(WRITER_PATH, "failure_drill_writer_negative")
     reconciler = load_module(RECONCILER_PATH, "failure_drill_reconciler_negative")
@@ -180,6 +230,7 @@ def main() -> int:
         for name, mutate in generation_cases:
             expect_generation_authority_rejected(writer, reconciler, name, mutate, original, generation_original)
         expect_side_commit_rejected(writer)
+        review_case_count = validate_review_payload_negatives(writer)
     finally:
         REGISTRY.write_bytes(original)
         GEN_REGISTRY.write_bytes(generation_original)
@@ -187,6 +238,7 @@ def main() -> int:
     print("PASS: production-shaped failure-drill registry corruption is rejected before append/reconcile")
     print(f"failure-drill corruption cases: {len(cases)}")
     print(f"upstream generation corruption cases: {len(generation_cases)}")
+    print(f"typed independent review negative cases: {review_case_count}")
     print("detached source commit accepted: false")
     print("reconciler auto-heal: false")
     print("production readiness: false")
