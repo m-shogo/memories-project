@@ -1,16 +1,35 @@
 name: Client Server Support Window
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/client-server-support-window.yml"
+      - "contracts/operations/client-server-support-window-contract.v1.json"
+      - "contracts/operations/client-baseline-registry-contract.v1.json"
+      - "contracts/operations/client-baseline-registry.v1.json"
+      - "contracts/operations/client-server-skew-registry.v1.json"
+      - "contracts/operations/release-baseline-registry-contract.v1.json"
+      - "contracts/operations/release-baseline-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "scripts/register-memory-os-client-baseline.py"
+      - "scripts/register-memory-os-release-baseline.py"
+      - "scripts/validate-memory-os-client-server-support-window.py"
+      - "scripts/reconcile-memory-os-client-server-support-window-status.py"
+      - "scripts/validate-memory-os-operability.py"
   push:
     branches:
       - so
     paths:
       - ".github/workflows/client-server-support-window.yml"
       - "contracts/operations/client-server-support-window-contract.v1.json"
+      - "contracts/operations/client-baseline-registry-contract.v1.json"
       - "contracts/operations/client-baseline-registry.v1.json"
       - "contracts/operations/client-server-skew-registry.v1.json"
+      - "contracts/operations/release-baseline-registry-contract.v1.json"
       - "contracts/operations/release-baseline-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
+      - "scripts/register-memory-os-client-baseline.py"
+      - "scripts/register-memory-os-release-baseline.py"
       - "scripts/validate-memory-os-client-server-support-window.py"
       - "scripts/reconcile-memory-os-client-server-support-window-status.py"
       - "scripts/validate-memory-os-operability.py"
@@ -20,7 +39,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: client-server-support-window-so
+  group: client-server-support-window-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
@@ -30,12 +49,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Capture exact client skew authority source
+        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           git fetch origin so
@@ -51,6 +71,8 @@ jobs:
           : > "$log"
           code=0
           python -m py_compile \
+            scripts/register-memory-os-client-baseline.py \
+            scripts/register-memory-os-release-baseline.py \
             scripts/validate-memory-os-client-server-support-window.py \
             scripts/reconcile-memory-os-client-server-support-window-status.py \
             scripts/validate-memory-os-operability.py \
@@ -68,7 +90,7 @@ jobs:
           cat "$log"
           exit 0
       - name: Commit bounded foundation authority
-        if: steps.validate.outputs.exit_code == '0'
+        if: steps.validate.outputs.exit_code == '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
           git fetch origin so
@@ -92,7 +114,7 @@ jobs:
             git push origin HEAD:so
           fi
       - name: Record privacy-safe failure diagnostic
-        if: steps.validate.outputs.exit_code != '0'
+        if: steps.validate.outputs.exit_code != '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         env:
           VALIDATE_EXIT_CODE: ${{ steps.validate.outputs.exit_code }}
         run: |
