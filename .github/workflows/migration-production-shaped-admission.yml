@@ -10,6 +10,7 @@ on:
       - "contracts/operations/migration-lifecycle-contract.v1.json"
       - "contracts/operations/migration-evidence-registry.v1.json"
       - "contracts/operations/migration-evidence-registry-contract.v1.json"
+      - "contracts/operations/release-baseline-registry-contract.v1.json"
       - "contracts/operations/release-baseline-registry.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "scripts/memory_os_migration_production_admission_ledger.py"
@@ -18,8 +19,10 @@ on:
       - "scripts/validate-memory-os-migration-production-shaped-admission-negative.py"
       - "scripts/reconcile-memory-os-migration-production-shaped-admission.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
       - "scripts/register-memory-os-migration-rehearsal-evidence.py"
       - "scripts/validate-memory-os-migration-evidence-registry.py"
+      - "scripts/validate-memory-os-release-baseline-registry.py"
       - "scripts/validate-memory-os-migration-lifecycle.py"
       - "scripts/validate-memory-os-operability.py"
   push:
@@ -33,6 +36,7 @@ on:
       - "contracts/operations/migration-lifecycle-contract.v1.json"
       - "contracts/operations/migration-evidence-registry.v1.json"
       - "contracts/operations/migration-evidence-registry-contract.v1.json"
+      - "contracts/operations/release-baseline-registry-contract.v1.json"
       - "contracts/operations/release-baseline-registry.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "scripts/memory_os_migration_production_admission_ledger.py"
@@ -41,8 +45,10 @@ on:
       - "scripts/validate-memory-os-migration-production-shaped-admission-negative.py"
       - "scripts/reconcile-memory-os-migration-production-shaped-admission.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
       - "scripts/register-memory-os-migration-rehearsal-evidence.py"
       - "scripts/validate-memory-os-migration-evidence-registry.py"
+      - "scripts/validate-memory-os-release-baseline-registry.py"
       - "scripts/validate-memory-os-migration-lifecycle.py"
       - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
@@ -82,8 +88,10 @@ jobs:
             scripts/validate-memory-os-migration-production-shaped-admission-negative.py \
             scripts/reconcile-memory-os-migration-production-shaped-admission.py \
             scripts/register-memory-os-production-equivalent-environment-generation.py \
+            scripts/validate-memory-os-production-equivalent-environment-generation.py \
             scripts/register-memory-os-migration-rehearsal-evidence.py \
             scripts/validate-memory-os-migration-evidence-registry.py \
+            scripts/validate-memory-os-release-baseline-registry.py \
             >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-migration-production-shaped-admission-negative.py >> "$log" 2>&1 || code=$?
