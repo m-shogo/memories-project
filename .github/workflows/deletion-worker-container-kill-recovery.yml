@@ -257,27 +257,33 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin so
-          if ! git diff --quiet "$SOURCE_SHA" origin/so -- \
-            .github/workflows/deletion-worker-container-kill-recovery.yml \
-            contracts/operations/deletion-worker-container-kill-recovery-contract.v1.json \
-            scripts/validate-memory-os-deletion-worker-container-kill-recovery.py \
-            scripts/reconcile-memory-os-deletion-worker-container-kill-recovery.py \
-            services/import-api/cmd/deletion-container-drill \
-            services/import-api/cmd/deletion-container-drill-helper; then
-            echo "Container-drill source changed while proof ran; refusing stale evidence."
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "so advanced while the container-kill proof ran; refusing stale evidence."
             exit 75
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/fixtures/memory-os-operability/deletion-worker-container-kill-recovery-results.sample.v1.json
           git commit -m "test(deletion): record container-kill recovery result"
-          git pull --rebase origin so
+          RESULT_COMMIT_SHA="$(git rev-parse HEAD)"
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "so advanced before the exact-source result push; refusing stale evidence."
+            exit 75
+          fi
           git push origin HEAD:so
+          echo "RESULT_COMMIT_SHA=$RESULT_COMMIT_SHA" >> "$GITHUB_ENV"
 
       - name: Reconcile local-only contract authority
         if: steps.proof.outputs.exit_code == '0'
         run: |
           set -euo pipefail
+          git fetch origin so
+          test "$(git rev-parse HEAD)" = "$RESULT_COMMIT_SHA"
+          if [[ "$(git rev-parse origin/so)" != "$RESULT_COMMIT_SHA" ]]; then
+            echo "so advanced before container-kill authority reconciliation; refusing stale authority."
+            exit 75
+          fi
           export EXPECTED_COMMIT_SHA="$SOURCE_SHA"
           python scripts/reconcile-memory-os-deletion-worker-container-kill-recovery.py
           python scripts/validate-memory-os-deletion-worker-container-kill-recovery.py \
@@ -289,7 +295,11 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(deletion): register container-kill recovery evidence"
-            git pull --rebase origin so
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$RESULT_COMMIT_SHA" ]]; then
+              echo "so advanced before container-kill authority push; refusing stale authority."
+              exit 75
+            fi
             git push origin HEAD:so
           fi
 
@@ -300,7 +310,10 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin so
-          git reset --hard origin/so
+          if [[ "$(git rev-parse HEAD)" != "$SOURCE_SHA" ]] || [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "so advanced before failure diagnostic generation; refusing stale diagnostic."
+            exit 75
+          fi
           python - <<'PY'
           import json
           import os
@@ -340,7 +353,11 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --cached --quiet; then
             git commit -m "test(deletion): record container-kill recovery diagnostic"
-            git pull --rebase origin so
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              echo "so advanced before failure diagnostic push; refusing stale diagnostic."
+              exit 75
+            fi
             git push origin HEAD:so
           fi
 
