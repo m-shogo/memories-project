@@ -7,6 +7,7 @@ on:
       - "contracts/operations/deletion-worker-host-failure-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-deletion-worker-host-failure.py"
       - "scripts/reconcile-memory-os-deletion-worker-host-failure.py"
   push:
@@ -17,6 +18,7 @@ on:
       - "contracts/operations/deletion-worker-host-failure-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-deletion-worker-host-failure.py"
       - "scripts/reconcile-memory-os-deletion-worker-host-failure.py"
   workflow_dispatch:
@@ -59,6 +61,7 @@ jobs:
           log=/tmp/deletion-host-failure-admission.log
           code=0
           python -m py_compile \
+            scripts/register-memory-os-production-equivalent-environment-generation.py \
             scripts/validate-memory-os-deletion-worker-host-failure.py \
             scripts/reconcile-memory-os-deletion-worker-host-failure.py \
             >"$log" 2>&1 || code=$?
