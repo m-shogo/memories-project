@@ -11,6 +11,7 @@ on:
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "scripts/register-memory-os-rate-limit-distributed-runtime.py"
       - "scripts/validate-memory-os-rate-limit-distributed-runtime.py"
+      - "scripts/validate-memory-os-rate-limit-distributed-runtime-registry-negative.py"
       - "scripts/reconcile-memory-os-rate-limit-distributed-runtime.py"
   push:
     branches:
@@ -24,6 +25,7 @@ on:
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "scripts/register-memory-os-rate-limit-distributed-runtime.py"
       - "scripts/validate-memory-os-rate-limit-distributed-runtime.py"
+      - "scripts/validate-memory-os-rate-limit-distributed-runtime-registry-negative.py"
       - "scripts/reconcile-memory-os-rate-limit-distributed-runtime.py"
   workflow_dispatch:
 
@@ -59,8 +61,12 @@ jobs:
           python -m py_compile \
             scripts/register-memory-os-rate-limit-distributed-runtime.py \
             scripts/validate-memory-os-rate-limit-distributed-runtime.py \
+            scripts/validate-memory-os-rate-limit-distributed-runtime-registry-negative.py \
             scripts/reconcile-memory-os-rate-limit-distributed-runtime.py \
             >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-rate-limit-distributed-runtime-registry-negative.py >> "$log" 2>&1 || code=$?
+          fi
           if [[ "$code" == "0" ]]; then
             python scripts/reconcile-memory-os-rate-limit-distributed-runtime.py >> "$log" 2>&1 || code=$?
           fi
