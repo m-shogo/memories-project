@@ -306,7 +306,7 @@
     "policyContract": "contracts/operations/rate-limit-operations-contract.v1.json",
     "productionControlPlaneImplemented": false,
     "automaticExpiryImplemented": false,
-    "evidenceLedgerImplemented": false,
+    "evidenceLedgerImplemented": true,
     "drillCompleted": false
   }
 }
