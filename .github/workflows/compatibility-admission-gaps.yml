@@ -1,6 +1,15 @@
 name: Compatibility Admission Gaps
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/compatibility-admission-gaps.yml"
+      - "scripts/update-memory-os-compatibility-admission-gaps.py"
+      - "contracts/operations/release-baseline-registry.v1.json"
+      - "contracts/operations/client-baseline-registry.v1.json"
+      - "contracts/operations/parser-artifact-registry.v1.json"
+      - "contracts/operations/version-compatibility-foundations.v1.json"
+      - "contracts/operations/version-compatibility-execution-evidence.v1.json"
   push:
     branches:
       - so
@@ -18,8 +27,8 @@ permissions:
   contents: write
 
 concurrency:
-  group: compatibility-admission-gaps-so
-  cancel-in-progress: true
+  group: compatibility-admission-gaps-${{ github.event.pull_request.number || 'so' }}
+  cancel-in-progress: false
 
 jobs:
   update:
@@ -28,11 +37,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Confirm exact clean authority source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+          else
+            test "$(git branch --show-current)" = "so"
+            test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          fi
       - name: Regenerate compatibility admission gaps
         run: |
           set -euo pipefail
@@ -40,15 +61,26 @@ jobs:
           python scripts/update-memory-os-compatibility-admission-gaps.py
           python scripts/validate-memory-os-version-compatibility-execution-evidence.py
           python scripts/validate-memory-os-client-server-support-window.py
+      - name: Require deterministic authority on pull requests
+        if: github.event_name == 'pull_request'
+        run: |
+          git diff --check
+          git diff --exit-code -- contracts/operations/compatibility-admission-gaps.v1.json
       - name: Commit deterministic next-admission authority
+        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
+          source_sha="$(git rev-parse HEAD)"
           git add contracts/operations/compatibility-admission-gaps.v1.json
           if ! git diff --cached --quiet; then
             git diff --cached --check
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(compat): refresh compatibility admission gaps"
-            git pull --rebase origin so
+            remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
+            if [[ "$remote_sha" != "$source_sha" ]]; then
+              echo "Compatibility admission-gap source is stale: validated $source_sha but so is $remote_sha" >&2
+              exit 75
+            fi
             git push origin HEAD:so
           fi
