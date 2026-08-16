@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
-"""Prove reviewed client baselines cannot cite a non-ancestor source commit."""
+"""Prove reviewed client baselines reject side-commit and corrupt registry authority."""
 
 from __future__ import annotations
 
+import copy
 import importlib.util
+import json
 import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 WRITER_PATH = ROOT / "scripts/register-memory-os-client-baseline.py"
 VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-client-baseline-registry.py"
+REGISTRY_PATH = ROOT / "contracts/operations/client-baseline-registry.v1.json"
 
 
 class NegativeFailure(RuntimeError):
@@ -43,6 +46,17 @@ def git(*args: str, input_text: str | None = None,
     return completed.stdout.strip()
 
 
+def expect_registry_rejection(writer: Any, base: dict[str, Any],
+                              label: str, mutate: Callable[[dict[str, Any]], None]) -> None:
+    candidate = copy.deepcopy(base)
+    mutate(candidate)
+    try:
+        writer.validate_registry_for_append(candidate)
+    except writer.Failure:
+        return
+    raise NegativeFailure(f"writer accepted corrupt client registry: {label}")
+
+
 def main() -> int:
     require(git("status", "--porcelain") == "", "working tree must start clean")
     head = git("rev-parse", "HEAD")
@@ -69,6 +83,20 @@ def main() -> int:
     else:
         raise NegativeFailure("writer accepted a non-ancestor source commit")
 
+    base_registry = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+    require(isinstance(base_registry, dict), "client registry fixture must be object")
+    writer.validate_registry_for_append(copy.deepcopy(base_registry))
+    cases: tuple[tuple[str, Callable[[dict[str, Any]], None]], ...] = (
+        ("boolean count", lambda value: value.__setitem__("approvedClientBaselineCount", True)),
+        ("count drift", lambda value: value.__setitem__("approvedClientBaselineCount", 1)),
+        ("appendOnly false", lambda value: value.__setitem__("appendOnly", False)),
+        ("production evidence promotion", lambda value: value.__setitem__("productionEvidence", True)),
+        ("latest pointer drift", lambda value: value["latestApprovedClientByClass"].__setitem__("IOS_APP", "clb_20990101_fake")),
+        ("unknown registry field", lambda value: value.__setitem__("unexpectedAuthority", True)),
+    )
+    for label, mutate in cases:
+        expect_registry_rejection(writer, base_registry, label, mutate)
+
     validator = load_module(VALIDATOR_PATH, "client_baseline_validator_lineage_negative")
     require(validator.commit_is_ancestor(side_commit) is False,
             "standalone validator accepted a non-ancestor source commit")
@@ -76,7 +104,7 @@ def main() -> int:
             "standalone validator rejected current HEAD lineage")
     require(git("status", "--porcelain") == "", "negative test mutated working tree")
 
-    print("Client baseline source lineage negative PASS")
+    print("Client baseline lineage and registry corruption negative PASS")
     return 0
 
 
@@ -84,5 +112,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except NegativeFailure as exc:
-        print(f"CLIENT BASELINE LINEAGE NEGATIVE FAILED: {exc}", file=sys.stderr)
+        print(f"CLIENT BASELINE AUTHORITY NEGATIVE FAILED: {exc}", file=sys.stderr)
         raise SystemExit(1)
