@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import importlib.util
 import json
 import os
@@ -25,6 +26,8 @@ SHA40 = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
 ROUTING_ID = re.compile(r"^icr_[a-z0-9][a-z0-9_-]{7,63}$")
 OWNER_REF = re.compile(r"^owner_[a-z0-9][a-z0-9_-]{5,63}$")
+REVIEWER_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{2,63}$")
+UTC_SECONDS = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 PRODUCTION_CONFIRMATION = "REGISTER PRODUCTION INCIDENT CONTACT ROUTING EVIDENCE"
 REF_FIELDS = (
     "deliveryDrillEvidenceRefs", "escalationDrillEvidenceRefs",
@@ -42,7 +45,10 @@ def require(condition: bool, message: str) -> None:
 
 
 def load(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise Fail(f"cannot load JSON authority: {path}") from exc
     require(isinstance(value, dict), f"root must be object: {path}")
     return value
 
@@ -82,7 +88,10 @@ def source_bound_ref(item: str, source: str, field: str) -> None:
     require(item and not ref.is_absolute() and ".." not in ref.parts,
             f"{field} evidence path invalid: {item}")
     path = ROOT / ref
-    require(not path.is_symlink(), f"{field} evidence cannot be a symlink: {item}")
+    cursor = ROOT
+    for part in ref.parts:
+        cursor = cursor / part
+        require(not cursor.is_symlink(), f"{field} evidence cannot traverse symlinks: {item}")
     require(path.is_file(), f"{field} evidence path missing: {item}")
     try:
         path.resolve().relative_to(ROOT.resolve())
@@ -108,6 +117,65 @@ def refs(value: Any, field: str, source: str) -> list[str]:
     for item in value:
         source_bound_ref(item, source, field)
     return value
+
+
+def canonical_reviewed_at(value: Any, field: str) -> str:
+    require(isinstance(value, str) and UTC_SECONDS.fullmatch(value) is not None,
+            f"{field} must be canonical UTC RFC3339 seconds")
+    try:
+        parsed = dt.datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError as exc:
+        raise Fail(f"{field} is not a valid UTC timestamp") from exc
+    require(parsed.strftime("%Y-%m-%dT%H:%M:%SZ") == value,
+            f"{field} must be canonical UTC RFC3339 seconds")
+    return value
+
+
+def validate_review(record: dict[str, Any], ref_field: str, expected_role: str, source: str, contract: dict[str, Any]) -> str:
+    ref = record.get(ref_field)
+    require(isinstance(ref, str) and ref, f"{ref_field} invalid")
+    source_bound_ref(ref, source, ref_field)
+    review = load(ROOT / ref)
+    required = set(contract.get("independentReviewRequiredFields", []))
+    require(required == {
+        "schemaVersion", "contactRoutingId", "observabilityStackId", "environmentIdentityDigest", "role",
+        "reviewerId", "decision", "reviewedAt", "productionTrafficChanged", "credentialsIncluded",
+        "automaticProductionPromotion",
+    }, "independent review field authority drift")
+    require(set(review) == required, f"{ref_field} field drift")
+    require(review.get("schemaVersion") == contract.get("independentReviewSchemaVersion"),
+            f"{ref_field} schema drift")
+    require(review.get("contactRoutingId") == record.get("contactRoutingId"),
+            f"{ref_field} contactRoutingId binding mismatch")
+    require(review.get("observabilityStackId") == record.get("observabilityStackId"),
+            f"{ref_field} observabilityStackId binding mismatch")
+    require(review.get("environmentIdentityDigest") == record.get("environmentIdentityDigest"),
+            f"{ref_field} environmentIdentityDigest binding mismatch")
+    require(review.get("role") == expected_role, f"{ref_field} role must be {expected_role}")
+    reviewer = review.get("reviewerId")
+    require(isinstance(reviewer, str) and REVIEWER_ID.fullmatch(reviewer) is not None,
+            f"{ref_field} reviewerId invalid")
+    require(review.get("decision") == "APPROVED", f"{ref_field} decision must be APPROVED")
+    canonical_reviewed_at(review.get("reviewedAt"), f"{ref_field}.reviewedAt")
+    require(review.get("productionTrafficChanged") is False,
+            f"{ref_field} cannot claim production traffic changes")
+    require(review.get("credentialsIncluded") is False,
+            f"{ref_field} cannot include production credentials")
+    require(review.get("automaticProductionPromotion") is False,
+            f"{ref_field} cannot authorize automatic production promotion")
+    return reviewer
+
+
+def validate_independent_reviews(record: dict[str, Any], source: str, contract: dict[str, Any]) -> None:
+    privacy_ref = record.get("privacyReviewRef")
+    operability_ref = record.get("operabilityReviewRef")
+    require(isinstance(privacy_ref, str) and isinstance(operability_ref, str),
+            "independent review refs invalid")
+    require(privacy_ref != operability_ref, "privacy and operability review records must be distinct")
+    privacy_reviewer = validate_review(record, "privacyReviewRef", "PRIVACY", source, contract)
+    operability_reviewer = validate_review(record, "operabilityReviewRef", "OPERABILITY", source, contract)
+    require(privacy_reviewer != operability_reviewer,
+            "privacy and operability reviews require distinct reviewer identities")
 
 
 def observability_stack(stack_id: str) -> dict[str, Any]:
@@ -184,11 +252,7 @@ def validate_record(record: dict[str, Any], confirmation: str) -> None:
 
     for field in REF_FIELDS:
         refs(record.get(field), field, source)
-    for field in ("privacyReviewRef", "operabilityReviewRef"):
-        value = record.get(field)
-        require(isinstance(value, str), f"{field} invalid")
-        source_bound_ref(value, source, field)
-    require(record["privacyReviewRef"] != record["operabilityReviewRef"], "privacy and operability review records must be distinct")
+    validate_independent_reviews(record, source, contract)
 
     findings = record.get("unresolvedFindings")
     require(isinstance(findings, list), "unresolvedFindings must be a list")
