@@ -15,6 +15,7 @@ import os
 import re
 import subprocess
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -30,10 +31,29 @@ REGISTRY = ROOT / "contracts/operations/migration-production-shaped-admission-re
 RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
 GENERATIONS = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 GENERATION_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
+REVIEW_ROOT = ROOT / "docs/evidence/migration-production-shaped-admission/independent-reviews"
 LOCK = ROOT / "contracts/operations/.migration-production-shaped-admission.lock"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
 ADMISSION_ID = re.compile(r"^mpa_[a-z0-9][a-z0-9_-]{7,63}$")
+REVIEWER_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{2,63}$")
+REVIEW_SCHEMA = "memory-os-migration-production-shaped-independent-review.v1"
+REVIEW_FIELDS = {
+    "schemaVersion",
+    "admissionId",
+    "migrationRunId",
+    "environmentGenerationId",
+    "sourceCommitSha",
+    "predecessorReleaseId",
+    "successorReleaseId",
+    "reviewRole",
+    "reviewerId",
+    "decision",
+    "reviewedAt",
+    "productionTrafficChanged",
+    "productionCredentialsUsed",
+    "automaticPromotionAuthorized",
+}
 
 
 class Fail(RuntimeError):
@@ -107,6 +127,69 @@ def approved_release(release_id: str) -> dict[str, Any]:
     return matches[0]
 
 
+def canonical_review_path(ref: Any, field: str) -> Path:
+    require(isinstance(ref, str) and ref and not Path(ref).is_absolute() and ".." not in Path(ref).parts, f"{field} invalid")
+    path = ROOT / ref
+    require(path.is_file(), f"{field} path missing: {ref}")
+    try:
+        path.resolve(strict=True).relative_to(REVIEW_ROOT.resolve(strict=False))
+    except (OSError, ValueError) as exc:
+        raise Fail(f"{field} must remain inside monitored migration independent-review namespace") from exc
+    current = ROOT
+    for part in Path(ref).parts:
+        current = current / part
+        require(not current.is_symlink(), f"{field} must not traverse symlinks: {ref}")
+    require(git("ls-files", "--error-unmatch", "--", ref) == ref, f"{field} must be tracked at HEAD: {ref}")
+    head_bytes = subprocess.run(
+        ["git", "show", f"HEAD:{ref}"],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    require(head_bytes.returncode == 0 and head_bytes.stdout == path.read_bytes(), f"{field} bytes must match current HEAD: {ref}")
+    return path
+
+
+def canonical_utc_timestamp(value: Any, field: str) -> str:
+    require(isinstance(value, str) and value.endswith("Z"), f"{field} must be canonical UTC RFC3339 seconds")
+    try:
+        parsed = datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError as exc:
+        raise Fail(f"{field} invalid") from exc
+    require(parsed.tzinfo is not None and parsed.utcoffset() == timezone.utc.utcoffset(parsed), f"{field} must be UTC")
+    require(parsed.microsecond == 0 and parsed.strftime("%Y-%m-%dT%H:%M:%SZ") == value, f"{field} must use canonical UTC RFC3339 seconds")
+    return value
+
+
+def validate_independent_reviews(record: dict[str, Any]) -> None:
+    reviews: dict[str, dict[str, Any]] = {}
+    for field, role in (("securityReviewRef", "SECURITY"), ("operabilityReviewRef", "OPERABILITY")):
+        review = load(canonical_review_path(record.get(field), field))
+        require(set(review) == REVIEW_FIELDS, f"{field} field set drift: {sorted(set(review) ^ REVIEW_FIELDS)}")
+        require(review.get("schemaVersion") == REVIEW_SCHEMA, f"{field} schemaVersion drift")
+        for binding in (
+            "admissionId",
+            "migrationRunId",
+            "environmentGenerationId",
+            "sourceCommitSha",
+            "predecessorReleaseId",
+            "successorReleaseId",
+        ):
+            require(review.get(binding) == record.get(binding), f"{field} {binding} binding mismatch")
+        require(review.get("reviewRole") == role, f"{field} reviewRole must be {role}")
+        reviewer_id = review.get("reviewerId")
+        require(isinstance(reviewer_id, str) and REVIEWER_ID.fullmatch(reviewer_id), f"{field} reviewerId invalid")
+        require(review.get("decision") == "APPROVED", f"{field} decision must be APPROVED")
+        canonical_utc_timestamp(review.get("reviewedAt"), f"{field}.reviewedAt")
+        require(review.get("productionTrafficChanged") is False, f"{field} cannot change production traffic")
+        require(review.get("productionCredentialsUsed") is False, f"{field} cannot use production credentials")
+        require(review.get("automaticPromotionAuthorized") is False, f"{field} cannot authorize automatic promotion")
+        reviews[role] = review
+    require(record["securityReviewRef"] != record["operabilityReviewRef"], "security and operability review records must be distinct")
+    require(reviews["SECURITY"]["reviewerId"] != reviews["OPERABILITY"]["reviewerId"], "security and operability reviewers must be distinct")
+
+
 def validate_record(record: dict[str, Any]) -> None:
     contract = load(CONTRACT)
     required = set(contract.get("requiredRecordFields", []))
@@ -172,10 +255,7 @@ def validate_record(record: dict[str, Any]) -> None:
     else:
         require(backfill_refs == [], "backfillEvidenceRefs must be empty when backfillRequired=false")
 
-    for field in ("securityReviewRef", "operabilityReviewRef"):
-        value = record.get(field)
-        require(isinstance(value, str) and value and not Path(value).is_absolute() and ".." not in Path(value).parts and (ROOT / value).is_file(), f"{field} invalid")
-    require(record["securityReviewRef"] != record["operabilityReviewRef"], "security and operability review records must be distinct")
+    validate_independent_reviews(record)
     findings = record.get("unresolvedFindings")
     require(isinstance(findings, list), "unresolvedFindings must be a list")
     for index, finding in enumerate(findings):
