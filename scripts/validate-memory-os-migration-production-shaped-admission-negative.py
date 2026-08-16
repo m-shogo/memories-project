@@ -21,6 +21,7 @@ from memory_os_migration_production_admission_ledger import (
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / "contracts/operations/migration-production-shaped-admission-registry.v1.json"
 MIGRATION_LEDGER = ROOT / "contracts/operations/migration-evidence-registry.v1.json"
+RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
 CONTRACT = ROOT / "contracts/operations/migration-production-shaped-admission-contract.v1.json"
 LIFECYCLE = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
@@ -126,6 +127,22 @@ def expect_canonical_writer_delegation() -> None:
         MIGRATION_LEDGER.write_bytes(original)
 
 
+def expect_release_registry_delegation(writer: ModuleType) -> None:
+    original = RELEASES.read_bytes()
+    corrupt = load_json(RELEASES)
+    corrupt["unexpectedAuthority"] = True
+    RELEASES.write_text(json.dumps(corrupt, indent=2) + "\n", encoding="utf-8")
+    try:
+        try:
+            writer.approved_release("rel_missing_negative")
+        except Exception as exc:
+            require("release baseline registry invalid" in str(exc), "direct writer did not fail through canonical release registry authority")
+            return
+        raise Fail("direct migration writer accepted corrupt release baseline registry")
+    finally:
+        RELEASES.write_bytes(original)
+
+
 def expect_generic_review_refs_rejected(writer: ModuleType) -> None:
     record = {
         "admissionId": "mpa_review_negative",
@@ -160,8 +177,9 @@ def main() -> int:
         expect_reconcile_rejected_without_mutation(name, mutate)
     expect_noncanonical_ledger_rows_rejected()
     expect_canonical_writer_delegation()
+    expect_release_registry_delegation(writer)
     expect_generic_review_refs_rejected(writer)
-    print("PASS: migration production-shaped admission registry, ledger, and independent-review authority drift are rejected")
+    print("PASS: migration production-shaped admission registry, ledger, release, and independent-review authority drift are rejected")
     return 0
 
 
