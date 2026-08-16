@@ -547,7 +547,6 @@
         "host or container restart between spool seal and ResumeCommit with durable spool remount verification",
         "in-flight parser cancellation latency and process-group termination proof while the worker is blocked",
         "database loss or failover drill",
-        "object-store outage drill",
         "expanded parser restart matrix across timeout, CPU, memory, cancellation, process-group and host-restart failures",
         "mixed-version failure drill"
       ],
