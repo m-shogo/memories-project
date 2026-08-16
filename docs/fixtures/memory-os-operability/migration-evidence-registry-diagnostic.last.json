@@ -3,8 +3,8 @@
   "workflow": "migration-evidence-registry",
   "result": "FAIL",
   "exitCode": 1,
-  "sourceCommitSha": "5a1ef57f22c9bbd5d2aa391add277137e1544214",
-  "output": "STAGE: typed-recovery-self-test\ntyped recovery evidence negative self-tests PASS\nSTAGE: ledger-corruption-negatives\nPASS: migration rehearsal ledger corruption is rejected before append/reconcile\nSTAGE: local-artifact-static-validation\nMemory OS local migration recovery-artifact validation PASS\nresult: NOT_REQUESTED\nproduction evidence: false\nSTAGE: registry-validation\nMIGRATION EVIDENCE REGISTRY VALIDATION FAILED: records[1] recovery evidence invalid: cannot read first committed bytes for actual recovery artifact restore evidence: docs/evidence/migrations/recovery/mig_20260807_0b5839870b65.json\n",
+  "sourceCommitSha": "e4c9c91cff62efa392f9ce2a4d34bc828f00dd3e",
+  "output": "STAGE: typed-recovery-self-test\ntyped recovery evidence negative self-tests PASS\nSTAGE: ledger-corruption-negatives\nPASS: migration rehearsal ledger corruption, source-lineage drift and recovery-evidence mutation are rejected\nSTAGE: local-artifact-static-validation\nMemory OS local migration recovery-artifact validation PASS\nresult: NOT_REQUESTED\nproduction evidence: false\nSTAGE: registry-validation\nMIGRATION EVIDENCE REGISTRY VALIDATION FAILED: records[1] recovery evidence invalid: cannot read first committed bytes for actual recovery artifact restore evidence: docs/evidence/migrations/recovery/mig_20260807_0b5839870b65.json\n",
   "containsSecrets": false,
   "productionEvidence": false,
   "productionReady": false
