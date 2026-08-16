@@ -242,6 +242,7 @@ def main() -> int:
             "currentGenerationId": "pegen_target",
             "productionEvidence": False,
             "generations": [source, target],
+            "limitations": [],
         }
         write_json(generation_registry, canonical_generations)
         write_json(objectives_registry, {
