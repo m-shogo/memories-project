@@ -34,6 +34,8 @@ def load(path: Path) -> dict[str, Any]:
         value = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
         raise Fail(f"missing file: {path.relative_to(ROOT)}") from exc
+    except json.JSONDecodeError as exc:
+        raise Fail(f"invalid JSON: {path.relative_to(ROOT)}: {exc}") from exc
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
     return value
 
@@ -88,6 +90,26 @@ def assert_legacy_alias_safe_to_remove(row: dict[str, Any]) -> None:
     require(metadata.get("approvalAuthority") == "NONE", f"legacy {LEGACY_ALIAS_ID} row must not claim approval authority")
 
 
+def assert_projection_input_safe(rows: Any) -> list[dict[str, Any]]:
+    require(isinstance(rows, list), "externalExecutedScenarios must be a list")
+    normalized: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for index, row in enumerate(rows):
+        require(isinstance(row, dict), f"externalExecutedScenarios[{index}] must be an object")
+        scenario_id = row.get("scenarioId")
+        require(isinstance(scenario_id, str) and scenario_id,
+                f"externalExecutedScenarios[{index}].scenarioId is required")
+        require(scenario_id not in seen, f"duplicate external scenarioId before projection: {scenario_id}")
+        seen.add(scenario_id)
+        require(row.get("productionEvidence") is False,
+                f"external scenario cannot claim production evidence before local soak projection: {scenario_id}")
+        if "productionEquivalentDependencies" in row:
+            require(row.get("productionEquivalentDependencies") is False,
+                    f"external scenario cannot claim production-equivalent dependencies: {scenario_id}")
+        normalized.append(row)
+    return normalized
+
+
 def main() -> int:
     soak = load(SOAK_PATH)
     load_contract = load(LOAD_PATH)
@@ -122,10 +144,9 @@ def main() -> int:
     ):
         require(readiness.get(key) is False, f"sustained local soak authority must keep readiness.{key}=false")
 
-    rows = load_contract.get("externalExecutedScenarios")
-    require(isinstance(rows, list), "externalExecutedScenarios must be a list")
-    canonical = [row for row in rows if isinstance(row, dict) and row.get("scenarioId") == SCENARIO_ID]
-    legacy = [row for row in rows if isinstance(row, dict) and row.get("scenarioId") == LEGACY_ALIAS_ID]
+    rows = assert_projection_input_safe(load_contract.get("externalExecutedScenarios"))
+    canonical = [row for row in rows if row.get("scenarioId") == SCENARIO_ID]
+    legacy = [row for row in rows if row.get("scenarioId") == LEGACY_ALIAS_ID]
     require(len(canonical) <= 1, f"duplicate {SCENARIO_ID} rows are forbidden")
     require(len(legacy) <= 1, f"duplicate legacy {LEGACY_ALIAS_ID} rows are forbidden")
     if canonical:
@@ -136,7 +157,7 @@ def main() -> int:
     rebuilt = [
         row
         for row in rows
-        if not (isinstance(row, dict) and row.get("scenarioId") in {SCENARIO_ID, LEGACY_ALIAS_ID})
+        if row.get("scenarioId") not in {SCENARIO_ID, LEGACY_ALIAS_ID}
     ]
     if first_run:
         rebuilt.append(derived_row(local_evidence=local_evidence))
