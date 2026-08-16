@@ -45,6 +45,8 @@ jobs:
         id: migration
         run: |
           set +e
+          source_sha="$(git rev-parse HEAD)"
+          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
           log=/tmp/migration-evidence-registry.log
           : > "$log"
           code=0
@@ -126,8 +128,16 @@ jobs:
           exit 0
       - name: Commit bounded migration evidence authority
         if: steps.migration.outputs.exit_code == '0'
+        env:
+          SOURCE_COMMIT_SHA: ${{ steps.migration.outputs.source_sha }}
         run: |
           set -euo pipefail
+          git fetch origin so
+          remote_sha="$(git rev-parse origin/so)"
+          if [[ "$remote_sha" != "$SOURCE_COMMIT_SHA" ]]; then
+            echo "source HEAD advanced during validation; refusing stale migration evidence authority write" >&2
+            exit 75
+          fi
           git rm -f docs/fixtures/memory-os-operability/migration-evidence-registry-diagnostic.last.json 2>/dev/null || true
           git add \
             contracts/operations/migration-evidence-registry-contract.v1.json \
@@ -139,17 +149,21 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(migration): register typed recovery evidence authority"
-            git pull --rebase origin so
             git push origin HEAD:so
           fi
       - name: Record privacy-safe diagnostic
         if: steps.migration.outputs.exit_code != '0'
         env:
           MIGRATION_EXIT_CODE: ${{ steps.migration.outputs.exit_code }}
+          SOURCE_COMMIT_SHA: ${{ steps.migration.outputs.source_sha }}
         run: |
           set -euo pipefail
           git fetch origin so
-          git reset --hard origin/so
+          remote_sha="$(git rev-parse origin/so)"
+          if [[ "$remote_sha" != "$SOURCE_COMMIT_SHA" ]]; then
+            echo "source HEAD advanced during validation; refusing stale migration evidence diagnostic write" >&2
+            exit 75
+          fi
           python - <<'PY'
           import json, os
           from pathlib import Path
@@ -159,6 +173,7 @@ jobs:
               'workflow': 'migration-evidence-registry',
               'result': 'FAIL',
               'exitCode': int(os.environ['MIGRATION_EXIT_CODE']),
+              'sourceCommitSha': os.environ['SOURCE_COMMIT_SHA'],
               'output': text[-12000:],
               'containsSecrets': False,
               'productionEvidence': False,
@@ -173,7 +188,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --cached --quiet; then
             git commit -m "test(migration): record evidence registry diagnostic"
-            git pull --rebase origin so
             git push origin HEAD:so
           fi
       - name: Enforce migration evidence validation
