@@ -195,13 +195,8 @@ def validate_run_bindings(value: Any, record_authority: dict[str, Any], result_v
         require(isinstance(run_id, str) and run_id and len(run_id) <= 160, f"{field}[{index}].runId invalid")
         require(run_id not in run_ids, f"{field} contains duplicate runId")
         require(isinstance(evidence_ref, str) and evidence_ref, f"{field}[{index}].evidenceRef invalid")
-        relative = Path(evidence_ref)
-        require(not relative.is_absolute() and ".." not in relative.parts, f"{field}[{index}].evidenceRef unsafe")
-        full = (ROOT / relative).resolve()
-        base = (ROOT / canonical_dir).resolve()
-        require(full.is_relative_to(base), f"{field}[{index}] must use canonical run evidence directory")
+        _, full = dedicated_ref(evidence_ref, canonical_dir, f"{field}[{index}].evidenceRef")
         require(fnmatch.fnmatch(full.name, canonical_glob), f"{field}[{index}] must reference canonical LOCAL_LONG_SOAK run file")
-        require(full.is_file(), f"{field}[{index}] run evidence missing")
         require(evidence_ref not in refs, f"{field} contains duplicate evidenceRef")
         require(isinstance(digest, str) and SHA256.fullmatch(digest) is not None, f"{field}[{index}].sha256 invalid")
         actual_digest = hashlib.sha256(full.read_bytes()).hexdigest()
@@ -348,7 +343,8 @@ def main() -> int:
     require(isinstance(record_authority, dict), "recordAuthority must be object")
     for key in (
         "humanEvidenceMustUseDedicatedDirectory", "humanEvidenceMustBeTrackedAtHead", "humanEvidenceMustMatchHeadBlob",
-        "humanEvidenceMustBeSymlinkFree", "runEvidenceMustBeCanonicalAndPerRunValidated", "runEvidenceDigestMustMatchBytes",
+        "humanEvidenceMustBeSymlinkFree", "runEvidenceMustBeCanonicalAndPerRunValidated", "runEvidenceMustBeTrackedAtHead",
+        "runEvidenceMustMatchHeadBlob", "runEvidenceMustBeSymlinkFree", "runEvidenceDigestMustMatchBytes",
         "reviewRunBindingsMustExactlyMatchCriteria", "reviewerMustDifferFromCriteriaApprover", "reviewCannotPredateCriteriaApproval",
         "criteriaApprovalMustBindCanonicalRecordDigest", "independentReviewMustBindCanonicalRecordDigest",
         "productionEvidenceForbidden", "productionReadyForbidden",
@@ -422,6 +418,8 @@ def main() -> int:
     print("typed human criteria/review records accepted without dedicated evidence: false")
     print("untracked or modified human evidence accepted: false")
     print("symlinked human evidence accepted: false")
+    print("untracked or modified run evidence accepted: false")
+    print("symlinked run evidence accepted: false")
     print("human approval evidence without exact record digest binding accepted: false")
     print("review run-binding drift accepted: false")
     print("descriptive trend review implies independent review: false")
