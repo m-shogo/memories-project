@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove parser artifact append rejects corrupt registry aggregate authority."""
+"""Prove parser artifact append and reconcile reject corrupt registry authority."""
 
 from __future__ import annotations
 
@@ -13,7 +13,9 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 WRITER_PATH = ROOT / "scripts/register-memory-os-parser-artifact.py"
+RECONCILER_PATH = ROOT / "scripts/reconcile-memory-os-parser-artifact-registry.py"
 REGISTRY_PATH = ROOT / "contracts/operations/parser-artifact-registry.v1.json"
+STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 
 
 class NegativeFailure(RuntimeError):
@@ -25,14 +27,20 @@ def require(condition: bool, message: str) -> None:
         raise NegativeFailure(message)
 
 
-def load_writer() -> Any:
-    spec = importlib.util.spec_from_file_location(
-        "parser_artifact_writer_registry_negative", WRITER_PATH
-    )
-    require(spec is not None and spec.loader is not None, "cannot load parser writer")
+def load_module(path: Path, name: str) -> Any:
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load {name}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def load_writer() -> Any:
+    return load_module(WRITER_PATH, "parser_artifact_writer_registry_negative")
+
+
+def load_reconciler() -> Any:
+    return load_module(RECONCILER_PATH, "parser_artifact_reconciler_registry_negative")
 
 
 def expect_rejection(writer: Any, base: dict[str, Any], label: str,
@@ -44,6 +52,29 @@ def expect_rejection(writer: Any, base: dict[str, Any], label: str,
     except writer.RegistrationFailure:
         return
     raise NegativeFailure(f"writer accepted corrupt parser registry: {label}")
+
+
+def expect_reconcile_rejection(reconciler: Any, base: dict[str, Any], label: str,
+                               mutate: Callable[[dict[str, Any]], None]) -> None:
+    original_registry = REGISTRY_PATH.read_bytes()
+    original_status = STATUS_PATH.read_bytes()
+    candidate = copy.deepcopy(base)
+    mutate(candidate)
+    try:
+        REGISTRY_PATH.write_text(json.dumps(candidate, indent=2, ensure_ascii=False) + "\n",
+                                 encoding="utf-8")
+        try:
+            reconciler.main()
+        except reconciler.ReconcileFailure:
+            pass
+        else:
+            raise NegativeFailure(f"reconciler accepted corrupt parser registry: {label}")
+        require(STATUS_PATH.read_bytes() == original_status,
+                f"reconciler mutated status after corrupt parser registry: {label}")
+    finally:
+        REGISTRY_PATH.write_bytes(original_registry)
+        if STATUS_PATH.read_bytes() != original_status:
+            STATUS_PATH.write_bytes(original_status)
 
 
 def synthetic_bound_registry(base: dict[str, Any]) -> dict[str, Any]:
@@ -86,6 +117,7 @@ def synthetic_bound_registry(base: dict[str, Any]) -> dict[str, Any]:
 
 def main() -> int:
     writer = load_writer()
+    reconciler = load_reconciler()
     base = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
     require(isinstance(base, dict), "parser registry must be object")
     writer.validate_registry_for_append(copy.deepcopy(base))
@@ -105,6 +137,13 @@ def main() -> int:
     for label, mutate in cases:
         expect_rejection(writer, base, label, mutate)
 
+    for label, mutate in (
+        ("missing evidence digest authority", lambda value: value.pop("evidenceDigestsByArtifactId")),
+        ("appendOnly false", lambda value: value.__setitem__("appendOnly", False)),
+        ("production evidence promotion", lambda value: value.__setitem__("productionEvidence", True)),
+    ):
+        expect_reconcile_rejection(reconciler, base, label, mutate)
+
     bound = synthetic_bound_registry(base)
     writer.validate_registry_for_append(copy.deepcopy(bound))
     artifact_id = bound["latestReviewedArtifactId"]
@@ -122,6 +161,9 @@ def main() -> int:
         lambda value: value["evidenceDigestsByArtifactId"][artifact_id].pop(first_ref),
     )
 
+    require(REGISTRY_PATH.read_bytes() == json.dumps(base, indent=2, ensure_ascii=False).encode("utf-8") + b"\n" or
+            json.loads(REGISTRY_PATH.read_text(encoding="utf-8")) == base,
+            "parser registry was not restored after reconcile negatives")
     print("Parser artifact registry authority negative PASS")
     return 0
 
