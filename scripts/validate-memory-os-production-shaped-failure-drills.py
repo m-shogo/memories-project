@@ -14,6 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/production-shaped-failure-drill-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/production-shaped-failure-drill-registry.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-production-shaped-failure-drill.py"
+GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+GEN_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
 EXPECTED_REGISTRY_FIELDS = {
     "schemaVersion",
     "appendOnly",
@@ -45,15 +47,29 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def load_writer() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("memory_os_production_failure_writer", WRITER)
-    require(spec is not None and spec.loader is not None, "cannot load failure-drill writer")
+def load_module(path: Path, name: str) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load {path.name}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
+def load_writer() -> ModuleType:
+    return load_module(WRITER, "memory_os_production_failure_writer")
+
+
+def validate_generation_registry_authority() -> None:
+    generation_writer = load_module(GEN_WRITER, "memory_os_environment_generation_writer_for_failure_drill")
+    require(generation_writer.REGISTRY.resolve() == GEN_REGISTRY.resolve(), "environment generation registry authority drift")
+    try:
+        generation_writer.validate_registry_for_append(load(GEN_REGISTRY))
+    except generation_writer.Fail as exc:
+        raise Fail(f"environment generation registry rejected: {exc}") from exc
+
+
 def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any]]:
+    validate_generation_registry_authority()
     require(set(registry) == EXPECTED_REGISTRY_FIELDS, "registry field drift")
     require(registry.get("schemaVersion") == "memory-os-production-shaped-failure-drill-registry.v1", "registry schema drift")
     require(registry.get("appendOnly") is True, "registry must remain append-only")
