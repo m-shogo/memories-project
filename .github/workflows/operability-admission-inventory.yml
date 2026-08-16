@@ -52,6 +52,7 @@ on:
       - "scripts/validate-memory-os-operability-admission-inventory-registry-negative.py"
       - "scripts/validate-memory-os-sustained-soak-independent-review.py"
       - "scripts/validate-memory-os-sustained-soak-independent-review-negative.py"
+      - "scripts/validate-memory-os-sustained-soak-human-evidence-path-negative.py"
       - "scripts/validate-memory-os-sustained-local-soak-result.py"
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/memory_os_environment_generation_eligibility.py"
@@ -144,6 +145,7 @@ jobs:
             scripts/validate-memory-os-operability-admission-inventory-registry-negative.py \
             scripts/validate-memory-os-sustained-soak-independent-review.py \
             scripts/validate-memory-os-sustained-soak-independent-review-negative.py \
+            scripts/validate-memory-os-sustained-soak-human-evidence-path-negative.py \
             scripts/validate-memory-os-sustained-local-soak-result.py \
             scripts/memory_os_backup_restore_blockers.py \
             scripts/register-memory-os-recovery-objectives.py \
@@ -182,6 +184,9 @@ jobs:
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-sustained-soak-independent-review-negative.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-sustained-soak-human-evidence-path-negative.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1 || code=$?
@@ -267,6 +272,9 @@ jobs:
             SOURCE_SHA="$(git rev-parse HEAD)"
             export SOURCE_SHA
             : > "$log"
+            python scripts/validate-memory-os-sustained-soak-independent-review.py >> "$log" 2>&1
+            python scripts/validate-memory-os-sustained-soak-independent-review-negative.py >> "$log" 2>&1
+            python scripts/validate-memory-os-sustained-soak-human-evidence-path-negative.py >> "$log" 2>&1
             python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-drill-preflight.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py >> "$log" 2>&1
