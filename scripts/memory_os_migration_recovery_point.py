@@ -72,7 +72,7 @@ def require_first_addition_immutable(path: Path, label: str) -> None:
     require(status == "", f"{label} must be committed and unmodified: {relative}")
     additions = [
         line
-        for line in git_text("log", "--follow", "--diff-filter=A", "--format=%H", "--", relative.as_posix()).splitlines()
+        for line in git_text("log", "--diff-filter=A", "--format=%H", "--", relative.as_posix()).splitlines()
         if line
     ]
     require(len(additions) == 1,
