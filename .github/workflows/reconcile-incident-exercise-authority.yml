@@ -1,6 +1,13 @@
 name: Reconcile Incident Exercise Authority
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/reconcile-incident-exercise-authority.yml"
+      - "contracts/operations/incident-control-exercise-contract.v1.json"
+      - "docs/fixtures/memory-os-operability/incident-control-exercise-results.sample.v1.json"
+      - "scripts/reconcile-memory-os-incident-control-exercise.py"
+      - "scripts/validate-memory-os-incident-control-exercise.py"
   push:
     branches:
       - so
@@ -18,7 +25,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: reconcile-incident-exercise-authority-so
+  group: reconcile-incident-exercise-authority-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
@@ -29,10 +36,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout latest so
+      - name: Checkout exact authority source
         uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -46,10 +53,17 @@ jobs:
         run: python -m pip install --disable-pip-version-check --requirement requirements-security-validation.txt
 
       - name: Confirm exact clean authority source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          test "$(git branch --show-current)" = "so"
+          set -euo pipefail
           test -z "$(git status --porcelain)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+          else
+            test "$(git branch --show-current)" = "so"
+            test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          fi
           python -m py_compile \
             scripts/reconcile-memory-os-incident-control-exercise.py \
             scripts/validate-memory-os-incident-control-exercise.py
@@ -62,8 +76,19 @@ jobs:
           python scripts/validate-memory-os-incident-tabletop.py
           python scripts/validate-memory-os-operability.py
 
-      - name: Commit incident contract and status together
+      - name: Require deterministic authority on pull requests
+        if: github.event_name == 'pull_request'
         run: |
+          git diff --check
+          git diff --exit-code -- \
+            contracts/operations/incident-control-exercise-contract.v1.json \
+            contracts/operations/production-operability-status.json
+
+      - name: Commit incident contract and status together
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          source_sha="$(git rev-parse HEAD)"
           git add \
             contracts/operations/incident-control-exercise-contract.v1.json \
             contracts/operations/production-operability-status.json
@@ -71,8 +96,13 @@ jobs:
             echo "Incident exercise authority is already current."
             exit 0
           fi
+          git diff --cached --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "docs(incident): register automated control exercise"
-          git pull --rebase origin so
+          remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
+          if [[ "$remote_sha" != "$source_sha" ]]; then
+            echo "Incident exercise authority source is stale: validated $source_sha but so is $remote_sha" >&2
+            exit 75
+          fi
           git push origin HEAD:so
