@@ -21,8 +21,9 @@ EXISTING = (
     "append-only approved release baseline registry authority separating historical candidates, CI results, tags and branch heads from multi-role production release approval",
     "empty release registry explicitly records that no approved predecessor or rollback-eligible release exists",
     "release records require distinct Security, Operability and Release Owner approvals plus immutable API, migration, parser artifact and runtime configuration digests",
+    "release evidence references are source-bound to tracked non-symlink Git blobs at the approved release commit, so later evidence-path edits invalidate the authority instead of silently changing a historical release",
     "fail-closed release registry validator prevents active or rejected historical candidates from being relabeled as approved releases",
-    "exclusive-lock and atomic-replacement release writer verifies exact clean HEAD, exact tag binding, external input record, three-role approval, complete evidence and unique release ID, tag and commit without manufacturing any authority",
+    "exclusive-lock and atomic-replacement release writer verifies exact clean HEAD, exact tag binding, external input record, three-role approval, complete source-bound evidence and unique release ID, tag and commit without manufacturing any authority",
 )
 MISSING = (
     "approved predecessor release record with three distinct required approvers and complete compatibility, restore, security, migration, parser and load evidence",
@@ -38,6 +39,8 @@ REFS = (
     "docs/evidence/releases/README.md",
     "scripts/register-memory-os-release-baseline.py",
     "scripts/validate-memory-os-release-baseline-registry.py",
+    "scripts/validate-memory-os-release-baseline-evidence-binding.py",
+    "scripts/validate-memory-os-release-baseline-evidence-binding-negative.py",
     "scripts/reconcile-memory-os-release-baseline-registry.py",
     ".github/workflows/release-baseline-registry.yml",
 )
