@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import importlib.util
 import json
 import os
@@ -79,6 +80,31 @@ def require_source_commit_ancestor(source_commit: str) -> None:
     raise Fail("sourceCommitSha must be an ancestor of current HEAD")
 
 
+def head_blob(relative: str, field: str) -> bytes:
+    completed = subprocess.run(
+        ["git", "show", f"HEAD:{relative}"],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    require(completed.returncode == 0, f"{field} must be tracked at current HEAD")
+    return completed.stdout
+
+
+def canonical_evidence_path(value: Any, field: str) -> Path:
+    require(isinstance(value, str) and value, f"{field} invalid")
+    relative = Path(value)
+    require(not relative.is_absolute() and ".." not in relative.parts and relative.as_posix() == value, f"{field} must be a canonical repository-relative path")
+    absolute = ROOT / relative
+    try:
+        resolved = absolute.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository: {value}") from exc
+    require(resolved == relative and absolute.is_file(), f"{field} must resolve to the canonical repository file")
+    require(absolute.read_bytes() == head_blob(value, field), f"{field} working bytes differ from current HEAD")
+    return absolute
+
+
 def timestamp(value: Any, field: str) -> dt.datetime:
     require(isinstance(value, str) and value.endswith("Z"), f"{field} must be UTC RFC3339")
     try:
@@ -91,10 +117,10 @@ def timestamp(value: Any, field: str) -> dt.datetime:
 
 def refs(value: Any, field: str, minimum: int = 1) -> list[str]:
     require(isinstance(value, list) and len(value) >= minimum, f"{field} requires at least {minimum} ref(s)")
-    require(all(isinstance(item, str) and item and not Path(item).is_absolute() and ".." not in Path(item).parts for item in value), f"{field} invalid")
+    require(all(isinstance(item, str) and item for item in value), f"{field} invalid")
     require(len(value) == len(set(value)), f"{field} contains duplicates")
     for item in value:
-        require((ROOT / item).is_file(), f"{field} path missing: {item}")
+        canonical_evidence_path(item, field)
     return value
 
 
@@ -106,6 +132,28 @@ def scenario_map(contract: dict[str, Any]) -> dict[str, dict[str, Any]]:
         require(isinstance(row, dict) and isinstance(row.get("id"), str), "scenario class invalid")
         require(row["id"] not in result, "duplicate scenario class")
         result[row["id"]] = row
+    return result
+
+
+def evidence_refs_for_record(record: dict[str, Any]) -> list[str]:
+    values: list[str] = []
+    assertions = record.get("assertions")
+    if isinstance(assertions, list):
+        for row in assertions:
+            if isinstance(row, dict) and isinstance(row.get("evidenceRefs"), list):
+                values.extend(item for item in row["evidenceRefs"] if isinstance(item, str))
+    for field in ("operabilityReviewRef", "securityReviewRef"):
+        value = record.get(field)
+        if isinstance(value, str):
+            values.append(value)
+    return sorted(set(values))
+
+
+def evidence_digests_for_record(record: dict[str, Any]) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for relative in evidence_refs_for_record(record):
+        path = canonical_evidence_path(relative, "failure-drill evidence ref")
+        result[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
     return result
 
 
@@ -172,8 +220,7 @@ def validate_record(record: dict[str, Any], confirmation: str) -> None:
     require(actual_requirements == set(expected), "all required scenario assertions need PASS evidence")
 
     for field in ("operabilityReviewRef", "securityReviewRef"):
-        value = record.get(field)
-        require(isinstance(value, str) and value and not Path(value).is_absolute() and ".." not in Path(value).parts and (ROOT / value).is_file(), f"{field} invalid")
+        canonical_evidence_path(record.get(field), field)
     require(record["operabilityReviewRef"] != record["securityReviewRef"], "security and operability review must be distinct records")
     findings = record.get("unresolvedFindings")
     require(isinstance(findings, list), "unresolvedFindings must be a list")
@@ -231,6 +278,10 @@ def main() -> int:
         drills = validate_registry_before_append(registry)
         require(all(item.get("drillId") != record["drillId"] for item in drills), "drillId already registered")
         require(all(not (item.get("scenarioId") == record["scenarioId"] and item.get("environmentClass") == record["environmentClass"] and item.get("environmentIdentityDigest") == record["environmentIdentityDigest"]) for item in drills), "same scenario/environment already registered")
+        digest_authority = registry.get("evidenceDigestsByDrillId")
+        require(isinstance(digest_authority, dict), "evidence digest authority missing")
+        require(record["drillId"] not in digest_authority, "evidence digest authority already exists for drillId")
+        digest_authority[record["drillId"]] = evidence_digests_for_record(record)
         drills.append(record)
         registry["registeredDrillCount"] = len(drills)
         registry["productionEquivalentDrillCount"] = sum(1 for item in drills if item.get("environmentClass") == "PRODUCTION_EQUIVALENT")
