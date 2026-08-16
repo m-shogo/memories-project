@@ -89,6 +89,16 @@ def git_bytes(*args: str) -> bytes:
     return completed.stdout
 
 
+def require_source_ancestor(source: str) -> None:
+    completed = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", source, "HEAD"],
+        cwd=ROOT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    require(completed.returncode == 0, "sourceCommitSha must be an ancestor of current HEAD")
+
+
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -142,6 +152,7 @@ def validate_record(record: dict[str, Any], confirmation: str) -> None:
     source = record.get("sourceCommitSha")
     require(isinstance(source, str) and SHA40.fullmatch(source), "sourceCommitSha invalid")
     require(git("cat-file", "-e", source + "^{commit}") == "", "source commit does not exist")
+    require_source_ancestor(source)
     for field in ("environmentIdentityDigest", "sharedStoreIdentityDigest", "trustedProxyConfigurationDigest"):
         require(isinstance(record.get(field), str) and DIGEST.fullmatch(record[field]), f"{field} must be SHA-256 digest")
     instances = record.get("runtimeInstanceIdentityDigests")
