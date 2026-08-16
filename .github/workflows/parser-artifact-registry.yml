@@ -6,9 +6,11 @@ on:
       - ".github/workflows/parser-artifact-registry.yml"
       - "contracts/operations/parser-artifact-registry-contract.v1.json"
       - "contracts/operations/parser-artifact-registry.v1.json"
+      - "contracts/operations/release-baseline-registry-contract.v1.json"
       - "contracts/operations/release-baseline-registry.v1.json"
       - "docs/runbooks/memory-os-parser-artifact-registry.md"
       - "scripts/register-memory-os-parser-artifact.py"
+      - "scripts/register-memory-os-release-baseline.py"
       - "scripts/validate-memory-os-parser-artifact-registry.py"
       - "scripts/reconcile-memory-os-parser-artifact-registry.py"
       - "services/import-api/internal/parsersup/worker.go"
@@ -19,9 +21,11 @@ on:
       - ".github/workflows/parser-artifact-registry.yml"
       - "contracts/operations/parser-artifact-registry-contract.v1.json"
       - "contracts/operations/parser-artifact-registry.v1.json"
+      - "contracts/operations/release-baseline-registry-contract.v1.json"
       - "contracts/operations/release-baseline-registry.v1.json"
       - "docs/runbooks/memory-os-parser-artifact-registry.md"
       - "scripts/register-memory-os-parser-artifact.py"
+      - "scripts/register-memory-os-release-baseline.py"
       - "scripts/validate-memory-os-parser-artifact-registry.py"
       - "scripts/reconcile-memory-os-parser-artifact-registry.py"
       - "services/import-api/internal/parsersup/worker.go"
@@ -71,6 +75,7 @@ jobs:
           test -z "$(git status --porcelain)"
           python -m py_compile \
             scripts/register-memory-os-parser-artifact.py \
+            scripts/register-memory-os-release-baseline.py \
             scripts/validate-memory-os-parser-artifact-registry.py \
             scripts/reconcile-memory-os-parser-artifact-registry.py
 
