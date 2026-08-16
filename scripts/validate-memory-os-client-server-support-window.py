@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -13,6 +14,8 @@ CONTRACT = ROOT / "contracts/operations/client-server-support-window-contract.v1
 RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
 CLIENTS = ROOT / "contracts/operations/client-baseline-registry.v1.json"
 SKEW = ROOT / "contracts/operations/client-server-skew-registry.v1.json"
+RELEASE_WRITER = ROOT / "scripts/register-memory-os-release-baseline.py"
+CLIENT_WRITER = ROOT / "scripts/register-memory-os-client-baseline.py"
 
 
 class Fail(RuntimeError):
@@ -33,11 +36,42 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def load_module(path: Path, name: str) -> Any:
+    require(path.is_file(), f"canonical authority missing: {path.relative_to(ROOT)}")
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None,
+            f"cannot load canonical authority: {path.relative_to(ROOT)}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def validate_upstream_registries(releases: dict[str, Any], clients: dict[str, Any]) -> None:
+    release_writer = load_module(RELEASE_WRITER, "memory_os_release_writer_for_support_window")
+    require(Path(release_writer.REGISTRY_PATH).resolve() == RELEASES.resolve(),
+            "canonical release registry authority drift")
+    release_contract = load(Path(release_writer.CONTRACT_PATH))
+    try:
+        release_writer.validate_registry_for_append(releases, release_contract)
+    except Exception as exc:
+        raise Fail(f"approved release authority invalid: {exc}") from exc
+
+    client_writer = load_module(CLIENT_WRITER, "memory_os_client_writer_for_support_window")
+    require(Path(client_writer.REGISTRY).resolve() == CLIENTS.resolve(),
+            "canonical client registry authority drift")
+    try:
+        client_writer.validate_registry_for_append(clients)
+    except Exception as exc:
+        raise Fail(f"approved client authority invalid: {exc}") from exc
+
+
 def main() -> int:
     contract = load(CONTRACT)
     releases = load(RELEASES)
     clients = load(CLIENTS)
     skew = load(SKEW)
+
+    validate_upstream_registries(releases, clients)
 
     require(contract.get("schemaVersion") == "memory-os-client-server-support-window.v1", "contract schema drift")
     require(contract.get("releaseRegistry") == str(RELEASES.relative_to(ROOT)), "release registry ref drift")
@@ -99,14 +133,16 @@ def main() -> int:
     require(releases.get("schemaVersion") == "memory-os-release-baseline-registry.v1", "release registry schema drift")
     require(releases.get("appendOnly") is True and releases.get("productionEvidence") is False, "release registry boundary drift")
     approved_release_count = releases.get("approvedReleaseCount")
-    require(isinstance(approved_release_count, int) and approved_release_count >= 0, "approvedReleaseCount invalid")
+    require(isinstance(approved_release_count, int) and not isinstance(approved_release_count, bool) and approved_release_count >= 0,
+            "approvedReleaseCount invalid")
     release_rows = releases.get("releases")
     require(isinstance(release_rows, list) and len(release_rows) == approved_release_count, "release registry count mismatch")
 
     require(clients.get("schemaVersion") == "memory-os-client-baseline-registry.v1", "client registry schema drift")
     require(clients.get("appendOnly") is True and clients.get("productionEvidence") is False, "client registry boundary drift")
     approved_client_count = clients.get("approvedClientBaselineCount")
-    require(isinstance(approved_client_count, int) and approved_client_count >= 0, "approvedClientBaselineCount invalid")
+    require(isinstance(approved_client_count, int) and not isinstance(approved_client_count, bool) and approved_client_count >= 0,
+            "approvedClientBaselineCount invalid")
     client_rows = clients.get("clients")
     require(isinstance(client_rows, list) and len(client_rows) == approved_client_count, "client registry count mismatch")
 
@@ -114,12 +150,10 @@ def main() -> int:
     require(skew.get("appendOnly") is True and skew.get("productionEvidence") is False, "skew registry boundary drift")
     pair_count = skew.get("admissibleSkewPairCount")
     pairs = skew.get("pairs")
-    require(isinstance(pair_count, int) and pair_count >= 0, "admissibleSkewPairCount invalid")
+    require(isinstance(pair_count, int) and not isinstance(pair_count, bool) and pair_count >= 0,
+            "admissibleSkewPairCount invalid")
     require(isinstance(pairs, list) and len(pairs) == pair_count, "skew registry count mismatch")
 
-    # Current repository boundary: no approved backend or client baseline means
-    # support-window admission is mathematically empty. This prevents a future
-    # candidate/CI result from silently manufacturing a compatibility promise.
     require(approved_release_count == 0, "current foundation expects zero approved backend releases")
     require(approved_client_count == 0, "current foundation expects zero approved client baselines")
     require(pair_count == 0, "no skew pair may be admitted while either approved registry is empty")
