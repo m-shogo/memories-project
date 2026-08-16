@@ -1,6 +1,11 @@
 name: Reconcile Live Apply Replay Load
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/reconcile-live-apply-replay-load.yml"
+      - "scripts/reconcile-memory-os-live-apply-replay-load.py"
+      - "services/import-api/internal/httpserver/live_load_test.go"
   push:
     branches:
       - so
@@ -14,7 +19,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: reconcile-live-apply-replay-load-so
+  group: reconcile-live-apply-replay-load-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
@@ -25,10 +30,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Checkout latest so
+      - name: Checkout exact source
         uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -42,6 +47,17 @@ jobs:
           go-version: "1.23.x"
           cache: false
 
+      - name: Capture exact source
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          SOURCE_SHA="$(git rev-parse HEAD)"
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            git fetch origin so
+            test "$(git rev-parse origin/so)" = "$SOURCE_SHA"
+          fi
+          echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
+
       - name: Reconcile replay workload
         run: |
           set -euo pipefail
@@ -49,10 +65,19 @@ jobs:
           python scripts/reconcile-memory-os-live-apply-replay-load.py
           gofmt -w services/import-api/internal/httpserver/live_load_test.go
           test -z "$(gofmt -l services/import-api/internal/httpserver/live_load_test.go)"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git diff --exit-code -- services/import-api/internal/httpserver/live_load_test.go
+          fi
 
       - name: Commit workload authority
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
+          git fetch origin so
+          if [[ "$(git rev-parse HEAD)" != "$SOURCE_SHA" ]] || [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "so advanced during live Apply replay reconciliation; refusing stale source rewrite."
+            exit 75
+          fi
           git add services/import-api/internal/httpserver/live_load_test.go
           if git diff --cached --quiet; then
             echo "Live Apply workload is already reconciled."
@@ -61,5 +86,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "fix(load): separate Apply claim from replay load"
-          git pull --rebase origin so
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "so advanced before live Apply replay source push; refusing stale source rewrite."
+            exit 75
+          fi
           git push origin HEAD:so
