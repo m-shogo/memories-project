@@ -12,6 +12,7 @@ on:
       - "scripts/validate-memory-os-version-compatibility.py"
       - "scripts/validate-memory-os-version-compatibility-foundations.py"
       - "scripts/reconcile-memory-os-version-compatibility-foundation-status.py"
+      - "scripts/validate-memory-os-operability.py"
       - "docs/fixtures/memory-os-operability/mixed-version-session-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json"
@@ -32,6 +33,7 @@ on:
       - "scripts/validate-memory-os-version-compatibility.py"
       - "scripts/validate-memory-os-version-compatibility-foundations.py"
       - "scripts/reconcile-memory-os-version-compatibility-foundation-status.py"
+      - "scripts/validate-memory-os-operability.py"
       - "docs/fixtures/memory-os-operability/mixed-version-session-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json"
@@ -87,7 +89,8 @@ jobs:
             scripts/reconcile-memory-os-version-compatibility-canonical.py \
             scripts/validate-memory-os-version-compatibility.py \
             scripts/validate-memory-os-version-compatibility-foundations.py \
-            scripts/reconcile-memory-os-version-compatibility-foundation-status.py
+            scripts/reconcile-memory-os-version-compatibility-foundation-status.py \
+            scripts/validate-memory-os-operability.py
 
       - name: Restore conservative canonical authority
         run: python scripts/reconcile-memory-os-version-compatibility-canonical.py
@@ -99,6 +102,15 @@ jobs:
         run: |
           python scripts/reconcile-memory-os-version-compatibility-foundation-status.py
           python scripts/validate-memory-os-version-compatibility-foundations.py
+
+      - name: Require deterministic authority on pull requests
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code -- \
+            contracts/operations/version-compatibility-contract.v1.json \
+            contracts/operations/production-operability-status.json
 
       - name: Commit compatibility authorities
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
