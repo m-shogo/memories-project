@@ -82,6 +82,9 @@ jobs:
             scripts/reconcile-memory-os-migration-evidence-registry.py
           bash -n scripts/run-memory-os-local-migration-recovery-artifact.sh
           python scripts/validate-memory-os-local-migration-recovery-artifact.py
+          BASE_SHA="$(git rev-parse HEAD)"
+          git fetch origin so
+          test "$(git rev-parse origin/so)" = "$BASE_SHA"
           python scripts/reconcile-memory-os-migration-evidence-registry.py
           git add \
             contracts/operations/migration-evidence-registry-contract.v1.json \
@@ -91,7 +94,11 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(migration): reconcile recovery evidence foundation"
-            git pull --rebase origin so
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$BASE_SHA" ]]; then
+              echo "so advanced during migration foundation reconcile; refusing stale authority write."
+              exit 75
+            fi
             git push origin HEAD:so
           fi
           git fetch origin so
@@ -153,6 +160,7 @@ jobs:
             exit 75
           fi
           git reset --hard origin/so
+          BASE_SHA="$(git rev-parse HEAD)"
           target="docs/evidence/migrations/recovery/${RUN_ID}.json"
           if [[ -f "$target" ]]; then
             python scripts/validate-memory-os-local-migration-recovery-artifact.py \
@@ -166,7 +174,11 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "test(migration): record local recovery artifact rehearsal"
-            git pull --rebase origin so
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$BASE_SHA" ]]; then
+              echo "so advanced before recovery artifact result push; refusing stale append."
+              exit 75
+            fi
             git push origin HEAD:so
           fi
 
@@ -176,6 +188,7 @@ jobs:
           set -euo pipefail
           git fetch origin so
           git reset --hard origin/so
+          BASE_SHA="$(git rev-parse HEAD)"
           result="docs/evidence/migrations/recovery/${RUN_ID}.json"
           python scripts/validate-memory-os-local-migration-recovery-artifact.py \
             --path "$result" --expected-commit-sha "$SOURCE_SHA" --require-result
@@ -191,7 +204,6 @@ jobs:
           if [[ "$already_registered" != "1" ]]; then
             RUN_ID="$RUN_ID" SOURCE_SHA="$SOURCE_SHA" RESULT_PATH="$result" RECORD_PATH="/tmp/${RUN_ID}-record.json" python - <<'PY'
           import datetime as dt
-          import hashlib
           import json
           import os
           from pathlib import Path
@@ -273,7 +285,11 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(migration): register local recovery artifact rehearsal"
-            git pull --rebase origin so
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$BASE_SHA" ]]; then
+              echo "so advanced before migration rehearsal authority push; refusing stale registry append."
+              exit 75
+            fi
             git push origin HEAD:so
           fi
 
@@ -285,7 +301,10 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin so
-          git reset --hard origin/so
+          if [[ "$(git rev-parse HEAD)" != "$SOURCE_SHA" ]] || [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "so advanced after the failed migration rehearsal; refusing stale diagnostic write."
+            exit 75
+          fi
           python - <<'PY'
           import json, os, re
           from pathlib import Path
@@ -317,7 +336,11 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --cached --quiet; then
             git commit -m "test(migration): record local recovery artifact diagnostic"
-            git pull --rebase origin so
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              echo "so advanced before migration diagnostic push; refusing stale diagnostic write."
+              exit 75
+            fi
             git push origin HEAD:so
           fi
 
