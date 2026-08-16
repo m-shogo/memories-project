@@ -324,7 +324,7 @@
   "deferredScenarios": [
     {
       "scenarioId": "capacity-ramp-local-postgres-minio",
-      "reason": "a bounded local PostgreSQL plus MinIO lifecycle ramp now executes through concurrency 48 with pool telemetry, but no failure/degradation boundary was established; repeatable overload discovery and independently reviewed safe operating thresholds remain deferred",
+      "reason": "a bounded authenticated Preview ramp now executes against local PostgreSQL, but it observed no saturation transition and does not exercise MinIO; deliberate overload, queue/backlog observation and reviewed safe operating thresholds remain deferred",
       "requiredDependencyMode": "LOCAL_POSTGRES_MINIO"
     },
     {
@@ -360,7 +360,7 @@
     "cardinalityProof": true,
     "operationalThresholds": false,
     "productionEquivalentDependencies": false,
-    "note": "Mock and local dependency checkpoints now include bounded ramp, short CI stability and post-fence deletion load. They establish neither production capacity nor pre-fence request linearization, sustained-soak/leak proof or production-equivalent behavior; OPS-P0-006 remains PARTIAL. Actual Linux SIGKILL worker recovery is now proven locally; host/container failure and production topology remain unproven. Docker worker-container kill/replacement recovery is proven locally; physical host/node/AZ failure remains unproven. Local lease-expiry recovery now also proves attempt-2 reclaim and idempotent recovery from object-erased-before-DB-sweep interruption simulation; actual process kill and host failure remain unproven.",
+    "note": "Mock and local dependency checkpoints are supplemented by bounded ramp and short CI stability samples. These record local concurrency and process trends but establish neither a saturation boundary nor sustained-soak/leak proof; OPS-P0-006 remains PARTIAL.",
     "boundedLocalCapacityRampExecuted": true,
     "shortCIStabilitySampleExecuted": true,
     "deletionPostFenceLoadExecuted": true,
