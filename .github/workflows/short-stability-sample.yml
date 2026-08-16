@@ -22,7 +22,7 @@ permissions:
 
 concurrency:
   group: short-stability-sample-so
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   sample:
