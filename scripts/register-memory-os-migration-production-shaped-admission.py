@@ -19,6 +19,11 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+from memory_os_migration_production_admission_ledger import (
+    LedgerBindingFailure,
+    require_registered_production_equivalent_rehearsal,
+)
+
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/migration-production-shaped-admission-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/migration-production-shaped-admission-registry.v1.json"
@@ -135,6 +140,14 @@ def validate_record(record: dict[str, Any]) -> None:
     require(isinstance(manifest, str) and DIGEST.fullmatch(manifest), "environmentManifestSha256 invalid")
     generation = registered_generation(generation_id)
     require(generation.get("environmentManifestSha256") == manifest, "environment manifest digest does not match registered generation")
+    try:
+        require_registered_production_equivalent_rehearsal(
+            migration_run_id=record["migrationRunId"],
+            source_commit_sha=source,
+            environment_generation_id=generation_id,
+        )
+    except LedgerBindingFailure as exc:
+        raise Fail(f"canonical migration ledger binding invalid: {exc}") from exc
 
     predecessor = record.get("predecessorReleaseId")
     successor = record.get("successorReleaseId")
