@@ -1,6 +1,14 @@
 name: Deletion Worker Host Failure Admission
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/deletion-worker-host-failure-admission.yml"
+      - "contracts/operations/deletion-worker-host-failure-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "scripts/validate-memory-os-deletion-worker-host-failure.py"
+      - "scripts/reconcile-memory-os-deletion-worker-host-failure.py"
   push:
     branches:
       - so
@@ -17,7 +25,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: deletion-worker-host-failure-admission-so
+  group: deletion-worker-host-failure-admission-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
@@ -27,11 +35,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Confirm exact clean authority source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+          else
+            test "$(git branch --show-current)" = "so"
+            test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          fi
       - name: Validate and reconcile physical host-failure boundary
         id: admission
         run: |
@@ -52,10 +72,19 @@ jobs:
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
+      - name: Require deterministic authority on pull requests
+        if: github.event_name == 'pull_request' && steps.admission.outputs.exit_code == '0'
+        run: |
+          git diff --check
+          git diff --exit-code -- \
+            contracts/operations/deletion-worker-host-failure-contract.v1.json \
+            contracts/operations/production-operability-status.json \
+            docs/fixtures/memory-os-operability/deletion-worker-host-failure-admission-diagnostic.last.json
       - name: Commit bounded foundation authority
-        if: steps.admission.outputs.exit_code == '0'
+        if: github.event_name != 'pull_request' && steps.admission.outputs.exit_code == '0'
         run: |
           set -euo pipefail
+          source_sha="$(git rev-parse HEAD)"
           git rm -f docs/fixtures/memory-os-operability/deletion-worker-host-failure-admission-diagnostic.last.json 2>/dev/null || true
           git add \
             contracts/operations/deletion-worker-host-failure-contract.v1.json \
@@ -66,25 +95,30 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(deletion): register host-failure admission foundation"
-            git pull --rebase origin so
+            remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
+            if [[ "$remote_sha" != "$source_sha" ]]; then
+              echo "Host-failure authority source is stale: validated $source_sha but so is $remote_sha" >&2
+              exit 75
+            fi
             git push origin HEAD:so
           fi
       - name: Record privacy-safe diagnostic
-        if: steps.admission.outputs.exit_code != '0'
+        if: github.event_name != 'pull_request' && steps.admission.outputs.exit_code != '0'
         env:
           ADMISSION_EXIT_CODE: ${{ steps.admission.outputs.exit_code }}
         run: |
           set -euo pipefail
-          git fetch origin so
-          git reset --hard origin/so
+          source_sha="$(git rev-parse HEAD)"
           python - <<'PY'
-          import json, os
+          import json, os, subprocess
           from pathlib import Path
           text = Path('/tmp/deletion-host-failure-admission.log').read_text(encoding='utf-8', errors='replace')
+          source_sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
           value = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'deletion-worker-host-failure-admission',
               'result': 'FAIL',
+              'sourceCommitSha': source_sha,
               'exitCode': int(os.environ['ADMISSION_EXIT_CODE']),
               'output': text[-12000:],
               'containsSecrets': False,
@@ -103,7 +137,11 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --cached --quiet; then
             git commit -m "test(deletion): record host-failure admission diagnostic"
-            git pull --rebase origin so
+            remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
+            if [[ "$remote_sha" != "$source_sha" ]]; then
+              echo "Host-failure diagnostic source is stale: validated $source_sha but so is $remote_sha" >&2
+              exit 75
+            fi
             git push origin HEAD:so
           fi
       - name: Enforce admission result
