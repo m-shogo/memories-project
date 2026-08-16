@@ -21,6 +21,7 @@ REGISTRY = ROOT / "contracts/operations/production-shaped-failure-drill-registry
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 VALIDATOR = ROOT / "scripts/validate-memory-os-production-shaped-failure-drills.py"
 LOCK = ROOT / "contracts/operations/.production-shaped-failure-drill.lock"
+REVIEW_ROOT = Path("docs/evidence/production-shaped-failure-drills/independent-reviews")
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
 DRILL_ID = re.compile(r"^fdr_[a-z0-9][a-z0-9_-]{7,63}$")
@@ -205,7 +206,12 @@ def validate_review_payload(review: dict[str, Any], record: dict[str, Any], fiel
 
 
 def validate_review(record: dict[str, Any], ref_field: str, expected_role: str) -> str:
-    path = canonical_evidence_path(record.get(ref_field), ref_field)
+    review_ref = record.get(ref_field)
+    require(
+        isinstance(review_ref, str) and Path(review_ref).is_relative_to(REVIEW_ROOT),
+        f"{ref_field} must use monitored failure-drill independent review namespace",
+    )
+    path = canonical_evidence_path(review_ref, ref_field)
     try:
         review = load(path)
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
