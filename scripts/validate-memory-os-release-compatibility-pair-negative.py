@@ -82,7 +82,7 @@ def synthetic_releases(rollback_status: str) -> dict[str, Any]:
 
 def synthetic_pair(writer: ModuleType) -> dict[str, Any]:
     releases = synthetic_releases("ELIGIBLE")["releases"]
-    return {
+    pair = {
         "schemaVersion": "memory-os-release-compatibility-pair-record.v1",
         "pairId": "rcp_release_pair_test1",
         "predecessorReleaseId": releases[0]["releaseId"],
@@ -101,6 +101,8 @@ def synthetic_pair(writer: ModuleType) -> dict[str, Any]:
         "productionEvidence": False,
         "productionReady": False,
     }
+    writer.bind_evidence_digests(pair)
+    return pair
 
 
 def main() -> int:
@@ -115,6 +117,22 @@ def main() -> int:
         writer.validated_release_registry = lambda: synthetic_releases("ELIGIBLE")
         pair = synthetic_pair(writer)
         writer.validate_record(pair)
+
+        missing_digest_field = copy.deepcopy(pair)
+        missing_digest_field.pop("evidenceDigestsByField")
+        expect_rejected("missing evidence digest authority", lambda: writer.validate_record(missing_digest_field))
+
+        missing_digest_ref = copy.deepcopy(pair)
+        missing_digest_ref["evidenceDigestsByField"]["rollingDeploymentEvidenceRefs"].clear()
+        expect_rejected("missing evidence digest ref", lambda: writer.validate_record(missing_digest_ref))
+
+        malformed_digest = copy.deepcopy(pair)
+        malformed_digest["evidenceDigestsByField"]["rollingDeploymentEvidenceRefs"]["README.md"] = "not-a-sha256"
+        expect_rejected("malformed evidence digest", lambda: writer.validate_record(malformed_digest))
+
+        stale_digest = copy.deepcopy(pair)
+        stale_digest["evidenceDigestsByField"]["rollingDeploymentEvidenceRefs"]["README.md"] = "0" * 64
+        expect_rejected("stale evidence digest", lambda: writer.validate_record(stale_digest))
 
         writer.validated_release_registry = lambda: synthetic_releases("NOT_ELIGIBLE")
         expect_rejected("non-eligible predecessor", lambda: writer.validate_record(pair))
@@ -140,7 +158,7 @@ def main() -> int:
 
     require(REGISTRY.read_bytes() == (ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json").read_bytes(),
             "negative suite mutated canonical pair registry")
-    print("PASS: release compatibility pair authority rejects registry corruption and honors nested rollback eligibility")
+    print("PASS: release compatibility pair authority rejects registry corruption, evidence digest drift, and nested rollback ineligibility")
     return 0
 
 
