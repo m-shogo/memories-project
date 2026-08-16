@@ -1,8 +1,8 @@
 {
   "schemaVersion": "memory-os-mixed-version-candidate-results.v1",
-  "currentCommitSha": "35bd3bbe3025631221c9e781a539d1a79193b00b",
+  "currentCommitSha": "f29659e406627508413fd652b949ec790b80b696",
   "candidateBaselineCommitSha": "2af6e8e10755cc707c6bdd958a049a0f4afb3d70",
-  "generatedAt": "2026-08-12T07:21:08.763544Z",
+  "generatedAt": "2026-08-16T21:28:59.653610Z",
   "environment": {
     "mode": "EPHEMERAL_POSTGRESQL_16_MINIO_TWO_DATABASE_CANDIDATE_BASELINE",
     "productionEvidence": false,
@@ -14,8 +14,8 @@
   },
   "scenario": {
     "scenarioId": "historical-candidate-on-current-expanded-schema",
-    "startedAt": "2026-08-12T07:20:42Z",
-    "completedAt": "2026-08-12T07:21:08Z",
+    "startedAt": "2026-08-16T21:28:33Z",
+    "completedAt": "2026-08-16T21:28:59Z",
     "durationSeconds": 26,
     "currentMigrationsAppliedPerDatabase": 11,
     "candidateBaselineSqlTestsExecuted": 11,
@@ -23,7 +23,7 @@
     "candidateBaselineGoPackagesExecuted": 4,
     "currentGoPackagesExecuted": 4,
     "baselineSqlOrderSource": "BASELINE_SECURITY_CONTRACTS_WORKFLOW",
-    "memoryOsSchemaFingerprintSha256": "71d7bdebb6123bc19606f6069554876bdb64ebfbaaae214cd4d58ce082be72f0",
+    "memoryOsSchemaFingerprintSha256": "527d9d84538d6c803172e4624c212251d5bffd3e27f03b9a4aa17575f7b61271",
     "assertions": {
       "baselineIsAncestorOfCurrent": true,
       "currentExpandedSchemaAppliedToBothDatabases": true,
