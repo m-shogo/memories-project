@@ -43,6 +43,15 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Capture exact live authority source
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
       - name: Compile authority tools
         run: |
           test -z "$(git status --porcelain)"
@@ -68,7 +77,6 @@ jobs:
           import json
           import os
           import re
-          import subprocess
           from pathlib import Path
 
           output = Path('/tmp/live-load-authority.log').read_text(
@@ -85,9 +93,7 @@ jobs:
           diagnostic = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'reconcile-live-load-authority-v2',
-              'sourceCommitSha': subprocess.check_output(
-                  ['git', 'rev-parse', 'HEAD'], text=True
-              ).strip(),
+              'sourceCommitSha': os.environ['SOURCE_SHA'],
               'result': 'PASS' if os.environ['VALIDATION_EXIT_CODE'] == '0' else 'FAIL',
               'exitCode': int(os.environ['VALIDATION_EXIT_CODE']),
               'output': output,
@@ -101,6 +107,12 @@ jobs:
 
       - name: Commit bounded diagnostic
         run: |
+          set -euo pipefail
+          git fetch origin so
+          if [ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]; then
+            echo "Live load authority source changed after validation; refusing stale diagnostic." >&2
+            exit 75
+          fi
           git add docs/fixtures/memory-os-operability/live-load-authority-diagnostic.last.json
           if git diff --cached --quiet; then
             echo "Live load diagnostic is already current."
@@ -112,17 +124,22 @@ jobs:
             else
               git commit -m "test(load): record live authority diagnostic"
             fi
-          fi
-          git pull --rebase origin so
-          if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/so)" ]; then
+            git fetch origin so
+            if [ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]; then
+              echo "Branch advanced before live load diagnostic push; refusing stale diagnostic." >&2
+              exit 75
+            fi
             git push origin HEAD:so
           fi
 
       - name: Reconcile validated evidence into status
         if: steps.validation.outputs.exit_code == '0'
         run: |
-          # The diagnostic commit may have rebased onto a concurrently advanced
-          # so branch. Revalidate the latest authority before any derived write.
+          set -euo pipefail
+          # A diagnostic commit may now be the branch HEAD. Revalidate that exact
+          # authority before deriving status; never carry validation across HEADs.
+          git fetch origin so
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
           python scripts/validate-memory-os-live-load.py
           python scripts/validate-memory-os-live-object-load.py
           source_head="$(git rev-parse HEAD)"
