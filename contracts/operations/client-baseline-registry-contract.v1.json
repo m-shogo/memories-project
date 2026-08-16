@@ -3,6 +3,7 @@
   "schemaVersion": "memory-os-client-baseline-registry-contract.v1",
   "description": "Binding append-only authority for reviewed immutable iOS and Portal client artifacts. A source commit, branch head, CI build, marketing version or artifact digest alone never creates an approved client baseline. The writer verifies external artifact bytes and reviewed metadata but never creates approvals or production readiness.",
   "registryPath": "contracts/operations/client-baseline-registry.v1.json",
+  "appendLockPath": "contracts/operations/.client-baseline-registry.lock",
   "writer": "scripts/register-memory-os-client-baseline.py",
   "validator": "scripts/validate-memory-os-client-baseline-registry.py",
   "recordSchemaVersion": "memory-os-client-baseline-record.v1",
@@ -73,7 +74,7 @@
     "three required approval roles use distinct operational pseudonyms",
     "evidenceComplete and approvedForPairing are true",
     "productionEvidence and productionReady remain false",
-    "registry update uses exclusive lock and atomic replacement",
+    "registry update uses the canonical exclusive append lock and atomic replacement",
     "registry validator and Git review remain mandatory after mutation"
   ],
   "forbiddenRecordContent": [
