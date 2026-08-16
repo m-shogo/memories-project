@@ -107,7 +107,28 @@ def evidence_refs(value: Any, field: str, *, minimum: int = 1) -> list[str]:
     require(all(isinstance(item, str) and item and not Path(item).is_absolute() and ".." not in Path(item).parts for item in value), f"{field} invalid")
     require(len(value) == len(set(value)), f"{field} contains duplicates")
     for item in value:
-        require((ROOT / item).is_file(), f"{field} path missing: {item}")
+        path = ROOT / item
+        require(path.is_file(), f"{field} path missing: {item}")
+        try:
+            resolved = path.resolve(strict=True)
+            relative = resolved.relative_to(ROOT.resolve())
+        except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+            raise Fail(f"{field} must resolve inside repository: {item}") from exc
+        require(relative == Path(item), f"{field} must use canonical repository path: {item}")
+        current = ROOT
+        for part in Path(item).parts:
+            current = current / part
+            require(not current.is_symlink(), f"{field} must not traverse symlinks: {item}")
+        require(git("ls-files", "--error-unmatch", "--", item) == item, f"{field} must be tracked at HEAD: {item}")
+        current_bytes = path.read_bytes()
+        head_bytes = subprocess.run(
+            ["git", "show", f"HEAD:{item}"],
+            cwd=ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        require(head_bytes.returncode == 0 and head_bytes.stdout == current_bytes, f"{field} bytes must match current HEAD: {item}")
     return value
 
 
