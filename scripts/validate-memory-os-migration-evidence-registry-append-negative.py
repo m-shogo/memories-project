@@ -76,6 +76,71 @@ def expect_reconcile_rejected_without_mutation(name: str, mutate: Callable[[dict
             path.write_bytes(data)
 
 
+def make_side_commit() -> str:
+    tree = subprocess.run(
+        ["git", "rev-parse", "HEAD^{tree}"],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    require(tree.returncode == 0 and tree.stdout.strip(), "cannot resolve HEAD tree for lineage negative")
+    completed = subprocess.run(
+        [
+            "git",
+            "-c", "user.name=memory-os-negative",
+            "-c", "user.email=memory-os-negative@example.invalid",
+            "commit-tree", tree.stdout.strip(), "-p", "HEAD",
+        ],
+        cwd=ROOT,
+        input="migration evidence lineage negative\n",
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    require(completed.returncode == 0 and completed.stdout.strip(), "cannot create detached lineage negative commit")
+    return completed.stdout.strip()
+
+
+def expect_record_lineage_rejected(writer: ModuleType, contract: dict[str, Any]) -> None:
+    registry = load_json(REGISTRY)
+    records = registry.get("records")
+    require(isinstance(records, list) and records and isinstance(records[0], dict), "migration ledger needs one canonical record for lineage negative")
+    record = copy.deepcopy(records[0])
+    record["sourceCommitSha"] = make_side_commit()
+    required = contract.get("requiredRecordFields")
+    require(isinstance(required, list), "requiredRecordFields missing")
+    try:
+        writer.validate_record(record, set(required), contract)
+    except Exception:
+        return
+    raise Fail("writer accepted non-ancestor migration sourceCommitSha")
+
+
+def expect_recovery_evidence_mutation_rejected(writer: ModuleType, contract: dict[str, Any]) -> None:
+    registry = load_json(REGISTRY)
+    records = registry.get("records")
+    require(isinstance(records, list) and records and isinstance(records[0], dict), "migration ledger needs one canonical record for evidence mutation negative")
+    record = copy.deepcopy(records[0])
+    evidence_ref = record.get("recoveryPointRestoreEvidenceRef")
+    require(isinstance(evidence_ref, str) and evidence_ref, "canonical record missing recoveryPointRestoreEvidenceRef")
+    evidence_path = ROOT / evidence_ref
+    original = evidence_path.read_bytes()
+    required = contract.get("requiredRecordFields")
+    require(isinstance(required, list), "requiredRecordFields missing")
+    try:
+        evidence_path.write_bytes(original + b"\n")
+        try:
+            writer.validate_record(record, set(required), contract)
+        except Exception:
+            return
+        raise Fail("writer accepted post-commit mutation of per-run recovery evidence")
+    finally:
+        evidence_path.write_bytes(original)
+
+
 def main() -> int:
     writer = load_writer()
     contract = load_json(CONTRACT)
@@ -94,7 +159,9 @@ def main() -> int:
     for name, mutate in cases:
         expect_writer_rejected(writer, contract, name, mutate)
         expect_reconcile_rejected_without_mutation(name, mutate)
-    print("PASS: migration rehearsal ledger corruption is rejected before append/reconcile")
+    expect_record_lineage_rejected(writer, contract)
+    expect_recovery_evidence_mutation_rejected(writer, contract)
+    print("PASS: migration rehearsal ledger corruption, source-lineage drift and recovery-evidence mutation are rejected")
     return 0
 
 
