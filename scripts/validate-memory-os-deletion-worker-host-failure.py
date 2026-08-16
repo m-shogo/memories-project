@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -12,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/deletion-worker-host-failure-contract.v1.json"
 GENERATION = ROOT / "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+GENERATION_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
 
 
 class Fail(RuntimeError):
@@ -32,10 +34,36 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def load_generation_writer():
+    try:
+        resolved = GENERATION_WRITER.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail("canonical environment generation writer missing or escapes repository") from exc
+    require(resolved == GENERATION_WRITER.relative_to(ROOT), "environment generation writer authority drift")
+    require(GENERATION_WRITER.is_file(), "canonical environment generation writer must be a file")
+    spec = importlib.util.spec_from_file_location(
+        "memory_os_environment_generation_writer_for_host_failure",
+        GENERATION_WRITER,
+    )
+    require(spec is not None and spec.loader is not None, "cannot load canonical environment generation writer")
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except Exception as exc:  # noqa: BLE001 - convert dependency failures into domain failure
+        raise Fail(f"cannot load canonical environment generation writer: {exc}") from exc
+    require(callable(getattr(module, "validate_registry_for_append", None)), "generation registry validator missing")
+    return module
+
+
 def main() -> int:
     contract = load(CONTRACT)
     generation = load(GENERATION)
     registry = load(REGISTRY)
+    generation_writer = load_generation_writer()
+    try:
+        generation_rows = generation_writer.validate_registry_for_append(registry)
+    except Exception as exc:  # noqa: BLE001 - shared authority must fail closed
+        raise Fail(f"environment generation registry authority invalid: {exc}") from exc
 
     require(contract.get("schemaVersion") == "memory-os-deletion-worker-host-failure.v1", "contract schema drift")
     require(contract.get("failureClass") == "PHYSICAL_HOST_OR_VM_NODE_LOSS", "host failure class drift")
@@ -107,7 +135,7 @@ def main() -> int:
 
     generation_boundary = generation.get("currentBoundary", {})
     registered = registry.get("registeredGenerationCount")
-    require(registered == 0, "validator foundation assumptions changed: generation registry is no longer empty")
+    require(registered == 0 and len(generation_rows) == 0, "validator foundation assumptions changed: generation registry is no longer empty")
     require(generation_boundary.get("registeredGenerationCount") == 0, "generation contract/registry count drift")
     require(generation_boundary.get("productionEquivalentDependencies") is False, "production-equivalent dependencies unexpectedly enabled")
 
