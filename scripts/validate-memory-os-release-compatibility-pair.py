@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/release-compatibility-pair-contract.v1.json"
 RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
 REGISTRY = ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"
+LOCK = ROOT / "contracts/operations/.release-compatibility-pair.lock"
 WRITER = ROOT / "scripts/register-memory-os-release-compatibility-pair.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-release-compatibility-pair.py"
 INDEPENDENT_REVIEW_VALIDATOR = ROOT / "scripts/validate-memory-os-release-compatibility-pair-independent-review.py"
@@ -64,6 +65,7 @@ def main() -> int:
     require(contract.get("schemaVersion") == "memory-os-release-compatibility-pair.v1", "pair contract schema drift")
     require(contract.get("releaseRegistry") == str(RELEASES.relative_to(ROOT)), "release registry ref drift")
     require(contract.get("registry") == str(REGISTRY.relative_to(ROOT)), "pair registry ref drift")
+    require(contract.get("appendLockPath") == str(LOCK.relative_to(ROOT)), "pair append lock binding drift")
     require(contract.get("writer") == str(WRITER.relative_to(ROOT)) and WRITER.is_file(), "pair writer ref drift")
     require(contract.get("reconcile") == str(RECONCILER.relative_to(ROOT)) and RECONCILER.is_file(), "pair reconciler ref drift")
     require(contract.get("independentReviewValidator") == str(INDEPENDENT_REVIEW_VALIDATOR.relative_to(ROOT)) and INDEPENDENT_REVIEW_VALIDATOR.is_file(), "independent review validator ref drift")
@@ -74,7 +76,9 @@ def main() -> int:
         require(isinstance(ref, str) and ref and (ROOT / ref).is_file(), f"pair authority artifact missing: {field}")
     rules = contract.get("rules")
     require(isinstance(rules, dict) and rules and all(value is True for value in rules.values()), "pair rules must remain fail-closed")
+    require(rules.get("appendLockMustRemainCanonical") is True, "pair append lock rule drift")
 
+    canonical_path(getattr(writer, "LOCK", None), LOCK, "writer append lock")
     canonical_path(getattr(writer, "INDEPENDENT_REVIEW_VALIDATOR", None), INDEPENDENT_REVIEW_VALIDATOR, "writer independent review validator")
     canonical_path(getattr(reconciler, "INDEPENDENT_REVIEW_VALIDATOR", None), INDEPENDENT_REVIEW_VALIDATOR, "reconciler independent review validator")
     canonical_path(getattr(reconciler, "WRITER", None), WRITER, "reconciler writer")
