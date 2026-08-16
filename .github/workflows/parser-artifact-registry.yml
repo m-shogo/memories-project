@@ -12,6 +12,7 @@ on:
       - "scripts/register-memory-os-parser-artifact.py"
       - "scripts/register-memory-os-release-baseline.py"
       - "scripts/validate-memory-os-parser-artifact-registry.py"
+      - "scripts/validate-memory-os-parser-artifact-registry-authority-negative.py"
       - "scripts/reconcile-memory-os-parser-artifact-registry.py"
       - "services/import-api/internal/parsersup/worker.go"
   push:
@@ -27,6 +28,7 @@ on:
       - "scripts/register-memory-os-parser-artifact.py"
       - "scripts/register-memory-os-release-baseline.py"
       - "scripts/validate-memory-os-parser-artifact-registry.py"
+      - "scripts/validate-memory-os-parser-artifact-registry-authority-negative.py"
       - "scripts/reconcile-memory-os-parser-artifact-registry.py"
       - "services/import-api/internal/parsersup/worker.go"
   schedule:
@@ -77,10 +79,14 @@ jobs:
             scripts/register-memory-os-parser-artifact.py \
             scripts/register-memory-os-release-baseline.py \
             scripts/validate-memory-os-parser-artifact-registry.py \
+            scripts/validate-memory-os-parser-artifact-registry-authority-negative.py \
             scripts/reconcile-memory-os-parser-artifact-registry.py
 
       - name: Validate empty reviewed artifact authority
         run: python scripts/validate-memory-os-parser-artifact-registry.py
+
+      - name: Validate parser registry corruption negatives
+        run: python scripts/validate-memory-os-parser-artifact-registry-authority-negative.py
 
       - name: Prove invalid and unapproved artifacts cannot mutate authority
         run: |
