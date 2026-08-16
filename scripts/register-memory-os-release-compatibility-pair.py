@@ -21,6 +21,7 @@ CONTRACT = ROOT / "contracts/operations/release-compatibility-pair-contract.v1.j
 RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
 RELEASE_CONTRACT = ROOT / "contracts/operations/release-baseline-registry-contract.v1.json"
 RELEASE_WRITER = ROOT / "scripts/register-memory-os-release-baseline.py"
+INDEPENDENT_REVIEW_VALIDATOR = ROOT / "scripts/validate-memory-os-release-compatibility-pair-independent-review.py"
 REGISTRY = ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"
 LOCK = ROOT / "contracts/operations/.release-compatibility-pair.lock"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
@@ -284,6 +285,11 @@ def main() -> int:
     record = load(input_path)
     bind_evidence_digests(record)
     validate_record(record)
+    review_validator = load_module(INDEPENDENT_REVIEW_VALIDATOR, "memory_os_release_pair_review_validator_for_writer")
+    try:
+        review_validator.validate_pair_reviews(record)
+    except Exception as exc:
+        raise Fail(f"typed independent review authority invalid: {exc}") from exc
 
     try:
         lock_fd = os.open(LOCK, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -306,6 +312,7 @@ def main() -> int:
         registry["limitations"] = [
             "approved release pairs are compatibility admission evidence, not application production readiness",
             "pair-specific rolling/rollback/persisted-route/database/artifact evidence must remain available and digest-bound to the admitted pair",
+            "independent Security and Operability reviews must remain typed, pair-bound, role-separated, digest-bound and non-promoting",
             "candidate/local mixed-version evidence cannot substitute approved release baselines"
         ]
         atomic_write(registry)
