@@ -162,6 +162,30 @@ def validate_record(record: dict[str, Any]) -> None:
         require(forbidden not in serialized, f"record contains forbidden runtime material: {forbidden}")
 
 
+def validate_registry_for_append(registry: dict[str, Any]) -> None:
+    require(set(registry) == {"schemaVersion", "appendOnly", "admittedRehearsalCount", "admissions", "productionEvidence", "productionReady"}, "registry field set drift")
+    require(registry.get("schemaVersion") == "memory-os-migration-production-shaped-admission-registry.v1", "registry schema drift")
+    require(registry.get("appendOnly") is True, "registry must remain append-only")
+    admissions = registry.get("admissions")
+    require(isinstance(admissions, list), "registry admissions missing")
+    require(all(isinstance(item, dict) for item in admissions), "registry contains invalid admission")
+    count = registry.get("admittedRehearsalCount")
+    require(isinstance(count, int) and not isinstance(count, bool), "admittedRehearsalCount must be an integer")
+    require(count == len(admissions), "admittedRehearsalCount drift")
+    require(registry.get("productionEvidence") is False, "registry cannot claim production evidence")
+    require(registry.get("productionReady") is False, "registry cannot claim production readiness")
+    ids: set[str] = set()
+    runs: set[str] = set()
+    for index, record in enumerate(admissions):
+        validate_record(record)
+        admission_id = record.get("admissionId")
+        migration_run_id = record.get("migrationRunId")
+        require(admission_id not in ids, f"duplicate admissionId at admissions[{index}]: {admission_id}")
+        require(migration_run_id not in runs, f"duplicate migrationRunId at admissions[{index}]: {migration_run_id}")
+        ids.add(admission_id)
+        runs.add(migration_run_id)
+
+
 def atomic_write(value: dict[str, Any]) -> None:
     descriptor, temp_name = tempfile.mkstemp(prefix=".migration-production-admission.", suffix=".tmp", dir=REGISTRY.parent)
     try:
@@ -201,9 +225,8 @@ def main() -> int:
         os.write(lock_fd, (record["admissionId"] + "\n").encode("ascii"))
         os.fsync(lock_fd)
         registry = load(REGISTRY)
-        admissions = registry.get("admissions")
-        require(isinstance(admissions, list), "registry admissions missing")
-        require(all(isinstance(item, dict) for item in admissions), "registry contains invalid admission")
+        validate_registry_for_append(registry)
+        admissions = registry["admissions"]
         require(all(item.get("admissionId") != record["admissionId"] for item in admissions), "admissionId already registered")
         require(all(item.get("migrationRunId") != record["migrationRunId"] for item in admissions), "migrationRunId already admitted")
         admissions.append(record)
