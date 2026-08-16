@@ -9,6 +9,7 @@ import hashlib
 import importlib.util
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -97,10 +98,18 @@ def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
-        raise Fail(f"missing file: {path.relative_to(ROOT)}") from exc
+        try:
+            label = path.relative_to(ROOT)
+        except ValueError:
+            label = path
+        raise Fail(f"missing file: {label}") from exc
     except json.JSONDecodeError as exc:
-        raise Fail(f"invalid JSON: {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+        try:
+            label = path.relative_to(ROOT)
+        except ValueError:
+            label = path
+        raise Fail(f"invalid JSON: {label}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be object: {path}")
     return value
 
 
@@ -129,14 +138,31 @@ def bounded_text(value: Any, field: str, maximum: int = 500) -> str:
     return normalized
 
 
+def git_head_blob(relative: Path, field: str) -> bytes:
+    result = subprocess.run(
+        ["git", "show", f"HEAD:{relative.as_posix()}"],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    require(result.returncode == 0, f"{field} must be tracked at HEAD")
+    return result.stdout
+
+
 def dedicated_ref(value: Any, directory: str, field: str) -> tuple[str, Path]:
     require(isinstance(value, str) and value, f"{field} invalid")
     relative = Path(value)
     require(not relative.is_absolute() and ".." not in relative.parts, f"{field} unsafe")
+    cursor = ROOT
+    for part in relative.parts:
+        cursor = cursor / part
+        require(not cursor.is_symlink(), f"{field} must be symlink-free")
     full = (ROOT / relative).resolve()
     base = (ROOT / directory).resolve()
     require(full.is_relative_to(base), f"{field} must use dedicated authority directory")
     require(full.is_file(), f"{field} missing: {value}")
+    require(full.read_bytes() == git_head_blob(relative, field), f"{field} must match tracked HEAD bytes")
     return value, full
 
 
@@ -321,7 +347,8 @@ def main() -> int:
     record_authority = contract.get("recordAuthority")
     require(isinstance(record_authority, dict), "recordAuthority must be object")
     for key in (
-        "humanEvidenceMustUseDedicatedDirectory", "runEvidenceMustBeCanonicalAndPerRunValidated", "runEvidenceDigestMustMatchBytes",
+        "humanEvidenceMustUseDedicatedDirectory", "humanEvidenceMustBeTrackedAtHead", "humanEvidenceMustMatchHeadBlob",
+        "humanEvidenceMustBeSymlinkFree", "runEvidenceMustBeCanonicalAndPerRunValidated", "runEvidenceDigestMustMatchBytes",
         "reviewRunBindingsMustExactlyMatchCriteria", "reviewerMustDifferFromCriteriaApprover", "reviewCannotPredateCriteriaApproval",
         "criteriaApprovalMustBindCanonicalRecordDigest", "independentReviewMustBindCanonicalRecordDigest",
         "productionEvidenceForbidden", "productionReadyForbidden",
@@ -393,6 +420,8 @@ def main() -> int:
     print(f"current passing independent reviews: {passing_reviews}")
     print("superseded criteria review remains current authority: false")
     print("typed human criteria/review records accepted without dedicated evidence: false")
+    print("untracked or modified human evidence accepted: false")
+    print("symlinked human evidence accepted: false")
     print("human approval evidence without exact record digest binding accepted: false")
     print("review run-binding drift accepted: false")
     print("descriptive trend review implies independent review: false")
