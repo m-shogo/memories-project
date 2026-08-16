@@ -11,6 +11,7 @@ import os
 import re
 import subprocess
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -25,11 +26,25 @@ LOCK = ROOT / "contracts/operations/.rate-limit-distributed-runtime.lock"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
 RUNTIME_ID = re.compile(r"^rlrt_[a-z0-9][a-z0-9_-]{7,63}$")
+REVIEWER_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{2,63}$")
+UTC_SECOND = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 PRODUCTION_CONFIRMATION = "REGISTER PRODUCTION DISTRIBUTED RATE LIMIT RUNTIME EVIDENCE"
 REF_FIELDS = (
     "sharedStoreEvidenceRefs", "trustedProxyEvidenceRefs", "restartContinuityEvidenceRefs",
     "failureModeEvidenceRefs", "emergencyExpiryEvidenceRefs", "deliveryAndAlertEvidenceRefs",
 )
+REVIEW_FIELDS = {
+    "schemaVersion",
+    "runtimeId",
+    "environmentIdentityDigest",
+    "role",
+    "reviewerId",
+    "decision",
+    "reviewedAt",
+    "productionTrafficChanged",
+    "credentialsIncluded",
+    "automaticProductionPromotion",
+}
 
 
 class Fail(RuntimeError):
@@ -141,6 +156,42 @@ def validate_evidence_digest_authority(paths: list[str], value: Any) -> None:
         require(digest == sha256(path), f"evidenceDigests[{item}] does not match current committed bytes")
 
 
+def canonical_reviewed_at(value: Any, field: str) -> None:
+    require(isinstance(value, str) and UTC_SECOND.fullmatch(value), f"{field}.reviewedAt must be canonical UTC RFC3339 seconds")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise Fail(f"{field}.reviewedAt invalid") from exc
+    require(parsed.tzinfo == timezone.utc, f"{field}.reviewedAt must be UTC")
+
+
+def validate_review(record: dict[str, Any], ref_field: str, expected_role: str) -> str:
+    ref = record.get(ref_field)
+    require(isinstance(ref, str) and ref, f"{ref_field} invalid")
+    path = canonical_evidence_path(ref, ref_field)
+    review = load(path)
+    require(set(review) == REVIEW_FIELDS, f"{ref_field} review field drift")
+    require(review.get("schemaVersion") == "memory-os-rate-limit-runtime-independent-review.v1", f"{ref_field} schemaVersion drift")
+    require(review.get("runtimeId") == record.get("runtimeId"), f"{ref_field} runtimeId binding drift")
+    require(review.get("environmentIdentityDigest") == record.get("environmentIdentityDigest"), f"{ref_field} environment identity binding drift")
+    require(review.get("role") == expected_role, f"{ref_field} role must be {expected_role}")
+    reviewer = review.get("reviewerId")
+    require(isinstance(reviewer, str) and REVIEWER_ID.fullmatch(reviewer), f"{ref_field} reviewerId invalid")
+    require(review.get("decision") == "APPROVED", f"{ref_field} must be APPROVED")
+    canonical_reviewed_at(review.get("reviewedAt"), ref_field)
+    require(review.get("productionTrafficChanged") is False, f"{ref_field} cannot change production traffic")
+    require(review.get("credentialsIncluded") is False, f"{ref_field} cannot include credentials")
+    require(review.get("automaticProductionPromotion") is False, f"{ref_field} cannot authorize automatic production promotion")
+    return reviewer
+
+
+def validate_independent_reviews(record: dict[str, Any]) -> None:
+    security_reviewer = validate_review(record, "securityReviewRef", "SECURITY")
+    operability_reviewer = validate_review(record, "operabilityReviewRef", "OPERABILITY")
+    require(record["securityReviewRef"] != record["operabilityReviewRef"], "security and operability review records must be distinct")
+    require(security_reviewer != operability_reviewer, "security and operability reviewers must be distinct")
+
+
 def validate_record(record: dict[str, Any], confirmation: str) -> None:
     contract = load(CONTRACT)
     required = set(contract.get("requiredRecordFields", []))
@@ -170,8 +221,8 @@ def validate_record(record: dict[str, Any], confirmation: str) -> None:
         require(isinstance(value, str) and value, f"{field} invalid")
         canonical_evidence_path(value, field)
         all_evidence_refs.append(value)
-    require(record["securityReviewRef"] != record["operabilityReviewRef"], "security and operability review records must be distinct")
     validate_evidence_digest_authority(all_evidence_refs, record.get("evidenceDigests"))
+    validate_independent_reviews(record)
     findings = record.get("unresolvedFindings")
     require(isinstance(findings, list), "unresolvedFindings must be a list")
     for index, finding in enumerate(findings):
