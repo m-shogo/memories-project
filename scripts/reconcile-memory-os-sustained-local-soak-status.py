@@ -18,6 +18,7 @@ RESULT_GLOB = "sustained-local-soak-results.run-*.v1.json"
 AGGREGATE_PATH = RESULT_DIR / "sustained-local-soak-results.aggregate.v1.json"
 REVIEW_PATH = RESULT_DIR / "sustained-local-soak-trend-review.v1.json"
 AGGREGATE_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak-aggregate.py"
+INDEPENDENT_REVIEW_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-soak-independent-review.py"
 
 FOUNDATION_REFS = (
     "contracts/operations/sustained-local-soak-contract.v1.json",
@@ -102,7 +103,20 @@ def find_scenario(values: list[Any], scenario_id: str) -> dict[str, Any] | None:
     return None
 
 
+def run_validator(path: Path, label: str, *args: str) -> None:
+    completed = subprocess.run(
+        [sys.executable, str(path), *args],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    require(completed.returncode == 0, f"{label} failed:\n{completed.stdout[-4000:]}{completed.stderr[-4000:]}")
+
+
 def main() -> int:
+    run_validator(INDEPENDENT_REVIEW_VALIDATOR, "sustained-soak independent review authority validator")
+
     contract = load(CONTRACT_PATH)
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "long-soak readiness missing")
@@ -125,14 +139,7 @@ def main() -> int:
     aggregate: dict[str, Any] | None = None
     if run_count:
         require(AGGREGATE_PATH.is_file(), "run documents exist without aggregate")
-        completed = subprocess.run(
-            [sys.executable, str(AGGREGATE_VALIDATOR)],
-            cwd=ROOT,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        require(completed.returncode == 0, f"aggregate validator failed:\n{completed.stdout[-4000:]}{completed.stderr[-4000:]}")
+        run_validator(AGGREGATE_VALIDATOR, "aggregate validator")
         aggregate = load(AGGREGATE_PATH)
     else:
         require(not AGGREGATE_PATH.exists(), "aggregate exists without run documents")
