@@ -3,9 +3,11 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,6 +49,14 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def load_writer() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("memory_os_migration_production_admission_writer", WRITER)
+    require(spec is not None and spec.loader is not None, "cannot load migration admission writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def write(path: Path, value: dict[str, Any]) -> None:
     path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
@@ -60,17 +70,23 @@ def main() -> int:
     for path in (REGISTRY, VALIDATOR, WRITER, WORKFLOW):
         require(path.is_file(), f"migration production admission missing: {path.relative_to(ROOT)}")
     registry = load(REGISTRY)
-    admissions = registry.get("admissions")
-    require(isinstance(admissions, list), "migration production admission registry missing")
-    release_pairs = {(row.get("predecessorReleaseId"), row.get("successorReleaseId")) for row in admissions if isinstance(row, dict)}
+    writer = load_writer()
+    try:
+        writer.validate_registry_for_append(registry)
+    except Exception as exc:
+        raise Fail(f"migration production admission registry invalid before reconcile: {exc}") from exc
+    admissions = registry["admissions"]
+    release_pairs = {(row.get("predecessorReleaseId"), row.get("successorReleaseId")) for row in admissions}
     release_pairs.discard((None, None))
-    generations_used = {row.get("environmentGenerationId") for row in admissions if isinstance(row, dict) and row.get("environmentGenerationId")}
+    generations_used = {row.get("environmentGenerationId") for row in admissions if row.get("environmentGenerationId")}
     complete = len(admissions) > 0
 
     releases = load(RELEASES)
     generations = load(GENERATIONS)
-    require(isinstance(releases.get("approvedReleaseCount"), int), "approvedReleaseCount invalid")
-    require(isinstance(generations.get("registeredGenerationCount"), int), "registeredGenerationCount invalid")
+    approved_release_count = releases.get("approvedReleaseCount")
+    registered_generation_count = generations.get("registeredGenerationCount")
+    require(isinstance(approved_release_count, int) and not isinstance(approved_release_count, bool), "approvedReleaseCount invalid")
+    require(isinstance(registered_generation_count, int) and not isinstance(registered_generation_count, bool), "registeredGenerationCount invalid")
 
     contract = load(CONTRACT)
     current = contract.get("currentAuthority")
@@ -78,7 +94,7 @@ def main() -> int:
     require(isinstance(current, dict) and isinstance(readiness, dict), "migration production authority missing")
     current["admittedRehearsalCount"] = len(admissions)
     current["approvedReleasePairCount"] = len(release_pairs)
-    current["registeredEnvironmentGenerationCount"] = generations["registeredGenerationCount"]
+    current["registeredEnvironmentGenerationCount"] = registered_generation_count
     current["productionShapedRehearsalCompleted"] = complete
     current["mixedVersionCompatibilityProvenForApprovedPair"] = complete
     current["generationBoundRecoveryLinked"] = complete
