@@ -17,6 +17,7 @@ CONTRACT = ROOT / "contracts/operations/release-baseline-registry-contract.v1.js
 REGISTRY = ROOT / "contracts/operations/release-baseline-registry.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 WRITER = ROOT / "scripts/register-memory-os-release-baseline.py"
+LOCK = ROOT / "contracts/operations/.release-baseline-registry.lock"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-release-baseline-registry.py"
 
 
@@ -40,7 +41,30 @@ def load_writer() -> ModuleType:
     require(spec is not None and spec.loader is not None, "cannot load release baseline writer")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    require(getattr(module, "CONTRACT_PATH", None) == CONTRACT,
+            "release writer contract authority drift")
+    require(getattr(module, "REGISTRY_PATH", None) == REGISTRY,
+            "release writer registry authority drift")
+    require(getattr(module, "LOCK_PATH", None) == LOCK,
+            "release writer append lock authority drift")
     return module
+
+
+def validate_lock_binding(writer: ModuleType, contract: dict[str, Any]) -> None:
+    require(contract.get("appendLockPath") == str(LOCK.relative_to(ROOT)),
+            "release contract append lock binding drift")
+    require(getattr(writer, "LOCK_PATH", None) == LOCK,
+            "release writer append lock binding drift")
+
+
+def expect_lock_binding_rejected(writer: ModuleType, contract: dict[str, Any]) -> None:
+    corrupt = copy.deepcopy(contract)
+    corrupt["appendLockPath"] = "contracts/operations/.release-baseline-registry-alternate.lock"
+    try:
+        validate_lock_binding(writer, corrupt)
+    except Fail:
+        return
+    raise Fail("release lock authority accepted substituted contract path")
 
 
 def expect_writer_rejected(
@@ -86,6 +110,8 @@ def expect_reconcile_rejected_without_mutation(
 def main() -> int:
     writer = load_writer()
     contract = load(CONTRACT)
+    validate_lock_binding(writer, contract)
+    expect_lock_binding_rejected(writer, contract)
     cases: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
         ("schema drift", lambda value: value.__setitem__("schemaVersion", "invalid")),
         ("registry class drift", lambda value: value.__setitem__("registryClass", "CANDIDATE_RELEASES")),
@@ -100,7 +126,7 @@ def main() -> int:
     for name, mutate in cases:
         expect_writer_rejected(writer, contract, name, mutate)
         expect_reconcile_rejected_without_mutation(name, mutate)
-    print("PASS: release baseline registry corruption is rejected before append/reconcile")
+    print("PASS: release baseline registry/append-lock corruption is rejected before append/reconcile")
     return 0
 
 
