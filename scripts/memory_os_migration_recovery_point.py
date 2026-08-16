@@ -61,7 +61,7 @@ def require_source_commit_ancestor(source_commit_sha: Any) -> str:
     return source_commit_sha
 
 
-def require_single_commit_immutable(path: Path, label: str) -> None:
+def require_first_addition_immutable(path: Path, label: str) -> None:
     try:
         relative = path.resolve().relative_to(ROOT.resolve())
     except ValueError as exc:
@@ -70,11 +70,16 @@ def require_single_commit_immutable(path: Path, label: str) -> None:
     require(not path.is_symlink(), f"{label} cannot be a symlink")
     status = git_text("status", "--porcelain", "--", relative.as_posix())
     require(status == "", f"{label} must be committed and unmodified: {relative}")
-    commits = [line for line in git_text("log", "--follow", "--format=%H", "--", relative.as_posix()).splitlines() if line]
-    require(len(commits) == 1,
-            f"{label} must be append-only single-commit evidence: {relative}")
+    additions = [
+        line
+        for line in git_text("log", "--follow", "--diff-filter=A", "--format=%H", "--", relative.as_posix()).splitlines()
+        if line
+    ]
+    require(len(additions) == 1,
+            f"{label} must have exactly one append-only creation commit: {relative}")
+    creation_commit = additions[0]
     completed = subprocess.run(
-        ["git", "show", f"{commits[0]}:{relative.as_posix()}"],
+        ["git", "show", f"{creation_commit}:{relative.as_posix()}"],
         cwd=ROOT,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -128,7 +133,7 @@ def validate_actual_recovery_artifact_result(
             "recoveryPointRestoreEvidenceRef must remain inside configured evidence root")
     require(restore_path.name == f"{run_id}.json",
             "recoveryPointRestoreEvidenceRef filename must match migrationRunId")
-    require_single_commit_immutable(restore_path, "actual recovery artifact restore evidence")
+    require_first_addition_immutable(restore_path, "actual recovery artifact restore evidence")
     result = load(restore_path, "actual recovery artifact restore evidence")
 
     require(result.get("schemaVersion") == authority.get("schemaVersion"),
