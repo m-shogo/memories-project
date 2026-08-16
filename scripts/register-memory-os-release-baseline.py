@@ -95,6 +95,20 @@ def require_utc_timestamp(value: Any, field: str) -> None:
             f"{field} must be UTC")
 
 
+def validate_evidence_ref_binding(commit_sha: str, ref: str) -> None:
+    relative = Path(ref)
+    require(not relative.is_absolute() and ".." not in relative.parts,
+            f"unsafe evidence path: {ref}")
+    path = ROOT / relative
+    require(path.is_file(), f"evidence path missing: {ref}")
+    require(not path.is_symlink(), f"evidence path must not be a symlink: {ref}")
+    git("ls-files", "--error-unmatch", "--", ref)
+    source_blob = git("rev-parse", f"{commit_sha}:{ref}")
+    current_blob = git("hash-object", "--", ref)
+    require(source_blob == current_blob,
+            f"release evidence changed after source commit: {ref}")
+
+
 def validate_record(record: dict[str, Any], required_fields: set[str]) -> None:
     require(set(record) >= required_fields,
             f"record missing fields: {sorted(required_fields - set(record))}")
@@ -147,10 +161,7 @@ def validate_record(record: dict[str, Any], required_fields: set[str]) -> None:
         "compatibilityEvidenceRefs", "restoreEvidenceRefs", "securityEvidenceRefs",
     ):
         for ref in strings(record.get(field), field, 1):
-            relative = Path(ref)
-            require(not relative.is_absolute() and ".." not in relative.parts,
-                    f"unsafe evidence path: {ref}")
-            require((ROOT / relative).is_file(), f"evidence path missing: {ref}")
+            validate_evidence_ref_binding(record["commitSha"], ref)
 
     rollback = record.get("rollbackEligibility")
     require(isinstance(rollback, dict) and rollback.get("status") in ROLLBACK_VALUES,

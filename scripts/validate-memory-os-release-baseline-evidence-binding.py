@@ -64,16 +64,11 @@ def load_writer() -> ModuleType:
 
 
 def validate_evidence_ref_binding(commit_sha: str, ref: str) -> None:
-    relative = Path(ref)
-    require(not relative.is_absolute() and ".." not in relative.parts, f"unsafe evidence path: {ref}")
-    path = ROOT / relative
-    require(path.is_file(), f"evidence path missing: {ref}")
-    require(not path.is_symlink(), f"evidence path must not be a symlink: {ref}")
-    git("ls-files", "--error-unmatch", "--", ref)
-    source_blob = git("rev-parse", f"{commit_sha}:{ref}")
-    current_blob = git("hash-object", "--", ref)
-    require(source_blob == current_blob,
-            f"release evidence changed after source commit: {ref}")
+    writer = load_writer()
+    try:
+        writer.validate_evidence_ref_binding(commit_sha, ref)
+    except Exception as exc:
+        raise ValidationFailure(str(exc)) from exc
 
 
 def main() -> int:
@@ -90,7 +85,10 @@ def main() -> int:
 
     registry = load(REGISTRY_PATH)
     writer = load_writer()
-    writer.validate_registry_for_append(registry, contract)
+    try:
+        writer.validate_registry_for_append(registry, contract)
+    except Exception as exc:
+        raise ValidationFailure(str(exc)) from exc
 
     releases = registry.get("releases")
     require(isinstance(releases, list), "release registry releases must be a list")
@@ -113,7 +111,10 @@ def main() -> int:
             require(isinstance(refs, list) and refs, f"{field} must contain evidence refs")
             for ref in refs:
                 require(isinstance(ref, str) and ref.strip(), f"{field} contains invalid ref")
-                validate_evidence_ref_binding(commit_sha, ref)
+                try:
+                    writer.validate_evidence_ref_binding(commit_sha, ref)
+                except Exception as exc:
+                    raise ValidationFailure(str(exc)) from exc
 
     print("Memory OS release baseline evidence source binding PASS")
     print(f"approved releases checked: {len(releases)}")
