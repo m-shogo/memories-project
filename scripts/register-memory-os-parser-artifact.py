@@ -30,6 +30,18 @@ VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$")
 APPROVER_RE = re.compile(r"^apr_[a-z0-9][a-z0-9_-]{7,63}$")
 REQUIRED_ROLES = {"SECURITY_REVIEWER", "RUNTIME_REVIEWER", "RELEASE_OWNER"}
 RETENTION_STATES = {"RETAINED", "RETENTION_PENDING", "RETIRED_BLOCKED_FROM_ROLLBACK"}
+REGISTRY_FIELDS = {
+    "schemaVersion",
+    "registryClass",
+    "appendOnly",
+    "productionEvidence",
+    "reviewedArtifactCount",
+    "retainedRollbackArtifactCount",
+    "replayProvenArtifactCount",
+    "latestReviewedArtifactId",
+    "artifacts",
+    "limitations",
+}
 
 
 class RegistrationFailure(RuntimeError):
@@ -126,6 +138,62 @@ def approved_release_ids() -> set[str]:
     return {item["releaseId"] for item in release_registry["releases"]}
 
 
+def validate_registry_for_append(registry: dict[str, Any]) -> None:
+    require(set(registry) == REGISTRY_FIELDS, "parser artifact registry field set drift")
+    require(registry.get("schemaVersion") == "memory-os-parser-artifact-registry.v1",
+            "parser artifact registry schema drift")
+    require(registry.get("registryClass") == "REVIEWED_RETAINED_PARSER_ARTIFACTS",
+            "parser artifact registry class drift")
+    require(registry.get("appendOnly") is True,
+            "parser artifact registry must remain append-only")
+    require(registry.get("productionEvidence") is False,
+            "parser artifact registry cannot claim production evidence")
+    artifacts = registry.get("artifacts")
+    require(isinstance(artifacts, list) and all(isinstance(item, dict) for item in artifacts),
+            "parser artifact registry contains invalid artifacts")
+    for field in ("reviewedArtifactCount", "retainedRollbackArtifactCount", "replayProvenArtifactCount"):
+        value = registry.get(field)
+        require(isinstance(value, int) and not isinstance(value, bool),
+                f"{field} must be an integer")
+    require(registry["reviewedArtifactCount"] == len(artifacts),
+            "reviewedArtifactCount drift")
+    retained = sum(
+        1 for item in artifacts
+        if item.get("rollbackRetentionState", {}).get("state") == "RETAINED"
+    )
+    replayed = sum(1 for item in artifacts if item.get("replayEvidenceRefs"))
+    require(registry["retainedRollbackArtifactCount"] == retained,
+            "retainedRollbackArtifactCount drift")
+    require(registry["replayProvenArtifactCount"] == replayed,
+            "replayProvenArtifactCount drift")
+    ids: set[str] = set()
+    digests: set[str] = set()
+    adapter_versions: set[tuple[str, str]] = set()
+    for item in artifacts:
+        artifact_id = item.get("artifactId")
+        digest = item.get("artifactSha256")
+        adapter_id = item.get("adapterId")
+        adapter_version = item.get("adapterVersion")
+        require(isinstance(artifact_id, str) and ARTIFACT_ID_RE.fullmatch(artifact_id) is not None,
+                "registered artifactId invalid")
+        require(isinstance(digest, str) and DIGEST_RE.fullmatch(digest) is not None,
+                "registered artifactSha256 invalid")
+        require(isinstance(adapter_id, str) and ADAPTER_RE.fullmatch(adapter_id) is not None,
+                "registered adapterId invalid")
+        require(isinstance(adapter_version, str) and VERSION_RE.fullmatch(adapter_version) is not None,
+                "registered adapterVersion invalid")
+        pair = (adapter_id, adapter_version)
+        require(artifact_id not in ids, f"duplicate registered artifactId: {artifact_id}")
+        require(digest not in digests, f"duplicate registered artifact digest: {digest}")
+        require(pair not in adapter_versions, f"duplicate registered adapter version: {pair}")
+        ids.add(artifact_id)
+        digests.add(digest)
+        adapter_versions.add(pair)
+    expected_latest = artifacts[-1].get("artifactId") if artifacts else None
+    require(registry.get("latestReviewedArtifactId") == expected_latest,
+            "latestReviewedArtifactId drift")
+
+
 def validate_record(record: dict[str, Any], required_fields: set[str],
                     artifact_path: Path, approved_release_ids: set[str]) -> None:
     require(set(record) >= required_fields,
@@ -151,6 +219,7 @@ def validate_record(record: dict[str, Any], required_fields: set[str],
             record["artifactSha256"] == actual_digest,
             "artifact SHA-256 does not match exact bytes")
     require(isinstance(record.get("artifactSizeBytes"), int) and
+            not isinstance(record.get("artifactSizeBytes"), bool) and
             record["artifactSizeBytes"] > 0 and
             record["artifactSizeBytes"] == actual_size,
             "artifactSizeBytes does not match exact bytes")
@@ -276,10 +345,8 @@ def main() -> int:
         os.write(lock_fd, f"{record['artifactId']}\n".encode("ascii"))
         os.fsync(lock_fd)
         registry = load(REGISTRY_PATH)
-        artifacts = registry.get("artifacts")
-        require(isinstance(artifacts, list) and
-                all(isinstance(item, dict) for item in artifacts),
-                "parser artifact registry is invalid")
+        validate_registry_for_append(registry)
+        artifacts = registry["artifacts"]
         require(all(item.get("artifactId") != record["artifactId"] for item in artifacts),
                 "artifactId is already registered")
         require(all(item.get("artifactSha256") != record["artifactSha256"]
