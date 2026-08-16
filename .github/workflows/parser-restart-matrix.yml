@@ -177,6 +177,12 @@ jobs:
 
       - name: Commit matrix result or bounded diagnostic
         run: |
+          SOURCE_SHA="${{ steps.matrix.outputs.source_sha }}"
+          git fetch origin so
+          test "$(git rev-parse origin/so)" = "$SOURCE_SHA" || {
+            echo "so advanced after parser restart validation; refusing stale evidence write"
+            exit 75
+          }
           git add docs/fixtures/memory-os-operability/parser-restart-matrix-diagnostic.last.json
           if [ "${{ steps.matrix.outputs.success }}" = "true" ]; then
             git add docs/fixtures/memory-os-operability/parser-restart-matrix-results.sample.v1.json
@@ -191,15 +197,26 @@ jobs:
             else
               git commit -m "test(chaos): record parser restart matrix diagnostic"
             fi
-            git pull --rebase origin so
+            git fetch origin so
+            test "$(git rev-parse origin/so)" = "$SOURCE_SHA" || {
+              echo "so advanced before parser restart evidence push; refusing stale write"
+              exit 75
+            }
             git push origin HEAD:so
           fi
 
       - name: Reconcile parser matrix authority
         if: steps.matrix.outputs.success == 'true'
         run: |
+          EVIDENCE_HEAD="$(git rev-parse HEAD)"
+          git fetch origin so
+          test "$(git rev-parse origin/so)" = "$EVIDENCE_HEAD" || {
+            echo "so advanced before parser restart authority reconcile; refusing stale projection"
+            exit 75
+          }
           python scripts/reconcile-memory-os-parser-restart-matrix.py
-          python scripts/validate-memory-os-parser-restart-matrix.py
+          EXPECTED_COMMIT_SHA="${{ steps.matrix.outputs.source_sha }}" \
+            python scripts/validate-memory-os-parser-restart-matrix.py
           python scripts/validate-memory-os-operability.py
           git add contracts/operations/production-operability-status.json
           if git diff --cached --quiet; then
@@ -208,7 +225,11 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(chaos): reconcile parser restart matrix evidence"
-            git pull --rebase origin so
+            git fetch origin so
+            test "$(git rev-parse origin/so)" = "$EVIDENCE_HEAD" || {
+              echo "so advanced before parser restart authority push; refusing stale projection"
+              exit 75
+            }
             git push origin HEAD:so
           fi
 
