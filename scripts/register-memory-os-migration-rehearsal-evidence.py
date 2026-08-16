@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import importlib.util
 import json
 import os
 import re
@@ -28,6 +29,7 @@ CONTRACT = ROOT / "contracts/operations/migration-evidence-registry-contract.v1.
 REGISTRY = ROOT / "contracts/operations/migration-evidence-registry.v1.json"
 LIFECYCLE = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+GEN_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
 LOCK = ROOT / "contracts/operations/.migration-evidence-registry.lock"
 CONFIRMATION = "REGISTER NON-PRODUCTION MIGRATION REHEARSAL"
 RUN_ID = re.compile(r"^mig_[0-9]{8}_[a-z0-9][a-z0-9._-]{2,63}$")
@@ -74,6 +76,23 @@ def load(path: Path) -> dict[str, Any]:
         raise Failure(f"cannot load {path}: {exc}") from exc
     require(isinstance(value, dict), f"root must be object: {path}")
     return value
+
+
+def load_module(path: Path, name: str) -> Any:
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load {path.name}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def validated_generation_rows() -> list[dict[str, Any]]:
+    generation_writer = load_module(GEN_WRITER, "memory_os_generation_writer_for_migration_rehearsal")
+    require(generation_writer.REGISTRY.resolve() == GEN_REGISTRY.resolve(), "environment generation writer registry authority drift")
+    try:
+        return generation_writer.validate_registry_for_append(generation_writer.load(GEN_REGISTRY))
+    except generation_writer.Fail as exc:
+        raise Failure(f"environment generation authority rejected: {exc}") from exc
 
 
 def git(*args: str) -> str:
@@ -164,9 +183,7 @@ def validate_record(record: dict[str, Any], required_fields: set[str], registry_
         require(record.get("recoveryDecision") == "NO_RECOVERY_REQUIRED", "passing rehearsal must require no recovery")
 
     gen_id = record.get("environmentGenerationId")
-    generations = load(GEN_REGISTRY)
-    rows = generations.get("generations")
-    require(isinstance(rows, list), "environment generation registry invalid")
+    rows = validated_generation_rows()
     if env_class == "LOCAL_POSTGRES_REHEARSAL":
         require(gen_id is None, "local rehearsal must not claim environment generation")
     else:
