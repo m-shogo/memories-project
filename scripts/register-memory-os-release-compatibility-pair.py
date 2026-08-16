@@ -79,18 +79,32 @@ def git(*args: str) -> str:
     return completed.stdout.strip()
 
 
+def repo_regular_file(ref: str, field: str) -> Path:
+    require(isinstance(ref, str) and ref and not Path(ref).is_absolute() and ".." not in Path(ref).parts, f"{field} invalid reference")
+    path = ROOT / ref
+    try:
+        resolved = path.resolve(strict=True)
+        resolved.relative_to(ROOT.resolve())
+    except (OSError, ValueError) as exc:
+        raise Fail(f"{field} evidence escapes repository or is unreadable: {ref}") from exc
+    cursor = path
+    while cursor != ROOT:
+        require(not cursor.is_symlink(), f"{field} evidence path contains symlink: {ref}")
+        cursor = cursor.parent
+    require(path.is_file(), f"{field} evidence missing or not regular file: {ref}")
+    return path
+
+
 def evidence_refs(value: Any, field: str, minimum: int = 1) -> list[str]:
     require(isinstance(value, list) and len(value) >= minimum, f"{field} requires at least {minimum} reference(s)")
     require(len(value) == len(set(value)), f"{field} contains duplicates")
     for ref in value:
-        require(isinstance(ref, str) and ref and not Path(ref).is_absolute() and ".." not in Path(ref).parts, f"{field} invalid reference")
-        path = ROOT / ref
-        require(path.is_file() and not path.is_symlink(), f"{field} evidence missing or symlinked: {ref}")
+        repo_regular_file(ref, field)
     return value
 
 
 def digest_file(ref: str) -> str:
-    return hashlib.sha256((ROOT / ref).read_bytes()).hexdigest()
+    return hashlib.sha256(repo_regular_file(ref, "evidenceDigestsByField").read_bytes()).hexdigest()
 
 
 def compute_evidence_digests(record: dict[str, Any]) -> dict[str, dict[str, str]]:
