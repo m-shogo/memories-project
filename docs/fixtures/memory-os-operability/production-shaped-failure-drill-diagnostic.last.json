@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "production-shaped-failure-drills",
+  "result": "FAIL",
+  "exitCode": 1,
+  "sourceCommitSha": "e232a838d5cd592842974b0b084b05fa1fc826e6",
+  "output": "PASS: production-shaped failure-drill registry corruption is rejected before append/reconcile\nfailure-drill corruption cases: 10\nupstream generation corruption cases: 4\ndetached source commit accepted: false\nreconciler auto-heal: false\nproduction readiness: false\nproduction decision: NO_GO\nPRODUCTION-SHAPED FAILURE DRILL RECONCILE FAILED: existing failure-drill registry rejected before reconcile: registry field drift\n",
+  "containsSecrets": false,
+  "registeredDrillCount": 0,
+  "productionEvidence": false,
+  "productionReady": false
+}
