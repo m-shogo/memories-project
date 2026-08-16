@@ -1,19 +1,37 @@
 name: Rate Limit Distributed Runtime Admission
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/rate-limit-distributed-runtime-admission.yml"
+      - "contracts/operations/requests/rate-limit-distributed-runtime-foundation.v1.json"
+      - "contracts/operations/rate-limit-distributed-runtime-admission-contract.v1.json"
+      - "contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json"
+      - "contracts/operations/rate-limit-policy-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "scripts/register-memory-os-rate-limit-distributed-runtime.py"
+      - "scripts/validate-memory-os-rate-limit-distributed-runtime.py"
+      - "scripts/reconcile-memory-os-rate-limit-distributed-runtime.py"
   push:
     branches:
       - so
     paths:
+      - ".github/workflows/rate-limit-distributed-runtime-admission.yml"
       - "contracts/operations/requests/rate-limit-distributed-runtime-foundation.v1.json"
+      - "contracts/operations/rate-limit-distributed-runtime-admission-contract.v1.json"
       - "contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json"
+      - "contracts/operations/rate-limit-policy-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "scripts/register-memory-os-rate-limit-distributed-runtime.py"
+      - "scripts/validate-memory-os-rate-limit-distributed-runtime.py"
+      - "scripts/reconcile-memory-os-rate-limit-distributed-runtime.py"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: rate-limit-distributed-runtime-admission-so
+  group: rate-limit-distributed-runtime-admission-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -23,11 +41,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Capture validation source
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Reconcile and validate distributed runtime admission
         id: runtime
         run: |
@@ -51,8 +72,13 @@ jobs:
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
+      - name: Require PR validation to be read-only
+        if: github.event_name == 'pull_request' && steps.runtime.outputs.exit_code == '0'
+        run: git diff --exit-code
       - name: Commit bounded runtime admission authority
-        if: steps.runtime.outputs.exit_code == '0'
+        if: github.event_name != 'pull_request' && steps.runtime.outputs.exit_code == '0'
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
         run: |
           set -euo pipefail
           git rm -f docs/fixtures/memory-os-operability/rate-limit-distributed-runtime-diagnostic.last.json 2>/dev/null || true
@@ -65,21 +91,25 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(rate-limit): register distributed runtime admission"
-            for attempt in 1 2 3 4; do
-              git pull --rebase origin so
-              if git push origin HEAD:so; then exit 0; fi
-              sleep 2
-            done
-            exit 1
+            git fetch origin so
+            test "$(git rev-parse origin/so)" = "$SOURCE_SHA" || {
+              echo "so advanced after validation; refusing stale distributed-runtime authority write" >&2
+              exit 75
+            }
+            git push origin HEAD:so
           fi
       - name: Record privacy-safe diagnostic
-        if: steps.runtime.outputs.exit_code != '0'
+        if: github.event_name != 'pull_request' && steps.runtime.outputs.exit_code != '0'
         env:
           RUNTIME_EXIT_CODE: ${{ steps.runtime.outputs.exit_code }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
         run: |
           set -euo pipefail
           git fetch origin so
-          git reset --hard origin/so
+          test "$(git rev-parse origin/so)" = "$SOURCE_SHA" || {
+            echo "so advanced after validation; refusing stale distributed-runtime diagnostic write" >&2
+            exit 75
+          }
           python - <<'PY'
           import json, os
           from pathlib import Path
@@ -89,6 +119,7 @@ jobs:
               'workflow': 'rate-limit-distributed-runtime-admission',
               'result': 'FAIL',
               'exitCode': int(os.environ['RUNTIME_EXIT_CODE']),
+              'sourceCommitSha': os.environ['SOURCE_SHA'],
               'output': text[-12000:],
               'containsSecrets': False,
               'admittedRuntimeCount': 0,
@@ -104,11 +135,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --cached --quiet; then
             git commit -m "test(rate-limit): record distributed runtime diagnostic"
-            for attempt in 1 2 3; do
-              git pull --rebase origin so
-              if git push origin HEAD:so; then exit 0; fi
-              sleep 2
-            done
+            git push origin HEAD:so
           fi
       - name: Enforce validation
         run: test "${{ steps.runtime.outputs.exit_code }}" = "0"
