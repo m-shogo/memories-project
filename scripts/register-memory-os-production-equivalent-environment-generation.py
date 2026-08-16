@@ -39,6 +39,16 @@ REQUIRED = {
     "environmentRecordSha256", "supersedesGenerationId", "productionTraffic",
     "productionCredentials", "productionEvidence", "productionReady",
 }
+REGISTRY_FIELDS = {
+    "schemaVersion",
+    "registryClass",
+    "appendOnly",
+    "productionEvidence",
+    "registeredGenerationCount",
+    "currentGenerationId",
+    "generations",
+    "limitations",
+}
 
 
 class Fail(RuntimeError):
@@ -248,6 +258,7 @@ def validate_record(record: dict[str, Any]) -> bool:
 
 def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any]]:
     """Reject corrupted append-only generation authority instead of healing it on the next write."""
+    require(set(registry) == REGISTRY_FIELDS, f"registry field set drift: {sorted(set(registry) ^ REGISTRY_FIELDS)}")
     require(
         registry.get("schemaVersion") == "memory-os-production-equivalent-environment-generation-registry.v1",
         "registry schema drift",
