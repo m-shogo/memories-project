@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import importlib.util
 import json
 import sys
@@ -45,6 +46,44 @@ def expect_rejection(writer: Any, base: dict[str, Any], label: str,
     raise NegativeFailure(f"writer accepted corrupt parser registry: {label}")
 
 
+def synthetic_bound_registry(base: dict[str, Any]) -> dict[str, Any]:
+    candidate = copy.deepcopy(base)
+    artifact_id = "par_fake0000"
+    refs = [
+        "contracts/operations/parser-artifact-registry-contract.v1.json",
+        "contracts/operations/production-operability-status.json",
+        "contracts/operations/backup-restore-contract.v1.json",
+        "docs/fixtures/memory-os-operability/parser-restart-matrix-results.sample.v1.json",
+    ]
+    record = {
+        "artifactId": artifact_id,
+        "artifactSha256": "0" * 64,
+        "adapterId": "generic-csv",
+        "adapterVersion": "1.0.0",
+        "buildProvenanceRef": refs[0],
+        "securityReviewRef": refs[1],
+        "retentionEvidenceRef": refs[2],
+        "replayEvidenceRefs": [refs[3]],
+        "rollbackRetentionState": {
+            "state": "RETENTION_PENDING",
+            "immutableLocationVerified": False,
+            "verificationEvidenceRef": None,
+        },
+    }
+    candidate["artifacts"] = [record]
+    candidate["reviewedArtifactCount"] = 1
+    candidate["retainedRollbackArtifactCount"] = 0
+    candidate["replayProvenArtifactCount"] = 1
+    candidate["latestReviewedArtifactId"] = artifact_id
+    candidate["evidenceDigestsByArtifactId"] = {
+        artifact_id: {
+            ref: hashlib.sha256((ROOT / ref).read_bytes()).hexdigest()
+            for ref in refs
+        }
+    }
+    return candidate
+
+
 def main() -> int:
     writer = load_writer()
     base = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
@@ -59,10 +98,29 @@ def main() -> int:
         ("appendOnly false", lambda value: value.__setitem__("appendOnly", False)),
         ("production evidence promotion", lambda value: value.__setitem__("productionEvidence", True)),
         ("latest pointer drift", lambda value: value.__setitem__("latestReviewedArtifactId", "par_fake0000")),
+        ("missing evidence digest authority", lambda value: value.pop("evidenceDigestsByArtifactId")),
+        ("unknown evidence digest artifact", lambda value: value["evidenceDigestsByArtifactId"].__setitem__("par_fake0000", {})),
         ("unknown registry field", lambda value: value.__setitem__("unexpectedAuthority", True)),
     )
     for label, mutate in cases:
         expect_rejection(writer, base, label, mutate)
+
+    bound = synthetic_bound_registry(base)
+    writer.validate_registry_for_append(copy.deepcopy(bound))
+    artifact_id = bound["latestReviewedArtifactId"]
+    first_ref = next(iter(bound["evidenceDigestsByArtifactId"][artifact_id]))
+    expect_rejection(
+        writer,
+        bound,
+        "stale evidence digest",
+        lambda value: value["evidenceDigestsByArtifactId"][artifact_id].__setitem__(first_ref, "f" * 64),
+    )
+    expect_rejection(
+        writer,
+        bound,
+        "missing evidence ref digest",
+        lambda value: value["evidenceDigestsByArtifactId"][artifact_id].pop(first_ref),
+    )
 
     print("Parser artifact registry authority negative PASS")
     return 0
