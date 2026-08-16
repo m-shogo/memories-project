@@ -3,6 +3,7 @@
   "schemaVersion": "memory-os-release-baseline-registry-contract.v1",
   "description": "Binding append-only registry contract for approved Memory OS release baselines. Historical candidates, CI-compatible commits and branch heads are never release baselines by implication. A record exists only after named multi-role approval and immutable compatibility, recovery and artifact evidence are present. The writer verifies but never creates approvals, tags, evidence or production readiness.",
   "registryPath": "contracts/operations/release-baseline-registry.v1.json",
+  "appendLockPath": "contracts/operations/.release-baseline-registry.lock",
   "canonicalRunbook": "docs/evidence/releases/README.md",
   "validator": "scripts/validate-memory-os-release-baseline-registry.py",
   "writer": "scripts/register-memory-os-release-baseline.py",
