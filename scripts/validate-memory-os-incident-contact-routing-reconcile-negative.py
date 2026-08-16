@@ -46,6 +46,22 @@ def expect_ref_rejected(writer, ref: str, source: str, label: str) -> None:
     raise RuntimeError(f"writer accepted invalid source-bound evidence: {label}")
 
 
+def expect_generic_reviews_rejected(writer, source: str) -> None:
+    contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
+    record = {
+        "contactRoutingId": "icr_negative_review",
+        "observabilityStackId": "obsstack_negative_review",
+        "environmentIdentityDigest": "0" * 64,
+        "privacyReviewRef": "contracts/operations/production-operability-status.json",
+        "operabilityReviewRef": "contracts/operations/incident-contact-routing-admission-contract.v1.json",
+    }
+    try:
+        writer.validate_independent_reviews(record, source, contract)
+    except writer.Fail:
+        return
+    raise RuntimeError("generic repository JSON files were accepted as typed contact-routing independent reviews")
+
+
 def create_descendant_commit() -> str:
     tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], cwd=ROOT, text=True).strip()
     env = os.environ.copy()
@@ -94,6 +110,7 @@ def main() -> int:
     descendant = create_descendant_commit()
     if writer.source_is_ancestor(descendant):
         raise RuntimeError("future descendant commit was accepted as source ancestor")
+    expect_generic_reviews_rejected(writer, source)
 
     try:
         TEMP_POST_SOURCE.write_text("created after source commit\n", encoding="utf-8")
@@ -160,7 +177,9 @@ def main() -> int:
         raise RuntimeError("negative validation failed to restore contact routing registry")
     if OBS_REGISTRY.read_bytes() != observability_registry_bytes:
         raise RuntimeError("negative validation failed to restore observability stack registry")
-    print("PASS: contact routing rejects local/upstream authority corruption without mutation")
+    print("PASS: contact routing rejects local/upstream/review authority corruption without mutation")
+    print("generic repository JSON accepted as privacy/operability review: false")
+    print("automatic production promotion authorized: false")
     return 0
 
 
