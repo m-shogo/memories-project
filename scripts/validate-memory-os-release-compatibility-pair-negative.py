@@ -8,6 +8,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Callable
@@ -134,6 +135,19 @@ def main() -> int:
         stale_digest["evidenceDigestsByField"]["rollingDeploymentEvidenceRefs"]["README.md"] = "0" * 64
         expect_rejected("stale evidence digest", lambda: writer.validate_record(stale_digest))
 
+        link = ROOT / ".release-pair-negative-link"
+        require(not link.exists() and not link.is_symlink(), "negative symlink fixture path already exists")
+        with tempfile.TemporaryDirectory(prefix="release-pair-evidence-") as temp_dir:
+            outside = Path(temp_dir)
+            (outside / "evidence.json").write_text("{}\n", encoding="utf-8")
+            link.symlink_to(outside, target_is_directory=True)
+            try:
+                escaped = copy.deepcopy(pair)
+                escaped["rollingDeploymentEvidenceRefs"] = [".release-pair-negative-link/evidence.json"]
+                expect_rejected("parent symlink evidence escape", lambda: writer.bind_evidence_digests(escaped))
+            finally:
+                link.unlink(missing_ok=True)
+
         writer.validated_release_registry = lambda: synthetic_releases("NOT_ELIGIBLE")
         expect_rejected("non-eligible predecessor", lambda: writer.validate_record(pair))
     finally:
@@ -158,7 +172,7 @@ def main() -> int:
 
     require(REGISTRY.read_bytes() == (ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json").read_bytes(),
             "negative suite mutated canonical pair registry")
-    print("PASS: release compatibility pair authority rejects registry corruption, evidence digest drift, and nested rollback ineligibility")
+    print("PASS: release compatibility pair authority rejects registry corruption, evidence digest drift, symlink escapes, and nested rollback ineligibility")
     return 0
 
 
