@@ -1,12 +1,19 @@
 name: Reconcile Latest Evidence Concurrency
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/reconcile-latest-evidence-concurrency.yml"
+      - ".github/workflows/regenerate-live-postgres-load-results.yml"
+      - ".github/workflows/capacity-ramp.yml"
+      - ".github/workflows/short-stability-sample.yml"
+      - ".github/workflows/reconcile-load-foundation-authorities.yml"
   push:
     branches:
       - so
     paths:
       - ".github/workflows/reconcile-latest-evidence-concurrency.yml"
-      - ".github/workflows/regenerate-live-dependency-load-v2.yml"
+      - ".github/workflows/regenerate-live-postgres-load-results.yml"
       - ".github/workflows/capacity-ramp.yml"
       - ".github/workflows/short-stability-sample.yml"
       - ".github/workflows/reconcile-load-foundation-authorities.yml"
@@ -16,7 +23,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: reconcile-latest-evidence-concurrency-so
+  group: reconcile-latest-evidence-concurrency-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: true
 
 jobs:
@@ -27,11 +34,25 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Checkout latest so
+      - name: Checkout exact concurrency authority source
         uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
           fetch-depth: 0
+
+      - name: Confirm exact clean authority source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+          else
+            test "$(git branch --show-current)" = "so"
+            test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          fi
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Require latest-run concurrency
         run: |
@@ -40,12 +61,14 @@ jobs:
           from pathlib import Path
 
           paths = [
-              Path('.github/workflows/regenerate-live-dependency-load-v2.yml'),
+              Path('.github/workflows/regenerate-live-postgres-load-results.yml'),
               Path('.github/workflows/capacity-ramp.yml'),
               Path('.github/workflows/short-stability-sample.yml'),
               Path('.github/workflows/reconcile-load-foundation-authorities.yml'),
           ]
           for path in paths:
+              if not path.is_file():
+                  raise SystemExit(f'{path}: latest-evidence workflow authority missing')
               text = path.read_text(encoding='utf-8')
               group_marker = 'concurrency:\n'
               if text.count(group_marker) != 1:
@@ -64,11 +87,23 @@ jobs:
               path.write_text(text, encoding='utf-8')
           PY
 
+      - name: Require deterministic concurrency authority on pull requests
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code -- \
+            .github/workflows/regenerate-live-postgres-load-results.yml \
+            .github/workflows/capacity-ramp.yml \
+            .github/workflows/short-stability-sample.yml \
+            .github/workflows/reconcile-load-foundation-authorities.yml
+
       - name: Commit concurrency authority
+        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           git add \
-            .github/workflows/regenerate-live-dependency-load-v2.yml \
+            .github/workflows/regenerate-live-postgres-load-results.yml \
             .github/workflows/capacity-ramp.yml \
             .github/workflows/short-stability-sample.yml \
             .github/workflows/reconcile-load-foundation-authorities.yml
@@ -76,8 +111,13 @@ jobs:
             echo "Evidence workflows already prefer the latest source."
             exit 0
           fi
+          git diff --cached --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "ci: cancel stale exact-source evidence runs"
-          git pull --rebase origin so
+          remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
+          if [[ "$remote_sha" != "$SOURCE_SHA" ]]; then
+            echo "Concurrency authority source is stale: validated $SOURCE_SHA but so is $remote_sha" >&2
+            exit 75
+          fi
           git push origin HEAD:so
