@@ -22,6 +22,24 @@ ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / "contracts/operations/sustained-soak-independent-review-registry.v1.json"
 VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-sustained-soak-independent-review.py"
 LOCK_PATH = ROOT / "contracts/operations/.sustained-soak-independent-review.lock"
+EXPECTED_REGISTRY_FIELDS = {
+    "schemaVersion",
+    "registryClass",
+    "appendOnly",
+    "productionEvidence",
+    "registeredCriteriaCount",
+    "registeredReviewCount",
+    "approvedLeakStabilityCriteriaCount",
+    "passingIndependentReviewCount",
+    "leakProof",
+    "capacityBoundaryEstablished",
+    "operationalThresholdApproved",
+    "productionSustainedSoakEvidence",
+    "productionReady",
+    "criteria",
+    "reviews",
+    "limitations",
+}
 
 
 class Fail(RuntimeError):
@@ -52,8 +70,59 @@ def load_validator() -> Any:
     return module
 
 
+def require_count(value: Any, expected: int, field: str) -> None:
+    require(isinstance(value, int) and not isinstance(value, bool), f"{field} must be integer, not boolean")
+    require(value == expected, f"{field} drift")
+
+
+def validate_registry_aggregates(registry: dict[str, Any]) -> None:
+    """Reject structural/aggregate corruption before any append can normalize it."""
+    require(set(registry) == EXPECTED_REGISTRY_FIELDS, "registry field drift")
+    require(registry.get("schemaVersion") == "memory-os-sustained-soak-independent-review-registry.v1", "registry schema drift")
+    require(registry.get("registryClass") == "SUSTAINED_SOAK_INDEPENDENT_REVIEW", "registry class drift")
+    require(registry.get("appendOnly") is True, "registry must remain append-only")
+
+    criteria = registry.get("criteria")
+    reviews = registry.get("reviews")
+    limitations = registry.get("limitations")
+    require(isinstance(criteria, list), "registry.criteria must be list")
+    require(isinstance(reviews, list), "registry.reviews must be list")
+    require(isinstance(limitations, list) and all(isinstance(item, str) and item for item in limitations), "registry.limitations invalid")
+
+    current_criteria_id: str | None = None
+    if criteria:
+        current = criteria[-1]
+        require(isinstance(current, dict), "current criteria row must be object")
+        current_criteria_id = current.get("criteriaId")
+        require(isinstance(current_criteria_id, str) and current_criteria_id, "current criteria row requires criteriaId")
+
+    passing_reviews = sum(
+        1
+        for review in reviews
+        if isinstance(review, dict)
+        and review.get("outcome") == "PASS"
+        and review.get("criteriaId") == current_criteria_id
+    )
+    require_count(registry.get("registeredCriteriaCount"), len(criteria), "registeredCriteriaCount")
+    require_count(registry.get("approvedLeakStabilityCriteriaCount"), len(criteria), "approvedLeakStabilityCriteriaCount")
+    require_count(registry.get("registeredReviewCount"), len(reviews), "registeredReviewCount")
+    require_count(registry.get("passingIndependentReviewCount"), passing_reviews, "passingIndependentReviewCount")
+
+    require(registry.get("productionEvidence") is False, "registry cannot claim production evidence")
+    for field in (
+        "leakProof",
+        "capacityBoundaryEstablished",
+        "operationalThresholdApproved",
+        "productionSustainedSoakEvidence",
+        "productionReady",
+    ):
+        require(registry.get(field) is False, f"registry cannot automatically enable {field}")
+
+
 def validate_existing_registry() -> None:
     """Fail closed on the canonical append-only authority before any mutation."""
+    registry = load(REGISTRY)
+    validate_registry_aggregates(registry)
     validator = load_validator()
     require(validator.REGISTRY.resolve() == REGISTRY.resolve(), "sustained-soak registry validator authority drift")
     try:
