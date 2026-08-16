@@ -17,7 +17,9 @@ GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-ge
 CONTRACT = ROOT / "contracts/operations/production-shaped-failure-drill-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 WRITER_PATH = ROOT / "scripts/register-memory-os-production-shaped-failure-drill.py"
+VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-production-shaped-failure-drills.py"
 RECONCILER_PATH = ROOT / "scripts/reconcile-memory-os-production-shaped-failure-drills.py"
+ALTERNATE_LOCK = ROOT / "contracts/operations/.production-shaped-failure-drill-substitute.lock"
 
 
 def load_module(path: Path, name: str) -> Any:
@@ -120,6 +122,38 @@ def expect_generation_authority_rejected(
         STATUS.write_bytes(status_before)
 
 
+def expect_contract_lock_rejected(validator: Any) -> None:
+    original = CONTRACT.read_bytes()
+    contract = json.loads(original.decode("utf-8"))
+    contract["appendLockPath"] = str(ALTERNATE_LOCK.relative_to(ROOT))
+    write_json(CONTRACT, contract)
+    corrupted = CONTRACT.read_bytes()
+    try:
+        try:
+            validator.main()
+        except validator.Fail:
+            pass
+        else:
+            raise RuntimeError("substituted failure-drill append lock accepted by contract validator")
+        if CONTRACT.read_bytes() != corrupted:
+            raise RuntimeError("rejected failure-drill lock validation mutated contract")
+    finally:
+        CONTRACT.write_bytes(original)
+
+
+def expect_writer_lock_rejected(validator: Any, writer: Any) -> None:
+    original = writer.LOCK
+    try:
+        writer.LOCK = ALTERNATE_LOCK
+        try:
+            validator.validate_writer_authority(writer)
+        except validator.Fail:
+            return
+        raise RuntimeError("substituted failure-drill writer lock accepted")
+    finally:
+        writer.LOCK = original
+
+
 def expect_side_commit_rejected(writer: Any) -> None:
     environment = os.environ.copy()
     environment.update(
@@ -209,6 +243,7 @@ def validate_review_payload_negatives(writer: Any) -> int:
 
 def main() -> int:
     writer = load_module(WRITER_PATH, "failure_drill_writer_negative")
+    validator = load_module(VALIDATOR_PATH, "failure_drill_validator_negative")
     reconciler = load_module(RECONCILER_PATH, "failure_drill_reconciler_negative")
     original = REGISTRY.read_bytes()
     generation_original = GEN_REGISTRY.read_bytes()
@@ -238,6 +273,8 @@ def main() -> int:
             expect_reconciler_rejected(reconciler, name, mutate, original)
         for name, mutate in generation_cases:
             expect_generation_authority_rejected(writer, reconciler, name, mutate, original, generation_original)
+        expect_contract_lock_rejected(validator)
+        expect_writer_lock_rejected(validator, writer)
         expect_side_commit_rejected(writer)
         expect_review_namespace_rejected(writer)
         review_case_count = validate_review_payload_negatives(writer)
@@ -249,6 +286,8 @@ def main() -> int:
     print(f"failure-drill corruption cases: {len(cases)}")
     print(f"upstream generation corruption cases: {len(generation_cases)}")
     print(f"typed independent review negative cases: {review_case_count}")
+    print("contract append lock substitution accepted: false")
+    print("writer append lock substitution accepted: false")
     print("generic repository review authority accepted: false")
     print("detached source commit accepted: false")
     print("reconciler auto-heal: false")
