@@ -28,6 +28,7 @@ CONTRACT = ROOT / "contracts/operations/migration-production-shaped-admission-co
 LIFECYCLE = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 WRITER = ROOT / "scripts/register-memory-os-migration-production-shaped-admission.py"
+VALIDATOR = ROOT / "scripts/validate-memory-os-migration-production-shaped-admission.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-migration-production-shaped-admission.py"
 REVIEW_NEGATIVE_REF = "docs/evidence/migration-production-shaped-admission/independent-reviews/.negative-review-history.json"
 UNTRACKED_EVIDENCE_REF = "docs/fixtures/memory-os-operability/.migration-production-untracked-negative.json"
@@ -273,6 +274,26 @@ def expect_mutated_review_history_rejected(writer: ModuleType) -> None:
             pass
 
 
+def expect_append_lock_contract_drift_rejected() -> None:
+    original = CONTRACT.read_bytes()
+    contract = load_json(CONTRACT)
+    contract["appendLockPath"] = "contracts/operations/.migration-production-shaped-admission-negative.lock"
+    CONTRACT.write_text(json.dumps(contract, indent=2) + "\n", encoding="utf-8")
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(VALIDATOR)],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        require(completed.returncode != 0, "standalone validator accepted migration admission append-lock authority drift")
+        require("append lock binding drift" in completed.stdout, "append-lock authority drift was rejected for an unrelated reason")
+    finally:
+        CONTRACT.write_bytes(original)
+
+
 def main() -> int:
     writer = load_writer()
     cases: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
@@ -299,7 +320,8 @@ def main() -> int:
     expect_generic_review_refs_rejected(writer)
     expect_external_evidence_containment_rejected(writer)
     expect_mutated_review_history_rejected(writer)
-    print("PASS: migration production-shaped admission registry, digest authority, upstream release-pair, ledger, release, external evidence containment, and independent-review authority drift are rejected")
+    expect_append_lock_contract_drift_rejected()
+    print("PASS: migration production-shaped admission registry, digest authority, append-lock authority, upstream release-pair, ledger, release, external evidence containment, and independent-review authority drift are rejected")
     return 0
 
 
