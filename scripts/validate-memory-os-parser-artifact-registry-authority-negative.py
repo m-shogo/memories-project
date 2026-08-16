@@ -7,14 +7,18 @@ import copy
 import hashlib
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 WRITER_PATH = ROOT / "scripts/register-memory-os-parser-artifact.py"
+VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-parser-artifact-registry.py"
 RECONCILER_PATH = ROOT / "scripts/reconcile-memory-os-parser-artifact-registry.py"
+CONTRACT_PATH = ROOT / "contracts/operations/parser-artifact-registry-contract.v1.json"
 REGISTRY_PATH = ROOT / "contracts/operations/parser-artifact-registry.v1.json"
+LOCK_PATH = ROOT / "contracts/operations/.parser-artifact-registry.lock"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 
 
@@ -36,7 +40,14 @@ def load_module(path: Path, name: str) -> Any:
 
 
 def load_writer() -> Any:
-    return load_module(WRITER_PATH, "parser_artifact_writer_registry_negative")
+    module = load_module(WRITER_PATH, "parser_artifact_writer_registry_negative")
+    require(Path(module.CONTRACT_PATH).resolve() == CONTRACT_PATH.resolve(),
+            "parser writer contract authority drift")
+    require(Path(module.REGISTRY_PATH).resolve() == REGISTRY_PATH.resolve(),
+            "parser writer registry authority drift")
+    require(Path(module.LOCK_PATH).resolve() == LOCK_PATH.resolve(),
+            "parser writer append lock authority drift")
+    return module
 
 
 def load_reconciler() -> Any:
@@ -52,6 +63,19 @@ def expect_rejection(writer: Any, base: dict[str, Any], label: str,
     except writer.RegistrationFailure:
         return
     raise NegativeFailure(f"writer accepted corrupt parser registry: {label}")
+
+
+def expect_validator_rejection(label: str) -> None:
+    completed = subprocess.run(
+        [sys.executable, str(VALIDATOR_PATH)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    require(completed.returncode != 0,
+            f"standalone validator accepted corrupt parser authority: {label}")
 
 
 def expect_reconcile_rejection(reconciler: Any, base: dict[str, Any], label: str,
@@ -118,6 +142,10 @@ def synthetic_bound_registry(base: dict[str, Any]) -> dict[str, Any]:
 def main() -> int:
     writer = load_writer()
     reconciler = load_reconciler()
+    contract_bytes = CONTRACT_PATH.read_bytes()
+    contract = json.loads(contract_bytes.decode("utf-8"))
+    require(contract.get("appendLockPath") == str(LOCK_PATH.relative_to(ROOT)),
+            "parser contract append lock authority drift")
     base = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
     require(isinstance(base, dict), "parser registry must be object")
     writer.validate_registry_for_append(copy.deepcopy(base))
@@ -136,6 +164,14 @@ def main() -> int:
     )
     for label, mutate in cases:
         expect_rejection(writer, base, label, mutate)
+
+    try:
+        corrupt_contract = copy.deepcopy(contract)
+        corrupt_contract["appendLockPath"] = "contracts/operations/.parser-artifact-registry-alternate.lock"
+        CONTRACT_PATH.write_text(json.dumps(corrupt_contract, indent=2) + "\n", encoding="utf-8")
+        expect_validator_rejection("append lock binding drift")
+    finally:
+        CONTRACT_PATH.write_bytes(contract_bytes)
 
     for label, mutate in (
         ("missing evidence digest authority", lambda value: value.pop("evidenceDigestsByArtifactId")),
@@ -164,7 +200,7 @@ def main() -> int:
     require(REGISTRY_PATH.read_bytes() == json.dumps(base, indent=2, ensure_ascii=False).encode("utf-8") + b"\n" or
             json.loads(REGISTRY_PATH.read_text(encoding="utf-8")) == base,
             "parser registry was not restored after reconcile negatives")
-    print("Parser artifact registry authority negative PASS")
+    print("Parser artifact registry and append lock authority negative PASS")
     return 0
 
 
