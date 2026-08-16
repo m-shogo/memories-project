@@ -1,6 +1,22 @@
 name: Migration Production Shaped Admission
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/migration-production-shaped-admission.yml"
+      - "contracts/operations/requests/migration-production-shaped-admission-foundation.v1.json"
+      - "contracts/operations/migration-production-shaped-admission-contract.v1.json"
+      - "contracts/operations/migration-production-shaped-admission-registry.v1.json"
+      - "contracts/operations/migration-lifecycle-contract.v1.json"
+      - "contracts/operations/release-baseline-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "scripts/register-memory-os-migration-production-shaped-admission.py"
+      - "scripts/validate-memory-os-migration-production-shaped-admission.py"
+      - "scripts/validate-memory-os-migration-production-shaped-admission-negative.py"
+      - "scripts/reconcile-memory-os-migration-production-shaped-admission.py"
+      - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-migration-lifecycle.py"
+      - "scripts/validate-memory-os-operability.py"
   push:
     branches:
       - so
@@ -25,7 +41,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: migration-production-shaped-admission-so
+  group: migration-production-shaped-admission-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -35,7 +51,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -69,8 +85,15 @@ jobs:
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
+      - name: Require reconciled authority in pull requests
+        if: github.event_name == 'pull_request' && steps.admission.outputs.exit_code == '0'
+        run: |
+          git diff --exit-code -- \
+            contracts/operations/migration-production-shaped-admission-contract.v1.json \
+            contracts/operations/migration-lifecycle-contract.v1.json \
+            contracts/operations/production-operability-status.json
       - name: Commit bounded migration admission authority
-        if: steps.admission.outputs.exit_code == '0'
+        if: github.event_name != 'pull_request' && steps.admission.outputs.exit_code == '0'
         env:
           SOURCE_COMMIT_SHA: ${{ steps.admission.outputs.source_sha }}
         run: |
@@ -95,7 +118,7 @@ jobs:
             git push origin HEAD:so
           fi
       - name: Record privacy-safe diagnostic
-        if: steps.admission.outputs.exit_code != '0'
+        if: github.event_name != 'pull_request' && steps.admission.outputs.exit_code != '0'
         env:
           ADMISSION_EXIT_CODE: ${{ steps.admission.outputs.exit_code }}
           SOURCE_COMMIT_SHA: ${{ steps.admission.outputs.source_sha }}
