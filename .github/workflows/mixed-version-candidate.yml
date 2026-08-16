@@ -33,7 +33,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: mixed-version-candidate-${{ github.ref }}
+  group: mixed-version-candidate-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: true
 
 jobs:
@@ -71,6 +71,7 @@ jobs:
       - name: Checkout exact source with full history
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
           fetch-depth: 0
 
       - name: Set up Go
@@ -119,8 +120,14 @@ jobs:
 
       - name: Verify exact source state
         run: |
+          set -euo pipefail
           test -z "$(git status --porcelain)"
-          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          SOURCE_SHA="$(git rev-parse HEAD)"
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            git fetch origin so
+            test "$(git rev-parse origin/so)" = "$SOURCE_SHA"
+          fi
+          echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
           git cat-file -e 2af6e8e10755cc707c6bdd958a049a0f4afb3d70^{commit}
           bash -n scripts/run-memory-os-mixed-version-candidate.sh
           python -m py_compile \
@@ -131,7 +138,7 @@ jobs:
       - name: Run candidate baseline compatibility drill
         id: drill
         env:
-          MEMORY_OS_COMMIT_SHA: ${{ github.sha }}
+          MEMORY_OS_COMMIT_SHA: ${{ env.SOURCE_SHA }}
           MEMORY_OS_MIXED_VERSION_RESULTS_PATH: ${{ github.workspace }}/docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json
         run: |
           set +e
@@ -144,7 +151,6 @@ jobs:
       - name: Record bounded failure diagnostic
         if: steps.drill.outputs.exit_code != '0'
         env:
-          SOURCE_SHA: ${{ github.sha }}
           DRILL_EXIT_CODE: ${{ steps.drill.outputs.exit_code }}
         run: |
           python - <<'PY'
@@ -180,13 +186,22 @@ jobs:
       - name: Commit failure diagnostic
         if: steps.drill.outputs.exit_code != '0' && github.event_name != 'pull_request'
         run: |
+          set -euo pipefail
+          git fetch origin so
+          if [[ "$(git rev-parse HEAD)" != "$SOURCE_SHA" ]] || [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "so advanced while candidate compatibility ran; refusing stale diagnostic."
+            exit 75
+          fi
           git add docs/fixtures/memory-os-operability/mixed-version-candidate-diagnostic.last.json
           if git diff --cached --quiet; then exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "test(version): record candidate compatibility failure diagnostic"
           git fetch origin so
-          git rebase origin/so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "so advanced before candidate diagnostic push; refusing stale diagnostic."
+            exit 75
+          fi
           git push origin HEAD:so
 
       - name: Fail after diagnostic
@@ -195,12 +210,18 @@ jobs:
 
       - name: Validate exact-source result
         env:
-          EXPECTED_COMMIT_SHA: ${{ github.sha }}
+          EXPECTED_COMMIT_SHA: ${{ env.SOURCE_SHA }}
         run: python scripts/validate-memory-os-mixed-version-candidate.py
 
       - name: Commit exact-source result and clear stale diagnostic
         if: github.event_name != 'pull_request'
         run: |
+          set -euo pipefail
+          git fetch origin so
+          if [[ "$(git rev-parse HEAD)" != "$SOURCE_SHA" ]] || [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "so advanced while candidate compatibility ran; refusing stale evidence."
+            exit 75
+          fi
           diagnostic_path="docs/fixtures/memory-os-operability/mixed-version-candidate-diagnostic.last.json"
           rm -f "$diagnostic_path"
           git add docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json
@@ -209,20 +230,31 @@ jobs:
           fi
           if git diff --cached --quiet; then
             echo "Candidate compatibility evidence is already current."
+            echo "EVIDENCE_COMMIT_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "test(version): record candidate baseline compatibility evidence"
+            EVIDENCE_COMMIT_SHA="$(git rev-parse HEAD)"
             git fetch origin so
-            git rebase origin/so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              echo "so advanced before candidate evidence push; refusing stale evidence."
+              exit 75
+            fi
             git push origin HEAD:so
+            echo "EVIDENCE_COMMIT_SHA=$EVIDENCE_COMMIT_SHA" >> "$GITHUB_ENV"
           fi
 
       - name: Reconcile candidate authority
         if: github.event_name != 'pull_request'
         run: |
+          set -euo pipefail
           git fetch origin so
-          git reset --hard origin/so
+          test "$(git rev-parse HEAD)" = "$EVIDENCE_COMMIT_SHA"
+          if [[ "$(git rev-parse origin/so)" != "$EVIDENCE_COMMIT_SHA" ]]; then
+            echo "so advanced before candidate authority reconciliation; refusing stale authority."
+            exit 75
+          fi
           python scripts/reconcile-memory-os-mixed-version-candidate.py
           python scripts/validate-memory-os-mixed-version-candidate.py
           python scripts/validate-memory-os-version-compatibility.py
@@ -230,6 +262,7 @@ jobs:
       - name: Commit reconciled authority
         if: github.event_name != 'pull_request'
         run: |
+          set -euo pipefail
           git add \
             contracts/operations/mixed-version-candidate-contract.v1.json \
             contracts/operations/production-operability-status.json
@@ -241,5 +274,8 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "docs(version): reconcile candidate baseline evidence"
           git fetch origin so
-          git rebase origin/so
+          if [[ "$(git rev-parse origin/so)" != "$EVIDENCE_COMMIT_SHA" ]]; then
+            echo "so advanced before candidate authority push; refusing stale authority."
+            exit 75
+          fi
           git push origin HEAD:so
