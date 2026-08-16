@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "memory-os-local-migration-recovery-artifact.v1",
+  "migrationRunId": "mig_20260816_9c402486606d",
+  "commitSha": "9c402486606df301a55b3495d2e8a0656c7405a1",
+  "generatedAt": "2026-08-16T22:26:34.151966Z",
+  "environmentClass": "LOCAL_POSTGRES_REHEARSAL",
+  "databaseMode": "EPHEMERAL_POSTGRESQL_16_SAME_CLUSTER_PREMIGRATION_LOGICAL_RECOVERY",
+  "databaseIdentityDigest": "1763a4ceb43263e33de5427c7ec0df28cd630bca6116a2ebc3630b8234ae3928",
+  "migrationUnderTest": "010_memory_os_apple_identity.sql",
+  "startedAt": "2026-08-16T22:26:30Z",
+  "completedAt": "2026-08-16T22:26:34Z",
+  "durationSeconds": 4,
+  "migrationApplyDurationMs": 76,
+  "baselineMigrationCount": 10,
+  "finalMigrationCount": 11,
+  "sqlIntegrationTestsExecutedAfterRecovery": 11,
+  "recoveryArtifact": {
+    "reference": "sha256:733b0cf842a55520df2dfbf1d1e9619fd773ce8f7ea8785daefd6aeeef4436a9",
+    "sha256": "733b0cf842a55520df2dfbf1d1e9619fd773ce8f7ea8785daefd6aeeef4436a9",
+    "bytes": 112854,
+    "rawArtifactCommitted": false
+  },
+  "assertions": {
+    "sourceBaselineApplied": true,
+    "recoveryArtifactDigestRecorded": true,
+    "migrationAppliedOnSource": true,
+    "migrationSpecificSourceTestPassed": true,
+    "exactRecoveryArtifactRestored": true,
+    "preMigrationSurfaceRecovered": true,
+    "migrationReappliedAfterRestore": true,
+    "canonicalSqlSuitePassedAfterRecovery": true,
+    "actualRecoveryArtifactRestored": true,
+    "containsSecrets": false,
+    "productionTraffic": false,
+    "productionCredentials": false,
+    "productionEvidence": false
+  },
+  "result": "PASS",
+  "integrityResult": "PASS",
+  "limitations": [
+    "same PostgreSQL cluster logical dump and restore",
+    "not PITR, WAL archive, physical backup or replication evidence",
+    "not production-equivalent infrastructure or credentials",
+    "not proof that a production migration may be automatically rolled back",
+    "does not exercise application traffic during migration",
+    "clean isolated database has no competing sessions by construction and therefore does not provide production lock-wait telemetry",
+    "does not satisfy destructive-contract isolated restore approval"
+  ]
+}
