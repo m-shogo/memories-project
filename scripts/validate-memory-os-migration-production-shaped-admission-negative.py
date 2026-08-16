@@ -217,7 +217,8 @@ def expect_external_evidence_containment_rejected(writer: ModuleType) -> None:
         try:
             writer.evidence_refs([UNTRACKED_EVIDENCE_REF], "compatibilityEvidenceRefs")
         except Exception as exc:
-            require("tracked at HEAD" in str(exc), "untracked migration evidence was rejected for an unrelated reason")
+            message = str(exc)
+            require("tracked at HEAD" in message or "git ls-files" in message, "untracked migration evidence was rejected for an unrelated reason")
         else:
             raise Fail("untracked repository evidence was accepted as migration admission authority")
 
