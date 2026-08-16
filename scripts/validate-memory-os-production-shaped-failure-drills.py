@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import sys
@@ -22,6 +23,7 @@ EXPECTED_REGISTRY_FIELDS = {
     "registeredDrillCount",
     "productionEquivalentDrillCount",
     "productionDrillCount",
+    "evidenceDigestsByDrillId",
     "drills",
     "productionReady",
 }
@@ -68,6 +70,29 @@ def validate_generation_registry_authority() -> None:
         raise Fail(f"environment generation registry rejected: {exc}") from exc
 
 
+def record_evidence_refs(record: dict[str, Any]) -> list[str]:
+    refs: list[str] = []
+    assertions = record.get("assertions")
+    if isinstance(assertions, list):
+        for row in assertions:
+            if isinstance(row, dict) and isinstance(row.get("evidenceRefs"), list):
+                refs.extend(item for item in row["evidenceRefs"] if isinstance(item, str))
+    for field in ("operabilityReviewRef", "securityReviewRef"):
+        value = record.get(field)
+        if isinstance(value, str):
+            refs.append(value)
+    return sorted(set(refs))
+
+
+def expected_evidence_digests(record: dict[str, Any]) -> dict[str, str]:
+    digests: dict[str, str] = {}
+    for relative in record_evidence_refs(record):
+        path = ROOT / relative
+        require(path.is_file(), f"evidence path missing: {relative}")
+        digests[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return digests
+
+
 def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any]]:
     validate_generation_registry_authority()
     require(set(registry) == EXPECTED_REGISTRY_FIELDS, "registry field drift")
@@ -75,6 +100,8 @@ def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any
     require(registry.get("appendOnly") is True, "registry must remain append-only")
     drills = registry.get("drills")
     require(isinstance(drills, list), "registry drills missing")
+    digest_authority = registry.get("evidenceDigestsByDrillId")
+    require(isinstance(digest_authority, dict), "evidence digest authority missing")
     writer = load_writer()
     ids: set[str] = set()
     pe = 0
@@ -87,11 +114,17 @@ def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any
             writer.validate_record(record, confirmation)
         except Exception as exc:
             raise Fail(f"drills[{index}] invalid: {exc}") from exc
-        require(record["drillId"] not in ids, f"duplicate drillId: {record['drillId']}")
-        ids.add(record["drillId"])
+        drill_id = record["drillId"]
+        require(drill_id not in ids, f"duplicate drillId: {drill_id}")
+        ids.add(drill_id)
+        expected_digests = expected_evidence_digests(record)
+        actual_digests = digest_authority.get(drill_id)
+        require(isinstance(actual_digests, dict), f"evidence digest authority missing for {drill_id}")
+        require(actual_digests == expected_digests, f"evidence digest authority drift for {drill_id}")
         pe += 1 if record["environmentClass"] == "PRODUCTION_EQUIVALENT" else 0
         prod += 1 if record["environmentClass"] == "PRODUCTION" else 0
         normalized.append(record)
+    require(set(digest_authority) == ids, "evidence digest authority contains unknown drill ids")
     require_count(registry.get("registeredDrillCount"), len(drills), "registeredDrillCount")
     require_count(registry.get("productionEquivalentDrillCount"), pe, "productionEquivalentDrillCount")
     require_count(registry.get("productionDrillCount"), prod, "productionDrillCount")
