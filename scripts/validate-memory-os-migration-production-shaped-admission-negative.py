@@ -126,6 +126,24 @@ def expect_canonical_writer_delegation() -> None:
         MIGRATION_LEDGER.write_bytes(original)
 
 
+def expect_generic_review_refs_rejected(writer: ModuleType) -> None:
+    record = {
+        "admissionId": "mpa_review_negative",
+        "migrationRunId": "mig_review_negative",
+        "environmentGenerationId": "pegen_review_negative",
+        "sourceCommitSha": "0" * 40,
+        "predecessorReleaseId": "rel_review_predecessor",
+        "successorReleaseId": "rel_review_successor",
+        "securityReviewRef": "contracts/operations/production-operability-status.json",
+        "operabilityReviewRef": "contracts/operations/migration-production-shaped-admission-contract.v1.json",
+    }
+    try:
+        writer.validate_independent_reviews(record)
+    except Exception:
+        return
+    raise Fail("generic repository JSON files were accepted as migration independent-review authority")
+
+
 def main() -> int:
     writer = load_writer()
     cases: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
@@ -142,7 +160,8 @@ def main() -> int:
         expect_reconcile_rejected_without_mutation(name, mutate)
     expect_noncanonical_ledger_rows_rejected()
     expect_canonical_writer_delegation()
-    print("PASS: migration production-shaped admission registry corruption and canonical ledger drift are rejected")
+    expect_generic_review_refs_rejected(writer)
+    print("PASS: migration production-shaped admission registry, ledger, and independent-review authority drift are rejected")
     return 0
 
 
