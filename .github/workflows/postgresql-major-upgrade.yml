@@ -145,6 +145,11 @@ jobs:
       - name: Commit result or bounded diagnostic
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         run: |
+          git fetch origin so
+          test "$(git rev-parse origin/so)" = "$SOURCE_SHA" || {
+            echo "so advanced after PostgreSQL upgrade validation; refusing stale evidence write"
+            exit 75
+          }
           git add docs/fixtures/memory-os-operability/postgresql-major-upgrade-diagnostic.last.json
           if [ "${{ steps.execute.outputs.exit_code }}" = "0" ] && \
              [ "${{ steps.validation.outputs.exit_code }}" = "0" ]; then
@@ -162,7 +167,10 @@ jobs:
               git commit -m "test(database): record PostgreSQL major-upgrade diagnostic"
             fi
             git fetch origin so
-            git rebase origin/so
+            test "$(git rev-parse origin/so)" = "$SOURCE_SHA" || {
+              echo "so advanced before PostgreSQL upgrade evidence push; refusing stale write"
+              exit 75
+            }
             git push origin HEAD:so
           fi
 
@@ -171,8 +179,12 @@ jobs:
           github.event_name != 'pull_request' && github.ref == 'refs/heads/so' &&
           steps.execute.outputs.exit_code == '0' && steps.validation.outputs.exit_code == '0'
         run: |
+          EVIDENCE_HEAD="$(git rev-parse HEAD)"
           git fetch origin so
-          git rebase origin/so
+          test "$(git rev-parse origin/so)" = "$EVIDENCE_HEAD" || {
+            echo "so advanced before PostgreSQL upgrade reconcile; refusing stale projection"
+            exit 75
+          }
           python scripts/reconcile-memory-os-postgresql-major-upgrade.py
           python scripts/validate-memory-os-postgresql-major-upgrade.py \
             --expected-commit-sha "$SOURCE_SHA" --require-reconciled
@@ -186,7 +198,10 @@ jobs:
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(database): register PostgreSQL 16 to 17 upgrade"
             git fetch origin so
-            git rebase origin/so
+            test "$(git rev-parse origin/so)" = "$EVIDENCE_HEAD" || {
+              echo "so advanced before PostgreSQL upgrade authority push; refusing stale projection"
+              exit 75
+            }
             git push origin HEAD:so
           fi
 
