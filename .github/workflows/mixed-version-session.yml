@@ -65,6 +65,7 @@ jobs:
       - name: Checkout exact source with old commit history
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
           fetch-depth: 0
 
       - name: Set up Go
@@ -80,8 +81,14 @@ jobs:
 
       - name: Capture exact source state
         run: |
+          set -euo pipefail
           test -z "$(git status --porcelain)"
-          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          SOURCE_SHA="$(git rev-parse HEAD)"
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            git fetch origin so
+            test "$(git rev-parse origin/so)" = "$SOURCE_SHA"
+          fi
+          echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
           bash -n scripts/run-memory-os-mixed-version-session-drill.sh
           python -m py_compile \
             scripts/validate-memory-os-mixed-version-session.py \
@@ -122,16 +129,28 @@ jobs:
       - name: Commit exact-source result
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         run: |
+          set -euo pipefail
+          git fetch origin so
+          if [[ "$(git rev-parse HEAD)" != "$SOURCE_SHA" ]] || [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "so advanced while mixed-version session ran; refusing stale evidence."
+            exit 75
+          fi
           git add docs/fixtures/memory-os-operability/mixed-version-session-results.sample.v1.json
           if git diff --cached --quiet; then
             echo "Mixed-version session evidence is already current."
+            echo "EVIDENCE_COMMIT_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "test(compat): record pinned old-current session evidence"
+            EVIDENCE_COMMIT_SHA="$(git rev-parse HEAD)"
             git fetch origin so
-            git rebase origin/so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              echo "so advanced before mixed-version session evidence push; refusing stale evidence."
+              exit 75
+            fi
             git push origin HEAD:so
+            echo "EVIDENCE_COMMIT_SHA=$EVIDENCE_COMMIT_SHA" >> "$GITHUB_ENV"
           fi
 
       - name: Reconcile compatibility status without readiness promotion
@@ -139,8 +158,13 @@ jobs:
         env:
           EXPECTED_COMMIT_SHA: ${{ env.SOURCE_SHA }}
         run: |
+          set -euo pipefail
           git fetch origin so
-          git rebase origin/so
+          test "$(git rev-parse HEAD)" = "$EVIDENCE_COMMIT_SHA"
+          if [[ "$(git rev-parse origin/so)" != "$EVIDENCE_COMMIT_SHA" ]]; then
+            echo "so advanced before mixed-version session reconciliation; refusing stale authority."
+            exit 75
+          fi
           python scripts/reconcile-memory-os-mixed-version-session.py
           python scripts/validate-memory-os-mixed-version-session.py --expected-commit-sha "$SOURCE_SHA"
           python scripts/validate-memory-os-version-compatibility.py
@@ -149,6 +173,7 @@ jobs:
       - name: Commit reconciled status
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         run: |
+          set -euo pipefail
           git add contracts/operations/production-operability-status.json
           if git diff --cached --quiet; then
             echo "Mixed-version compatibility status is already reconciled."
@@ -158,5 +183,8 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "docs(compat): register mixed-version session evidence"
           git fetch origin so
-          git rebase origin/so
+          if [[ "$(git rev-parse origin/so)" != "$EVIDENCE_COMMIT_SHA" ]]; then
+            echo "so advanced before mixed-version session authority push; refusing stale authority."
+            exit 75
+          fi
           git push origin HEAD:so
