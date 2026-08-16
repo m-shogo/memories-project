@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,59 @@ def load(path: Path, label: str) -> dict[str, Any]:
         raise RecoveryPointFailure(f"cannot load {label} {path}: {exc}") from exc
     require(isinstance(value, dict), f"{label} root must be object: {path}")
     return value
+
+
+def git_text(*args: str) -> str:
+    completed = subprocess.run(
+        ["git", *args],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    require(completed.returncode == 0, f"git {' '.join(args)} failed")
+    return completed.stdout.strip()
+
+
+def require_source_commit_ancestor(source_commit_sha: Any) -> str:
+    require(isinstance(source_commit_sha, str) and re.fullmatch(r"[0-9a-f]{40}", source_commit_sha) is not None,
+            "sourceCommitSha must be a lowercase 40-character commit SHA")
+    completed = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", source_commit_sha, "HEAD"],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    require(completed.returncode == 0,
+            "sourceCommitSha must be an ancestor of the current repository HEAD")
+    return source_commit_sha
+
+
+def require_single_commit_immutable(path: Path, label: str) -> None:
+    try:
+        relative = path.resolve().relative_to(ROOT.resolve())
+    except ValueError as exc:
+        raise RecoveryPointFailure(f"{label} must remain inside repository root") from exc
+    require(path.is_file(), f"{label} missing: {relative}")
+    require(not path.is_symlink(), f"{label} cannot be a symlink")
+    status = git_text("status", "--porcelain", "--", relative.as_posix())
+    require(status == "", f"{label} must be committed and unmodified: {relative}")
+    commits = [line for line in git_text("log", "--follow", "--format=%H", "--", relative.as_posix()).splitlines() if line]
+    require(len(commits) == 1,
+            f"{label} must be append-only single-commit evidence: {relative}")
+    completed = subprocess.run(
+        ["git", "show", f"{commits[0]}:{relative.as_posix()}"],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    require(completed.returncode == 0,
+            f"cannot read first committed bytes for {label}: {relative}")
+    require(completed.stdout == path.read_bytes(),
+            f"{label} bytes changed after first commit: {relative}")
 
 
 def safe_relative_ref(value: Any, field: str) -> Path:
@@ -74,8 +128,7 @@ def validate_actual_recovery_artifact_result(
             "recoveryPointRestoreEvidenceRef must remain inside configured evidence root")
     require(restore_path.name == f"{run_id}.json",
             "recoveryPointRestoreEvidenceRef filename must match migrationRunId")
-    require(restore_path.is_file(),
-            f"actual recovery artifact restore evidence missing: {restore_ref}")
+    require_single_commit_immutable(restore_path, "actual recovery artifact restore evidence")
     result = load(restore_path, "actual recovery artifact restore evidence")
 
     require(result.get("schemaVersion") == authority.get("schemaVersion"),
@@ -134,6 +187,7 @@ def validate_recovery_point(
     canonical_migrations: list[str],
     registry_contract: dict[str, Any],
 ) -> None:
+    require_source_commit_ancestor(record.get("sourceCommitSha"))
     reference = record.get("recoveryPointReference")
     require(isinstance(reference, str), "recoveryPointReference must be string")
     match = RECOVERY_REF.fullmatch(reference)
