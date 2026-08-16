@@ -280,6 +280,8 @@ def main() -> int:
         ("appendOnly false", lambda value: value.__setitem__("appendOnly", False)),
         ("boolean count", lambda value: value.__setitem__("admittedRehearsalCount", True)),
         ("count drift", lambda value: value.__setitem__("admittedRehearsalCount", 1)),
+        ("missing evidence digest authority", lambda value: value.pop("evidenceDigestsByAdmissionId", None)),
+        ("unknown evidence digest authority", lambda value: value.__setitem__("evidenceDigestsByAdmissionId", {"mpa_unknown_negative": {}})),
         ("production evidence promotion", lambda value: value.__setitem__("productionEvidence", True)),
         ("production readiness promotion", lambda value: value.__setitem__("productionReady", True)),
         ("unknown registry field", lambda value: value.__setitem__("unexpected", True)),
@@ -297,7 +299,7 @@ def main() -> int:
     expect_generic_review_refs_rejected(writer)
     expect_external_evidence_containment_rejected(writer)
     expect_mutated_review_history_rejected(writer)
-    print("PASS: migration production-shaped admission registry, upstream release-pair, ledger, release, external evidence containment, and independent-review authority drift are rejected")
+    print("PASS: migration production-shaped admission registry, digest authority, upstream release-pair, ledger, release, external evidence containment, and independent-review authority drift are rejected")
     return 0
 
 
