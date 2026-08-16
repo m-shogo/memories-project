@@ -29,6 +29,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/migration-production-shaped-admission-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/migration-production-shaped-admission-registry.v1.json"
 RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
+RELEASE_CONTRACT = ROOT / "contracts/operations/release-baseline-registry-contract.v1.json"
+RELEASE_WRITER = ROOT / "scripts/register-memory-os-release-baseline.py"
 GENERATIONS = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 GENERATION_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
 REVIEW_ROOT = ROOT / "docs/evidence/migration-production-shaped-admission/independent-reviews"
@@ -77,12 +79,21 @@ def git(*args: str) -> str:
     return completed.stdout.strip()
 
 
-def load_generation_writer() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("memory_os_environment_generation_writer", GENERATION_WRITER)
-    require(spec is not None and spec.loader is not None, "cannot load environment generation writer")
+def load_module(path: Path, name: str, label: str) -> ModuleType:
+    require(path.is_file(), f"canonical {label} missing")
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load canonical {label}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def load_generation_writer() -> ModuleType:
+    return load_module(GENERATION_WRITER, "memory_os_environment_generation_writer", "environment generation writer")
+
+
+def load_release_writer() -> ModuleType:
+    return load_module(RELEASE_WRITER, "memory_os_release_baseline_writer", "release baseline writer")
 
 
 def evidence_refs(value: Any, field: str, *, minimum: int = 1) -> list[str]:
@@ -118,6 +129,12 @@ def registered_generation(generation_id: str) -> dict[str, Any]:
 
 def approved_release(release_id: str) -> dict[str, Any]:
     registry = load(RELEASES)
+    contract = load(RELEASE_CONTRACT)
+    release_writer = load_release_writer()
+    try:
+        release_writer.validate_registry_for_append(registry, contract)
+    except Exception as exc:
+        raise Fail(f"release baseline registry invalid: {exc}") from exc
     rows = registry.get("releases")
     require(isinstance(rows, list), "release registry missing")
     matches = [row for row in rows if isinstance(row, dict) and row.get("releaseId") == release_id]
@@ -140,6 +157,7 @@ def canonical_review_path(ref: Any, field: str) -> Path:
         current = current / part
         require(not current.is_symlink(), f"{field} must not traverse symlinks: {ref}")
     require(git("ls-files", "--error-unmatch", "--", ref) == ref, f"{field} must be tracked at HEAD: {ref}")
+    current_bytes = path.read_bytes()
     head_bytes = subprocess.run(
         ["git", "show", f"HEAD:{ref}"],
         cwd=ROOT,
@@ -147,7 +165,17 @@ def canonical_review_path(ref: Any, field: str) -> Path:
         stderr=subprocess.PIPE,
         check=False,
     )
-    require(head_bytes.returncode == 0 and head_bytes.stdout == path.read_bytes(), f"{field} bytes must match current HEAD: {ref}")
+    require(head_bytes.returncode == 0 and head_bytes.stdout == current_bytes, f"{field} bytes must match current HEAD: {ref}")
+    creation_commits = [item for item in git("log", "--diff-filter=A", "--format=%H", "--", ref).splitlines() if item]
+    require(len(creation_commits) == 1, f"{field} must have exactly one immutable creation authority: {ref}")
+    creation_bytes = subprocess.run(
+        ["git", "show", f"{creation_commits[0]}:{ref}"],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    require(creation_bytes.returncode == 0 and creation_bytes.stdout == current_bytes, f"{field} must remain byte-identical to its creation commit: {ref}")
     return path
 
 
