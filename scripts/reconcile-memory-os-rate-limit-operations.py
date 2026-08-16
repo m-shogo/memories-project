@@ -67,13 +67,14 @@ def main() -> int:
     for foundation in (
         "policyDefined", "runbookDefined", "safeModesDefined",
         "transitionGuardsDefined", "recoveryVerificationDefined",
+        "evidenceLedgerImplemented",
     ):
         require(readiness.get(foundation) is True,
                 f"operations foundation not validated: {foundation}")
     for unproven in (
         "productionControlPlaneImplemented", "automaticExpiryImplemented",
-        "evidenceLedgerImplemented", "sharedStoreImplemented",
-        "trustedProxyDeploymentConfigured", "drillCompleted", "productionReady",
+        "sharedStoreImplemented", "trustedProxyDeploymentConfigured",
+        "drillCompleted", "productionReady",
     ):
         require(readiness.get(unproven) is False,
                 f"unproven operations readiness cannot be true: {unproven}")
@@ -84,7 +85,7 @@ def main() -> int:
         "policyContract": "contracts/operations/rate-limit-operations-contract.v1.json",
         "productionControlPlaneImplemented": False,
         "automaticExpiryImplemented": False,
-        "evidenceLedgerImplemented": False,
+        "evidenceLedgerImplemented": True,
         "drillCompleted": False,
     }
     if policy.get("operations") != expected_operations:
