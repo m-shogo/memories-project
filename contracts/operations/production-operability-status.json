@@ -282,8 +282,7 @@
         "trusted-proxy configuration owned per deployment",
         "load-calibrated limits from observed traffic",
         "completed emergency-mode, shared-store recovery and trusted-proxy disablement drills",
-        "production emergency control plane with automatic expiry",
-        "production emergency control plane with automatic expiry and append-only operation evidence ledger"
+        "production emergency control plane with automatic expiry"
       ],
       "evidenceRefs": [
         "contracts/operations/rate-limit-policy-contract.v1.json",
