@@ -36,6 +36,7 @@
     "deliveryAndAlertEvidenceRefs",
     "securityReviewRef",
     "operabilityReviewRef",
+    "evidenceDigests",
     "unresolvedFindings",
     "evidenceComplete",
     "productionEvidence",
@@ -57,6 +58,7 @@
     "operatorEvidenceUsesCanonicalPerOperationLedger": true,
     "productionCredentialsAndRawEndpointsAreForbiddenFromEvidence": true,
     "independentSecurityAndOperabilityReviewRequired": true,
+    "evidenceRefsMustBeCommittedSymlinkFreeAndDigestBound": true,
     "unresolvedCriticalOrHighFindingsForbidden": true
   },
   "requiredDrillClasses": [
