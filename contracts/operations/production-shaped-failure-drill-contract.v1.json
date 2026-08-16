@@ -70,6 +70,7 @@
   ],
   "recordRequirements": {
     "exactSourceCommitRequired": true,
+    "sourceCommitMustBeAncestorOfCurrentHead": true,
     "environmentIdentityDigestRequired": true,
     "environmentGenerationRequiredForProductionEquivalent": true,
     "failureControllerIdentityDigestRequired": true,
@@ -80,6 +81,7 @@
     "productionCredentialsForbiddenFromEvidence": true,
     "rawEndpointsAndPersonalIdentifiersForbidden": true,
     "allScenarioAssertionsRequireEvidenceRefs": true,
+    "evidenceRefsMustBeCommittedSymlinkFreeAndDigestBound": true,
     "independentOperabilityReviewRequired": true,
     "independentSecurityReviewRequired": true,
     "unresolvedCriticalOrHighFindingsForbidden": true
