@@ -10,10 +10,13 @@ on:
       - "contracts/operations/release-compatibility-pair-registry.v1.json"
       - "contracts/operations/version-compatibility-execution-evidence.v1.json"
       - "contracts/operations/compatibility-admission-gaps.v1.json"
+      - "docs/evidence/release-compatibility-pairs/reviews/**"
       - "scripts/register-memory-os-release-baseline.py"
       - "scripts/register-memory-os-release-compatibility-pair.py"
       - "scripts/validate-memory-os-release-compatibility-pair.py"
       - "scripts/validate-memory-os-release-compatibility-pair-negative.py"
+      - "scripts/validate-memory-os-release-compatibility-pair-independent-review.py"
+      - "scripts/validate-memory-os-release-compatibility-pair-independent-review-negative.py"
       - "scripts/reconcile-memory-os-release-compatibility-pair.py"
   push:
     branches:
@@ -26,10 +29,13 @@ on:
       - "contracts/operations/release-compatibility-pair-registry.v1.json"
       - "contracts/operations/version-compatibility-execution-evidence.v1.json"
       - "contracts/operations/compatibility-admission-gaps.v1.json"
+      - "docs/evidence/release-compatibility-pairs/reviews/**"
       - "scripts/register-memory-os-release-baseline.py"
       - "scripts/register-memory-os-release-compatibility-pair.py"
       - "scripts/validate-memory-os-release-compatibility-pair.py"
       - "scripts/validate-memory-os-release-compatibility-pair-negative.py"
+      - "scripts/validate-memory-os-release-compatibility-pair-independent-review.py"
+      - "scripts/validate-memory-os-release-compatibility-pair-independent-review-negative.py"
       - "scripts/reconcile-memory-os-release-compatibility-pair.py"
   workflow_dispatch:
 
@@ -73,10 +79,14 @@ jobs:
             scripts/register-memory-os-release-compatibility-pair.py \
             scripts/validate-memory-os-release-compatibility-pair.py \
             scripts/validate-memory-os-release-compatibility-pair-negative.py \
+            scripts/validate-memory-os-release-compatibility-pair-independent-review.py \
+            scripts/validate-memory-os-release-compatibility-pair-independent-review-negative.py \
             scripts/reconcile-memory-os-release-compatibility-pair.py
           python scripts/validate-memory-os-release-compatibility-pair-negative.py
+          python scripts/validate-memory-os-release-compatibility-pair-independent-review-negative.py
           python scripts/reconcile-memory-os-release-compatibility-pair.py
           python scripts/validate-memory-os-release-compatibility-pair.py
+          python scripts/validate-memory-os-release-compatibility-pair-independent-review.py
           python scripts/validate-memory-os-version-compatibility-execution-evidence.py
           python scripts/validate-memory-os-operability.py
 
@@ -125,6 +135,8 @@ jobs:
           git fetch origin so
           git reset --hard origin/so
           python scripts/validate-memory-os-release-compatibility-pair-negative.py
+          python scripts/validate-memory-os-release-compatibility-pair-independent-review-negative.py
           python scripts/validate-memory-os-release-compatibility-pair.py
+          python scripts/validate-memory-os-release-compatibility-pair-independent-review.py
           python scripts/validate-memory-os-version-compatibility-execution-evidence.py
           python scripts/validate-memory-os-operability.py
