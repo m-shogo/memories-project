@@ -3,6 +3,7 @@
   "schemaVersion": "memory-os-parser-artifact-registry-contract.v1",
   "description": "Binding append-only authority for reviewed parser artifacts retained for release compatibility and rollback. Repository test harnesses, source files, build outputs and digest strings are not approved artifacts by implication. A record exists only after exact artifact verification, multi-role review, retention evidence and replay evidence are present.",
   "registryPath": "contracts/operations/parser-artifact-registry.v1.json",
+  "appendLockPath": "contracts/operations/.parser-artifact-registry.lock",
   "runbook": "docs/runbooks/memory-os-parser-artifact-registry.md",
   "writer": "scripts/register-memory-os-parser-artifact.py",
   "validator": "scripts/validate-memory-os-parser-artifact-registry.py",
@@ -61,7 +62,7 @@
     "every compatible release ID already exists in the approved release registry",
     "rollback retention is RETAINED only when immutable retention evidence exists",
     "record contains no credential, infrastructure URL or user content",
-    "registry update uses exclusive lock and atomic replacement"
+    "registry update uses the canonical exclusive append lock and atomic replacement"
   ],
   "forbiddenArtifactSources": [
     "services/import-api/internal/parsersup/worker.go test harness",
