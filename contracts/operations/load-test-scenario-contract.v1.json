@@ -344,7 +344,7 @@
     },
     {
       "scenarioId": "deletion-under-load",
-      "reason": "post-fence former-session load and concurrent worker erasure now pass against local PostgreSQL and MinIO; request linearization for calls already in flight before the 202 fence, multiple-account worker saturation and production dependency behavior remain deferred",
+      "reason": "post-fence former-session load, all primary account-bound pre-fence surfaces, bounded multi-account worker saturation, lease-expiry/partial-object recovery, and actual Linux SIGKILL attempt-2 reclaim now pass against local PostgreSQL and MinIO; host/container failure, production dependency behavior and independently reviewed deletion-load thresholds remain deferred",
       "requiredDependencyMode": "PRODUCTION_EQUIVALENT"
     }
   ],
@@ -360,7 +360,7 @@
     "cardinalityProof": true,
     "operationalThresholds": false,
     "productionEquivalentDependencies": false,
-    "note": "Mock and local dependency checkpoints now include bounded ramp, short CI stability and post-fence deletion load. They establish neither production capacity nor pre-fence request linearization, sustained-soak/leak proof or production-equivalent behavior; OPS-P0-006 remains PARTIAL.",
+    "note": "Mock and local dependency checkpoints now include bounded ramp, short CI stability and post-fence deletion load. They establish neither production capacity nor pre-fence request linearization, sustained-soak/leak proof or production-equivalent behavior; OPS-P0-006 remains PARTIAL. Actual Linux SIGKILL worker recovery is now proven locally; host/container failure and production topology remain unproven.",
     "boundedLocalCapacityRampExecuted": true,
     "shortCIStabilitySampleExecuted": true,
     "deletionPostFenceLoadExecuted": true,
