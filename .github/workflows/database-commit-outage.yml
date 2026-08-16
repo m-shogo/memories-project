@@ -195,6 +195,7 @@ jobs:
 
       - name: Commit result or bounded diagnostic
         run: |
+          set -euo pipefail
           git add docs/fixtures/memory-os-operability/database-commit-outage-diagnostic.last.json
           if [ "${{ steps.drill.outputs.success }}" = "true" ]; then
             git add docs/fixtures/memory-os-operability/database-commit-outage-results.sample.v1.json
@@ -209,13 +210,23 @@ jobs:
             else
               git commit -m "test(chaos): record database commit outage diagnostic"
             fi
-            git pull --rebase origin so
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "${{ steps.drill.outputs.source_sha }}" ]]; then
+              echo "Source head advanced; refusing to replay stale database outage evidence."
+              exit 75
+            fi
             git push origin HEAD:so
           fi
 
       - name: Reconcile database outage authority
         if: steps.drill.outputs.success == 'true'
         run: |
+          set -euo pipefail
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$(git rev-parse HEAD)" ]]; then
+            echo "Database outage evidence head advanced before reconcile; refusing stale authority."
+            exit 75
+          fi
           python scripts/reconcile-memory-os-database-commit-outage.py
           python scripts/validate-memory-os-database-commit-outage.py
           python scripts/validate-memory-os-operability.py
@@ -226,7 +237,11 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(chaos): reconcile database commit outage evidence"
-            git pull --rebase origin so
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$(git rev-parse HEAD^)" ]]; then
+              echo "Database outage evidence head advanced during reconcile; refusing stale authority push."
+              exit 75
+            fi
             git push origin HEAD:so
           fi
 
