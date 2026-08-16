@@ -140,7 +140,7 @@ def main() -> int:
             changed = True
 
     for phrase in (
-        "database loss or failover",
+        "PostgreSQL process loss",
         "mixed-version failure",
         "production multi-instance",
         "production-shaped object-store",
