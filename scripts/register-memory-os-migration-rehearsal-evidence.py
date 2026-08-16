@@ -101,6 +101,18 @@ def git(*args: str) -> str:
     return completed.stdout.strip()
 
 
+def require_source_ancestor(source: str) -> None:
+    completed = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", source, "HEAD"],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    require(completed.returncode == 0, "sourceCommitSha must be an ancestor of current HEAD")
+
+
 def timestamp(value: Any, field: str) -> dt.datetime:
     require(isinstance(value, str) and value.endswith("Z"), f"{field} must be RFC3339 UTC")
     try:
@@ -140,6 +152,7 @@ def validate_record(record: dict[str, Any], required_fields: set[str], registry_
     source = record.get("sourceCommitSha")
     require(isinstance(source, str) and SHA40.fullmatch(source) is not None, "sourceCommitSha invalid")
     git("cat-file", "-e", source + "^{commit}")
+    require_source_ancestor(source)
 
     lifecycle = load(LIFECYCLE)
     canonical = lifecycle.get("migrationSequence")
