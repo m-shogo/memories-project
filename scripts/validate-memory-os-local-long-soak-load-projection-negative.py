@@ -52,9 +52,19 @@ def expect_legacy_reject(label: str, mutate) -> None:
     raise AssertionError(f"corrupt legacy alias accepted for removal: {label}")
 
 
+def expect_projection_input_reject(label: str, rows) -> None:
+    try:
+        module.assert_projection_input_safe(rows)
+    except module.Fail:
+        print(f"PASS reject projection input: {label}")
+        return
+    raise AssertionError(f"corrupt projection input accepted: {label}")
+
+
 def main() -> int:
     valid = copy.deepcopy(module.derived_row(local_evidence=True))
     module.assert_local_only_boundary(valid)
+    module.assert_projection_input_safe([valid])
 
     for key in (
         "productionEvidence",
@@ -71,6 +81,18 @@ def main() -> int:
     expect_reject("dependency mode drift", lambda row: row.__setitem__("dependencyMode", "PRODUCTION_EQUIVALENT"))
     expect_reject("classification drift", lambda row: row.__setitem__("classification", "PRODUCTION_LONG_SOAK"))
     expect_reject("local evidence flag non-boolean", lambda row: row.__setitem__("localSustainedSoakEvidence", 1))
+
+    duplicate_rows = [copy.deepcopy(valid), copy.deepcopy(valid)]
+    expect_projection_input_reject("duplicate external scenario ID", duplicate_rows)
+    expect_projection_input_reject("non-object external row", [copy.deepcopy(valid), "bad-row"])
+    production_row = copy.deepcopy(valid)
+    production_row["scenarioId"] = "unrelated-local-scenario"
+    production_row["productionEvidence"] = True
+    expect_projection_input_reject("unrelated production evidence promotion", [production_row])
+    production_dependency_row = copy.deepcopy(valid)
+    production_dependency_row["scenarioId"] = "unrelated-local-dependency-scenario"
+    production_dependency_row["productionEquivalentDependencies"] = True
+    expect_projection_input_reject("unrelated production-equivalent dependency promotion", [production_dependency_row])
 
     for key in (
         "productionEvidence",
@@ -93,6 +115,7 @@ def main() -> int:
 
     print("Memory OS local long-soak load projection negative suite PASS")
     print("canonical scenario ID binding enforced: true")
+    print("aggregate external scenario corruption accepted: false")
     print("legacy LOCAL_LONG_SOAK alias may be removed only when non-production: true")
     print("production evidence promotion accepted: false")
     print("production traffic promotion accepted: false")
