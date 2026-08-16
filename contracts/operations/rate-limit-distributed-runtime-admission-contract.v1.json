@@ -61,6 +61,7 @@
     "productionCredentialsAndRawEndpointsAreForbiddenFromEvidence": true,
     "independentSecurityAndOperabilityReviewRequired": true,
     "independentReviewsMustBeTypedRuntimeBoundApprovedAndDistinct": true,
+    "independentReviewRefsMustUseMonitoredNamespace": true,
     "evidenceRefsMustBeCommittedSymlinkFreeAndDigestBound": true,
     "unresolvedCriticalOrHighFindingsForbidden": true
   },
