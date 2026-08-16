@@ -83,17 +83,52 @@ def git(*args: str) -> str:
     return completed.stdout.strip()
 
 
+def git_bytes(*args: str) -> bytes:
+    completed = subprocess.run(["git", *args], cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    require(completed.returncode == 0, f"git {' '.join(args)} failed")
+    return completed.stdout
+
+
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def canonical_evidence_path(item: str, field: str) -> Path:
+    require(isinstance(item, str) and item and not Path(item).is_absolute() and ".." not in Path(item).parts, f"{field} invalid: {item!r}")
+    candidate = ROOT / item
+    try:
+        resolved = candidate.resolve(strict=True)
+        resolved.relative_to(ROOT.resolve())
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} evidence path invalid: {item}") from exc
+    require(resolved.is_file(), f"{field} evidence path missing: {item}")
+    current = ROOT
+    for part in Path(item).parts:
+        current = current / part
+        require(not current.is_symlink(), f"{field} evidence path cannot traverse symlink: {item}")
+    git("ls-files", "--error-unmatch", "--", item)
+    require(git_bytes("show", f"HEAD:{item}") == resolved.read_bytes(), f"{field} evidence must match committed HEAD bytes: {item}")
+    return resolved
+
+
 def evidence_refs(value: Any, field: str) -> list[str]:
     require(isinstance(value, list) and value, f"{field} must be non-empty")
-    require(all(isinstance(item, str) and item and not Path(item).is_absolute() and ".." not in Path(item).parts for item in value), f"{field} invalid")
+    require(all(isinstance(item, str) and item for item in value), f"{field} invalid")
     require(len(value) == len(set(value)), f"{field} contains duplicates")
     for item in value:
-        require((ROOT / item).is_file(), f"{field} evidence path missing: {item}")
+        canonical_evidence_path(item, field)
     return value
+
+
+def validate_evidence_digest_authority(paths: list[str], value: Any) -> None:
+    require(len(paths) == len(set(paths)), "runtime evidence refs must be globally distinct")
+    require(isinstance(value, dict), "evidenceDigests must be an object")
+    require(set(value) == set(paths), "evidenceDigests path set drift")
+    for item in paths:
+        digest = value.get(item)
+        require(isinstance(digest, str) and DIGEST.fullmatch(digest), f"evidenceDigests[{item}] must be SHA-256")
+        path = canonical_evidence_path(item, "evidenceDigests")
+        require(digest == sha256(path), f"evidenceDigests[{item}] does not match current committed bytes")
 
 
 def validate_record(record: dict[str, Any], confirmation: str) -> None:
@@ -116,12 +151,16 @@ def validate_record(record: dict[str, Any], confirmation: str) -> None:
     policy_digest = record.get("policyContractSha256")
     require(isinstance(policy_digest, str) and DIGEST.fullmatch(policy_digest), "policyContractSha256 invalid")
     require(policy_digest == sha256(POLICY), "policyContractSha256 does not match canonical policy bytes")
+    all_evidence_refs: list[str] = []
     for field in REF_FIELDS:
-        evidence_refs(record.get(field), field)
+        all_evidence_refs.extend(evidence_refs(record.get(field), field))
     for field in ("securityReviewRef", "operabilityReviewRef"):
         value = record.get(field)
-        require(isinstance(value, str) and value and not Path(value).is_absolute() and ".." not in Path(value).parts and (ROOT / value).is_file(), f"{field} invalid")
+        require(isinstance(value, str) and value, f"{field} invalid")
+        canonical_evidence_path(value, field)
+        all_evidence_refs.append(value)
     require(record["securityReviewRef"] != record["operabilityReviewRef"], "security and operability review records must be distinct")
+    validate_evidence_digest_authority(all_evidence_refs, record.get("evidenceDigests"))
     findings = record.get("unresolvedFindings")
     require(isinstance(findings, list), "unresolvedFindings must be a list")
     for index, finding in enumerate(findings):
