@@ -16,13 +16,28 @@ on:
       - "scripts/reconcile-memory-os-controlled-saturation-repeatability.py"
       - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-operability.py"
+  pull_request:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/reconcile-controlled-saturation-repeatability-authority.yml"
+      - "contracts/operations/controlled-saturation-ramp-contract.v1.json"
+      - "contracts/operations/controlled-saturation-repeatability-contract.v1.json"
+      - "contracts/operations/load-test-scenario-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "docs/fixtures/memory-os-operability/controlled-saturation-repeatability-results.v1.json"
+      - "docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.repeat-*.v1.json"
+      - "scripts/validate-memory-os-controlled-saturation-repeatability.py"
+      - "scripts/reconcile-memory-os-controlled-saturation-repeatability.py"
+      - "scripts/validate-memory-os-load.py"
+      - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: reconcile-controlled-saturation-repeatability-authority-so
+  group: reconcile-controlled-saturation-repeatability-authority-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -36,11 +51,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Capture exact source
+        run: |
+          set -euo pipefail
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            git fetch origin so
+            test "$(git rev-parse origin/so)" = "$(git rev-parse HEAD)"
+          fi
       - name: Revalidate existing repeatability authority
         id: authority
         run: |
@@ -77,8 +100,17 @@ jobs:
           echo "failure_stage=$stage" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
+      - name: Enforce deterministic PR authority
+        if: github.event_name == 'pull_request' && steps.authority.outputs.exit_code == '0'
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code -- \
+            contracts/operations/controlled-saturation-repeatability-contract.v1.json \
+            contracts/operations/load-test-scenario-contract.v1.json \
+            contracts/operations/production-operability-status.json
       - name: Commit reconciled repeatability authority
-        if: steps.authority.outputs.exit_code == '0'
+        if: github.event_name == 'push' && steps.authority.outputs.exit_code == '0'
         run: |
           set -euo pipefail
           git rm -f docs/fixtures/memory-os-operability/controlled-saturation-repeatability-authority-diagnostic.last.json 2>/dev/null || true
@@ -95,21 +127,24 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "docs(load): reconcile saturation repeatability authority"
-          for attempt in 1 2 3 4; do
-            git pull --rebase origin so
-            if git push origin HEAD:so; then exit 0; fi
-            sleep 2
-          done
-          exit 1
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Branch advanced during repeatability reconciliation; refusing stale derived authority."
+            exit 75
+          fi
+          git push origin HEAD:so
       - name: Record privacy-safe repeatability diagnostic
-        if: steps.authority.outputs.exit_code != '0'
+        if: github.event_name == 'push' && steps.authority.outputs.exit_code != '0'
         env:
           AUTHORITY_EXIT_CODE: ${{ steps.authority.outputs.exit_code }}
           FAILURE_STAGE: ${{ steps.authority.outputs.failure_stage }}
         run: |
           set -euo pipefail
           git fetch origin so
-          git reset --hard origin/so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]] || [[ "$(git rev-parse HEAD)" != "$SOURCE_SHA" ]]; then
+            echo "Branch advanced after repeatability validation; refusing stale diagnostic."
+            exit 75
+          fi
           python - <<'PY'
           import json, os, re
           from pathlib import Path
@@ -120,6 +155,7 @@ jobs:
           value = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'reconcile-controlled-saturation-repeatability-authority',
+              'sourceCommitSha': os.environ['SOURCE_SHA'],
               'failureStage': os.environ.get('FAILURE_STAGE', 'unknown'),
               'result': 'FAIL',
               'exitCode': int(os.environ['AUTHORITY_EXIT_CODE']),
@@ -139,11 +175,12 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --cached --quiet; then
             git commit -m "test(load): record saturation repeatability authority diagnostic"
-            for attempt in 1 2 3; do
-              git pull --rebase origin so
-              if git push origin HEAD:so; then exit 0; fi
-              sleep 2
-            done
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              echo "Branch advanced during repeatability diagnostic write; refusing stale diagnostic."
+              exit 75
+            fi
+            git push origin HEAD:so
           fi
       - name: Enforce repeatability authority
         run: test "${{ steps.authority.outputs.exit_code }}" = "0"
