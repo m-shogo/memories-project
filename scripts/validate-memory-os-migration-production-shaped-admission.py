@@ -16,6 +16,8 @@ CONTRACT = ROOT / "contracts/operations/migration-production-shaped-admission-co
 REGISTRY = ROOT / "contracts/operations/migration-production-shaped-admission-registry.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-migration-production-shaped-admission.py"
 RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
+RELEASE_CONTRACT = ROOT / "contracts/operations/release-baseline-registry-contract.v1.json"
+RELEASE_WRITER = ROOT / "scripts/register-memory-os-release-baseline.py"
 RELEASE_VALIDATOR = ROOT / "scripts/validate-memory-os-release-baseline-registry.py"
 GENERATIONS = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 GENERATION_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-generation.py"
@@ -49,9 +51,10 @@ def run_canonical_validator(path: Path, label: str) -> None:
     require(completed.returncode == 0, f"canonical {label} authority validation failed")
 
 
-def load_writer() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("memory_os_migration_production_admission_writer", WRITER)
-    require(spec is not None and spec.loader is not None, "cannot load migration admission writer")
+def load_module(path: Path, name: str, label: str) -> ModuleType:
+    require(path.is_file(), f"canonical {label} missing")
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load canonical {label}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -65,6 +68,7 @@ def main() -> int:
     registry = load(REGISTRY)
     releases = load(RELEASES)
     generations = load(GENERATIONS)
+    release_contract = load(RELEASE_CONTRACT)
     require(contract.get("schemaVersion") == "memory-os-migration-production-shaped-admission.v1", "contract schema drift")
     require(contract.get("recordSchemaVersion") == "memory-os-migration-production-shaped-admission-record.v1", "record schema drift")
     require(contract.get("registryPath") == str(REGISTRY.relative_to(ROOT)), "registry binding drift")
@@ -79,7 +83,21 @@ def main() -> int:
         else:
             require(value is False, f"unsafe migration admission promotion enabled: {key}")
 
-    writer = load_writer()
+    release_writer = load_module(
+        RELEASE_WRITER,
+        "memory_os_release_baseline_writer_for_migration_admission",
+        "release baseline writer",
+    )
+    try:
+        release_writer.validate_registry_for_append(releases, release_contract)
+    except Exception as exc:
+        raise Fail(f"release baseline append-only authority invalid: {exc}") from exc
+
+    writer = load_module(
+        WRITER,
+        "memory_os_migration_production_admission_writer",
+        "migration admission writer",
+    )
     try:
         writer.validate_registry_for_append(registry)
     except Exception as exc:
