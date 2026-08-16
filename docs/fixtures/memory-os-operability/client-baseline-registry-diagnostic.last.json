@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "client-baseline-registry",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "STAGE: py_compile\nSTAGE: source-lineage-negative\nCLIENT BASELINE LINEAGE NEGATIVE FAILED: git commit-tree d70e12193cf6c397e8f18d88e05fa750f6b01647 -p 6a72c9c4c733618540ec3f928189ddd96644addd failed: Author identity unknown\n\n*** Please tell me who you are.\n\nRun\n\n  git config --global user.email \"you@example.com\"\n  git config --global user.name \"Your Name\"\n\nto set your account's default identity.\nOmit --global to set the identity only in this repository.\n\nfatal: empty ident name (for <runner@runnervmzvulz.vbq4hvxaldeu5es11s30ocsezg.bx.internal.cloudapp.net>) not allowed\n",
+  "containsSecrets": false,
+  "approvedClientBaselineCount": 0,
+  "clientServerSkewEvidence": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
