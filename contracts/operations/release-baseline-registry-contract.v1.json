@@ -44,6 +44,13 @@
     "branchHeadIsInsufficient": true,
     "productionTrafficIsForbiddenBeforeRegistration": true
   },
+  "evidenceBinding": {
+    "sourceCommitField": "commitSha",
+    "repositoryTrackedRequired": true,
+    "symlinkForbidden": true,
+    "sourceCommitBlobRequired": true,
+    "currentBytesMustMatchSourceCommit": true
+  },
   "requiredEvidenceClasses": [
     "current exact-source security and authorization evidence",
     "approved old/current mixed-version compatibility evidence",
@@ -83,6 +90,7 @@
     "release ID and tag have never been registered",
     "commit SHA has never been registered under another release",
     "all evidence references are repository-relative existing files",
+    "all release evidence references are tracked regular files whose current bytes exactly match the requested release commit",
     "all required SHA-256 bindings are lowercase 64-character digests",
     "approval roles are complete and assigned to distinct approver identifiers",
     "record states evidenceComplete and productionReady true before registry mutation",
@@ -107,6 +115,8 @@
     "docs/evidence/releases/README.md",
     "scripts/register-memory-os-release-baseline.py",
     "scripts/validate-memory-os-release-baseline-registry.py",
+    "scripts/validate-memory-os-release-baseline-evidence-binding.py",
+    "scripts/validate-memory-os-release-baseline-evidence-binding-negative.py",
     "scripts/reconcile-memory-os-release-baseline-registry.py",
     ".github/workflows/release-baseline-registry.yml"
   ]

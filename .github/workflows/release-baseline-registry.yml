@@ -10,6 +10,8 @@ on:
       - "scripts/register-memory-os-release-baseline.py"
       - "scripts/validate-memory-os-release-baseline-registry.py"
       - "scripts/validate-memory-os-release-baseline-registry-negative.py"
+      - "scripts/validate-memory-os-release-baseline-evidence-binding.py"
+      - "scripts/validate-memory-os-release-baseline-evidence-binding-negative.py"
       - "scripts/reconcile-memory-os-release-baseline-registry.py"
   push:
     branches:
@@ -22,6 +24,8 @@ on:
       - "scripts/register-memory-os-release-baseline.py"
       - "scripts/validate-memory-os-release-baseline-registry.py"
       - "scripts/validate-memory-os-release-baseline-registry-negative.py"
+      - "scripts/validate-memory-os-release-baseline-evidence-binding.py"
+      - "scripts/validate-memory-os-release-baseline-evidence-binding-negative.py"
       - "scripts/reconcile-memory-os-release-baseline-registry.py"
   schedule:
     - cron: "23 3 * * 2"
@@ -68,6 +72,8 @@ jobs:
             scripts/register-memory-os-release-baseline.py \
             scripts/validate-memory-os-release-baseline-registry.py \
             scripts/validate-memory-os-release-baseline-registry-negative.py \
+            scripts/validate-memory-os-release-baseline-evidence-binding.py \
+            scripts/validate-memory-os-release-baseline-evidence-binding-negative.py \
             scripts/reconcile-memory-os-release-baseline-registry.py
 
       - name: Prove invalid registration cannot mutate authority
@@ -152,10 +158,16 @@ jobs:
       - name: Validate append-only registry corruption negatives
         run: python scripts/validate-memory-os-release-baseline-registry-negative.py
 
+      - name: Validate immutable release evidence source binding
+        run: |
+          python scripts/validate-memory-os-release-baseline-evidence-binding.py
+          python scripts/validate-memory-os-release-baseline-evidence-binding-negative.py
+
       - name: Reconcile then validate release registry authority
         run: |
           python scripts/reconcile-memory-os-release-baseline-registry.py
           python scripts/validate-memory-os-release-baseline-registry.py
+          python scripts/validate-memory-os-release-baseline-evidence-binding.py
 
       - name: Require reconciled authority in pull requests
         if: github.event_name == 'pull_request'
@@ -193,5 +205,6 @@ jobs:
           git fetch origin so
           git reset --hard origin/so
           python scripts/validate-memory-os-release-baseline-registry.py
+          python scripts/validate-memory-os-release-baseline-evidence-binding.py
           python scripts/validate-memory-os-version-compatibility.py
           python scripts/validate-memory-os-operability.py
