@@ -11,6 +11,7 @@ on:
       - "contracts/operations/incident-contact-routing-admission-registry.v1.json"
       - "contracts/operations/observability-stack-deployment-registry.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "docs/evidence/incident-contact-routing/independent-reviews/**"
       - "scripts/register-memory-os-observability-stack-deployment.py"
       - "scripts/register-memory-os-incident-contact-routing.py"
       - "scripts/validate-memory-os-incident-contact-routing.py"
