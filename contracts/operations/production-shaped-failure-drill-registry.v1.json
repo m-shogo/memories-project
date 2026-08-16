@@ -4,6 +4,7 @@
   "registeredDrillCount": 0,
   "productionEquivalentDrillCount": 0,
   "productionDrillCount": 0,
+  "evidenceDigestsByDrillId": {},
   "drills": [],
   "productionReady": false
 }
