@@ -52,6 +52,16 @@ def load_validator() -> Any:
     return module
 
 
+def validate_existing_registry() -> None:
+    """Fail closed on the canonical append-only authority before any mutation."""
+    validator = load_validator()
+    require(validator.REGISTRY.resolve() == REGISTRY.resolve(), "sustained-soak registry validator authority drift")
+    try:
+        validator.main()
+    except validator.Fail as exc:
+        raise Fail(f"existing registry rejected before append: {exc}") from exc
+
+
 def recompute_counts(registry: dict[str, Any]) -> None:
     criteria = registry.get("criteria")
     reviews = registry.get("reviews")
@@ -150,9 +160,8 @@ def main() -> int:
     LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
     with LOCK_PATH.open("a+", encoding="utf-8") as lock:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        validate_existing_registry()
         registry = load(REGISTRY)
-        require(registry.get("appendOnly") is True, "registry must remain append-only")
-        require(registry.get("productionEvidence") is False and registry.get("productionReady") is False, "registry production boundary drift")
         record_id = append_record(registry, args.kind, record)
         candidate_path = validate_candidate(registry)
         try:
