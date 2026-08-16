@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import subprocess
 from pathlib import Path
 from typing import Any, Callable
 
@@ -117,6 +119,35 @@ def expect_generation_authority_rejected(
         STATUS.write_bytes(status_before)
 
 
+def expect_side_commit_rejected(writer: Any) -> None:
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "GIT_AUTHOR_NAME": "memory-os-negative-fixture",
+            "GIT_AUTHOR_EMAIL": "negative-fixture@example.invalid",
+            "GIT_COMMITTER_NAME": "memory-os-negative-fixture",
+            "GIT_COMMITTER_EMAIL": "negative-fixture@example.invalid",
+        }
+    )
+    completed = subprocess.run(
+        ["git", "commit-tree", "HEAD^{tree}", "-p", "HEAD^"],
+        cwd=ROOT,
+        input="failure-drill side commit fixture\n",
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=environment,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(f"cannot create side-commit fixture: {completed.stderr.strip()}")
+    side_commit = completed.stdout.strip()
+    try:
+        writer.require_source_commit_ancestor(side_commit)
+    except writer.Fail:
+        return
+    raise RuntimeError("detached side commit accepted as failure-drill source authority")
+
+
 def main() -> int:
     writer = load_module(WRITER_PATH, "failure_drill_writer_negative")
     reconciler = load_module(RECONCILER_PATH, "failure_drill_reconciler_negative")
@@ -146,6 +177,7 @@ def main() -> int:
             expect_reconciler_rejected(reconciler, name, mutate, original)
         for name, mutate in generation_cases:
             expect_generation_authority_rejected(writer, reconciler, name, mutate, original, generation_original)
+        expect_side_commit_rejected(writer)
     finally:
         REGISTRY.write_bytes(original)
         GEN_REGISTRY.write_bytes(generation_original)
@@ -153,6 +185,7 @@ def main() -> int:
     print("PASS: production-shaped failure-drill registry corruption is rejected before append/reconcile")
     print(f"failure-drill corruption cases: {len(cases)}")
     print(f"upstream generation corruption cases: {len(generation_cases)}")
+    print("detached source commit accepted: false")
     print("reconciler auto-heal: false")
     print("production readiness: false")
     print("production decision: NO_GO")
