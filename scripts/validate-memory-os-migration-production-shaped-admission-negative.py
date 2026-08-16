@@ -15,6 +15,7 @@ from typing import Any, Callable
 from memory_os_migration_production_admission_ledger import (
     LedgerBindingFailure,
     require_registered_production_equivalent_rehearsal,
+    validate_canonical_ledger,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -110,6 +111,21 @@ def expect_noncanonical_ledger_rows_rejected() -> None:
     raise Fail("unregistered migrationRunId was accepted as canonical admission authority")
 
 
+def expect_canonical_writer_delegation() -> None:
+    original = MIGRATION_LEDGER.read_bytes()
+    corrupt = load_json(MIGRATION_LEDGER)
+    corrupt["unexpectedAuthority"] = True
+    MIGRATION_LEDGER.write_text(json.dumps(corrupt, indent=2) + "\n", encoding="utf-8")
+    try:
+        try:
+            validate_canonical_ledger()
+        except LedgerBindingFailure:
+            return
+        raise Fail("production admission helper accepted migration ledger field drift outside canonical writer authority")
+    finally:
+        MIGRATION_LEDGER.write_bytes(original)
+
+
 def main() -> int:
     writer = load_writer()
     cases: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
@@ -125,7 +141,8 @@ def main() -> int:
         expect_rejected(writer, name, mutate)
         expect_reconcile_rejected_without_mutation(name, mutate)
     expect_noncanonical_ledger_rows_rejected()
-    print("PASS: migration production-shaped admission registry corruption and noncanonical ledger authority are rejected")
+    expect_canonical_writer_delegation()
+    print("PASS: migration production-shaped admission registry corruption and canonical ledger drift are rejected")
     return 0
 
 
