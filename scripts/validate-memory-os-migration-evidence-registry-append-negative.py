@@ -114,7 +114,8 @@ def expect_record_lineage_rejected(writer: ModuleType, contract: dict[str, Any])
     require(isinstance(required, list), "requiredRecordFields missing")
     try:
         writer.validate_record(record, set(required), contract)
-    except Exception:
+    except Exception as exc:
+        require("ancestor" in str(exc), f"non-ancestor source was rejected for the wrong reason: {exc}")
         return
     raise Fail("writer accepted non-ancestor migration sourceCommitSha")
 
