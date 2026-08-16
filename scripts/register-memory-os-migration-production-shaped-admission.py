@@ -9,6 +9,7 @@ pair, mixed-version observation, generation-bound recovery evidence and review.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import os
@@ -42,6 +43,12 @@ DIGEST = re.compile(r"^[0-9a-f]{64}$")
 ADMISSION_ID = re.compile(r"^mpa_[a-z0-9][a-z0-9_-]{7,63}$")
 REVIEWER_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{2,63}$")
 REVIEW_SCHEMA = "memory-os-migration-production-shaped-independent-review.v1"
+EXTERNAL_EVIDENCE_FIELDS = (
+    "compatibilityEvidenceRefs",
+    "mixedVersionObservationRefs",
+    "recoveryEvidenceRefs",
+    "backfillEvidenceRefs",
+)
 REVIEW_FIELDS = {
     "schemaVersion",
     "admissionId",
@@ -130,6 +137,15 @@ def evidence_refs(value: Any, field: str, *, minimum: int = 1) -> list[str]:
         )
         require(head_bytes.returncode == 0 and head_bytes.stdout == current_bytes, f"{field} bytes must match current HEAD: {item}")
     return value
+
+
+def external_evidence_digests(record: dict[str, Any]) -> dict[str, str]:
+    refs: set[str] = set()
+    for field in EXTERNAL_EVIDENCE_FIELDS:
+        value = record.get(field)
+        if isinstance(value, list):
+            refs.update(item for item in value if isinstance(item, str))
+    return {ref: hashlib.sha256((ROOT / ref).read_bytes()).hexdigest() for ref in sorted(refs)}
 
 
 def json_contains_generation(value: Any, generation_id: str) -> bool:
@@ -350,7 +366,7 @@ def validate_record(record: dict[str, Any]) -> None:
 
 
 def validate_registry_for_append(registry: dict[str, Any]) -> None:
-    require(set(registry) == {"schemaVersion", "appendOnly", "admittedRehearsalCount", "admissions", "productionEvidence", "productionReady"}, "registry field set drift")
+    require(set(registry) == {"schemaVersion", "appendOnly", "admittedRehearsalCount", "admissions", "evidenceDigestsByAdmissionId", "productionEvidence", "productionReady"}, "registry field set drift")
     require(registry.get("schemaVersion") == "memory-os-migration-production-shaped-admission-registry.v1", "registry schema drift")
     require(registry.get("appendOnly") is True, "registry must remain append-only")
     admissions = registry.get("admissions")
@@ -359,6 +375,8 @@ def validate_registry_for_append(registry: dict[str, Any]) -> None:
     count = registry.get("admittedRehearsalCount")
     require(isinstance(count, int) and not isinstance(count, bool), "admittedRehearsalCount must be an integer")
     require(count == len(admissions), "admittedRehearsalCount drift")
+    digest_authority = registry.get("evidenceDigestsByAdmissionId")
+    require(isinstance(digest_authority, dict), "evidenceDigestsByAdmissionId must be an object")
     require(registry.get("productionEvidence") is False, "registry cannot claim production evidence")
     require(registry.get("productionReady") is False, "registry cannot claim production readiness")
     ids: set[str] = set()
@@ -371,6 +389,11 @@ def validate_registry_for_append(registry: dict[str, Any]) -> None:
         require(migration_run_id not in runs, f"duplicate migrationRunId at admissions[{index}]: {migration_run_id}")
         ids.add(admission_id)
         runs.add(migration_run_id)
+        expected_digests = external_evidence_digests(record)
+        stored_digests = digest_authority.get(admission_id)
+        require(isinstance(stored_digests, dict), f"missing external evidence digest authority for admission: {admission_id}")
+        require(stored_digests == expected_digests, f"external evidence digest authority drift for admission: {admission_id}")
+    require(set(digest_authority) == ids, "evidence digest authority contains unknown or missing admission IDs")
 
 
 def atomic_write(value: dict[str, Any]) -> None:
@@ -403,6 +426,7 @@ def main() -> int:
     require(git("status", "--porcelain") == "", "working tree must be clean")
     record = load(record_path)
     validate_record(record)
+    record_digests = external_evidence_digests(record)
 
     try:
         lock_fd = os.open(LOCK, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -417,6 +441,7 @@ def main() -> int:
         require(all(item.get("admissionId") != record["admissionId"] for item in admissions), "admissionId already registered")
         require(all(item.get("migrationRunId") != record["migrationRunId"] for item in admissions), "migrationRunId already admitted")
         admissions.append(record)
+        registry["evidenceDigestsByAdmissionId"][record["admissionId"]] = record_digests
         registry["admittedRehearsalCount"] = len(admissions)
         registry["productionEvidence"] = False
         registry["productionReady"] = False

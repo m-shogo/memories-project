@@ -3,6 +3,7 @@
   "appendOnly": true,
   "admittedRehearsalCount": 0,
   "admissions": [],
+  "evidenceDigestsByAdmissionId": {},
   "productionEvidence": false,
   "productionReady": false
 }

@@ -76,6 +76,8 @@
     "generationBoundRecoveryEvidenceRequired": true,
     "backfillEvidenceRequiredWhenBackfillRequired": true,
     "mixedVersionObservationEvidenceRequired": true,
+    "externalEvidenceRefsMustBeCanonicalTrackedAndMatchHead": true,
+    "externalEvidenceRefsMustBeAppendTimeDigestBound": true,
     "independentSecurityAndOperabilityReviewRequired": true,
     "independentReviewMustUseMonitoredNamespace": true,
     "independentReviewMustBeTrackedAndMatchHead": true,
