@@ -17,6 +17,7 @@ REGISTRY = ROOT / "contracts/operations/production-shaped-failure-drill-registry
 WRITER = ROOT / "scripts/register-memory-os-production-shaped-failure-drill.py"
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 GEN_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
+LOCK = ROOT / "contracts/operations/.production-shaped-failure-drill.lock"
 EXPECTED_REGISTRY_FIELDS = {
     "schemaVersion",
     "appendOnly",
@@ -61,6 +62,15 @@ def load_writer() -> ModuleType:
     return load_module(WRITER, "memory_os_production_failure_writer")
 
 
+def validate_writer_authority(writer: ModuleType) -> None:
+    require(writer.ROOT.resolve() == ROOT.resolve(), "failure-drill writer root authority drift")
+    require(writer.CONTRACT.resolve() == CONTRACT.resolve(), "failure-drill writer contract authority drift")
+    require(writer.REGISTRY.resolve() == REGISTRY.resolve(), "failure-drill writer registry authority drift")
+    require(writer.GEN_REGISTRY.resolve() == GEN_REGISTRY.resolve(), "failure-drill writer generation registry authority drift")
+    require(writer.VALIDATOR.resolve() == Path(__file__).resolve(), "failure-drill writer validator authority drift")
+    require(writer.LOCK.resolve() == LOCK.resolve(), "failure-drill writer lock authority drift")
+
+
 def validate_generation_registry_authority() -> None:
     generation_writer = load_module(GEN_WRITER, "memory_os_environment_generation_writer_for_failure_drill")
     require(generation_writer.REGISTRY.resolve() == GEN_REGISTRY.resolve(), "environment generation registry authority drift")
@@ -103,6 +113,7 @@ def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any
     digest_authority = registry.get("evidenceDigestsByDrillId")
     require(isinstance(digest_authority, dict), "evidence digest authority missing")
     writer = load_writer()
+    validate_writer_authority(writer)
     ids: set[str] = set()
     pe = 0
     prod = 0
@@ -137,7 +148,10 @@ def main() -> int:
     registry = load(REGISTRY)
     require(contract.get("schemaVersion") == "memory-os-production-shaped-failure-drill.v1", "contract schema drift")
     require(contract.get("registryPath") == str(REGISTRY.relative_to(ROOT)), "registry binding drift")
+    require(contract.get("appendLockPath") == str(LOCK.relative_to(ROOT)), "append lock binding drift")
     require(contract.get("writer") == str(WRITER.relative_to(ROOT)), "writer binding drift")
+    writer = load_writer()
+    validate_writer_authority(writer)
     scenarios = contract.get("scenarioClasses")
     require(isinstance(scenarios, list) and len(scenarios) == 4, "four required scenario classes expected")
     scenario_ids = {row.get("id") for row in scenarios if isinstance(row, dict)}
