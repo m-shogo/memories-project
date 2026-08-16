@@ -13,7 +13,15 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/rate-limit-distributed-runtime-admission-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json"
+POLICY = ROOT / "contracts/operations/rate-limit-policy-contract.v1.json"
+GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+GEN_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
 WRITER = ROOT / "scripts/register-memory-os-rate-limit-distributed-runtime.py"
+VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit-distributed-runtime.py"
+RECONCILER = ROOT / "scripts/reconcile-memory-os-rate-limit-distributed-runtime.py"
+WORKFLOW = ROOT / ".github/workflows/rate-limit-distributed-runtime-admission.yml"
+STATUS = ROOT / "contracts/operations/production-operability-status.json"
+LOCK = ROOT / "contracts/operations/.rate-limit-distributed-runtime.lock"
 EXPECTED_REGISTRY_FIELDS = {
     "schemaVersion",
     "appendOnly",
@@ -45,12 +53,37 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def load_writer() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("memory_os_rate_limit_runtime_writer", WRITER)
-    require(spec is not None and spec.loader is not None, "cannot load distributed runtime writer")
+def load_module(path: Path, name: str) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load {path.name}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def load_writer() -> ModuleType:
+    return load_module(WRITER, "memory_os_rate_limit_runtime_writer")
+
+
+def validate_writer_authority(writer: ModuleType) -> None:
+    require(writer.ROOT.resolve() == ROOT.resolve(), "distributed runtime writer root authority drift")
+    require(writer.CONTRACT.resolve() == CONTRACT.resolve(), "distributed runtime writer contract authority drift")
+    require(writer.REGISTRY.resolve() == REGISTRY.resolve(), "distributed runtime writer registry authority drift")
+    require(writer.POLICY.resolve() == POLICY.resolve(), "distributed runtime writer policy authority drift")
+    require(writer.GEN_REGISTRY.resolve() == GEN_REGISTRY.resolve(), "distributed runtime writer generation registry authority drift")
+    require(writer.GEN_WRITER.resolve() == GEN_WRITER.resolve(), "distributed runtime writer generation writer authority drift")
+    require(writer.VALIDATOR.resolve() == VALIDATOR.resolve(), "distributed runtime writer validator authority drift")
+    require(writer.LOCK.resolve() == LOCK.resolve(), "distributed runtime writer lock authority drift")
+
+
+def validate_reconciler_authority(reconciler: ModuleType) -> None:
+    require(reconciler.ROOT.resolve() == ROOT.resolve(), "distributed runtime reconciler root authority drift")
+    require(reconciler.CONTRACT.resolve() == CONTRACT.resolve(), "distributed runtime reconciler contract authority drift")
+    require(reconciler.REGISTRY.resolve() == REGISTRY.resolve(), "distributed runtime reconciler registry authority drift")
+    require(reconciler.WRITER.resolve() == WRITER.resolve(), "distributed runtime reconciler writer authority drift")
+    require(reconciler.VALIDATOR.resolve() == VALIDATOR.resolve(), "distributed runtime reconciler validator authority drift")
+    require(reconciler.WORKFLOW.resolve() == WORKFLOW.resolve(), "distributed runtime reconciler workflow authority drift")
+    require(reconciler.STATUS.resolve() == STATUS.resolve(), "distributed runtime reconciler status authority drift")
 
 
 def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any]]:
@@ -61,6 +94,7 @@ def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any
     runtimes = registry.get("runtimes")
     require(isinstance(runtimes, list), "registry runtimes missing")
     writer = load_writer()
+    validate_writer_authority(writer)
     ids: set[str] = set()
     identities: set[str] = set()
     pe = 0
@@ -91,10 +125,19 @@ def main() -> int:
     contract = load(CONTRACT)
     registry = load(REGISTRY)
     require(contract.get("schemaVersion") == "memory-os-rate-limit-distributed-runtime-admission.v1", "contract schema drift")
-    require(contract.get("recordSchemaVersion") == "memory-os-rate-limit-distributed-runtime-record.v1", "record schema drift")
+    require(contract.get("recordSchemaVersion") == "memory-os-rate-limit-distributed-runtime-record.v1", "record schemaVersion drift")
     require(contract.get("independentReviewSchemaVersion") == "memory-os-rate-limit-runtime-independent-review.v1", "independent review schema drift")
+    require(contract.get("sourcePolicyContract") == str(POLICY.relative_to(ROOT)), "policy binding drift")
+    require(contract.get("environmentGenerationRegistry") == str(GEN_REGISTRY.relative_to(ROOT)), "generation registry binding drift")
     require(contract.get("registryPath") == str(REGISTRY.relative_to(ROOT)), "registry binding drift")
     require(contract.get("writer") == str(WRITER.relative_to(ROOT)), "writer binding drift")
+    require(contract.get("validator") == str(VALIDATOR.relative_to(ROOT)), "validator binding drift")
+    require(contract.get("reconcile") == str(RECONCILER.relative_to(ROOT)), "reconciler binding drift")
+    require(contract.get("workflow") == str(WORKFLOW.relative_to(ROOT)), "workflow binding drift")
+    writer = load_writer()
+    validate_writer_authority(writer)
+    reconciler = load_module(RECONCILER, "memory_os_rate_limit_runtime_reconciler_authority")
+    validate_reconciler_authority(reconciler)
     assertions = contract.get("requiredRuntimeAssertions")
     require(isinstance(assertions, dict) and assertions and all(value is True for value in assertions.values()), "required runtime assertions must remain true")
     drills = contract.get("requiredDrillClasses")
