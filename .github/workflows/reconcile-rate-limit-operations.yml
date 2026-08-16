@@ -1,6 +1,13 @@
 name: Reconcile Rate-Limit Operations Policy
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/reconcile-rate-limit-operations.yml"
+      - "contracts/operations/rate-limit-operations-contract.v1.json"
+      - "docs/runbooks/memory-os-rate-limit-operations.md"
+      - "scripts/validate-memory-os-rate-limit-operations.py"
+      - "scripts/reconcile-memory-os-rate-limit-operations.py"
   push:
     branches:
       - so
@@ -16,18 +23,18 @@ permissions:
   contents: write
 
 concurrency:
-  group: reconcile-rate-limit-operations-so
-  cancel-in-progress: true
+  group: reconcile-rate-limit-operations-${{ github.event.pull_request.number || 'so' }}
+  cancel-in-progress: false
 
 jobs:
   reconcile:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Checkout latest so
+      - name: Checkout exact authority source
         uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -35,11 +42,18 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Confirm exact source state
+      - name: Confirm exact clean authority source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          test "$(git branch --show-current)" = "so"
+          set -euo pipefail
           test -z "$(git status --porcelain)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+          else
+            test "$(git branch --show-current)" = "so"
+            test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          fi
 
       - name: Compile and validate operations policy
         run: |
@@ -56,8 +70,19 @@ jobs:
           python scripts/validate-memory-os-operability.py
           python scripts/validate-memory-os-entry-docs.py
 
-      - name: Commit reconciled authority files
+      - name: Require deterministic authority on pull requests
+        if: github.event_name == 'pull_request'
         run: |
+          git diff --check
+          git diff --exit-code -- \
+            contracts/operations/rate-limit-policy-contract.v1.json \
+            contracts/operations/production-operability-status.json
+
+      - name: Commit reconciled authority files
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          source_sha="$(git rev-parse HEAD)"
           git add \
             contracts/operations/rate-limit-policy-contract.v1.json \
             contracts/operations/production-operability-status.json
@@ -65,8 +90,13 @@ jobs:
             echo "Rate-limit operations authority is already current."
             exit 0
           fi
+          git diff --cached --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "docs(rate-limit): reconcile operations authority"
-          git pull --rebase origin so
+          remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
+          if [[ "$remote_sha" != "$source_sha" ]]; then
+            echo "Rate-limit operations authority source is stale: validated $source_sha but so is $remote_sha" >&2
+            exit 75
+          fi
           git push origin HEAD:so
