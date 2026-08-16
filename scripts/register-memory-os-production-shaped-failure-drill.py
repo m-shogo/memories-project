@@ -65,6 +65,20 @@ def git(*args: str) -> str:
     return completed.stdout.strip()
 
 
+def require_source_commit_ancestor(source_commit: str) -> None:
+    completed = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", source_commit, "HEAD"],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if completed.returncode == 0:
+        return
+    require(completed.returncode == 1, "cannot verify sourceCommitSha ancestry")
+    raise Fail("sourceCommitSha must be an ancestor of current HEAD")
+
+
 def timestamp(value: Any, field: str) -> dt.datetime:
     require(isinstance(value, str) and value.endswith("Z"), f"{field} must be UTC RFC3339")
     try:
@@ -116,6 +130,7 @@ def validate_record(record: dict[str, Any], confirmation: str) -> None:
     source = record.get("sourceCommitSha")
     require(isinstance(source, str) and SHA40.fullmatch(source), "sourceCommitSha invalid")
     require(git("cat-file", "-e", source + "^{commit}") == "", "source commit does not exist")
+    require_source_commit_ancestor(source)
     for field in ("environmentIdentityDigest", "failureControllerIdentityDigest"):
         require(isinstance(record.get(field), str) and DIGEST.fullmatch(record[field]), f"{field} invalid")
     dependency_digests = record.get("dependencyIdentityDigests")
