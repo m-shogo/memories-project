@@ -17,7 +17,10 @@ VALIDATOR = ROOT / "scripts/validate-memory-os-migration-production-shaped-admis
 WRITER = ROOT / "scripts/register-memory-os-migration-production-shaped-admission.py"
 WORKFLOW = ROOT / ".github/workflows/migration-production-shaped-admission.yml"
 RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
+RELEASE_CONTRACT = ROOT / "contracts/operations/release-baseline-registry-contract.v1.json"
+RELEASE_WRITER = ROOT / "scripts/register-memory-os-release-baseline.py"
 GENERATIONS = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+GENERATION_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
 LIFECYCLE = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 
@@ -49,12 +52,17 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def load_writer() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("memory_os_migration_production_admission_writer", WRITER)
-    require(spec is not None and spec.loader is not None, "cannot load migration admission writer")
+def load_module(path: Path, name: str, label: str) -> ModuleType:
+    require(path.is_file(), f"canonical {label} missing")
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load canonical {label}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def load_writer() -> ModuleType:
+    return load_module(WRITER, "memory_os_migration_production_admission_writer", "migration admission writer")
 
 
 def write(path: Path, value: dict[str, Any]) -> None:
@@ -67,8 +75,8 @@ def append_once(values: list[Any], value: str) -> None:
 
 
 def main() -> int:
-    for path in (REGISTRY, VALIDATOR, WRITER, WORKFLOW):
-        require(path.is_file(), f"migration production admission missing: {path.relative_to(ROOT)}")
+    for path in (REGISTRY, VALIDATOR, WRITER, WORKFLOW, RELEASES, RELEASE_CONTRACT, RELEASE_WRITER, GENERATIONS, GENERATION_WRITER):
+        require(path.is_file(), f"migration production admission authority missing: {path.relative_to(ROOT)}")
     registry = load(REGISTRY)
     writer = load_writer()
     try:
@@ -82,7 +90,20 @@ def main() -> int:
     complete = len(admissions) > 0
 
     releases = load(RELEASES)
+    release_contract = load(RELEASE_CONTRACT)
+    release_writer = load_module(RELEASE_WRITER, "memory_os_release_baseline_writer_for_migration_reconcile", "release baseline writer")
+    try:
+        release_writer.validate_registry_for_append(releases, release_contract)
+    except Exception as exc:
+        raise Fail(f"release baseline authority invalid before migration reconcile: {exc}") from exc
+
     generations = load(GENERATIONS)
+    generation_writer = load_module(GENERATION_WRITER, "memory_os_environment_generation_writer_for_migration_reconcile", "environment generation writer")
+    try:
+        generation_writer.validate_registry_for_append(generations)
+    except Exception as exc:
+        raise Fail(f"environment generation authority invalid before migration reconcile: {exc}") from exc
+
     approved_release_count = releases.get("approvedReleaseCount")
     registered_generation_count = generations.get("registeredGenerationCount")
     require(isinstance(approved_release_count, int) and not isinstance(approved_release_count, bool), "approvedReleaseCount invalid")
