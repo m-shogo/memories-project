@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
 import sys
@@ -13,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/parser-artifact-registry-contract.v1.json"
 REGISTRY_PATH = ROOT / "contracts/operations/parser-artifact-registry.v1.json"
 RELEASE_REGISTRY_PATH = ROOT / "contracts/operations/release-baseline-registry.v1.json"
+RELEASE_WRITER_PATH = ROOT / "scripts/register-memory-os-release-baseline.py"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 ARTIFACT_ID_RE = re.compile(r"^par_[a-z0-9][a-z0-9._-]{7,95}$")
@@ -56,6 +58,31 @@ def safe_ref(value: Any, field: str) -> str:
             f"{field} contains an unsafe path")
     require((ROOT / path).is_file(), f"{field} path missing: {value}")
     return value
+
+
+def load_release_writer() -> Any:
+    require(RELEASE_WRITER_PATH.is_file(), "canonical release writer missing")
+    spec = importlib.util.spec_from_file_location(
+        "memory_os_release_baseline_writer_for_parser_validator", RELEASE_WRITER_PATH
+    )
+    require(spec is not None and spec.loader is not None,
+            "cannot load canonical release writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    require(Path(module.REGISTRY_PATH).resolve() == RELEASE_REGISTRY_PATH.resolve(),
+            "canonical release registry authority drift")
+    return module
+
+
+def approved_release_ids() -> set[str]:
+    release_writer = load_release_writer()
+    release_registry = load(RELEASE_REGISTRY_PATH)
+    release_contract = load(Path(release_writer.CONTRACT_PATH))
+    try:
+        release_writer.validate_registry_for_append(release_registry, release_contract)
+    except Exception as exc:
+        raise ValidationFailure(f"approved release authority invalid: {exc}") from exc
+    return {item["releaseId"] for item in release_registry["releases"]}
 
 
 def validate_record(record: dict[str, Any], required_fields: set[str],
@@ -168,13 +195,7 @@ def main() -> int:
             retention_policy.get("automaticDeletionForbidden") is True,
             "parser artifact retention policy drift")
 
-    release_registry = load(RELEASE_REGISTRY_PATH)
-    releases = release_registry.get("releases")
-    require(isinstance(releases, list), "approved release registry invalid")
-    approved_release_ids = {
-        item.get("releaseId") for item in releases
-        if isinstance(item, dict) and isinstance(item.get("releaseId"), str)
-    }
+    release_ids = approved_release_ids()
 
     registry = load(REGISTRY_PATH)
     require(registry.get("schemaVersion") == "memory-os-parser-artifact-registry.v1",
@@ -190,7 +211,7 @@ def main() -> int:
     adapter_versions: set[tuple[str, str]] = set()
     for record in artifacts:
         require(isinstance(record, dict), "artifact record must be an object")
-        validate_record(record, required_fields, approved_release_ids)
+        validate_record(record, required_fields, release_ids)
         artifact_id = record["artifactId"]
         digest = record["artifactSha256"]
         adapter_version = (record["adapterId"], record["adapterVersion"])
@@ -253,7 +274,7 @@ def main() -> int:
             "parser artifact registry overclaims readiness")
 
     if not artifacts:
-        require(not approved_release_ids and retained == 0 and replayed == 0 and
+        require(not release_ids and retained == 0 and replayed == 0 and
                 expected_decision == "BLOCKED_NO_REVIEWED_PARSER_ARTIFACT",
                 "empty parser registry boundary drift")
 
