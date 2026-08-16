@@ -85,6 +85,19 @@ def utc_timestamp(value: Any, field: str) -> None:
     require(parsed.utcoffset() == dt.timedelta(0), f"{field} must be UTC")
 
 
+def validate_source_commit_lineage(commit_sha: str) -> None:
+    head = git("rev-parse", "HEAD")
+    completed = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", commit_sha, head],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    require(completed.returncode == 0,
+            f"source commit is not an ancestor of current HEAD: {commit_sha}")
+
+
 def validate_record(record: dict[str, Any], required_fields: set[str], artifact: Path) -> None:
     require(set(record) >= required_fields, f"record missing fields: {sorted(required_fields - set(record))}")
     require(record.get("schemaVersion") == "memory-os-client-baseline-record.v1", "record schema drift")
@@ -93,6 +106,7 @@ def validate_record(record: dict[str, Any], required_fields: set[str], artifact:
     require(isinstance(record.get("marketingVersion"), str) and VERSION.fullmatch(record["marketingVersion"]) is not None, "marketingVersion invalid")
     require(isinstance(record.get("buildNumber"), str) and BUILD.fullmatch(record["buildNumber"]) is not None, "buildNumber invalid")
     require(isinstance(record.get("sourceCommitSha"), str) and SHA40.fullmatch(record["sourceCommitSha"]) is not None, "sourceCommitSha invalid")
+    validate_source_commit_lineage(record["sourceCommitSha"])
     require(record.get("artifactKind") in ARTIFACT_KINDS, "artifactKind invalid")
     if record["clientClass"] == "IOS_APP":
         require(record["artifactKind"] in {"IOS_IPA", "IOS_XCARCHIVE_EXPORT"}, "iOS baseline requires iOS artifact kind")
@@ -137,10 +151,6 @@ def validate_record(record: dict[str, Any], required_fields: set[str], artifact:
             hasher.update(chunk)
     require(size == record["artifactByteLength"], "artifact byte length mismatch")
     require(hasher.hexdigest() == record["artifactSha256"], "artifact SHA-256 mismatch")
-
-    # Source must exist in repository history; unlike release registration it
-    # need not equal HEAD because a retained client artifact may be reviewed later.
-    git("cat-file", "-e", record["sourceCommitSha"] + "^{commit}")
 
     serialized = json.dumps(record, ensure_ascii=False).lower()
     for forbidden in (
