@@ -19,12 +19,15 @@ GAPS = ROOT / "contracts/operations/compatibility-admission-gaps.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 VALIDATOR = ROOT / "scripts/validate-memory-os-release-compatibility-pair.py"
 WRITER = ROOT / "scripts/register-memory-os-release-compatibility-pair.py"
+INDEPENDENT_REVIEW_VALIDATOR = ROOT / "scripts/validate-memory-os-release-compatibility-pair-independent-review.py"
 REFS = (
     "contracts/operations/release-compatibility-pair-contract.v1.json",
     "contracts/operations/release-compatibility-pair-registry.v1.json",
     "scripts/register-memory-os-release-compatibility-pair.py",
     "scripts/validate-memory-os-release-compatibility-pair.py",
     "scripts/validate-memory-os-release-compatibility-pair-negative.py",
+    "scripts/validate-memory-os-release-compatibility-pair-independent-review.py",
+    "scripts/validate-memory-os-release-compatibility-pair-independent-review-negative.py",
     "scripts/reconcile-memory-os-release-compatibility-pair.py",
     ".github/workflows/release-compatibility-pair.yml",
 )
@@ -49,9 +52,9 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def load_writer() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("memory_os_release_pair_writer_for_reconcile", WRITER)
-    require(spec is not None and spec.loader is not None, "cannot load release pair writer")
+def load_module(path: Path, name: str) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load authority module: {path.relative_to(ROOT)}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -78,23 +81,31 @@ def gap_unsatisfied(gap: dict[str, Any]) -> bool:
 
 def main() -> int:
     registry = load(REGISTRY)
-    writer = load_writer()
+    writer = load_module(WRITER, "memory_os_release_pair_writer_for_reconcile")
+    review_validator = load_module(INDEPENDENT_REVIEW_VALIDATOR, "memory_os_release_pair_review_for_reconcile")
     try:
         writer.validate_registry_for_append(registry)
     except Exception as exc:
         raise Fail(f"release pair append-only authority invalid: {exc}") from exc
+
+    pairs = registry.get("pairs")
+    require(isinstance(pairs, list), "pair registry pairs invalid")
+    try:
+        for row in pairs:
+            require(isinstance(row, dict), "pair registry row must be object")
+            review_validator.validate_pair_reviews(row)
+    except Exception as exc:
+        raise Fail(f"release pair typed independent review authority invalid: {exc}") from exc
 
     releases = writer.validated_release_registry()
     contract = load(CONTRACT)
     execution = load(EXECUTION)
     gaps = load(GAPS)
     release_count = releases.get("approvedReleaseCount")
-    pairs = registry.get("pairs")
     pair_count = registry.get("approvedPairCount")
     rollback_count = registry.get("rollbackEligiblePairCount")
     latest_pair = registry.get("latestPairId")
     require(isinstance(release_count, int) and not isinstance(release_count, bool) and release_count >= 0, "approved release count invalid")
-    require(isinstance(pairs, list), "pair registry pairs invalid")
     require(isinstance(pair_count, int) and not isinstance(pair_count, bool) and len(pairs) == pair_count, "pair registry count drift")
     require(isinstance(rollback_count, int) and not isinstance(rollback_count, bool) and rollback_count == pair_count, "rollback pair count drift")
     require(latest_pair == (pairs[-1].get("pairId") if pairs else None), "latestPairId drift")
@@ -151,7 +162,7 @@ def main() -> int:
     require(isinstance(existing, list) and isinstance(missing, list) and isinstance(refs, list), "OPS-P0-008 authority arrays missing")
     existing[:] = [item for item in existing if not (isinstance(item, str) and item.startswith(EVIDENCE_PREFIX))]
     append_once(existing, (
-        f"{EVIDENCE_PREFIX} approved releases={release_count}, approved predecessor/successor rollback pairs={pair_count}; pair admission revalidates the canonical source-bound approved-release registry, requires two distinct approved release baselines, ELIGIBLE predecessor rollback status from the release rollback object, pair-specific rolling deployment, application rollback, persisted-route, database-upgrade, artifact-retention and at least two independent review references, while candidate/local execution remains a separate non-release authority and productionEvidence/productionReady remain false"
+        f"{EVIDENCE_PREFIX} approved releases={release_count}, approved predecessor/successor rollback pairs={pair_count}; pair admission revalidates the canonical source-bound approved-release registry, requires two distinct approved release baselines, ELIGIBLE predecessor rollback status, committed digest-bound rolling/rollback/persisted-route/database/artifact evidence, and exactly two typed pair-bound Security/Operability APPROVED reviews from distinct reviewers; candidate/local execution remains separate non-release authority and productionEvidence/productionReady remain false"
     ))
     if pair_count > 0:
         obsolete_prefixes = (
@@ -170,6 +181,7 @@ def main() -> int:
     print(f"approved releases: {release_count}")
     print(f"approved rollback pairs: {pair_count}")
     print(f"release compatibility evidence: {str(pair_count > 0).lower()}")
+    print("typed independent review authority: enforced before derived writes")
     print("candidate/local execution authority: unchanged")
     print("OPS-P0-008: PARTIAL")
     print("productionDecision: NO_GO")
