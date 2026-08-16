@@ -3,9 +3,11 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -64,6 +66,14 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def load_writer() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("memory_os_migration_rehearsal_writer_reconcile", WRITER)
+    require(spec is not None and spec.loader is not None, "cannot load migration rehearsal writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def write(path: Path, value: dict[str, Any]) -> None:
     path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
@@ -87,17 +97,18 @@ def main() -> int:
 
     registry = load(REGISTRY)
     contract = load(REGISTRY_CONTRACT)
+    writer = load_writer()
+    try:
+        writer.validate_registry_for_append(registry, contract)
+    except Exception as exc:
+        raise Fail(f"migration evidence registry invalid before reconcile: {exc}") from exc
     current = contract.get("currentAuthority")
     readiness = contract.get("readiness")
     require(isinstance(current, dict) and isinstance(readiness, dict), "registry contract authority missing")
-    records = registry.get("records")
-    require(isinstance(records, list), "migration evidence records missing")
-    count = registry.get("rehearsalEvidenceCount")
-    passing_count = registry.get("passingRehearsalCount")
-    pe_count = registry.get("productionEquivalentRehearsalCount")
-    require(isinstance(count, int) and count == len(records), "rehearsal count drift")
-    require(isinstance(passing_count, int) and 0 <= passing_count <= count, "passing count drift")
-    require(isinstance(pe_count, int) and 0 <= pe_count <= count, "production-equivalent count drift")
+    records = registry["records"]
+    count = registry["rehearsalEvidenceCount"]
+    passing_count = registry["passingRehearsalCount"]
+    pe_count = registry["productionEquivalentRehearsalCount"]
     local_passing = sum(
         1 for record in records
         if isinstance(record, dict)
