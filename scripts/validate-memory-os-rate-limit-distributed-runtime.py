@@ -130,6 +130,7 @@ def main() -> int:
     require(contract.get("sourcePolicyContract") == str(POLICY.relative_to(ROOT)), "policy binding drift")
     require(contract.get("environmentGenerationRegistry") == str(GEN_REGISTRY.relative_to(ROOT)), "generation registry binding drift")
     require(contract.get("registryPath") == str(REGISTRY.relative_to(ROOT)), "registry binding drift")
+    require(contract.get("appendLockPath") == str(LOCK.relative_to(ROOT)), "append lock binding drift")
     require(contract.get("writer") == str(WRITER.relative_to(ROOT)), "writer binding drift")
     require(contract.get("validator") == str(VALIDATOR.relative_to(ROOT)), "validator binding drift")
     require(contract.get("reconcile") == str(RECONCILER.relative_to(ROOT)), "reconciler binding drift")
