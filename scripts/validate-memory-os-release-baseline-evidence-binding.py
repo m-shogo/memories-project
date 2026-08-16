@@ -78,7 +78,9 @@ def main() -> int:
     require(binding == {
         "sourceCommitField": "commitSha",
         "repositoryTrackedRequired": True,
+        "repositoryContainmentRequired": True,
         "symlinkForbidden": True,
+        "parentDirectorySymlinkForbidden": True,
         "sourceCommitBlobRequired": True,
         "currentBytesMustMatchSourceCommit": True,
     }, "release evidenceBinding authority drift")

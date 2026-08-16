@@ -100,8 +100,16 @@ def validate_evidence_ref_binding(commit_sha: str, ref: str) -> None:
     require(not relative.is_absolute() and ".." not in relative.parts,
             f"unsafe evidence path: {ref}")
     path = ROOT / relative
+    try:
+        resolved = path.resolve(strict=True)
+        resolved.relative_to(ROOT.resolve())
+    except (OSError, ValueError) as exc:
+        raise RegistrationFailure(f"evidence path escapes repository or is unreadable: {ref}") from exc
+    cursor = path
+    while cursor != ROOT:
+        require(not cursor.is_symlink(), f"evidence path contains symlink: {ref}")
+        cursor = cursor.parent
     require(path.is_file(), f"evidence path missing: {ref}")
-    require(not path.is_symlink(), f"evidence path must not be a symlink: {ref}")
     git("ls-files", "--error-unmatch", "--", ref)
     source_blob = git("rev-parse", f"{commit_sha}:{ref}")
     current_blob = git("hash-object", "--", ref)

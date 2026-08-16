@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import tempfile
 from pathlib import Path
 from types import ModuleType
 
@@ -12,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-release-baseline-evidence-binding.py"
 TRACKED_REF = "docs/evidence/releases/README.md"
 UNTRACKED_REF = "docs/evidence/releases/.release-evidence-binding-negative.tmp"
+SYMLINK_PARENT = ROOT / "docs/evidence/releases/.release-evidence-binding-negative-link"
 
 
 class Fail(RuntimeError):
@@ -69,11 +71,34 @@ def main() -> int:
         except FileNotFoundError:
             pass
 
+    expect_rejected(
+        "parent traversal",
+        lambda: validator.validate_evidence_ref_binding(head, "docs/evidence/releases/../../../README.md"),
+    )
+
+    with tempfile.TemporaryDirectory(prefix="memory-os-release-evidence-") as temp_dir:
+        outside = Path(temp_dir)
+        (outside / "evidence.json").write_text("{}\n", encoding="utf-8")
+        try:
+            SYMLINK_PARENT.symlink_to(outside, target_is_directory=True)
+            ref = str((SYMLINK_PARENT / "evidence.json").relative_to(ROOT))
+            expect_rejected(
+                "parent symlink repository escape",
+                lambda: validator.validate_evidence_ref_binding(head, ref),
+            )
+        finally:
+            try:
+                SYMLINK_PARENT.unlink()
+            except FileNotFoundError:
+                pass
+
     require(tracked_path.read_bytes() == tracked_before,
             "negative suite failed to restore tracked evidence bytes")
     require(not untracked_path.exists(),
             "negative suite left untracked evidence behind")
-    print("PASS: release baseline evidence refs are source-bound and immutable")
+    require(not SYMLINK_PARENT.exists() and not SYMLINK_PARENT.is_symlink(),
+            "negative suite left symlink evidence behind")
+    print("PASS: release baseline evidence refs are source-bound, repository-contained and symlink-safe")
     return 0
 
 

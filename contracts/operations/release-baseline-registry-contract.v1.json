@@ -47,7 +47,9 @@
   "evidenceBinding": {
     "sourceCommitField": "commitSha",
     "repositoryTrackedRequired": true,
+    "repositoryContainmentRequired": true,
     "symlinkForbidden": true,
+    "parentDirectorySymlinkForbidden": true,
     "sourceCommitBlobRequired": true,
     "currentBytesMustMatchSourceCommit": true
   },
@@ -90,6 +92,7 @@
     "release ID and tag have never been registered",
     "commit SHA has never been registered under another release",
     "all evidence references are repository-relative existing files",
+    "all release evidence references resolve within the repository without symlink traversal",
     "all release evidence references are tracked regular files whose current bytes exactly match the requested release commit",
     "all required SHA-256 bindings are lowercase 64-character digests",
     "approval roles are complete and assigned to distinct approver identifiers",
