@@ -1,10 +1,23 @@
 name: Admission Authority Linkage
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/admission-authority-linkage.yml"
+      - "contracts/operations/requests/admission-authority-linkage.v1.json"
+      - "contracts/operations/*admission-contract.v1.json"
+      - "contracts/operations/incident-human-tabletop-evidence-contract.v1.json"
+      - "contracts/operations/deletion-worker-host-failure-contract.v1.json"
+      - "contracts/operations/backup-restore-generation-binding-contract.v1.json"
+      - "contracts/operations/client-baseline-registry-contract.v1.json"
+      - "contracts/operations/production-shaped-failure-drill-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
+      - "scripts/validate-memory-os-admission-authority-linkage.py"
   push:
     branches:
       - so
     paths:
+      - ".github/workflows/admission-authority-linkage.yml"
       - "contracts/operations/requests/admission-authority-linkage.v1.json"
       - "contracts/operations/*admission-contract.v1.json"
       - "contracts/operations/incident-human-tabletop-evidence-contract.v1.json"
@@ -20,7 +33,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: admission-authority-linkage-so
+  group: admission-authority-linkage-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
@@ -30,11 +43,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Confirm exact clean authority source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+          else
+            test "$(git branch --show-current)" = "so"
+            test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          fi
       - name: Validate admission authority links
         id: linkage
         run: |
@@ -49,37 +74,45 @@ jobs:
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
+      - name: Require no diagnostic mutation on pull requests
+        if: github.event_name == 'pull_request' && steps.linkage.outputs.exit_code == '0'
+        run: |
+          git diff --check
+          git diff --exit-code -- docs/fixtures/memory-os-operability/admission-authority-linkage-diagnostic.last.json
       - name: Clear stale diagnostic
-        if: steps.linkage.outputs.exit_code == '0'
+        if: github.event_name != 'pull_request' && steps.linkage.outputs.exit_code == '0'
         run: |
           set -euo pipefail
+          source_sha="$(git rev-parse HEAD)"
           git rm -f docs/fixtures/memory-os-operability/admission-authority-linkage-diagnostic.last.json 2>/dev/null || true
           if ! git diff --cached --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(ops): clear admission linkage diagnostic"
-            for attempt in 1 2 3; do
-              git pull --rebase origin so
-              if git push origin HEAD:so; then exit 0; fi
-              sleep 2
-            done
+            remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
+            if [[ "$remote_sha" != "$source_sha" ]]; then
+              echo "Admission-linkage cleanup source is stale: validated $source_sha but so is $remote_sha" >&2
+              exit 75
+            fi
+            git push origin HEAD:so
           fi
       - name: Record privacy-safe linkage diagnostic
-        if: steps.linkage.outputs.exit_code != '0'
+        if: github.event_name != 'pull_request' && steps.linkage.outputs.exit_code != '0'
         env:
           LINKAGE_EXIT_CODE: ${{ steps.linkage.outputs.exit_code }}
         run: |
           set -euo pipefail
-          git fetch origin so
-          git reset --hard origin/so
+          source_sha="$(git rev-parse HEAD)"
           python - <<'PY'
-          import json, os
+          import json, os, subprocess
           from pathlib import Path
           text = Path('/tmp/admission-authority-linkage.log').read_text(encoding='utf-8', errors='replace')
+          source_sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
           value = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'admission-authority-linkage',
               'result': 'FAIL',
+              'sourceCommitSha': source_sha,
               'exitCode': int(os.environ['LINKAGE_EXIT_CODE']),
               'output': text[-12000:],
               'containsSecrets': False,
@@ -95,11 +128,12 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --cached --quiet; then
             git commit -m "test(ops): record admission linkage diagnostic"
-            for attempt in 1 2 3; do
-              git pull --rebase origin so
-              if git push origin HEAD:so; then exit 0; fi
-              sleep 2
-            done
+            remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
+            if [[ "$remote_sha" != "$source_sha" ]]; then
+              echo "Admission-linkage diagnostic source is stale: validated $source_sha but so is $remote_sha" >&2
+              exit 75
+            fi
+            git push origin HEAD:so
           fi
       - name: Enforce linkage validation
         run: test "${{ steps.linkage.outputs.exit_code }}" = "0"
