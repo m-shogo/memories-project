@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/incident-contact-routing-admission-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/incident-contact-routing-admission-registry.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-incident-contact-routing.py"
+LOCK = ROOT / "contracts/operations/.incident-contact-routing.lock"
 OBS_REGISTRY = ROOT / "contracts/operations/observability-stack-deployment-registry.v1.json"
 OBS_WRITER = ROOT / "scripts/register-memory-os-observability-stack-deployment.py"
 
@@ -42,6 +43,8 @@ def load_writer() -> ModuleType:
             "contact routing writer contract authority drift")
     require(getattr(module, "REGISTRY", None) == REGISTRY,
             "contact routing writer registry authority drift")
+    require(getattr(module, "LOCK", None) == LOCK,
+            "contact routing writer append lock authority drift")
     require(getattr(module, "OBS_REGISTRY", None) == OBS_REGISTRY,
             "contact routing observability registry authority drift")
     require(getattr(module, "OBS_WRITER", None) == OBS_WRITER,
@@ -57,6 +60,7 @@ def main() -> int:
     require(contract.get("schemaVersion") == "memory-os-incident-contact-routing-admission.v1", "contract schema drift")
     require(contract.get("recordSchemaVersion") == "memory-os-incident-contact-routing-record.v1", "record schema drift")
     require(contract.get("registryPath") == str(REGISTRY.relative_to(ROOT)), "registry binding drift")
+    require(contract.get("appendLockPath") == str(LOCK.relative_to(ROOT)), "append lock binding drift")
     require(contract.get("writer") == str(WRITER.relative_to(ROOT)), "writer binding drift")
     require(contract.get("sourceObservabilityStackRegistry") == str(OBS_REGISTRY.relative_to(ROOT)), "observability registry contract binding drift")
     required_classes = contract.get("requiredContactClasses")
@@ -69,6 +73,7 @@ def main() -> int:
     ], "required contact class set drift")
     rules = contract.get("bindingRules")
     require(isinstance(rules, dict) and rules and all(value is True for value in rules.values()), "binding rules must remain true")
+    require(rules.get("appendLockMustRemainCanonical") is True, "append lock requirement drift")
     promotion = contract.get("promotionRules")
     require(isinstance(promotion, dict), "promotionRules missing")
     for key, value in promotion.items():
