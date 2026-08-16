@@ -101,6 +101,25 @@ def prove_executable_authority_rejection(validator: Any, writer: Any, reconciler
         reconciler.STATUS = original_reconciler_status
 
 
+def prove_contract_lock_binding_rejection(validator: Any) -> None:
+    original = CONTRACT.read_bytes()
+    contract = json.loads(original.decode("utf-8"))
+    contract["appendLockPath"] = str(ALTERNATE_LOCK.relative_to(ROOT))
+    CONTRACT.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    corrupted = CONTRACT.read_bytes()
+    try:
+        try:
+            validator.main()
+        except validator.Fail:
+            pass
+        else:
+            raise RuntimeError("contract append lock substitution accepted")
+        if CONTRACT.read_bytes() != corrupted:
+            raise RuntimeError("rejected contract append lock validation mutated contract")
+    finally:
+        CONTRACT.write_bytes(original)
+
+
 def prove_reconciler_no_autoheal(reconciler: Any, original: bytes) -> None:
     contract_before = CONTRACT.read_bytes()
     status_before = STATUS.read_bytes()
@@ -146,6 +165,7 @@ def main() -> int:
         for name, mutate in cases:
             expect_rejected(writer, name, mutate, original)
         prove_executable_authority_rejection(validator, writer, reconciler)
+        prove_contract_lock_binding_rejection(validator)
         prove_reconciler_no_autoheal(reconciler, original)
     finally:
         REGISTRY.write_bytes(original)
@@ -153,6 +173,7 @@ def main() -> int:
     print("PASS: distributed rate-limit runtime registry corruption and authority substitution are rejected before append/reconcile")
     print(f"corruption cases: {len(cases)}")
     print("executable authority substitution: rejected")
+    print("contract append lock substitution: rejected")
     print("reconciler auto-heal: false")
     print("production readiness: false")
     print("production decision: NO_GO")
