@@ -4,15 +4,18 @@
 from __future__ import annotations
 
 import datetime as dt
+import importlib.util
 import json
 import sys
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/release-baseline-registry-contract.v1.json"
 REGISTRY_PATH = ROOT / "contracts/operations/release-baseline-registry.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+WRITER_PATH = ROOT / "scripts/register-memory-os-release-baseline.py"
 
 EXISTING = (
     "append-only approved release baseline registry authority separating historical candidates, CI results, tags and branch heads from multi-role production release approval",
@@ -60,6 +63,14 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def load_writer() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("memory_os_release_baseline_writer_for_reconcile", WRITER_PATH)
+    require(spec is not None and spec.loader is not None, "cannot load release baseline writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def append_once(items: list[Any], value: str) -> bool:
     if value in items:
         return False
@@ -70,6 +81,11 @@ def append_once(items: list[Any], value: str) -> bool:
 def main() -> int:
     contract = load(CONTRACT_PATH)
     registry = load(REGISTRY_PATH)
+    writer = load_writer()
+    try:
+        writer.validate_registry_for_append(registry, contract)
+    except Exception as exc:
+        raise ReconcileFailure(f"release registry append-only authority invalid: {exc}") from exc
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "release registry readiness missing")
     for foundation in (
