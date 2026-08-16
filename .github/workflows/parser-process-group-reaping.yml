@@ -180,6 +180,12 @@ jobs:
 
       - name: Commit result or bounded diagnostic
         run: |
+          SOURCE_SHA="${{ steps.drill.outputs.source_sha }}"
+          git fetch origin so
+          test "$(git rev-parse origin/so)" = "$SOURCE_SHA" || {
+            echo "so advanced after parser process-group validation; refusing stale evidence write"
+            exit 75
+          }
           git add docs/fixtures/memory-os-operability/parser-process-group-reaping-diagnostic.last.json
           if [ "${{ steps.drill.outputs.success }}" = "true" ]; then
             git add docs/fixtures/memory-os-operability/parser-process-group-reaping-results.sample.v1.json
@@ -194,15 +200,26 @@ jobs:
             else
               git commit -m "test(chaos): record parser process-group reaping diagnostic"
             fi
-            git pull --rebase origin so
+            git fetch origin so
+            test "$(git rev-parse origin/so)" = "$SOURCE_SHA" || {
+              echo "so advanced before parser process-group evidence push; refusing stale write"
+              exit 75
+            }
             git push origin HEAD:so
           fi
 
       - name: Reconcile process-group reaping authority
         if: steps.drill.outputs.success == 'true'
         run: |
+          EVIDENCE_HEAD="$(git rev-parse HEAD)"
+          git fetch origin so
+          test "$(git rev-parse origin/so)" = "$EVIDENCE_HEAD" || {
+            echo "so advanced before parser process-group reconcile; refusing stale projection"
+            exit 75
+          }
           python scripts/reconcile-memory-os-parser-process-group-reaping.py
-          python scripts/validate-memory-os-parser-process-group-reaping.py
+          EXPECTED_COMMIT_SHA="${{ steps.drill.outputs.source_sha }}" \
+            python scripts/validate-memory-os-parser-process-group-reaping.py
           python scripts/validate-memory-os-operability.py
           git add \
             contracts/operations/parser-process-group-reaping-contract.v1.json \
@@ -213,7 +230,11 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(chaos): reconcile parser process-group reaping evidence"
-            git pull --rebase origin so
+            git fetch origin so
+            test "$(git rev-parse origin/so)" = "$EVIDENCE_HEAD" || {
+              echo "so advanced before parser process-group authority push; refusing stale projection"
+              exit 75
+            }
             git push origin HEAD:so
           fi
 
