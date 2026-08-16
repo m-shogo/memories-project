@@ -7,6 +7,7 @@ import importlib.util
 import json
 import sys
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,6 +15,8 @@ CONTRACT = ROOT / "contracts/operations/release-compatibility-pair-contract.v1.j
 RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
 REGISTRY = ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-release-compatibility-pair.py"
+INDEPENDENT_REVIEW_VALIDATOR = ROOT / "scripts/validate-memory-os-release-compatibility-pair-independent-review.py"
+INDEPENDENT_REVIEW_NEGATIVE = ROOT / "scripts/validate-memory-os-release-compatibility-pair-independent-review-negative.py"
 EXECUTION = ROOT / "contracts/operations/version-compatibility-execution-evidence.v1.json"
 GAPS = ROOT / "contracts/operations/compatibility-admission-gaps.v1.json"
 
@@ -36,9 +39,9 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def load_writer():
-    spec = importlib.util.spec_from_file_location("memory_os_release_pair_writer", WRITER)
-    require(spec is not None and spec.loader is not None, "cannot load release pair writer")
+def load_authority(path: Path, name: str) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load authority module: {path.relative_to(ROOT)}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -49,12 +52,16 @@ def main() -> int:
     registry = load(REGISTRY)
     execution = load(EXECUTION)
     gaps = load(GAPS)
-    writer = load_writer()
+    writer = load_authority(WRITER, "memory_os_release_pair_writer")
+    review_validator = load_authority(INDEPENDENT_REVIEW_VALIDATOR, "memory_os_release_pair_review_validator")
 
     require(contract.get("schemaVersion") == "memory-os-release-compatibility-pair.v1", "pair contract schema drift")
     require(contract.get("releaseRegistry") == str(RELEASES.relative_to(ROOT)), "release registry ref drift")
     require(contract.get("registry") == str(REGISTRY.relative_to(ROOT)), "pair registry ref drift")
     require(contract.get("writer") == str(WRITER.relative_to(ROOT)) and WRITER.is_file(), "pair writer ref drift")
+    require(contract.get("independentReviewValidator") == str(INDEPENDENT_REVIEW_VALIDATOR.relative_to(ROOT)) and INDEPENDENT_REVIEW_VALIDATOR.is_file(), "independent review validator ref drift")
+    require(contract.get("independentReviewNegativeValidator") == str(INDEPENDENT_REVIEW_NEGATIVE.relative_to(ROOT)) and INDEPENDENT_REVIEW_NEGATIVE.is_file(), "independent review negative validator ref drift")
+    require(contract.get("independentReviewEvidenceRoot") == "docs/evidence/release-compatibility-pairs/reviews", "independent review evidence root drift")
     for field in ("validator", "reconcile", "workflow"):
         ref = contract.get(field)
         require(isinstance(ref, str) and ref and (ROOT / ref).is_file(), f"pair authority artifact missing: {field}")
@@ -85,6 +92,7 @@ def main() -> int:
     relations: set[tuple[str, str]] = set()
     for row in pairs:
         writer.validate_record(row)
+        review_validator.validate_pair_reviews(row)
         pair_id = row.get("pairId")
         relation = (row.get("predecessorReleaseId"), row.get("successorReleaseId"))
         require(isinstance(pair_id, str) and pair_id not in ids, f"duplicate pairId: {pair_id}")
@@ -122,6 +130,7 @@ def main() -> int:
     print(f"approved releases: {approved_release_count}")
     print(f"approved rollback pairs: {count}")
     print(f"release compatibility evidence: {str(count > 0).lower()}")
+    print("typed independent Security/Operability review authority is mandatory for every approved pair")
     print("candidate/local execution remains non-release evidence")
     print("production evidence: false")
     print("production decision: NO_GO")
