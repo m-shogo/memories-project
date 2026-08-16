@@ -19,6 +19,7 @@ CONTRACT = ROOT / "contracts/operations/rate-limit-distributed-runtime-admission
 REGISTRY = ROOT / "contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json"
 POLICY = ROOT / "contracts/operations/rate-limit-policy-contract.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+GEN_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit-distributed-runtime.py"
 LOCK = ROOT / "contracts/operations/.rate-limit-distributed-runtime.lock"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
@@ -46,12 +47,16 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def load_validator() -> Any:
-    spec = importlib.util.spec_from_file_location("memory_os_rate_limit_runtime_validator_for_writer", VALIDATOR)
-    require(spec is not None and spec.loader is not None, "cannot load distributed runtime validator")
+def load_module(path: Path, name: str) -> Any:
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load {path.name}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def load_validator() -> Any:
+    return load_module(VALIDATOR, "memory_os_rate_limit_runtime_validator_for_writer")
 
 
 def validate_registry_before_append(registry: dict[str, Any]) -> list[dict[str, Any]]:
@@ -61,6 +66,15 @@ def validate_registry_before_append(registry: dict[str, Any]) -> list[dict[str, 
         return validator.validate_registry_for_append(registry)
     except validator.Fail as exc:
         raise Fail(f"existing distributed runtime registry rejected before append: {exc}") from exc
+
+
+def validated_generation_rows() -> list[dict[str, Any]]:
+    generation_writer = load_module(GEN_WRITER, "memory_os_generation_writer_for_rate_limit_runtime")
+    require(generation_writer.REGISTRY.resolve() == GEN_REGISTRY.resolve(), "environment generation writer registry authority drift")
+    try:
+        return generation_writer.validate_registry_for_append(generation_writer.load(GEN_REGISTRY))
+    except generation_writer.Fail as exc:
+        raise Fail(f"environment generation authority rejected: {exc}") from exc
 
 
 def git(*args: str) -> str:
@@ -121,8 +135,8 @@ def validate_record(record: dict[str, Any], confirmation: str) -> None:
     generation = record.get("environmentGenerationId")
     if environment == "PRODUCTION_EQUIVALENT":
         require(isinstance(generation, str) and generation, "production-equivalent runtime requires environmentGenerationId")
-        generations = load(GEN_REGISTRY).get("generations")
-        require(isinstance(generations, list) and any(isinstance(row, dict) and row.get("generationId") == generation for row in generations), "environmentGenerationId is not registered")
+        generations = validated_generation_rows()
+        require(any(row.get("generationId") == generation for row in generations), "environmentGenerationId is not registered in valid generation authority")
         require(record.get("productionEvidence") is False, "production-equivalent runtime cannot be production evidence")
     else:
         require(generation is None, "production runtime must not borrow production-equivalent generation id")
