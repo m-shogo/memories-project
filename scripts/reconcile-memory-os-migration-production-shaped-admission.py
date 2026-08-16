@@ -19,6 +19,8 @@ WORKFLOW = ROOT / ".github/workflows/migration-production-shaped-admission.yml"
 RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
 RELEASE_CONTRACT = ROOT / "contracts/operations/release-baseline-registry-contract.v1.json"
 RELEASE_WRITER = ROOT / "scripts/register-memory-os-release-baseline.py"
+RELEASE_PAIRS = ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"
+RELEASE_PAIR_WRITER = ROOT / "scripts/register-memory-os-release-compatibility-pair.py"
 GENERATIONS = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 GENERATION_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
 LIFECYCLE = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
@@ -75,7 +77,19 @@ def append_once(values: list[Any], value: str) -> None:
 
 
 def main() -> int:
-    for path in (REGISTRY, VALIDATOR, WRITER, WORKFLOW, RELEASES, RELEASE_CONTRACT, RELEASE_WRITER, GENERATIONS, GENERATION_WRITER):
+    for path in (
+        REGISTRY,
+        VALIDATOR,
+        WRITER,
+        WORKFLOW,
+        RELEASES,
+        RELEASE_CONTRACT,
+        RELEASE_WRITER,
+        RELEASE_PAIRS,
+        RELEASE_PAIR_WRITER,
+        GENERATIONS,
+        GENERATION_WRITER,
+    ):
         require(path.is_file(), f"migration production admission authority missing: {path.relative_to(ROOT)}")
     registry = load(REGISTRY)
     writer = load_writer()
@@ -84,8 +98,8 @@ def main() -> int:
     except Exception as exc:
         raise Fail(f"migration production admission registry invalid before reconcile: {exc}") from exc
     admissions = registry["admissions"]
-    release_pairs = {(row.get("predecessorReleaseId"), row.get("successorReleaseId")) for row in admissions}
-    release_pairs.discard((None, None))
+    release_pairs_used = {(row.get("predecessorReleaseId"), row.get("successorReleaseId")) for row in admissions}
+    release_pairs_used.discard((None, None))
     generations_used = {row.get("environmentGenerationId") for row in admissions if row.get("environmentGenerationId")}
     complete = len(admissions) > 0
 
@@ -97,6 +111,13 @@ def main() -> int:
     except Exception as exc:
         raise Fail(f"release baseline authority invalid before migration reconcile: {exc}") from exc
 
+    release_pairs = load(RELEASE_PAIRS)
+    release_pair_writer = load_module(RELEASE_PAIR_WRITER, "memory_os_release_pair_writer_for_migration_reconcile", "release compatibility pair writer")
+    try:
+        release_pair_writer.validate_registry_for_append(release_pairs)
+    except Exception as exc:
+        raise Fail(f"release compatibility pair authority invalid before migration reconcile: {exc}") from exc
+
     generations = load(GENERATIONS)
     generation_writer = load_module(GENERATION_WRITER, "memory_os_environment_generation_writer_for_migration_reconcile", "environment generation writer")
     try:
@@ -105,8 +126,10 @@ def main() -> int:
         raise Fail(f"environment generation authority invalid before migration reconcile: {exc}") from exc
 
     approved_release_count = releases.get("approvedReleaseCount")
+    approved_pair_count = release_pairs.get("approvedPairCount")
     registered_generation_count = generations.get("registeredGenerationCount")
     require(isinstance(approved_release_count, int) and not isinstance(approved_release_count, bool), "approvedReleaseCount invalid")
+    require(isinstance(approved_pair_count, int) and not isinstance(approved_pair_count, bool), "approvedPairCount invalid")
     require(isinstance(registered_generation_count, int) and not isinstance(registered_generation_count, bool), "registeredGenerationCount invalid")
 
     contract = load(CONTRACT)
@@ -114,7 +137,7 @@ def main() -> int:
     readiness = contract.get("readiness")
     require(isinstance(current, dict) and isinstance(readiness, dict), "migration production authority missing")
     current["admittedRehearsalCount"] = len(admissions)
-    current["approvedReleasePairCount"] = len(release_pairs)
+    current["approvedReleasePairCount"] = approved_pair_count
     current["registeredEnvironmentGenerationCount"] = registered_generation_count
     current["productionShapedRehearsalCompleted"] = complete
     current["mixedVersionCompatibilityProvenForApprovedPair"] = complete
@@ -163,7 +186,8 @@ def main() -> int:
     subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=True)
     print("Memory OS migration production-shaped admission reconciliation PASS")
     print(f"admitted rehearsals: {len(admissions)}")
-    print(f"approved release pairs used: {len(release_pairs)}")
+    print(f"approved release pairs available: {approved_pair_count}")
+    print(f"approved release pairs used: {len(release_pairs_used)}")
     print(f"environment generations used: {len(generations_used)}")
     print("production evidence: false")
     print("OPS-P0-001: incomplete")
