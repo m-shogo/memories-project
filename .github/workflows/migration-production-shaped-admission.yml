@@ -13,6 +13,7 @@ on:
       - "contracts/operations/migration-evidence-registry-contract.v1.json"
       - "contracts/operations/release-baseline-registry-contract.v1.json"
       - "contracts/operations/release-baseline-registry.v1.json"
+      - "contracts/operations/release-compatibility-pair-registry.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "scripts/memory_os_migration_production_admission_ledger.py"
       - "scripts/register-memory-os-migration-production-shaped-admission.py"
@@ -20,6 +21,7 @@ on:
       - "scripts/validate-memory-os-migration-production-shaped-admission-negative.py"
       - "scripts/reconcile-memory-os-migration-production-shaped-admission.py"
       - "scripts/register-memory-os-release-baseline.py"
+      - "scripts/register-memory-os-release-compatibility-pair.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
       - "scripts/register-memory-os-migration-rehearsal-evidence.py"
@@ -41,6 +43,7 @@ on:
       - "contracts/operations/migration-evidence-registry-contract.v1.json"
       - "contracts/operations/release-baseline-registry-contract.v1.json"
       - "contracts/operations/release-baseline-registry.v1.json"
+      - "contracts/operations/release-compatibility-pair-registry.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "scripts/memory_os_migration_production_admission_ledger.py"
       - "scripts/register-memory-os-migration-production-shaped-admission.py"
@@ -48,6 +51,7 @@ on:
       - "scripts/validate-memory-os-migration-production-shaped-admission-negative.py"
       - "scripts/reconcile-memory-os-migration-production-shaped-admission.py"
       - "scripts/register-memory-os-release-baseline.py"
+      - "scripts/register-memory-os-release-compatibility-pair.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
       - "scripts/register-memory-os-migration-rehearsal-evidence.py"
@@ -92,6 +96,7 @@ jobs:
             scripts/validate-memory-os-migration-production-shaped-admission-negative.py \
             scripts/reconcile-memory-os-migration-production-shaped-admission.py \
             scripts/register-memory-os-release-baseline.py \
+            scripts/register-memory-os-release-compatibility-pair.py \
             scripts/register-memory-os-production-equivalent-environment-generation.py \
             scripts/validate-memory-os-production-equivalent-environment-generation.py \
             scripts/register-memory-os-migration-rehearsal-evidence.py \
