@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+"""Prove support-window admission rejects corrupt upstream and skew authorities."""
+
+from __future__ import annotations
+
+import copy
+import importlib.util
+import json
+import sys
+from pathlib import Path
+from typing import Any, Callable
+
+ROOT = Path(__file__).resolve().parents[1]
+VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-client-server-support-window.py"
+RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
+CLIENTS = ROOT / "contracts/operations/client-baseline-registry.v1.json"
+SKEW = ROOT / "contracts/operations/client-server-skew-registry.v1.json"
+
+
+class NegativeFailure(RuntimeError):
+    pass
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise NegativeFailure(message)
+
+
+def load_validator() -> Any:
+    spec = importlib.util.spec_from_file_location(
+        "memory_os_support_window_negative_validator", VALIDATOR_PATH
+    )
+    require(spec is not None and spec.loader is not None, "cannot load support-window validator")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def load(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+    return value
+
+
+def expect_rejection(validator: Any, path: Path, base: dict[str, Any], label: str,
+                     mutate: Callable[[dict[str, Any]], None]) -> None:
+    originals = {item: item.read_bytes() for item in (RELEASES, CLIENTS, SKEW)}
+    candidate = copy.deepcopy(base)
+    mutate(candidate)
+    try:
+        path.write_text(json.dumps(candidate, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        try:
+            validator.main()
+        except validator.Fail:
+            pass
+        else:
+            raise NegativeFailure(f"support-window validator accepted corrupt authority: {label}")
+    finally:
+        for item, data in originals.items():
+            item.write_bytes(data)
+    require(all(item.read_bytes() == data for item, data in originals.items()),
+            f"canonical authority was not restored after negative case: {label}")
+
+
+def main() -> int:
+    validator = load_validator()
+    release_base = load(RELEASES)
+    client_base = load(CLIENTS)
+    skew_base = load(SKEW)
+    validator.main()
+
+    for label, path, base, mutate in (
+        ("boolean release count", RELEASES, release_base,
+         lambda value: value.__setitem__("approvedReleaseCount", True)),
+        ("release append-only disabled", RELEASES, release_base,
+         lambda value: value.__setitem__("appendOnly", False)),
+        ("boolean client count", CLIENTS, client_base,
+         lambda value: value.__setitem__("approvedClientBaselineCount", True)),
+        ("client production promotion", CLIENTS, client_base,
+         lambda value: value.__setitem__("productionEvidence", True)),
+        ("boolean skew count", SKEW, skew_base,
+         lambda value: value.__setitem__("admissibleSkewPairCount", True)),
+        ("skew class drift", SKEW, skew_base,
+         lambda value: value.__setitem__("registryClass", "UNTRUSTED_SKEW_AUTHORITY")),
+        ("skew production promotion", SKEW, skew_base,
+         lambda value: value.__setitem__("productionEvidence", True)),
+        ("unknown skew field", SKEW, skew_base,
+         lambda value: value.__setitem__("unexpectedAuthority", True)),
+    ):
+        expect_rejection(validator, path, base, label, mutate)
+
+    validator.main()
+    print("Client/server support-window authority negative PASS")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except NegativeFailure as exc:
+        print(f"CLIENT SERVER SUPPORT WINDOW NEGATIVE FAILED: {exc}", file=sys.stderr)
+        raise SystemExit(1)
