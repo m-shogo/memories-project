@@ -12,13 +12,24 @@ on:
       - "contracts/operations/deletion-worker-saturation-contract.v1.json"
       - "docs/fixtures/memory-os-operability/deletion-prefence-linearization-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/deletion-worker-saturation-results.sample.v1.json"
+  pull_request:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/reconcile-deletion-advanced-evidence.yml"
+      - "scripts/reconcile-memory-os-deletion-advanced-evidence.py"
+      - "scripts/validate-memory-os-load-evidence-index.py"
+      - "contracts/operations/deletion-prefence-linearization-contract.v1.json"
+      - "contracts/operations/deletion-worker-saturation-contract.v1.json"
+      - "docs/fixtures/memory-os-operability/deletion-prefence-linearization-results.sample.v1.json"
+      - "docs/fixtures/memory-os-operability/deletion-worker-saturation-results.sample.v1.json"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: reconcile-deletion-advanced-evidence-so
+  group: reconcile-deletion-advanced-evidence-${{ github.event_name }}-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: true
 
 jobs:
@@ -28,11 +39,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Capture exact source
+        run: |
+          set -euo pipefail
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            git fetch origin so
+            test "$(git rev-parse origin/so)" = "$(git rev-parse HEAD)"
+          fi
       - name: Validate exact committed proof authorities
         run: |
           set -euo pipefail
@@ -50,13 +69,24 @@ jobs:
           python scripts/validate-memory-os-load-evidence-index.py
           python scripts/validate-memory-os-load.py
           python scripts/validate-memory-os-operability.py
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            git diff --exit-code -- \
+              contracts/operations/load-test-scenario-contract.v1.json \
+              contracts/operations/production-operability-status.json
+            exit 0
+          fi
           git add \
             contracts/operations/load-test-scenario-contract.v1.json \
             contracts/operations/production-operability-status.json
           if ! git diff --cached --quiet; then
+            git diff --cached --check
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(deletion): register advanced load evidence"
-            git pull --rebase origin so
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              echo "Branch advanced during advanced deletion reconcile; refusing stale derived authority."
+              exit 75
+            fi
             git push origin HEAD:so
           fi
