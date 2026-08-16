@@ -2,12 +2,14 @@
   "schemaVersion": "memory-os-sustained-local-soak-aggregate.v1",
   "scenarioId": "mixed-import-lifecycle-local-long-soak",
   "classification": "LOCAL_LONG_SOAK",
-  "runCount": 2,
+  "runCount": 3,
   "runIds": [
     "gha-31157909318-1-a",
-    "gha-31157909318-1-b"
+    "gha-31157909318-1-b",
+    "gha-31833538490-1"
   ],
   "sourceCommitShas": [
+    "171ba6971db3a6325701ffcb2e8130fa898c27ba",
     "9dd97a9571e58a08a1d8ee43a9f378a505a09c15"
   ],
   "allRunsDurationAtLeast3600Seconds": true,
@@ -105,6 +107,52 @@
         "scanQueueTrend": {
           "oldestPendingSecondsPerMinute": 60.00001470771049,
           "pendingPerMinute": 1.6000005536413187
+        },
+        "deletionBacklogTrend": {
+          "pendingPerMinute": 0,
+          "stuckPerMinute": 0
+        }
+      },
+      {
+        "runId": "gha-31833538490-1",
+        "sourceCommitSha": "171ba6971db3a6325701ffcb2e8130fa898c27ba",
+        "rssSlopeBytesPerMinute": 10291.557493918612,
+        "heapAllocSlopeBytesPerMinute": 1746.8702101319961,
+        "heapInuseSlopeBytesPerMinute": 5436.510307083772,
+        "goroutineSlopePerMinute": -8.480142688573786e-17,
+        "latencyTrendBySurface": {
+          "deletionWorker": {
+            "p95MsPerMinute": 0.16973918173100483,
+            "p99MsPerMinute": 0.16973918173100483
+          },
+          "parserSupervisor": {
+            "p95MsPerMinute": -0.8640223030809181,
+            "p99MsPerMinute": -0.8640223030809181
+          },
+          "previewRead": {
+            "p95MsPerMinute": -0.12752016941724928,
+            "p99MsPerMinute": -0.15861734334483285
+          },
+          "signedUploadLifecycle": {
+            "p95MsPerMinute": -0.1262250418712573,
+            "p99MsPerMinute": -0.1262250418712573
+          }
+        },
+        "errorRateTrendBySurface": {
+          "deletionWorker": 0,
+          "parserSupervisor": 0,
+          "previewRead": 0,
+          "signedUploadLifecycle": 0
+        },
+        "dbConnectionTrend": {
+          "acquireDurationMsPerMinute": 84.838106417126,
+          "acquiredConnsPerMinute": 0,
+          "emptyAcquireCountPerMinute": 37.236375937928905,
+          "totalConnsPerMinute": 0
+        },
+        "scanQueueTrend": {
+          "oldestPendingSecondsPerMinute": 60.00001229775295,
+          "pendingPerMinute": 1.6000005291517985
         },
         "deletionBacklogTrend": {
           "pendingPerMinute": 0,

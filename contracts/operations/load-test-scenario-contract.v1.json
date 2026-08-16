@@ -339,7 +339,7 @@
     },
     {
       "scenarioId": "soak",
-      "reason": "a six-window short CI process sample now records RSS, heap and goroutine trends, but it is not a 60-minute repeated soak, does not cover MinIO/parser/queue/deletion/Apple dependencies and cannot prove leak freedom or production stability",
+      "reason": "repeated LOCAL_LONG_SOAK execution and descriptive trend review exist, but this local evidence is not leak proof and is not production-shaped sustained-soak evidence; independent leak/stability criteria remain required",
       "requiredDependencyMode": "LOCAL_POSTGRES_MINIO"
     },
     {
@@ -370,7 +370,7 @@
     "previewPreFenceInFlightLinearizationProven": true,
     "multiAccountDeletionWorkerSaturationProven": true,
     "localLongSoakFoundationImplemented": true,
-    "localLongSoakRunCount": 2,
+    "localLongSoakRunCount": 3,
     "localSustainedSoakEvidence": true,
     "applyPreFenceInFlightLinearizationProven": true,
     "uploadAuthorizationPreFenceInFlightLinearizationProven": true,
@@ -487,6 +487,7 @@
     "contracts/operations/sustained-soak-independent-review-registry.v1.json",
     "scripts/validate-memory-os-sustained-soak-independent-review.py",
     "scripts/validate-memory-os-sustained-soak-independent-review-negative.py",
-    "scripts/register-memory-os-sustained-soak-independent-review.py"
+    "scripts/register-memory-os-sustained-soak-independent-review.py",
+    "docs/fixtures/memory-os-operability/sustained-local-soak-results.run-31833538490-1.v1.json"
   ]
 }
