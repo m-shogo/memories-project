@@ -15,13 +15,14 @@ OPERATIONS_PATH = ROOT / "contracts/operations/rate-limit-operations-contract.v1
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 
 OLD_GAP = "operational disable/rollback runbook"
+STALE_LEDGER_GAP = "production emergency control plane with automatic expiry and append-only operation evidence ledger"
 NEW_EXISTING = (
     "binding emergency-operation policy that forbids unlimited/fail-open public traffic and permits only normal bounded, strict local emergency or route fail-closed modes",
     "trusted-proxy disablement procedure for uncertain deployment ownership",
     "canonical activation, rollback, shared-store recovery and no-business-mutation verification runbook",
 )
 NEW_GAPS = (
-    "production emergency control plane with automatic expiry and append-only operation evidence ledger",
+    "production emergency control plane with automatic expiry",
     "completed emergency-mode, shared-store recovery and trusted-proxy disablement drills",
 )
 NEW_REFS = (
@@ -122,9 +123,10 @@ def main() -> int:
 
     for item in NEW_EXISTING:
         changed = append_once(existing, item) or changed
-    if OLD_GAP in missing:
-        missing.remove(OLD_GAP)
-        changed = True
+    for stale_gap in (OLD_GAP, STALE_LEDGER_GAP):
+        if stale_gap in missing:
+            missing.remove(stale_gap)
+            changed = True
     for item in NEW_GAPS:
         changed = append_once(missing, item) or changed
     for ref in NEW_REFS:
@@ -139,6 +141,8 @@ def main() -> int:
     ):
         require(any(required_gap in item for item in missing),
                 f"required OPS-P0-005 gap disappeared: {required_gap}")
+    require(not any("append-only operation evidence ledger" in item for item in missing),
+            "implemented operation ledger cannot remain a missing-evidence blocker")
     require(gate.get("status") == "PARTIAL", "OPS-P0-005 readiness changed unexpectedly")
     require(status.get("productionDecision") == "NO_GO",
             "production decision changed unexpectedly")
