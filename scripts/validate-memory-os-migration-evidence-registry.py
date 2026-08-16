@@ -22,6 +22,7 @@ WRITER = ROOT / "scripts/register-memory-os-migration-rehearsal-evidence.py"
 RECOVERY_VALIDATOR = ROOT / "scripts/memory_os_migration_recovery_point.py"
 ARTIFACT_VALIDATOR = ROOT / "scripts/validate-memory-os-local-migration-recovery-artifact.py"
 WORKFLOW = ROOT / ".github/workflows/migration-evidence-registry.yml"
+LOCK = ROOT / "contracts/operations/.migration-evidence-registry.lock"
 LOCAL_RESTORE = ROOT / "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json"
 LOCAL_ARTIFACT_ROOT = ROOT / "docs/evidence/migrations/recovery"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
@@ -126,6 +127,7 @@ def main() -> int:
     require(contract.get("schemaVersion") == "memory-os-migration-evidence-registry-contract.v1", "contract schema drift")
     require(contract.get("migrationLifecycleContract") == str(LIFECYCLE.relative_to(ROOT)), "lifecycle reference drift")
     require(contract.get("registryPath") == str(REGISTRY.relative_to(ROOT)), "registry reference drift")
+    require(contract.get("appendLockPath") == str(LOCK.relative_to(ROOT)), "append lock reference drift")
     require(contract.get("writer") == str(WRITER.relative_to(ROOT)), "writer reference drift")
     require(contract.get("validator") == str(Path(__file__).resolve().relative_to(ROOT)), "validator reference drift")
     require(contract.get("recoveryPointValidator") == str(RECOVERY_VALIDATOR.relative_to(ROOT)), "recovery-point validator reference drift")
@@ -138,6 +140,7 @@ def main() -> int:
     require(writer.CONTRACT.resolve() == CONTRACT.resolve(), "writer contract authority drift")
     require(writer.REGISTRY.resolve() == REGISTRY.resolve(), "writer registry authority drift")
     require(writer.LIFECYCLE.resolve() == LIFECYCLE.resolve(), "writer lifecycle authority drift")
+    require(writer.LOCK.resolve() == LOCK.resolve(), "writer append lock authority drift")
     try:
         writer.validate_registry_for_append(registry, contract)
     except writer.Failure as exc:
