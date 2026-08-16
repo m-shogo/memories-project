@@ -157,6 +157,8 @@ def main() -> int:
         ("schema drift", lambda r: r.__setitem__("schemaVersion", "broken")),
         ("append-only disabled", lambda r: r.__setitem__("appendOnly", False)),
         ("unknown field", lambda r: r.__setitem__("unexpectedAuthority", True)),
+        ("missing evidence digest authority", lambda r: r.pop("evidenceDigestsByDrillId")),
+        ("unknown evidence digest drill", lambda r: r["evidenceDigestsByDrillId"].__setitem__("fdr_unknown01", {})),
         ("boolean registered count", lambda r: r.__setitem__("registeredDrillCount", False)),
         ("registered count drift", lambda r: r.__setitem__("registeredDrillCount", 1)),
         ("boolean production-equivalent count", lambda r: r.__setitem__("productionEquivalentDrillCount", False)),
