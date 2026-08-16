@@ -56,6 +56,10 @@ jobs:
           ref: so
           fetch-depth: 0
 
+      - name: Capture validation source
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -125,7 +129,10 @@ jobs:
           test -z "$(gofmt -l services/import-api/internal/httpserver/observability.go services/import-api/internal/httpserver/server.go services/import-api/internal/httpserver/server_live_test.go services/import-api/internal/httpserver/route_authority_test.go)"
 
       - name: Commit reconciled route authority
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
         run: |
+          set -euo pipefail
           git add \
             .github/workflows/reconcile-upload-route-authority.yml \
             scripts/reconcile-memory-os-upload-route-authority.py \
@@ -139,8 +146,13 @@ jobs:
             echo "Upload route authority is already current."
             exit 0
           fi
+          git diff --cached --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "fix(http): reconcile upload route authority"
-          git pull --rebase origin so
+          git fetch origin so
+          test "$(git rev-parse origin/so)" = "$SOURCE_SHA" || {
+            echo "so advanced after validation; refusing stale upload-route authority write" >&2
+            exit 75
+          }
           git push origin HEAD:so
