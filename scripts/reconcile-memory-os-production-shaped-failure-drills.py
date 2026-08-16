@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 from pathlib import Path
@@ -44,6 +45,24 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def load_module(path: Path, name: str) -> Any:
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load {path.name}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def validate_registry_before_reconcile(registry: dict[str, Any]) -> list[dict[str, Any]]:
+    validator = load_module(VALIDATOR, "memory_os_production_failure_validator_for_reconcile")
+    require(validator.REGISTRY.resolve() == REGISTRY.resolve(), "failure-drill registry validator authority drift")
+    require(validator.WRITER.resolve() == WRITER.resolve(), "failure-drill writer validator authority drift")
+    try:
+        return validator.validate_registry_for_append(registry)
+    except validator.Fail as exc:
+        raise Fail(f"existing failure-drill registry rejected before reconcile: {exc}") from exc
+
+
 def write(path: Path, value: dict[str, Any]) -> None:
     path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
@@ -57,11 +76,10 @@ def main() -> int:
     for path in (REGISTRY, WRITER, VALIDATOR, WORKFLOW):
         require(path.is_file(), f"failure-drill admission missing: {path.relative_to(ROOT)}")
     registry = load(REGISTRY)
-    drills = registry.get("drills")
-    require(isinstance(drills, list), "failure-drill registry missing")
-    pe = sum(1 for row in drills if isinstance(row, dict) and row.get("environmentClass") == "PRODUCTION_EQUIVALENT")
-    prod = sum(1 for row in drills if isinstance(row, dict) and row.get("environmentClass") == "PRODUCTION")
-    scenarios = {row.get("scenarioId") for row in drills if isinstance(row, dict) and row.get("scenarioId")}
+    drills = validate_registry_before_reconcile(registry)
+    pe = sum(1 for row in drills if row.get("environmentClass") == "PRODUCTION_EQUIVALENT")
+    prod = sum(1 for row in drills if row.get("environmentClass") == "PRODUCTION")
+    scenarios = {row.get("scenarioId") for row in drills if row.get("scenarioId")}
 
     contract = load(CONTRACT)
     current = contract.get("currentAuthority")
