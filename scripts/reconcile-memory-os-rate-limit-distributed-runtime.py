@@ -53,9 +53,27 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
+def run_validator() -> None:
+    completed = subprocess.run(
+        ["python", str(VALIDATOR)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    require(
+        completed.returncode == 0,
+        "distributed runtime authority rejected before reconcile:\n"
+        + completed.stdout[-4000:]
+        + completed.stderr[-4000:],
+    )
+
+
 def main() -> int:
     for path in (REGISTRY, WRITER, VALIDATOR, WORKFLOW):
         require(path.is_file(), f"distributed runtime admission missing: {path.relative_to(ROOT)}")
+    run_validator()
     registry = load(REGISTRY)
     runtimes = registry.get("runtimes")
     require(isinstance(runtimes, list), "distributed runtime registry missing")
@@ -101,7 +119,7 @@ def main() -> int:
         append_once(refs, ref)
     write(STATUS, status)
 
-    subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=True)
+    run_validator()
     print("Memory OS distributed rate-limit runtime reconciliation PASS")
     print(f"admitted runtimes: {len(runtimes)}")
     print("distributed shared store: false" if not runtimes else "distributed shared store: evidence admitted")
