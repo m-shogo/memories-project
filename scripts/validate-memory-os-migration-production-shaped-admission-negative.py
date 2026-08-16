@@ -27,6 +27,7 @@ LIFECYCLE = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 WRITER = ROOT / "scripts/register-memory-os-migration-production-shaped-admission.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-migration-production-shaped-admission.py"
+REVIEW_NEGATIVE_REF = "docs/evidence/migration-production-shaped-admission/independent-reviews/.negative-review-history.json"
 
 
 class Fail(RuntimeError):
@@ -161,6 +162,42 @@ def expect_generic_review_refs_rejected(writer: ModuleType) -> None:
     raise Fail("generic repository JSON files were accepted as migration independent-review authority")
 
 
+def run_git(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["git", *args], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False)
+
+
+def expect_mutated_review_history_rejected(writer: ModuleType) -> None:
+    original_head = run_git("rev-parse", "HEAD").stdout.strip()
+    require(len(original_head) == 40, "cannot resolve original HEAD for review history negative")
+    path = ROOT / REVIEW_NEGATIVE_REF
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        path.write_text('{"negative":"creation"}\n', encoding="utf-8")
+        require(run_git("add", "-f", "--", REVIEW_NEGATIVE_REF).returncode == 0, "cannot stage review history creation fixture")
+        require(
+            run_git("-c", "user.name=memory-os-negative", "-c", "user.email=negative@example.invalid", "commit", "-m", "test: create review history fixture").returncode == 0,
+            "cannot commit review history creation fixture",
+        )
+        path.write_text('{"negative":"mutated"}\n', encoding="utf-8")
+        require(run_git("add", "-f", "--", REVIEW_NEGATIVE_REF).returncode == 0, "cannot stage mutated review history fixture")
+        require(
+            run_git("-c", "user.name=memory-os-negative", "-c", "user.email=negative@example.invalid", "commit", "-m", "test: mutate review history fixture").returncode == 0,
+            "cannot commit mutated review history fixture",
+        )
+        try:
+            writer.canonical_review_path(REVIEW_NEGATIVE_REF, "securityReviewRef")
+        except Exception as exc:
+            require("creation commit" in str(exc), "mutated review history was rejected for an unrelated reason")
+            return
+        raise Fail("review evidence changed after its creation commit was accepted")
+    finally:
+        run_git("reset", "--hard", original_head)
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+
+
 def main() -> int:
     writer = load_writer()
     cases: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
@@ -179,6 +216,7 @@ def main() -> int:
     expect_canonical_writer_delegation()
     expect_release_registry_delegation(writer)
     expect_generic_review_refs_rejected(writer)
+    expect_mutated_review_history_rejected(writer)
     print("PASS: migration production-shaped admission registry, ledger, release, and independent-review authority drift are rejected")
     return 0
 
