@@ -157,6 +157,15 @@ def expect_review_payload_rejected(writer: Any, name: str, payload: dict[str, An
     raise RuntimeError(f"{name}: invalid independent review payload accepted")
 
 
+def expect_review_namespace_rejected(writer: Any) -> None:
+    record = {"securityReviewRef": "contracts/operations/production-shaped-failure-drill-contract.v1.json"}
+    try:
+        writer.validate_review(record, "securityReviewRef", "SECURITY")
+    except writer.Fail:
+        return
+    raise RuntimeError("generic repository JSON accepted as failure-drill independent review authority")
+
+
 def validate_review_payload_negatives(writer: Any) -> int:
     record = {
         "drillId": "fdr_negative01",
@@ -230,6 +239,7 @@ def main() -> int:
         for name, mutate in generation_cases:
             expect_generation_authority_rejected(writer, reconciler, name, mutate, original, generation_original)
         expect_side_commit_rejected(writer)
+        expect_review_namespace_rejected(writer)
         review_case_count = validate_review_payload_negatives(writer)
     finally:
         REGISTRY.write_bytes(original)
@@ -239,6 +249,7 @@ def main() -> int:
     print(f"failure-drill corruption cases: {len(cases)}")
     print(f"upstream generation corruption cases: {len(generation_cases)}")
     print(f"typed independent review negative cases: {review_case_count}")
+    print("generic repository review authority accepted: false")
     print("detached source commit accepted: false")
     print("reconciler auto-heal: false")
     print("production readiness: false")
