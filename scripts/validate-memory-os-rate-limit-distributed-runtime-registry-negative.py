@@ -13,7 +13,10 @@ REGISTRY = ROOT / "contracts/operations/rate-limit-distributed-runtime-admission
 CONTRACT = ROOT / "contracts/operations/rate-limit-distributed-runtime-admission-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 WRITER_PATH = ROOT / "scripts/register-memory-os-rate-limit-distributed-runtime.py"
+VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-rate-limit-distributed-runtime.py"
 RECONCILER_PATH = ROOT / "scripts/reconcile-memory-os-rate-limit-distributed-runtime.py"
+ALTERNATE_EXECUTABLE = ROOT / "scripts/validate-memory-os-rate-limit.py"
+ALTERNATE_LOCK = ROOT / "contracts/operations/.rate-limit-distributed-runtime-substitute.lock"
 
 
 def load_module(path: Path, name: str) -> Any:
@@ -47,6 +50,57 @@ def expect_rejected(writer: Any, name: str, mutate: Callable[[dict[str, Any]], N
         REGISTRY.write_bytes(original)
 
 
+def expect_authority_rejected(validator: Any, name: str, callback: Callable[[], None]) -> None:
+    try:
+        callback()
+    except validator.Fail:
+        return
+    raise RuntimeError(f"{name}: substituted authority accepted")
+
+
+def prove_executable_authority_rejection(validator: Any, writer: Any, reconciler: Any) -> None:
+    original_lock = writer.LOCK
+    original_generation_writer = writer.GEN_WRITER
+    original_reconciler_validator = reconciler.VALIDATOR
+    original_reconciler_status = reconciler.STATUS
+    try:
+        writer.LOCK = ALTERNATE_LOCK
+        expect_authority_rejected(
+            validator,
+            "writer lock substitution",
+            lambda: validator.validate_writer_authority(writer),
+        )
+        writer.LOCK = original_lock
+
+        writer.GEN_WRITER = ALTERNATE_EXECUTABLE
+        expect_authority_rejected(
+            validator,
+            "generation writer substitution",
+            lambda: validator.validate_writer_authority(writer),
+        )
+        writer.GEN_WRITER = original_generation_writer
+
+        reconciler.VALIDATOR = ALTERNATE_EXECUTABLE
+        expect_authority_rejected(
+            validator,
+            "reconciler validator substitution",
+            lambda: validator.validate_reconciler_authority(reconciler),
+        )
+        reconciler.VALIDATOR = original_reconciler_validator
+
+        reconciler.STATUS = CONTRACT
+        expect_authority_rejected(
+            validator,
+            "reconciler status substitution",
+            lambda: validator.validate_reconciler_authority(reconciler),
+        )
+    finally:
+        writer.LOCK = original_lock
+        writer.GEN_WRITER = original_generation_writer
+        reconciler.VALIDATOR = original_reconciler_validator
+        reconciler.STATUS = original_reconciler_status
+
+
 def prove_reconciler_no_autoheal(reconciler: Any, original: bytes) -> None:
     contract_before = CONTRACT.read_bytes()
     status_before = STATUS.read_bytes()
@@ -73,6 +127,7 @@ def prove_reconciler_no_autoheal(reconciler: Any, original: bytes) -> None:
 
 def main() -> int:
     writer = load_module(WRITER_PATH, "rate_limit_runtime_writer_negative")
+    validator = load_module(VALIDATOR_PATH, "rate_limit_runtime_validator_negative")
     reconciler = load_module(RECONCILER_PATH, "rate_limit_runtime_reconciler_negative")
     original = REGISTRY.read_bytes()
     cases: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
@@ -90,12 +145,14 @@ def main() -> int:
     try:
         for name, mutate in cases:
             expect_rejected(writer, name, mutate, original)
+        prove_executable_authority_rejection(validator, writer, reconciler)
         prove_reconciler_no_autoheal(reconciler, original)
     finally:
         REGISTRY.write_bytes(original)
 
-    print("PASS: distributed rate-limit runtime registry corruption is rejected before append/reconcile")
+    print("PASS: distributed rate-limit runtime registry corruption and authority substitution are rejected before append/reconcile")
     print(f"corruption cases: {len(cases)}")
+    print("executable authority substitution: rejected")
     print("reconciler auto-heal: false")
     print("production readiness: false")
     print("production decision: NO_GO")
