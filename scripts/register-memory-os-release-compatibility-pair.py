@@ -92,6 +92,9 @@ def repo_regular_file(ref: str, field: str) -> Path:
         require(not cursor.is_symlink(), f"{field} evidence path contains symlink: {ref}")
         cursor = cursor.parent
     require(path.is_file(), f"{field} evidence missing or not regular file: {ref}")
+    head_blob = git("rev-parse", f"HEAD:{ref}")
+    current_blob = git("hash-object", "--", ref)
+    require(SHA40.fullmatch(head_blob) is not None and current_blob == head_blob, f"{field} evidence must be tracked and equal current HEAD: {ref}")
     return path
 
 
