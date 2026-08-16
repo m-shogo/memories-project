@@ -16,6 +16,7 @@ OBS_REGISTRY = ROOT / "contracts/operations/observability-stack-deployment-regis
 CONTRACT = ROOT / "contracts/operations/incident-contact-routing-admission-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 WRITER = ROOT / "scripts/register-memory-os-incident-contact-routing.py"
+VALIDATOR = ROOT / "scripts/validate-memory-os-incident-contact-routing.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-incident-contact-routing.py"
 TEMP_POST_SOURCE = ROOT / "docs/fixtures/memory-os-operability/.incident-contact-routing-post-source-negative.tmp"
 TEMP_SYMLINK = ROOT / "docs/fixtures/memory-os-operability/.incident-contact-routing-symlink-negative.tmp"
@@ -60,6 +61,20 @@ def expect_generic_reviews_rejected(writer, source: str) -> None:
     except writer.Fail:
         return
     raise RuntimeError("generic repository JSON files were accepted as typed contact-routing independent reviews")
+
+
+def expect_validator_rejected(label: str) -> None:
+    completed = subprocess.run(
+        ["python", str(VALIDATOR)],
+        cwd=ROOT,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    if completed.returncode != 0:
+        return
+    raise RuntimeError(f"validator accepted corrupt contact-routing authority: {label}")
 
 
 def create_descendant_commit() -> str:
@@ -111,6 +126,14 @@ def main() -> int:
     if writer.source_is_ancestor(descendant):
         raise RuntimeError("future descendant commit was accepted as source ancestor")
     expect_generic_reviews_rejected(writer, source)
+
+    try:
+        contract = json.loads(contract_bytes.decode("utf-8"))
+        contract["appendLockPath"] = "contracts/operations/.incident-contact-routing-alternate.lock"
+        CONTRACT.write_text(json.dumps(contract, indent=2) + "\n", encoding="utf-8")
+        expect_validator_rejected("append lock binding drift")
+    finally:
+        CONTRACT.write_bytes(contract_bytes)
 
     try:
         TEMP_POST_SOURCE.write_text("created after source commit\n", encoding="utf-8")
@@ -177,7 +200,7 @@ def main() -> int:
         raise RuntimeError("negative validation failed to restore contact routing registry")
     if OBS_REGISTRY.read_bytes() != observability_registry_bytes:
         raise RuntimeError("negative validation failed to restore observability stack registry")
-    print("PASS: contact routing rejects local/upstream/review authority corruption without mutation")
+    print("PASS: contact routing rejects local/upstream/review/lock authority corruption without mutation")
     print("generic repository JSON accepted as privacy/operability review: false")
     print("automatic production promotion authorized: false")
     return 0
