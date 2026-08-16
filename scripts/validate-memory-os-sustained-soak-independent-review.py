@@ -23,6 +23,24 @@ CRITERIA_ID = re.compile(r"^soakcrit_[a-z0-9][a-z0-9_-]{7,63}$")
 REVIEW_ID = re.compile(r"^soakrev_[a-z0-9][a-z0-9_-]{7,63}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 PSEUDONYM = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{1,63}$")
+EXPECTED_REGISTRY_FIELDS = {
+    "schemaVersion",
+    "registryClass",
+    "appendOnly",
+    "productionEvidence",
+    "registeredCriteriaCount",
+    "registeredReviewCount",
+    "approvedLeakStabilityCriteriaCount",
+    "passingIndependentReviewCount",
+    "leakProof",
+    "capacityBoundaryEstablished",
+    "operationalThresholdApproved",
+    "productionSustainedSoakEvidence",
+    "productionReady",
+    "criteria",
+    "reviews",
+    "limitations",
+}
 
 
 class Fail(RuntimeError):
@@ -32,6 +50,47 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def require_count(value: Any, expected: int, field: str) -> None:
+    require(isinstance(value, int) and not isinstance(value, bool), f"{field} must be integer, not boolean")
+    require(value == expected, f"{field} drift")
+
+
+def validate_registry_aggregates(registry: dict[str, Any]) -> None:
+    require(set(registry) == EXPECTED_REGISTRY_FIELDS, "registry field drift")
+    require(registry.get("schemaVersion") == "memory-os-sustained-soak-independent-review-registry.v1", "registry schema drift")
+    require(registry.get("registryClass") == "SUSTAINED_SOAK_INDEPENDENT_REVIEW", "registry class drift")
+    require(registry.get("appendOnly") is True, "registry must remain append-only")
+    require(registry.get("productionEvidence") is False, "registry cannot claim production evidence")
+
+    criteria_rows = registry.get("criteria")
+    review_rows = registry.get("reviews")
+    limitations = registry.get("limitations")
+    require(isinstance(criteria_rows, list), "criteria registry must be list")
+    require(isinstance(review_rows, list), "review registry must be list")
+    require(isinstance(limitations, list) and all(isinstance(item, str) and item for item in limitations), "registry limitations invalid")
+
+    current_criteria_id: str | None = None
+    if criteria_rows:
+        current = criteria_rows[-1]
+        require(isinstance(current, dict), "current criteria row must be object")
+        current_criteria_id = current.get("criteriaId")
+        require(isinstance(current_criteria_id, str) and current_criteria_id, "current criteria row requires criteriaId")
+    passing_reviews = sum(
+        1
+        for review in review_rows
+        if isinstance(review, dict)
+        and review.get("outcome") == "PASS"
+        and review.get("criteriaId") == current_criteria_id
+    )
+
+    require_count(registry.get("registeredCriteriaCount"), len(criteria_rows), "registeredCriteriaCount")
+    require_count(registry.get("approvedLeakStabilityCriteriaCount"), len(criteria_rows), "approvedLeakStabilityCriteriaCount")
+    require_count(registry.get("registeredReviewCount"), len(review_rows), "registeredReviewCount")
+    require_count(registry.get("passingIndependentReviewCount"), passing_reviews, "passingIndependentReviewCount")
+    for field in ("leakProof", "capacityBoundaryEstablished", "operationalThresholdApproved", "productionSustainedSoakEvidence", "productionReady"):
+        require(registry.get(field) is False, f"independent review registry cannot automatically enable {field}")
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -281,9 +340,7 @@ def main() -> int:
     for key in ("automaticLeakProofForbidden", "automaticCapacityBoundaryPromotionForbidden", "automaticOperationalThresholdPromotionForbidden", "automaticProductionSoakPromotionForbidden"):
         require(promotion.get(key) is True, f"automatic promotion safeguard missing: {key}")
 
-    require(registry.get("schemaVersion") == "memory-os-sustained-soak-independent-review-registry.v1", "registry schema drift")
-    require(registry.get("appendOnly") is True, "registry must remain append-only")
-    require(registry.get("productionEvidence") is False, "registry cannot claim production evidence")
+    validate_registry_aggregates(registry)
     criteria_rows = registry.get("criteria")
     review_rows = registry.get("reviews")
     require(isinstance(criteria_rows, list), "criteria registry must be list")
@@ -313,12 +370,10 @@ def main() -> int:
             passing_reviews += 1
 
     require(passing_reviews in (0, 1), "current criteria can have at most one passing independent review")
-    require(registry.get("registeredCriteriaCount") == len(criteria_rows), "registeredCriteriaCount drift")
-    require(registry.get("approvedLeakStabilityCriteriaCount") == len(criteria_rows), "approvedLeakStabilityCriteriaCount drift")
-    require(registry.get("registeredReviewCount") == len(review_rows), "registeredReviewCount drift")
-    require(registry.get("passingIndependentReviewCount") == passing_reviews, "passingIndependentReviewCount must describe only the current criteria authority")
-    for field in ("leakProof", "capacityBoundaryEstablished", "operationalThresholdApproved", "productionSustainedSoakEvidence", "productionReady"):
-        require(registry.get(field) is False, f"independent review registry cannot automatically enable {field}")
+    require_count(registry.get("registeredCriteriaCount"), len(criteria_rows), "registeredCriteriaCount")
+    require_count(registry.get("approvedLeakStabilityCriteriaCount"), len(criteria_rows), "approvedLeakStabilityCriteriaCount")
+    require_count(registry.get("registeredReviewCount"), len(review_rows), "registeredReviewCount")
+    require_count(registry.get("passingIndependentReviewCount"), passing_reviews, "passingIndependentReviewCount")
 
     local_boundary = local.get("evidenceBoundary")
     local_readiness = local.get("readiness")
