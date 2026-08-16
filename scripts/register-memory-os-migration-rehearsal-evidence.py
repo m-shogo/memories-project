@@ -44,6 +44,18 @@ RECOVERY = {
     "PAUSE_BACKFILL_PRESERVE_STATE_AND_FORWARD_FIX",
     "INCIDENT_COMMAND_DECIDES_FORWARD_FIX_OR_ISOLATED_RESTORE",
 }
+REGISTRY_FIELDS = {
+    "schemaVersion",
+    "registryClass",
+    "appendOnly",
+    "productionEvidence",
+    "rehearsalEvidenceCount",
+    "passingRehearsalCount",
+    "productionEquivalentRehearsalCount",
+    "latestRehearsalRunId",
+    "records",
+    "limitations",
+}
 
 
 class Failure(RuntimeError):
@@ -134,7 +146,7 @@ def validate_record(record: dict[str, Any], required_fields: set[str], registry_
         raise Failure(f"recovery evidence invalid: {exc}") from exc
 
     for field in ("lockBudgetMs", "statementBudgetMs", "observedLockWaitMs", "observedRuntimeMs"):
-        require(isinstance(record.get(field), int) and record[field] >= 0, f"{field} invalid")
+        require(isinstance(record.get(field), int) and not isinstance(record.get(field), bool) and record[field] >= 0, f"{field} invalid")
     require(record["lockBudgetMs"] > 0 and record["statementBudgetMs"] > 0, "budgets must be positive")
     for field in ("preflightResult", "applyResult", "verificationResult"):
         require(record.get(field) in RESULTS, f"{field} invalid")
@@ -167,6 +179,42 @@ def validate_record(record: dict[str, Any], required_fields: set[str], registry_
         "secretaccesskey", "account_id", "session_id", "job_id", "preview_id", "object_key", "@",
     ):
         require(forbidden not in serialized, f"record contains forbidden content: {forbidden}")
+
+
+def validate_registry_for_append(registry: dict[str, Any], registry_contract: dict[str, Any]) -> None:
+    require(set(registry) == REGISTRY_FIELDS, "migration evidence registry field set drift")
+    require(registry.get("schemaVersion") == "memory-os-migration-evidence-registry.v1", "registry schema drift")
+    require(registry.get("registryClass") == "NON_PRODUCTION_MIGRATION_REHEARSAL_EVIDENCE", "registry class drift")
+    require(registry.get("appendOnly") is True, "registry must remain append-only")
+    require(registry.get("productionEvidence") is False, "registry cannot claim production evidence")
+    records = registry.get("records")
+    require(isinstance(records, list) and all(isinstance(item, dict) for item in records), "registry records invalid")
+    count = registry.get("rehearsalEvidenceCount")
+    passing_count = registry.get("passingRehearsalCount")
+    pe_count = registry.get("productionEquivalentRehearsalCount")
+    for value, field in ((count, "rehearsalEvidenceCount"), (passing_count, "passingRehearsalCount"), (pe_count, "productionEquivalentRehearsalCount")):
+        require(isinstance(value, int) and not isinstance(value, bool), f"{field} must be integer")
+    require(count == len(records), "rehearsalEvidenceCount drift")
+    required = registry_contract.get("requiredRecordFields")
+    require(isinstance(required, list) and all(isinstance(item, str) for item in required), "requiredRecordFields invalid")
+    ids: set[str] = set()
+    derived_passing = 0
+    derived_pe = 0
+    for index, record in enumerate(records):
+        validate_record(record, set(required), registry_contract)
+        run_id = record.get("migrationRunId")
+        require(run_id not in ids, f"duplicate migrationRunId at records[{index}]: {run_id}")
+        ids.add(run_id)
+        if all(record.get(field) == "PASS" for field in ("preflightResult", "applyResult", "verificationResult")):
+            derived_passing += 1
+        if record.get("environmentClass") == "PRODUCTION_EQUIVALENT_REHEARSAL":
+            derived_pe += 1
+    require(passing_count == derived_passing, "passingRehearsalCount drift")
+    require(pe_count == derived_pe, "productionEquivalentRehearsalCount drift")
+    expected_latest = records[-1].get("migrationRunId") if records else None
+    require(registry.get("latestRehearsalRunId") == expected_latest, "latestRehearsalRunId drift")
+    limitations = registry.get("limitations")
+    require(isinstance(limitations, list) and all(isinstance(item, str) and item for item in limitations), "registry limitations invalid")
 
 
 def acquire_lock() -> int:
@@ -218,8 +266,8 @@ def main() -> int:
         os.write(lock_fd, (record["migrationRunId"] + "\n").encode("ascii"))
         os.fsync(lock_fd)
         registry = load(REGISTRY)
-        records = registry.get("records")
-        require(isinstance(records, list) and all(isinstance(item, dict) for item in records), "registry records invalid")
+        validate_registry_for_append(registry, contract)
+        records = registry["records"]
         require(all(item.get("migrationRunId") != record["migrationRunId"] for item in records), "migrationRunId already registered")
         records.append(record)
         registry["rehearsalEvidenceCount"] = len(records)
