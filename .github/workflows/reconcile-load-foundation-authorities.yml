@@ -1,6 +1,21 @@
 name: Reconcile Load Foundation Authorities
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/reconcile-load-foundation-authorities.yml"
+      - "docs/fixtures/memory-os-operability/capacity-ramp-results.sample.v1.json"
+      - "docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json"
+      - "contracts/operations/capacity-ramp-contract.v1.json"
+      - "contracts/operations/short-stability-sample-contract.v1.json"
+      - "contracts/operations/load-test-scenario-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "scripts/validate-memory-os-capacity-ramp.py"
+      - "scripts/reconcile-memory-os-capacity-ramp-status.py"
+      - "scripts/validate-memory-os-short-stability-sample.py"
+      - "scripts/reconcile-memory-os-short-stability-status.py"
+      - "scripts/validate-memory-os-load.py"
+      - "scripts/validate-memory-os-operability.py"
   push:
     branches:
       - so
@@ -10,10 +25,14 @@ on:
       - "docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json"
       - "contracts/operations/capacity-ramp-contract.v1.json"
       - "contracts/operations/short-stability-sample-contract.v1.json"
+      - "contracts/operations/load-test-scenario-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "scripts/validate-memory-os-capacity-ramp.py"
       - "scripts/reconcile-memory-os-capacity-ramp-status.py"
       - "scripts/validate-memory-os-short-stability-sample.py"
       - "scripts/reconcile-memory-os-short-stability-status.py"
+      - "scripts/validate-memory-os-load.py"
+      - "scripts/validate-memory-os-operability.py"
   schedule:
     - cron: "7 19 * * *"
   workflow_dispatch:
@@ -22,8 +41,8 @@ permissions:
   contents: write
 
 concurrency:
-  group: reconcile-load-foundation-authorities-so
-  cancel-in-progress: true
+  group: reconcile-load-foundation-authorities-${{ github.event.pull_request.number || 'so' }}
+  cancel-in-progress: false
 
 jobs:
   reconcile:
@@ -34,16 +53,30 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout latest so
+      - name: Checkout exact authority source
         uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
           fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Confirm exact clean authority source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+          else
+            test "$(git branch --show-current)" = "so"
+            test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          fi
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Reconcile available bounded results with stage capture
         run: |
@@ -58,6 +91,8 @@ jobs:
             scripts/reconcile-memory-os-capacity-ramp-status.py \
             scripts/validate-memory-os-short-stability-sample.py \
             scripts/reconcile-memory-os-short-stability-status.py \
+            scripts/validate-memory-os-load.py \
+            scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
 
           if [[ "$code" == "0" && -f docs/fixtures/memory-os-operability/capacity-ramp-results.sample.v1.json ]]; then
@@ -94,8 +129,19 @@ jobs:
           echo "FOUNDATION_EXIT_CODE=$code" >> "$GITHUB_ENV"
           exit 0
 
+      - name: Require deterministic authority on pull requests
+        if: github.event_name == 'pull_request' && env.FOUNDATION_EXIT_CODE == '0'
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code -- \
+            contracts/operations/capacity-ramp-contract.v1.json \
+            contracts/operations/short-stability-sample-contract.v1.json \
+            contracts/operations/load-test-scenario-contract.v1.json \
+            contracts/operations/production-operability-status.json
+
       - name: Commit bounded load authorities
-        if: env.FOUNDATION_EXIT_CODE == '0'
+        if: github.event_name != 'pull_request' && env.FOUNDATION_EXIT_CODE == '0'
         run: |
           set -euo pipefail
           git add \
@@ -103,22 +149,29 @@ jobs:
             contracts/operations/short-stability-sample-contract.v1.json \
             contracts/operations/load-test-scenario-contract.v1.json \
             contracts/operations/production-operability-status.json
+          if git ls-files --error-unmatch docs/fixtures/memory-os-operability/load-foundation-authority-diagnostic.last.json >/dev/null 2>&1; then
+            rm -f docs/fixtures/memory-os-operability/load-foundation-authority-diagnostic.last.json
+            git add -A docs/fixtures/memory-os-operability/load-foundation-authority-diagnostic.last.json
+          fi
           if git diff --cached --quiet; then
             echo "Bounded load authorities are already current."
             exit 0
           fi
+          git diff --cached --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "docs(ops): reconcile bounded load foundations"
-          git pull --rebase origin so
+          remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
+          if [[ "$remote_sha" != "$SOURCE_SHA" ]]; then
+            echo "Load foundation authority source is stale: validated $SOURCE_SHA but so is $remote_sha" >&2
+            exit 75
+          fi
           git push origin HEAD:so
 
       - name: Record privacy-safe diagnostic
-        if: env.FOUNDATION_EXIT_CODE != '0'
+        if: github.event_name != 'pull_request' && env.FOUNDATION_EXIT_CODE != '0'
         run: |
           set -euo pipefail
-          git fetch origin so
-          git reset --hard origin/so
           python - <<'PY'
           import json
           import os
@@ -127,7 +180,7 @@ jobs:
           value = {
               "schemaVersion": "memory-os-validator-diagnostic.v1",
               "workflow": "reconcile-load-foundation-authorities",
-              "sourceCommitSha": os.environ["GITHUB_SHA"],
+              "sourceCommitSha": os.environ["SOURCE_SHA"],
               "result": "FAIL",
               "exitCode": int(os.environ["FOUNDATION_EXIT_CODE"]),
               "output": text[-12000:],
@@ -142,10 +195,15 @@ jobs:
           path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
           PY
           git add docs/fixtures/memory-os-operability/load-foundation-authority-diagnostic.last.json
+          git diff --cached --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "test(load): record bounded load authority diagnostic"
-          git pull --rebase origin so
+          remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
+          if [[ "$remote_sha" != "$SOURCE_SHA" ]]; then
+            echo "Load foundation diagnostic source is stale: validated $SOURCE_SHA but so is $remote_sha" >&2
+            exit 75
+          fi
           git push origin HEAD:so
 
       - name: Enforce success
