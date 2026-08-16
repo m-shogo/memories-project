@@ -3,9 +3,11 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -16,11 +18,13 @@ EXECUTION = ROOT / "contracts/operations/version-compatibility-execution-evidenc
 GAPS = ROOT / "contracts/operations/compatibility-admission-gaps.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 VALIDATOR = ROOT / "scripts/validate-memory-os-release-compatibility-pair.py"
+WRITER = ROOT / "scripts/register-memory-os-release-compatibility-pair.py"
 REFS = (
     "contracts/operations/release-compatibility-pair-contract.v1.json",
     "contracts/operations/release-compatibility-pair-registry.v1.json",
     "scripts/register-memory-os-release-compatibility-pair.py",
     "scripts/validate-memory-os-release-compatibility-pair.py",
+    "scripts/validate-memory-os-release-compatibility-pair-negative.py",
     "scripts/reconcile-memory-os-release-compatibility-pair.py",
     ".github/workflows/release-compatibility-pair.yml",
 )
@@ -37,9 +41,20 @@ def require(condition: bool, message: str) -> None:
 
 
 def load(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError) as exc:
+        raise Fail(f"cannot load {path.relative_to(ROOT)}: {exc}") from exc
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
     return value
+
+
+def load_writer() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("memory_os_release_pair_writer_for_reconcile", WRITER)
+    require(spec is not None and spec.loader is not None, "cannot load release pair writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def write(path: Path, value: dict[str, Any]) -> None:
@@ -57,13 +72,19 @@ def gap_unsatisfied(gap: dict[str, Any]) -> bool:
         return current is not gap.get("required")
     if isinstance(current, int) and not isinstance(current, bool):
         minimum = gap.get("requiredMinimum")
-        return isinstance(minimum, int) and current < minimum
+        return isinstance(minimum, int) and not isinstance(minimum, bool) and current < minimum
     return True
 
 
 def main() -> int:
-    releases = load(RELEASES)
     registry = load(REGISTRY)
+    writer = load_writer()
+    try:
+        writer.validate_registry_for_append(registry)
+    except Exception as exc:
+        raise Fail(f"release pair append-only authority invalid: {exc}") from exc
+
+    releases = writer.validated_release_registry()
     contract = load(CONTRACT)
     execution = load(EXECUTION)
     gaps = load(GAPS)
@@ -72,9 +93,10 @@ def main() -> int:
     pair_count = registry.get("approvedPairCount")
     rollback_count = registry.get("rollbackEligiblePairCount")
     latest_pair = registry.get("latestPairId")
-    require(isinstance(release_count, int) and release_count >= 0, "approved release count invalid")
-    require(isinstance(pairs, list) and isinstance(pair_count, int) and len(pairs) == pair_count, "pair registry count drift")
-    require(isinstance(rollback_count, int) and rollback_count == pair_count, "rollback pair count drift")
+    require(isinstance(release_count, int) and not isinstance(release_count, bool) and release_count >= 0, "approved release count invalid")
+    require(isinstance(pairs, list), "pair registry pairs invalid")
+    require(isinstance(pair_count, int) and not isinstance(pair_count, bool) and len(pairs) == pair_count, "pair registry count drift")
+    require(isinstance(rollback_count, int) and not isinstance(rollback_count, bool) and rollback_count == pair_count, "rollback pair count drift")
     require(latest_pair == (pairs[-1].get("pairId") if pairs else None), "latestPairId drift")
     if release_count < 2:
         require(pair_count == 0, "pair cannot exist with fewer than two approved releases")
@@ -90,8 +112,6 @@ def main() -> int:
     authority["productionDecision"] = "NO_GO"
     write(CONTRACT, contract)
 
-    # Candidate/local execution evidence is intentionally immutable and remains
-    # non-release evidence even after approved release pairs exist.
     exec_boundary = execution.get("releaseAuthorityBoundary")
     require(isinstance(exec_boundary, dict), "candidate execution release authority missing")
     require(exec_boundary.get("canonicalReleaseMatrixChanged") is False, "candidate execution release matrix drift")
@@ -131,7 +151,7 @@ def main() -> int:
     require(isinstance(existing, list) and isinstance(missing, list) and isinstance(refs, list), "OPS-P0-008 authority arrays missing")
     existing[:] = [item for item in existing if not (isinstance(item, str) and item.startswith(EVIDENCE_PREFIX))]
     append_once(existing, (
-        f"{EVIDENCE_PREFIX} approved releases={release_count}, approved predecessor/successor rollback pairs={pair_count}; pair admission requires two distinct already-approved release baselines, ELIGIBLE predecessor rollback status, pair-specific rolling deployment, application rollback, persisted-route, database-upgrade, artifact-retention and at least two independent review references, while candidate/local execution remains a separate non-release authority and productionEvidence/productionReady remain false"
+        f"{EVIDENCE_PREFIX} approved releases={release_count}, approved predecessor/successor rollback pairs={pair_count}; pair admission revalidates the canonical source-bound approved-release registry, requires two distinct approved release baselines, ELIGIBLE predecessor rollback status from the release rollback object, pair-specific rolling deployment, application rollback, persisted-route, database-upgrade, artifact-retention and at least two independent review references, while candidate/local execution remains a separate non-release authority and productionEvidence/productionReady remain false"
     ))
     if pair_count > 0:
         obsolete_prefixes = (

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import re
@@ -11,15 +12,29 @@ import subprocess
 import tempfile
 from datetime import datetime
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/release-compatibility-pair-contract.v1.json"
 RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
+RELEASE_CONTRACT = ROOT / "contracts/operations/release-baseline-registry-contract.v1.json"
+RELEASE_WRITER = ROOT / "scripts/register-memory-os-release-baseline.py"
 REGISTRY = ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"
 LOCK = ROOT / "contracts/operations/.release-compatibility-pair.lock"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 PAIR_ID = re.compile(r"^rcp_[a-z0-9][a-z0-9_-]{7,63}$")
+REGISTRY_FIELDS = {
+    "schemaVersion",
+    "appendOnly",
+    "approvedPairCount",
+    "rollbackEligiblePairCount",
+    "latestPairId",
+    "pairs",
+    "productionEvidence",
+    "productionReady",
+    "limitations",
+}
 
 
 class Fail(RuntimeError):
@@ -40,6 +55,14 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def load_module(path: Path, name: str) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load authority module: {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def git(*args: str) -> str:
     completed = subprocess.run(["git", *args], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     require(completed.returncode == 0, f"git {' '.join(args)} failed")
@@ -51,8 +74,20 @@ def evidence_refs(value: Any, field: str, minimum: int = 1) -> list[str]:
     require(len(value) == len(set(value)), f"{field} contains duplicates")
     for ref in value:
         require(isinstance(ref, str) and ref and not Path(ref).is_absolute() and ".." not in Path(ref).parts, f"{field} invalid reference")
-        require((ROOT / ref).is_file(), f"{field} evidence missing: {ref}")
+        path = ROOT / ref
+        require(path.is_file() and not path.is_symlink(), f"{field} evidence missing or symlinked: {ref}")
     return value
+
+
+def validated_release_registry() -> dict[str, Any]:
+    release_registry = load(RELEASES)
+    release_contract = load(RELEASE_CONTRACT)
+    release_writer = load_module(RELEASE_WRITER, "memory_os_release_baseline_writer_for_pair")
+    try:
+        release_writer.validate_registry_for_append(release_registry, release_contract)
+    except Exception as exc:
+        raise Fail(f"approved release registry authority invalid: {exc}") from exc
+    return release_registry
 
 
 def approved_release(releases: list[Any], release_id: Any, field: str) -> dict[str, Any]:
@@ -65,6 +100,14 @@ def approved_release(releases: list[Any], release_id: Any, field: str) -> dict[s
     return record
 
 
+def rollback_status(record: dict[str, Any]) -> str:
+    rollback = record.get("rollbackEligibility")
+    require(isinstance(rollback, dict), "approved release rollbackEligibility must be an object")
+    status = rollback.get("status")
+    require(isinstance(status, str), "approved release rollback status missing")
+    return status
+
+
 def validate_record(record: dict[str, Any]) -> None:
     contract = load(CONTRACT)
     required = set(contract.get("requiredRecordFields", []))
@@ -73,7 +116,7 @@ def validate_record(record: dict[str, Any]) -> None:
     pair_id = record.get("pairId")
     require(isinstance(pair_id, str) and PAIR_ID.fullmatch(pair_id), "pairId invalid")
 
-    release_registry = load(RELEASES)
+    release_registry = validated_release_registry()
     releases = release_registry.get("releases")
     require(isinstance(releases, list), "approved release registry invalid")
     predecessor = approved_release(releases, record.get("predecessorReleaseId"), "predecessorReleaseId")
@@ -84,7 +127,7 @@ def validate_record(record: dict[str, Any]) -> None:
         require(isinstance(sha, str) and SHA40.fullmatch(sha), f"{field} invalid")
         require(sha == release.get("commitSha"), f"{field} does not match approved release registry")
         require(git("cat-file", "-e", sha + "^{commit}") == "", f"{field} commit absent from repository history")
-    require(predecessor.get("rollbackEligibility") == "ELIGIBLE", "predecessor must be rollback ELIGIBLE")
+    require(rollback_status(predecessor) == "ELIGIBLE", "predecessor must be rollback ELIGIBLE")
 
     evidence_refs(record.get("rollingDeploymentEvidenceRefs"), "rollingDeploymentEvidenceRefs")
     evidence_refs(record.get("applicationRollbackEvidenceRefs"), "applicationRollbackEvidenceRefs")
@@ -97,9 +140,10 @@ def validate_record(record: dict[str, Any]) -> None:
     approved_at = record.get("approvedAt")
     require(isinstance(approved_at, str), "approvedAt required")
     try:
-        datetime.fromisoformat(approved_at.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(approved_at.replace("Z", "+00:00"))
     except ValueError as exc:
         raise Fail("approvedAt must be ISO-8601 date-time") from exc
+    require(parsed.tzinfo is not None, "approvedAt must include timezone")
 
     findings = record.get("openFindings")
     require(isinstance(findings, list), "openFindings must be list")
@@ -116,6 +160,39 @@ def validate_record(record: dict[str, Any]) -> None:
         "private_key", "access_key", "secret", "raw_ip", "account_id", "session_id", "@", "latest", "candidate_only_local_ci",
     ):
         require(forbidden not in serialized, f"pair record contains forbidden material: {forbidden}")
+
+
+def validate_registry_for_append(registry: dict[str, Any]) -> None:
+    require(set(registry) == REGISTRY_FIELDS, "pair registry field set drift")
+    require(registry.get("schemaVersion") == "memory-os-release-compatibility-pair-registry.v1", "pair registry schema drift")
+    require(registry.get("appendOnly") is True, "pair registry must remain append-only")
+    require(registry.get("productionEvidence") is False and registry.get("productionReady") is False, "pair registry cannot promote production")
+    pairs = registry.get("pairs")
+    require(isinstance(pairs, list) and all(isinstance(row, dict) for row in pairs), "pair registry invalid")
+    count = registry.get("approvedPairCount")
+    rollback_count = registry.get("rollbackEligiblePairCount")
+    require(isinstance(count, int) and not isinstance(count, bool), "approvedPairCount must be integer")
+    require(isinstance(rollback_count, int) and not isinstance(rollback_count, bool), "rollbackEligiblePairCount must be integer")
+    require(count == len(pairs), "approvedPairCount drift")
+    require(rollback_count == count, "rollbackEligiblePairCount drift")
+    ids: set[str] = set()
+    relations: set[tuple[Any, Any]] = set()
+    for row in pairs:
+        validate_record(row)
+        pair_id = row.get("pairId")
+        relation = (row.get("predecessorReleaseId"), row.get("successorReleaseId"))
+        require(pair_id not in ids, f"duplicate pairId: {pair_id}")
+        require(relation not in relations, f"duplicate predecessor/successor pair: {relation}")
+        ids.add(pair_id)
+        relations.add(relation)
+    require(registry.get("latestPairId") == (pairs[-1].get("pairId") if pairs else None), "latestPairId drift")
+    limitations = registry.get("limitations")
+    require(isinstance(limitations, list) and limitations and all(isinstance(item, str) and item.strip() for item in limitations), "pair registry limitations invalid")
+    release_registry = validated_release_registry()
+    release_count = release_registry.get("approvedReleaseCount")
+    require(isinstance(release_count, int) and not isinstance(release_count, bool), "approved release count invalid")
+    if release_count < 2:
+        require(count == 0, "approved pair cannot exist with fewer than two approved releases")
 
 
 def atomic_write(value: dict[str, Any]) -> None:
@@ -157,9 +234,8 @@ def main() -> int:
         os.write(lock_fd, (record["pairId"] + "\n").encode("ascii"))
         os.fsync(lock_fd)
         registry = load(REGISTRY)
-        require(registry.get("appendOnly") is True, "pair registry must remain append-only")
-        pairs = registry.get("pairs")
-        require(isinstance(pairs, list) and all(isinstance(row, dict) for row in pairs), "pair registry invalid")
+        validate_registry_for_append(registry)
+        pairs = registry["pairs"]
         require(all(row.get("pairId") != record["pairId"] for row in pairs), "pairId already registered")
         require(all(not (row.get("predecessorReleaseId") == record["predecessorReleaseId"] and row.get("successorReleaseId") == record["successorReleaseId"]) for row in pairs), "release pair already registered")
         pairs.append(record)

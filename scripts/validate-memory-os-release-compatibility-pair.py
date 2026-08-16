@@ -46,7 +46,6 @@ def load_writer():
 
 def main() -> int:
     contract = load(CONTRACT)
-    release_registry = load(RELEASES)
     registry = load(REGISTRY)
     execution = load(EXECUTION)
     gaps = load(GAPS)
@@ -62,9 +61,15 @@ def main() -> int:
     rules = contract.get("rules")
     require(isinstance(rules, dict) and rules and all(value is True for value in rules.values()), "pair rules must remain fail-closed")
 
+    try:
+        writer.validate_registry_for_append(registry)
+        release_registry = writer.validated_release_registry()
+    except Exception as exc:
+        raise Fail(f"release pair shared authority invalid: {exc}") from exc
+
     approved_release_count = release_registry.get("approvedReleaseCount")
     releases = release_registry.get("releases")
-    require(isinstance(approved_release_count, int) and approved_release_count >= 0, "approved release count invalid")
+    require(isinstance(approved_release_count, int) and not isinstance(approved_release_count, bool) and approved_release_count >= 0, "approved release count invalid")
     require(isinstance(releases, list) and len(releases) == approved_release_count, "release registry count drift")
 
     require(registry.get("schemaVersion") == "memory-os-release-compatibility-pair-registry.v1", "pair registry schema drift")
@@ -74,8 +79,8 @@ def main() -> int:
     count = registry.get("approvedPairCount")
     rollback_count = registry.get("rollbackEligiblePairCount")
     require(isinstance(pairs, list) and all(isinstance(row, dict) for row in pairs), "pair rows invalid")
-    require(isinstance(count, int) and count == len(pairs), "approvedPairCount drift")
-    require(isinstance(rollback_count, int) and rollback_count == count, "rollbackEligiblePairCount drift")
+    require(isinstance(count, int) and not isinstance(count, bool) and count == len(pairs), "approvedPairCount drift")
+    require(isinstance(rollback_count, int) and not isinstance(rollback_count, bool) and rollback_count == count, "rollbackEligiblePairCount drift")
     ids: set[str] = set()
     relations: set[tuple[str, str]] = set()
     for row in pairs:
@@ -100,8 +105,6 @@ def main() -> int:
     require(authority.get("productionEvidence") is False and authority.get("productionReady") is False, "pair authority cannot promote production")
     require(authority.get("productionDecision") == "NO_GO", "production decision must remain NO_GO")
 
-    # Candidate/local execution evidence is deliberately a lower, immutable
-    # authority. Approved pair admission must not rewrite or relabel it.
     exec_boundary = execution.get("releaseAuthorityBoundary")
     require(isinstance(exec_boundary, dict), "candidate execution release boundary missing")
     require(exec_boundary.get("canonicalReleaseMatrixChanged") is False, "candidate execution cannot change release matrix")
