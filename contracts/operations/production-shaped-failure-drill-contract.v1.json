@@ -85,6 +85,7 @@
     "independentOperabilityReviewRequired": true,
     "independentSecurityReviewRequired": true,
     "typedIndependentReviewsMustBindDrillScenarioEnvironmentAndSource": true,
+    "independentReviewRefsMustUseMonitoredNamespace": true,
     "independentReviewersMustBeDistinct": true,
     "independentReviewsCannotAuthorizeAutomaticProductionPromotion": true,
     "unresolvedCriticalOrHighFindingsForbidden": true
