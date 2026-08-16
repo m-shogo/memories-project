@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / "contracts/operations/migration-production-shaped-admission-registry.v1.json"
 MIGRATION_LEDGER = ROOT / "contracts/operations/migration-evidence-registry.v1.json"
 RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
+GENERATIONS = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 CONTRACT = ROOT / "contracts/operations/migration-production-shaped-admission-contract.v1.json"
 LIFECYCLE = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
@@ -84,6 +85,28 @@ def expect_reconcile_rejected_without_mutation(name: str, mutate: Callable[[dict
     finally:
         for path, data in original.items():
             path.write_bytes(data)
+
+
+def expect_upstream_reconcile_rejected_without_mutation(path: Path, name: str) -> None:
+    original = {item: item.read_bytes() for item in (path, CONTRACT, LIFECYCLE, STATUS)}
+    corrupt = load_json(path)
+    corrupt["unexpectedAuthority"] = True
+    path.write_text(json.dumps(corrupt, indent=2) + "\n", encoding="utf-8")
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(RECONCILER)],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        require(completed.returncode != 0, f"reconciler accepted corrupt upstream authority: {name}")
+        for derived in (CONTRACT, LIFECYCLE, STATUS):
+            require(derived.read_bytes() == original[derived], f"reconciler mutated {derived.relative_to(ROOT)} after rejecting {name}")
+    finally:
+        for item, data in original.items():
+            item.write_bytes(data)
 
 
 def expect_noncanonical_ledger_rows_rejected() -> None:
@@ -212,12 +235,14 @@ def main() -> int:
     for name, mutate in cases:
         expect_rejected(writer, name, mutate)
         expect_reconcile_rejected_without_mutation(name, mutate)
+    expect_upstream_reconcile_rejected_without_mutation(RELEASES, "release baseline registry drift")
+    expect_upstream_reconcile_rejected_without_mutation(GENERATIONS, "environment generation registry drift")
     expect_noncanonical_ledger_rows_rejected()
     expect_canonical_writer_delegation()
     expect_release_registry_delegation(writer)
     expect_generic_review_refs_rejected(writer)
     expect_mutated_review_history_rejected(writer)
-    print("PASS: migration production-shaped admission registry, ledger, release, and independent-review authority drift are rejected")
+    print("PASS: migration production-shaped admission registry, upstream, ledger, release, and independent-review authority drift are rejected")
     return 0
 
 
