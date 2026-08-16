@@ -306,6 +306,7 @@ def main() -> int:
             "currentGenerationId": "pegen_target",
             "productionEvidence": False,
             "generations": [source_generation, target_generation],
+            "limitations": [],
         })
         write_json(objectives_registry, {
             "schemaVersion": "memory-os-recovery-objectives-registry.v1",
