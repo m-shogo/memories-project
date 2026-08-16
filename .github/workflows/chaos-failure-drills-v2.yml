@@ -74,9 +74,12 @@ jobs:
 
       - name: Confirm exact clean source
         run: |
+          set -euo pipefail
+          git fetch origin so
           test "$(git branch --show-current)" = "so"
           test -z "$(git status --porcelain)"
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Compile validators and check formatting
         run: |
@@ -230,12 +233,20 @@ jobs:
 
       - name: Commit v2 result or bounded failure diagnostic
         run: |
+          set -euo pipefail
+          test "$SOURCE_SHA" = "${{ steps.drills.outputs.source_sha }}"
+          git fetch origin so
+          if [[ "$(git rev-parse HEAD)" != "$SOURCE_SHA" ]] || [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "so advanced while the v2 failure drills ran; refusing stale evidence or diagnostic."
+            exit 75
+          fi
           git add docs/fixtures/memory-os-operability/chaos-failure-drill-v2-diagnostic.last.json
           if [ "${{ steps.drills.outputs.success }}" = "true" ]; then
             git add docs/fixtures/memory-os-operability/chaos-failure-drill-results.v2.sample.json
           fi
           if git diff --cached --quiet; then
             echo "v2 failure-drill evidence is already current."
+            echo "EVIDENCE_COMMIT_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -244,13 +255,27 @@ jobs:
             else
               git commit -m "test(chaos): record v2 failure-drill diagnostic"
             fi
-            git pull --rebase origin so
+            EVIDENCE_COMMIT_SHA="$(git rev-parse HEAD)"
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              echo "so advanced before v2 failure-drill evidence push; refusing stale evidence."
+              exit 75
+            fi
             git push origin HEAD:so
+            echo "EVIDENCE_COMMIT_SHA=$EVIDENCE_COMMIT_SHA" >> "$GITHUB_ENV"
           fi
 
       - name: Reconcile v2 operability authority
         if: steps.drills.outputs.success == 'true'
         run: |
+          set -euo pipefail
+          git fetch origin so
+          test "$(git rev-parse HEAD)" = "$EVIDENCE_COMMIT_SHA"
+          if [[ "$(git rev-parse origin/so)" != "$EVIDENCE_COMMIT_SHA" ]]; then
+            echo "so advanced before v2 failure-drill authority reconciliation; refusing stale authority."
+            exit 75
+          fi
+          export EXPECTED_COMMIT_SHA="$SOURCE_SHA"
           python scripts/reconcile-memory-os-chaos-failure-drills-v2.py
           python scripts/validate-memory-os-chaos-failure-drills-v2.py
           python scripts/validate-memory-os-operability.py
@@ -261,7 +286,11 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(chaos): reconcile object outage recovery evidence"
-            git pull --rebase origin so
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$EVIDENCE_COMMIT_SHA" ]]; then
+              echo "so advanced before v2 failure-drill authority push; refusing stale authority."
+              exit 75
+            fi
             git push origin HEAD:so
           fi
 
