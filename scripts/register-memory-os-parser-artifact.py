@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -19,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/parser-artifact-registry-contract.v1.json"
 REGISTRY_PATH = ROOT / "contracts/operations/parser-artifact-registry.v1.json"
 RELEASE_REGISTRY_PATH = ROOT / "contracts/operations/release-baseline-registry.v1.json"
+RELEASE_WRITER_PATH = ROOT / "scripts/register-memory-os-release-baseline.py"
 LOCK_PATH = ROOT / "contracts/operations/.parser-artifact-registry.lock"
 CONFIRMATION = "REGISTER REVIEWED PARSER ARTIFACT"
 DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -97,6 +99,31 @@ def sha256_file(path: Path) -> tuple[str, int]:
             digest.update(chunk)
             size += len(chunk)
     return digest.hexdigest(), size
+
+
+def load_release_writer() -> Any:
+    require(RELEASE_WRITER_PATH.is_file(), "canonical release writer missing")
+    spec = importlib.util.spec_from_file_location(
+        "memory_os_release_baseline_writer_for_parser", RELEASE_WRITER_PATH
+    )
+    require(spec is not None and spec.loader is not None,
+            "cannot load canonical release writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    require(Path(module.REGISTRY_PATH).resolve() == RELEASE_REGISTRY_PATH.resolve(),
+            "canonical release registry authority drift")
+    return module
+
+
+def approved_release_ids() -> set[str]:
+    release_writer = load_release_writer()
+    release_registry = load(RELEASE_REGISTRY_PATH)
+    release_contract = load(Path(release_writer.CONTRACT_PATH))
+    try:
+        release_writer.validate_registry_for_append(release_registry, release_contract)
+    except Exception as exc:
+        raise RegistrationFailure(f"approved release authority invalid: {exc}") from exc
+    return {item["releaseId"] for item in release_registry["releases"]}
 
 
 def validate_record(record: dict[str, Any], required_fields: set[str],
@@ -240,15 +267,9 @@ def main() -> int:
     contract = load(CONTRACT_PATH)
     required_fields = set(strings(contract.get("requiredRecordFields"),
                                   "requiredRecordFields", 20))
-    release_registry = load(RELEASE_REGISTRY_PATH)
-    releases = release_registry.get("releases")
-    require(isinstance(releases, list), "approved release registry is invalid")
-    approved_release_ids = {
-        item.get("releaseId") for item in releases
-        if isinstance(item, dict) and isinstance(item.get("releaseId"), str)
-    }
+    releases = approved_release_ids()
     record = load(record_path)
-    validate_record(record, required_fields, artifact_path, approved_release_ids)
+    validate_record(record, required_fields, artifact_path, releases)
 
     lock_fd = acquire_lock()
     try:
