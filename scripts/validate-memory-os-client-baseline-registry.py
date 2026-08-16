@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import importlib.util
 import json
 import re
 import subprocess
@@ -45,6 +46,17 @@ def load(path: Path) -> dict[str, Any]:
         raise Fail(f"cannot load {path.relative_to(ROOT)}: {exc}") from exc
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
     return value
+
+
+def load_writer() -> Any:
+    require(WRITER.is_file(), "writer missing")
+    spec = importlib.util.spec_from_file_location("memory_os_client_baseline_writer", WRITER)
+    require(spec is not None and spec.loader is not None, "cannot load canonical client writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    require(Path(module.REGISTRY).resolve() == REGISTRY.resolve(), "writer registry authority drift")
+    require(Path(module.CONTRACT).resolve() == CONTRACT.resolve(), "writer contract authority drift")
+    return module
 
 
 def strings(value: Any, field: str, minimum: int = 1) -> list[str]:
@@ -143,6 +155,11 @@ def validate_record(record: dict[str, Any], required_fields: set[str], index: in
 def main() -> int:
     contract = load(CONTRACT)
     registry = load(REGISTRY)
+    writer = load_writer()
+    try:
+        writer.validate_registry_for_append(registry)
+    except Exception as exc:
+        raise Fail(f"canonical writer rejected client registry authority: {exc}") from exc
 
     require(contract.get("schemaVersion") == "memory-os-client-baseline-registry-contract.v1", "contract schema drift")
     require(contract.get("registryPath") == str(REGISTRY.relative_to(ROOT)), "registryPath drift")
@@ -168,6 +185,8 @@ def main() -> int:
     guards = strings(contract.get("registrationGuards"), "registrationGuards", 12)
     require(any("ancestor of current HEAD" in guard for guard in guards),
             "registration guards must require source lineage ancestry")
+    require(any("sourceCommitSha" in guard and "current bytes" in guard for guard in guards),
+            "registration guards must require immutable source-bound evidence")
 
     require(registry.get("schemaVersion") == "memory-os-client-baseline-registry.v1", "registry schema drift")
     require(registry.get("registryClass") == "APPROVED_CLIENT_BASELINES", "registry class drift")
