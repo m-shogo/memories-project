@@ -816,7 +816,12 @@
         "reviewed PostgreSQL minor-version support window and patch-upgrade rehearsal",
         "production-shaped in-place pg_upgrade or approved blue-green database cutover rehearsal with connection-pool drain and rollback decision evidence",
         "physical replication, WAL continuity, replication-slot and failover verification across the approved PostgreSQL upgrade path",
-        "approved rollback boundary for irreversible database-format changes and independent database recovery review"
+        "approved rollback boundary for irreversible database-format changes and independent database recovery review",
+        "approved predecessor release artifact and successor release pair for binding compatibility evidence",
+        "simultaneous old/current application traffic against the same production-shaped database",
+        "rolling deployment order, connection drain, failure injection and application rollback rehearsal",
+        "destructive contract-migration and downgrade compatibility proof",
+        "production-shaped mixed-version review with zero unresolved Critical or High findings"
       ],
       "evidenceRefs": [
         ".github/workflows/security-contracts.yml",
