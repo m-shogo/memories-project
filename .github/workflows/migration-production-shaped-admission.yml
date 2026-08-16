@@ -14,7 +14,9 @@ on:
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "scripts/register-memory-os-migration-production-shaped-admission.py"
       - "scripts/validate-memory-os-migration-production-shaped-admission.py"
+      - "scripts/validate-memory-os-migration-production-shaped-admission-negative.py"
       - "scripts/reconcile-memory-os-migration-production-shaped-admission.py"
+      - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-migration-lifecycle.py"
       - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
@@ -50,8 +52,13 @@ jobs:
           python -m py_compile \
             scripts/register-memory-os-migration-production-shaped-admission.py \
             scripts/validate-memory-os-migration-production-shaped-admission.py \
+            scripts/validate-memory-os-migration-production-shaped-admission-negative.py \
             scripts/reconcile-memory-os-migration-production-shaped-admission.py \
+            scripts/register-memory-os-production-equivalent-environment-generation.py \
             >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-migration-production-shaped-admission-negative.py >> "$log" 2>&1 || code=$?
+          fi
           if [[ "$code" == "0" ]]; then
             python scripts/reconcile-memory-os-migration-production-shaped-admission.py >> "$log" 2>&1 || code=$?
           fi
