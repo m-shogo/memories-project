@@ -116,6 +116,10 @@ def main() -> int:
     writer_lock = getattr(writer, "LOCK", None)
     require(writer_lock == EXPECTED_LOCK, "writer append lock authority drift")
     require(writer_lock.parent == REGISTRY.parent, "writer append lock must share registry authority directory")
+    try:
+        writer.validate_registry_for_append(registry)
+    except writer.Fail as exc:
+        raise Fail(f"generation registry append authority invalid: {exc}") from exc
 
     require(contract.get("schemaVersion") == "memory-os-production-equivalent-environment-generation.v1", "contract schema drift")
     expected_refs = {
