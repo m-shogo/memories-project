@@ -141,38 +141,26 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin so
-          if ! git diff --quiet "$SOURCE_SHA" origin/so -- \
-            .github/workflows/deletion-prefence-mutation-linearization.yml \
-            contracts/operations/deletion-prefence-mutation-linearization-contract.v1.json \
-            scripts/validate-memory-os-deletion-prefence-mutation-linearization.py \
-            scripts/reconcile-memory-os-deletion-prefence-mutation-linearization.py \
-            services/import-api/internal/httpserver/deletion_prefence_mutation_linearization_test.go \
-            services/import-api/internal/httpserver/deletion_prefence_linearization_test.go \
-            services/import-api/internal/httpserver/server_live_test.go \
-            services/import-api/internal/httpserver/server.go \
-            services/import-api/internal/fenced \
-            services/import-api/internal/epochguard \
-            services/import-api/internal/authstore \
-            services/import-api/internal/accountdelete \
-            services/import-api/internal/pgrepo \
-            services/import-api/internal/dbscope \
-            services/import-api/internal/pgscope \
-            services/import-api/internal/upload \
-            infra/postgresql/security; then
-            echo "Relevant source changed while proof ran; refusing stale evidence."
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]] || [[ "$(git rev-parse HEAD)" != "$SOURCE_SHA" ]]; then
+            echo "Branch advanced while pre-fence mutation proof ran; refusing stale evidence."
             exit 75
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/fixtures/memory-os-operability/deletion-prefence-mutation-linearization-results.sample.v1.json
           git commit -m "test(deletion): record pre-fence mutation result"
-          git pull --rebase origin so
+          echo "RESULT_COMMIT_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
           git push origin HEAD:so
 
       - name: Reconcile local-only authority
         if: env.PREFENCE_MUTATION_EXIT_CODE == '0'
         run: |
           set -euo pipefail
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$RESULT_COMMIT_SHA" ]] || [[ "$(git rev-parse HEAD)" != "$RESULT_COMMIT_SHA" ]]; then
+            echo "Branch advanced after pre-fence mutation result commit; refusing stale derived authority."
+            exit 75
+          fi
           export EXPECTED_COMMIT_SHA="$SOURCE_SHA"
           python scripts/reconcile-memory-os-deletion-prefence-mutation-linearization.py
           python scripts/validate-memory-os-deletion-prefence-mutation-linearization.py \
@@ -185,7 +173,11 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(deletion): register pre-fence mutation evidence"
-            git pull --rebase origin so
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$RESULT_COMMIT_SHA" ]]; then
+              echo "Branch advanced during pre-fence mutation authority reconcile; refusing stale derived authority."
+              exit 75
+            fi
             git push origin HEAD:so
           fi
 
@@ -194,7 +186,10 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin so
-          git reset --hard origin/so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]] || [[ "$(git rev-parse HEAD)" != "$SOURCE_SHA" ]]; then
+            echo "Branch advanced after failed pre-fence mutation proof; refusing stale diagnostic."
+            exit 75
+          fi
           python - <<'PY'
           import json
           import os
@@ -235,7 +230,11 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --cached --quiet; then
             git commit -m "test(deletion): record pre-fence mutation diagnostic"
-            git pull --rebase origin so
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              echo "Branch advanced during pre-fence mutation diagnostic write; refusing stale diagnostic."
+              exit 75
+            fi
             git push origin HEAD:so
           fi
 
