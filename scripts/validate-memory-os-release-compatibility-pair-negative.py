@@ -148,6 +148,16 @@ def main() -> int:
             finally:
                 link.unlink(missing_ok=True)
 
+        untracked = ROOT / ".release-pair-negative-untracked.json"
+        require(not untracked.exists(), "negative untracked fixture path already exists")
+        untracked.write_text("{}\n", encoding="utf-8")
+        try:
+            uncommitted = copy.deepcopy(pair)
+            uncommitted["rollingDeploymentEvidenceRefs"] = [untracked.name]
+            expect_rejected("uncommitted evidence reference", lambda: writer.bind_evidence_digests(uncommitted))
+        finally:
+            untracked.unlink(missing_ok=True)
+
         writer.validated_release_registry = lambda: synthetic_releases("NOT_ELIGIBLE")
         expect_rejected("non-eligible predecessor", lambda: writer.validate_record(pair))
     finally:
@@ -172,7 +182,7 @@ def main() -> int:
 
     require(REGISTRY.read_bytes() == (ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json").read_bytes(),
             "negative suite mutated canonical pair registry")
-    print("PASS: release compatibility pair authority rejects registry corruption, evidence digest drift, symlink escapes, and nested rollback ineligibility")
+    print("PASS: release compatibility pair authority rejects registry corruption, evidence digest drift, uncommitted/symlink evidence, and nested rollback ineligibility")
     return 0
 
 
