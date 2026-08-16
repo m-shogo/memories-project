@@ -92,6 +92,7 @@ def main() -> int:
     registry = load(REGISTRY)
     require(contract.get("schemaVersion") == "memory-os-rate-limit-distributed-runtime-admission.v1", "contract schema drift")
     require(contract.get("recordSchemaVersion") == "memory-os-rate-limit-distributed-runtime-record.v1", "record schema drift")
+    require(contract.get("independentReviewSchemaVersion") == "memory-os-rate-limit-runtime-independent-review.v1", "independent review schema drift")
     require(contract.get("registryPath") == str(REGISTRY.relative_to(ROOT)), "registry binding drift")
     require(contract.get("writer") == str(WRITER.relative_to(ROOT)), "writer binding drift")
     assertions = contract.get("requiredRuntimeAssertions")
