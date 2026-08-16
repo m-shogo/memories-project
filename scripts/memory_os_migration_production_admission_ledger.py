@@ -3,14 +3,18 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import sys
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 LEDGER = ROOT / "contracts/operations/migration-evidence-registry.v1.json"
+LEDGER_CONTRACT = ROOT / "contracts/operations/migration-evidence-registry-contract.v1.json"
+LEDGER_WRITER = ROOT / "scripts/register-memory-os-migration-rehearsal-evidence.py"
 LEDGER_VALIDATOR = ROOT / "scripts/validate-memory-os-migration-evidence-registry.py"
 
 
@@ -27,9 +31,17 @@ def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError) as exc:
-        raise LedgerBindingFailure(f"cannot load canonical migration ledger: {exc}") from exc
-    require(isinstance(value, dict), "canonical migration ledger root must be object")
+        raise LedgerBindingFailure(f"cannot load canonical migration ledger authority: {exc}") from exc
+    require(isinstance(value, dict), "canonical migration ledger authority root must be object")
     return value
+
+
+def load_writer() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("memory_os_migration_rehearsal_writer_for_admission", LEDGER_WRITER)
+    require(spec is not None and spec.loader is not None, "cannot load canonical migration rehearsal writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def validate_canonical_ledger() -> dict[str, Any]:
@@ -42,7 +54,14 @@ def validate_canonical_ledger() -> dict[str, Any]:
         check=False,
     )
     require(completed.returncode == 0, "canonical migration rehearsal ledger validation failed")
-    return load(LEDGER)
+    ledger = load(LEDGER)
+    contract = load(LEDGER_CONTRACT)
+    writer = load_writer()
+    try:
+        writer.validate_registry_for_append(ledger, contract)
+    except Exception as exc:
+        raise LedgerBindingFailure(f"canonical migration rehearsal append-only authority invalid: {exc}") from exc
+    return ledger
 
 
 def require_registered_production_equivalent_rehearsal(
