@@ -9,6 +9,7 @@ on:
       - "docs/evidence/releases/README.md"
       - "scripts/register-memory-os-release-baseline.py"
       - "scripts/validate-memory-os-release-baseline-registry.py"
+      - "scripts/validate-memory-os-release-baseline-registry-negative.py"
       - "scripts/reconcile-memory-os-release-baseline-registry.py"
   push:
     branches:
@@ -20,6 +21,7 @@ on:
       - "docs/evidence/releases/README.md"
       - "scripts/register-memory-os-release-baseline.py"
       - "scripts/validate-memory-os-release-baseline-registry.py"
+      - "scripts/validate-memory-os-release-baseline-registry-negative.py"
       - "scripts/reconcile-memory-os-release-baseline-registry.py"
   schedule:
     - cron: "23 3 * * 2"
@@ -65,6 +67,7 @@ jobs:
           python -m py_compile \
             scripts/register-memory-os-release-baseline.py \
             scripts/validate-memory-os-release-baseline-registry.py \
+            scripts/validate-memory-os-release-baseline-registry-negative.py \
             scripts/reconcile-memory-os-release-baseline-registry.py
 
       - name: Prove invalid registration cannot mutate authority
@@ -145,6 +148,9 @@ jobs:
           test "$(sha256sum "$registry" | awk '{print $1}')" = "$before"
           test ! -e "$lock"
           test -z "$(git status --porcelain)"
+
+      - name: Validate append-only registry corruption negatives
+        run: python scripts/validate-memory-os-release-baseline-registry-negative.py
 
       - name: Reconcile then validate release registry authority
         run: |
