@@ -12,8 +12,14 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any, Callable
 
+from memory_os_migration_production_admission_ledger import (
+    LedgerBindingFailure,
+    require_registered_production_equivalent_rehearsal,
+)
+
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / "contracts/operations/migration-production-shaped-admission-registry.v1.json"
+MIGRATION_LEDGER = ROOT / "contracts/operations/migration-evidence-registry.v1.json"
 CONTRACT = ROOT / "contracts/operations/migration-production-shaped-admission-contract.v1.json"
 LIFECYCLE = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
@@ -77,6 +83,33 @@ def expect_reconcile_rejected_without_mutation(name: str, mutate: Callable[[dict
             path.write_bytes(data)
 
 
+def expect_noncanonical_ledger_rows_rejected() -> None:
+    ledger = load_json(MIGRATION_LEDGER)
+    rows = ledger.get("records")
+    require(isinstance(rows, list) and rows, "migration ledger fixture missing")
+    local = next((row for row in rows if isinstance(row, dict) and row.get("environmentClass") == "LOCAL_POSTGRES_REHEARSAL"), None)
+    require(isinstance(local, dict), "local migration ledger fixture missing")
+    try:
+        require_registered_production_equivalent_rehearsal(
+            migration_run_id=local["migrationRunId"],
+            source_commit_sha=local["sourceCommitSha"],
+            environment_generation_id="pegen_nonexistent_negative",
+        )
+    except LedgerBindingFailure:
+        pass
+    else:
+        raise Fail("local canonical migration rehearsal was accepted as production-equivalent admission authority")
+    try:
+        require_registered_production_equivalent_rehearsal(
+            migration_run_id="mig_20991231_noncanonical_negative",
+            source_commit_sha="0" * 40,
+            environment_generation_id="pegen_nonexistent_negative",
+        )
+    except LedgerBindingFailure:
+        return
+    raise Fail("unregistered migrationRunId was accepted as canonical admission authority")
+
+
 def main() -> int:
     writer = load_writer()
     cases: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
@@ -91,7 +124,8 @@ def main() -> int:
     for name, mutate in cases:
         expect_rejected(writer, name, mutate)
         expect_reconcile_rejected_without_mutation(name, mutate)
-    print("PASS: migration production-shaped admission registry corruption is rejected before append/reconcile")
+    expect_noncanonical_ledger_rows_rejected()
+    print("PASS: migration production-shaped admission registry corruption and noncanonical ledger authority are rejected")
     return 0
 
 
