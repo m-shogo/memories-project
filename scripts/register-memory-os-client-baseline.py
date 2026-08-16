@@ -35,6 +35,16 @@ BUILD = re.compile(r"^[0-9A-Za-z._-]{1,64}$")
 CLIENT_CLASSES = {"IOS_APP", "PORTAL"}
 ARTIFACT_KINDS = {"IOS_IPA", "IOS_XCARCHIVE_EXPORT", "PORTAL_BUNDLE"}
 REQUIRED_ROLES = {"CLIENT_OWNER", "SECURITY_REVIEWER", "COMPATIBILITY_REVIEWER"}
+REGISTRY_FIELDS = {
+    "schemaVersion",
+    "registryClass",
+    "appendOnly",
+    "productionEvidence",
+    "approvedClientBaselineCount",
+    "latestApprovedClientByClass",
+    "clients",
+    "limitations",
+}
 
 
 class Failure(RuntimeError):
@@ -98,6 +108,46 @@ def validate_source_commit_lineage(commit_sha: str) -> None:
             f"source commit is not an ancestor of current HEAD: {commit_sha}")
 
 
+def validate_registry_for_append(registry: dict[str, Any]) -> None:
+    require(set(registry) == REGISTRY_FIELDS, "client registry field set drift")
+    require(registry.get("schemaVersion") == "memory-os-client-baseline-registry.v1",
+            "client registry schema drift")
+    require(registry.get("registryClass") == "APPROVED_CLIENT_BASELINES",
+            "client registry class drift")
+    require(registry.get("appendOnly") is True, "client registry must remain append-only")
+    require(registry.get("productionEvidence") is False,
+            "client registry cannot claim production evidence")
+    clients = registry.get("clients")
+    require(isinstance(clients, list) and all(isinstance(item, dict) for item in clients),
+            "client registry contains invalid clients")
+    count = registry.get("approvedClientBaselineCount")
+    require(isinstance(count, int) and not isinstance(count, bool),
+            "approvedClientBaselineCount must be an integer")
+    require(count == len(clients), "approvedClientBaselineCount drift")
+    latest = registry.get("latestApprovedClientByClass")
+    require(isinstance(latest, dict) and set(latest) == CLIENT_CLASSES,
+            "latestApprovedClientByClass drift")
+    ids: set[str] = set()
+    digests: set[str] = set()
+    expected_latest: dict[str, str | None] = {"IOS_APP": None, "PORTAL": None}
+    for item in clients:
+        baseline_id = item.get("clientBaselineId")
+        client_class = item.get("clientClass")
+        artifact_digest = item.get("artifactSha256")
+        require(isinstance(baseline_id, str) and BASELINE_ID.fullmatch(baseline_id) is not None,
+                "registered clientBaselineId invalid")
+        require(client_class in CLIENT_CLASSES, "registered clientClass invalid")
+        require(isinstance(artifact_digest, str) and SHA256.fullmatch(artifact_digest) is not None,
+                "registered artifactSha256 invalid")
+        require(baseline_id not in ids, f"duplicate registered clientBaselineId: {baseline_id}")
+        require(artifact_digest not in digests, f"duplicate registered artifactSha256: {artifact_digest}")
+        ids.add(baseline_id)
+        digests.add(artifact_digest)
+        expected_latest[client_class] = baseline_id
+    require(latest == expected_latest,
+            f"latestApprovedClientByClass drift: expected {expected_latest}, got {latest}")
+
+
 def validate_record(record: dict[str, Any], required_fields: set[str], artifact: Path) -> None:
     require(set(record) >= required_fields, f"record missing fields: {sorted(required_fields - set(record))}")
     require(record.get("schemaVersion") == "memory-os-client-baseline-record.v1", "record schema drift")
@@ -118,7 +168,7 @@ def validate_record(record: dict[str, Any], required_fields: set[str], artifact:
     require(record.get("signedUploadContract") == "memory-os-signed-upload.v1", "signed upload contract drift")
     for field in ("artifactSha256", "apiContractSha256", "clientBehaviorContractSha256"):
         require(isinstance(record.get(field), str) and SHA256.fullmatch(record[field]) is not None, f"{field} must be SHA-256")
-    require(isinstance(record.get("artifactByteLength"), int) and record["artifactByteLength"] > 0, "artifactByteLength invalid")
+    require(isinstance(record.get("artifactByteLength"), int) and not isinstance(record.get("artifactByteLength"), bool) and record["artifactByteLength"] > 0, "artifactByteLength invalid")
     require(record.get("evidenceComplete") is True and record.get("approvedForPairing") is True, "baseline requires complete pairing approval")
     require(record.get("productionEvidence") is False and record.get("productionReady") is False, "client baseline cannot be production evidence/readiness")
 
@@ -208,14 +258,13 @@ def main() -> int:
         os.write(lock_fd, (record["clientBaselineId"] + "\n").encode("ascii"))
         os.fsync(lock_fd)
         registry = load(REGISTRY)
-        clients = registry.get("clients")
-        require(isinstance(clients, list) and all(isinstance(item, dict) for item in clients), "client registry invalid")
+        validate_registry_for_append(registry)
+        clients = registry["clients"]
         require(all(item.get("clientBaselineId") != record["clientBaselineId"] for item in clients), "clientBaselineId already registered")
         require(all(item.get("artifactSha256") != record["artifactSha256"] for item in clients), "artifact digest already registered")
         clients.append(record)
         registry["approvedClientBaselineCount"] = len(clients)
-        latest = registry.get("latestApprovedClientByClass")
-        require(isinstance(latest, dict), "latestApprovedClientByClass invalid")
+        latest = registry["latestApprovedClientByClass"]
         latest[record["clientClass"]] = record["clientBaselineId"]
         atomic_write(registry)
     finally:
