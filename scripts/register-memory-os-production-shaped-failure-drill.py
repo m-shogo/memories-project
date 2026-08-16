@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import importlib.util
 import json
 import os
 import re
@@ -17,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/production-shaped-failure-drill-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/production-shaped-failure-drill-registry.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+VALIDATOR = ROOT / "scripts/validate-memory-os-production-shaped-failure-drills.py"
 LOCK = ROOT / "contracts/operations/.production-shaped-failure-drill.lock"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
@@ -37,6 +39,24 @@ def load(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     require(isinstance(value, dict), f"root must be object: {path}")
     return value
+
+
+def load_module(path: Path, name: str) -> Any:
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load {path.name}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def validate_registry_before_append(registry: dict[str, Any]) -> list[dict[str, Any]]:
+    validator = load_module(VALIDATOR, "memory_os_production_failure_validator_for_writer")
+    require(validator.REGISTRY.resolve() == REGISTRY.resolve(), "failure-drill registry validator authority drift")
+    require(validator.WRITER.resolve() == Path(__file__).resolve(), "failure-drill writer validator authority drift")
+    try:
+        return validator.validate_registry_for_append(registry)
+    except validator.Fail as exc:
+        raise Fail(f"existing failure-drill registry rejected before append: {exc}") from exc
 
 
 def git(*args: str) -> str:
@@ -193,9 +213,7 @@ def main() -> int:
         os.write(lock_fd, (record["drillId"] + "\n").encode("ascii"))
         os.fsync(lock_fd)
         registry = load(REGISTRY)
-        drills = registry.get("drills")
-        require(isinstance(drills, list), "registry drills missing")
-        require(all(isinstance(item, dict) for item in drills), "registry contains invalid drill")
+        drills = validate_registry_before_append(registry)
         require(all(item.get("drillId") != record["drillId"] for item in drills), "drillId already registered")
         require(all(not (item.get("scenarioId") == record["scenarioId"] and item.get("environmentClass") == record["environmentClass"] and item.get("environmentIdentityDigest") == record["environmentIdentityDigest"]) for item in drills), "same scenario/environment already registered")
         drills.append(record)
