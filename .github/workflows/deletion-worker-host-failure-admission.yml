@@ -9,6 +9,7 @@ on:
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-deletion-worker-host-failure.py"
+      - "scripts/validate-memory-os-deletion-worker-host-failure-generation-negative.py"
       - "scripts/reconcile-memory-os-deletion-worker-host-failure.py"
   push:
     branches:
@@ -20,6 +21,7 @@ on:
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-deletion-worker-host-failure.py"
+      - "scripts/validate-memory-os-deletion-worker-host-failure-generation-negative.py"
       - "scripts/reconcile-memory-os-deletion-worker-host-failure.py"
   workflow_dispatch:
 
@@ -63,8 +65,12 @@ jobs:
           python -m py_compile \
             scripts/register-memory-os-production-equivalent-environment-generation.py \
             scripts/validate-memory-os-deletion-worker-host-failure.py \
+            scripts/validate-memory-os-deletion-worker-host-failure-generation-negative.py \
             scripts/reconcile-memory-os-deletion-worker-host-failure.py \
             >"$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-deletion-worker-host-failure-generation-negative.py >>"$log" 2>&1 || code=$?
+          fi
           if [[ "$code" == "0" ]]; then
             python scripts/reconcile-memory-os-deletion-worker-host-failure.py >>"$log" 2>&1 || code=$?
           fi
