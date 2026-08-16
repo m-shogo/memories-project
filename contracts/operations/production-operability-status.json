@@ -65,7 +65,8 @@
         ".github/workflows/local-migration-recovery-artifact.yml",
         "docs/evidence/migrations/recovery/mig_20260807_0b5839870b65.json",
         "docs/evidence/migrations/recovery/mig_20260816_3840b6c6ebe3.json",
-        "docs/evidence/migrations/recovery/mig_20260816_e471ca583fa5.json"
+        "docs/evidence/migrations/recovery/mig_20260816_e471ca583fa5.json",
+        "docs/evidence/migrations/recovery/mig_20260816_9e3132e6fe2d.json"
       ]
     },
     {
