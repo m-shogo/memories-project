@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "migration-production-shaped-admission",
+  "result": "FAIL",
+  "exitCode": 1,
+  "sourceCommitSha": "fa6fdb4c4cb63a3299b6d0bb8811057edb55f606",
+  "output": "MIGRATION PRODUCTION-SHAPED NEGATIVE FAILED: untracked migration evidence was rejected for an unrelated reason\n",
+  "containsSecrets": false,
+  "admittedRehearsalCount": 0,
+  "productionEvidence": false,
+  "productionReady": false
+}
