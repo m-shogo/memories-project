@@ -1,6 +1,24 @@
 name: Migration Evidence Registry
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/migration-evidence-registry.yml"
+      - "contracts/operations/migration-evidence-registry-contract.v1.json"
+      - "contracts/operations/migration-evidence-registry.v1.json"
+      - "contracts/operations/migration-lifecycle-contract.v1.json"
+      - "contracts/operations/local-migration-recovery-artifact-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "docs/evidence/migrations/recovery/**"
+      - "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json"
+      - "scripts/memory_os_migration_recovery_point.py"
+      - "scripts/run-memory-os-local-migration-recovery-artifact.sh"
+      - "scripts/validate-memory-os-local-migration-recovery-artifact.py"
+      - "scripts/register-memory-os-migration-rehearsal-evidence.py"
+      - "scripts/validate-memory-os-migration-evidence-registry.py"
+      - "scripts/validate-memory-os-migration-evidence-registry-append-negative.py"
+      - "scripts/reconcile-memory-os-migration-evidence-registry.py"
+      - "scripts/validate-memory-os-migration-lifecycle.py"
   push:
     branches:
       - so
@@ -27,7 +45,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: migration-evidence-registry-so
+  group: migration-evidence-registry-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -37,7 +55,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -132,8 +150,15 @@ jobs:
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
+      - name: Require reconciled authority in pull requests
+        if: github.event_name == 'pull_request' && steps.migration.outputs.exit_code == '0'
+        run: |
+          git diff --exit-code -- \
+            contracts/operations/migration-evidence-registry-contract.v1.json \
+            contracts/operations/migration-lifecycle-contract.v1.json \
+            contracts/operations/production-operability-status.json
       - name: Commit bounded migration evidence authority
-        if: steps.migration.outputs.exit_code == '0'
+        if: github.event_name != 'pull_request' && steps.migration.outputs.exit_code == '0'
         env:
           SOURCE_COMMIT_SHA: ${{ steps.migration.outputs.source_sha }}
         run: |
@@ -158,7 +183,7 @@ jobs:
             git push origin HEAD:so
           fi
       - name: Record privacy-safe diagnostic
-        if: steps.migration.outputs.exit_code != '0'
+        if: github.event_name != 'pull_request' && steps.migration.outputs.exit_code != '0'
         env:
           MIGRATION_EXIT_CODE: ${{ steps.migration.outputs.exit_code }}
           SOURCE_COMMIT_SHA: ${{ steps.migration.outputs.source_sha }}
