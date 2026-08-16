@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / "contracts/operations/migration-production-shaped-admission-registry.v1.json"
 MIGRATION_LEDGER = ROOT / "contracts/operations/migration-evidence-registry.v1.json"
 RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
+RELEASE_PAIRS = ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"
 GENERATIONS = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 CONTRACT = ROOT / "contracts/operations/migration-production-shaped-admission-contract.v1.json"
 LIFECYCLE = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
@@ -167,6 +168,22 @@ def expect_release_registry_delegation(writer: ModuleType) -> None:
         RELEASES.write_bytes(original)
 
 
+def expect_release_pair_registry_delegation(writer: ModuleType) -> None:
+    original = RELEASE_PAIRS.read_bytes()
+    corrupt = load_json(RELEASE_PAIRS)
+    corrupt["unexpectedAuthority"] = True
+    RELEASE_PAIRS.write_text(json.dumps(corrupt, indent=2) + "\n", encoding="utf-8")
+    try:
+        try:
+            writer.approved_release_pair("rel_missing_predecessor", "rel_missing_successor")
+        except Exception as exc:
+            require("release compatibility pair registry invalid" in str(exc), "direct writer did not fail through canonical release pair authority")
+            return
+        raise Fail("direct migration writer accepted corrupt release compatibility pair registry")
+    finally:
+        RELEASE_PAIRS.write_bytes(original)
+
+
 def expect_generic_review_refs_rejected(writer: ModuleType) -> None:
     record = {
         "admissionId": "mpa_review_negative",
@@ -236,13 +253,15 @@ def main() -> int:
         expect_rejected(writer, name, mutate)
         expect_reconcile_rejected_without_mutation(name, mutate)
     expect_upstream_reconcile_rejected_without_mutation(RELEASES, "release baseline registry drift")
+    expect_upstream_reconcile_rejected_without_mutation(RELEASE_PAIRS, "release compatibility pair registry drift")
     expect_upstream_reconcile_rejected_without_mutation(GENERATIONS, "environment generation registry drift")
     expect_noncanonical_ledger_rows_rejected()
     expect_canonical_writer_delegation()
     expect_release_registry_delegation(writer)
+    expect_release_pair_registry_delegation(writer)
     expect_generic_review_refs_rejected(writer)
     expect_mutated_review_history_rejected(writer)
-    print("PASS: migration production-shaped admission registry, upstream, ledger, release, and independent-review authority drift are rejected")
+    print("PASS: migration production-shaped admission registry, upstream release-pair, ledger, release, and independent-review authority drift are rejected")
     return 0
 
 
