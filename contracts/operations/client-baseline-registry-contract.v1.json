@@ -67,7 +67,7 @@
     "artifact SHA-256 and byte length are recomputed from supplied bytes",
     "client baseline id is unique",
     "artifact digest is not already registered under another baseline",
-    "source commit exists in repository history",
+    "source commit is an ancestor of current HEAD",
     "all evidence references are repository-relative existing files",
     "three required approval roles use distinct operational pseudonyms",
     "evidenceComplete and approvedForPairing are true",
