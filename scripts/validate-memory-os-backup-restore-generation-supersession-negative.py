@@ -181,6 +181,7 @@ def main() -> int:
                 "currentGenerationId": "pegen_target",
                 "productionEvidence": False,
                 "generations": [source, target],
+                "limitations": [],
             }
             baseline_objectives = {
                 "schemaVersion": "memory-os-recovery-objectives-registry.v1",
