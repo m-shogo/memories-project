@@ -24,7 +24,25 @@ LOCK = ROOT / "contracts/operations/.production-shaped-failure-drill.lock"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
 DRILL_ID = re.compile(r"^fdr_[a-z0-9][a-z0-9_-]{7,63}$")
+REVIEWER_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{2,63}$")
+UTC_SECOND = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 PRODUCTION_CONFIRMATION = "REGISTER PRODUCTION FAILURE DRILL EVIDENCE"
+REVIEW_FIELDS = {
+    "schemaVersion",
+    "drillId",
+    "scenarioId",
+    "environmentClass",
+    "environmentIdentityDigest",
+    "environmentGenerationId",
+    "sourceCommitSha",
+    "role",
+    "reviewerId",
+    "decision",
+    "reviewedAt",
+    "productionTrafficChanged",
+    "credentialsIncluded",
+    "automaticProductionPromotion",
+}
 
 
 class Fail(RuntimeError):
@@ -115,6 +133,12 @@ def timestamp(value: Any, field: str) -> dt.datetime:
     return parsed
 
 
+def canonical_reviewed_at(value: Any, field: str) -> None:
+    require(isinstance(value, str) and UTC_SECOND.fullmatch(value), f"{field}.reviewedAt must be canonical UTC RFC3339 seconds")
+    parsed = timestamp(value, f"{field}.reviewedAt")
+    require(parsed.microsecond == 0, f"{field}.reviewedAt must not include fractional seconds")
+
+
 def refs(value: Any, field: str, minimum: int = 1) -> list[str]:
     require(isinstance(value, list) and len(value) >= minimum, f"{field} requires at least {minimum} ref(s)")
     require(all(isinstance(item, str) and item for item in value), f"{field} invalid")
@@ -155,6 +179,45 @@ def evidence_digests_for_record(record: dict[str, Any]) -> dict[str, str]:
         path = canonical_evidence_path(relative, "failure-drill evidence ref")
         result[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
     return result
+
+
+def validate_review_payload(review: dict[str, Any], record: dict[str, Any], field: str, expected_role: str) -> str:
+    require(set(review) == REVIEW_FIELDS, f"{field} review field drift")
+    require(review.get("schemaVersion") == "memory-os-production-shaped-failure-drill-independent-review.v1", f"{field} schemaVersion drift")
+    for key in (
+        "drillId",
+        "scenarioId",
+        "environmentClass",
+        "environmentIdentityDigest",
+        "environmentGenerationId",
+        "sourceCommitSha",
+    ):
+        require(review.get(key) == record.get(key), f"{field} {key} binding drift")
+    require(review.get("role") == expected_role, f"{field} role must be {expected_role}")
+    reviewer = review.get("reviewerId")
+    require(isinstance(reviewer, str) and REVIEWER_ID.fullmatch(reviewer), f"{field} reviewerId invalid")
+    require(review.get("decision") == "APPROVED", f"{field} must be APPROVED")
+    canonical_reviewed_at(review.get("reviewedAt"), field)
+    require(review.get("productionTrafficChanged") is False, f"{field} cannot change production traffic")
+    require(review.get("credentialsIncluded") is False, f"{field} cannot include credentials")
+    require(review.get("automaticProductionPromotion") is False, f"{field} cannot authorize automatic production promotion")
+    return reviewer
+
+
+def validate_review(record: dict[str, Any], ref_field: str, expected_role: str) -> str:
+    path = canonical_evidence_path(record.get(ref_field), ref_field)
+    try:
+        review = load(path)
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise Fail(f"{ref_field} must be typed JSON review evidence") from exc
+    return validate_review_payload(review, record, ref_field, expected_role)
+
+
+def validate_independent_reviews(record: dict[str, Any]) -> None:
+    security_reviewer = validate_review(record, "securityReviewRef", "SECURITY")
+    operability_reviewer = validate_review(record, "operabilityReviewRef", "OPERABILITY")
+    require(record["securityReviewRef"] != record["operabilityReviewRef"], "security and operability review records must be distinct")
+    require(security_reviewer != operability_reviewer, "security and operability reviewers must be distinct")
 
 
 def validate_record(record: dict[str, Any], confirmation: str) -> None:
@@ -219,9 +282,7 @@ def validate_record(record: dict[str, Any], confirmation: str) -> None:
         actual_requirements.add(requirement)
     require(actual_requirements == set(expected), "all required scenario assertions need PASS evidence")
 
-    for field in ("operabilityReviewRef", "securityReviewRef"):
-        canonical_evidence_path(record.get(field), field)
-    require(record["operabilityReviewRef"] != record["securityReviewRef"], "security and operability review must be distinct records")
+    validate_independent_reviews(record)
     findings = record.get("unresolvedFindings")
     require(isinstance(findings, list), "unresolvedFindings must be a list")
     for index, finding in enumerate(findings):
