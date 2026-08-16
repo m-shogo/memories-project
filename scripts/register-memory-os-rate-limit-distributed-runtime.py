@@ -23,6 +23,7 @@ GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-ge
 GEN_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit-distributed-runtime.py"
 LOCK = ROOT / "contracts/operations/.rate-limit-distributed-runtime.lock"
+REVIEW_ROOT = Path("docs/evidence/rate-limit-distributed-runtime/independent-reviews")
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
 RUNTIME_ID = re.compile(r"^rlrt_[a-z0-9][a-z0-9_-]{7,63}$")
@@ -167,7 +168,10 @@ def canonical_reviewed_at(value: Any, field: str) -> None:
 
 def validate_review(record: dict[str, Any], ref_field: str, expected_role: str) -> str:
     ref = record.get(ref_field)
-    require(isinstance(ref, str) and ref, f"{ref_field} invalid")
+    require(
+        isinstance(ref, str) and Path(ref).is_relative_to(REVIEW_ROOT),
+        f"{ref_field} must use monitored rate-limit independent review namespace",
+    )
     path = canonical_evidence_path(ref, ref_field)
     review = load(path)
     require(set(review) == REVIEW_FIELDS, f"{ref_field} review field drift")
