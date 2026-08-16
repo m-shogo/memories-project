@@ -63,9 +63,15 @@ def utc_timestamp(value: Any, field: str) -> None:
     require(parsed.utcoffset() == dt.timedelta(0), f"{field} must be UTC")
 
 
-def commit_exists(sha: str) -> bool:
+def commit_is_ancestor(sha: str) -> bool:
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+    )
+    if head.returncode != 0:
+        return False
     completed = subprocess.run(
-        ["git", "cat-file", "-e", sha + "^{commit}"],
+        ["git", "merge-base", "--is-ancestor", sha, head.stdout.strip()],
         cwd=ROOT,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -85,7 +91,7 @@ def validate_record(record: dict[str, Any], required_fields: set[str], index: in
     require(isinstance(record.get("marketingVersion"), str) and VERSION.fullmatch(record["marketingVersion"]) is not None, f"{prefix}.marketingVersion invalid")
     require(isinstance(record.get("buildNumber"), str) and BUILD.fullmatch(record["buildNumber"]) is not None, f"{prefix}.buildNumber invalid")
     source = record.get("sourceCommitSha")
-    require(isinstance(source, str) and SHA40.fullmatch(source) is not None and commit_exists(source), f"{prefix}.sourceCommitSha invalid or absent from history")
+    require(isinstance(source, str) and SHA40.fullmatch(source) is not None and commit_is_ancestor(source), f"{prefix}.sourceCommitSha invalid or not an ancestor of current HEAD")
     artifact_kind = record.get("artifactKind")
     require(artifact_kind in ARTIFACT_KINDS, f"{prefix}.artifactKind invalid")
     if client_class == "IOS_APP":
@@ -99,7 +105,7 @@ def validate_record(record: dict[str, Any], required_fields: set[str], index: in
     for field in ("artifactSha256", "apiContractSha256", "clientBehaviorContractSha256"):
         value = record.get(field)
         require(isinstance(value, str) and SHA256.fullmatch(value) is not None, f"{prefix}.{field} invalid")
-    require(isinstance(record.get("artifactByteLength"), int) and record["artifactByteLength"] > 0, f"{prefix}.artifactByteLength invalid")
+    require(isinstance(record.get("artifactByteLength"), int) and not isinstance(record.get("artifactByteLength"), bool) and record["artifactByteLength"] > 0, f"{prefix}.artifactByteLength invalid")
     require(record.get("evidenceComplete") is True, f"{prefix} evidence must be complete")
     require(record.get("approvedForPairing") is True, f"{prefix} must be explicitly approved for pairing")
     require(record.get("productionEvidence") is False, f"{prefix} cannot be production evidence")
@@ -159,6 +165,10 @@ def main() -> int:
     for required in ("artifactSha256", "artifactByteLength", "approvers", "approvedForPairing", "productionEvidence", "productionReady"):
         require(required in required_fields, f"requiredRecordFields omits {required}")
 
+    guards = strings(contract.get("registrationGuards"), "registrationGuards", 12)
+    require(any("ancestor of current HEAD" in guard for guard in guards),
+            "registration guards must require source lineage ancestry")
+
     require(registry.get("schemaVersion") == "memory-os-client-baseline-registry.v1", "registry schema drift")
     require(registry.get("registryClass") == "APPROVED_CLIENT_BASELINES", "registry class drift")
     require(registry.get("appendOnly") is True, "registry must be append-only")
@@ -167,7 +177,7 @@ def main() -> int:
     count = registry.get("approvedClientBaselineCount")
     latest = registry.get("latestApprovedClientByClass")
     require(isinstance(clients, list), "registry clients must be list")
-    require(isinstance(count, int) and count == len(clients), "approved client count mismatch")
+    require(isinstance(count, int) and not isinstance(count, bool) and count == len(clients), "approved client count mismatch")
     require(isinstance(latest, dict) and set(latest) == CLIENT_CLASSES, "latestApprovedClientByClass drift")
 
     ids: set[str] = set()
