@@ -13,6 +13,7 @@ from typing import Any, Callable
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-sustained-soak-independent-review.py"
 REGISTER_PATH = ROOT / "scripts/register-memory-os-sustained-soak-independent-review.py"
+CANONICAL_REGISTRY = ROOT / "contracts/operations/sustained-soak-independent-review-registry.v1.json"
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -103,13 +104,46 @@ def prove_current_criteria_counting(register) -> None:
     print("PASS current-criteria review count: historical PASS excluded; current PASS counted")
 
 
+def prove_preappend_registry_guard(register) -> None:
+    """Corrupt canonical aggregate authority must be rejected without mutation."""
+    original = CANONICAL_REGISTRY.read_bytes()
+    cases: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
+        ("registry class drift", lambda r: r.__setitem__("registryClass", "BROKEN")),
+        ("unknown registry field", lambda r: r.__setitem__("unexpectedAuthority", True)),
+        ("boolean criteria count", lambda r: r.__setitem__("registeredCriteriaCount", False)),
+        ("boolean review count", lambda r: r.__setitem__("registeredReviewCount", False)),
+        ("criteria count drift", lambda r: r.__setitem__("registeredCriteriaCount", 1)),
+        ("review count drift", lambda r: r.__setitem__("registeredReviewCount", 1)),
+        ("production readiness promotion", lambda r: r.__setitem__("productionReady", True)),
+        ("production evidence promotion", lambda r: r.__setitem__("productionEvidence", True)),
+    ]
+    try:
+        for name, mutate in cases:
+            registry = json.loads(original.decode("utf-8"))
+            mutate(registry)
+            write(CANONICAL_REGISTRY, registry)
+            corrupted = CANONICAL_REGISTRY.read_bytes()
+            try:
+                register.validate_existing_registry()
+            except register.Fail:
+                print(f"PASS pre-append reject: {name}")
+            else:
+                raise RuntimeError(f"pre-append registry guard unexpectedly accepted: {name}")
+            if CANONICAL_REGISTRY.read_bytes() != corrupted:
+                raise RuntimeError(f"pre-append registry guard mutated rejected authority: {name}")
+            CANONICAL_REGISTRY.write_bytes(original)
+    finally:
+        CANONICAL_REGISTRY.write_bytes(original)
+
+
 def main() -> int:
     validator = load_module(VALIDATOR_PATH, "soak_review_validator")
     register = load_module(REGISTER_PATH, "soak_review_register")
     prove_current_criteria_counting(register)
+    prove_preappend_registry_guard(register)
 
     canonical_contract = load(ROOT / "contracts/operations/sustained-soak-independent-review-contract.v1.json")
-    canonical_registry = load(ROOT / "contracts/operations/sustained-soak-independent-review-registry.v1.json")
+    canonical_registry = load(CANONICAL_REGISTRY)
     canonical_local = load(ROOT / "contracts/operations/sustained-local-soak-contract.v1.json")
     canonical_review = load(ROOT / "docs/fixtures/memory-os-operability/sustained-local-soak-trend-review.v1.json")
 
@@ -188,6 +222,8 @@ def main() -> int:
 
     print("Memory OS sustained-soak independent review negative suite PASS")
     print("historical PASS review counted as current authority: false")
+    print("corrupt append-only registry normalized by append: false")
+    print("boolean registry counts accepted before append: false")
     print("automatic leak proof accepted: false")
     print("automatic independent review accepted: false")
     print("automatic threshold approval accepted: false")
