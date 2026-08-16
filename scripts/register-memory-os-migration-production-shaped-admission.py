@@ -31,6 +31,8 @@ REGISTRY = ROOT / "contracts/operations/migration-production-shaped-admission-re
 RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
 RELEASE_CONTRACT = ROOT / "contracts/operations/release-baseline-registry-contract.v1.json"
 RELEASE_WRITER = ROOT / "scripts/register-memory-os-release-baseline.py"
+RELEASE_PAIRS = ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"
+RELEASE_PAIR_WRITER = ROOT / "scripts/register-memory-os-release-compatibility-pair.py"
 GENERATIONS = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 GENERATION_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
 REVIEW_ROOT = ROOT / "docs/evidence/migration-production-shaped-admission/independent-reviews"
@@ -96,6 +98,10 @@ def load_release_writer() -> ModuleType:
     return load_module(RELEASE_WRITER, "memory_os_release_baseline_writer", "release baseline writer")
 
 
+def load_release_pair_writer() -> ModuleType:
+    return load_module(RELEASE_PAIR_WRITER, "memory_os_release_pair_writer_for_migration", "release compatibility pair writer")
+
+
 def evidence_refs(value: Any, field: str, *, minimum: int = 1) -> list[str]:
     require(isinstance(value, list) and len(value) >= minimum, f"{field} requires at least {minimum} reference(s)")
     require(all(isinstance(item, str) and item and not Path(item).is_absolute() and ".." not in Path(item).parts for item in value), f"{field} invalid")
@@ -141,6 +147,27 @@ def approved_release(release_id: str) -> dict[str, Any]:
     require(len(matches) == 1, f"approved release not found exactly once: {release_id}")
     require(matches[0].get("approvalClass") == "PRODUCTION_RELEASE_BASELINE", f"release is not an approved baseline: {release_id}")
     require(matches[0].get("evidenceComplete") is True and matches[0].get("productionReady") is True, f"approved release evidence incomplete: {release_id}")
+    return matches[0]
+
+
+def approved_release_pair(predecessor: str, successor: str) -> dict[str, Any]:
+    registry = load(RELEASE_PAIRS)
+    pair_writer = load_release_pair_writer()
+    try:
+        pair_writer.validate_registry_for_append(registry)
+    except Exception as exc:
+        raise Fail(f"release compatibility pair registry invalid: {exc}") from exc
+    rows = registry.get("pairs")
+    require(isinstance(rows, list), "release compatibility pair registry missing")
+    matches = [
+        row for row in rows
+        if isinstance(row, dict)
+        and row.get("predecessorReleaseId") == predecessor
+        and row.get("successorReleaseId") == successor
+    ]
+    require(len(matches) == 1, "predecessor/successor relation is not an approved release compatibility pair")
+    require(matches[0].get("pairEvidenceComplete") is True, "approved release compatibility pair evidence incomplete")
+    require(matches[0].get("productionEvidence") is False and matches[0].get("productionReady") is False, "release pair cannot already claim production")
     return matches[0]
 
 
@@ -266,6 +293,7 @@ def validate_record(record: dict[str, Any]) -> None:
     approved_release(predecessor)
     successor_row = approved_release(successor)
     require(successor_row.get("commitSha") == source, "successor approved release must bind migration source commit")
+    approved_release_pair(predecessor, successor)
 
     compatibility_refs = evidence_refs(record.get("compatibilityEvidenceRefs"), "compatibilityEvidenceRefs")
     mixed_refs = evidence_refs(record.get("mixedVersionObservationRefs"), "mixedVersionObservationRefs")
