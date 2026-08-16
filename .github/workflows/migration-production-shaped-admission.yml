@@ -5,8 +5,18 @@ on:
     branches:
       - so
     paths:
+      - ".github/workflows/migration-production-shaped-admission.yml"
       - "contracts/operations/requests/migration-production-shaped-admission-foundation.v1.json"
+      - "contracts/operations/migration-production-shaped-admission-contract.v1.json"
       - "contracts/operations/migration-production-shaped-admission-registry.v1.json"
+      - "contracts/operations/migration-lifecycle-contract.v1.json"
+      - "contracts/operations/release-baseline-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "scripts/register-memory-os-migration-production-shaped-admission.py"
+      - "scripts/validate-memory-os-migration-production-shaped-admission.py"
+      - "scripts/reconcile-memory-os-migration-production-shaped-admission.py"
+      - "scripts/validate-memory-os-migration-lifecycle.py"
+      - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
 
 permissions:
@@ -32,6 +42,8 @@ jobs:
         id: admission
         run: |
           set +e
+          source_sha="$(git rev-parse HEAD)"
+          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
           log=/tmp/migration-production-shaped-admission.log
           : > "$log"
           code=0
@@ -52,8 +64,16 @@ jobs:
           exit 0
       - name: Commit bounded migration admission authority
         if: steps.admission.outputs.exit_code == '0'
+        env:
+          SOURCE_COMMIT_SHA: ${{ steps.admission.outputs.source_sha }}
         run: |
           set -euo pipefail
+          git fetch origin so
+          remote_sha="$(git rev-parse origin/so)"
+          if [[ "$remote_sha" != "$SOURCE_COMMIT_SHA" ]]; then
+            echo "source HEAD advanced during validation; refusing stale migration authority write" >&2
+            exit 75
+          fi
           git rm -f docs/fixtures/memory-os-operability/migration-production-shaped-admission-diagnostic.last.json 2>/dev/null || true
           git add \
             contracts/operations/migration-production-shaped-admission-contract.v1.json \
@@ -65,21 +85,21 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(migration): register production-shaped rehearsal admission"
-            for attempt in 1 2 3 4; do
-              git pull --rebase origin so
-              if git push origin HEAD:so; then exit 0; fi
-              sleep 2
-            done
-            exit 1
+            git push origin HEAD:so
           fi
       - name: Record privacy-safe diagnostic
         if: steps.admission.outputs.exit_code != '0'
         env:
           ADMISSION_EXIT_CODE: ${{ steps.admission.outputs.exit_code }}
+          SOURCE_COMMIT_SHA: ${{ steps.admission.outputs.source_sha }}
         run: |
           set -euo pipefail
           git fetch origin so
-          git reset --hard origin/so
+          remote_sha="$(git rev-parse origin/so)"
+          if [[ "$remote_sha" != "$SOURCE_COMMIT_SHA" ]]; then
+            echo "source HEAD advanced during validation; refusing stale migration diagnostic write" >&2
+            exit 75
+          fi
           python - <<'PY'
           import json, os
           from pathlib import Path
@@ -89,6 +109,7 @@ jobs:
               'workflow': 'migration-production-shaped-admission',
               'result': 'FAIL',
               'exitCode': int(os.environ['ADMISSION_EXIT_CODE']),
+              'sourceCommitSha': os.environ['SOURCE_COMMIT_SHA'],
               'output': text[-12000:],
               'containsSecrets': False,
               'admittedRehearsalCount': 0,
@@ -104,11 +125,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --cached --quiet; then
             git commit -m "test(migration): record production-shaped admission diagnostic"
-            for attempt in 1 2 3; do
-              git pull --rebase origin so
-              if git push origin HEAD:so; then exit 0; fi
-              sleep 2
-            done
+            git push origin HEAD:so
           fi
       - name: Enforce validation
         run: test "${{ steps.admission.outputs.exit_code }}" = "0"
