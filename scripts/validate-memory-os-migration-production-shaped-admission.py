@@ -60,39 +60,30 @@ def main() -> int:
         else:
             require(value is False, f"unsafe migration admission promotion enabled: {key}")
 
-    require(registry.get("schemaVersion") == "memory-os-migration-production-shaped-admission-registry.v1", "registry schema drift")
-    require(registry.get("appendOnly") is True, "registry must remain append-only")
-    admissions = registry.get("admissions")
-    require(isinstance(admissions, list), "registry admissions missing")
     writer = load_writer()
-    ids: set[str] = set()
-    runs: set[str] = set()
-    for index, record in enumerate(admissions):
-        require(isinstance(record, dict), f"admissions[{index}] invalid")
-        try:
-            writer.validate_record(record)
-        except Exception as exc:
-            raise Fail(f"admissions[{index}] invalid: {exc}") from exc
-        require(record["admissionId"] not in ids, f"duplicate admissionId: {record['admissionId']}")
-        require(record["migrationRunId"] not in runs, f"duplicate migrationRunId admission: {record['migrationRunId']}")
-        ids.add(record["admissionId"])
-        runs.add(record["migrationRunId"])
-    require(registry.get("admittedRehearsalCount") == len(admissions), "admittedRehearsalCount drift")
-    require(registry.get("productionEvidence") is False and registry.get("productionReady") is False, "registry cannot promote production")
+    try:
+        writer.validate_registry_for_append(registry)
+    except Exception as exc:
+        raise Fail(f"migration admission registry invalid: {exc}") from exc
+    admissions = registry["admissions"]
 
     current = contract.get("currentAuthority")
     readiness = contract.get("readiness")
     require(isinstance(current, dict) and isinstance(readiness, dict), "contract authority missing")
     require(current.get("admittedRehearsalCount") in {0, len(admissions)}, "current admission count drift before reconcile")
-    require(current.get("approvedReleasePairCount") in {0, max(0, releases.get("approvedReleaseCount", 0) - 1)}, "approved release pair count drift")
-    require(current.get("registeredEnvironmentGenerationCount") in {0, generations.get("registeredGenerationCount")}, "environment generation count drift")
+    approved_release_count = releases.get("approvedReleaseCount")
+    require(isinstance(approved_release_count, int) and not isinstance(approved_release_count, bool), "approvedReleaseCount invalid")
+    registered_generation_count = generations.get("registeredGenerationCount")
+    require(isinstance(registered_generation_count, int) and not isinstance(registered_generation_count, bool), "registeredGenerationCount invalid")
+    require(current.get("approvedReleasePairCount") in {0, max(0, approved_release_count - 1)}, "approved release pair count drift")
+    require(current.get("registeredEnvironmentGenerationCount") in {0, registered_generation_count}, "environment generation count drift")
     require(current.get("productionEvidence") is False and current.get("productionReady") is False, "current authority cannot promote production")
     require(current.get("productionDecision") == "NO_GO", "production decision drift")
     require(readiness.get("productionReady") is False, "readiness cannot promote production")
     print("Memory OS migration production-shaped admission validation PASS")
     print(f"admitted rehearsals: {len(admissions)}")
-    print(f"approved releases: {releases.get('approvedReleaseCount')}")
-    print(f"registered environment generations: {generations.get('registeredGenerationCount')}")
+    print(f"approved releases: {approved_release_count}")
+    print(f"registered environment generations: {registered_generation_count}")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
