@@ -14,8 +14,11 @@ from types import ModuleType
 from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
+CONTRACT = ROOT / "contracts/operations/release-compatibility-pair-contract.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-release-compatibility-pair.py"
+VALIDATOR = ROOT / "scripts/validate-memory-os-release-compatibility-pair.py"
 REGISTRY = ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"
+LOCK = ROOT / "contracts/operations/.release-compatibility-pair.lock"
 
 
 class Fail(RuntimeError):
@@ -38,6 +41,9 @@ def load_writer() -> ModuleType:
     require(spec is not None and spec.loader is not None, "cannot load release pair writer")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    require(getattr(module, "CONTRACT", None) == CONTRACT, "release pair writer contract authority drift")
+    require(getattr(module, "REGISTRY", None) == REGISTRY, "release pair writer registry authority drift")
+    require(getattr(module, "LOCK", None) == LOCK, "release pair writer append lock authority drift")
     return module
 
 
@@ -53,6 +59,15 @@ def expect_rejected(name: str, action: Callable[[], None]) -> None:
     except Exception:
         return
     raise Fail(f"release pair authority accepted invalid case: {name}")
+
+
+def expect_validator_rejected(label: str) -> None:
+    completed = subprocess.run(
+        [sys.executable, str(VALIDATOR)], cwd=ROOT, text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False,
+    )
+    require(completed.returncode != 0,
+            f"standalone release pair validator accepted corrupt authority: {label}")
 
 
 def synthetic_releases(rollback_status: str) -> dict[str, Any]:
@@ -108,6 +123,10 @@ def synthetic_pair(writer: ModuleType) -> dict[str, Any]:
 
 def main() -> int:
     writer = load_writer()
+    contract_bytes = CONTRACT.read_bytes()
+    contract = json.loads(contract_bytes.decode("utf-8"))
+    require(contract.get("appendLockPath") == str(LOCK.relative_to(ROOT)),
+            "release pair contract append lock authority drift")
 
     canonical_release_registry = writer.validated_release_registry()
     require(canonical_release_registry.get("approvedReleaseCount") == 0,
@@ -163,6 +182,14 @@ def main() -> int:
     finally:
         writer.validated_release_registry = original_registry_provider
 
+    try:
+        corrupt_contract = copy.deepcopy(contract)
+        corrupt_contract["appendLockPath"] = "contracts/operations/.release-compatibility-pair-alternate.lock"
+        CONTRACT.write_text(json.dumps(corrupt_contract, indent=2) + "\n", encoding="utf-8")
+        expect_validator_rejected("append lock binding drift")
+    finally:
+        CONTRACT.write_bytes(contract_bytes)
+
     base = load(REGISTRY)
     cases: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
         ("schema drift", lambda value: value.__setitem__("schemaVersion", "invalid")),
@@ -182,7 +209,7 @@ def main() -> int:
 
     require(REGISTRY.read_bytes() == (ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json").read_bytes(),
             "negative suite mutated canonical pair registry")
-    print("PASS: release compatibility pair authority rejects registry corruption, evidence digest drift, uncommitted/symlink evidence, and nested rollback ineligibility")
+    print("PASS: release compatibility pair authority rejects append-lock substitution, registry corruption, evidence digest drift, uncommitted/symlink evidence, and nested rollback ineligibility")
     return 0
 
 
