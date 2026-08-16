@@ -30,6 +30,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Capture exact source
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - name: Reconcile local lease recovery evidence
         run: |
           set -euo pipefail
@@ -50,6 +56,10 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(deletion): register lease recovery in canonical authority"
-            git pull --rebase origin so
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              echo "Branch advanced during lease recovery authority reconcile; refusing stale derived authority."
+              exit 75
+            fi
             git push origin HEAD:so
           fi
