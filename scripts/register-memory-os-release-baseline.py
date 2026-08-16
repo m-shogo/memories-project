@@ -32,6 +32,17 @@ TAG_RE = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$")
 APPROVER_RE = re.compile(r"^apr_[a-z0-9][a-z0-9_-]{7,63}$")
 REQUIRED_ROLES = {"SECURITY_REVIEWER", "OPERABILITY_REVIEWER", "RELEASE_OWNER"}
 ROLLBACK_VALUES = {"ELIGIBLE", "CONDITIONALLY_ELIGIBLE", "NOT_ELIGIBLE"}
+REGISTRY_FIELDS = {
+    "schemaVersion",
+    "registryClass",
+    "appendOnly",
+    "productionEvidence",
+    "approvedReleaseCount",
+    "latestApprovedReleaseId",
+    "latestRollbackEligibleReleaseId",
+    "releases",
+    "limitations",
+}
 
 
 class RegistrationFailure(RuntimeError):
@@ -174,6 +185,52 @@ def validate_record(record: dict[str, Any], required_fields: set[str]) -> None:
                 f"record contains forbidden content: {forbidden}")
 
 
+def validate_registry_for_append(registry: dict[str, Any], contract: dict[str, Any]) -> None:
+    require(set(registry) == REGISTRY_FIELDS, "release registry field set drift")
+    require(registry.get("schemaVersion") == "memory-os-release-baseline-registry.v1",
+            "release registry schemaVersion drift")
+    require(registry.get("registryClass") == "APPROVED_PRODUCTION_RELEASE_BASELINES",
+            "release registry class drift")
+    require(registry.get("appendOnly") is True, "release registry must remain append-only")
+    require(registry.get("productionEvidence") is False,
+            "release registry cannot claim production evidence")
+    releases = registry.get("releases")
+    require(isinstance(releases, list) and all(isinstance(item, dict) for item in releases),
+            "release registry contains invalid releases")
+    count = registry.get("approvedReleaseCount")
+    require(isinstance(count, int) and not isinstance(count, bool),
+            "approvedReleaseCount must be an integer")
+    require(count == len(releases), "approvedReleaseCount drift")
+    required_fields = set(strings(contract.get("requiredFields"), "requiredFields", 18))
+    release_ids: set[str] = set()
+    tags: set[str] = set()
+    commits: set[str] = set()
+    for record in releases:
+        validate_record(record, required_fields)
+        release_id = record["releaseId"]
+        release_tag = record["releaseTag"]
+        commit_sha = record["commitSha"]
+        require(release_id not in release_ids, f"duplicate registered releaseId: {release_id}")
+        require(release_tag not in tags, f"duplicate registered releaseTag: {release_tag}")
+        require(commit_sha not in commits, f"duplicate registered commitSha: {commit_sha}")
+        release_ids.add(release_id)
+        tags.add(release_tag)
+        commits.add(commit_sha)
+    expected_latest = releases[-1]["releaseId"] if releases else None
+    require(registry.get("latestApprovedReleaseId") == expected_latest,
+            "latestApprovedReleaseId drift")
+    eligible = [
+        record["releaseId"] for record in releases
+        if record.get("rollbackEligibility", {}).get("status") in {"ELIGIBLE", "CONDITIONALLY_ELIGIBLE"}
+    ]
+    require(registry.get("latestRollbackEligibleReleaseId") == (eligible[-1] if eligible else None),
+            "latestRollbackEligibleReleaseId drift")
+    limitations = registry.get("limitations")
+    require(isinstance(limitations, list) and limitations and
+            all(isinstance(item, str) and item.strip() for item in limitations),
+            "release registry limitations invalid")
+
+
 def acquire_lock() -> int:
     try:
         return os.open(LOCK_PATH, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -234,10 +291,8 @@ def main() -> int:
         os.write(lock_fd, f"{record['releaseId']}\n".encode("ascii"))
         os.fsync(lock_fd)
         registry = load(REGISTRY_PATH)
-        releases = registry.get("releases")
-        require(isinstance(releases, list), "registry releases must be a list")
-        require(all(isinstance(item, dict) for item in releases),
-                "registry contains an invalid record")
+        validate_registry_for_append(registry, contract)
+        releases = registry["releases"]
         require(all(item.get("releaseId") != record["releaseId"] for item in releases),
                 "releaseId is already registered")
         require(all(item.get("releaseTag") != record["releaseTag"] for item in releases),
