@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-deletion-worker-container-kill-recovery-results.v1",
-  "commitSha": "3c87e3b1e6407d87d79e3318a05fe0e0c1745e64",
-  "generatedAt": "2026-08-07T05:00:34Z",
+  "commitSha": "bc4cb16b17a99cdaaa1e48553d3dad2964f9ffaf",
+  "generatedAt": "2026-08-16T21:19:54Z",
   "environment": {
     "os": "linux",
     "arch": "amd64",
