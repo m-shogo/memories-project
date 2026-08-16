@@ -8,6 +8,10 @@ on:
       - "contracts/operations/migration-evidence-registry.v1.json"
       - "contracts/operations/migration-lifecycle-contract.v1.json"
       - "contracts/operations/local-migration-recovery-artifact-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
+      - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
       - "contracts/operations/production-operability-status.json"
       - "docs/evidence/migrations/recovery/**"
       - "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json"
@@ -15,6 +19,8 @@ on:
       - "scripts/run-memory-os-local-migration-recovery-artifact.sh"
       - "scripts/validate-memory-os-local-migration-recovery-artifact.py"
       - "scripts/register-memory-os-migration-rehearsal-evidence.py"
+      - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/validate-memory-os-migration-evidence-registry.py"
       - "scripts/validate-memory-os-migration-evidence-registry-append-negative.py"
       - "scripts/reconcile-memory-os-migration-evidence-registry.py"
@@ -28,6 +34,10 @@ on:
       - "contracts/operations/migration-evidence-registry.v1.json"
       - "contracts/operations/migration-lifecycle-contract.v1.json"
       - "contracts/operations/local-migration-recovery-artifact-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
+      - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
       - "contracts/operations/production-operability-status.json"
       - "docs/evidence/migrations/recovery/**"
       - "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json"
@@ -35,6 +45,8 @@ on:
       - "scripts/run-memory-os-local-migration-recovery-artifact.sh"
       - "scripts/validate-memory-os-local-migration-recovery-artifact.py"
       - "scripts/register-memory-os-migration-rehearsal-evidence.py"
+      - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/validate-memory-os-migration-evidence-registry.py"
       - "scripts/validate-memory-os-migration-evidence-registry-append-negative.py"
       - "scripts/reconcile-memory-os-migration-evidence-registry.py"
@@ -73,6 +85,8 @@ jobs:
             scripts/memory_os_migration_recovery_point.py \
             scripts/validate-memory-os-local-migration-recovery-artifact.py \
             scripts/register-memory-os-migration-rehearsal-evidence.py \
+            scripts/register-memory-os-production-equivalent-environment-generation.py \
+            scripts/validate-memory-os-production-equivalent-environment-record.py \
             scripts/validate-memory-os-migration-evidence-registry.py \
             scripts/validate-memory-os-migration-evidence-registry-append-negative.py \
             scripts/reconcile-memory-os-migration-evidence-registry.py \
