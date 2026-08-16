@@ -11,6 +11,7 @@
   "environmentGenerationRegistry": "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
   "backupRestoreGenerationContract": "contracts/operations/backup-restore-generation-binding-contract.v1.json",
   "registryPath": "contracts/operations/migration-production-shaped-admission-registry.v1.json",
+  "appendLockPath": "contracts/operations/.migration-production-shaped-admission.lock",
   "writer": "scripts/register-memory-os-migration-production-shaped-admission.py",
   "validator": "scripts/validate-memory-os-migration-production-shaped-admission.py",
   "reconcile": "scripts/reconcile-memory-os-migration-production-shaped-admission.py",
@@ -90,6 +91,7 @@
     "independentReviewCannotAuthorizeAutomaticPromotion": true,
     "unresolvedCriticalOrHighFindingsForbidden": true,
     "admissionRegistryCorruptionMustBeRejectedBeforeAppendOrReconcile": true,
+    "appendLockMustRemainCanonical": true,
     "workflowWritesMustRemainBoundToValidatedSourceHead": true,
     "productionEvidenceMustRemainFalse": true,
     "applicationProductionReadyMustRemainFalse": true
