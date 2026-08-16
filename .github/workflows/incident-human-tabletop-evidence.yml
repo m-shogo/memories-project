@@ -1,6 +1,16 @@
 name: Incident Human Tabletop Evidence
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/incident-human-tabletop-evidence.yml"
+      - "contracts/operations/requests/incident-human-tabletop-evidence-foundation.v1.json"
+      - "contracts/operations/incident-human-tabletop-evidence-contract.v1.json"
+      - "docs/evidence/incident-tabletops/*.json"
+      - "scripts/register-memory-os-incident-human-tabletop.py"
+      - "scripts/validate-memory-os-incident-human-tabletops.py"
+      - "scripts/reconcile-memory-os-incident-human-tabletops.py"
+      - "scripts/validate-memory-os-incident-human-tabletop-source-negative.py"
   push:
     branches:
       - so
@@ -19,7 +29,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: incident-human-tabletop-evidence-so
+  group: incident-human-tabletop-evidence-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
@@ -29,16 +39,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Confirm exact clean authority source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          test "$(git branch --show-current)" = "so"
+          set -euo pipefail
           test -z "$(git status --porcelain)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+          else
+            test "$(git branch --show-current)" = "so"
+            test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          fi
       - name: Reconcile and validate human tabletop admission
         id: tabletop
         run: |
@@ -66,8 +83,16 @@ jobs:
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
+      - name: Require deterministic authority on pull requests
+        if: github.event_name == 'pull_request' && steps.tabletop.outputs.exit_code == '0'
+        run: |
+          git diff --check
+          git diff --exit-code -- \
+            contracts/operations/incident-human-tabletop-evidence-contract.v1.json \
+            contracts/operations/production-operability-status.json \
+            docs/fixtures/memory-os-operability/incident-human-tabletop-diagnostic.last.json
       - name: Commit bounded human-tabletop authority
-        if: steps.tabletop.outputs.exit_code == '0'
+        if: github.event_name != 'pull_request' && steps.tabletop.outputs.exit_code == '0'
         run: |
           set -euo pipefail
           source_sha="$(git rev-parse HEAD)"
@@ -89,7 +114,7 @@ jobs:
             git push origin HEAD:so
           fi
       - name: Record privacy-safe diagnostic
-        if: steps.tabletop.outputs.exit_code != '0'
+        if: github.event_name != 'pull_request' && steps.tabletop.outputs.exit_code != '0'
         env:
           TABLETOP_EXIT_CODE: ${{ steps.tabletop.outputs.exit_code }}
         run: |
