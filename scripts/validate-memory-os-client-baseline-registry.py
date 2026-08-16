@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/client-baseline-registry-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/client-baseline-registry.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-client-baseline.py"
+LOCK = ROOT / "contracts/operations/.client-baseline-registry.lock"
 RUNBOOK = ROOT / "docs/evidence/clients/README.md"
 WORKFLOW = ROOT / ".github/workflows/client-baseline-registry.yml"
 
@@ -56,6 +57,7 @@ def load_writer() -> Any:
     spec.loader.exec_module(module)
     require(Path(module.REGISTRY).resolve() == REGISTRY.resolve(), "writer registry authority drift")
     require(Path(module.CONTRACT).resolve() == CONTRACT.resolve(), "writer contract authority drift")
+    require(Path(module.LOCK).resolve() == LOCK.resolve(), "writer append lock authority drift")
     return module
 
 
@@ -163,6 +165,7 @@ def main() -> int:
 
     require(contract.get("schemaVersion") == "memory-os-client-baseline-registry-contract.v1", "contract schema drift")
     require(contract.get("registryPath") == str(REGISTRY.relative_to(ROOT)), "registryPath drift")
+    require(contract.get("appendLockPath") == str(LOCK.relative_to(ROOT)), "append lock binding drift")
     require(contract.get("writer") == str(WRITER.relative_to(ROOT)), "writer path drift")
     require(contract.get("validator") == str(Path(__file__).resolve().relative_to(ROOT)), "validator path drift")
     require(contract.get("recordSchemaVersion") == "memory-os-client-baseline-record.v1", "record schema version drift")
@@ -187,6 +190,8 @@ def main() -> int:
             "registration guards must require source lineage ancestry")
     require(any("sourceCommitSha" in guard and "current bytes" in guard for guard in guards),
             "registration guards must require immutable source-bound evidence")
+    require(any("canonical exclusive append lock" in guard for guard in guards),
+            "registration guards must require canonical append lock")
 
     require(registry.get("schemaVersion") == "memory-os-client-baseline-registry.v1", "registry schema drift")
     require(registry.get("registryClass") == "APPROVED_CLIENT_BASELINES", "registry class drift")
