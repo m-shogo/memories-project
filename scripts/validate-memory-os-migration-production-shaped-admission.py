@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -15,7 +16,9 @@ CONTRACT = ROOT / "contracts/operations/migration-production-shaped-admission-co
 REGISTRY = ROOT / "contracts/operations/migration-production-shaped-admission-registry.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-migration-production-shaped-admission.py"
 RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
+RELEASE_VALIDATOR = ROOT / "scripts/validate-memory-os-release-baseline-registry.py"
 GENERATIONS = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+GENERATION_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-generation.py"
 
 
 class Fail(RuntimeError):
@@ -33,6 +36,19 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def run_canonical_validator(path: Path, label: str) -> None:
+    require(path.is_file(), f"canonical {label} validator missing")
+    completed = subprocess.run(
+        [sys.executable, str(path)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    require(completed.returncode == 0, f"canonical {label} authority validation failed")
+
+
 def load_writer() -> ModuleType:
     spec = importlib.util.spec_from_file_location("memory_os_migration_production_admission_writer", WRITER)
     require(spec is not None and spec.loader is not None, "cannot load migration admission writer")
@@ -42,6 +58,9 @@ def load_writer() -> ModuleType:
 
 
 def main() -> int:
+    run_canonical_validator(RELEASE_VALIDATOR, "release baseline")
+    run_canonical_validator(GENERATION_VALIDATOR, "environment generation")
+
     contract = load(CONTRACT)
     registry = load(REGISTRY)
     releases = load(RELEASES)
