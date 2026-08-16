@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -18,6 +19,7 @@ CONTRACT = ROOT / "contracts/operations/rate-limit-distributed-runtime-admission
 REGISTRY = ROOT / "contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json"
 POLICY = ROOT / "contracts/operations/rate-limit-policy-contract.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit-distributed-runtime.py"
 LOCK = ROOT / "contracts/operations/.rate-limit-distributed-runtime.lock"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
@@ -42,6 +44,23 @@ def load(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     require(isinstance(value, dict), f"root must be object: {path}")
     return value
+
+
+def load_validator() -> Any:
+    spec = importlib.util.spec_from_file_location("memory_os_rate_limit_runtime_validator_for_writer", VALIDATOR)
+    require(spec is not None and spec.loader is not None, "cannot load distributed runtime validator")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def validate_registry_before_append(registry: dict[str, Any]) -> list[dict[str, Any]]:
+    validator = load_validator()
+    require(validator.REGISTRY.resolve() == REGISTRY.resolve(), "distributed runtime registry validator authority drift")
+    try:
+        return validator.validate_registry_for_append(registry)
+    except validator.Fail as exc:
+        raise Fail(f"existing distributed runtime registry rejected before append: {exc}") from exc
 
 
 def git(*args: str) -> str:
@@ -158,9 +177,7 @@ def main() -> int:
         os.write(lock_fd, (record["runtimeId"] + "\n").encode("ascii"))
         os.fsync(lock_fd)
         registry = load(REGISTRY)
-        runtimes = registry.get("runtimes")
-        require(isinstance(runtimes, list), "registry runtimes missing")
-        require(all(isinstance(item, dict) for item in runtimes), "registry contains invalid runtime")
+        runtimes = validate_registry_before_append(registry)
         require(all(item.get("runtimeId") != record["runtimeId"] for item in runtimes), "runtimeId already registered")
         require(all(item.get("environmentIdentityDigest") != record["environmentIdentityDigest"] for item in runtimes), "environment identity already registered")
         runtimes.append(record)
