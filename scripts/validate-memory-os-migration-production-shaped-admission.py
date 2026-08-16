@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/migration-production-shaped-admission-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/migration-production-shaped-admission-registry.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-migration-production-shaped-admission.py"
+LOCK = ROOT / "contracts/operations/.migration-production-shaped-admission.lock"
 RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
 RELEASE_CONTRACT = ROOT / "contracts/operations/release-baseline-registry-contract.v1.json"
 RELEASE_WRITER = ROOT / "scripts/register-memory-os-release-baseline.py"
@@ -75,6 +76,7 @@ def main() -> int:
     require(contract.get("schemaVersion") == "memory-os-migration-production-shaped-admission.v1", "contract schema drift")
     require(contract.get("recordSchemaVersion") == "memory-os-migration-production-shaped-admission-record.v1", "record schema drift")
     require(contract.get("registryPath") == str(REGISTRY.relative_to(ROOT)), "registry binding drift")
+    require(contract.get("appendLockPath") == str(LOCK.relative_to(ROOT)), "append lock binding drift")
     require(contract.get("writer") == str(WRITER.relative_to(ROOT)), "writer binding drift")
     require(contract.get("sourceReleasePairRegistry") == str(RELEASE_PAIRS.relative_to(ROOT)), "release pair registry binding drift")
     rules = contract.get("admissionRules")
@@ -112,6 +114,7 @@ def main() -> int:
         "memory_os_migration_production_admission_writer",
         "migration admission writer",
     )
+    require(getattr(writer, "LOCK", None) == LOCK, "migration admission writer append lock authority drift")
     try:
         writer.validate_registry_for_append(registry)
     except Exception as exc:
