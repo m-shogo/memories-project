@@ -1,6 +1,25 @@
 name: Reviewed Client Baseline Registry
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/client-baseline-registry.yml"
+      - "contracts/operations/client-baseline-registry-contract.v1.json"
+      - "contracts/operations/client-baseline-registry.v1.json"
+      - "contracts/operations/client-server-support-window-contract.v1.json"
+      - "contracts/operations/client-server-skew-registry.v1.json"
+      - "contracts/operations/release-baseline-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "contracts/operations/compatibility-admission-gaps.v1.json"
+      - "scripts/register-memory-os-client-baseline.py"
+      - "scripts/validate-memory-os-client-baseline-registry.py"
+      - "scripts/validate-memory-os-client-baseline-lineage-negative.py"
+      - "scripts/validate-memory-os-client-baseline-evidence-binding-negative.py"
+      - "scripts/reconcile-memory-os-client-baseline-registry.py"
+      - "scripts/validate-memory-os-client-server-support-window.py"
+      - "scripts/update-memory-os-compatibility-admission-gaps.py"
+      - "scripts/validate-memory-os-operability.py"
+      - "docs/evidence/clients/README.md"
   push:
     branches:
       - so
@@ -28,7 +47,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: reviewed-client-baseline-registry-so
+  group: reviewed-client-baseline-registry-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
@@ -38,12 +57,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Capture exact client baseline authority source
+        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           git fetch origin so
@@ -100,8 +120,17 @@ jobs:
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
+      - name: Require deterministic client authority on pull requests
+        if: github.event_name == 'pull_request' && steps.authority.outputs.exit_code == '0'
+        run: |
+          set -euo pipefail
+          git diff --check
+          if ! git diff --exit-code; then
+            echo "Client baseline derived authority is stale on the pull-request head; commit the deterministic reconcile output."
+            exit 1
+          fi
       - name: Commit bounded client authority
-        if: steps.authority.outputs.exit_code == '0'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so' && steps.authority.outputs.exit_code == '0'
         run: |
           set -euo pipefail
           git fetch origin so
@@ -129,7 +158,7 @@ jobs:
             git push origin HEAD:so
           fi
       - name: Record privacy-safe diagnostic
-        if: steps.authority.outputs.exit_code != '0'
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so' && steps.authority.outputs.exit_code != '0'
         env:
           AUTHORITY_EXIT_CODE: ${{ steps.authority.outputs.exit_code }}
         run: |
