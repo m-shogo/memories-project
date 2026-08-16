@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/parser-artifact-registry-contract.v1.json"
 REGISTRY_PATH = ROOT / "contracts/operations/parser-artifact-registry.v1.json"
 PARSER_WRITER_PATH = ROOT / "scripts/register-memory-os-parser-artifact.py"
+LOCK_PATH = ROOT / "contracts/operations/.parser-artifact-registry.lock"
 RELEASE_REGISTRY_PATH = ROOT / "contracts/operations/release-baseline-registry.v1.json"
 RELEASE_WRITER_PATH = ROOT / "scripts/register-memory-os-release-baseline.py"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
@@ -74,6 +75,8 @@ def load_parser_writer() -> Any:
             "canonical parser registry authority drift")
     require(Path(module.CONTRACT_PATH).resolve() == CONTRACT_PATH.resolve(),
             "canonical parser contract authority drift")
+    require(Path(module.LOCK_PATH).resolve() == LOCK_PATH.resolve(),
+            "canonical parser append lock authority drift")
     require(Path(module.RELEASE_REGISTRY_PATH).resolve() == RELEASE_REGISTRY_PATH.resolve(),
             "canonical parser release registry authority drift")
     require(Path(module.RELEASE_WRITER_PATH).resolve() == RELEASE_WRITER_PATH.resolve(),
@@ -178,6 +181,8 @@ def main() -> int:
             "parser artifact contract schema drift")
     require(contract.get("appendOnly") is True,
             "parser artifact registry must be append-only")
+    require(contract.get("appendLockPath") == str(LOCK_PATH.relative_to(ROOT)),
+            "parser artifact append lock binding drift")
     for field, expected in {
         "registryPath": str(REGISTRY_PATH.relative_to(ROOT)),
         "runbook": "docs/runbooks/memory-os-parser-artifact-registry.md",
@@ -190,7 +195,9 @@ def main() -> int:
         safe_ref(expected, field)
     required_fields = set(strings(contract.get("requiredRecordFields"),
                                   "requiredRecordFields", 20))
-    strings(contract.get("registrationGuards"), "registrationGuards", 12)
+    guards = strings(contract.get("registrationGuards"), "registrationGuards", 12)
+    require(any("canonical exclusive append lock" in guard for guard in guards),
+            "parser artifact registration guards must require canonical append lock")
     forbidden_sources = strings(contract.get("forbiddenArtifactSources"),
                                 "forbiddenArtifactSources", 7)
     require(any("worker.go" in item for item in forbidden_sources),
