@@ -12,6 +12,20 @@
   "reconcile": "scripts/reconcile-memory-os-incident-contact-routing.py",
   "workflow": ".github/workflows/incident-contact-routing-admission.yml",
   "recordSchemaVersion": "memory-os-incident-contact-routing-record.v1",
+  "independentReviewSchemaVersion": "memory-os-incident-contact-routing-independent-review.v1",
+  "independentReviewRequiredFields": [
+    "schemaVersion",
+    "contactRoutingId",
+    "observabilityStackId",
+    "environmentIdentityDigest",
+    "role",
+    "reviewerId",
+    "decision",
+    "reviewedAt",
+    "productionTrafficChanged",
+    "credentialsIncluded",
+    "automaticProductionPromotion"
+  ],
   "allowedEnvironmentClasses": [
     "PRODUCTION_EQUIVALENT",
     "PRODUCTION"
@@ -59,6 +73,15 @@
     "userCommunicationExerciseRequired": true,
     "providerContactReviewRequired": true,
     "privacyAndOperabilityReviewsMustBeDistinct": true,
+    "independentReviewsMustUseTypedSchema": true,
+    "independentReviewsMustBindRoutingStackAndEnvironment": true,
+    "independentReviewRolesMustBePrivacyAndOperability": true,
+    "independentReviewersMustBeDistinct": true,
+    "independentReviewDecisionMustBeApproved": true,
+    "independentReviewTimestampMustBeCanonicalUtcSeconds": true,
+    "independentReviewsCannotChangeProductionTraffic": true,
+    "independentReviewsCannotIncludeCredentials": true,
+    "independentReviewsCannotAuthorizeAutomaticProductionPromotion": true,
     "unresolvedCriticalOrHighFindingsForbidden": true
   },
   "promotionRules": {
