@@ -1,6 +1,13 @@
 name: Reconcile Incident Control Authority
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/reconcile-incident-control-authority.yml"
+      - "docs/fixtures/memory-os-operability/incident-control-exercise-results.sample.v1.json"
+      - "scripts/reconcile-memory-os-incident-control-authority.py"
+      - "scripts/validate-memory-os-incident-control-authority-reconcile-negative.py"
+      - "scripts/validate-memory-os-incident-control-exercise.py"
   push:
     branches:
       - so
@@ -18,18 +25,18 @@ permissions:
   contents: write
 
 concurrency:
-  group: reconcile-incident-control-authority-so
-  cancel-in-progress: true
+  group: reconcile-incident-control-authority-${{ github.event.pull_request.number || 'so' }}
+  cancel-in-progress: false
 
 jobs:
   reconcile:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout latest so
+      - name: Checkout exact authority source
         uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -38,10 +45,17 @@ jobs:
           python-version: "3.12"
 
       - name: Confirm exact clean authority source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          test "$(git branch --show-current)" = "so"
+          set -euo pipefail
           test -z "$(git status --porcelain)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+          else
+            test "$(git branch --show-current)" = "so"
+            test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          fi
 
       - name: Normalize exercise contract and status
         run: |
@@ -57,8 +71,18 @@ jobs:
           python scripts/validate-memory-os-incident-tabletop.py
           python scripts/validate-memory-os-operability.py
 
-      - name: Commit normalized incident authority
+      - name: Require deterministic authority on pull requests
+        if: github.event_name == 'pull_request'
         run: |
+          git diff --check
+          git diff --exit-code -- \
+            contracts/operations/incident-control-exercise-contract.v1.json \
+            contracts/operations/production-operability-status.json
+
+      - name: Commit normalized incident authority
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
           source_sha="$(git rev-parse HEAD)"
           git add \
             contracts/operations/incident-control-exercise-contract.v1.json \
