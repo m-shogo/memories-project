@@ -9,12 +9,14 @@ pair, mixed-version observation, generation-bound recovery evidence and review.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import re
 import subprocess
 import tempfile
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,6 +24,7 @@ CONTRACT = ROOT / "contracts/operations/migration-production-shaped-admission-co
 REGISTRY = ROOT / "contracts/operations/migration-production-shaped-admission-registry.v1.json"
 RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
 GENERATIONS = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+GENERATION_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
 LOCK = ROOT / "contracts/operations/.migration-production-shaped-admission.lock"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
@@ -49,6 +52,14 @@ def git(*args: str) -> str:
     return completed.stdout.strip()
 
 
+def load_generation_writer() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("memory_os_environment_generation_writer", GENERATION_WRITER)
+    require(spec is not None and spec.loader is not None, "cannot load environment generation writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def evidence_refs(value: Any, field: str, *, minimum: int = 1) -> list[str]:
     require(isinstance(value, list) and len(value) >= minimum, f"{field} requires at least {minimum} reference(s)")
     require(all(isinstance(item, str) and item and not Path(item).is_absolute() and ".." not in Path(item).parts for item in value), f"{field} invalid")
@@ -68,6 +79,11 @@ def json_contains_generation(value: Any, generation_id: str) -> bool:
 
 def registered_generation(generation_id: str) -> dict[str, Any]:
     registry = load(GENERATIONS)
+    generation_writer = load_generation_writer()
+    try:
+        generation_writer.validate_registry_for_append(registry)
+    except Exception as exc:
+        raise Fail(f"environment generation registry invalid: {exc}") from exc
     rows = registry.get("generations")
     require(isinstance(rows, list), "environment generation registry missing")
     matches = [row for row in rows if isinstance(row, dict) and row.get("generationId") == generation_id]
@@ -95,6 +111,7 @@ def validate_record(record: dict[str, Any]) -> None:
     source = record.get("sourceCommitSha")
     require(isinstance(source, str) and SHA40.fullmatch(source), "sourceCommitSha invalid")
     require(git("cat-file", "-e", source + "^{commit}") == "", "sourceCommitSha does not exist")
+    require(git("merge-base", "--is-ancestor", source, "HEAD") == "", "sourceCommitSha must be an ancestor of current HEAD")
 
     migration_ref = record.get("migrationEvidenceRef")
     require(isinstance(migration_ref, str) and migration_ref and not Path(migration_ref).is_absolute() and ".." not in Path(migration_ref).parts, "migrationEvidenceRef invalid")
