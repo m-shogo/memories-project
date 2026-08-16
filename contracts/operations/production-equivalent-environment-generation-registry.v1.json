@@ -5,5 +5,10 @@
   "productionEvidence": false,
   "registeredGenerationCount": 0,
   "currentGenerationId": null,
-  "generations": []
+  "generations": [],
+  "limitations": [
+    "no environment generation has been registered",
+    "empty registry means no load, restore, failure-drill or review result can qualify as production-equivalent generation evidence",
+    "environmentId alone is never an evidence key"
+  ]
 }
