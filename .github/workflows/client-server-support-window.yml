@@ -14,6 +14,7 @@ on:
       - "scripts/register-memory-os-client-baseline.py"
       - "scripts/register-memory-os-release-baseline.py"
       - "scripts/validate-memory-os-client-server-support-window.py"
+      - "scripts/validate-memory-os-client-server-support-window-negative.py"
       - "scripts/reconcile-memory-os-client-server-support-window-status.py"
       - "scripts/validate-memory-os-operability.py"
   push:
@@ -31,6 +32,7 @@ on:
       - "scripts/register-memory-os-client-baseline.py"
       - "scripts/register-memory-os-release-baseline.py"
       - "scripts/validate-memory-os-client-server-support-window.py"
+      - "scripts/validate-memory-os-client-server-support-window-negative.py"
       - "scripts/reconcile-memory-os-client-server-support-window-status.py"
       - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
@@ -74,11 +76,15 @@ jobs:
             scripts/register-memory-os-client-baseline.py \
             scripts/register-memory-os-release-baseline.py \
             scripts/validate-memory-os-client-server-support-window.py \
+            scripts/validate-memory-os-client-server-support-window-negative.py \
             scripts/reconcile-memory-os-client-server-support-window-status.py \
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-client-server-support-window.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-client-server-support-window-negative.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/reconcile-memory-os-client-server-support-window-status.py >> "$log" 2>&1 || code=$?
