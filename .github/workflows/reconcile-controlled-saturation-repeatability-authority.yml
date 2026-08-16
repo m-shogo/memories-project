@@ -13,6 +13,7 @@ on:
       - "docs/fixtures/memory-os-operability/controlled-saturation-repeatability-results.v1.json"
       - "docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.repeat-*.v1.json"
       - "scripts/validate-memory-os-controlled-saturation-repeatability.py"
+      - "scripts/validate-memory-os-controlled-saturation-repeatability-reconcile-negative.py"
       - "scripts/reconcile-memory-os-controlled-saturation-repeatability.py"
       - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-operability.py"
@@ -28,6 +29,7 @@ on:
       - "docs/fixtures/memory-os-operability/controlled-saturation-repeatability-results.v1.json"
       - "docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.repeat-*.v1.json"
       - "scripts/validate-memory-os-controlled-saturation-repeatability.py"
+      - "scripts/validate-memory-os-controlled-saturation-repeatability-reconcile-negative.py"
       - "scripts/reconcile-memory-os-controlled-saturation-repeatability.py"
       - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-operability.py"
@@ -75,6 +77,7 @@ jobs:
           echo "STAGE: compile" >> "$log"
           python -m py_compile \
             scripts/validate-memory-os-controlled-saturation-repeatability.py \
+            scripts/validate-memory-os-controlled-saturation-repeatability-reconcile-negative.py \
             scripts/reconcile-memory-os-controlled-saturation-repeatability.py \
             scripts/validate-memory-os-load.py \
             scripts/validate-memory-os-operability.py \
@@ -83,6 +86,11 @@ jobs:
             stage=repeatability-validation
             echo "STAGE: repeatability-validation" >> "$log"
             python scripts/validate-memory-os-controlled-saturation-repeatability.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            stage=reconcile-negative
+            echo "STAGE: reconcile-negative" >> "$log"
+            python scripts/validate-memory-os-controlled-saturation-repeatability-reconcile-negative.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             stage=authority-reconcile
