@@ -2,9 +2,9 @@
 """Register validated live dependency load results without changing readiness.
 
 This script is intentionally narrow. It may replace the single pending-results
-open gap after both exact-source live result documents exist and have already
-passed their dedicated validators. It must never mark OPS-P0-006 READY or change
-the production decision from NO_GO.
+open gap only after both exact-source live result documents pass their canonical
+validators for the same source commit. It must never mark OPS-P0-006 READY or
+change the production decision from NO_GO.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 LOAD_CONTRACT_PATH = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
+POSTGRES_VALIDATOR = ROOT / "scripts/validate-memory-os-live-load.py"
+OBJECT_VALIDATOR = ROOT / "scripts/validate-memory-os-live-object-load.py"
 POSTGRES_RESULT = (
     ROOT
     / "docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json"
@@ -64,6 +67,29 @@ def require(condition: bool, message: str) -> None:
         raise ReconcileFailure(message)
 
 
+def validate_live_authorities(expected_sha: str) -> None:
+    env = dict(os.environ)
+    env["EXPECTED_COMMIT_SHA"] = expected_sha
+    for validator, label in (
+        (POSTGRES_VALIDATOR, "PostgreSQL live-load"),
+        (OBJECT_VALIDATOR, "MinIO live-object-load"),
+    ):
+        require(validator.is_file(), f"canonical {label} validator missing")
+        completed = subprocess.run(
+            [sys.executable, str(validator)],
+            cwd=ROOT,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+        require(
+            completed.returncode == 0,
+            f"canonical {label} validation failed before reconcile: {completed.stdout[-2000:]}",
+        )
+
+
 def result_is_pass(document: dict[str, Any], expected_sha: str) -> bool:
     if document.get("commitSha") != expected_sha:
         return False
@@ -81,6 +107,10 @@ def result_is_pass(document: dict[str, Any], expected_sha: str) -> bool:
 def main() -> int:
     expected_sha = os.environ.get("EXPECTED_COMMIT_SHA", "")
     require(len(expected_sha) == 40, "EXPECTED_COMMIT_SHA must be a full commit SHA")
+
+    # Standalone execution must be as strict as the workflow. Do not rely on a
+    # caller having run these validators before invoking this reconciler.
+    validate_live_authorities(expected_sha)
 
     postgres = load(POSTGRES_RESULT)
     object_result = load(OBJECT_RESULT)
@@ -123,9 +153,6 @@ def main() -> int:
         readiness["exactHeadLiveResultsCommitted"] = True
         changed = True
 
-    # The local results close only the "not yet executed" blind spot. These
-    # production gaps must remain open and are guarded again by both load and
-    # operability validators after this script runs.
     required_open_phrases = (
         "capacity boundary",
         "sustained soak",
