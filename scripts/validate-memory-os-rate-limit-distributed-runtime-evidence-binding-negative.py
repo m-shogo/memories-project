@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Fail-closed evidence immutability negatives for distributed rate-limit runtime admission."""
+"""Fail-closed evidence immutability and source-lineage negatives for distributed rate-limit runtime admission."""
 
 from __future__ import annotations
 
 import hashlib
 import importlib.util
+import os
+import subprocess
 from pathlib import Path
 from typing import Any, Callable
 
@@ -31,6 +33,25 @@ def expect_fail(writer: Any, name: str, fn: Callable[[], None]) -> None:
     except writer.Fail:
         return
     raise RuntimeError(f"{name}: unsafe evidence authority was accepted")
+
+
+def side_commit() -> str:
+    tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], cwd=ROOT, text=True).strip()
+    env = os.environ.copy()
+    env.update(
+        {
+            "GIT_AUTHOR_NAME": "memory-os-negative-fixture",
+            "GIT_AUTHOR_EMAIL": "memory-os-negative-fixture@example.invalid",
+            "GIT_COMMITTER_NAME": "memory-os-negative-fixture",
+            "GIT_COMMITTER_EMAIL": "memory-os-negative-fixture@example.invalid",
+        }
+    )
+    return subprocess.check_output(
+        ["git", "commit-tree", tree, "-m", "synthetic non-ancestor rate-limit source"],
+        cwd=ROOT,
+        env=env,
+        text=True,
+    ).strip()
 
 
 def main() -> int:
@@ -82,10 +103,12 @@ def main() -> int:
     finally:
         EVIDENCE.write_bytes(original)
 
+    expect_fail(writer, "non-ancestor source commit", lambda: writer.require_source_ancestor(side_commit()))
+
     if EVIDENCE.read_bytes() != original:
         raise RuntimeError("canonical evidence was not restored")
 
-    print("PASS: distributed runtime evidence refs are committed, symlink-free and digest-bound")
+    print("PASS: distributed runtime evidence refs are immutable and source authority is ancestor-only")
     print("production evidence created: false")
     print("production readiness: false")
     print("production decision: NO_GO")
