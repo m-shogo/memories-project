@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: reconcile-latest-evidence-concurrency-${{ github.event.pull_request.number || 'so' }}
@@ -28,9 +28,6 @@ concurrency:
 
 jobs:
   reconcile:
-    if: >-
-      github.event_name != 'push' ||
-      !contains(github.event.head_commit.message, 'ci: cancel stale exact-source evidence runs')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -52,9 +49,8 @@ jobs:
             test "$(git branch --show-current)" = "so"
             test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
           fi
-          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
-      - name: Require latest-run concurrency
+      - name: Validate latest-run concurrency authority
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -78,46 +74,9 @@ jobs:
               if section_end < 0:
                   raise SystemExit(f'{path}: concurrency section boundary drift')
               section = text[section_start:section_end]
-              if 'cancel-in-progress: true' in section:
-                  continue
-              if section.count('cancel-in-progress: false') != 1:
-                  raise SystemExit(f'{path}: cancel-in-progress authority drift')
-              section = section.replace('cancel-in-progress: false', 'cancel-in-progress: true')
-              text = text[:section_start] + section + text[section_end:]
-              path.write_text(text, encoding='utf-8')
+              if section.count('cancel-in-progress: true') != 1:
+                  raise SystemExit(f'{path}: exact-source evidence runs must cancel stale executions')
+              if 'cancel-in-progress: false' in section:
+                  raise SystemExit(f'{path}: stale exact-source executions remain enabled')
+          print('Latest-evidence concurrency authority is current.')
           PY
-
-      - name: Require deterministic concurrency authority on pull requests
-        if: github.event_name == 'pull_request'
-        run: |
-          set -euo pipefail
-          git diff --check
-          git diff --exit-code -- \
-            .github/workflows/regenerate-live-postgres-load-results.yml \
-            .github/workflows/capacity-ramp.yml \
-            .github/workflows/short-stability-sample.yml \
-            .github/workflows/reconcile-load-foundation-authorities.yml
-
-      - name: Commit concurrency authority
-        if: github.event_name != 'pull_request'
-        run: |
-          set -euo pipefail
-          git add \
-            .github/workflows/regenerate-live-postgres-load-results.yml \
-            .github/workflows/capacity-ramp.yml \
-            .github/workflows/short-stability-sample.yml \
-            .github/workflows/reconcile-load-foundation-authorities.yml
-          if git diff --cached --quiet; then
-            echo "Evidence workflows already prefer the latest source."
-            exit 0
-          fi
-          git diff --cached --check
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "ci: cancel stale exact-source evidence runs"
-          remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
-          if [[ "$remote_sha" != "$SOURCE_SHA" ]]; then
-            echo "Concurrency authority source is stale: validated $SOURCE_SHA but so is $remote_sha" >&2
-            exit 75
-          fi
-          git push origin HEAD:so
