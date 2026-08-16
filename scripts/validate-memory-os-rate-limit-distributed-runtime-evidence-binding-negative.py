@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed evidence immutability and source-lineage negatives for distributed rate-limit runtime admission."""
+"""Fail-closed evidence immutability, source-lineage and review-authority negatives for distributed rate-limit runtime admission."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WRITER_PATH = ROOT / "scripts/register-memory-os-rate-limit-distributed-runtime.py"
 EVIDENCE_REL = "contracts/operations/rate-limit-policy-contract.v1.json"
 EVIDENCE = ROOT / EVIDENCE_REL
+GENERIC_REVIEW_REL = "contracts/operations/production-operability-status.json"
 TEMP_UNTRACKED = ROOT / "docs/fixtures/memory-os-operability/.rate-limit-runtime-evidence-untracked-negative.json"
 TEMP_SYMLINK = ROOT / "docs/fixtures/memory-os-operability/.rate-limit-runtime-evidence-symlink-negative.json"
 
@@ -105,10 +106,22 @@ def main() -> int:
 
     expect_fail(writer, "non-ancestor source commit", lambda: writer.require_source_ancestor(side_commit()))
 
+    generic_review_record = {
+        "runtimeId": "rlrt_negative_review",
+        "environmentIdentityDigest": "0" * 64,
+        "securityReviewRef": EVIDENCE_REL,
+        "operabilityReviewRef": GENERIC_REVIEW_REL,
+    }
+    expect_fail(
+        writer,
+        "generic repository files as independent reviews",
+        lambda: writer.validate_independent_reviews(generic_review_record),
+    )
+
     if EVIDENCE.read_bytes() != original:
         raise RuntimeError("canonical evidence was not restored")
 
-    print("PASS: distributed runtime evidence refs are immutable and source authority is ancestor-only")
+    print("PASS: distributed runtime evidence is immutable, source lineage is ancestor-only, and generic files cannot satisfy typed reviews")
     print("production evidence created: false")
     print("production readiness: false")
     print("production decision: NO_GO")
