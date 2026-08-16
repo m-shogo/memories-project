@@ -16,6 +16,15 @@ CLIENTS = ROOT / "contracts/operations/client-baseline-registry.v1.json"
 SKEW = ROOT / "contracts/operations/client-server-skew-registry.v1.json"
 RELEASE_WRITER = ROOT / "scripts/register-memory-os-release-baseline.py"
 CLIENT_WRITER = ROOT / "scripts/register-memory-os-client-baseline.py"
+SKEW_FIELDS = {
+    "schemaVersion",
+    "registryClass",
+    "appendOnly",
+    "productionEvidence",
+    "admissibleSkewPairCount",
+    "pairs",
+    "limitations",
+}
 
 
 class Fail(RuntimeError):
@@ -146,13 +155,19 @@ def main() -> int:
     client_rows = clients.get("clients")
     require(isinstance(client_rows, list) and len(client_rows) == approved_client_count, "client registry count mismatch")
 
+    require(set(skew) == SKEW_FIELDS, "skew registry field set drift")
     require(skew.get("schemaVersion") == "memory-os-client-server-skew-registry.v1", "skew registry schema drift")
+    require(skew.get("registryClass") == "ADMITTED_CLIENT_SERVER_SKEW_PAIRS", "skew registry class drift")
     require(skew.get("appendOnly") is True and skew.get("productionEvidence") is False, "skew registry boundary drift")
     pair_count = skew.get("admissibleSkewPairCount")
     pairs = skew.get("pairs")
     require(isinstance(pair_count, int) and not isinstance(pair_count, bool) and pair_count >= 0,
             "admissibleSkewPairCount invalid")
     require(isinstance(pairs, list) and len(pairs) == pair_count, "skew registry count mismatch")
+    limitations = skew.get("limitations")
+    require(isinstance(limitations, list) and limitations and
+            all(isinstance(item, str) and item.strip() for item in limitations),
+            "skew registry limitations invalid")
 
     require(approved_release_count == 0, "current foundation expects zero approved backend releases")
     require(approved_client_count == 0, "current foundation expects zero approved client baselines")
