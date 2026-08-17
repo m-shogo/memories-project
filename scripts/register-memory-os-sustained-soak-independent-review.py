@@ -19,9 +19,11 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+CONTRACT_PATH = ROOT / "contracts/operations/sustained-soak-independent-review-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/sustained-soak-independent-review-registry.v1.json"
 VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-sustained-soak-independent-review.py"
 LOCK_PATH = ROOT / "contracts/operations/.sustained-soak-independent-review.lock"
+CANONICAL_LOCK_REF = "contracts/operations/.sustained-soak-independent-review.lock"
 
 
 class Fail(RuntimeError):
@@ -52,8 +54,16 @@ def load_validator() -> Any:
     return module
 
 
+def validate_lock_authority() -> None:
+    contract = load(CONTRACT_PATH)
+    lock_ref = contract.get("appendLockPath")
+    require(lock_ref == CANONICAL_LOCK_REF, "sustained-soak append lock contract authority drift")
+    require((ROOT / lock_ref).resolve() == LOCK_PATH.resolve(), "sustained-soak append lock writer authority drift")
+
+
 def validate_existing_registry() -> None:
     """Fail closed on the canonical append-only authority before any mutation."""
+    validate_lock_authority()
     registry = load(REGISTRY)
     validator = load_validator()
     require(validator.REGISTRY.resolve() == REGISTRY.resolve(), "sustained-soak registry validator authority drift")
@@ -159,6 +169,7 @@ def main() -> int:
 
     require(args.record.resolve() != REGISTRY.resolve(), "record input must not be the canonical registry")
     record = load(args.record)
+    validate_lock_authority()
     LOCK_PATH.parent.mkdir(parents=True, exist_ok=True)
     with LOCK_PATH.open("a+", encoding="utf-8") as lock:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
