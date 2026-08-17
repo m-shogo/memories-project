@@ -24,6 +24,7 @@ LOCAL_RESTORE = ROOT / "docs/fixtures/memory-os-operability/local-logical-restor
 WORKFLOW = ROOT / ".github/workflows/migration-evidence-registry.yml"
 LIFECYCLE = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
 LIFECYCLE_VALIDATOR = ROOT / "scripts/validate-memory-os-migration-lifecycle.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 
 FOUNDATION_EVIDENCE = (
@@ -87,11 +88,25 @@ def passing(record: dict[str, Any]) -> bool:
     return all(record.get(field) == "PASS" for field in ("preflightResult", "applyResult", "verificationResult"))
 
 
+def commit_outputs_transactionally(outputs: dict[Path, dict[str, Any]]) -> None:
+    originals = {path: path.read_bytes() for path in outputs}
+    try:
+        for path, value in outputs.items():
+            write(path, value)
+        subprocess.run(["python", str(REGISTRY_VALIDATOR)], cwd=ROOT, check=True)
+        subprocess.run(["python", str(LIFECYCLE_VALIDATOR)], cwd=ROOT, check=True)
+        subprocess.run(["python", str(OPERABILITY_VALIDATOR)], cwd=ROOT, check=True)
+    except Exception as exc:
+        for path, data in originals.items():
+            path.write_bytes(data)
+        raise Fail(f"migration evidence reconcile validation failed; restored prior authority: {exc}") from exc
+
+
 def main() -> int:
     for path in (
         REGISTRY, WRITER, REGISTRY_VALIDATOR, RECOVERY_VALIDATOR,
         ARTIFACT_CONTRACT, ARTIFACT_RUNNER, ARTIFACT_VALIDATOR, ARTIFACT_EVIDENCE_ROOT,
-        LOCAL_RESTORE, WORKFLOW, LIFECYCLE_VALIDATOR,
+        LOCAL_RESTORE, WORKFLOW, LIFECYCLE_VALIDATOR, OPERABILITY_VALIDATOR,
     ):
         require(path.exists(), f"migration evidence foundation missing: {path.relative_to(ROOT)}")
 
@@ -139,7 +154,6 @@ def main() -> int:
         "productionReady",
     ):
         readiness[flag] = False
-    write(REGISTRY_CONTRACT, contract)
 
     lifecycle = load(LIFECYCLE)
     lifecycle_readiness = lifecycle.get("readiness")
@@ -167,7 +181,6 @@ def main() -> int:
                 evidence_ref = record.get("recoveryPointRestoreEvidenceRef")
                 if isinstance(evidence_ref, str):
                     append_once(evidence_refs, evidence_ref)
-    write(LIFECYCLE, lifecycle)
 
     status = load(STATUS)
     require(status.get("productionDecision") == "NO_GO", "productionDecision must remain NO_GO")
@@ -206,10 +219,12 @@ def main() -> int:
     if local_passing > 0:
         require(LOCAL_GAP not in gate["missingEvidence"],
                 "satisfied local actual-artifact gap remained in missingEvidence")
-    write(STATUS, status)
 
-    subprocess.run(["python", str(REGISTRY_VALIDATOR)], cwd=ROOT, check=True)
-    subprocess.run(["python", str(LIFECYCLE_VALIDATOR)], cwd=ROOT, check=True)
+    commit_outputs_transactionally({
+        REGISTRY_CONTRACT: contract,
+        LIFECYCLE: lifecycle,
+        STATUS: status,
+    })
 
     print("Memory OS migration evidence registry reconciliation PASS")
     print(f"registered rehearsals: {count}")
