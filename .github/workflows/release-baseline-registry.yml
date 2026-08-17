@@ -168,6 +168,8 @@ jobs:
           python scripts/reconcile-memory-os-release-baseline-registry.py
           python scripts/validate-memory-os-release-baseline-registry.py
           python scripts/validate-memory-os-release-baseline-evidence-binding.py
+          python scripts/validate-memory-os-version-compatibility.py
+          python scripts/validate-memory-os-operability.py
 
       - name: Require reconciled authority in pull requests
         if: github.event_name == 'pull_request'
