@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - ".github/workflows/reconcile-incident-control-authority.yml"
+      - "contracts/operations/incident-control-exercise-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "docs/fixtures/memory-os-operability/incident-control-exercise-results.sample.v1.json"
       - "scripts/reconcile-memory-os-incident-control-authority.py"
       - "scripts/validate-memory-os-incident-control-authority-reconcile-negative.py"
@@ -16,6 +18,8 @@ on:
       - so
     paths:
       - ".github/workflows/reconcile-incident-control-authority.yml"
+      - "contracts/operations/incident-control-exercise-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "docs/fixtures/memory-os-operability/incident-control-exercise-results.sample.v1.json"
       - "scripts/reconcile-memory-os-incident-control-authority.py"
       - "scripts/validate-memory-os-incident-control-authority-reconcile-negative.py"
