@@ -837,7 +837,11 @@
         "rolling deployment order, connection drain, failure injection and application rollback rehearsal",
         "destructive contract-migration and downgrade compatibility proof",
         "production-shaped mixed-version review with zero unresolved Critical or High findings",
-        "full old/current backend mixed-version route, mutation, persisted-state and rollback coverage beyond the proven session/authentication slice"
+        "full old/current backend mixed-version route, mutation, persisted-state and rollback coverage beyond the proven session/authentication slice",
+        "reviewed production parser artifact record with exact bytes, build provenance, Security, Runtime and Release Owner approvals",
+        "exact registered old parser artifact replay test with deterministic accepted/rejected accounting and protocol binding",
+        "independent immutable retention evidence for every parser artifact required by a rollback-eligible approved release",
+        "approved release artifact-set digest binding and retirement proof that no rollback release depends on a deleted artifact"
       ],
       "evidenceRefs": [
         ".github/workflows/security-contracts.yml",
