@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,10 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/production-equivalent-dependency-contract.v1.json"
 LOAD_PATH = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+DEPENDENCY_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-dependencies.py"
+LOAD_INDEX_VALIDATOR = ROOT / "scripts/validate-memory-os-load-evidence-index.py"
+LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 
 FOUNDATION_REFS = (
     "contracts/operations/production-equivalent-dependency-contract.v1.json",
@@ -48,6 +53,50 @@ def write(path: Path, value: dict[str, Any]) -> None:
 def append_unique(values: list[Any], value: Any) -> None:
     if value not in values:
         values.append(value)
+
+
+def run_validator(path: Path, label: str) -> None:
+    require(path.is_file(), f"canonical {label} validator missing")
+    completed = subprocess.run(
+        [sys.executable, str(path)],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        check=False,
+    )
+    require(
+        completed.returncode == 0,
+        f"canonical {label} validation failed: {completed.stdout[-2000:]}",
+    )
+
+
+def validate_current_authority() -> None:
+    for path, label in (
+        (DEPENDENCY_VALIDATOR, "production-equivalent dependency"),
+        (LOAD_INDEX_VALIDATOR, "load evidence index"),
+        (LOAD_VALIDATOR, "load"),
+        (OPERABILITY_VALIDATOR, "operability"),
+    ):
+        run_validator(path, label)
+
+
+def write_and_validate_transactionally(
+    load_contract: dict[str, Any],
+    status: dict[str, Any],
+) -> None:
+    originals = {
+        LOAD_PATH: LOAD_PATH.read_bytes(),
+        STATUS_PATH: STATUS_PATH.read_bytes(),
+    }
+    try:
+        write(LOAD_PATH, load_contract)
+        write(STATUS_PATH, status)
+        validate_current_authority()
+    except Exception:
+        for path, data in originals.items():
+            path.write_bytes(data)
+        raise
 
 
 def main() -> int:
@@ -95,8 +144,7 @@ def main() -> int:
     require(status.get("productionDecision") == "NO_GO", "production decision drift")
     require(load_area.get("status") == "PARTIAL", "OPS-P0-006 status drift")
 
-    write(LOAD_PATH, load_contract)
-    write(STATUS_PATH, status)
+    write_and_validate_transactionally(load_contract, status)
     print("Memory OS production-equivalent admission foundation reconciled")
     print("environment provisioned: false")
     print("production-equivalent dependencies: false")
