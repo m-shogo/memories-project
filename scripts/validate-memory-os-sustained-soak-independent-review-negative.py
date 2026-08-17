@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-sustained-soak-independent-review.py"
 REGISTER_PATH = ROOT / "scripts/register-memory-os-sustained-soak-independent-review.py"
 RECONCILE_PATH = ROOT / "scripts/reconcile-memory-os-sustained-local-soak-status.py"
+CANONICAL_CONTRACT = ROOT / "contracts/operations/sustained-soak-independent-review-contract.v1.json"
 CANONICAL_REGISTRY = ROOT / "contracts/operations/sustained-soak-independent-review-registry.v1.json"
 RECONCILE_OUTPUTS = (
     ROOT / "contracts/operations/sustained-local-soak-contract.v1.json",
@@ -110,6 +111,26 @@ def prove_current_criteria_counting(register) -> None:
     print("PASS current-criteria review count: historical PASS excluded; current PASS counted")
 
 
+def prove_append_lock_authority(register) -> None:
+    """Canonical writer must reject contract lock substitution before taking any lock."""
+    original = CANONICAL_CONTRACT.read_bytes()
+    contract = json.loads(original.decode("utf-8"))
+    contract["appendLockPath"] = "contracts/operations/.sustained-soak-independent-review.alternate.lock"
+    write(CANONICAL_CONTRACT, contract)
+    corrupted = CANONICAL_CONTRACT.read_bytes()
+    try:
+        try:
+            register.validate_lock_authority()
+        except register.Fail:
+            print("PASS append-lock reject: contract lock substitution")
+        else:
+            raise RuntimeError("sustained-soak writer accepted alternate append lock authority")
+        if CANONICAL_CONTRACT.read_bytes() != corrupted:
+            raise RuntimeError("append-lock guard mutated rejected contract authority")
+    finally:
+        CANONICAL_CONTRACT.write_bytes(original)
+
+
 def prove_preappend_registry_guard(register) -> None:
     """Corrupt canonical aggregate authority must be rejected without mutation."""
     original = CANONICAL_REGISTRY.read_bytes()
@@ -174,10 +195,11 @@ def main() -> int:
     register = load_module(REGISTER_PATH, "soak_review_register")
     reconciler = load_module(RECONCILE_PATH, "soak_review_reconciler")
     prove_current_criteria_counting(register)
+    prove_append_lock_authority(register)
     prove_preappend_registry_guard(register)
     prove_reconcile_rejects_corrupt_registry(reconciler)
 
-    canonical_contract = load(ROOT / "contracts/operations/sustained-soak-independent-review-contract.v1.json")
+    canonical_contract = load(CANONICAL_CONTRACT)
     canonical_registry = load(CANONICAL_REGISTRY)
     canonical_local = load(ROOT / "contracts/operations/sustained-local-soak-contract.v1.json")
     canonical_review = load(ROOT / "docs/fixtures/memory-os-operability/sustained-local-soak-trend-review.v1.json")
@@ -257,6 +279,7 @@ def main() -> int:
 
     print("Memory OS sustained-soak independent review negative suite PASS")
     print("historical PASS review counted as current authority: false")
+    print("alternate append lock authority accepted: false")
     print("corrupt append-only registry normalized by append: false")
     print("corrupt append-only registry projected by reconcile: false")
     print("boolean registry counts accepted before append: false")
