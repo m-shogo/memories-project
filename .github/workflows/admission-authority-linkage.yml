@@ -13,6 +13,7 @@ on:
       - "contracts/operations/production-shaped-failure-drill-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "scripts/validate-memory-os-admission-authority-linkage.py"
+      - "scripts/validate-memory-os-admission-authority-linkage-negative.py"
   push:
     branches:
       - so
@@ -27,6 +28,7 @@ on:
       - "contracts/operations/production-shaped-failure-drill-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "scripts/validate-memory-os-admission-authority-linkage.py"
+      - "scripts/validate-memory-os-admission-authority-linkage-negative.py"
   workflow_dispatch:
 
 permissions:
@@ -67,9 +69,14 @@ jobs:
           log=/tmp/admission-authority-linkage.log
           : > "$log"
           code=0
-          python -m py_compile scripts/validate-memory-os-admission-authority-linkage.py >> "$log" 2>&1 || code=$?
+          python -m py_compile \
+            scripts/validate-memory-os-admission-authority-linkage.py \
+            scripts/validate-memory-os-admission-authority-linkage-negative.py >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-admission-authority-linkage.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-admission-authority-linkage-negative.py >> "$log" 2>&1 || code=$?
           fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
