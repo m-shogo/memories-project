@@ -344,7 +344,7 @@
     },
     {
       "scenarioId": "deletion-under-load",
-      "reason": "post-fence former-session load, Preview requests authenticated before the fence, Apply and upload-authorization requests authenticated before the fence with zero pre-worker durable mutation, upload-completion requests paused after real MinIO HEAD and rejected after the epoch-2 fence, and bounded 24-account/four-worker deletion saturation now pass against local PostgreSQL and MinIO; host/process failure behavior, production dependency behavior and independently reviewed deletion-load thresholds remain deferred",
+      "reason": "post-fence former-session load and concurrent worker erasure now pass against local PostgreSQL and MinIO; request linearization for calls already in flight before the 202 fence, multiple-account worker saturation and production dependency behavior remain deferred",
       "requiredDependencyMode": "PRODUCTION_EQUIVALENT"
     }
   ],
@@ -360,7 +360,7 @@
     "cardinalityProof": true,
     "operationalThresholds": false,
     "productionEquivalentDependencies": false,
-    "note": "Mock and local dependency checkpoints include bounded ramp, short CI stability, post-fence deletion load, Preview pre-fence linearization, Apply/upload-authorization zero-mutation pre-fence linearization, post-HEAD upload-completion pre-fence linearization, and bounded multi-account deletion-worker saturation. They still establish neither production capacity, sustained-soak/leak proof, host/process failure recovery, production-equivalent behavior nor independently reviewed operating thresholds; OPS-P0-006 remains PARTIAL.",
+    "note": "Mock and local dependency checkpoints now include bounded ramp, short CI stability and post-fence deletion load. They establish neither production capacity nor pre-fence request linearization, sustained-soak/leak proof or production-equivalent behavior; OPS-P0-006 remains PARTIAL.",
     "boundedLocalCapacityRampExecuted": true,
     "shortCIStabilitySampleExecuted": true,
     "deletionPostFenceLoadExecuted": true,
