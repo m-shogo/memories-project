@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,8 @@ CONTRACT_PATH = ROOT / "contracts/operations/rate-limit-emergency-drill-contract
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/rate-limit-emergency-drill-results.sample.v1.json"
 OPERATIONS_PATH = ROOT / "contracts/operations/rate-limit-operations-contract.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-rate-limit-emergency-drill.py"
+OPERATIONS_VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit-operations.py"
 WORKFLOW_PATH = ".github/workflows/rate-limit-emergency-drill.yml"
 NEW_REFS = (
     "contracts/operations/rate-limit-emergency-drill-contract.v1.json",
@@ -56,6 +59,50 @@ def append_once(items: list[Any], value: str) -> bool:
     return True
 
 
+def run_validator(path: Path, *args: str) -> None:
+    completed = subprocess.run(
+        [sys.executable, str(path), *args],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    require(completed.returncode == 0,
+            f"post-write validation failed for {path.name}:\n{completed.stdout[-4000:]}")
+
+
+def validate_written_authority(source_sha: str) -> None:
+    run_validator(
+        VALIDATOR_PATH,
+        "--expected-commit-sha", source_sha,
+        "--require-result",
+        "--require-reconciled",
+    )
+    run_validator(OPERATIONS_VALIDATOR)
+
+
+def transactional_write(contract: dict[str, Any], status: dict[str, Any], source_sha: str) -> None:
+    originals = {
+        CONTRACT_PATH: CONTRACT_PATH.read_bytes(),
+        STATUS_PATH: STATUS_PATH.read_bytes(),
+    }
+    try:
+        CONTRACT_PATH.write_text(
+            json.dumps(contract, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        STATUS_PATH.write_text(
+            json.dumps(status, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        validate_written_authority(source_sha)
+    except Exception:
+        for path, original in originals.items():
+            path.write_bytes(original)
+        raise
+
+
 def main() -> int:
     contract = load(CONTRACT_PATH)
     result = load(RESULT_PATH)
@@ -66,6 +113,9 @@ def main() -> int:
             "decision drill result must PASS before reconcile")
     require(result.get("classification") == "LOCAL_CI_DECISION_MODEL",
             "decision drill classification drift")
+    source_sha = result.get("commitSha")
+    require(isinstance(source_sha, str) and len(source_sha) == 40,
+            "decision drill commitSha must be a full SHA")
     assertions = result.get("assertions")
     require(isinstance(assertions, dict), "result assertions must be object")
     require(assertions.get("productionEvidence") is False,
@@ -153,10 +203,7 @@ def main() -> int:
         return 0
 
     status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
-    CONTRACT_PATH.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n",
-                             encoding="utf-8")
-    STATUS_PATH.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n",
-                           encoding="utf-8")
+    transactional_write(contract, status, source_sha)
     print("Registered local rate-limit emergency decision drill; runtime/production gaps remain")
     return 0
 
