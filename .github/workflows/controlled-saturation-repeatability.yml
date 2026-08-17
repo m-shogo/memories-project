@@ -144,8 +144,12 @@ jobs:
           ORDINAL: ${{ matrix.ordinal }}
         run: |
           set -euo pipefail
+          source_sha="${GITHUB_SHA}"
           git fetch origin so
-          git reset --hard origin/so
+          if [[ "$(git rev-parse origin/so)" != "$source_sha" ]]; then
+            echo "so advanced after repeatability validation; refusing stale diagnostic"
+            exit 75
+          fi
           python - <<'PY'
           import json, os, re
           from pathlib import Path
@@ -176,7 +180,11 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --cached --quiet; then
             git commit -m "test(load): record saturation repeatability diagnostic ${{ matrix.ordinal }}"
-            git pull --rebase origin so
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$source_sha" ]]; then
+              echo "so advanced before repeatability diagnostic commit; refusing stale diagnostic"
+              exit 75
+            fi
             git push origin HEAD:so
           fi
       - name: Enforce ramp
@@ -209,6 +217,12 @@ jobs:
       - name: Commit repeatability authority
         run: |
           set -euo pipefail
+          source_sha="$(git rev-parse HEAD)"
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$source_sha" ]]; then
+            echo "so advanced after repeatability aggregate validation; refusing stale authority"
+            exit 75
+          fi
           git add \
             contracts/operations/controlled-saturation-repeatability-contract.v1.json \
             contracts/operations/load-test-scenario-contract.v1.json \
@@ -219,6 +233,10 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(load): register saturation repeatability evidence"
-            git pull --rebase origin so
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$source_sha" ]]; then
+              echo "so advanced before repeatability authority commit; refusing stale authority"
+              exit 75
+            fi
             git push origin HEAD:so
           fi
