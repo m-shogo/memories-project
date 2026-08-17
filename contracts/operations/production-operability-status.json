@@ -400,7 +400,8 @@
         "actual deletion-worker process kill and host failure behavior, production topology and independently reviewed deletion-load thresholds",
         "deliberate local PostgreSQL plus MinIO saturation ramp with queue/backlog signals, first-failure transition, repeatability and independently reviewed safe operating thresholds",
         "independently approved leak/stability criteria and review over the repeated LOCAL_LONG_SOAK trends; descriptive cross-run review is complete but leakProof remains false",
-        "production-shaped sustained soak against registered production-equivalent dependencies with runtime topology, TLS, scoped credentials, dependency latency/failure behavior and independent review; LOCAL_LONG_SOAK remains local-only evidence"
+        "production-shaped sustained soak against registered production-equivalent dependencies with runtime topology, TLS, scoped credentials, dependency latency/failure behavior and independent review; LOCAL_LONG_SOAK remains local-only evidence",
+        "60-minute-or-longer repeated soak over PostgreSQL, object storage, parser, queue, deletion and authentication paths with RSS/heap/goroutine slope review and independently approved leak/stability criteria"
       ],
       "evidenceRefs": [
         "services/import-api/internal/loadtest/harness.go",
