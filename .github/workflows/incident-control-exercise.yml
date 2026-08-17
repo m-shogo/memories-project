@@ -10,6 +10,7 @@ on:
       - "contracts/operations/backup-restore-contract.v1.json"
       - "scripts/run-memory-os-incident-control-exercise.py"
       - "scripts/validate-memory-os-incident-control-exercise.py"
+      - "scripts/validate-memory-os-incident-control-exercise-reconcile-negative.py"
       - "scripts/reconcile-memory-os-incident-control-exercise.py"
       - "scripts/reconcile-memory-os-backup-restore.py"
       - "scripts/validate-memory-os-authorization.py"
@@ -75,8 +76,10 @@ jobs:
           python -m py_compile \
             scripts/run-memory-os-incident-control-exercise.py \
             scripts/validate-memory-os-incident-control-exercise.py \
+            scripts/validate-memory-os-incident-control-exercise-reconcile-negative.py \
             scripts/reconcile-memory-os-incident-control-exercise.py
           python scripts/validate-memory-os-incident-control-exercise.py
+          python scripts/validate-memory-os-incident-control-exercise-reconcile-negative.py
 
       - name: Execute six-scenario control exercise
         id: exercise
