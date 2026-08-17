@@ -95,6 +95,12 @@ jobs:
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
+      - name: Reject auto-healed support-window authority on pull requests
+        if: steps.validate.outputs.exit_code == '0' && github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code -- contracts/operations/production-operability-status.json
       - name: Commit bounded foundation authority
         if: steps.validate.outputs.exit_code == '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         run: |
