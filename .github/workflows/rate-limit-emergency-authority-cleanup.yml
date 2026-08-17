@@ -5,6 +5,7 @@ on:
     branches:
       - so
     paths:
+      - ".github/workflows/rate-limit-emergency-authority-cleanup.yml"
       - "contracts/operations/requests/rate-limit-emergency-authority-cleanup.v1.json"
   workflow_dispatch:
 
@@ -27,6 +28,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Capture exact cleanup source
+        run: |
+          set -euo pipefail
+          source_sha="$(git rev-parse HEAD)"
+          git fetch origin so
+          remote_sha="$(git rev-parse origin/so)"
+          if [[ "$remote_sha" != "$source_sha" ]]; then
+            echo "Emergency authority cleanup source is stale before validation: $source_sha != $remote_sha" >&2
+            exit 75
+          fi
+          echo "SOURCE_SHA=$source_sha" >> "$GITHUB_ENV"
       - name: Remove duplicate authority and validate canonical authority
         id: cleanup
         run: |
@@ -68,7 +80,7 @@ jobs:
           path.write_text(json.dumps(status, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
           PY
           if [[ "$code" == "0" ]]; then
-            git rm -f \
+            git rm -f --ignore-unmatch \
               contracts/operations/rate-limit-emergency-ledger-contract.v1.json \
               contracts/operations/rate-limit-emergency-ledger.v1.json \
               scripts/register-memory-os-rate-limit-emergency-operation.py \
@@ -92,27 +104,52 @@ jobs:
         if: steps.cleanup.outputs.exit_code == '0'
         run: |
           set -euo pipefail
-          git rm -f docs/fixtures/memory-os-operability/rate-limit-emergency-authority-cleanup-diagnostic.last.json 2>/dev/null || true
-          git add contracts/operations/production-operability-status.json scripts/evaluate-memory-os-rate-limit-emergency-state.py
-          git add -u
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          git fetch origin so
+          remote_sha="$(git rev-parse origin/so)"
+          if [[ "$remote_sha" != "$SOURCE_SHA" ]]; then
+            echo "Emergency authority cleanup source is stale: validated $SOURCE_SHA but so is $remote_sha" >&2
+            exit 75
+          fi
+          rm -f docs/fixtures/memory-os-operability/rate-limit-emergency-authority-cleanup-diagnostic.last.json
+          git add -A -- \
+            contracts/operations/production-operability-status.json \
+            scripts/evaluate-memory-os-rate-limit-emergency-state.py \
+            contracts/operations/rate-limit-emergency-ledger-contract.v1.json \
+            contracts/operations/rate-limit-emergency-ledger.v1.json \
+            scripts/register-memory-os-rate-limit-emergency-operation.py \
+            scripts/validate-memory-os-rate-limit-emergency-ledger.py \
+            scripts/reconcile-memory-os-rate-limit-emergency-ledger.py \
+            .github/workflows/rate-limit-emergency-ledger.yml \
+            contracts/operations/requests/rate-limit-emergency-ledger-foundation.v1.json \
+            docs/fixtures/memory-os-operability/rate-limit-emergency-authority-cleanup-diagnostic.last.json
+          if git diff --cached --quiet; then
+            echo "Emergency authority cleanup already current."
+            exit 0
+          fi
           git diff --cached --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "refactor(rate-limit): consolidate emergency evidence authority"
-          for attempt in 1 2 3 4; do
-            git pull --rebase origin so
-            if git push origin HEAD:so; then exit 0; fi
-            sleep 2
-          done
-          exit 1
+          remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
+          if [[ "$remote_sha" != "$SOURCE_SHA" ]]; then
+            echo "Emergency authority cleanup source became stale before push: $remote_sha" >&2
+            exit 75
+          fi
+          git push origin HEAD:so
       - name: Record cleanup diagnostic
         if: steps.cleanup.outputs.exit_code != '0'
         env:
           CLEANUP_EXIT_CODE: ${{ steps.cleanup.outputs.exit_code }}
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           git fetch origin so
-          git reset --hard origin/so
+          remote_sha="$(git rev-parse origin/so)"
+          if [[ "$remote_sha" != "$SOURCE_SHA" ]]; then
+            echo "Emergency authority cleanup diagnostic source is stale: failed $SOURCE_SHA but so is $remote_sha" >&2
+            exit 75
+          fi
           python - <<'PY'
           import json, os
           from pathlib import Path
@@ -120,6 +157,7 @@ jobs:
           value = {
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'rate-limit-emergency-authority-cleanup',
+              'sourceCommitSha': os.environ.get('SOURCE_SHA', ''),
               'result': 'FAIL',
               'exitCode': int(os.environ['CLEANUP_EXIT_CODE']),
               'output': text[-12000:],
@@ -132,15 +170,17 @@ jobs:
           path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
           PY
           git add docs/fixtures/memory-os-operability/rate-limit-emergency-authority-cleanup-diagnostic.last.json
+          git diff --cached --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --cached --quiet; then
             git commit -m "test(rate-limit): record emergency authority cleanup diagnostic"
-            for attempt in 1 2 3; do
-              git pull --rebase origin so
-              if git push origin HEAD:so; then exit 0; fi
-              sleep 2
-            done
+            remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
+            if [[ "$remote_sha" != "$SOURCE_SHA" ]]; then
+              echo "Emergency authority cleanup diagnostic source became stale before push: $remote_sha" >&2
+              exit 75
+            fi
+            git push origin HEAD:so
           fi
       - name: Enforce cleanup
         run: test "${{ steps.cleanup.outputs.exit_code }}" = "0"
