@@ -20,6 +20,8 @@ REGISTRY = ROOT / "contracts/operations/sustained-soak-independent-review-regist
 LOCAL_CONTRACT = ROOT / "contracts/operations/sustained-local-soak-contract.v1.json"
 TREND_REVIEW = ROOT / "docs/fixtures/memory-os-operability/sustained-local-soak-trend-review.v1.json"
 RESULT_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak-result.py"
+LOCK_PATH = ROOT / "contracts/operations/.sustained-soak-independent-review.lock"
+CANONICAL_LOCK_REF = "contracts/operations/.sustained-soak-independent-review.lock"
 CRITERIA_ID = re.compile(r"^soakcrit_[a-z0-9][a-z0-9_-]{7,63}$")
 REVIEW_ID = re.compile(r"^soakrev_[a-z0-9][a-z0-9_-]{7,63}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -317,6 +319,8 @@ def main() -> int:
 
     require(contract.get("schemaVersion") == "memory-os-sustained-soak-independent-review.v1", "contract schema drift")
     require(contract.get("appendOnlyRegistry") is True, "independent review registry must remain append-only")
+    require(contract.get("appendLockPath") == CANONICAL_LOCK_REF, "independent review append lock contract authority drift")
+    require((ROOT / CANONICAL_LOCK_REF).resolve() == LOCK_PATH.resolve(), "independent review append lock path drift")
     criteria = contract.get("criteriaAuthority")
     require(isinstance(criteria, dict), "criteriaAuthority must be object")
     for key in (
