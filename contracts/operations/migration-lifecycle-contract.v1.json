@@ -203,6 +203,6 @@
     "operatorEvidenceRecordImplemented": true,
     "automatedDestructiveRollback": false,
     "ready": false,
-    "note": "The non-production migration registry now contains a passing local rehearsal that restored its actual pre-migration logical dump artifact into a separate same-cluster database and successfully reapplied the migration and SQL suite. Production-shaped rehearsal, production-equivalent isolated restore, mixed-version deployment proof and destructive-contract restore linkage remain required."
+    "note": "The canonical migration sequence, clean PostgreSQL 16 dry-run, binding lifecycle/runbook and append-only operator evidence ledger exist. Production recovery-point verification, mixed-version release proof, isolated restore linkage and production-shaped rehearsal remain required, so OPS-P0-001 stays PARTIAL."
   }
 }
