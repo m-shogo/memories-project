@@ -13,6 +13,9 @@ on:
       - "scripts/validate-memory-os-incident-control-exercise-reconcile-negative.py"
       - "scripts/reconcile-memory-os-incident-control-exercise.py"
       - "scripts/reconcile-memory-os-backup-restore.py"
+      - "scripts/validate-memory-os-incident-response.py"
+      - "scripts/validate-memory-os-incident-tabletop.py"
+      - "scripts/validate-memory-os-operability.py"
       - "scripts/validate-memory-os-authorization.py"
       - "scripts/validate-memory-os-postgresql-rls.py"
       - "scripts/validate-memory-os-database-commit-outage.py"
@@ -77,7 +80,10 @@ jobs:
             scripts/run-memory-os-incident-control-exercise.py \
             scripts/validate-memory-os-incident-control-exercise.py \
             scripts/validate-memory-os-incident-control-exercise-reconcile-negative.py \
-            scripts/reconcile-memory-os-incident-control-exercise.py
+            scripts/reconcile-memory-os-incident-control-exercise.py \
+            scripts/validate-memory-os-incident-response.py \
+            scripts/validate-memory-os-incident-tabletop.py \
+            scripts/validate-memory-os-operability.py
           python scripts/validate-memory-os-incident-control-exercise.py
           python scripts/validate-memory-os-incident-control-exercise-reconcile-negative.py
 
