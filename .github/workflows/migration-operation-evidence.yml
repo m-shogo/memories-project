@@ -31,7 +31,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: migration-operation-evidence-${{ github.ref }}
+  group: migration-operation-evidence-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
@@ -39,15 +39,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout
+      - name: Checkout exact source
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
           fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Capture exact migration operation source
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          test "$(git branch --show-current)" = "so"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Compile evidence tooling
         run: |
@@ -82,9 +93,25 @@ jobs:
           python scripts/validate-memory-os-migration-lifecycle.py
           python scripts/validate-memory-os-operability.py
 
+      - name: Reject auto-healed authority drift on pull requests
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code -- \
+            contracts/operations/migration-operation-evidence-contract.v1.json \
+            contracts/operations/migration-lifecycle-contract.v1.json \
+            contracts/operations/production-operability-status.json
+
       - name: Commit reconciled authority on so
         if: github.event_name != 'pull_request'
         run: |
+          set -euo pipefail
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Migration operation authority source changed after validation; refusing stale derived authority."
+            exit 75
+          fi
           git add \
             contracts/operations/migration-operation-evidence-contract.v1.json \
             contracts/operations/migration-lifecycle-contract.v1.json \
@@ -93,8 +120,13 @@ jobs:
             echo "Migration operation evidence authority is already current."
             exit 0
           fi
+          git diff --cached --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "docs(migration): register append-only operation evidence"
-          git pull --rebase origin so
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Branch advanced after migration operation validation; refusing stale authority."
+            exit 75
+          fi
           git push origin HEAD:so
