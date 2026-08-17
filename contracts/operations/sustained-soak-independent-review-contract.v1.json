@@ -5,6 +5,7 @@
   "reviewRecordSchemaVersion": "memory-os-sustained-soak-independent-review-record.v1",
   "description": "Fail-closed admission contract for future human-approved leak/stability criteria and independent review. This contract does not define thresholds, does not create leak proof, and does not create production evidence.",
   "appendOnlyRegistry": true,
+  "appendLockPath": "contracts/operations/.sustained-soak-independent-review.lock",
   "criteriaAuthority": {
     "humanApprovedCriteriaRequired": true,
     "automaticCriteriaGenerationForbidden": true,
