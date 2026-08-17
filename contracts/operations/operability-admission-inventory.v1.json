@@ -15,7 +15,7 @@
       "nextGate": "registered production-equivalent generation plus an approved predecessor/successor release pair before production-shaped migration rehearsal admission",
       "status": "PARTIAL",
       "blocking": true,
-      "missingEvidenceCount": 4,
+      "missingEvidenceCount": 7,
       "productionEvidence": false,
       "productionReady": false
     },
@@ -78,7 +78,7 @@
       "authority": "contracts/operations/load-test-scenario-contract.v1.json",
       "secondaryAuthority": "contracts/operations/sustained-soak-independent-review-registry.v1.json",
       "foundationImplemented": true,
-      "admittedEvidenceCount": 3,
+      "admittedEvidenceCount": 5,
       "requiredEvidenceCount": 2,
       "approvedLeakStabilityCriteriaCount": 0,
       "passingIndependentReviewCount": 0,
@@ -93,7 +93,7 @@
       "nextGate": "local repeated 60-minute soak and descriptive trend review are complete; next require independent leak/stability criteria plus generation-bound production-equivalent capacity, dependency and host-failure evidence",
       "status": "PARTIAL",
       "blocking": true,
-      "missingEvidenceCount": 9,
+      "missingEvidenceCount": 10,
       "productionEvidence": false,
       "productionReady": false
     },
@@ -153,7 +153,7 @@
       "nextGate": "approve two release baselines and their rolling/rollback compatibility pair, then admit an immutable client baseline and reviewed retained parser artifact before production release compatibility; candidate/local execution remains separate non-release evidence",
       "status": "PARTIAL",
       "blocking": true,
-      "missingEvidenceCount": 25,
+      "missingEvidenceCount": 33,
       "productionEvidence": false,
       "productionReady": false
     },
