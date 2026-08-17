@@ -151,10 +151,13 @@ jobs:
           fi
           git reset --hard origin/so
           target="docs/fixtures/memory-os-operability/sustained-local-soak-results.run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${{ matrix.ordinal }}.v1.json"
+          diagnostic="docs/fixtures/memory-os-operability/sustained-local-soak-diagnostic.${{ matrix.ordinal }}.last.json"
           test ! -e "$target"
           cp "$SOAK_RESULT_PATH" "$target"
           python scripts/validate-memory-os-sustained-local-soak-result.py "$target" --expected-commit-sha "$SOURCE_SHA"
+          rm -f "$diagnostic"
           git add "$target"
+          git add -u -- "$diagnostic"
           git commit -m "test(soak): record sustained local soak result ${{ matrix.ordinal }}"
           for attempt in 1 2 3 4; do
             git pull --rebase origin so
