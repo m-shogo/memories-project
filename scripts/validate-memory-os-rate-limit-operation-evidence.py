@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import re
 import subprocess
@@ -24,9 +25,11 @@ REQUIRED_RECORD_FIELDS = {
     "proxyMode", "affectedPolicyIds", "startedAt", "expiresAt",
     "activationReason", "lifecycle", "productionConfirmation",
     "verificationResults", "restoredAt", "openRisks", "evidenceRefs",
+    "evidenceDigestsByRef",
 }
 SAFE_RISK_RE = re.compile(r"^[a-z0-9][a-z0-9_:-]{2,127}$")
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 REPO_REF_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 IPV4_RE = re.compile(r"(?<![0-9])(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?![0-9])")
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
@@ -129,6 +132,30 @@ def validate_repo_refs(value: Any, field: str, *, require_existing: bool) -> lis
     return value
 
 
+def all_evidence_refs(record: dict[str, Any]) -> list[str]:
+    refs: set[str] = set()
+    top_level = record.get("evidenceRefs")
+    if isinstance(top_level, list):
+        refs.update(ref for ref in top_level if isinstance(ref, str) and ref)
+    verification = record.get("verificationResults")
+    if isinstance(verification, list):
+        for item in verification:
+            if not isinstance(item, dict):
+                continue
+            values = item.get("evidenceRefs")
+            if isinstance(values, list):
+                refs.update(ref for ref in values if isinstance(ref, str) and ref)
+    return sorted(refs)
+
+
+def expected_evidence_digests(record: dict[str, Any]) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for ref in all_evidence_refs(record):
+        path = canonical_evidence_path(ref, "evidenceDigestsByRef")
+        result[ref] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return result
+
+
 def iter_string_values(value: Any) -> list[str]:
     result: list[str] = []
     if isinstance(value, str):
@@ -158,7 +185,8 @@ def load_contract_context() -> tuple[dict[str, Any], set[str]]:
 
 
 def validate_record(record: dict[str, Any], contract: dict[str, Any],
-                    policy_ids: set[str], *, template: bool = False) -> None:
+                    policy_ids: set[str], *, template: bool = False,
+                    writer_input: bool = False) -> None:
     require(set(record) == REQUIRED_RECORD_FIELDS,
             f"record field set drift: {sorted(set(record) ^ REQUIRED_RECORD_FIELDS)}")
     require(record.get("schemaVersion") == contract.get("recordSchemaVersion"),
@@ -173,6 +201,8 @@ def validate_record(record: dict[str, Any], contract: dict[str, Any],
                 "template sourceCommitSha drift")
         require(record.get("lifecycle") == "PLANNED",
                 "template lifecycle drift")
+        require(record.get("evidenceDigestsByRef") == {},
+                "template evidenceDigestsByRef must be empty")
         return
 
     operation_id = record.get("operationId")
@@ -252,11 +282,14 @@ def validate_record(record: dict[str, Any], contract: dict[str, Any],
         require(check_id not in by_check, f"duplicate verification check: {check_id}")
         require(item.get("result") in set(rules["verificationResultValues"]),
                 f"invalid verification result: {check_id}")
-        validate_repo_refs(item.get("evidenceRefs"),
-                           f"verificationResults.{check_id}.evidenceRefs",
-                           require_existing=item.get("result") == "PASS")
+        refs = item.get("evidenceRefs")
+        validate_repo_refs(
+            refs,
+            f"verificationResults.{check_id}.evidenceRefs",
+            require_existing=bool(refs),
+        )
         if item.get("result") == "PASS":
-            require(item.get("evidenceRefs"),
+            require(refs,
                     f"PASS verification requires evidenceRefs: {check_id}")
         by_check[check_id] = item
     require(set(by_check) == required_checks,
@@ -293,13 +326,25 @@ def validate_record(record: dict[str, Any], contract: dict[str, Any],
     validate_repo_refs(record.get("evidenceRefs"), "evidenceRefs",
                        require_existing=True)
 
+    digests = record.get("evidenceDigestsByRef")
+    require(isinstance(digests, dict), "evidenceDigestsByRef must be an object")
+    if writer_input:
+        require(digests == {}, "writer input evidenceDigestsByRef must be empty")
+    else:
+        expected_digests = expected_evidence_digests(record)
+        require(set(digests) == set(expected_digests),
+                "evidenceDigestsByRef reference set drift")
+        require(all(isinstance(value, str) and SHA256_RE.fullmatch(value)
+                    for value in digests.values()),
+                "evidenceDigestsByRef contains an invalid SHA-256 digest")
+        require(digests == expected_digests,
+                "evidenceDigestsByRef does not match current evidence bytes")
+
     values = iter_string_values(record)
     for value in values:
         require(URL_RE.search(value) is None, "record contains a raw URL")
         require(EMAIL_RE.search(value) is None, "record contains an email address")
         require(IPV4_RE.search(value) is None, "record contains a raw IPv4 address")
-        # Closed schema tokens such as policy_generation_exact_source are safe;
-        # inspect only value text likely to carry credentials or identities.
         if value not in required_checks and value not in rules["activationReasonValues"]:
             require(SECRET_WORD_RE.search(value) is None,
                     "record contains secret/token-like free text")
@@ -313,7 +358,7 @@ def main() -> int:
             "memory-os-rate-limit-operation-evidence.v1",
             "operation evidence contract schemaVersion drift")
     require(contract.get("recordSchemaVersion") ==
-            "memory-os-rate-limit-operation-record.v1",
+            "memory-os-rate-limit-operation-record.v2",
             "operation record schemaVersion drift")
     expected_paths = {
         "sourceOperationsContract": "contracts/operations/rate-limit-operations-contract.v1.json",
@@ -339,6 +384,8 @@ def main() -> int:
         "fullSourceCommitShaRequired", "sourceCommitMustBeAncestorOfCurrentHead",
         "operatorReviewerMustDiffer", "productionRequiresConfirmation",
         "restoredRequiresAllChecksPass", "failedRequiresOpenRisk", "appendOnly",
+        "writerComputesEvidenceDigests", "evidenceDigestsCoverEveryEvidenceRef",
+        "evidenceDigestsUseSha256",
     ):
         require(rules.get(flag) is True, f"record.{flag} must be true")
 
@@ -351,6 +398,8 @@ def main() -> int:
         "accountOrSessionIdentifierForbidden", "requestContentForbidden",
         "rawUrlForbidden", "databaseOrStoreCredentialForbidden",
         "freeFormEvidenceTextForbidden", "evidenceRefsMustBeRepositoryRelative",
+        "evidenceRefsMustBeTracked", "evidenceRefsMustBeSymlinkFree",
+        "evidenceRefsMustMatchHeadBytes",
     ):
         require(privacy.get(flag) is True, f"privacy.{flag} must be true")
 
