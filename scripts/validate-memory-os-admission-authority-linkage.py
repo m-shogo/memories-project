@@ -57,7 +57,10 @@ def load(path: Path) -> dict[str, Any]:
 
 def safe_relative(value: str, field: str) -> Path:
     path = Path(value)
-    require(not path.is_absolute() and ".." not in path.parts, f"unsafe linked path in {field}: {value}")
+    require(
+        bool(path.parts) and path != Path(".") and not path.is_absolute() and ".." not in path.parts,
+        f"unsafe linked path in {field}: {value}",
+    )
     return path
 
 
