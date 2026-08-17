@@ -157,7 +157,9 @@ jobs:
           python scripts/validate-memory-os-sustained-local-soak-result.py "$target" --expected-commit-sha "$SOURCE_SHA"
           rm -f "$diagnostic"
           git add "$target"
-          git add -u -- "$diagnostic"
+          if git ls-files --error-unmatch -- "$diagnostic" >/dev/null 2>&1; then
+            git add -u -- "$diagnostic"
+          fi
           git commit -m "test(soak): record sustained local soak result ${{ matrix.ordinal }}"
           for attempt in 1 2 3 4; do
             git pull --rebase origin so
@@ -177,7 +179,10 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin so
-          git reset --hard origin/so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "so advanced after soak validation; refusing stale diagnostic"
+            exit 75
+          fi
           python - <<'PY'
           import json
           import os
@@ -214,11 +219,12 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --cached --quiet; then
             git commit -m "test(soak): record parallel sustained soak diagnostic ${{ matrix.ordinal }}"
-            for attempt in 1 2 3; do
-              git pull --rebase origin so
-              if git push origin HEAD:so; then exit 0; fi
-              sleep 2
-            done
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              echo "so advanced before soak diagnostic push; refusing stale diagnostic"
+              exit 75
+            fi
+            git push origin HEAD:so
           fi
 
       - name: Enforce long-run success
@@ -250,6 +256,12 @@ jobs:
       - name: Commit aggregate authority without leak or production promotion
         run: |
           set -euo pipefail
+          source_sha="$(git rev-parse HEAD)"
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$source_sha" ]]; then
+            echo "so advanced after soak aggregate validation; refusing stale authority"
+            exit 75
+          fi
           git add \
             contracts/operations/sustained-local-soak-contract.v1.json \
             contracts/operations/load-test-scenario-contract.v1.json \
@@ -260,6 +272,10 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(ops): aggregate parallel sustained local soak runs"
-            git pull --rebase origin so
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$source_sha" ]]; then
+              echo "so advanced before soak aggregate push; refusing stale authority"
+              exit 75
+            fi
             git push origin HEAD:so
           fi
