@@ -13,7 +13,9 @@ on:
       - "scripts/validate-memory-os-capacity-ramp.py"
       - "scripts/reconcile-memory-os-capacity-ramp-status.py"
       - "scripts/validate-memory-os-short-stability-sample.py"
+      - "scripts/validate-memory-os-short-stability-reconcile-negative.py"
       - "scripts/reconcile-memory-os-short-stability-status.py"
+      - "scripts/reconcile-memory-os-sustained-local-soak-status.py"
       - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-operability.py"
   push:
@@ -30,7 +32,9 @@ on:
       - "scripts/validate-memory-os-capacity-ramp.py"
       - "scripts/reconcile-memory-os-capacity-ramp-status.py"
       - "scripts/validate-memory-os-short-stability-sample.py"
+      - "scripts/validate-memory-os-short-stability-reconcile-negative.py"
       - "scripts/reconcile-memory-os-short-stability-status.py"
+      - "scripts/reconcile-memory-os-sustained-local-soak-status.py"
       - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-operability.py"
   schedule:
@@ -90,10 +94,17 @@ jobs:
             scripts/validate-memory-os-capacity-ramp.py \
             scripts/reconcile-memory-os-capacity-ramp-status.py \
             scripts/validate-memory-os-short-stability-sample.py \
+            scripts/validate-memory-os-short-stability-reconcile-negative.py \
             scripts/reconcile-memory-os-short-stability-status.py \
+            scripts/reconcile-memory-os-sustained-local-soak-status.py \
             scripts/validate-memory-os-load.py \
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
+
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: short-stability-ordering-negative" >> "$log"
+            python scripts/validate-memory-os-short-stability-reconcile-negative.py >> "$log" 2>&1 || code=$?
+          fi
 
           if [[ "$code" == "0" && -f docs/fixtures/memory-os-operability/capacity-ramp-results.sample.v1.json ]]; then
             echo "STAGE: capacity-ramp" >> "$log"
