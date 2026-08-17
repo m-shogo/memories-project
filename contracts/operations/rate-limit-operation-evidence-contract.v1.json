@@ -59,6 +59,7 @@
     ],
     "maximumEmergencyDurationMinutes": 60,
     "fullSourceCommitShaRequired": true,
+    "sourceCommitMustBeAncestorOfCurrentHead": true,
     "operatorReviewerMustDiffer": true,
     "productionRequiresConfirmation": true,
     "restoredRequiresAllChecksPass": true,
