@@ -339,7 +339,7 @@
     },
     {
       "scenarioId": "soak",
-      "reason": "a six-window short CI process sample now records RSS, heap and goroutine trends, but it is not a 60-minute repeated soak, does not cover MinIO/parser/queue/deletion/Apple dependencies and cannot prove leak freedom or production stability",
+      "reason": "repeated LOCAL_LONG_SOAK execution and descriptive trend review exist, but this local evidence is not leak proof and is not production-shaped sustained-soak evidence; independent leak/stability criteria remain required",
       "requiredDependencyMode": "LOCAL_POSTGRES_MINIO"
     },
     {
@@ -360,7 +360,7 @@
     "cardinalityProof": true,
     "operationalThresholds": false,
     "productionEquivalentDependencies": false,
-    "note": "Mock and local dependency checkpoints are supplemented by bounded ramp and short CI stability samples. These record local concurrency and process trends but establish neither a saturation boundary nor sustained-soak/leak proof; OPS-P0-006 remains PARTIAL.",
+    "note": "Mock and local dependency checkpoints are supplemented by a bounded authenticated Preview concurrency ramp. The ramp records a local candidate-safe step but observed no saturation transition, does not measure MinIO on the ramped path and cannot establish capacity or operational thresholds. OPS-P0-006 remains PARTIAL.",
     "boundedLocalCapacityRampExecuted": true,
     "shortCIStabilitySampleExecuted": true,
     "deletionPostFenceLoadExecuted": true,
