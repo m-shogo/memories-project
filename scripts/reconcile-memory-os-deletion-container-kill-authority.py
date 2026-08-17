@@ -15,6 +15,7 @@ PROOF_VALIDATOR = ROOT / "scripts/validate-memory-os-deletion-worker-container-k
 LOAD_CONTRACT = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 
 PROOF_REFS = [
     "contracts/operations/deletion-worker-container-kill-recovery-contract.v1.json",
@@ -58,6 +59,11 @@ def replace_if_present(values: list[Any], old: str, new: str) -> None:
             return
 
 
+def validate_reconciled_authority() -> None:
+    subprocess.run(["python", str(LOAD_VALIDATOR)], cwd=ROOT, check=True)
+    subprocess.run(["python", str(OPERABILITY_VALIDATOR)], cwd=ROOT, check=True)
+
+
 def main() -> int:
     subprocess.run(["python", str(PROOF_VALIDATOR), "--require-result"], cwd=ROOT, check=True)
     contract = load(PROOF_CONTRACT)
@@ -79,6 +85,9 @@ def main() -> int:
     for key in ("actualHostFailureCovered", "availabilityZoneFailureCovered", "productionEvidence", "productionEquivalentDependencies", "containsSecrets"):
         if environment.get(key) is not False:
             raise SystemExit(f"result cannot enable {key}")
+
+    original_load = LOAD_CONTRACT.read_bytes()
+    original_status = STATUS.read_bytes()
 
     load_contract = load(LOAD_CONTRACT)
     load_readiness = load_contract.setdefault("readiness", {})
@@ -103,7 +112,6 @@ def main() -> int:
         raise SystemExit("deletion-under-load deferred scenario missing")
     for ref in PROOF_REFS:
         append_unique(load_contract.setdefault("evidenceRefs", []), ref)
-    write(LOAD_CONTRACT, load_contract)
 
     status = load(STATUS)
     areas = {area.get("id"): area for area in status.get("areas", [])}
@@ -136,8 +144,15 @@ def main() -> int:
 
     if status.get("productionDecision") != "NO_GO":
         raise SystemExit("productionDecision must remain NO_GO")
-    write(STATUS, status)
-    subprocess.run(["python", str(LOAD_VALIDATOR)], cwd=ROOT, check=True)
+
+    try:
+        write(LOAD_CONTRACT, load_contract)
+        write(STATUS, status)
+        validate_reconciled_authority()
+    except BaseException:
+        LOAD_CONTRACT.write_bytes(original_load)
+        STATUS.write_bytes(original_status)
+        raise
 
     print("Memory OS deletion container-kill canonical reconciliation PASS")
     print("actual Docker container kill/replacement: proven")
