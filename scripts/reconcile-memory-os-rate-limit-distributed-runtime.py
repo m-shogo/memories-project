@@ -15,6 +15,7 @@ WRITER = ROOT / "scripts/register-memory-os-rate-limit-distributed-runtime.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit-distributed-runtime.py"
 WORKFLOW = ROOT / ".github/workflows/rate-limit-distributed-runtime-admission.yml"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 
 EVIDENCE = (
     "generation-bound distributed rate-limit runtime admission is implemented: future evidence must bind the exact policy digest, at least two runtime instances, an atomic shared store, trusted-proxy deployment, restart continuity, fail-closed dependency behavior, runtime-observed emergency expiry/restoration, alert delivery and independent security/operability review; the registry is currently empty and creates no runtime deployment claim"
@@ -70,8 +71,34 @@ def run_validator() -> None:
     )
 
 
+def commit_outputs_transactionally(outputs: dict[Path, dict[str, Any]]) -> None:
+    originals = {path: path.read_bytes() for path in outputs}
+    try:
+        for path, value in outputs.items():
+            write(path, value)
+        run_validator()
+        completed = subprocess.run(
+            ["python", str(OPERABILITY_VALIDATOR)],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        require(
+            completed.returncode == 0,
+            "operability authority rejected after distributed runtime reconcile:\n"
+            + completed.stdout[-4000:]
+            + completed.stderr[-4000:],
+        )
+    except Exception as exc:
+        for path, data in originals.items():
+            path.write_bytes(data)
+        raise Fail(f"distributed runtime reconcile validation failed; restored prior authority: {exc}") from exc
+
+
 def main() -> int:
-    for path in (REGISTRY, WRITER, VALIDATOR, WORKFLOW):
+    for path in (REGISTRY, WRITER, VALIDATOR, WORKFLOW, OPERABILITY_VALIDATOR):
         require(path.is_file(), f"distributed runtime admission missing: {path.relative_to(ROOT)}")
     run_validator()
     registry = load(REGISTRY)
@@ -104,7 +131,6 @@ def main() -> int:
     readiness["productionEquivalentRuntimeAvailable"] = pe > 0
     readiness["productionRuntimeAvailable"] = prod > 0
     readiness["productionReady"] = False
-    write(CONTRACT, contract)
 
     status = load(STATUS)
     require(status.get("productionDecision") == "NO_GO", "production decision must remain NO_GO")
@@ -117,9 +143,9 @@ def main() -> int:
     append_once(existing, EVIDENCE)
     for ref in REFS:
         append_once(refs, ref)
-    write(STATUS, status)
 
-    run_validator()
+    commit_outputs_transactionally({CONTRACT: contract, STATUS: status})
+
     print("Memory OS distributed rate-limit runtime reconciliation PASS")
     print(f"admitted runtimes: {len(runtimes)}")
     print("distributed shared store: false" if not runtimes else "distributed shared store: evidence admitted")
