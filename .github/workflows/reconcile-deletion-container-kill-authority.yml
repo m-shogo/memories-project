@@ -13,6 +13,8 @@ on:
       - "scripts/validate-memory-os-operability.py"
       - "contracts/operations/deletion-worker-container-kill-recovery-contract.v1.json"
       - "docs/fixtures/memory-os-operability/deletion-worker-container-kill-recovery-results.sample.v1.json"
+      - "contracts/operations/load-test-scenario-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
   push:
     branches:
       - so
