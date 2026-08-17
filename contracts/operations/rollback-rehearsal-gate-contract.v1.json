@@ -4,6 +4,7 @@
   "description": "Fail-closed admission authority for a rollback rehearsal. A historical candidate, branch head, tag or CI PASS cannot authorize rehearsal. Both source and rollback target must be distinct approved release-baseline records, and the target must already be rollback eligible. Admission records planning authority only; it never executes rollback, changes traffic or creates production evidence.",
   "approvedReleaseRegistry": "contracts/operations/release-baseline-registry.v1.json",
   "rehearsalRegistry": "contracts/operations/rollback-rehearsal-registry.v1.json",
+  "appendLockPath": "contracts/operations/.rollback-rehearsal-registry.lock",
   "writer": "scripts/request-memory-os-rollback-rehearsal.py",
   "validator": "scripts/validate-memory-os-rollback-rehearsal-gate.py",
   "reconcile": "scripts/reconcile-memory-os-rollback-rehearsal-gate.py",
@@ -42,7 +43,7 @@
     "database recovery point and forward-fix decision references exist",
     "Release Owner and Database Recovery Owner are distinct pseudonymous approvers",
     "rehearsal ID and release-pair request are unique",
-    "registry update uses exclusive lock and atomic replacement"
+    "registry update uses the canonical exclusive append lock and atomic replacement"
   ],
   "forbiddenAdmissionSources": [
     "historical candidate commit",
