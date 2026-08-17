@@ -12,6 +12,8 @@ on:
       - "scripts/validate-memory-os-operability.py"
       - "contracts/operations/deletion-lease-recovery-contract.v1.json"
       - "docs/fixtures/memory-os-operability/deletion-lease-recovery-results.sample.v1.json"
+      - "contracts/operations/load-test-scenario-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
   push:
     branches:
       - so
