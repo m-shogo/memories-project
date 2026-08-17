@@ -19,6 +19,12 @@ CONTRACT_PATH = ROOT / "contracts/operations/incident-control-exercise-contract.
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/incident-control-exercise-results.sample.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-incident-control-exercise.py"
+POST_WRITE_VALIDATORS = (
+    VALIDATOR_PATH,
+    ROOT / "scripts/validate-memory-os-incident-response.py",
+    ROOT / "scripts/validate-memory-os-incident-tabletop.py",
+    ROOT / "scripts/validate-memory-os-operability.py",
+)
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 EVIDENCE_REFS = (
@@ -58,6 +64,10 @@ def load(path: Path) -> dict[str, Any]:
         raise ReconcileFailure(f"invalid JSON in {path.relative_to(ROOT)}: {exc}") from exc
     require(isinstance(value, dict), f"root must be an object: {path.relative_to(ROOT)}")
     return value
+
+
+def render(value: dict[str, Any]) -> bytes:
+    return (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
 
 
 def source_is_ancestor(value: Any) -> bool:
@@ -113,6 +123,30 @@ def validate_result(result: dict[str, Any], contract: dict[str, Any]) -> None:
         validator.validate_result(result, contract, None)
     except Exception as exc:
         raise ReconcileFailure(f"canonical incident result validation failed: {exc}") from exc
+
+
+def validate_current_authority() -> None:
+    for validator in POST_WRITE_VALIDATORS:
+        require(validator.is_file(), f"canonical incident validator missing: {validator.relative_to(ROOT)}")
+        completed = subprocess.run(["python", str(validator)], cwd=ROOT, check=False)
+        require(completed.returncode == 0,
+                f"canonical incident authority invalid before reconcile: {validator.name}")
+
+
+def commit_validated_pair(contract: dict[str, Any], status: dict[str, Any]) -> None:
+    original_contract = CONTRACT_PATH.read_bytes()
+    original_status = STATUS_PATH.read_bytes()
+    try:
+        CONTRACT_PATH.write_bytes(render(contract))
+        STATUS_PATH.write_bytes(render(status))
+        for validator in POST_WRITE_VALIDATORS:
+            completed = subprocess.run(["python", str(validator)], cwd=ROOT, check=False)
+            require(completed.returncode == 0,
+                    f"reconciled incident authority failed validation: {validator.name}")
+    except BaseException:
+        CONTRACT_PATH.write_bytes(original_contract)
+        STATUS_PATH.write_bytes(original_status)
+        raise
 
 
 def normalize_contract(contract: dict[str, Any]) -> dict[str, Any]:
@@ -192,6 +226,7 @@ def main() -> int:
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
 
+    validate_current_authority()
     current_contract = load(CONTRACT_PATH)
     validate_result(load(RESULT_PATH), current_contract)
     current_status = load(STATUS_PATH)
@@ -214,14 +249,7 @@ def main() -> int:
         print("Memory OS incident control authority already normalized")
         return 0
 
-    CONTRACT_PATH.write_text(
-        json.dumps(candidate_contract, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
-    STATUS_PATH.write_text(
-        json.dumps(candidate_status, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    commit_validated_pair(candidate_contract, candidate_status)
     print("Normalized incident control contract and OPS-P0-002 authority")
     return 0
 
