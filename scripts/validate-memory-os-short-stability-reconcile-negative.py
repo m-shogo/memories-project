@@ -25,6 +25,10 @@ CONTROLLED_RESULT = ROOT / "docs/fixtures/memory-os-operability/controlled-satur
 STALE_SOAK_GAP = (
     "60-minute-or-longer repeated soak over PostgreSQL, object storage, parser, queue, deletion and authentication paths with RSS/heap/goroutine slope review and independently approved leak/stability criteria"
 )
+WEAK_SATURATION_GAP_PREFIXES = (
+    "repeatability of the observed local PostgreSQL plus MinIO saturation signal",
+    "repeatable local PostgreSQL plus MinIO saturation runs",
+)
 
 
 class NegativeFailure(RuntimeError):
@@ -152,6 +156,45 @@ def run_capacity_rollback_case(module: ModuleType) -> None:
         require(path.read_bytes() == data, f"capacity rollback failed for {path.relative_to(ROOT)}")
 
 
+def run_controlled_saturation_preservation_case(module: ModuleType) -> None:
+    originals = {path: path.read_bytes() for path in (CONTROLLED_CONTRACT, LOAD, STATUS)}
+    previous_sha = os.environ.get("EXPECTED_COMMIT_SHA")
+    original_validator = module.validate_post_write
+    result = load_json(CONTROLLED_RESULT)
+    source_sha = result.get("commitSha")
+    require(isinstance(source_sha, str) and len(source_sha) == 40, "controlled saturation result commitSha missing")
+
+    def no_op_validator(expected_sha: str) -> None:
+        require(expected_sha == source_sha, "controlled saturation preservation used wrong source SHA")
+
+    try:
+        os.environ["EXPECTED_COMMIT_SHA"] = source_sha
+        module.validate_post_write = no_op_validator
+        require(module.main() == 0, "controlled saturation reconcile did not succeed")
+        load_contract = load_json(LOAD)
+        readiness = load_contract.get("readiness")
+        require(isinstance(readiness, dict), "load readiness missing after controlled saturation reconcile")
+        require(readiness.get("repeatableLocalDegradationSignalObserved") is True,
+                "single controlled ramp downgraded established repeatability authority")
+        status = load_json(STATUS)
+        gate = next((row for row in status.get("areas", []) if isinstance(row, dict) and row.get("id") == "OPS-P0-006"), None)
+        require(isinstance(gate, dict), "OPS-P0-006 missing after controlled saturation reconcile")
+        missing = gate.get("missingEvidence")
+        require(isinstance(missing, list), "OPS-P0-006 missingEvidence missing after controlled saturation reconcile")
+        for item in missing:
+            require(not (isinstance(item, str) and item.startswith(WEAK_SATURATION_GAP_PREFIXES)),
+                    "single controlled ramp reintroduced a superseded repeatability blocker")
+        require(status.get("productionDecision") == "NO_GO", "controlled saturation reconcile changed productionDecision")
+    finally:
+        module.validate_post_write = original_validator
+        for path, data in originals.items():
+            path.write_bytes(data)
+        if previous_sha is None:
+            os.environ.pop("EXPECTED_COMMIT_SHA", None)
+        else:
+            os.environ["EXPECTED_COMMIT_SHA"] = previous_sha
+
+
 def run_controlled_saturation_rollback_case(module: ModuleType) -> None:
     originals = {path: path.read_bytes() for path in (CONTROLLED_CONTRACT, LOAD, STATUS)}
     controlled = load_json(CONTROLLED_CONTRACT)
@@ -192,8 +235,9 @@ def main() -> int:
     run_short_preservation_case(short)
     run_short_rollback_case(short)
     run_capacity_rollback_case(capacity)
+    run_controlled_saturation_preservation_case(controlled)
     run_controlled_saturation_rollback_case(controlled)
-    print("PASS: load-foundation reconciles preserve soak authority and roll back fail-closed")
+    print("PASS: load-foundation reconciles preserve stronger authority and roll back fail-closed")
     return 0
 
 
