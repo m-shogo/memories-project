@@ -20,6 +20,7 @@ on:
       - "scripts/validate-memory-os-metrics-scrape.py"
       - "scripts/validate-memory-os-metrics-operations.py"
       - "scripts/validate-memory-os-metrics-alerting.py"
+      - "scripts/validate-memory-os-metrics-reconcile-rollback-negative.py"
       - "scripts/reconcile-memory-os-metrics-contract.py"
       - "scripts/reconcile-memory-os-metrics-scrape-status.py"
       - "scripts/reconcile-memory-os-metrics-operations.py"
@@ -49,6 +50,7 @@ on:
       - "scripts/validate-memory-os-metrics-scrape.py"
       - "scripts/validate-memory-os-metrics-operations.py"
       - "scripts/validate-memory-os-metrics-alerting.py"
+      - "scripts/validate-memory-os-metrics-reconcile-rollback-negative.py"
       - "scripts/reconcile-memory-os-metrics-contract.py"
       - "scripts/reconcile-memory-os-metrics-scrape-status.py"
       - "scripts/reconcile-memory-os-metrics-operations.py"
@@ -124,6 +126,7 @@ jobs:
             scripts/validate-memory-os-metrics-scrape.py \
             scripts/validate-memory-os-metrics-operations.py \
             scripts/validate-memory-os-metrics-alerting.py \
+            scripts/validate-memory-os-metrics-reconcile-rollback-negative.py \
             scripts/reconcile-memory-os-metrics-contract.py \
             scripts/reconcile-memory-os-metrics-scrape-status.py \
             scripts/reconcile-memory-os-metrics-operations.py \
@@ -133,6 +136,7 @@ jobs:
           python scripts/validate-memory-os-metrics-scrape.py
           python scripts/validate-memory-os-metrics-operations.py
           python scripts/validate-memory-os-metrics-alerting.py
+          python scripts/validate-memory-os-metrics-reconcile-rollback-negative.py
 
       - name: Reconcile primary contract and status
         run: |
