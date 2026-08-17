@@ -7,6 +7,7 @@ on:
       - "contracts/operations/rate-limit-operations-contract.v1.json"
       - "docs/runbooks/memory-os-rate-limit-operations.md"
       - "scripts/validate-memory-os-rate-limit-operations.py"
+      - "scripts/validate-memory-os-rate-limit-operations-reconcile-negative.py"
       - "scripts/reconcile-memory-os-rate-limit-operations.py"
   push:
     branches:
@@ -16,6 +17,7 @@ on:
       - "contracts/operations/rate-limit-operations-contract.v1.json"
       - "docs/runbooks/memory-os-rate-limit-operations.md"
       - "scripts/validate-memory-os-rate-limit-operations.py"
+      - "scripts/validate-memory-os-rate-limit-operations-reconcile-negative.py"
       - "scripts/reconcile-memory-os-rate-limit-operations.py"
   workflow_dispatch:
 
@@ -59,8 +61,10 @@ jobs:
         run: |
           python -m py_compile \
             scripts/validate-memory-os-rate-limit-operations.py \
+            scripts/validate-memory-os-rate-limit-operations-reconcile-negative.py \
             scripts/reconcile-memory-os-rate-limit-operations.py
           python scripts/validate-memory-os-rate-limit-operations.py
+          python scripts/validate-memory-os-rate-limit-operations-reconcile-negative.py
 
       - name: Reconcile primary policy and status
         run: |
