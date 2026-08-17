@@ -2,6 +2,17 @@ name: Reconcile Deletion Container Kill Authority
 # Explicitly re-triggered after the exact-result bot commit; GitHub Actions bot commits do not chain workflows.
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/reconcile-deletion-container-kill-authority.yml"
+      - "scripts/reconcile-memory-os-deletion-container-kill-authority.py"
+      - "scripts/validate-memory-os-deletion-container-kill-authority-reconcile-negative.py"
+      - "scripts/reconcile-memory-os-load-readiness-note.py"
+      - "scripts/reconcile-memory-os-load-missing-evidence.py"
+      - "scripts/validate-memory-os-load.py"
+      - "scripts/validate-memory-os-operability.py"
+      - "contracts/operations/deletion-worker-container-kill-recovery-contract.v1.json"
+      - "docs/fixtures/memory-os-operability/deletion-worker-container-kill-recovery-results.sample.v1.json"
   push:
     branches:
       - so
@@ -21,7 +32,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: reconcile-deletion-container-kill-authority-so
+  group: reconcile-deletion-container-kill-authority-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -31,7 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -39,9 +50,11 @@ jobs:
       - name: Capture exact source
         run: |
           set -euo pipefail
-          git fetch origin so
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            git fetch origin so
+            test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          fi
       - name: Reconcile actual container-kill evidence
         run: |
           set -euo pipefail
@@ -57,7 +70,13 @@ jobs:
           python scripts/validate-memory-os-deletion-container-kill-authority-reconcile-negative.py
           python scripts/validate-memory-os-load.py
           python scripts/validate-memory-os-operability.py
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git diff --exit-code -- \
+              contracts/operations/load-test-scenario-contract.v1.json \
+              contracts/operations/production-operability-status.json
+          fi
       - name: Commit canonical authority update
+        if: github.event_name == 'push'
         run: |
           set -euo pipefail
           git add \
