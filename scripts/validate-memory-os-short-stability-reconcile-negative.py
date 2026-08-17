@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove short stability reconcile cannot downgrade repeated LOCAL_LONG_SOAK authority."""
+"""Prove load-foundation reconciles preserve authority and roll back fail-closed."""
 
 from __future__ import annotations
 
@@ -12,11 +12,13 @@ from types import ModuleType
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "scripts/reconcile-memory-os-short-stability-status.py"
-CONTRACT = ROOT / "contracts/operations/short-stability-sample-contract.v1.json"
+SHORT_SCRIPT = ROOT / "scripts/reconcile-memory-os-short-stability-status.py"
+CAPACITY_SCRIPT = ROOT / "scripts/reconcile-memory-os-capacity-ramp-status.py"
+SHORT_CONTRACT = ROOT / "contracts/operations/short-stability-sample-contract.v1.json"
+CAPACITY_CONTRACT = ROOT / "contracts/operations/capacity-ramp-contract.v1.json"
 LOAD = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
-RESULT = ROOT / "docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json"
+SHORT_RESULT = ROOT / "docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json"
 STALE_SOAK_GAP = (
     "60-minute-or-longer repeated soak over PostgreSQL, object storage, parser, queue, deletion and authentication paths with RSS/heap/goroutine slope review and independently approved leak/stability criteria"
 )
@@ -31,9 +33,9 @@ def require(condition: bool, message: str) -> None:
         raise NegativeFailure(message)
 
 
-def load_module() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("short_stability_reconcile", SCRIPT)
-    require(spec is not None and spec.loader is not None, "cannot load short stability reconciler")
+def load_module(name: str, path: Path) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load {path.relative_to(ROOT)}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -45,16 +47,15 @@ def load_json(path: Path) -> dict[str, Any]:
     return value
 
 
-def run_preservation_case(module: ModuleType) -> None:
-    originals = {path: path.read_bytes() for path in (CONTRACT, LOAD, STATUS)}
+def run_short_preservation_case(module: ModuleType) -> None:
+    originals = {path: path.read_bytes() for path in (SHORT_CONTRACT, LOAD, STATUS)}
     previous_sha = os.environ.get("EXPECTED_COMMIT_SHA")
     try:
-        result = load_json(RESULT)
+        result = load_json(SHORT_RESULT)
         source_sha = result.get("commitSha")
         require(isinstance(source_sha, str) and len(source_sha) == 40, "short stability result commitSha missing")
         os.environ["EXPECTED_COMMIT_SHA"] = source_sha
-        code = module.main()
-        require(code == 0, "short stability reconcile did not succeed")
+        require(module.main() == 0, "short stability reconcile did not succeed")
 
         load_contract = load_json(LOAD)
         readiness = load_contract.get("readiness")
@@ -86,15 +87,14 @@ def run_preservation_case(module: ModuleType) -> None:
             os.environ["EXPECTED_COMMIT_SHA"] = previous_sha
 
 
-def run_rollback_case(module: ModuleType) -> None:
-    originals = {path: path.read_bytes() for path in (CONTRACT, LOAD, STATUS)}
-    contract = load_json(CONTRACT)
+def run_short_rollback_case(module: ModuleType) -> None:
+    originals = {path: path.read_bytes() for path in (SHORT_CONTRACT, LOAD, STATUS)}
+    contract = load_json(SHORT_CONTRACT)
     load_contract = load_json(LOAD)
     status = load_json(STATUS)
     contract["_rollbackNegativeMarker"] = True
     load_contract["_rollbackNegativeMarker"] = True
     status["_rollbackNegativeMarker"] = True
-
     original_runner = module.run_validator
 
     def controlled_runner(path: Path, label: str, *args: str) -> None:
@@ -106,10 +106,7 @@ def run_rollback_case(module: ModuleType) -> None:
     try:
         try:
             module.write_and_validate_transactionally(
-                contract,
-                load_contract,
-                status,
-                load_json(RESULT)["commitSha"],
+                contract, load_contract, status, load_json(SHORT_RESULT)["commitSha"]
             )
         except module.ReconcileFailure as exc:
             require("controlled soak authority failure" in str(exc), f"unexpected rollback failure: {exc}")
@@ -119,14 +116,46 @@ def run_rollback_case(module: ModuleType) -> None:
         module.run_validator = original_runner
 
     for path, data in originals.items():
-        require(path.read_bytes() == data, f"rollback failed for {path.relative_to(ROOT)}")
+        require(path.read_bytes() == data, f"short rollback failed for {path.relative_to(ROOT)}")
+
+
+def run_capacity_rollback_case(module: ModuleType) -> None:
+    originals = {path: path.read_bytes() for path in (CAPACITY_CONTRACT, LOAD, STATUS)}
+    contract = load_json(CAPACITY_CONTRACT)
+    load_contract = load_json(LOAD)
+    status = load_json(STATUS)
+    contract["_rollbackNegativeMarker"] = True
+    load_contract["_rollbackNegativeMarker"] = True
+    status["_rollbackNegativeMarker"] = True
+    original_runner = module.run_validator
+
+    def controlled_runner(path: Path, label: str, *args: str) -> None:
+        if path == module.OPERABILITY_VALIDATOR:
+            raise module.ReconcileFailure("controlled post-write operability failure")
+        return original_runner(path, label, *args)
+
+    module.run_validator = controlled_runner
+    try:
+        try:
+            module.write_and_validate_transactionally(contract, load_contract, status)
+        except module.ReconcileFailure as exc:
+            require("controlled post-write operability failure" in str(exc), f"unexpected capacity rollback failure: {exc}")
+        else:
+            raise NegativeFailure("controlled capacity post-write failure was accepted")
+    finally:
+        module.run_validator = original_runner
+
+    for path, data in originals.items():
+        require(path.read_bytes() == data, f"capacity rollback failed for {path.relative_to(ROOT)}")
 
 
 def main() -> int:
-    module = load_module()
-    run_preservation_case(module)
-    run_rollback_case(module)
-    print("PASS: short stability reconcile preserves repeated soak authority and rolls back fail-closed")
+    short = load_module("short_stability_reconcile", SHORT_SCRIPT)
+    capacity = load_module("capacity_ramp_reconcile", CAPACITY_SCRIPT)
+    run_short_preservation_case(short)
+    run_short_rollback_case(short)
+    run_capacity_rollback_case(capacity)
+    print("PASS: load-foundation reconciles preserve soak authority and roll back fail-closed")
     return 0
 
 
@@ -134,5 +163,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except NegativeFailure as exc:
-        print(f"SHORT STABILITY RECONCILE NEGATIVE FAILED: {exc}", file=sys.stderr)
+        print(f"LOAD FOUNDATION RECONCILE NEGATIVE FAILED: {exc}", file=sys.stderr)
         raise SystemExit(1)
