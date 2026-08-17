@@ -9,11 +9,19 @@ on:
       - "contracts/operations/metrics-alerting-contract.v1.json"
       - "infra/observability/prometheus/memory-os-alerts.yml"
       - "docs/runbooks/memory-os-metrics-alerts.md"
+      - "scripts/validate-memory-os-metrics.py"
+      - "scripts/validate-memory-os-metrics-scrape.py"
+      - "scripts/validate-memory-os-metrics-operations.py"
       - "scripts/validate-memory-os-metrics-alerting.py"
+      - "scripts/validate-memory-os-metrics-reconcile-rollback-negative.py"
       - "scripts/reconcile-memory-os-metrics-contract.py"
       - "scripts/reconcile-memory-os-metrics-scrape-status.py"
       - "scripts/reconcile-memory-os-metrics-operations.py"
       - "scripts/reconcile-memory-os-metrics-alerting.py"
+      - "scripts/validate-memory-os-operability.py"
+      - "scripts/validate-memory-os-entry-docs.py"
+      - "contracts/operations/metrics-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
   workflow_dispatch:
 
 permissions:
@@ -28,10 +36,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Checkout latest so
+      - name: Checkout exact diagnostic source
         uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -39,10 +47,15 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Confirm exact diagnostic source
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
       - name: Run full reconcile sequence and write bounded diagnostic
         id: diagnose
-        env:
-          SOURCE_SHA: ${{ github.sha }}
         run: |
           python - <<'PY'
           import json
@@ -52,6 +65,7 @@ jobs:
 
           commands = [
               ["python", "scripts/validate-memory-os-metrics-alerting.py"],
+              ["python", "scripts/validate-memory-os-metrics-reconcile-rollback-negative.py"],
               ["python", "scripts/reconcile-memory-os-metrics-contract.py"],
               ["python", "scripts/reconcile-memory-os-metrics-scrape-status.py"],
               ["python", "scripts/reconcile-memory-os-metrics-operations.py"],
@@ -103,18 +117,29 @@ jobs:
             contracts/operations/production-operability-status.json
           echo "exit_code=$(cat /tmp/metrics-alerting-exit-code)" >> "$GITHUB_OUTPUT"
 
-      - name: Commit diagnostic
+      - name: Commit source-bound diagnostic
         run: |
+          set -euo pipefail
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Metrics diagnostic source is stale: validated $SOURCE_SHA but so is $(git rev-parse origin/so)" >&2
+            exit 75
+          fi
           git add docs/fixtures/memory-os-operability/metrics-alerting-validation.last.json
           if git diff --cached --quiet; then
             echo "Alerting diagnostic is already current."
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "test(metrics): record full alerting reconcile diagnostic"
-            git pull --rebase origin so
-            git push origin HEAD:so
+            exit 0
           fi
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "test(metrics): record full alerting reconcile diagnostic"
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Branch advanced before metrics diagnostic push; refusing stale diagnostic." >&2
+            exit 75
+          fi
+          git push origin HEAD:so
 
       - name: Fail when reconcile sequence failed
         if: steps.diagnose.outputs.exit_code != '0'
