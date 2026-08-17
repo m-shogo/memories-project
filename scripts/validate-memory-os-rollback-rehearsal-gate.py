@@ -16,6 +16,7 @@ RELEASE_REGISTRY_PATH = ROOT / "contracts/operations/release-baseline-registry.v
 REHEARSAL_REGISTRY_PATH = ROOT / "contracts/operations/rollback-rehearsal-registry.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 WRITER_PATH = ROOT / "scripts/request-memory-os-rollback-rehearsal.py"
+LOCK_PATH = ROOT / "contracts/operations/.rollback-rehearsal-registry.lock"
 
 
 class ValidationFailure(RuntimeError):
@@ -72,6 +73,8 @@ def main() -> int:
             "rollback rehearsal gate contract schema drift")
     require(contract.get("appendOnly") is True,
             "rollback rehearsal authority must be append-only")
+    require(contract.get("appendLockPath") == str(LOCK_PATH.relative_to(ROOT)),
+            "rollback rehearsal append lock contract drift")
     for field, expected in {
         "approvedReleaseRegistry": str(RELEASE_REGISTRY_PATH.relative_to(ROOT)),
         "rehearsalRegistry": str(REHEARSAL_REGISTRY_PATH.relative_to(ROOT)),
@@ -109,6 +112,8 @@ def main() -> int:
     rehearsal_registry = load(REHEARSAL_REGISTRY_PATH)
     try:
         writer = load_module(WRITER_PATH, "rollback_rehearsal_writer_validator")
+        require(Path(writer.LOCK_PATH).resolve() == LOCK_PATH.resolve(),
+                "rollback rehearsal writer append lock drift")
         writer.validate_registry_for_append(rehearsal_registry, contract, release_registry)
     except Exception as exc:
         raise ValidationFailure(f"rollback rehearsal append authority invalid: {exc}") from exc
