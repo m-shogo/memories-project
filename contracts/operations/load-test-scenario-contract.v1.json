@@ -324,7 +324,7 @@
   "deferredScenarios": [
     {
       "scenarioId": "capacity-ramp-local-postgres-minio",
-      "reason": "a bounded local PostgreSQL plus MinIO lifecycle ramp now executes through concurrency 48 with pool telemetry, but no failure/degradation boundary was established; repeatable overload discovery and independently reviewed safe operating thresholds remain deferred",
+      "reason": "a bounded authenticated Preview ramp now executes against local PostgreSQL, but it observed no saturation transition and does not exercise MinIO; deliberate overload, queue/backlog observation and reviewed safe operating thresholds remain deferred",
       "requiredDependencyMode": "LOCAL_POSTGRES_MINIO"
     },
     {
