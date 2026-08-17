@@ -53,6 +53,8 @@ def main() -> int:
         module.repository_entry(str(normal.relative_to(ROOT)), "negative.normal", directory=False)
         module.repository_file_slot(str((fixture / ".safe.lock").relative_to(ROOT)), "negative.safeLock")
 
+        expect_entry_fail(module, ".", directory=True, contains="unsafe linked path")
+
         final_link = fixture / "final-link.txt"
         final_link.symlink_to(normal.name)
         expect_entry_fail(
@@ -90,6 +92,7 @@ def main() -> int:
         )
 
         expect_slot_fail(module, "../outside.lock", contains="unsafe linked path")
+        expect_slot_fail(module, ".", contains="unsafe linked path")
 
         lock_target = fixture / "real.lock"
         lock_target.write_text("lock\n", encoding="utf-8")
@@ -101,7 +104,7 @@ def main() -> int:
             contains="symlinked admission authority file slot",
         )
 
-        print("PASS: admission authority symlink, repository-escape and append-lock paths are rejected")
+        print("PASS: admission authority root aliases, symlinks, repository escapes and append-lock escapes are rejected")
         return 0
     finally:
         shutil.rmtree(fixture, ignore_errors=True)
