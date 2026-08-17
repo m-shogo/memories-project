@@ -44,13 +44,27 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def write(path: Path, value: dict[str, Any]) -> None:
-    path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+def render(value: dict[str, Any]) -> bytes:
+    return (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
 
 
 def append_once(values: list[Any], value: str) -> None:
     if value not in values:
         values.append(value)
+
+
+def commit_validated_pair(contract: dict[str, Any], status: dict[str, Any]) -> None:
+    original_contract = CONTRACT.read_bytes()
+    original_status = STATUS.read_bytes()
+    try:
+        CONTRACT.write_bytes(render(contract))
+        STATUS.write_bytes(render(status))
+        completed = subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=False)
+        require(completed.returncode == 0, "reconciled human tabletop authority failed validation")
+    except BaseException:
+        CONTRACT.write_bytes(original_contract)
+        STATUS.write_bytes(original_status)
+        raise
 
 
 def main() -> int:
@@ -85,7 +99,6 @@ def main() -> int:
     readiness["productionRecoveryDrillCompleted"] = False
     readiness["independentIncidentControlReviewCompleted"] = False
     readiness["productionReady"] = False
-    write(CONTRACT, contract)
 
     status = load(STATUS)
     require(status.get("productionDecision") == "NO_GO", "production decision must remain NO_GO")
@@ -101,9 +114,8 @@ def main() -> int:
         append_once(refs, ref)
     if complete:
         gate["missingEvidence"] = [item for item in missing if "human-led completed tabletop evidence" not in str(item).lower()]
-    write(STATUS, status)
 
-    subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=True)
+    commit_validated_pair(contract, status)
     print("Memory OS human tabletop admission reconciliation PASS")
     print(f"accepted completed scenarios: {count}/{len(required)}")
     print(f"human tabletop evidence complete: {complete}")
