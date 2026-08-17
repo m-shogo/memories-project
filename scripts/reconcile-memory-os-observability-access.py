@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 EVENT_PATH = ROOT / "contracts/operations/observability-event-contract.v1.json"
 ACCESS_PATH = ROOT / "contracts/operations/observability-retention-access-contract.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+VALIDATOR = ROOT / "scripts/validate-memory-os-observability-access.py"
 
 OLD_GAP = "log retention and access policy configured"
 NEW_EXISTING = (
@@ -53,6 +55,10 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def render(value: dict[str, Any]) -> bytes:
+    return (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+
+
 def append_once(items: list[Any], value: str) -> bool:
     if value in items:
         return False
@@ -60,7 +66,29 @@ def append_once(items: list[Any], value: str) -> bool:
     return True
 
 
+def validate_current_authority() -> None:
+    completed = subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=False)
+    require(completed.returncode == 0,
+            "canonical observability access authority is invalid before reconcile")
+
+
+def commit_validated_pair(event: dict[str, Any], status: dict[str, Any]) -> None:
+    original_event = EVENT_PATH.read_bytes()
+    original_status = STATUS_PATH.read_bytes()
+    try:
+        EVENT_PATH.write_bytes(render(event))
+        STATUS_PATH.write_bytes(render(status))
+        completed = subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=False)
+        require(completed.returncode == 0,
+                "reconciled observability access authority failed validation")
+    except BaseException:
+        EVENT_PATH.write_bytes(original_event)
+        STATUS_PATH.write_bytes(original_status)
+        raise
+
+
 def main() -> int:
+    validate_current_authority()
     event = load(EVENT_PATH)
     access = load(ACCESS_PATH)
     readiness = access.get("readiness")
@@ -169,14 +197,7 @@ def main() -> int:
         return 0
 
     status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
-    EVENT_PATH.write_text(
-        json.dumps(event, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
-    STATUS_PATH.write_text(
-        json.dumps(status, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    commit_validated_pair(event, status)
     print("Registered observability retention/access policy; enforcement remains NOT_CONFIGURED and OPS-P0-003 remains PARTIAL")
     return 0
 
