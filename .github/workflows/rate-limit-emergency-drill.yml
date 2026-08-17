@@ -12,6 +12,7 @@ on:
       - "contracts/operations/rate-limit-policy-contract.v1.json"
       - "scripts/run-memory-os-rate-limit-emergency-drill.py"
       - "scripts/validate-memory-os-rate-limit-emergency-drill.py"
+      - "scripts/validate-memory-os-rate-limit-emergency-drill-reconcile-negative.py"
       - "scripts/reconcile-memory-os-rate-limit-emergency-drill.py"
       - "scripts/evaluate-memory-os-rate-limit-emergency-state.py"
       - "scripts/create-memory-os-rate-limit-operation-evidence.py"
@@ -57,8 +58,10 @@ jobs:
             scripts/create-memory-os-rate-limit-operation-evidence.py \
             scripts/validate-memory-os-rate-limit-operation-evidence.py \
             scripts/reconcile-memory-os-rate-limit-operation-evidence.py \
+            scripts/validate-memory-os-rate-limit-emergency-drill-reconcile-negative.py \
             scripts/validate-memory-os-rate-limit-operations.py
           python scripts/validate-memory-os-rate-limit-operation-evidence.py
+          python scripts/validate-memory-os-rate-limit-emergency-drill-reconcile-negative.py
           python scripts/reconcile-memory-os-rate-limit-operation-evidence.py
           python scripts/validate-memory-os-rate-limit-operation-evidence.py
           python scripts/validate-memory-os-rate-limit-operations.py
@@ -94,6 +97,7 @@ jobs:
           python -m py_compile \
             scripts/run-memory-os-rate-limit-emergency-drill.py \
             scripts/validate-memory-os-rate-limit-emergency-drill.py \
+            scripts/validate-memory-os-rate-limit-emergency-drill-reconcile-negative.py \
             scripts/reconcile-memory-os-rate-limit-emergency-drill.py \
             scripts/evaluate-memory-os-rate-limit-emergency-state.py \
             >> "$log" 2>&1 || code=$?
