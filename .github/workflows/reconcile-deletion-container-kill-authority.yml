@@ -8,6 +8,8 @@ on:
     paths:
       - ".github/workflows/reconcile-deletion-container-kill-authority.yml"
       - "scripts/reconcile-memory-os-deletion-container-kill-authority.py"
+      - "scripts/validate-memory-os-deletion-container-kill-authority-reconcile-negative.py"
+      - "scripts/validate-memory-os-operability.py"
       - "contracts/operations/deletion-worker-container-kill-recovery-contract.v1.json"
       - "docs/fixtures/memory-os-operability/deletion-worker-container-kill-recovery-results.sample.v1.json"
   workflow_dispatch:
@@ -43,9 +45,13 @@ jobs:
           python -m py_compile \
             scripts/validate-memory-os-deletion-worker-container-kill-recovery.py \
             scripts/reconcile-memory-os-deletion-container-kill-authority.py \
-            scripts/validate-memory-os-load.py
+            scripts/validate-memory-os-deletion-container-kill-authority-reconcile-negative.py \
+            scripts/validate-memory-os-load.py \
+            scripts/validate-memory-os-operability.py
           python scripts/reconcile-memory-os-deletion-container-kill-authority.py
+          python scripts/validate-memory-os-deletion-container-kill-authority-reconcile-negative.py
           python scripts/validate-memory-os-load.py
+          python scripts/validate-memory-os-operability.py
       - name: Commit canonical authority update
         run: |
           set -euo pipefail
