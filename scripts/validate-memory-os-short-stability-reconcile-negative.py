@@ -14,11 +14,14 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 SHORT_SCRIPT = ROOT / "scripts/reconcile-memory-os-short-stability-status.py"
 CAPACITY_SCRIPT = ROOT / "scripts/reconcile-memory-os-capacity-ramp-status.py"
+CONTROLLED_SCRIPT = ROOT / "scripts/reconcile-memory-os-controlled-saturation-ramp-status.py"
 SHORT_CONTRACT = ROOT / "contracts/operations/short-stability-sample-contract.v1.json"
 CAPACITY_CONTRACT = ROOT / "contracts/operations/capacity-ramp-contract.v1.json"
+CONTROLLED_CONTRACT = ROOT / "contracts/operations/controlled-saturation-ramp-contract.v1.json"
 LOAD = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 SHORT_RESULT = ROOT / "docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json"
+CONTROLLED_RESULT = ROOT / "docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.sample.v1.json"
 STALE_SOAK_GAP = (
     "60-minute-or-longer repeated soak over PostgreSQL, object storage, parser, queue, deletion and authentication paths with RSS/heap/goroutine slope review and independently approved leak/stability criteria"
 )
@@ -149,12 +152,47 @@ def run_capacity_rollback_case(module: ModuleType) -> None:
         require(path.read_bytes() == data, f"capacity rollback failed for {path.relative_to(ROOT)}")
 
 
+def run_controlled_saturation_rollback_case(module: ModuleType) -> None:
+    originals = {path: path.read_bytes() for path in (CONTROLLED_CONTRACT, LOAD, STATUS)}
+    controlled = load_json(CONTROLLED_CONTRACT)
+    load_contract = load_json(LOAD)
+    status = load_json(STATUS)
+    controlled["_rollbackNegativeMarker"] = True
+    load_contract["_rollbackNegativeMarker"] = True
+    status["_rollbackNegativeMarker"] = True
+    result = load_json(CONTROLLED_RESULT)
+    source_sha = result.get("commitSha")
+    require(isinstance(source_sha, str) and len(source_sha) == 40, "controlled saturation result commitSha missing")
+    original_validator = module.validate_post_write
+
+    def controlled_validator(expected_sha: str) -> None:
+        require(expected_sha == source_sha, "controlled saturation rollback used wrong source SHA")
+        raise RuntimeError("controlled post-write saturation validation failure")
+
+    module.validate_post_write = controlled_validator
+    try:
+        try:
+            module.write_transactionally(controlled, load_contract, status, source_sha)
+        except RuntimeError as exc:
+            require("controlled post-write saturation validation failure" in str(exc),
+                    f"unexpected controlled saturation rollback failure: {exc}")
+        else:
+            raise NegativeFailure("controlled saturation post-write failure was accepted")
+    finally:
+        module.validate_post_write = original_validator
+
+    for path, data in originals.items():
+        require(path.read_bytes() == data, f"controlled saturation rollback failed for {path.relative_to(ROOT)}")
+
+
 def main() -> int:
     short = load_module("short_stability_reconcile", SHORT_SCRIPT)
     capacity = load_module("capacity_ramp_reconcile", CAPACITY_SCRIPT)
+    controlled = load_module("controlled_saturation_reconcile", CONTROLLED_SCRIPT)
     run_short_preservation_case(short)
     run_short_rollback_case(short)
     run_capacity_rollback_case(capacity)
+    run_controlled_saturation_rollback_case(controlled)
     print("PASS: load-foundation reconciles preserve soak authority and roll back fail-closed")
     return 0
 
