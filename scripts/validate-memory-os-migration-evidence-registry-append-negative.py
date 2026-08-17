@@ -77,11 +77,18 @@ def expect_reconcile_rejected_without_mutation(name: str, mutate: Callable[[dict
             path.write_bytes(data)
 
 
-def expect_append_lock_contract_rejected() -> None:
+def expect_append_lock_contract_rejected(writer: ModuleType) -> None:
+    corrupt_contract = load_json(CONTRACT)
+    corrupt_contract["appendLockPath"] = "contracts/operations/.migration-evidence-registry-alternate.lock"
+    try:
+        writer.validate_registry_for_append(load_json(REGISTRY), corrupt_contract)
+    except Exception as exc:
+        require("append lock" in str(exc).lower(), f"writer rejected alternate append lock for wrong reason: {exc}")
+    else:
+        raise Fail("writer accepted alternate migration append lock authority")
+
     original = CONTRACT.read_bytes()
-    contract = load_json(CONTRACT)
-    contract["appendLockPath"] = "contracts/operations/.migration-evidence-registry-alternate.lock"
-    CONTRACT.write_text(json.dumps(contract, indent=2) + "\n", encoding="utf-8")
+    CONTRACT.write_text(json.dumps(corrupt_contract, indent=2) + "\n", encoding="utf-8")
     try:
         completed = subprocess.run(
             [sys.executable, str(VALIDATOR)],
@@ -181,7 +188,7 @@ def main() -> int:
     for name, mutate in cases:
         expect_writer_rejected(writer, contract, name, mutate)
         expect_reconcile_rejected_without_mutation(name, mutate)
-    expect_append_lock_contract_rejected()
+    expect_append_lock_contract_rejected(writer)
     expect_record_lineage_rejected(writer, contract)
     expect_recovery_evidence_mutation_rejected(writer, contract)
     print("PASS: migration rehearsal ledger corruption, append-lock drift, source-lineage drift and recovery-evidence mutation are rejected")
