@@ -16,6 +16,9 @@ CONTRACT_PATH = ROOT / "contracts/operations/capacity-ramp-contract.v1.json"
 LOAD_PATH = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/capacity-ramp-results.sample.v1.json"
+CAPACITY_VALIDATOR = ROOT / "scripts/validate-memory-os-capacity-ramp.py"
+LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 
 
 class ReconcileFailure(RuntimeError):
@@ -45,16 +48,46 @@ def append_once(items: list[Any], value: Any) -> bool:
     return True
 
 
-def main() -> int:
-    expected_sha = os.getenv("EXPECTED_COMMIT_SHA", "")
-    require(expected_sha, "EXPECTED_COMMIT_SHA is required")
-    validation = subprocess.run(
-        [sys.executable, str(ROOT / "scripts/validate-memory-os-capacity-ramp.py"),
-         "--expected-commit-sha", expected_sha],
+def run_validator(path: Path, label: str, *args: str) -> None:
+    completed = subprocess.run(
+        [sys.executable, str(path), *args],
         cwd=ROOT,
         check=False,
     )
-    require(validation.returncode == 0, "capacity ramp result validation failed")
+    require(completed.returncode == 0, f"{label} failed")
+
+
+def write_and_validate_transactionally(
+    contract: dict[str, Any], load_contract: dict[str, Any], status: dict[str, Any]
+) -> None:
+    paths = (CONTRACT_PATH, LOAD_PATH, STATUS_PATH)
+    original_bytes = {path: path.read_bytes() for path in paths}
+    try:
+        CONTRACT_PATH.write_text(
+            json.dumps(contract, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        LOAD_PATH.write_text(
+            json.dumps(load_contract, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        STATUS_PATH.write_text(
+            json.dumps(status, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        run_validator(CAPACITY_VALIDATOR, "post-write capacity ramp validator", "--require-reconciled")
+        run_validator(LOAD_VALIDATOR, "post-write load validator")
+        run_validator(OPERABILITY_VALIDATOR, "post-write operability validator")
+    except BaseException:
+        for path in paths:
+            path.write_bytes(original_bytes[path])
+        raise
+
+
+def main() -> int:
+    expected_sha = os.getenv("EXPECTED_COMMIT_SHA", "")
+    require(expected_sha, "EXPECTED_COMMIT_SHA is required")
+    run_validator(CAPACITY_VALIDATOR, "capacity ramp result validation", "--expected-commit-sha", expected_sha)
 
     contract = load(CONTRACT_PATH)
     result = load(RESULT_PATH)
@@ -64,7 +97,6 @@ def main() -> int:
             scenario.get("firstSaturationSignal") is None,
             "capacity ramp evidence requires reviewed saturation handling")
 
-    changed_contract = False
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "capacity ramp readiness missing")
     for field, value in {
@@ -76,12 +108,9 @@ def main() -> int:
         "independentReviewCompleted": False,
         "productionReady": False,
     }.items():
-        if readiness.get(field) != value:
-            readiness[field] = value
-            changed_contract = True
+        readiness[field] = value
 
     load_contract = load(LOAD_PATH)
-    changed_load = False
     external = load_contract.get("externalExecutedScenarios")
     require(isinstance(external, list), "externalExecutedScenarios missing")
     capacity_external = {
@@ -97,54 +126,44 @@ def main() -> int:
                            item.get("scenarioId") == capacity_external["scenarioId"]), None)
     if existing_index is None:
         external.append(capacity_external)
-        changed_load = True
-    elif external[existing_index] != capacity_external:
+    else:
         external[existing_index] = capacity_external
-        changed_load = True
 
     deferred = load_contract.get("deferredScenarios")
     require(isinstance(deferred, list), "deferredScenarios missing")
+    new_reason = (
+        "a bounded authenticated Preview ramp now executes against local PostgreSQL, "
+        "but it observed no saturation transition and does not exercise MinIO; deliberate "
+        "overload, queue/backlog observation and reviewed safe operating thresholds remain deferred"
+    )
     for item in deferred:
         if isinstance(item, dict) and item.get("scenarioId") == "capacity-ramp-local-postgres-minio":
-            new_reason = (
-                "a bounded authenticated Preview ramp now executes against local PostgreSQL, "
-                "but it observed no saturation transition and does not exercise MinIO; deliberate "
-                "overload, queue/backlog observation and reviewed safe operating thresholds remain deferred"
-            )
-            if item.get("reason") != new_reason:
-                item["reason"] = new_reason
-                changed_load = True
+            item["reason"] = new_reason
             break
     else:
         deferred.append({
             "scenarioId": "capacity-ramp-local-postgres-minio",
-            "reason": (
-                "a bounded authenticated Preview ramp now executes against local PostgreSQL, "
-                "but it observed no saturation transition and does not exercise MinIO; deliberate "
-                "overload, queue/backlog observation and reviewed safe operating thresholds remain deferred"
-            ),
+            "reason": new_reason,
             "requiredDependencyMode": "LOCAL_POSTGRES_MINIO",
         })
-        changed_load = True
 
     load_readiness = load_contract.get("readiness")
     require(isinstance(load_readiness, dict), "load readiness missing")
-    if load_readiness.get("boundedLocalCapacityRampExecuted") is not True:
-        load_readiness["boundedLocalCapacityRampExecuted"] = True
-        changed_load = True
+    load_readiness["boundedLocalCapacityRampExecuted"] = True
     require(load_readiness.get("capacityBoundaryEstablished") is False,
             "bounded ramp cannot establish the capacity boundary")
     require(load_readiness.get("operationalThresholds") is False,
             "bounded ramp cannot approve operational thresholds")
-    new_note = (
-        "Mock and local dependency checkpoints are supplemented by a bounded authenticated Preview "
-        "concurrency ramp. The ramp records a local candidate-safe step but observed no saturation "
-        "transition, does not measure MinIO on the ramped path and cannot establish capacity or "
-        "operational thresholds. OPS-P0-006 remains PARTIAL."
-    )
-    if load_readiness.get("note") != new_note:
-        load_readiness["note"] = new_note
-        changed_load = True
+    # A bounded ramp owns only capacity-specific assertions. Do not replace a
+    # richer note installed by independent deletion/soak authority layers.
+    current_note = load_readiness.get("note")
+    if not isinstance(current_note, str) or not current_note:
+        load_readiness["note"] = (
+            "Mock and local dependency checkpoints are supplemented by a bounded authenticated Preview "
+            "concurrency ramp. The ramp records a local candidate-safe step but observed no saturation "
+            "transition, does not measure MinIO on the ramped path and cannot establish capacity or "
+            "operational thresholds. OPS-P0-006 remains PARTIAL."
+        )
 
     load_refs = load_contract.get("evidenceRefs")
     require(isinstance(load_refs, list), "load evidenceRefs missing")
@@ -155,7 +174,7 @@ def main() -> int:
         "docs/fixtures/memory-os-operability/capacity-ramp-results.sample.v1.json",
     ):
         require((ROOT / ref).is_file(), f"capacity ramp evidence missing: {ref}")
-        changed_load = append_once(load_refs, ref) or changed_load
+        append_once(load_refs, ref)
 
     status = load(STATUS_PATH)
     require(status.get("productionDecision") == "NO_GO",
@@ -170,14 +189,14 @@ def main() -> int:
     require(isinstance(existing, list) and isinstance(missing, list) and isinstance(refs, list),
             "OPS-P0-006 authority lists missing")
 
-    changed_status = append_once(
+    append_once(
         existing,
         "bounded authenticated Preview concurrency ramp over local PostgreSQL records six concurrency steps with all-2xx integrity and a local candidate-safe concurrency while explicitly leaving the saturation boundary and operating threshold unproven",
     )
-    changed_status = append_once(
+    append_once(
         missing,
         "deliberate local PostgreSQL plus MinIO saturation ramp with queue/backlog signals, first-failure transition, repeatability and independently reviewed safe operating thresholds",
-    ) or changed_status
+    )
     for ref in (
         "contracts/operations/capacity-ramp-contract.v1.json",
         "services/import-api/internal/httpserver/capacity_ramp_test.go",
@@ -187,21 +206,13 @@ def main() -> int:
         ".github/workflows/capacity-ramp.yml",
     ):
         require((ROOT / ref).is_file(), f"capacity ramp status evidence missing: {ref}")
-        changed_status = append_once(refs, ref) or changed_status
+        append_once(refs, ref)
     require(gate.get("status") == "PARTIAL" and
             status.get("productionDecision") == "NO_GO",
             "capacity ramp overpromoted readiness")
 
-    if changed_contract:
-        CONTRACT_PATH.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n",
-                                 encoding="utf-8")
-    if changed_load:
-        LOAD_PATH.write_text(json.dumps(load_contract, indent=2, ensure_ascii=False) + "\n",
-                             encoding="utf-8")
-    if changed_status:
-        status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
-        STATUS_PATH.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n",
-                               encoding="utf-8")
+    status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
+    write_and_validate_transactionally(contract, load_contract, status)
     print("Registered bounded capacity ramp; capacity boundary remains unestablished")
     return 0
 
