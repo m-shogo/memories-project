@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +17,8 @@ RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 WRITER = ROOT / "scripts/register-memory-os-client-baseline.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-client-baseline-registry.py"
+SUPPORT_VALIDATOR = ROOT / "scripts/validate-memory-os-client-server-support-window.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 WORKFLOW = ROOT / ".github/workflows/client-baseline-registry.yml"
 RUNBOOK = ROOT / "docs/evidence/clients/README.md"
 
@@ -56,15 +60,53 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
+def run_validator(path: Path, label: str) -> None:
+    completed = subprocess.run(
+        [sys.executable, str(path)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    require(
+        completed.returncode == 0,
+        f"{label} failed:\n{completed.stdout[-4000:]}{completed.stderr[-4000:]}",
+    )
+
+
+def write_and_validate_transactionally(
+    contract: dict[str, Any], support: dict[str, Any], status: dict[str, Any]
+) -> None:
+    paths = (CONTRACT, SUPPORT, STATUS)
+    originals = {path: path.read_bytes() for path in paths}
+    try:
+        write(CONTRACT, contract)
+        write(SUPPORT, support)
+        write(STATUS, status)
+        run_validator(VALIDATOR, "post-write client registry validator")
+        run_validator(SUPPORT_VALIDATOR, "post-write support-window validator")
+        run_validator(OPERABILITY_VALIDATOR, "post-write operability validator")
+    except Exception:
+        for path in paths:
+            path.write_bytes(originals[path])
+        raise
+
+
 def main() -> int:
-    for path in (WRITER, VALIDATOR, WORKFLOW, RUNBOOK):
+    for path in (WRITER, VALIDATOR, SUPPORT_VALIDATOR, OPERABILITY_VALIDATOR, WORKFLOW, RUNBOOK):
         require(path.is_file(), f"client baseline foundation missing: {path.relative_to(ROOT)}")
 
     registry = load(REGISTRY)
     clients = registry.get("clients")
     count = registry.get("approvedClientBaselineCount")
     latest = registry.get("latestApprovedClientByClass")
-    require(isinstance(clients, list) and isinstance(count, int) and count == len(clients), "client registry count drift")
+    require(
+        isinstance(clients, list)
+        and isinstance(count, int)
+        and not isinstance(count, bool)
+        and count == len(clients),
+        "client registry count drift",
+    )
     require(isinstance(latest, dict) and set(latest) == {"IOS_APP", "PORTAL"}, "client latest map drift")
 
     contract = load(CONTRACT)
@@ -79,11 +121,13 @@ def main() -> int:
     readiness["clientServerSkewEvidence"] = False
     readiness["productionReady"] = False
     contract["productionDecision"] = "NO_GO"
-    write(CONTRACT, contract)
 
     releases = load(RELEASES)
     release_count = releases.get("approvedReleaseCount")
-    require(isinstance(release_count, int) and release_count >= 0, "release registry count invalid")
+    require(
+        isinstance(release_count, int) and not isinstance(release_count, bool) and release_count >= 0,
+        "release registry count invalid",
+    )
 
     support = load(SUPPORT)
     boundary = support.get("currentBoundary")
@@ -105,7 +149,6 @@ def main() -> int:
     support_readiness["skewPairExecuted"] = False
     support_readiness["independentReviewCompleted"] = False
     support_readiness["productionReady"] = False
-    write(SUPPORT, support)
 
     status = load(STATUS)
     require(status.get("productionDecision") == "NO_GO", "client baseline authority cannot change production decision")
@@ -123,7 +166,8 @@ def main() -> int:
     joined = "\n".join(str(item).lower() for item in missing)
     require("client/server" in joined and "skew" in joined, "runtime client/server skew blocker must remain")
     require("approved predecessor" in joined and "successor" in joined, "approved release-pair blocker must remain")
-    write(STATUS, status)
+
+    write_and_validate_transactionally(contract, support, status)
 
     print("Memory OS client baseline authority reconciliation PASS")
     print(f"approved client baselines: {count}")
