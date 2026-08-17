@@ -8,7 +8,9 @@ on:
       - "docs/runbooks/memory-os-rate-limit-operations.md"
       - "scripts/validate-memory-os-rate-limit-operations.py"
       - "scripts/validate-memory-os-rate-limit-operations-reconcile-negative.py"
+      - "scripts/validate-memory-os-rate-limit-operation-evidence-reconcile-negative.py"
       - "scripts/reconcile-memory-os-rate-limit-operations.py"
+      - "scripts/reconcile-memory-os-rate-limit-operation-evidence.py"
   push:
     branches:
       - so
@@ -18,7 +20,9 @@ on:
       - "docs/runbooks/memory-os-rate-limit-operations.md"
       - "scripts/validate-memory-os-rate-limit-operations.py"
       - "scripts/validate-memory-os-rate-limit-operations-reconcile-negative.py"
+      - "scripts/validate-memory-os-rate-limit-operation-evidence-reconcile-negative.py"
       - "scripts/reconcile-memory-os-rate-limit-operations.py"
+      - "scripts/reconcile-memory-os-rate-limit-operation-evidence.py"
   workflow_dispatch:
 
 permissions:
@@ -62,9 +66,12 @@ jobs:
           python -m py_compile \
             scripts/validate-memory-os-rate-limit-operations.py \
             scripts/validate-memory-os-rate-limit-operations-reconcile-negative.py \
-            scripts/reconcile-memory-os-rate-limit-operations.py
+            scripts/validate-memory-os-rate-limit-operation-evidence-reconcile-negative.py \
+            scripts/reconcile-memory-os-rate-limit-operations.py \
+            scripts/reconcile-memory-os-rate-limit-operation-evidence.py
           python scripts/validate-memory-os-rate-limit-operations.py
           python scripts/validate-memory-os-rate-limit-operations-reconcile-negative.py
+          python scripts/validate-memory-os-rate-limit-operation-evidence-reconcile-negative.py
 
       - name: Reconcile primary policy and status
         run: |
