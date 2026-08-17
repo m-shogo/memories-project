@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,17 @@ class ValidationFailure(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise ValidationFailure(message)
+
+
+def require_commit_ancestor(commit_sha: str) -> None:
+    completed = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", commit_sha, "HEAD"],
+        cwd=ROOT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    require(completed.returncode == 0,
+            "result commitSha must be an ancestor of current HEAD")
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -69,6 +81,7 @@ def validate_result(result: dict[str, Any], contract: dict[str, Any], expected_s
     commit_sha = result.get("commitSha")
     require(isinstance(commit_sha, str) and SHA_RE.fullmatch(commit_sha) is not None,
             "result commitSha must be a full SHA")
+    require_commit_ancestor(commit_sha)
     if expected_sha is not None:
         require(commit_sha == expected_sha, "result commitSha does not match expected source")
     require(result.get("classification") == "LOCAL_CI_DECISION_MODEL",
@@ -106,6 +119,8 @@ def main() -> int:
     policy = load(POLICY_PATH)
     require(contract.get("schemaVersion") == "memory-os-rate-limit-emergency-drill.v1",
             "contract schemaVersion drift")
+    require(contract.get("sourceCommitMustBeAncestorOfCurrentHead") is True,
+            "source commit lineage authority drift")
     expected_paths = {
         "sourceOperationsContract": "contracts/operations/rate-limit-operations-contract.v1.json",
         "sourcePolicyContract": "contracts/operations/rate-limit-policy-contract.v1.json",
