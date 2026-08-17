@@ -14,6 +14,8 @@ PROOF_RESULT = ROOT / "docs/fixtures/memory-os-operability/deletion-worker-conta
 PROOF_VALIDATOR = ROOT / "scripts/validate-memory-os-deletion-worker-container-kill-recovery.py"
 LOAD_CONTRACT = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
+READINESS_NORMALIZER = ROOT / "scripts/reconcile-memory-os-load-readiness-note.py"
+MISSING_EVIDENCE_NORMALIZER = ROOT / "scripts/reconcile-memory-os-load-missing-evidence.py"
 LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
 OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 
@@ -59,7 +61,9 @@ def replace_if_present(values: list[Any], old: str, new: str) -> None:
             return
 
 
-def validate_reconciled_authority() -> None:
+def normalize_and_validate_authority() -> None:
+    subprocess.run(["python", str(READINESS_NORMALIZER)], cwd=ROOT, check=True)
+    subprocess.run(["python", str(MISSING_EVIDENCE_NORMALIZER)], cwd=ROOT, check=True)
     subprocess.run(["python", str(LOAD_VALIDATOR)], cwd=ROOT, check=True)
     subprocess.run(["python", str(OPERABILITY_VALIDATOR)], cwd=ROOT, check=True)
 
@@ -146,7 +150,7 @@ def main() -> int:
     try:
         write(LOAD_CONTRACT, load_contract)
         write(STATUS, status)
-        validate_reconciled_authority()
+        normalize_and_validate_authority()
     except BaseException:
         LOAD_CONTRACT.write_bytes(original_load)
         STATUS.write_bytes(original_status)
@@ -154,7 +158,7 @@ def main() -> int:
 
     print("Memory OS deletion container-kill canonical reconciliation PASS")
     print("Docker container kill/replacement recovery: proven")
-    print("raw process-kill readiness: unchanged")
+    print("raw process-kill readiness: false")
     print("actual physical host/node failure: false")
     print("OPS-P0-006: PARTIAL")
     print("OPS-P0-009: PARTIAL")
