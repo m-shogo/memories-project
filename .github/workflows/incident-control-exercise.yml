@@ -43,10 +43,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout latest so
+      - name: Checkout exact source
         uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -57,14 +57,18 @@ jobs:
           cache-dependency-path: requirements-security-validation.txt
 
       - name: Install security validation dependencies
-        run: python -m pip install --disable-pip-version-check --requirement requirements-security-validation.txt
+        run: python -m pip install --disable-pip-check --requirement requirements-security-validation.txt
 
       - name: Confirm exact clean source
         run: |
-          test "$(git branch --show-current)" = "so"
           test -z "$(git status --porcelain)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
-          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          git fetch origin so
+          if [ "$(git rev-parse origin/so)" != "${GITHUB_SHA}" ]; then
+            echo "so advanced before incident control exercise validation; refusing stale source" >&2
+            exit 75
+          fi
+          echo "SOURCE_SHA=${GITHUB_SHA}" >> "$GITHUB_ENV"
 
       - name: Validate static exercise definition
         run: |
@@ -160,14 +164,23 @@ jobs:
             else
               git commit -m "test(incident): record control exercise diagnostic"
             fi
-            git pull --rebase origin so
+            git fetch origin so
+            if [ "$(git rev-parse origin/so)" != "${SOURCE_SHA}" ]; then
+              echo "so advanced after incident control exercise validation; refusing stale evidence write" >&2
+              exit 75
+            fi
             git push origin HEAD:so
           fi
 
       - name: Reconcile exercise evidence into authority
         if: steps.exercise.outputs.exit_code == '0' && steps.validation.outputs.exit_code == '0'
         run: |
-          git pull --rebase origin so
+          git fetch origin so
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/so)" ]; then
+            echo "incident exercise evidence is not current so; refusing stale authority reconcile" >&2
+            exit 75
+          fi
+          AUTHORITY_SOURCE_SHA="$(git rev-parse HEAD)"
           python scripts/reconcile-memory-os-incident-control-exercise.py
           python scripts/validate-memory-os-incident-control-exercise.py
           python scripts/validate-memory-os-incident-response.py
@@ -182,7 +195,11 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(incident): register automated control exercise"
-            git pull --rebase origin so
+            git fetch origin so
+            if [ "$(git rev-parse origin/so)" != "${AUTHORITY_SOURCE_SHA}" ]; then
+              echo "so advanced after incident authority validation; refusing stale derived write" >&2
+              exit 75
+            fi
             git push origin HEAD:so
           fi
 
