@@ -11,6 +11,9 @@ on:
       - "scripts/validate-memory-os-incident-human-tabletops.py"
       - "scripts/reconcile-memory-os-incident-human-tabletops.py"
       - "scripts/validate-memory-os-incident-human-tabletop-source-negative.py"
+      - "scripts/validate-memory-os-incident-tabletop.py"
+      - "scripts/validate-memory-os-incident-response.py"
+      - "scripts/validate-memory-os-operability.py"
   push:
     branches:
       - so
@@ -23,6 +26,9 @@ on:
       - "scripts/validate-memory-os-incident-human-tabletops.py"
       - "scripts/reconcile-memory-os-incident-human-tabletops.py"
       - "scripts/validate-memory-os-incident-human-tabletop-source-negative.py"
+      - "scripts/validate-memory-os-incident-tabletop.py"
+      - "scripts/validate-memory-os-incident-response.py"
+      - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
 
 permissions:
@@ -68,6 +74,9 @@ jobs:
             scripts/validate-memory-os-incident-human-tabletops.py \
             scripts/reconcile-memory-os-incident-human-tabletops.py \
             scripts/validate-memory-os-incident-human-tabletop-source-negative.py \
+            scripts/validate-memory-os-incident-tabletop.py \
+            scripts/validate-memory-os-incident-response.py \
+            scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-incident-human-tabletop-source-negative.py >> "$log" 2>&1 || code=$?
