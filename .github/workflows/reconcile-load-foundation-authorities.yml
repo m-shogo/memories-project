@@ -6,8 +6,10 @@ on:
       - ".github/workflows/reconcile-load-foundation-authorities.yml"
       - "docs/fixtures/memory-os-operability/capacity-ramp-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json"
+      - "docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json"
       - "contracts/operations/capacity-ramp-contract.v1.json"
       - "contracts/operations/short-stability-sample-contract.v1.json"
+      - "contracts/operations/deletion-under-load-contract.v1.json"
       - "contracts/operations/load-test-scenario-contract.v1.json"
       - "contracts/operations/production-operability-status.json"
       - "scripts/validate-memory-os-capacity-ramp.py"
@@ -16,6 +18,8 @@ on:
       - "scripts/validate-memory-os-short-stability-reconcile-negative.py"
       - "scripts/reconcile-memory-os-short-stability-status.py"
       - "scripts/reconcile-memory-os-sustained-local-soak-status.py"
+      - "scripts/validate-memory-os-deletion-under-load.py"
+      - "scripts/reconcile-memory-os-deletion-under-load-status.py"
       - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-operability.py"
   push:
@@ -25,8 +29,10 @@ on:
       - ".github/workflows/reconcile-load-foundation-authorities.yml"
       - "docs/fixtures/memory-os-operability/capacity-ramp-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json"
+      - "docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json"
       - "contracts/operations/capacity-ramp-contract.v1.json"
       - "contracts/operations/short-stability-sample-contract.v1.json"
+      - "contracts/operations/deletion-under-load-contract.v1.json"
       - "contracts/operations/load-test-scenario-contract.v1.json"
       - "contracts/operations/production-operability-status.json"
       - "scripts/validate-memory-os-capacity-ramp.py"
@@ -35,6 +41,8 @@ on:
       - "scripts/validate-memory-os-short-stability-reconcile-negative.py"
       - "scripts/reconcile-memory-os-short-stability-status.py"
       - "scripts/reconcile-memory-os-sustained-local-soak-status.py"
+      - "scripts/validate-memory-os-deletion-under-load.py"
+      - "scripts/reconcile-memory-os-deletion-under-load-status.py"
       - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-operability.py"
   schedule:
@@ -97,12 +105,14 @@ jobs:
             scripts/validate-memory-os-short-stability-reconcile-negative.py \
             scripts/reconcile-memory-os-short-stability-status.py \
             scripts/reconcile-memory-os-sustained-local-soak-status.py \
+            scripts/validate-memory-os-deletion-under-load.py \
+            scripts/reconcile-memory-os-deletion-under-load-status.py \
             scripts/validate-memory-os-load.py \
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
 
           if [[ "$code" == "0" ]]; then
-            echo "STAGE: short-stability-ordering-negative" >> "$log"
+            echo "STAGE: load-foundation-ordering-negative" >> "$log"
             python scripts/validate-memory-os-short-stability-reconcile-negative.py >> "$log" 2>&1 || code=$?
           fi
 
