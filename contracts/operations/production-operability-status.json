@@ -389,7 +389,8 @@
         "repeated LOCAL_LONG_SOAK runs plus cross-run descriptive trend review are registered as local-only sustained-soak evidence; this is not leak proof or production-shaped evidence",
         "append-only independent sustained-soak review authority accepts only externally supplied human-approved leak/stability criteria and distinct independent review; automatic threshold selection, leak proof, capacity-boundary promotion and production promotion remain forbidden",
         "3 exact-source LOCAL_LONG_SOAK run document(s) satisfy the per-run validator; production evidence and leak proof remain false",
-        "production-equivalent environment generation admission is machine-readable and append-only: load, restore, failure-drill and review evidence must bind immutable generation, environment/dependency/evidence/material-delta hashes and source commit; registered generations=0, preflight-eligible generations=0, current generation=none, and current production-equivalent dependencies=false; registration alone never creates preflight eligibility"
+        "production-equivalent environment generation admission is machine-readable and append-only: load, restore, failure-drill and review evidence must bind immutable generation, environment/dependency/evidence/material-delta hashes and source commit; registered generations=0, preflight-eligible generations=0, current generation=none, and current production-equivalent dependencies=false; registration alone never creates preflight eligibility",
+        "5 exact-source LOCAL_LONG_SOAK run document(s) satisfy the per-run validator; production evidence and leak proof remain false"
       ],
       "missingEvidence": [
         "capacity boundary, saturation report and load-calibrated operational thresholds",
@@ -399,9 +400,9 @@
         "host/process failure behavior during deletion-worker execution, production topology and independently reviewed deletion-load thresholds",
         "repeatable local PostgreSQL plus MinIO saturation runs that actually observe a first failure/degradation transition, plus queue/backlog interpretation and independently reviewed safe operating thresholds",
         "deliberate local PostgreSQL plus MinIO saturation ramp with queue/backlog signals, first-failure transition, repeatability and independently reviewed safe operating thresholds",
+        "request-linearization proof for operations already in flight before the deletion fence plus multi-account worker saturation, production topology and independently reviewed deletion-load thresholds",
         "independently approved leak/stability criteria and review over the repeated LOCAL_LONG_SOAK trends; descriptive cross-run review is complete but leakProof remains false",
-        "production-shaped sustained soak against registered production-equivalent dependencies with runtime topology, TLS, scoped credentials, dependency latency/failure behavior and independent review; LOCAL_LONG_SOAK remains local-only evidence",
-        "request-linearization proof for operations already in flight before the deletion fence plus multi-account worker saturation, production topology and independently reviewed deletion-load thresholds"
+        "production-shaped sustained soak against registered production-equivalent dependencies with runtime topology, TLS, scoped credentials, dependency latency/failure behavior and independent review; LOCAL_LONG_SOAK remains local-only evidence"
       ],
       "evidenceRefs": [
         "services/import-api/internal/loadtest/harness.go",
@@ -537,7 +538,9 @@
         "scripts/validate-memory-os-sustained-soak-independent-review.py",
         "scripts/validate-memory-os-sustained-soak-independent-review-negative.py",
         "scripts/register-memory-os-sustained-soak-independent-review.py",
-        "docs/fixtures/memory-os-operability/sustained-local-soak-results.run-31833538490-1.v1.json"
+        "docs/fixtures/memory-os-operability/sustained-local-soak-results.run-31833538490-1.v1.json",
+        "docs/fixtures/memory-os-operability/sustained-local-soak-results.run-32010573115-1-a.v1.json",
+        "docs/fixtures/memory-os-operability/sustained-local-soak-results.run-32010573115-1-b.v1.json"
       ]
     },
     {

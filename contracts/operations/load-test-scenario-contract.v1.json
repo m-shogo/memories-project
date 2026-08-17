@@ -370,7 +370,7 @@
     "previewPreFenceInFlightLinearizationProven": true,
     "multiAccountDeletionWorkerSaturationProven": true,
     "localLongSoakFoundationImplemented": true,
-    "localLongSoakRunCount": 3,
+    "localLongSoakRunCount": 5,
     "localSustainedSoakEvidence": true,
     "applyPreFenceInFlightLinearizationProven": true,
     "uploadAuthorizationPreFenceInFlightLinearizationProven": true,
@@ -488,6 +488,8 @@
     "scripts/validate-memory-os-sustained-soak-independent-review.py",
     "scripts/validate-memory-os-sustained-soak-independent-review-negative.py",
     "scripts/register-memory-os-sustained-soak-independent-review.py",
-    "docs/fixtures/memory-os-operability/sustained-local-soak-results.run-31833538490-1.v1.json"
+    "docs/fixtures/memory-os-operability/sustained-local-soak-results.run-31833538490-1.v1.json",
+    "docs/fixtures/memory-os-operability/sustained-local-soak-results.run-32010573115-1-a.v1.json",
+    "docs/fixtures/memory-os-operability/sustained-local-soak-results.run-32010573115-1-b.v1.json"
   ]
 }
