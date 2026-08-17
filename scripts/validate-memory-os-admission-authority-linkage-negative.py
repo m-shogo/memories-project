@@ -22,7 +22,7 @@ def load_validator():
     return module
 
 
-def expect_fail(module, value: str, *, directory: bool, contains: str) -> None:
+def expect_entry_fail(module, value: str, *, directory: bool, contains: str) -> None:
     try:
         module.repository_entry(value, "negative.fixture", directory=directory)
     except module.Fail as exc:
@@ -30,6 +30,16 @@ def expect_fail(module, value: str, *, directory: bool, contains: str) -> None:
             raise AssertionError(f"unexpected failure for {value}: {exc}") from exc
     else:
         raise AssertionError(f"unsafe authority path unexpectedly accepted: {value}")
+
+
+def expect_slot_fail(module, value: str, *, contains: str) -> None:
+    try:
+        module.repository_file_slot(value, "negative.appendLockPath")
+    except module.Fail as exc:
+        if contains not in str(exc):
+            raise AssertionError(f"unexpected slot failure for {value}: {exc}") from exc
+    else:
+        raise AssertionError(f"unsafe authority file slot unexpectedly accepted: {value}")
 
 
 def main() -> int:
@@ -41,10 +51,11 @@ def main() -> int:
         normal = fixture / "normal.txt"
         normal.write_text("safe\n", encoding="utf-8")
         module.repository_entry(str(normal.relative_to(ROOT)), "negative.normal", directory=False)
+        module.repository_file_slot(str((fixture / ".safe.lock").relative_to(ROOT)), "negative.safeLock")
 
         final_link = fixture / "final-link.txt"
         final_link.symlink_to(normal.name)
-        expect_fail(
+        expect_entry_fail(
             module,
             str(final_link.relative_to(ROOT)),
             directory=False,
@@ -55,10 +66,15 @@ def main() -> int:
         external_file.write_text("outside\n", encoding="utf-8")
         parent_link = fixture / "external"
         parent_link.symlink_to(external_root, target_is_directory=True)
-        expect_fail(
+        expect_entry_fail(
             module,
             str((parent_link / external_file.name).relative_to(ROOT)),
             directory=False,
+            contains="symlinked admission authority path",
+        )
+        expect_slot_fail(
+            module,
+            str((parent_link / ".escaped.lock").relative_to(ROOT)),
             contains="symlinked admission authority path",
         )
 
@@ -66,14 +82,26 @@ def main() -> int:
         external_dir.mkdir()
         directory_link = fixture / "external-directory"
         directory_link.symlink_to(external_dir, target_is_directory=True)
-        expect_fail(
+        expect_entry_fail(
             module,
             str(directory_link.relative_to(ROOT)),
             directory=True,
             contains="symlinked admission authority path",
         )
 
-        print("PASS: admission authority symlink and repository-escape paths are rejected")
+        expect_slot_fail(module, "../outside.lock", contains="unsafe linked path")
+
+        lock_target = fixture / "real.lock"
+        lock_target.write_text("lock\n", encoding="utf-8")
+        lock_link = fixture / "alias.lock"
+        lock_link.symlink_to(lock_target.name)
+        expect_slot_fail(
+            module,
+            str(lock_link.relative_to(ROOT)),
+            contains="symlinked admission authority file slot",
+        )
+
+        print("PASS: admission authority symlink, repository-escape and append-lock paths are rejected")
         return 0
     finally:
         shutil.rmtree(fixture, ignore_errors=True)
