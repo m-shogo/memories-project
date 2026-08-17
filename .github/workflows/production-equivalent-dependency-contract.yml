@@ -7,14 +7,26 @@ on:
     paths:
       - ".github/workflows/production-equivalent-dependency-contract.yml"
       - "contracts/operations/production-equivalent-dependency-contract.v1.json"
+      - "contracts/operations/load-test-scenario-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "scripts/validate-memory-os-production-equivalent-dependencies.py"
       - "scripts/reconcile-memory-os-production-equivalent-foundation.py"
+      - "scripts/validate-memory-os-production-equivalent-foundation-reconcile-negative.py"
+      - "scripts/validate-memory-os-load-evidence-index.py"
+      - "scripts/validate-memory-os-load.py"
+      - "scripts/validate-memory-os-operability.py"
   pull_request:
     paths:
       - ".github/workflows/production-equivalent-dependency-contract.yml"
       - "contracts/operations/production-equivalent-dependency-contract.v1.json"
+      - "contracts/operations/load-test-scenario-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "scripts/validate-memory-os-production-equivalent-dependencies.py"
       - "scripts/reconcile-memory-os-production-equivalent-foundation.py"
+      - "scripts/validate-memory-os-production-equivalent-foundation-reconcile-negative.py"
+      - "scripts/validate-memory-os-load-evidence-index.py"
+      - "scripts/validate-memory-os-load.py"
+      - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
 
 permissions:
@@ -32,15 +44,33 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Capture exact authority source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+          else
+            git fetch origin so
+            test "$(git branch --show-current)" = "so"
+            test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          fi
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - name: Validate fail-closed admission contract
         run: |
           set -euo pipefail
           python -m py_compile \
             scripts/validate-memory-os-production-equivalent-dependencies.py \
-            scripts/reconcile-memory-os-production-equivalent-foundation.py
+            scripts/reconcile-memory-os-production-equivalent-foundation.py \
+            scripts/validate-memory-os-production-equivalent-foundation-reconcile-negative.py \
+            scripts/validate-memory-os-load-evidence-index.py \
+            scripts/validate-memory-os-load.py \
+            scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-production-equivalent-foundation-reconcile-negative.py
           python scripts/validate-memory-os-production-equivalent-dependencies.py
       - name: Reconcile foundation into canonical load authority
-        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           python scripts/reconcile-memory-os-production-equivalent-foundation.py
@@ -48,13 +78,25 @@ jobs:
           python scripts/validate-memory-os-load-evidence-index.py
           python scripts/validate-memory-os-load.py
           python scripts/validate-memory-os-operability.py
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git diff --check
+            git diff --exit-code -- \
+              contracts/operations/load-test-scenario-contract.v1.json \
+              contracts/operations/production-operability-status.json
+            exit 0
+          fi
           git add \
             contracts/operations/load-test-scenario-contract.v1.json \
             contracts/operations/production-operability-status.json
           if ! git diff --cached --quiet; then
+            git diff --cached --check
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(load): register production-equivalent admission foundation"
-            git pull --rebase origin so
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              echo "Production-equivalent foundation source is stale; refusing derived authority write." >&2
+              exit 75
+            fi
             git push origin HEAD:so
           fi
