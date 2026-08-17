@@ -69,6 +69,8 @@ def main() -> int:
     record = load_input(args.input)
     contract, policy_ids = validator.load_contract_context()
     try:
+        validator.validate_record(record, contract, policy_ids, writer_input=True)
+        record["evidenceDigestsByRef"] = validator.expected_evidence_digests(record)
         validator.validate_record(record, contract, policy_ids)
     except validator.ValidationFailure as exc:
         raise WriterFailure(str(exc)) from exc
@@ -76,8 +78,6 @@ def main() -> int:
     ledger = args.ledger_dir.resolve()
     allowed_root = ROOT.resolve()
     if ledger != DEFAULT_LEDGER.resolve():
-        # Alternate directories are allowed only for CI/local self-tests and
-        # must stay under the repository or system temporary directory.
         temp_root = Path(os.environ.get("TMPDIR", "/tmp")).resolve()
         if not (ledger.is_relative_to(allowed_root) or ledger.is_relative_to(temp_root)):
             raise WriterFailure("ledger directory is outside approved roots")
