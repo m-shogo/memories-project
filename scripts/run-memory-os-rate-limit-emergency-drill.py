@@ -103,7 +103,7 @@ def run_writer_and_evaluator_self_test(
     evidence_ref = "contracts/operations/rate-limit-emergency-drill-contract.v1.json"
     operation_id = started.strftime("RLOP-%Y%m%dT%H%M%SZ-localdrill")
     record = {
-        "schemaVersion": "memory-os-rate-limit-operation-record.v1",
+        "schemaVersion": "memory-os-rate-limit-operation-record.v2",
         "operationId": operation_id,
         "incidentReference": "DRILL-LOCAL_CI_EXPIRY",
         "sourceCommitSha": source_sha,
@@ -130,6 +130,7 @@ def run_writer_and_evaluator_self_test(
             "scripts/run-memory-os-rate-limit-emergency-drill.py",
             "scripts/evaluate-memory-os-rate-limit-emergency-state.py",
         ],
+        "evidenceDigestsByRef": {},
     }
     with tempfile.TemporaryDirectory(prefix="memory-os-rate-limit-drill-") as tmp:
         tmp_path = Path(tmp)
