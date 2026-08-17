@@ -8,7 +8,7 @@ import json
 import subprocess
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/release-compatibility-pair-contract.v1.json"
@@ -79,6 +79,33 @@ def gap_unsatisfied(gap: dict[str, Any]) -> bool:
     return True
 
 
+def commit_authority_transaction(
+    contract: dict[str, Any],
+    gaps: dict[str, Any],
+    status: dict[str, Any],
+    *,
+    validator_runner: Callable[[], None] | None = None,
+) -> None:
+    """Write all derived pair authorities atomically with rollback on post-write failure."""
+    originals = {
+        CONTRACT: CONTRACT.read_bytes(),
+        GAPS: GAPS.read_bytes(),
+        STATUS: STATUS.read_bytes(),
+    }
+    try:
+        write(CONTRACT, contract)
+        write(GAPS, gaps)
+        write(STATUS, status)
+        if validator_runner is None:
+            subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=True)
+        else:
+            validator_runner()
+    except BaseException:
+        for path, payload in originals.items():
+            path.write_bytes(payload)
+        raise
+
+
 def main() -> int:
     registry = load(REGISTRY)
     writer = load_module(WRITER, "memory_os_release_pair_writer_for_reconcile")
@@ -121,7 +148,6 @@ def main() -> int:
     authority["productionEvidence"] = False
     authority["productionReady"] = False
     authority["productionDecision"] = "NO_GO"
-    write(CONTRACT, contract)
 
     exec_boundary = execution.get("releaseAuthorityBoundary")
     require(isinstance(exec_boundary, dict), "candidate execution release authority missing")
@@ -149,7 +175,6 @@ def main() -> int:
     gaps["productionEvidence"] = False
     gaps["productionReady"] = False
     gaps["productionDecision"] = "NO_GO"
-    write(GAPS, gaps)
 
     status = load(STATUS)
     require(status.get("productionDecision") == "NO_GO", "productionDecision must remain NO_GO")
@@ -174,9 +199,8 @@ def main() -> int:
     for ref in REFS:
         require((ROOT / ref).is_file(), f"release pair authority ref missing: {ref}")
         append_once(refs, ref)
-    write(STATUS, status)
 
-    subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=True)
+    commit_authority_transaction(contract, gaps, status)
     print("Memory OS release compatibility pair reconciliation PASS")
     print(f"approved releases: {release_count}")
     print(f"approved rollback pairs: {pair_count}")
