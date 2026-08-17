@@ -102,7 +102,7 @@ jobs:
               "temporary_mode_expired",
           ]
           record = {
-              "schemaVersion": "memory-os-rate-limit-operation-record.v1",
+              "schemaVersion": "memory-os-rate-limit-operation-record.v2",
               "operationId": started.strftime("RLOP-%Y%m%dT%H%M%SZ-ciwriter"),
               "incidentReference": "DRILL-CI_WRITER",
               "sourceCommitSha": os.environ["SOURCE_SHA"],
@@ -125,6 +125,7 @@ jobs:
               "restoredAt": None,
               "openRisks": ["drill_not_executed"],
               "evidenceRefs": [],
+              "evidenceDigestsByRef": {},
           }
           Path(os.environ["TMP_RECORD"]).write_text(
               json.dumps(record, indent=2) + "\n", encoding="utf-8"
