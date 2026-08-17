@@ -22,6 +22,7 @@ REQUIRED_TRUE = (
     "deletionActualProcessKillProven",
     "deletionContainerKillRecoveryProven",
     "deletionReplacementContainerRecoveryProven",
+    "localSustainedSoakEvidence",
 )
 
 
@@ -43,7 +44,6 @@ def main() -> int:
         "operationalThresholds",
         "productionEquivalentDependencies",
         "productionEquivalentEnvironmentProvisioned",
-        "localSustainedSoakEvidence",
         "deletionHostFailureRecoveryProven",
     ):
         if readiness.get(key) is not False:
@@ -53,10 +53,11 @@ def main() -> int:
         "Local evidence now proves post-fence deletion rejection, Preview/Apply/upload-authorization/upload-completion "
         "pre-fence linearization across the primary account-bound HTTP surfaces, bounded multi-account deletion-worker "
         "saturation, lease-expiry attempt-2 recovery including partial object erasure, actual Linux SIGKILL worker recovery, "
-        "and actual Docker worker-container SIGKILL plus independent replacement-container attempt-2 convergence. It still "
-        "does not establish a production capacity boundary, repeated 60-minute sustained-soak evidence, leak proof, physical "
-        "host/node/AZ failure recovery, production-equivalent dependency behavior or independently reviewed operating "
-        "thresholds; OPS-P0-006 remains PARTIAL and Production remains NO_GO."
+        "actual Docker worker-container SIGKILL plus independent replacement-container attempt-2 convergence, and repeated "
+        "60-minute-or-longer LOCAL_LONG_SOAK execution with descriptive trend review. It still does not establish leak proof, "
+        "a production capacity boundary, physical host/node/AZ failure recovery, production-equivalent dependency behavior, "
+        "production-shaped sustained-soak evidence or independently reviewed operating thresholds; OPS-P0-006 remains PARTIAL "
+        "and Production remains NO_GO."
     )
 
     deferred = document.get("deferredScenarios")
@@ -83,8 +84,9 @@ def main() -> int:
     print("multi-account deletion-worker saturation: proven")
     print("actual Linux SIGKILL recovery: proven")
     print("actual Docker container kill/replacement recovery: proven")
+    print("repeated local sustained soak evidence: proven")
     print("physical host/node/AZ recovery: false")
-    print("local sustained soak evidence: false")
+    print("production-shaped sustained soak evidence: false")
     print("production-equivalent dependencies: false")
     return 0
 
