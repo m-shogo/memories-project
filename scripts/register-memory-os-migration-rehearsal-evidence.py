@@ -86,6 +86,17 @@ def load_module(path: Path, name: str) -> Any:
     return module
 
 
+def validate_contract_authority(registry_contract: dict[str, Any]) -> None:
+    require(registry_contract.get("schemaVersion") == "memory-os-migration-evidence-registry-contract.v1", "migration evidence contract schema drift")
+    require(registry_contract.get("migrationLifecycleContract") == str(LIFECYCLE.relative_to(ROOT)), "migration evidence lifecycle authority drift")
+    require(registry_contract.get("registryPath") == str(REGISTRY.relative_to(ROOT)), "migration evidence registry authority drift")
+    require(registry_contract.get("appendLockPath") == str(LOCK.relative_to(ROOT)), "migration evidence append lock authority drift")
+    require(registry_contract.get("writer") == str(Path(__file__).resolve().relative_to(ROOT)), "migration evidence writer authority drift")
+    require(registry_contract.get("appendOnly") is True, "migration evidence contract must remain append-only")
+    require(registry_contract.get("productionEnvironmentRegistrationImplemented") is False, "migration evidence contract production boundary drift")
+    require(set(registry_contract.get("allowedEnvironmentClasses", [])) == ENV_CLASSES, "migration evidence environment class authority drift")
+
+
 def validated_generation_rows() -> list[dict[str, Any]]:
     generation_writer = load_module(GEN_WRITER, "memory_os_generation_writer_for_migration_rehearsal")
     require(generation_writer.REGISTRY.resolve() == GEN_REGISTRY.resolve(), "environment generation writer registry authority drift")
@@ -212,7 +223,7 @@ def validate_record(record: dict[str, Any], required_fields: set[str], registry_
 
 
 def validate_registry_for_append(registry: dict[str, Any], registry_contract: dict[str, Any]) -> None:
-    require(registry_contract.get("appendLockPath") == str(LOCK.relative_to(ROOT)), "migration evidence append lock authority drift")
+    validate_contract_authority(registry_contract)
     require(set(registry) == REGISTRY_FIELDS, "migration evidence registry field set drift")
     require(registry.get("schemaVersion") == "memory-os-migration-evidence-registry.v1", "registry schema drift")
     require(registry.get("registryClass") == "NON_PRODUCTION_MIGRATION_REHEARSAL_EVIDENCE", "registry class drift")
@@ -287,6 +298,7 @@ def main() -> int:
     require(git("status", "--porcelain") == "", "working tree must be clean before migration evidence registration")
 
     contract = load(CONTRACT)
+    validate_contract_authority(contract)
     required = contract.get("requiredRecordFields")
     require(isinstance(required, list) and all(isinstance(item, str) for item in required), "requiredRecordFields invalid")
     record = load(record_path)
