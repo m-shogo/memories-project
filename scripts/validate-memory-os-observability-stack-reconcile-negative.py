@@ -19,6 +19,7 @@ VALIDATOR = ROOT / "scripts/validate-memory-os-observability-stack-deployment.py
 RECONCILER = ROOT / "scripts/reconcile-memory-os-observability-stack-deployment.py"
 TEMP_POST_SOURCE = ROOT / "docs/fixtures/memory-os-operability/.observability-stack-post-source-negative.tmp"
 TEMP_SYMLINK = ROOT / "docs/fixtures/memory-os-operability/.observability-stack-symlink-negative.tmp"
+POST_WRITE_MARKER = Path("/tmp/memory-os-observability-stack-post-write-negative.count")
 
 
 def load_writer():
@@ -90,6 +91,39 @@ def create_descendant_commit() -> str:
         env=env,
         text=True,
     ).strip()
+
+
+def expect_post_write_rollback(contract_bytes: bytes, status_bytes: bytes) -> None:
+    validator_bytes = VALIDATOR.read_bytes()
+    wrapper = f'''#!/usr/bin/env python3
+from pathlib import Path
+marker = Path({str(POST_WRITE_MARKER)!r})
+count = int(marker.read_text(encoding="utf-8")) if marker.exists() else 0
+marker.write_text(str(count + 1), encoding="utf-8")
+raise SystemExit(0 if count == 0 else 1)
+'''
+    try:
+        POST_WRITE_MARKER.unlink(missing_ok=True)
+        VALIDATOR.write_text(wrapper, encoding="utf-8")
+        completed = subprocess.run(
+            ["python", str(RECONCILER)],
+            cwd=ROOT,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        if completed.returncode == 0:
+            raise RuntimeError("reconciler accepted injected post-write validator failure")
+        if CONTRACT.read_bytes() != contract_bytes:
+            raise RuntimeError("post-write validator failure left observability stack contract mutated")
+        if STATUS.read_bytes() != status_bytes:
+            raise RuntimeError("post-write validator failure left production operability status mutated")
+    finally:
+        VALIDATOR.write_bytes(validator_bytes)
+        POST_WRITE_MARKER.unlink(missing_ok=True)
+        CONTRACT.write_bytes(contract_bytes)
+        STATUS.write_bytes(status_bytes)
 
 
 def main() -> int:
@@ -178,7 +212,10 @@ def main() -> int:
         CONTRACT.write_bytes(contract_bytes)
         STATUS.write_bytes(status_bytes)
 
+    expect_post_write_rollback(contract_bytes, status_bytes)
+
     print("PASS: observability stack registry/source-binding/review/lock corruption is rejected without mutation")
+    print("PASS: observability stack post-write validation failure rolls back contract and status")
     print("generic repository JSON accepted as independent review: false")
     print("automatic production promotion authorized: false")
     return 0
