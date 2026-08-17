@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +24,7 @@ EVIDENCE_REFS = (
     "docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.sample.v1.json",
     ".github/workflows/controlled-saturation-ramp.yml",
 )
+TRANSACTION_PATHS = (CONTROLLED_CONTRACT, LOAD_CONTRACT, STATUS_PATH)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -52,6 +55,40 @@ def find_scenario(values: list[Any], scenario_id: str) -> dict[str, Any] | None:
         if isinstance(value, dict) and value.get("scenarioId") == scenario_id:
             return value
     return None
+
+
+def validate_post_write(expected_sha: str) -> None:
+    commands = (
+        [
+            sys.executable,
+            "scripts/validate-memory-os-controlled-saturation-ramp.py",
+            "--expected-commit-sha",
+            expected_sha,
+            "--require-reconciled",
+        ],
+        [sys.executable, "scripts/validate-memory-os-load.py"],
+        [sys.executable, "scripts/validate-memory-os-load-evidence-index.py"],
+        [sys.executable, "scripts/validate-memory-os-operability.py"],
+    )
+    env = os.environ.copy()
+    env["EXPECTED_COMMIT_SHA"] = expected_sha
+    for command in commands:
+        subprocess.run(command, cwd=ROOT, env=env, check=True)
+
+
+def write_transactionally(
+    controlled: dict[str, Any], load_contract: dict[str, Any], status: dict[str, Any], expected_sha: str
+) -> None:
+    originals = {path: path.read_bytes() for path in TRANSACTION_PATHS}
+    try:
+        write(CONTROLLED_CONTRACT, controlled)
+        write(LOAD_CONTRACT, load_contract)
+        write(STATUS_PATH, status)
+        validate_post_write(expected_sha)
+    except BaseException:
+        for path, content in originals.items():
+            path.write_bytes(content)
+        raise
 
 
 def main() -> int:
@@ -200,9 +237,7 @@ def main() -> int:
     if status.get("productionDecision") != "NO_GO" or load_status.get("status") != "PARTIAL":
         raise SystemExit("controlled local evidence attempted to promote production authority")
 
-    write(CONTROLLED_CONTRACT, controlled)
-    write(LOAD_CONTRACT, load_contract)
-    write(STATUS_PATH, status)
+    write_transactionally(controlled, load_contract, status, expected_sha)
     print("Memory OS controlled saturation authority reconciled")
     print(f"source: {expected_sha}")
     print(f"local saturation signal observed: {str(first_saturation).lower()}")
