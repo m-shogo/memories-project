@@ -5,14 +5,17 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import importlib.util
 import json
 import os
 import re
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_LEDGER = ROOT / "docs/evidence/rate-limit-operations"
+VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-rate-limit-operation-evidence.py"
 OPERATION_ID = re.compile(r"^RLOP-[0-9]{8}T[0-9]{6}Z-[a-z0-9]{6,24}$")
 
 
@@ -21,6 +24,17 @@ def load(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise SystemExit("operation evidence root must be object")
     return value
+
+
+def load_validator() -> ModuleType:
+    spec = importlib.util.spec_from_file_location(
+        "memory_os_rate_limit_operation_validator", VALIDATOR_PATH
+    )
+    if spec is None or spec.loader is None:
+        raise SystemExit("operation evidence validator authority is unavailable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def timestamp(value: str) -> dt.datetime:
@@ -37,6 +51,22 @@ def resolve_ledger(raw: str | None) -> Path:
     if ledger.is_relative_to(ROOT.resolve()) or ledger.is_relative_to(temp_root):
         return ledger
     raise SystemExit("ledger-dir is outside approved repository/temporary roots")
+
+
+def validate_authority(ledger: Path, record: dict[str, Any]) -> None:
+    validator = load_validator()
+    try:
+        if ledger == DEFAULT_LEDGER.resolve():
+            result = validator.main()
+            if result != 0:
+                raise SystemExit(
+                    f"canonical operation ledger validation returned non-zero: {result}"
+                )
+        else:
+            contract, policy_ids = validator.load_contract_context()
+            validator.validate_record(record, contract, policy_ids)
+    except validator.ValidationFailure as exc:
+        raise SystemExit(f"operation evidence authority is invalid: {exc}") from exc
 
 
 def main() -> int:
@@ -65,6 +95,7 @@ def main() -> int:
         return 0
 
     record = load(path)
+    validate_authority(ledger, record)
     started = timestamp(record["startedAt"])
     expires = timestamp(record["expiresAt"])
     lifecycle = record.get("lifecycle")
