@@ -56,6 +56,16 @@ def detached_side_commit() -> str:
     return git("commit-tree", tree, "-p", parent, "-m", "synthetic side commit", env=env)
 
 
+def expect_evidence_ref_rejection(validator, ref: str, expected: str) -> None:
+    try:
+        validator.canonical_evidence_path(ref, "syntheticEvidenceRefs")
+    except validator.ValidationFailure as exc:
+        if expected not in str(exc):
+            raise AssertionError(f"unexpected evidence ref rejection: {exc}") from exc
+    else:
+        raise AssertionError(f"unsafe evidence ref was incorrectly accepted: {ref}")
+
+
 def main() -> int:
     writer = load_writer()
 
@@ -126,8 +136,32 @@ def main() -> int:
     if git("rev-parse", "HEAD") != current_head:
         raise AssertionError("lineage negative changed the current branch ref")
 
+    ledger_root = writer.DEFAULT_LEDGER
+    untracked = ledger_root / ".rate-limit-operation-untracked-negative.json"
+    symlink = ledger_root / ".rate-limit-operation-symlink-negative.json"
+    try:
+        untracked.write_text("{}\n", encoding="utf-8")
+        expect_evidence_ref_rejection(
+            validator,
+            untracked.relative_to(ROOT).as_posix(),
+            "git ls-files",
+        )
+        symlink.symlink_to(ledger_root / "README.md")
+        expect_evidence_ref_rejection(
+            validator,
+            symlink.relative_to(ROOT).as_posix(),
+            "cannot traverse symlink",
+        )
+    finally:
+        symlink.unlink(missing_ok=True)
+        untracked.unlink(missing_ok=True)
+
+    if git("status", "--porcelain"):
+        raise AssertionError("rate-limit operation negatives left the checkout dirty")
+
     print("PASS: canonical rate-limit operation ledger is validated before append")
     print("PASS: detached rate-limit operation source commits are rejected")
+    print("PASS: untracked and symlinked operation evidence refs are rejected")
     return 0
 
 
