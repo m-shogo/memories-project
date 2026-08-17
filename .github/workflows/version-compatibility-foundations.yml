@@ -11,6 +11,7 @@ on:
       - "scripts/reconcile-memory-os-version-compatibility-canonical.py"
       - "scripts/validate-memory-os-version-compatibility.py"
       - "scripts/validate-memory-os-version-compatibility-foundations.py"
+      - "scripts/validate-memory-os-version-compatibility-foundation-status-negative.py"
       - "scripts/reconcile-memory-os-version-compatibility-foundation-status.py"
       - "scripts/validate-memory-os-operability.py"
       - "docs/fixtures/memory-os-operability/mixed-version-session-results.sample.v1.json"
@@ -32,6 +33,7 @@ on:
       - "scripts/reconcile-memory-os-version-compatibility-canonical.py"
       - "scripts/validate-memory-os-version-compatibility.py"
       - "scripts/validate-memory-os-version-compatibility-foundations.py"
+      - "scripts/validate-memory-os-version-compatibility-foundation-status-negative.py"
       - "scripts/reconcile-memory-os-version-compatibility-foundation-status.py"
       - "scripts/validate-memory-os-operability.py"
       - "docs/fixtures/memory-os-operability/mixed-version-session-results.sample.v1.json"
@@ -89,8 +91,10 @@ jobs:
             scripts/reconcile-memory-os-version-compatibility-canonical.py \
             scripts/validate-memory-os-version-compatibility.py \
             scripts/validate-memory-os-version-compatibility-foundations.py \
+            scripts/validate-memory-os-version-compatibility-foundation-status-negative.py \
             scripts/reconcile-memory-os-version-compatibility-foundation-status.py \
             scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-version-compatibility-foundation-status-negative.py
 
       - name: Restore conservative canonical authority
         run: python scripts/reconcile-memory-os-version-compatibility-canonical.py
