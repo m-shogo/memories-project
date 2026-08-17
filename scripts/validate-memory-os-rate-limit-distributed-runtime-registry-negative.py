@@ -144,6 +144,29 @@ def prove_reconciler_no_autoheal(reconciler: Any, original: bytes) -> None:
         STATUS.write_bytes(status_before)
 
 
+def prove_reconciler_status_rollback(reconciler: Any) -> None:
+    contract_before = CONTRACT.read_bytes()
+    status_before = STATUS.read_bytes()
+    status = json.loads(status_before.decode("utf-8"))
+    status["productionDecision"] = "GO"
+    STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    corrupted_status = STATUS.read_bytes()
+    try:
+        try:
+            reconciler.main()
+        except reconciler.Fail:
+            pass
+        else:
+            raise RuntimeError("reconciler accepted productionDecision=GO")
+        if CONTRACT.read_bytes() != contract_before:
+            raise RuntimeError("reconciler partially mutated distributed runtime contract before rejecting status")
+        if STATUS.read_bytes() != corrupted_status:
+            raise RuntimeError("reconciler mutated corrupt production status while rejecting it")
+    finally:
+        CONTRACT.write_bytes(contract_before)
+        STATUS.write_bytes(status_before)
+
+
 def main() -> int:
     writer = load_module(WRITER_PATH, "rate_limit_runtime_writer_negative")
     validator = load_module(VALIDATOR_PATH, "rate_limit_runtime_validator_negative")
@@ -167,14 +190,16 @@ def main() -> int:
         prove_executable_authority_rejection(validator, writer, reconciler)
         prove_contract_lock_binding_rejection(validator)
         prove_reconciler_no_autoheal(reconciler, original)
+        prove_reconciler_status_rollback(reconciler)
     finally:
         REGISTRY.write_bytes(original)
 
-    print("PASS: distributed rate-limit runtime registry corruption and authority substitution are rejected before append/reconcile")
+    print("PASS: distributed rate-limit runtime registry corruption, authority substitution and reconcile partial writes are rejected")
     print(f"corruption cases: {len(cases)}")
     print("executable authority substitution: rejected")
     print("contract append lock substitution: rejected")
     print("reconciler auto-heal: false")
+    print("reconciler partial writes: false")
     print("production readiness: false")
     print("production decision: NO_GO")
     return 0
