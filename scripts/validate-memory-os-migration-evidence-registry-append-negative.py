@@ -55,6 +55,16 @@ def expect_writer_rejected(writer: ModuleType, contract: dict[str, Any], name: s
     raise Fail(f"writer accepted corrupt migration ledger: {name}")
 
 
+def expect_contract_authority_rejected(writer: ModuleType, name: str, mutate: Callable[[dict[str, Any]], None]) -> None:
+    corrupt = copy.deepcopy(load_json(CONTRACT))
+    mutate(corrupt)
+    try:
+        writer.validate_registry_for_append(load_json(REGISTRY), corrupt)
+    except Exception:
+        return
+    raise Fail(f"writer accepted corrupt migration contract authority: {name}")
+
+
 def expect_reconcile_rejected_without_mutation(name: str, mutate: Callable[[dict[str, Any]], None]) -> None:
     originals = {path: path.read_bytes() for path in (REGISTRY, CONTRACT, LIFECYCLE, STATUS)}
     corrupt = load_json(REGISTRY)
@@ -188,10 +198,23 @@ def main() -> int:
     for name, mutate in cases:
         expect_writer_rejected(writer, contract, name, mutate)
         expect_reconcile_rejected_without_mutation(name, mutate)
+
+    contract_cases: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
+        ("contract schema drift", lambda value: value.__setitem__("schemaVersion", "invalid")),
+        ("lifecycle authority drift", lambda value: value.__setitem__("migrationLifecycleContract", "README.md")),
+        ("registry authority drift", lambda value: value.__setitem__("registryPath", "contracts/operations/production-operability-status.json")),
+        ("writer authority drift", lambda value: value.__setitem__("writer", "scripts/validate-memory-os-migration-evidence-registry.py")),
+        ("contract append-only disabled", lambda value: value.__setitem__("appendOnly", False)),
+        ("production registration enabled", lambda value: value.__setitem__("productionEnvironmentRegistrationImplemented", True)),
+        ("environment class authority drift", lambda value: value.__setitem__("allowedEnvironmentClasses", ["LOCAL_POSTGRES_REHEARSAL"])),
+    ]
+    for name, mutate in contract_cases:
+        expect_contract_authority_rejected(writer, name, mutate)
+
     expect_append_lock_contract_rejected(writer)
     expect_record_lineage_rejected(writer, contract)
     expect_recovery_evidence_mutation_rejected(writer, contract)
-    print("PASS: migration rehearsal ledger corruption, append-lock drift, source-lineage drift and recovery-evidence mutation are rejected")
+    print("PASS: migration rehearsal ledger and contract corruption, append-lock drift, source-lineage drift and recovery-evidence mutation are rejected")
     return 0
 
 
