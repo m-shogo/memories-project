@@ -287,8 +287,41 @@ jobs:
             git commit -m "docs(migration): register local recovery artifact rehearsal"
             git fetch origin so
             if [[ "$(git rev-parse origin/so)" != "$BASE_SHA" ]]; then
-              echo "so advanced before migration rehearsal authority push; refusing stale registry append."
-              exit 75
+              echo "so advanced before migration rehearsal authority push; checking for canonical rescue convergence."
+              git reset --hard origin/so
+              python scripts/validate-memory-os-migration-evidence-registry.py
+              python scripts/validate-memory-os-local-migration-recovery-artifact.py \
+                --path "$result" --expected-commit-sha "$SOURCE_SHA" --require-result
+              python scripts/validate-memory-os-migration-lifecycle.py
+              python scripts/validate-memory-os-operability.py
+              RUN_ID="$RUN_ID" SOURCE_SHA="$SOURCE_SHA" RESULT_PATH="$result" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          registry = json.loads(Path('contracts/operations/migration-evidence-registry.v1.json').read_text())
+          matches = [
+              row for row in registry.get('records', [])
+              if isinstance(row, dict) and row.get('migrationRunId') == os.environ['RUN_ID']
+          ]
+          if len(matches) != 1:
+              raise SystemExit('latest migration registry does not contain exactly one rescued RUN_ID')
+          row = matches[0]
+          expected = {
+              'sourceCommitSha': os.environ['SOURCE_SHA'],
+              'environmentClass': 'LOCAL_POSTGRES_REHEARSAL',
+              'environmentGenerationId': None,
+              'recoveryPointRestoreEvidenceRef': os.environ['RESULT_PATH'],
+              'productionTraffic': False,
+              'productionCredentials': False,
+              'productionEvidence': False,
+          }
+          for key, value in expected.items():
+              if row.get(key) != value:
+                  raise SystemExit(f'rescued migration registry row {key} mismatch')
+          PY
+              echo "Latest so already contains the canonical registration for $RUN_ID; accepting converged rescue."
+              exit 0
             fi
             git push origin HEAD:so
           fi
