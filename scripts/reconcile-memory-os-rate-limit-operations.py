@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 POLICY_PATH = ROOT / "contracts/operations/rate-limit-policy-contract.v1.json"
 OPERATIONS_PATH = ROOT / "contracts/operations/rate-limit-operations-contract.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-rate-limit-operations.py"
 
 OLD_GAP = "operational disable/rollback runbook"
 STALE_LEDGER_GAP = "production emergency control plane with automatic expiry and append-only operation evidence ledger"
@@ -58,6 +60,40 @@ def append_once(items: list[Any], value: str) -> bool:
         return False
     items.append(value)
     return True
+
+
+def validate_written_authority() -> None:
+    completed = subprocess.run(
+        [sys.executable, str(VALIDATOR_PATH)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    require(completed.returncode == 0,
+            f"rate-limit operations post-write validation failed:\n{completed.stdout[-4000:]}")
+
+
+def transactional_write(policy: dict[str, Any], status: dict[str, Any]) -> None:
+    originals = {
+        POLICY_PATH: POLICY_PATH.read_bytes(),
+        STATUS_PATH: STATUS_PATH.read_bytes(),
+    }
+    try:
+        POLICY_PATH.write_text(
+            json.dumps(policy, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        STATUS_PATH.write_text(
+            json.dumps(status, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        validate_written_authority()
+    except Exception:
+        for path, original in originals.items():
+            path.write_bytes(original)
+        raise
 
 
 def main() -> int:
@@ -152,14 +188,7 @@ def main() -> int:
         return 0
 
     status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
-    POLICY_PATH.write_text(
-        json.dumps(policy, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
-    STATUS_PATH.write_text(
-        json.dumps(status, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    transactional_write(policy, status)
     print("Registered rate-limit operations policy; OPS-P0-005 remains PARTIAL")
     return 0
 
