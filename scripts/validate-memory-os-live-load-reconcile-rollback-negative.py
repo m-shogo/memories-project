@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+"""Prove live-load reconcile rolls back both derived authorities on post-write failure."""
+
+from __future__ import annotations
+
+import importlib.util
+import json
+import os
+import tempfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+RECONCILER = ROOT / "scripts/reconcile-memory-os-live-load-status.py"
+STATUS = ROOT / "contracts/operations/production-operability-status.json"
+LOAD = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
+
+
+class Fail(RuntimeError):
+    pass
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise Fail(message)
+
+
+def load_module():
+    spec = importlib.util.spec_from_file_location("live_load_reconcile", RECONCILER)
+    require(spec is not None and spec.loader is not None, "cannot load live-load reconciler")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def write_json(path: Path, value: dict) -> None:
+    path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def main() -> int:
+    module = load_module()
+    expected_sha = "1" * 40
+
+    with tempfile.TemporaryDirectory(prefix="memory-os-live-load-rollback-") as tmp:
+        tmp_root = Path(tmp)
+        status_path = tmp_root / "production-operability-status.json"
+        load_path = tmp_root / "load-test-scenario-contract.v1.json"
+        postgres_result = tmp_root / "live-postgres.json"
+        object_result = tmp_root / "live-object.json"
+        pass_validator = tmp_root / "pass.py"
+        fail_validator = tmp_root / "fail.py"
+
+        status = json.loads(STATUS.read_text(encoding="utf-8"))
+        load_contract = json.loads(LOAD.read_text(encoding="utf-8"))
+
+        area = next(
+            item
+            for item in status["areas"]
+            if isinstance(item, dict) and item.get("id") == "OPS-P0-006"
+        )
+        area["existingEvidence"] = [
+            item
+            for item in area["existingEvidence"]
+            if item != module.POSTGRES_EVIDENCE
+        ]
+        load_contract["readiness"]["exactHeadLiveResultsCommitted"] = False
+
+        write_json(status_path, status)
+        write_json(load_path, load_contract)
+        write_json(
+            postgres_result,
+            {
+                "commitSha": expected_sha,
+                "scenarios": [{"result": "PASS", "integrityResult": "PASS"}],
+            },
+        )
+        write_json(
+            object_result,
+            {
+                "commitSha": expected_sha,
+                "scenarios": [{"result": "PASS", "integrityResult": "PASS"}],
+            },
+        )
+        pass_validator.write_text("raise SystemExit(0)\n", encoding="utf-8")
+        fail_validator.write_text("raise SystemExit(17)\n", encoding="utf-8")
+
+        module.STATUS_PATH = status_path
+        module.LOAD_CONTRACT_PATH = load_path
+        module.POSTGRES_RESULT = postgres_result
+        module.OBJECT_RESULT = object_result
+        module.LOAD_VALIDATOR = pass_validator
+        module.OPERABILITY_VALIDATOR = fail_validator
+        module.validate_live_authorities = lambda expected: None
+
+        before_status = status_path.read_bytes()
+        before_load = load_path.read_bytes()
+        previous_expected = os.environ.get("EXPECTED_COMMIT_SHA")
+        os.environ["EXPECTED_COMMIT_SHA"] = expected_sha
+        try:
+            try:
+                module.main()
+            except module.ReconcileFailure as exc:
+                require(
+                    "canonical operability validation failed" in str(exc),
+                    f"unexpected failure reason: {exc}",
+                )
+            else:
+                raise Fail("reconciler accepted a failing post-write operability validator")
+        finally:
+            if previous_expected is None:
+                os.environ.pop("EXPECTED_COMMIT_SHA", None)
+            else:
+                os.environ["EXPECTED_COMMIT_SHA"] = previous_expected
+
+        require(status_path.read_bytes() == before_status, "status was not rolled back byte-for-byte")
+        require(load_path.read_bytes() == before_load, "load contract was not rolled back byte-for-byte")
+
+    print("PASS: live-load reconcile rolls back both derived authorities after post-write validation failure")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (Fail, OSError, json.JSONDecodeError) as exc:
+        print(f"LIVE LOAD RECONCILE ROLLBACK NEGATIVE FAILED: {exc}")
+        raise SystemExit(1)
