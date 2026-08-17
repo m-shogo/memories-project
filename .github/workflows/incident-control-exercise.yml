@@ -57,7 +57,7 @@ jobs:
           cache-dependency-path: requirements-security-validation.txt
 
       - name: Install security validation dependencies
-        run: python -m pip install --disable-pip-check --requirement requirements-security-validation.txt
+        run: python -m pip install --disable-pip-version-check --requirement requirements-security-validation.txt
 
       - name: Confirm exact clean source
         run: |
