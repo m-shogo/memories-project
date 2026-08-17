@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -73,6 +74,39 @@ def append_once(items: list[Any], value: str) -> bool:
         return False
     items.append(value)
     return True
+
+
+def validate_written_authority() -> None:
+    for script in (
+        "scripts/validate-memory-os-metrics.py",
+        "scripts/validate-memory-os-metrics-operations.py",
+        "scripts/validate-memory-os-operability.py",
+    ):
+        result = subprocess.run(
+            [sys.executable, script],
+            cwd=ROOT,
+            check=False,
+        )
+        require(result.returncode == 0, f"post-write validator failed: {script}")
+
+
+def write_transactionally(metrics: dict[str, Any], status: dict[str, Any]) -> None:
+    original_metrics = METRICS_PATH.read_bytes()
+    original_status = STATUS_PATH.read_bytes()
+    try:
+        METRICS_PATH.write_text(
+            json.dumps(metrics, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        STATUS_PATH.write_text(
+            json.dumps(status, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        validate_written_authority()
+    except BaseException:
+        METRICS_PATH.write_bytes(original_metrics)
+        STATUS_PATH.write_bytes(original_status)
+        raise
 
 
 def main() -> int:
@@ -177,14 +211,7 @@ def main() -> int:
         return 0
 
     status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
-    METRICS_PATH.write_text(
-        json.dumps(metrics, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
-    STATUS_PATH.write_text(
-        json.dumps(status, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    write_transactionally(metrics, status)
     print("Registered dashboard, retention and error-budget definitions; OPS-P0-004 remains PARTIAL")
     return 0
 
