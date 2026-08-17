@@ -16,6 +16,10 @@ CONTRACT_PATH = ROOT / "contracts/operations/short-stability-sample-contract.v1.
 LOAD_PATH = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json"
+SHORT_VALIDATOR = ROOT / "scripts/validate-memory-os-short-stability-sample.py"
+SOAK_RECONCILER = ROOT / "scripts/reconcile-memory-os-sustained-local-soak-status.py"
+LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 
 
 class ReconcileFailure(RuntimeError):
@@ -45,16 +49,50 @@ def append_once(items: list[Any], value: Any) -> bool:
     return True
 
 
-def main() -> int:
-    expected_sha = os.getenv("EXPECTED_COMMIT_SHA", "")
-    require(expected_sha, "EXPECTED_COMMIT_SHA is required")
-    validation = subprocess.run(
-        [sys.executable, str(ROOT / "scripts/validate-memory-os-short-stability-sample.py"),
-         "--expected-commit-sha", expected_sha],
+def run_validator(path: Path, label: str, *args: str) -> None:
+    completed = subprocess.run(
+        [sys.executable, str(path), *args],
         cwd=ROOT,
         check=False,
     )
-    require(validation.returncode == 0, "short stability result validation failed")
+    require(completed.returncode == 0, f"{label} failed")
+
+
+def write_and_validate_transactionally(
+    contract: dict[str, Any], load_contract: dict[str, Any], status: dict[str, Any], expected_sha: str
+) -> None:
+    paths = (CONTRACT_PATH, LOAD_PATH, STATUS_PATH)
+    original_bytes = {path: path.read_bytes() for path in paths}
+    try:
+        CONTRACT_PATH.write_text(
+            json.dumps(contract, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        LOAD_PATH.write_text(
+            json.dumps(load_contract, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        STATUS_PATH.write_text(
+            json.dumps(status, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        # LOCAL_LONG_SOAK is the canonical authority for repeated 60-minute local
+        # soak state. Re-run that existing reconciler after the short sample so a
+        # later short CI sample cannot downgrade or re-add completed soak gaps.
+        run_validator(SOAK_RECONCILER, "sustained local soak authority reconcile")
+        run_validator(SHORT_VALIDATOR, "post-write short stability validator", "--require-reconciled")
+        run_validator(LOAD_VALIDATOR, "post-write load validator")
+        run_validator(OPERABILITY_VALIDATOR, "post-write operability validator")
+    except BaseException:
+        for path in paths:
+            path.write_bytes(original_bytes[path])
+        raise
+
+
+def main() -> int:
+    expected_sha = os.getenv("EXPECTED_COMMIT_SHA", "")
+    require(expected_sha, "EXPECTED_COMMIT_SHA is required")
+    run_validator(SHORT_VALIDATOR, "short stability result validation", "--expected-commit-sha", expected_sha)
 
     contract = load(CONTRACT_PATH)
     result = load(RESULT_PATH)
@@ -70,7 +108,6 @@ def main() -> int:
             assertions.get("operationalThresholdApproved") is False,
             "short stability result overclaims readiness")
 
-    changed_contract = False
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "short stability readiness missing")
     for field, value in {
@@ -83,12 +120,9 @@ def main() -> int:
         "independentReviewCompleted": False,
         "productionReady": False,
     }.items():
-        if readiness.get(field) != value:
-            readiness[field] = value
-            changed_contract = True
+        readiness[field] = value
 
     load_contract = load(LOAD_PATH)
-    changed_load = False
     external = load_contract.get("externalExecutedScenarios")
     require(isinstance(external, list), "externalExecutedScenarios missing")
     item = {
@@ -106,48 +140,38 @@ def main() -> int:
                            current.get("scenarioId") == item["scenarioId"]), None)
     if existing_index is None:
         external.append(item)
-        changed_load = True
-    elif external[existing_index] != item:
+    else:
         external[existing_index] = item
-        changed_load = True
 
     deferred = load_contract.get("deferredScenarios")
     require(isinstance(deferred, list), "deferredScenarios missing")
-    sustained_reason = (
-        "a six-window short CI process sample now records RSS, heap and goroutine trends, "
-        "but it is not a 60-minute repeated soak, does not cover MinIO/parser/queue/deletion/Apple "
-        "dependencies and cannot prove leak freedom or production stability"
+    short_reason = (
+        "a six-window short CI process sample records RSS, heap and goroutine trends, but this short sample alone cannot prove leak freedom, a capacity boundary or production stability"
     )
     for current in deferred:
         if isinstance(current, dict) and current.get("scenarioId") == "soak":
-            if current.get("reason") != sustained_reason:
-                current["reason"] = sustained_reason
-                changed_load = True
+            current["reason"] = short_reason
+            current["requiredDependencyMode"] = "LOCAL_POSTGRES_MINIO"
             break
     else:
         deferred.append({
             "scenarioId": "soak",
-            "reason": sustained_reason,
-            "requiredDependencyMode": "PRODUCTION_EQUIVALENT",
+            "reason": short_reason,
+            "requiredDependencyMode": "LOCAL_POSTGRES_MINIO",
         })
-        changed_load = True
 
     load_readiness = load_contract.get("readiness")
     require(isinstance(load_readiness, dict), "load readiness missing")
-    if load_readiness.get("shortCIStabilitySampleExecuted") is not True:
-        load_readiness["shortCIStabilitySampleExecuted"] = True
-        changed_load = True
+    load_readiness["shortCIStabilitySampleExecuted"] = True
     for field in ("sustainedSoakEvidence", "operationalThresholds", "capacityBoundaryEstablished"):
         require(load_readiness.get(field) is False,
                 f"short sample cannot promote load readiness: {field}")
-    note = (
-        "Mock and local dependency checkpoints are supplemented by bounded ramp and short CI "
-        "stability samples. These record local concurrency and process trends but establish neither "
-        "a saturation boundary nor sustained-soak/leak proof; OPS-P0-006 remains PARTIAL."
-    )
-    if load_readiness.get("note") != note:
-        load_readiness["note"] = note
-        changed_load = True
+    if load_readiness.get("localSustainedSoakEvidence") is not True:
+        load_readiness["note"] = (
+            "Mock and local dependency checkpoints are supplemented by bounded ramp and short CI "
+            "stability samples. These record local concurrency and process trends but establish neither "
+            "a saturation boundary nor sustained-soak/leak proof; OPS-P0-006 remains PARTIAL."
+        )
 
     load_refs = load_contract.get("evidenceRefs")
     require(isinstance(load_refs, list), "load evidenceRefs missing")
@@ -158,7 +182,7 @@ def main() -> int:
         "docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json",
     ):
         require((ROOT / ref).is_file(), f"short stability evidence missing: {ref}")
-        changed_load = append_once(load_refs, ref) or changed_load
+        append_once(load_refs, ref)
 
     status = load(STATUS_PATH)
     require(status.get("productionDecision") == "NO_GO",
@@ -173,14 +197,15 @@ def main() -> int:
     require(isinstance(existing, list) and isinstance(missing, list) and isinstance(refs, list),
             "OPS-P0-006 authority lists missing")
 
-    changed_status = append_once(
+    append_once(
         existing,
         "six-window authenticated Preview short CI stability sample records Linux RSS, Go heap and goroutine observations plus per-window throughput and latency while explicitly refusing sustained-soak, leak-proof or capacity claims",
     )
-    changed_status = append_once(
-        missing,
-        "60-minute-or-longer repeated soak over PostgreSQL, object storage, parser, queue, deletion and authentication paths with RSS/heap/goroutine slope review and independently approved leak/stability criteria",
-    ) or changed_status
+    if load_readiness.get("localSustainedSoakEvidence") is not True:
+        append_once(
+            missing,
+            "60-minute-or-longer repeated soak over PostgreSQL, object storage, parser, queue, deletion and authentication paths with RSS/heap/goroutine slope review and independently approved leak/stability criteria",
+        )
     for ref in (
         "contracts/operations/short-stability-sample-contract.v1.json",
         "services/import-api/internal/httpserver/short_stability_sample_test.go",
@@ -190,19 +215,11 @@ def main() -> int:
         ".github/workflows/short-stability-sample.yml",
     ):
         require((ROOT / ref).is_file(), f"short stability status evidence missing: {ref}")
-        changed_status = append_once(refs, ref) or changed_status
+        append_once(refs, ref)
 
-    if changed_contract:
-        CONTRACT_PATH.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n",
-                                 encoding="utf-8")
-    if changed_load:
-        LOAD_PATH.write_text(json.dumps(load_contract, indent=2, ensure_ascii=False) + "\n",
-                             encoding="utf-8")
-    if changed_status:
-        status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
-        STATUS_PATH.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n",
-                               encoding="utf-8")
-    print("Registered short CI stability sample; sustained soak and leak proof remain false")
+    status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
+    write_and_validate_transactionally(contract, load_contract, status, expected_sha)
+    print("Registered short CI stability sample; canonical repeated-soak authority preserved")
     return 0
 
 
