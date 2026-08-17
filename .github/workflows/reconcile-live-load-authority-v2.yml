@@ -12,7 +12,10 @@ on:
       - "docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json"
       - "scripts/validate-memory-os-live-load.py"
       - "scripts/validate-memory-os-live-object-load.py"
+      - "scripts/validate-memory-os-load.py"
+      - "scripts/validate-memory-os-operability.py"
       - "scripts/reconcile-memory-os-live-load-status.py"
+      - "scripts/validate-memory-os-live-load-reconcile-rollback-negative.py"
   schedule:
     - cron: "7 6 * * *"
   workflow_dispatch:
@@ -58,7 +61,13 @@ jobs:
           python -m py_compile \
             scripts/validate-memory-os-live-load.py \
             scripts/validate-memory-os-live-object-load.py \
-            scripts/reconcile-memory-os-live-load-status.py
+            scripts/validate-memory-os-load.py \
+            scripts/validate-memory-os-operability.py \
+            scripts/reconcile-memory-os-live-load-status.py \
+            scripts/validate-memory-os-live-load-reconcile-rollback-negative.py
+
+      - name: Validate reconcile rollback
+        run: python scripts/validate-memory-os-live-load-reconcile-rollback-negative.py
 
       - name: Validate committed live evidence
         id: validation
@@ -168,6 +177,8 @@ jobs:
           EXPECTED_COMMIT_SHA="$evidence_sha" python scripts/reconcile-memory-os-live-load-status.py
           python scripts/validate-memory-os-live-load.py
           python scripts/validate-memory-os-live-object-load.py
+          python scripts/validate-memory-os-load.py
+          python scripts/validate-memory-os-operability.py
           git fetch origin so
           if [ "$(git rev-parse origin/so)" != "$source_head" ]; then
             echo "so advanced after validation; refusing stale derived authority write" >&2
