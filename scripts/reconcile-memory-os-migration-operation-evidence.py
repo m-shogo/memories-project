@@ -42,6 +42,12 @@ RECOVERY_GAPS = (
     "completed production-shaped migration rehearsal with lock, statement-timeout, runtime and mixed-version budgets",
     "isolated restore linkage and promotion decision for destructive contract migrations",
 )
+STRONGER_LIFECYCLE_FIELDS = (
+    "isolatedRestoreLinked",
+    "mixedVersionCompatibilityProven",
+    "productionShapedRehearsalCompleted",
+    "ready",
+)
 
 
 class ReconcileFailure(RuntimeError):
@@ -76,6 +82,18 @@ def unique(values: list[Any]) -> list[Any]:
     return result
 
 
+def run_validator(path: Path, *, phase: str) -> None:
+    require(path.is_file(), f"canonical validator missing: {path.relative_to(ROOT)}")
+    completed = subprocess.run(["python", str(path)], cwd=ROOT, check=False)
+    require(completed.returncode == 0,
+            f"{phase} migration operation authority failed validation: {path.name}")
+
+
+def validate_current_authority() -> None:
+    for validator in POST_WRITE_VALIDATORS:
+        run_validator(validator, phase="current")
+
+
 def normalize_contract(contract: dict[str, Any]) -> dict[str, Any]:
     require(contract.get("schemaVersion") ==
             "memory-os-migration-operation-evidence.v1",
@@ -87,8 +105,10 @@ def normalize_contract(contract: dict[str, Any]) -> dict[str, Any]:
         "exclusiveCreateSelfTestImplemented", "canonicalSequenceBindingImplemented",
     ):
         readiness[field] = True
-    readiness["productionRecoveryPointVerificationImplemented"] = False
-    readiness["productionReady"] = False
+    # This foundation must never roll back or manufacture stronger recovery/readiness authority.
+    for field in ("productionRecoveryPointVerificationImplemented", "productionReady"):
+        require(isinstance(readiness.get(field), bool),
+                f"migration operation readiness.{field} must be boolean")
     refs = contract.get("evidenceRefs")
     require(isinstance(refs, list), "migration operation evidenceRefs must be a list")
     for ref in EVIDENCE_REFS:
@@ -105,10 +125,9 @@ def normalize_lifecycle(lifecycle: dict[str, Any]) -> dict[str, Any]:
     readiness = lifecycle.get("readiness")
     require(isinstance(readiness, dict), "migration lifecycle readiness missing")
     readiness["operatorEvidenceRecordImplemented"] = True
-    readiness["isolatedRestoreLinked"] = False
-    readiness["mixedVersionCompatibilityProven"] = False
-    readiness["productionShapedRehearsalCompleted"] = False
-    readiness["ready"] = False
+    for field in STRONGER_LIFECYCLE_FIELDS:
+        require(isinstance(readiness.get(field), bool),
+                f"migration lifecycle readiness.{field} must be boolean")
     refs = lifecycle.get("evidenceRefs")
     require(isinstance(refs, list), "migration lifecycle evidenceRefs must be a list")
     for ref in EVIDENCE_REFS:
@@ -116,7 +135,8 @@ def normalize_lifecycle(lifecycle: dict[str, Any]) -> dict[str, Any]:
             refs.append(ref)
     lifecycle["evidenceRefs"] = unique(refs)
     note = str(readiness.get("note", ""))
-    if "append-only operator evidence ledger" not in note:
+    stronger_authority_present = any(readiness[field] for field in STRONGER_LIFECYCLE_FIELDS)
+    if "append-only operator evidence ledger" not in note and not stronger_authority_present:
         readiness["note"] = (
             "The canonical migration sequence, clean PostgreSQL 16 dry-run, binding lifecycle/runbook and append-only operator evidence ledger exist. "
             "Production recovery-point verification, mixed-version release proof, isolated restore linkage and production-shaped rehearsal remain required, so OPS-P0-001 stays PARTIAL."
@@ -168,13 +188,6 @@ def normalize_status(status: dict[str, Any]) -> dict[str, Any]:
     return status
 
 
-def run_validator(path: Path) -> None:
-    require(path.is_file(), f"canonical validator missing: {path.relative_to(ROOT)}")
-    completed = subprocess.run(["python", str(path)], cwd=ROOT, check=False)
-    require(completed.returncode == 0,
-            f"reconciled migration operation authority failed validation: {path.name}")
-
-
 def commit_validated_triple(
     contract: dict[str, Any],
     lifecycle: dict[str, Any],
@@ -190,7 +203,7 @@ def commit_validated_triple(
         LIFECYCLE_PATH.write_bytes(render(lifecycle))
         STATUS_PATH.write_bytes(render(status))
         for validator in POST_WRITE_VALIDATORS:
-            run_validator(validator)
+            run_validator(validator, phase="reconciled")
     except BaseException:
         for path, payload in originals.items():
             path.write_bytes(payload)
@@ -202,6 +215,7 @@ def main() -> int:
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
 
+    validate_current_authority()
     current_contract = load(CONTRACT_PATH)
     current_lifecycle = load(LIFECYCLE_PATH)
     current_status = load(STATUS_PATH)
