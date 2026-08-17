@@ -576,7 +576,6 @@
         "parser host or container restart recovery using a reviewed production artifact",
         "host or container restart between spool seal and ResumeCommit with durable spool remount verification",
         "independent child-process orphan/reaping scan after parser process-group termination",
-        "database loss or failover drill",
         "mixed-version failure drill",
         "in-flight parser cancellation latency and process-group termination proof while the worker is blocked"
       ],
