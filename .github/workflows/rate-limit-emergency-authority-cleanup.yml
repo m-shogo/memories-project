@@ -112,17 +112,10 @@ jobs:
             exit 75
           fi
           rm -f docs/fixtures/memory-os-operability/rate-limit-emergency-authority-cleanup-diagnostic.last.json
-          git add -A -- \
+          git add \
             contracts/operations/production-operability-status.json \
-            scripts/evaluate-memory-os-rate-limit-emergency-state.py \
-            contracts/operations/rate-limit-emergency-ledger-contract.v1.json \
-            contracts/operations/rate-limit-emergency-ledger.v1.json \
-            scripts/register-memory-os-rate-limit-emergency-operation.py \
-            scripts/validate-memory-os-rate-limit-emergency-ledger.py \
-            scripts/reconcile-memory-os-rate-limit-emergency-ledger.py \
-            .github/workflows/rate-limit-emergency-ledger.yml \
-            contracts/operations/requests/rate-limit-emergency-ledger-foundation.v1.json \
-            docs/fixtures/memory-os-operability/rate-limit-emergency-authority-cleanup-diagnostic.last.json
+            scripts/evaluate-memory-os-rate-limit-emergency-state.py
+          git add -u
           if git diff --cached --quiet; then
             echo "Emergency authority cleanup already current."
             exit 0
