@@ -67,8 +67,8 @@ def operational_mode_ids(operations: dict[str, Any]) -> set[str]:
     }
 
 
-def evaluate_temp_operation(ledger: Path, operation_id: str, at: dt.datetime) -> dict[str, Any]:
-    completed = subprocess.run(
+def run_evaluator(ledger: Path, operation_id: str, at: dt.datetime) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
         [
             "python", str(EVALUATOR_PATH),
             "--ledger-dir", str(ledger),
@@ -81,6 +81,10 @@ def evaluate_temp_operation(ledger: Path, operation_id: str, at: dt.datetime) ->
         stderr=subprocess.PIPE,
         text=True,
     )
+
+
+def evaluate_temp_operation(ledger: Path, operation_id: str, at: dt.datetime) -> dict[str, Any]:
+    completed = run_evaluator(ledger, operation_id, at)
     require(completed.returncode == 0,
             f"canonical expiry evaluator failed: {completed.stderr.strip()[:500]}")
     try:
@@ -159,6 +163,22 @@ def run_writer_and_evaluator_self_test(
         )
         written = len(list(ledger.glob("*.json"))) == 1
         duplicate_rejected = second.returncode != 0 and len(list(ledger.glob("*.json"))) == 1
+
+        stored_path = ledger / f"{operation_id}.json"
+        stored = json.loads(stored_path.read_text(encoding="utf-8"))
+        require(isinstance(stored, dict), "stored self-test operation must be an object")
+        digests = stored.get("evidenceDigestsByRef")
+        require(isinstance(digests, dict) and digests,
+                "writer did not persist evidence digest authority")
+        first_ref = sorted(digests)[0]
+        digests[first_ref] = "0" * 64
+        stored_path.write_text(json.dumps(stored, indent=2) + "\n", encoding="utf-8")
+        corrupt = run_evaluator(ledger, operation_id, before_expiry)
+        require(corrupt.returncode != 0,
+                "canonical evaluator accepted a record with stale evidence digest authority")
+        require("operation evidence authority is invalid" in corrupt.stderr,
+                "canonical evaluator rejected stale digest for an unexpected reason")
+
         return (
             written,
             duplicate_rejected,
