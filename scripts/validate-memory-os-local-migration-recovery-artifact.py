@@ -54,6 +54,17 @@ def commit_exists(sha: str) -> bool:
     return completed.returncode == 0
 
 
+def require_source_ancestor(sha: str) -> None:
+    completed = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", sha, "HEAD"],
+        cwd=ROOT,
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    require(completed.returncode == 0, "result commitSha must be an ancestor of current HEAD")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--path", type=Path)
@@ -95,6 +106,7 @@ def validate_result(
     require(isinstance(source_sha, str) and SHA40.fullmatch(source_sha) is not None,
             "result commitSha must be a full lowercase SHA")
     require(commit_exists(source_sha), "result commitSha is not a repository commit")
+    require_source_ancestor(source_sha)
     if expected_sha is not None:
         require(SHA40.fullmatch(expected_sha) is not None, "expected commit SHA invalid")
         require(source_sha == expected_sha, "result commitSha does not match expected source")
