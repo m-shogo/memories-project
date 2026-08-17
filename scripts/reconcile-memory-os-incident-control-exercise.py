@@ -15,6 +15,10 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/incident-control-exercise-contract.v1.json"
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/incident-control-exercise-results.sample.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+EXERCISE_VALIDATOR = ROOT / "scripts/validate-memory-os-incident-control-exercise.py"
+INCIDENT_RESPONSE_VALIDATOR = ROOT / "scripts/validate-memory-os-incident-response.py"
+TABLETOP_VALIDATOR = ROOT / "scripts/validate-memory-os-incident-tabletop.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 NEW_EXISTING = (
@@ -71,8 +75,8 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def write(path: Path, value: dict[str, Any]) -> None:
-    path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+def render(value: dict[str, Any]) -> bytes:
+    return (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
 
 
 def source_is_ancestor(value: Any) -> bool:
@@ -95,6 +99,31 @@ def append_once(items: list[Any], value: str) -> bool:
         return False
     items.append(value)
     return True
+
+
+def run_validator(path: Path) -> None:
+    completed = subprocess.run(["python", str(path)], cwd=ROOT, check=False)
+    require(completed.returncode == 0,
+            f"reconciled incident authority failed validation: {path.name}")
+
+
+def commit_validated_pair(contract: dict[str, Any], status: dict[str, Any]) -> None:
+    original_contract = CONTRACT_PATH.read_bytes()
+    original_status = STATUS_PATH.read_bytes()
+    try:
+        CONTRACT_PATH.write_bytes(render(contract))
+        STATUS_PATH.write_bytes(render(status))
+        for validator in (
+            EXERCISE_VALIDATOR,
+            INCIDENT_RESPONSE_VALIDATOR,
+            TABLETOP_VALIDATOR,
+            OPERABILITY_VALIDATOR,
+        ):
+            run_validator(validator)
+    except BaseException:
+        CONTRACT_PATH.write_bytes(original_contract)
+        STATUS_PATH.write_bytes(original_status)
+        raise
 
 
 def main() -> int:
@@ -188,14 +217,12 @@ def main() -> int:
     require(status.get("productionDecision") == "NO_GO",
             "production decision changed unexpectedly")
 
-    if contract_changed:
-        write(CONTRACT_PATH, contract)
-    if status_changed:
-        status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
-        write(STATUS_PATH, status)
     if not contract_changed and not status_changed:
         print("Incident control exercise authority already reconciled")
         return 0
+
+    status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
+    commit_validated_pair(contract, status)
     print("Registered automated incident control exercise; OPS-P0-002 remains PARTIAL")
     return 0
 
