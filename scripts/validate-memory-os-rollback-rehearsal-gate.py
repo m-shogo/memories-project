@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
 import sys
@@ -14,9 +15,7 @@ CONTRACT_PATH = ROOT / "contracts/operations/rollback-rehearsal-gate-contract.v1
 RELEASE_REGISTRY_PATH = ROOT / "contracts/operations/release-baseline-registry.v1.json"
 REHEARSAL_REGISTRY_PATH = ROOT / "contracts/operations/rollback-rehearsal-registry.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
-SHA_RE = re.compile(r"^[0-9a-f]{40}$")
-REHEARSAL_ID_RE = re.compile(r"^rrh_[0-9]{8}_[a-z0-9][a-z0-9._-]{2,63}$")
-REQUIRED_ROLES = {"RELEASE_OWNER", "DATABASE_RECOVERY_OWNER"}
+WRITER_PATH = ROOT / "scripts/request-memory-os-rollback-rehearsal.py"
 
 
 class ValidationFailure(RuntimeError):
@@ -39,6 +38,15 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def load_module(path: Path, name: str) -> Any:
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None,
+            f"cannot load authority module: {path.relative_to(ROOT)}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def strings(value: Any, field: str, minimum: int = 1) -> list[str]:
     require(isinstance(value, list) and len(value) >= minimum,
             f"{field} requires at least {minimum} entries")
@@ -57,92 +65,6 @@ def safe_ref(value: Any, field: str) -> str:
     return value
 
 
-def validate_request(record: dict[str, Any], releases_by_id: dict[str, dict[str, Any]],
-                     required_fields: set[str]) -> None:
-    require(set(record) >= required_fields,
-            f"rehearsal record missing fields: {sorted(required_fields - set(record))}")
-    require(record.get("schemaVersion") == "memory-os-rollback-rehearsal-request.v1",
-            "rehearsal record schema drift")
-    require(isinstance(record.get("rehearsalId"), str) and
-            REHEARSAL_ID_RE.fullmatch(record["rehearsalId"]) is not None,
-            "rehearsalId format invalid")
-    source_id = record.get("sourceReleaseId")
-    target_id = record.get("rollbackTargetReleaseId")
-    require(source_id in releases_by_id and target_id in releases_by_id and
-            source_id != target_id,
-            "rehearsal release pair is not approved and distinct")
-    source = releases_by_id[source_id]
-    target = releases_by_id[target_id]
-    for request_field, release_field, release in (
-        ("sourceCommitSha", "commitSha", source),
-        ("sourceReleaseTag", "releaseTag", source),
-        ("rollbackTargetCommitSha", "commitSha", target),
-        ("rollbackTargetReleaseTag", "releaseTag", target),
-    ):
-        require(record.get(request_field) == release.get(release_field),
-                f"rehearsal {request_field} binding drift")
-    require(SHA_RE.fullmatch(record["sourceCommitSha"]) is not None and
-            SHA_RE.fullmatch(record["rollbackTargetCommitSha"]) is not None,
-            "rehearsal commit SHA invalid")
-    rollback = target.get("rollbackEligibility")
-    require(isinstance(rollback, dict) and
-            rollback.get("status") in {"ELIGIBLE", "CONDITIONALLY_ELIGIBLE"} and
-            rollback.get("verified") is True,
-            "rollback target is not verified eligible")
-    conditions = rollback.get("conditions")
-    require(isinstance(conditions, list), "rollback target conditions invalid")
-
-    require(record.get("environmentClass") == "ISOLATED_NON_PRODUCTION_REHEARSAL",
-            "rehearsal environment class drift")
-    traffic = record.get("trafficPolicy")
-    require(isinstance(traffic, dict) and
-            traffic.get("productionTrafficAllowed") is False and
-            traffic.get("productionCredentialsAllowed") is False and
-            traffic.get("automaticPromotionAllowed") is False and
-            traffic.get("syntheticOrApprovedSanitizedDataOnly") is True,
-            "rehearsal traffic boundary drift")
-    database = record.get("databasePolicy")
-    require(isinstance(database, dict) and
-            database.get("destructiveDownMigrationAllowed") is False and
-            database.get("automaticRecoveryDecisionAllowed") is False,
-            "rehearsal database boundary drift")
-    safe_ref(database.get("recoveryPointEvidenceRef"),
-             "databasePolicy.recoveryPointEvidenceRef")
-    safe_ref(database.get("forwardFixDecisionRef"),
-             "databasePolicy.forwardFixDecisionRef")
-    artifacts = record.get("artifactPolicy")
-    require(isinstance(artifacts, dict) and
-            artifacts.get("exactRetainedArtifactsRequired") is True,
-            "rehearsal artifact boundary drift")
-    safe_ref(artifacts.get("parserArtifactEvidenceRef"),
-             "artifactPolicy.parserArtifactEvidenceRef")
-    safe_ref(artifacts.get("objectVersionEvidenceRef"),
-             "artifactPolicy.objectVersionEvidenceRef")
-    for ref in strings(record.get("entryCriteriaRefs"), "entryCriteriaRefs", 5):
-        safe_ref(ref, "entryCriteriaRefs")
-    stops = strings(record.get("stopConditions"), "stopConditions", 6)
-    require(all(condition in stops for condition in conditions),
-            "rollback eligibility condition missing from stopConditions")
-
-    approvers = record.get("approvers")
-    require(isinstance(approvers, list) and len(approvers) == 2,
-            "rehearsal requires exactly two approvers")
-    roles = {item.get("role") for item in approvers if isinstance(item, dict)}
-    identities = {item.get("approverRef") for item in approvers if isinstance(item, dict)}
-    require(roles == REQUIRED_ROLES and len(identities) == 2 and None not in identities,
-            "rehearsal approvers are incomplete or duplicated")
-    require(isinstance(record.get("openRisks"), list), "openRisks must be a list")
-
-    serialized = json.dumps(record, ensure_ascii=False).lower()
-    for forbidden in (
-        "postgres://", "postgresql://", "password=", "authorization: bearer",
-        "minioadmin", "secretaccesskey", "account_id", "session_id", "job_id",
-        "preview_id", "object_key", "apple_subject", "@",
-    ):
-        require(forbidden not in serialized,
-                f"rehearsal record contains forbidden content: {forbidden}")
-
-
 def main() -> int:
     contract = load(CONTRACT_PATH)
     require(contract.get("schemaVersion") ==
@@ -153,7 +75,7 @@ def main() -> int:
     for field, expected in {
         "approvedReleaseRegistry": str(RELEASE_REGISTRY_PATH.relative_to(ROOT)),
         "rehearsalRegistry": str(REHEARSAL_REGISTRY_PATH.relative_to(ROOT)),
-        "writer": "scripts/request-memory-os-rollback-rehearsal.py",
+        "writer": str(WRITER_PATH.relative_to(ROOT)),
         "validator": "scripts/validate-memory-os-rollback-rehearsal-gate.py",
         "reconcile": "scripts/reconcile-memory-os-rollback-rehearsal-gate.py",
         "runbook": "docs/runbooks/memory-os-rollback-rehearsal.md",
@@ -161,8 +83,7 @@ def main() -> int:
     }.items():
         require(contract.get(field) == expected, f"contract path drift: {field}")
         safe_ref(expected, field)
-    required_fields = set(strings(contract.get("requiredRequestFields"),
-                                  "requiredRequestFields", 17))
+    strings(contract.get("requiredRequestFields"), "requiredRequestFields", 17)
     strings(contract.get("admissionGuards"), "admissionGuards", 12)
     strings(contract.get("forbiddenAdmissionSources"), "forbiddenAdmissionSources", 8)
 
@@ -185,15 +106,15 @@ def main() -> int:
             )), "rollback rehearsal evidence boundary drift")
 
     release_registry = load(RELEASE_REGISTRY_PATH)
-    releases = release_registry.get("releases")
-    require(isinstance(releases, list), "approved release registry releases invalid")
-    require(release_registry.get("approvedReleaseCount") == len(releases),
-            "approved release count drift")
-    releases_by_id = {
-        item.get("releaseId"): item
-        for item in releases
-        if isinstance(item, dict) and isinstance(item.get("releaseId"), str)
-    }
+    rehearsal_registry = load(REHEARSAL_REGISTRY_PATH)
+    try:
+        writer = load_module(WRITER_PATH, "rollback_rehearsal_writer_validator")
+        writer.validate_registry_for_append(rehearsal_registry, contract, release_registry)
+    except Exception as exc:
+        raise ValidationFailure(f"rollback rehearsal append authority invalid: {exc}") from exc
+
+    releases = release_registry["releases"]
+    requests = rehearsal_registry["requests"]
     eligible = [
         item for item in releases
         if isinstance(item, dict) and
@@ -203,32 +124,6 @@ def main() -> int:
         item["rollbackEligibility"].get("verified") is True
     ]
     admissible_pairs = max(0, len(releases) - 1) * len(eligible)
-
-    rehearsal_registry = load(REHEARSAL_REGISTRY_PATH)
-    require(rehearsal_registry.get("schemaVersion") ==
-            "memory-os-rollback-rehearsal-registry.v1",
-            "rollback rehearsal registry schema drift")
-    require(rehearsal_registry.get("appendOnly") is True and
-            rehearsal_registry.get("planningAuthorityOnly") is True and
-            rehearsal_registry.get("productionEvidence") is False,
-            "rollback rehearsal registry boundary drift")
-    requests = rehearsal_registry.get("requests")
-    require(isinstance(requests, list), "rehearsal registry requests invalid")
-    require(rehearsal_registry.get("rehearsalRequestCount") == len(requests),
-            "rehearsal request count drift")
-    ids: set[str] = set()
-    pairs: set[tuple[str, str]] = set()
-    for record in requests:
-        require(isinstance(record, dict), "rehearsal request must be an object")
-        validate_request(record, releases_by_id, required_fields)
-        require(record["rehearsalId"] not in ids, "duplicate rehearsalId")
-        pair = (record["sourceReleaseId"], record["rollbackTargetReleaseId"])
-        require(pair not in pairs, "duplicate admitted release pair")
-        ids.add(record["rehearsalId"])
-        pairs.add(pair)
-    require(rehearsal_registry.get("latestRehearsalId") ==
-            (requests[-1]["rehearsalId"] if requests else None),
-            "latestRehearsalId drift")
 
     state = contract.get("currentAdmissionState")
     require(isinstance(state, dict), "currentAdmissionState missing")
