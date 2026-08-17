@@ -344,7 +344,7 @@
     },
     {
       "scenarioId": "deletion-under-load",
-      "reason": "post-fence former-session load, all primary account-bound pre-fence surfaces, bounded multi-account worker saturation, lease-expiry reclaim and partial-object-erasure recovery simulation now pass against local PostgreSQL and MinIO; actual process kill, host failure, production dependency behavior and independently reviewed deletion-load thresholds remain deferred",
+      "reason": "post-fence former-session load, primary Preview/Apply/upload-authorization/upload-completion pre-fence linearization, bounded multi-account worker saturation, lease-expiry recovery and Docker container kill/replacement recovery are proven against local dependencies; raw process-kill readiness, physical host/node/AZ loss, production-equivalent multi-instance topology and dependency behavior, capacity boundary and independently reviewed operating thresholds remain deferred",
       "requiredDependencyMode": "PRODUCTION_EQUIVALENT"
     }
   ],
@@ -360,7 +360,7 @@
     "cardinalityProof": true,
     "operationalThresholds": false,
     "productionEquivalentDependencies": false,
-    "note": "Local evidence now proves post-fence deletion rejection, Preview/Apply/upload-authorization/upload-completion pre-fence linearization across the primary account-bound HTTP surfaces, bounded multi-account deletion-worker saturation, lease-expiry attempt-2 recovery including partial object erasure, Docker worker-container SIGKILL plus independent replacement-container attempt-2 convergence, and repeated 60-minute-or-longer LOCAL_LONG_SOAK execution with descriptive trend review. The current canonical readiness flags do not claim raw process-kill recovery, and the local evidence still does not establish leak proof, a production capacity boundary, physical host/node/AZ failure recovery, production-equivalent dependency behavior, production-shaped sustained-soak evidence or independently reviewed operating thresholds; OPS-P0-006 remains PARTIAL and Production remains NO_GO. Docker worker-container kill/replacement recovery is proven locally; raw process-kill readiness and physical host/node/AZ failure remain unproven. Local lease-expiry recovery now also proves attempt-2 reclaim and idempotent recovery from object-erased-before-DB-sweep interruption simulation; actual process kill and host failure remain unproven.",
+    "note": "Local evidence now proves post-fence deletion rejection, Preview/Apply/upload-authorization/upload-completion pre-fence linearization across the primary account-bound HTTP surfaces, bounded multi-account deletion-worker saturation, lease-expiry attempt-2 recovery including partial object erasure, Docker worker-container SIGKILL plus independent replacement-container attempt-2 convergence, and repeated 60-minute-or-longer LOCAL_LONG_SOAK execution with descriptive trend review. The current canonical readiness flags do not claim raw process-kill recovery, and the local evidence still does not establish leak proof, a production capacity boundary, physical host/node/AZ failure recovery, production-equivalent dependency behavior, production-shaped sustained-soak evidence or independently reviewed operating thresholds; OPS-P0-006 remains PARTIAL and Production remains NO_GO.",
     "boundedLocalCapacityRampExecuted": true,
     "shortCIStabilitySampleExecuted": true,
     "deletionPostFenceLoadExecuted": true,
