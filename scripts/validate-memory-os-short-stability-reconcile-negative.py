@@ -15,13 +15,16 @@ ROOT = Path(__file__).resolve().parents[1]
 SHORT_SCRIPT = ROOT / "scripts/reconcile-memory-os-short-stability-status.py"
 CAPACITY_SCRIPT = ROOT / "scripts/reconcile-memory-os-capacity-ramp-status.py"
 CONTROLLED_SCRIPT = ROOT / "scripts/reconcile-memory-os-controlled-saturation-ramp-status.py"
+DELETION_SCRIPT = ROOT / "scripts/reconcile-memory-os-deletion-under-load-status.py"
 SHORT_CONTRACT = ROOT / "contracts/operations/short-stability-sample-contract.v1.json"
 CAPACITY_CONTRACT = ROOT / "contracts/operations/capacity-ramp-contract.v1.json"
 CONTROLLED_CONTRACT = ROOT / "contracts/operations/controlled-saturation-ramp-contract.v1.json"
+DELETION_CONTRACT = ROOT / "contracts/operations/deletion-under-load-contract.v1.json"
 LOAD = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 SHORT_RESULT = ROOT / "docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json"
 CONTROLLED_RESULT = ROOT / "docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.sample.v1.json"
+DELETION_RESULT = ROOT / "docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json"
 STALE_SOAK_GAP = (
     "60-minute-or-longer repeated soak over PostgreSQL, object storage, parser, queue, deletion and authentication paths with RSS/heap/goroutine slope review and independently approved leak/stability criteria"
 )
@@ -228,15 +231,107 @@ def run_controlled_saturation_rollback_case(module: ModuleType) -> None:
         require(path.read_bytes() == data, f"controlled saturation rollback failed for {path.relative_to(ROOT)}")
 
 
+def run_deletion_preservation_case(module: ModuleType) -> None:
+    originals = {path: path.read_bytes() for path in (DELETION_CONTRACT, LOAD, STATUS)}
+    previous_sha = os.environ.get("EXPECTED_COMMIT_SHA")
+    result = load_json(DELETION_RESULT)
+    source_sha = result.get("commitSha")
+    require(isinstance(source_sha, str) and len(source_sha) == 40, "deletion load result commitSha missing")
+    load_before = load_json(LOAD)
+    deferred_before = load_before.get("deferredScenarios")
+    readiness_before = load_before.get("readiness")
+    require(isinstance(deferred_before, list) and isinstance(readiness_before, dict),
+            "canonical deletion load authority missing")
+    deletion_before = next(
+        (row for row in deferred_before if isinstance(row, dict) and row.get("scenarioId") == "deletion-under-load"),
+        None,
+    )
+    require(isinstance(deletion_before, dict), "canonical deletion-under-load deferred row missing")
+    reason_before = deletion_before.get("reason")
+    note_before = readiness_before.get("note")
+    require(isinstance(reason_before, str) and reason_before, "canonical deletion reason missing")
+    require(isinstance(note_before, str) and note_before, "canonical load note missing")
+
+    try:
+        os.environ["EXPECTED_COMMIT_SHA"] = source_sha
+        require(module.main() == 0, "deletion-under-load reconcile did not succeed")
+        load_after = load_json(LOAD)
+        readiness_after = load_after.get("readiness")
+        deferred_after = load_after.get("deferredScenarios")
+        require(isinstance(readiness_after, dict) and isinstance(deferred_after, list),
+                "load authority missing after deletion reconcile")
+        deletion_after = next(
+            (row for row in deferred_after if isinstance(row, dict) and row.get("scenarioId") == "deletion-under-load"),
+            None,
+        )
+        require(isinstance(deletion_after, dict), "deletion deferred row missing after reconcile")
+        require(deletion_after.get("reason") == reason_before,
+                "deletion reconcile downgraded stronger deferred authority wording")
+        require(readiness_after.get("note") == note_before,
+                "deletion reconcile overwrote stronger aggregate load note")
+        require(module.stronger_deletion_authority_present(readiness_after),
+                "stronger deletion authority disappeared during reconcile")
+
+        status = load_json(STATUS)
+        gate = next((row for row in status.get("areas", []) if isinstance(row, dict) and row.get("id") == "OPS-P0-006"), None)
+        require(isinstance(gate, dict), "OPS-P0-006 missing after deletion reconcile")
+        missing = gate.get("missingEvidence")
+        require(isinstance(missing, list), "OPS-P0-006 missingEvidence missing after deletion reconcile")
+        require(module.LEGACY_DELETION_GAP not in missing,
+                "deletion reconcile reintroduced superseded pre-fence/saturation blocker")
+        require(status.get("productionDecision") == "NO_GO", "deletion reconcile changed productionDecision")
+    finally:
+        for path, data in originals.items():
+            path.write_bytes(data)
+        if previous_sha is None:
+            os.environ.pop("EXPECTED_COMMIT_SHA", None)
+        else:
+            os.environ["EXPECTED_COMMIT_SHA"] = previous_sha
+
+
+def run_deletion_rollback_case(module: ModuleType) -> None:
+    originals = {path: path.read_bytes() for path in (DELETION_CONTRACT, LOAD, STATUS)}
+    contract = load_json(DELETION_CONTRACT)
+    load_contract = load_json(LOAD)
+    status = load_json(STATUS)
+    contract["_rollbackNegativeMarker"] = True
+    load_contract["_rollbackNegativeMarker"] = True
+    status["_rollbackNegativeMarker"] = True
+    original_runner = module.run_validator
+
+    def controlled_runner(path: Path, label: str, *args: str) -> None:
+        if path == module.OPERABILITY_VALIDATOR:
+            raise module.ReconcileFailure("controlled deletion post-write operability failure")
+        return None
+
+    module.run_validator = controlled_runner
+    try:
+        try:
+            module.write_and_validate_transactionally(contract, load_contract, status)
+        except module.ReconcileFailure as exc:
+            require("controlled deletion post-write operability failure" in str(exc),
+                    f"unexpected deletion rollback failure: {exc}")
+        else:
+            raise NegativeFailure("controlled deletion post-write failure was accepted")
+    finally:
+        module.run_validator = original_runner
+
+    for path, data in originals.items():
+        require(path.read_bytes() == data, f"deletion rollback failed for {path.relative_to(ROOT)}")
+
+
 def main() -> int:
     short = load_module("short_stability_reconcile", SHORT_SCRIPT)
     capacity = load_module("capacity_ramp_reconcile", CAPACITY_SCRIPT)
     controlled = load_module("controlled_saturation_reconcile", CONTROLLED_SCRIPT)
+    deletion = load_module("deletion_load_reconcile", DELETION_SCRIPT)
     run_short_preservation_case(short)
     run_short_rollback_case(short)
     run_capacity_rollback_case(capacity)
     run_controlled_saturation_preservation_case(controlled)
     run_controlled_saturation_rollback_case(controlled)
+    run_deletion_preservation_case(deletion)
+    run_deletion_rollback_case(deletion)
     print("PASS: load-foundation reconciles preserve stronger authority and roll back fail-closed")
     return 0
 
