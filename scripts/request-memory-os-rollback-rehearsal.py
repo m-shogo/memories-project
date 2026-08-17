@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import importlib.util
 import json
 import os
 import re
@@ -20,7 +21,9 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/rollback-rehearsal-gate-contract.v1.json"
+RELEASE_CONTRACT_PATH = ROOT / "contracts/operations/release-baseline-registry-contract.v1.json"
 RELEASE_REGISTRY_PATH = ROOT / "contracts/operations/release-baseline-registry.v1.json"
+RELEASE_WRITER_PATH = ROOT / "scripts/register-memory-os-release-baseline.py"
 REHEARSAL_REGISTRY_PATH = ROOT / "contracts/operations/rollback-rehearsal-registry.v1.json"
 LOCK_PATH = ROOT / "contracts/operations/.rollback-rehearsal-registry.lock"
 CONFIRMATION = "REQUEST ISOLATED ROLLBACK REHEARSAL"
@@ -28,6 +31,17 @@ SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 REHEARSAL_ID_RE = re.compile(r"^rrh_[0-9]{8}_[a-z0-9][a-z0-9._-]{2,63}$")
 APPROVER_RE = re.compile(r"^apr_[a-z0-9][a-z0-9_-]{7,63}$")
 REQUIRED_ROLES = {"RELEASE_OWNER", "DATABASE_RECOVERY_OWNER"}
+REGISTRY_FIELDS = {
+    "schemaVersion",
+    "registryClass",
+    "appendOnly",
+    "planningAuthorityOnly",
+    "productionEvidence",
+    "rehearsalRequestCount",
+    "latestRehearsalId",
+    "requests",
+    "limitations",
+}
 
 
 class RequestFailure(RuntimeError):
@@ -48,6 +62,15 @@ def load(path: Path) -> dict[str, Any]:
         raise RequestFailure(f"invalid JSON: {path}: {exc}") from exc
     require(isinstance(value, dict), f"root must be an object: {path}")
     return value
+
+
+def load_module(path: Path, name: str) -> Any:
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None,
+            f"cannot load authority module: {path.relative_to(ROOT)}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def git(*arguments: str) -> str:
@@ -88,6 +111,15 @@ def safe_ref(value: Any, field: str) -> str:
             f"{field} contains an unsafe path")
     require((ROOT / path).is_file(), f"{field} does not exist: {value}")
     return value
+
+
+def validate_release_registry_for_append(release_registry: dict[str, Any]) -> None:
+    release_contract = load(RELEASE_CONTRACT_PATH)
+    try:
+        release_writer = load_module(RELEASE_WRITER_PATH, "memory_os_release_baseline_writer")
+        release_writer.validate_registry_for_append(release_registry, release_contract)
+    except Exception as exc:
+        raise RequestFailure(f"approved release registry authority invalid: {exc}") from exc
 
 
 def validate_request(request: dict[str, Any], required_fields: set[str],
@@ -209,6 +241,50 @@ def validate_request(request: dict[str, Any], required_fields: set[str],
                 f"request contains forbidden content: {forbidden}")
 
 
+def validate_registry_for_append(
+    registry: dict[str, Any], contract: dict[str, Any], release_registry: dict[str, Any]
+) -> None:
+    validate_release_registry_for_append(release_registry)
+    require(set(registry) == REGISTRY_FIELDS,
+            "rollback rehearsal registry field set drift")
+    require(registry.get("schemaVersion") == "memory-os-rollback-rehearsal-registry.v1",
+            "rollback rehearsal registry schemaVersion drift")
+    require(registry.get("registryClass") == "APPROVED_ROLLBACK_REHEARSAL_REQUESTS",
+            "rollback rehearsal registry class drift")
+    require(registry.get("appendOnly") is True,
+            "rollback rehearsal registry must remain append-only")
+    require(registry.get("planningAuthorityOnly") is True,
+            "rollback rehearsal registry must remain planning authority only")
+    require(registry.get("productionEvidence") is False,
+            "rollback rehearsal registry cannot claim production evidence")
+    limitations = registry.get("limitations")
+    require(isinstance(limitations, list) and
+            all(isinstance(item, str) and item for item in limitations),
+            "rollback rehearsal registry limitations invalid")
+    requests = registry.get("requests")
+    require(isinstance(requests, list) and all(isinstance(item, dict) for item in requests),
+            "rollback rehearsal registry contains invalid requests")
+    count = registry.get("rehearsalRequestCount")
+    require(isinstance(count, int) and not isinstance(count, bool),
+            "rehearsalRequestCount must be an integer")
+    require(count == len(requests), "rehearsalRequestCount drift")
+    required_fields = set(strings(contract.get("requiredRequestFields"),
+                                  "requiredRequestFields", 17))
+    ids: set[str] = set()
+    pairs: set[tuple[str, str]] = set()
+    for record in requests:
+        validate_request(record, required_fields, release_registry)
+        rehearsal_id = record["rehearsalId"]
+        pair = (record["sourceReleaseId"], record["rollbackTargetReleaseId"])
+        require(rehearsal_id not in ids, "duplicate rehearsalId")
+        require(pair not in pairs, "duplicate admitted release pair")
+        ids.add(rehearsal_id)
+        pairs.add(pair)
+    expected_latest = requests[-1]["rehearsalId"] if requests else None
+    require(registry.get("latestRehearsalId") == expected_latest,
+            "latestRehearsalId drift")
+
+
 def acquire_lock() -> int:
     try:
         return os.open(LOCK_PATH, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -258,6 +334,7 @@ def main() -> int:
     required_fields = set(strings(contract.get("requiredRequestFields"),
                                   "requiredRequestFields", 17))
     release_registry = load(RELEASE_REGISTRY_PATH)
+    validate_release_registry_for_append(release_registry)
     request = load(request_path)
     validate_request(request, required_fields, release_registry)
 
@@ -266,10 +343,8 @@ def main() -> int:
         os.write(lock_fd, f"{request['rehearsalId']}\n".encode("ascii"))
         os.fsync(lock_fd)
         registry = load(REHEARSAL_REGISTRY_PATH)
-        requests = registry.get("requests")
-        require(isinstance(requests, list) and
-                all(isinstance(item, dict) for item in requests),
-                "rollback rehearsal registry is invalid")
+        validate_registry_for_append(registry, contract, release_registry)
+        requests = registry["requests"]
         require(all(item.get("rehearsalId") != request["rehearsalId"]
                     for item in requests),
                 "rehearsalId is already registered")
