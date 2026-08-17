@@ -22,6 +22,8 @@ STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 LOAD_CONTRACT_PATH = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
 POSTGRES_VALIDATOR = ROOT / "scripts/validate-memory-os-live-load.py"
 OBJECT_VALIDATOR = ROOT / "scripts/validate-memory-os-live-object-load.py"
+LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 POSTGRES_RESULT = (
     ROOT
     / "docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json"
@@ -67,6 +69,23 @@ def require(condition: bool, message: str) -> None:
         raise ReconcileFailure(message)
 
 
+def run_validator(validator: Path, label: str, env: dict[str, str] | None = None) -> None:
+    require(validator.is_file(), f"canonical {label} validator missing")
+    completed = subprocess.run(
+        [sys.executable, str(validator)],
+        cwd=ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        check=False,
+    )
+    require(
+        completed.returncode == 0,
+        f"canonical {label} validation failed: {completed.stdout[-2000:]}",
+    )
+
+
 def validate_live_authorities(expected_sha: str) -> None:
     env = dict(os.environ)
     env["EXPECTED_COMMIT_SHA"] = expected_sha
@@ -74,20 +93,12 @@ def validate_live_authorities(expected_sha: str) -> None:
         (POSTGRES_VALIDATOR, "PostgreSQL live-load"),
         (OBJECT_VALIDATOR, "MinIO live-object-load"),
     ):
-        require(validator.is_file(), f"canonical {label} validator missing")
-        completed = subprocess.run(
-            [sys.executable, str(validator)],
-            cwd=ROOT,
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            check=False,
-        )
-        require(
-            completed.returncode == 0,
-            f"canonical {label} validation failed before reconcile: {completed.stdout[-2000:]}",
-        )
+        run_validator(validator, label, env)
+
+
+def validate_derived_authorities() -> None:
+    run_validator(LOAD_VALIDATOR, "load")
+    run_validator(OPERABILITY_VALIDATOR, "operability")
 
 
 def result_is_pass(document: dict[str, Any], expected_sha: str) -> bool:
@@ -175,15 +186,28 @@ def main() -> int:
     require(status.get("productionDecision") == "NO_GO", "production decision changed unexpectedly")
 
     if not changed:
+        validate_derived_authorities()
         print("Live load evidence metadata already reconciled")
         return 0
 
     status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
-    STATUS_PATH.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    LOAD_CONTRACT_PATH.write_text(
-        json.dumps(load_contract, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    original_status = STATUS_PATH.read_bytes()
+    original_load_contract = LOAD_CONTRACT_PATH.read_bytes()
+    try:
+        STATUS_PATH.write_text(
+            json.dumps(status, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        LOAD_CONTRACT_PATH.write_text(
+            json.dumps(load_contract, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        validate_derived_authorities()
+    except Exception:
+        STATUS_PATH.write_bytes(original_status)
+        LOAD_CONTRACT_PATH.write_bytes(original_load_contract)
+        raise
+
     print("Registered exact-source live PostgreSQL and MinIO PASS results; OPS-P0-006 remains PARTIAL")
     return 0
 
