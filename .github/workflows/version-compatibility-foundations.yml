@@ -98,10 +98,11 @@ jobs:
       - name: Validate canonical matrix remains conservative
         run: python scripts/validate-memory-os-version-compatibility.py
 
-      - name: Reconcile bounded foundation status
+      - name: Reconcile and validate bounded foundation status
         run: |
           python scripts/reconcile-memory-os-version-compatibility-foundation-status.py
           python scripts/validate-memory-os-version-compatibility-foundations.py
+          python scripts/validate-memory-os-operability.py
 
       - name: Require deterministic authority on pull requests
         if: github.event_name == 'pull_request'
