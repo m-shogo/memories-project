@@ -18,6 +18,8 @@ on:
       - "scripts/memory_os_migration_recovery_point.py"
       - "scripts/run-memory-os-local-migration-recovery-artifact.sh"
       - "scripts/validate-memory-os-local-migration-recovery-artifact.py"
+      - "scripts/reconcile-memory-os-local-migration-recovery-artifact.py"
+      - "scripts/reconcile-memory-os-migration-recovery-result-orphans.py"
       - "scripts/register-memory-os-migration-rehearsal-evidence.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
@@ -44,6 +46,8 @@ on:
       - "scripts/memory_os_migration_recovery_point.py"
       - "scripts/run-memory-os-local-migration-recovery-artifact.sh"
       - "scripts/validate-memory-os-local-migration-recovery-artifact.py"
+      - "scripts/reconcile-memory-os-local-migration-recovery-artifact.py"
+      - "scripts/reconcile-memory-os-migration-recovery-result-orphans.py"
       - "scripts/register-memory-os-migration-rehearsal-evidence.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
@@ -84,6 +88,8 @@ jobs:
           python -m py_compile \
             scripts/memory_os_migration_recovery_point.py \
             scripts/validate-memory-os-local-migration-recovery-artifact.py \
+            scripts/reconcile-memory-os-local-migration-recovery-artifact.py \
+            scripts/reconcile-memory-os-migration-recovery-result-orphans.py \
             scripts/register-memory-os-migration-rehearsal-evidence.py \
             scripts/register-memory-os-production-equivalent-environment-generation.py \
             scripts/validate-memory-os-production-equivalent-environment-record.py \
@@ -151,6 +157,14 @@ jobs:
             python scripts/validate-memory-os-local-migration-recovery-artifact.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
+            echo "STAGE: committed-result-ledger-consistency" >> "$log"
+            if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+              python scripts/reconcile-memory-os-migration-recovery-result-orphans.py --check-only >> "$log" 2>&1 || code=$?
+            else
+              python scripts/reconcile-memory-os-migration-recovery-result-orphans.py >> "$log" 2>&1 || code=$?
+            fi
+          fi
+          if [[ "$code" == "0" ]]; then
             echo "STAGE: registry-validation" >> "$log"
             python scripts/validate-memory-os-migration-evidence-registry.py >> "$log" 2>&1 || code=$?
           fi
@@ -168,7 +182,9 @@ jobs:
         if: github.event_name == 'pull_request' && steps.migration.outputs.exit_code == '0'
         run: |
           git diff --exit-code -- \
+            contracts/operations/migration-evidence-registry.v1.json \
             contracts/operations/migration-evidence-registry-contract.v1.json \
+            contracts/operations/local-migration-recovery-artifact-contract.v1.json \
             contracts/operations/migration-lifecycle-contract.v1.json \
             contracts/operations/production-operability-status.json
       - name: Commit bounded migration evidence authority
@@ -185,7 +201,9 @@ jobs:
           fi
           git rm -f docs/fixtures/memory-os-operability/migration-evidence-registry-diagnostic.last.json 2>/dev/null || true
           git add \
+            contracts/operations/migration-evidence-registry.v1.json \
             contracts/operations/migration-evidence-registry-contract.v1.json \
+            contracts/operations/local-migration-recovery-artifact-contract.v1.json \
             contracts/operations/migration-lifecycle-contract.v1.json \
             contracts/operations/production-operability-status.json
           git add -u docs/fixtures/memory-os-operability/migration-evidence-registry-diagnostic.last.json 2>/dev/null || true
@@ -193,7 +211,12 @@ jobs:
             git diff --cached --check
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "docs(migration): register typed recovery evidence authority"
+            git commit -m "docs(migration): reconcile committed recovery result ledger"
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_COMMIT_SHA" ]]; then
+              echo "branch advanced after migration ledger validation; refusing stale reconciliation" >&2
+              exit 75
+            fi
             git push origin HEAD:so
           fi
       - name: Record privacy-safe diagnostic
