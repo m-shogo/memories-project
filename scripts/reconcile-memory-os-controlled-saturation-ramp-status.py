@@ -145,6 +145,7 @@ def main() -> int:
     evidence_refs = load_contract.get("evidenceRefs")
     if not isinstance(external, list) or not isinstance(deferred, list) or not isinstance(load_readiness, dict) or not isinstance(evidence_refs, list):
         raise SystemExit("load contract structure invalid")
+    repeatability_already_established = load_readiness.get("repeatableLocalDegradationSignalObserved") is True
 
     external_item = find_scenario(external, SCENARIO_ID)
     expected_external = {
@@ -167,16 +168,17 @@ def main() -> int:
     deferred_item = find_scenario(deferred, "capacity-ramp-local-postgres-minio")
     if deferred_item is None:
         raise SystemExit("missing capacity-ramp-local-postgres-minio deferred scenario")
-    if first_saturation:
-        deferred_item["reason"] = (
-            "a bounded local PostgreSQL plus MinIO lifecycle ramp now observes a first overload signal, "
-            "but repeatability, queue/backlog interpretation and independently reviewed safe operating thresholds remain deferred"
-        )
-    else:
-        deferred_item["reason"] = (
-            "a bounded local PostgreSQL plus MinIO lifecycle ramp now executes through concurrency 48 with pool telemetry, "
-            "but no failure/degradation boundary was established; repeatable overload discovery and independently reviewed safe operating thresholds remain deferred"
-        )
+    if not repeatability_already_established:
+        if first_saturation:
+            deferred_item["reason"] = (
+                "a bounded local PostgreSQL plus MinIO lifecycle ramp now observes a first overload signal, "
+                "but repeatability, queue/backlog interpretation and independently reviewed safe operating thresholds remain deferred"
+            )
+        else:
+            deferred_item["reason"] = (
+                "a bounded local PostgreSQL plus MinIO lifecycle ramp now executes through concurrency 48 with pool telemetry, "
+                "but no failure/degradation boundary was established; repeatable overload discovery and independently reviewed safe operating thresholds remain deferred"
+            )
     deferred_item["requiredDependencyMode"] = "LOCAL_POSTGRES_MINIO"
 
     load_readiness["controlledLocalDependencySaturationRampExecuted"] = True
@@ -222,14 +224,15 @@ def main() -> int:
             )
         )
     ]
-    if first_saturation:
-        missing.append(
-            "repeatability of the observed local PostgreSQL plus MinIO saturation signal, queue/backlog interpretation and independently reviewed safe operating thresholds"
-        )
-    else:
-        missing.append(
-            "repeatable local PostgreSQL plus MinIO saturation runs that actually observe a first failure/degradation transition, plus queue/backlog interpretation and independently reviewed safe operating thresholds"
-        )
+    if not repeatability_already_established:
+        if first_saturation:
+            missing.append(
+                "repeatability of the observed local PostgreSQL plus MinIO saturation signal, queue/backlog interpretation and independently reviewed safe operating thresholds"
+            )
+        else:
+            missing.append(
+                "repeatable local PostgreSQL plus MinIO saturation runs that actually observe a first failure/degradation transition, plus queue/backlog interpretation and independently reviewed safe operating thresholds"
+            )
     load_status["missingEvidence"] = missing
     for ref in EVIDENCE_REFS:
         append_unique(refs, ref)
@@ -242,6 +245,7 @@ def main() -> int:
     print(f"source: {expected_sha}")
     print(f"local saturation signal observed: {str(first_saturation).lower()}")
     print(f"pool contention signal observed: {str(first_contention).lower()}")
+    print(f"stronger repeatability authority preserved: {str(repeatability_already_established).lower()}")
     print("capacity boundary established: false")
     print("operational threshold approved: false")
     print("production decision: NO_GO")
