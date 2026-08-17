@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove migration operation authority rollback on post-write validation failure."""
+"""Prove migration operation authority rollback and monotonic composition."""
 
 from __future__ import annotations
 
@@ -32,6 +32,18 @@ def load_reconciler():
     return module
 
 
+def prove_stronger_authority_is_preserved(module, lifecycle_payload: bytes) -> None:
+    lifecycle = json.loads(lifecycle_payload.decode("utf-8"))
+    readiness = lifecycle["readiness"]
+    for field in module.STRONGER_LIFECYCLE_FIELDS:
+        readiness[field] = True
+    normalized = module.normalize_lifecycle(lifecycle)
+    normalized_readiness = normalized["readiness"]
+    for field in module.STRONGER_LIFECYCLE_FIELDS:
+        require(normalized_readiness.get(field) is True,
+                f"weaker operation evidence rolled back stronger lifecycle authority: {field}")
+
+
 def main() -> int:
     originals = {
         CONTRACT: CONTRACT.read_bytes(),
@@ -39,6 +51,8 @@ def main() -> int:
         STATUS: STATUS.read_bytes(),
     }
     module = load_reconciler()
+    prove_stronger_authority_is_preserved(module, originals[LIFECYCLE])
+
     candidates = [json.loads(payload.decode("utf-8")) for payload in originals.values()]
     for candidate in candidates:
         candidate["rollbackProbe"] = "must-not-persist"
@@ -62,7 +76,7 @@ def main() -> int:
     for path, payload in originals.items():
         require(path.read_bytes() == payload,
                 f"{path.name} changed after rejected migration operation reconcile")
-    print("PASS: migration operation reconcile rollback is fail-closed")
+    print("PASS: migration operation reconcile is monotonic and rollback-safe")
     return 0
 
 
