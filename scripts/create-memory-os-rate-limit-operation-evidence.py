@@ -44,6 +44,19 @@ def load_input(path: Path) -> dict[str, Any]:
     return value
 
 
+def validate_existing_canonical_authority(validator: ModuleType, ledger: Path) -> None:
+    if ledger != DEFAULT_LEDGER.resolve():
+        return
+    try:
+        result = validator.main()
+    except validator.ValidationFailure as exc:
+        raise WriterFailure(f"existing canonical ledger authority is invalid: {exc}") from exc
+    if result != 0:
+        raise WriterFailure(
+            f"existing canonical ledger authority validation returned non-zero: {result}"
+        )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Validate and exclusively append one rate-limit operation record"
@@ -68,6 +81,7 @@ def main() -> int:
         temp_root = Path(os.environ.get("TMPDIR", "/tmp")).resolve()
         if not (ledger.is_relative_to(allowed_root) or ledger.is_relative_to(temp_root)):
             raise WriterFailure("ledger directory is outside approved roots")
+    validate_existing_canonical_authority(validator, ledger)
     ledger.mkdir(parents=True, exist_ok=True)
 
     operation_id = record["operationId"]
