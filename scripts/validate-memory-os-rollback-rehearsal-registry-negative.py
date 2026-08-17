@@ -13,6 +13,7 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 WRITER_PATH = ROOT / "scripts/request-memory-os-rollback-rehearsal.py"
+VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-rollback-rehearsal-gate.py"
 RECONCILER_PATH = ROOT / "scripts/reconcile-memory-os-rollback-rehearsal-gate.py"
 CONTRACT_PATH = ROOT / "contracts/operations/rollback-rehearsal-gate-contract.v1.json"
 RELEASE_REGISTRY_PATH = ROOT / "contracts/operations/release-baseline-registry.v1.json"
@@ -68,11 +69,33 @@ def reconcile_rejects_without_status_write(
         STATUS_PATH.write_bytes(status_bytes)
 
 
+def validator_rejects_lock_drift(contract: dict[str, Any], contract_bytes: bytes) -> None:
+    candidate = copy.deepcopy(contract)
+    candidate["appendLockPath"] = "contracts/operations/.rollback-rehearsal-registry.alternate.lock"
+    try:
+        CONTRACT_PATH.write_text(
+            json.dumps(candidate, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
+        completed = subprocess.run(
+            [sys.executable, str(VALIDATOR_PATH)],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if completed.returncode == 0:
+            raise RuntimeError("standalone validator accepted alternate append lock authority")
+    finally:
+        CONTRACT_PATH.write_bytes(contract_bytes)
+
+
 def main() -> int:
     writer = load_writer()
     contract = load_json(CONTRACT_PATH)
     release_registry = load_json(RELEASE_REGISTRY_PATH)
     registry = load_json(REGISTRY_PATH)
+    contract_bytes = CONTRACT_PATH.read_bytes()
     registry_bytes = REGISTRY_PATH.read_bytes()
     status_bytes = STATUS_PATH.read_bytes()
 
@@ -118,12 +141,16 @@ def main() -> int:
             ),
         )
 
+    validator_rejects_lock_drift(contract, contract_bytes)
+
+    if CONTRACT_PATH.read_bytes() != contract_bytes:
+        raise RuntimeError("rollback contract bytes changed after negative suite")
     if REGISTRY_PATH.read_bytes() != registry_bytes:
         raise RuntimeError("rollback registry bytes changed after negative suite")
     if STATUS_PATH.read_bytes() != status_bytes:
         raise RuntimeError("production status bytes changed after negative suite")
 
-    print("PASS: rollback rehearsal registry corruption is rejected before append or reconcile")
+    print("PASS: rollback rehearsal registry and append lock corruption are rejected")
     return 0
 
 
