@@ -16,6 +16,8 @@ on:
       - "scripts/validate-memory-os-production-shaped-failure-drills.py"
       - "scripts/validate-memory-os-production-shaped-failure-drill-registry-negative.py"
       - "scripts/validate-memory-os-production-shaped-failure-drill-reconcile-rollback-negative.py"
+      - "scripts/validate-memory-os-chaos-failure-drills-v2.py"
+      - "scripts/validate-memory-os-operability.py"
       - "scripts/reconcile-memory-os-production-shaped-failure-drills.py"
   pull_request:
     paths:
@@ -30,6 +32,8 @@ on:
       - "scripts/validate-memory-os-production-shaped-failure-drills.py"
       - "scripts/validate-memory-os-production-shaped-failure-drill-registry-negative.py"
       - "scripts/validate-memory-os-production-shaped-failure-drill-reconcile-rollback-negative.py"
+      - "scripts/validate-memory-os-chaos-failure-drills-v2.py"
+      - "scripts/validate-memory-os-operability.py"
       - "scripts/reconcile-memory-os-production-shaped-failure-drills.py"
   workflow_dispatch:
 
@@ -67,6 +71,8 @@ jobs:
             scripts/validate-memory-os-production-shaped-failure-drills.py \
             scripts/validate-memory-os-production-shaped-failure-drill-registry-negative.py \
             scripts/validate-memory-os-production-shaped-failure-drill-reconcile-rollback-negative.py \
+            scripts/validate-memory-os-chaos-failure-drills-v2.py \
+            scripts/validate-memory-os-operability.py \
             scripts/reconcile-memory-os-production-shaped-failure-drills.py \
             >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then
