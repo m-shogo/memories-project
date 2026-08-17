@@ -61,6 +61,36 @@ def require_source_ancestor(source_sha: str) -> None:
             "sourceCommitSha must be an ancestor of current HEAD")
 
 
+def git_bytes(*args: str) -> bytes:
+    completed = subprocess.run(
+        ["git", *args],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    require(completed.returncode == 0, f"git {' '.join(args)} failed")
+    return completed.stdout
+
+
+def canonical_evidence_path(ref: str, field: str) -> Path:
+    candidate = ROOT / ref
+    try:
+        resolved = candidate.resolve(strict=True)
+        resolved.relative_to(ROOT.resolve())
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        raise ValidationFailure(f"{field} evidence path invalid: {ref}") from exc
+    require(resolved.is_file(), f"{field} evidence path missing: {ref}")
+    current = ROOT
+    for part in Path(ref).parts:
+        current = current / part
+        require(not current.is_symlink(),
+                f"{field} evidence path cannot traverse symlink: {ref}")
+    git_bytes("ls-files", "--error-unmatch", "--", ref)
+    require(git_bytes("show", f"HEAD:{ref}") == resolved.read_bytes(),
+            f"{field} evidence must match committed HEAD bytes: {ref}")
+    return resolved
+
+
 def load_json(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -95,7 +125,7 @@ def validate_repo_refs(value: Any, field: str, *, require_existing: bool) -> lis
         require(not ref.startswith("/") and ".." not in Path(ref).parts,
                 f"{field} contains path traversal: {ref}")
         if require_existing:
-            require((ROOT / ref).is_file(), f"{field} evidence path missing: {ref}")
+            canonical_evidence_path(ref, field)
     return value
 
 
