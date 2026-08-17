@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "memory-os-rate-limit-operation-record.v1",
+  "schemaVersion": "memory-os-rate-limit-operation-record.v2",
   "operationId": "RLOP-YYYYMMDDTHHMMSSZ-replace",
   "incidentReference": "DRILL-REPLACE",
   "sourceCommitSha": "0000000000000000000000000000000000000000",
@@ -63,5 +63,6 @@
   "openRisks": [
     "replace_risk_identifier"
   ],
-  "evidenceRefs": []
+  "evidenceRefs": [],
+  "evidenceDigestsByRef": {}
 }
