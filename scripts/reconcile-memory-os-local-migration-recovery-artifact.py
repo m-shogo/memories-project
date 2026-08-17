@@ -13,6 +13,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/local-migration-recovery-artifact-contract.v1.json"
 REGISTRY_PATH = ROOT / "contracts/operations/migration-evidence-registry.v1.json"
+REGISTRY_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-migration-evidence-registry.py"
 VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-local-migration-recovery-artifact.py"
 RECONCILE_PATH = ROOT / "scripts/reconcile-memory-os-local-migration-recovery-artifact.py"
 RUNNER_PATH = ROOT / "scripts/run-memory-os-local-migration-recovery-artifact.sh"
@@ -59,16 +60,19 @@ def main() -> int:
     require(isinstance(source_sha, str), "result commitSha missing")
 
     completed = subprocess.run(
-        [
-            "python", str(VALIDATOR_PATH),
-            "--path", str(result_path),
-            "--expected-commit-sha", source_sha,
-            "--require-result",
-        ],
+        ["python", str(VALIDATOR_PATH), "--path", str(result_path),
+         "--expected-commit-sha", source_sha, "--require-result"],
         cwd=ROOT,
         check=False,
     )
     require(completed.returncode == 0, "exact-source recovery artifact result validation failed")
+
+    completed = subprocess.run(
+        ["python", str(REGISTRY_VALIDATOR_PATH)],
+        cwd=ROOT,
+        check=False,
+    )
+    require(completed.returncode == 0, "canonical migration evidence registry validation failed")
 
     registry = load(REGISTRY_PATH)
     records = registry.get("records")
@@ -107,6 +111,7 @@ def main() -> int:
         CONTRACT_PATH,
         RUNNER_PATH,
         VALIDATOR_PATH,
+        REGISTRY_VALIDATOR_PATH,
         RECONCILE_PATH,
         WORKFLOW_PATH,
         result_path,
