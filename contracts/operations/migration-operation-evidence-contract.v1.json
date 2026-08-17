@@ -108,14 +108,21 @@
   },
   "readiness": {
     "contractDefined": true,
-    "writerImplemented": false,
-    "validatorImplemented": false,
-    "exclusiveCreateSelfTestImplemented": false,
-    "canonicalSequenceBindingImplemented": false,
+    "writerImplemented": true,
+    "validatorImplemented": true,
+    "exclusiveCreateSelfTestImplemented": true,
+    "canonicalSequenceBindingImplemented": true,
     "productionRecoveryPointVerificationImplemented": false,
     "productionReady": false
   },
   "evidenceRefs": [
-    "contracts/operations/migration-operation-evidence-contract.v1.json"
+    "contracts/operations/migration-operation-evidence-contract.v1.json",
+    "scripts/migration_operation_evidence_lib.py",
+    "scripts/create-memory-os-migration-operation-evidence.py",
+    "scripts/validate-memory-os-migration-operation-evidence.py",
+    "scripts/reconcile-memory-os-migration-operation-evidence.py",
+    "docs/evidence/migration-operations/README.md",
+    "docs/fixtures/memory-os-operability/migration-operation-record.template.v1.json",
+    ".github/workflows/migration-operation-evidence.yml"
   ]
 }

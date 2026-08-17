@@ -182,7 +182,15 @@
     "docs/evidence/migrations/recovery/mig_20260817_6e5c89dca99d.json",
     "docs/evidence/migrations/recovery/mig_20260817_b03c6f39e7e6.json",
     "docs/evidence/migrations/recovery/mig_20260817_23a3145b7017.json",
-    "docs/evidence/migrations/recovery/mig_20260817_b9d343e14ac7.json"
+    "docs/evidence/migrations/recovery/mig_20260817_b9d343e14ac7.json",
+    "contracts/operations/migration-operation-evidence-contract.v1.json",
+    "scripts/migration_operation_evidence_lib.py",
+    "scripts/create-memory-os-migration-operation-evidence.py",
+    "scripts/validate-memory-os-migration-operation-evidence.py",
+    "scripts/reconcile-memory-os-migration-operation-evidence.py",
+    "docs/evidence/migration-operations/README.md",
+    "docs/fixtures/memory-os-operability/migration-operation-record.template.v1.json",
+    ".github/workflows/migration-operation-evidence.yml"
   ],
   "readiness": {
     "policyDefined": true,
@@ -195,6 +203,6 @@
     "operatorEvidenceRecordImplemented": true,
     "automatedDestructiveRollback": false,
     "ready": false,
-    "note": "The non-production migration registry now contains a passing local rehearsal that restored its actual pre-migration logical dump artifact into a separate same-cluster database and successfully reapplied the migration and SQL suite. Production-shaped rehearsal, production-equivalent isolated restore, mixed-version deployment proof and destructive-contract restore linkage remain required."
+    "note": "The canonical migration sequence, clean PostgreSQL 16 dry-run, binding lifecycle/runbook and append-only operator evidence ledger exist. Production recovery-point verification, mixed-version release proof, isolated restore linkage and production-shaped rehearsal remain required, so OPS-P0-001 stays PARTIAL."
   }
 }

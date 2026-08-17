@@ -29,13 +29,19 @@
         "append-only privacy-safe migration rehearsal evidence registry is implemented with an external-record writer, exact source-commit and canonical migration-sequence binding, distinct operator/reviewer pseudonyms, lock and statement budgets, an opaque SHA-256 recovery-artifact reference, and a separately validated local logical-restore capability authority; arbitrary repository files can no longer satisfy recovery evidence, while the actual rehearsal recovery artifact is still not restored by this registry and registrations remain non-production evidence",
         "append-only privacy-safe migration rehearsal evidence registry is implemented with exact source/canonical sequence binding, typed SHA-256 recovery-artifact references, a separately validated local logical-restore capability authority, and a per-run actual-artifact restore evidence requirement; arbitrary repository files or digest-only claims cannot satisfy recovery evidence and registrations remain non-production",
         "production-shaped migration rehearsal admission is generation-bound and reuses the canonical append-only migration evidence ledger: admission additionally requires a registered environment generation, an approved predecessor/successor release pair, generation-consistent recovery evidence, mixed-version observation and independent security/operability review; the admission registry is currently empty",
-        "at least one passing local PostgreSQL migration rehearsal created the actual pre-migration logical dump artifact, recorded only its SHA-256/byte count, restored that exact artifact into a separate same-cluster database, verified the pre-migration surface, reapplied the migration, and reran the canonical SQL suite; this is local same-cluster evidence only and does not prove production-equivalent isolated restore or rollback safety"
+        "at least one passing local PostgreSQL migration rehearsal created the actual pre-migration logical dump artifact, recorded only its SHA-256/byte count, restored that exact artifact into a separate same-cluster database, verified the pre-migration surface, reapplied the migration, and reran the canonical SQL suite; this is local same-cluster evidence only and does not prove production-equivalent isolated restore or rollback safety",
+        "append-only migration operation evidence ledger with canonical before/after migration prefixes, exact source SHA, opaque recovery-point reference and distinct operator/reviewer identities",
+        "exclusive-create writer preventing overwrite of an existing migrationRunId and fail-closed validator shared by writer and CI",
+        "step-result and recovery-decision consistency checks with Production confirmation separated from migration approval or readiness"
       ],
       "missingEvidence": [
         "production-shaped rehearsal with lock and runtime budgets",
         "mixed-version deployment proof",
         "isolated restore linkage for destructive contract decisions",
-        "production-equivalent migration recovery artifact restore bound to the actual recovery point and independently reviewed"
+        "production-equivalent migration recovery artifact restore bound to the actual recovery point and independently reviewed",
+        "production recovery-point creation and automated restore usability verification before migration mutation",
+        "completed production-shaped migration rehearsal with lock, statement-timeout, runtime and mixed-version budgets",
+        "isolated restore linkage and promotion decision for destructive contract migrations"
       ],
       "evidenceRefs": [
         ".github/workflows/security-contracts.yml",
@@ -81,7 +87,15 @@
         "docs/evidence/migrations/recovery/mig_20260817_6e5c89dca99d.json",
         "docs/evidence/migrations/recovery/mig_20260817_b03c6f39e7e6.json",
         "docs/evidence/migrations/recovery/mig_20260817_23a3145b7017.json",
-        "docs/evidence/migrations/recovery/mig_20260817_b9d343e14ac7.json"
+        "docs/evidence/migrations/recovery/mig_20260817_b9d343e14ac7.json",
+        "contracts/operations/migration-operation-evidence-contract.v1.json",
+        "scripts/migration_operation_evidence_lib.py",
+        "scripts/create-memory-os-migration-operation-evidence.py",
+        "scripts/validate-memory-os-migration-operation-evidence.py",
+        "scripts/reconcile-memory-os-migration-operation-evidence.py",
+        "docs/evidence/migration-operations/README.md",
+        "docs/fixtures/memory-os-operability/migration-operation-record.template.v1.json",
+        ".github/workflows/migration-operation-evidence.yml"
       ]
     },
     {
