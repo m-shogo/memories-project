@@ -176,6 +176,13 @@ jobs:
           python scripts/reconcile-memory-os-parser-artifact-registry.py
           python scripts/validate-memory-os-parser-artifact-registry.py
 
+      - name: Reject auto-healed authority drift on pull requests
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code -- contracts/operations/production-operability-status.json
+
       - name: Commit parser artifact authority
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         run: |
