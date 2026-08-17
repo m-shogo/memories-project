@@ -9,6 +9,7 @@
   "validator": "scripts/validate-memory-os-local-migration-recovery-artifact.py",
   "evidenceRoot": "docs/evidence/migrations/recovery",
   "resultSchemaVersion": "memory-os-local-migration-recovery-artifact.v1",
+  "sourceCommitMustBeAncestorOfCurrentHead": true,
   "operatorBudgets": {
     "lockBudgetMs": 5000,
     "statementBudgetMs": 120000,
