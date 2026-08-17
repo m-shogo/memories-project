@@ -10,6 +10,7 @@ on:
       - "docs/runbooks/memory-os-rollback-rehearsal.md"
       - "scripts/request-memory-os-rollback-rehearsal.py"
       - "scripts/validate-memory-os-rollback-rehearsal-gate.py"
+      - "scripts/validate-memory-os-rollback-rehearsal-registry-negative.py"
       - "scripts/reconcile-memory-os-rollback-rehearsal-gate.py"
   push:
     branches:
@@ -22,6 +23,7 @@ on:
       - "docs/runbooks/memory-os-rollback-rehearsal.md"
       - "scripts/request-memory-os-rollback-rehearsal.py"
       - "scripts/validate-memory-os-rollback-rehearsal-gate.py"
+      - "scripts/validate-memory-os-rollback-rehearsal-registry-negative.py"
       - "scripts/reconcile-memory-os-rollback-rehearsal-gate.py"
   schedule:
     - cron: "37 4 * * 2"
@@ -69,10 +71,14 @@ jobs:
           python -m py_compile \
             scripts/request-memory-os-rollback-rehearsal.py \
             scripts/validate-memory-os-rollback-rehearsal-gate.py \
+            scripts/validate-memory-os-rollback-rehearsal-registry-negative.py \
             scripts/reconcile-memory-os-rollback-rehearsal-gate.py
 
       - name: Validate blocked admission authority
         run: python scripts/validate-memory-os-rollback-rehearsal-gate.py
+
+      - name: Reject rollback registry corruption before append
+        run: python scripts/validate-memory-os-rollback-rehearsal-registry-negative.py
 
       - name: Prove invalid and unapproved requests cannot mutate authority
         run: |
