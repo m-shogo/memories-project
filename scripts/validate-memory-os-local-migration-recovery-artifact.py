@@ -192,6 +192,8 @@ def main() -> int:
             "validator path drift")
     require(contract.get("evidenceRoot") == str(EVIDENCE_ROOT.relative_to(ROOT)),
             "evidence root drift")
+    require(contract.get("sourceCommitMustBeAncestorOfCurrentHead") is True,
+            "source commit lineage rule drift")
     require(RUNNER_PATH.is_file() and EVIDENCE_ROOT.is_dir(),
             "runner/evidence root missing")
 
