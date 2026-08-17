@@ -11,26 +11,21 @@ ROOT = Path(__file__).resolve().parents[1]
 LOAD = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 
-PROVEN_FLAGS = (
+PREFENCE_PROVEN_FLAGS = (
     "previewPreFenceInFlightLinearizationProven",
     "applyPreFenceInFlightLinearizationProven",
     "uploadAuthorizationPreFenceInFlightLinearizationProven",
     "uploadCompletionPreFenceInFlightLinearizationProven",
     "primaryAccountBoundPreFenceLinearizationAggregateProven",
     "multiAccountDeletionWorkerSaturationProven",
-    "deletionLeaseExpiryRecoverySimulationProven",
-    "deletionPartialObjectErasureRecoveryProven",
-    "deletionActualProcessKillProven",
-    "deletionContainerKillRecoveryProven",
-    "deletionReplacementContainerRecoveryProven",
-    "repeatableLocalDegradationSignalObserved",
 )
 
-STALE_RESOLVED = {
-    "request-linearization proof for operations already in flight before the deletion fence plus multi-account worker saturation, production topology and independently reviewed deletion-load thresholds",
-    "repeatable local PostgreSQL plus MinIO saturation runs that actually observe a first failure/degradation transition, plus queue/backlog interpretation and independently reviewed safe operating thresholds",
-}
-
+PREFENCE_STALE_BLOCKER = (
+    "request-linearization proof for operations already in flight before the deletion fence plus multi-account worker saturation, production topology and independently reviewed deletion-load thresholds"
+)
+REPEATABILITY_STALE_BLOCKER = (
+    "repeatable local PostgreSQL plus MinIO saturation runs that actually observe a first failure/degradation transition, plus queue/backlog interpretation and independently reviewed safe operating thresholds"
+)
 CANONICAL_HOST_BLOCKER = (
     "physical deletion-worker host/node/AZ interruption recovery in a registered production-equivalent generation, plus production topology and independently reviewed deletion-load thresholds"
 )
@@ -49,13 +44,17 @@ def main() -> int:
     readiness = load_contract.get("readiness")
     if not isinstance(readiness, dict):
         raise SystemExit("load readiness missing")
-    for flag in PROVEN_FLAGS:
+
+    for flag in PREFENCE_PROVEN_FLAGS:
         if readiness.get(flag) is not True:
-            raise SystemExit(f"cannot remove blocker while proof flag is not true: {flag}")
+            raise SystemExit(f"cannot remove pre-fence blocker while proof flag is not true: {flag}")
+    if readiness.get("repeatableLocalDegradationSignalObserved") is not True:
+        raise SystemExit("cannot remove repeatability blocker while degradation signal is not proven")
+    if readiness.get("localSustainedSoakEvidence") is not True:
+        raise SystemExit("repeated local sustained-soak evidence must remain proven")
     for flag in (
         "deletionHostFailureRecoveryProven",
         "capacityBoundaryEstablished",
-        "localSustainedSoakEvidence",
         "productionEquivalentDependencies",
     ):
         if readiness.get(flag) is not False:
@@ -71,43 +70,32 @@ def main() -> int:
     missing = area.get("missingEvidence")
     if not isinstance(missing, list):
         raise SystemExit("OPS-P0-006 missingEvidence must be array")
+
     normalized: list[str] = []
-    host_blocker_added = False
-    host_legacy_fragments = (
-        "deletion-worker container/host interruption recovery",
-        "deletion-worker host/container failure behavior",
-        "deletion-worker host/container interruption recovery",
-        "deletion-worker process kill and host failure behavior",
-        "deletion-worker process kill and host/container interruption recovery",
-    )
     for item in missing:
         if not isinstance(item, str):
             raise SystemExit("OPS-P0-006 missingEvidence entries must be strings")
-        if item in STALE_RESOLVED:
-            continue
-        if any(fragment in item for fragment in host_legacy_fragments):
-            if not host_blocker_added:
-                normalized.append(CANONICAL_HOST_BLOCKER)
-                host_blocker_added = True
+        if item in (PREFENCE_STALE_BLOCKER, REPEATABILITY_STALE_BLOCKER):
             continue
         if item not in normalized:
             normalized.append(item)
-    if not host_blocker_added and CANONICAL_HOST_BLOCKER not in normalized:
+
+    if CANONICAL_HOST_BLOCKER not in normalized:
         normalized.append(CANONICAL_HOST_BLOCKER)
 
     required_remaining_fragments = (
         "capacity boundary",
-        "sustained soak",
         "production-equivalent dependency behavior",
         "production object-store TLS",
-        "two independent 60-minute-or-longer LOCAL_LONG_SOAK runs",
         "physical deletion-worker host/node/AZ interruption recovery",
+        "independently approved leak/stability criteria",
+        "production-shaped sustained soak",
     )
     joined = "\n".join(normalized)
     for fragment in required_remaining_fragments:
         if fragment not in joined:
             raise SystemExit(f"required unresolved blocker disappeared: {fragment}")
-    for stale in STALE_RESOLVED:
+    for stale in (PREFENCE_STALE_BLOCKER, REPEATABILITY_STALE_BLOCKER):
         if stale in normalized:
             raise SystemExit(f"resolved blocker remained: {stale}")
 
@@ -117,10 +105,11 @@ def main() -> int:
     write(STATUS, status)
 
     print("Memory OS load missing-evidence reconciliation PASS")
-    print("primary pre-fence/multi-account blockers: resolved")
+    print("primary pre-fence/multi-account blocker: resolved")
     print("repeatable local degradation blocker: resolved")
+    print("repeated local sustained soak evidence: retained as local-only proof")
     print("physical host/node/AZ blocker: retained")
-    print("sustained soak blocker: retained")
+    print("production-shaped soak blocker: retained")
     print("production-equivalent blocker: retained")
     print("OPS-P0-006: PARTIAL")
     print("productionDecision: NO_GO")
