@@ -27,6 +27,7 @@ on:
       - "scripts/validate-memory-os-migration-evidence-registry-append-negative.py"
       - "scripts/reconcile-memory-os-migration-evidence-registry.py"
       - "scripts/validate-memory-os-migration-lifecycle.py"
+      - "scripts/validate-memory-os-operability.py"
   push:
     branches:
       - so
@@ -55,6 +56,7 @@ on:
       - "scripts/validate-memory-os-migration-evidence-registry-append-negative.py"
       - "scripts/reconcile-memory-os-migration-evidence-registry.py"
       - "scripts/validate-memory-os-migration-lifecycle.py"
+      - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
 
 permissions:
@@ -97,6 +99,7 @@ jobs:
             scripts/validate-memory-os-migration-evidence-registry-append-negative.py \
             scripts/reconcile-memory-os-migration-evidence-registry.py \
             scripts/validate-memory-os-migration-lifecycle.py \
+            scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
           bash -n scripts/run-memory-os-local-migration-recovery-artifact.sh >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then
