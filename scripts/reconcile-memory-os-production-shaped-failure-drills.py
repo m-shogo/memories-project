@@ -16,6 +16,7 @@ WRITER = ROOT / "scripts/register-memory-os-production-shaped-failure-drill.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-production-shaped-failure-drills.py"
 WORKFLOW = ROOT / ".github/workflows/production-shaped-failure-drills.yml"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 
 EVIDENCE = (
     "generation-bound production-shaped failure-drill admission is implemented for four required classes: multi-instance/node interruption, object-store outage/partition, PostgreSQL pool disruption/failover, and parser host/container restart with durable spool remount; local outage/process/container/candidate evidence cannot be relabeled, and the registry is currently empty"
@@ -72,8 +73,47 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
+def commit_outputs_transactionally(outputs: dict[Path, dict[str, Any]]) -> None:
+    originals = {path: path.read_bytes() for path in outputs}
+    try:
+        for path, value in outputs.items():
+            write(path, value)
+        completed = subprocess.run(
+            ["python", str(VALIDATOR)],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        require(
+            completed.returncode == 0,
+            "failure-drill authority rejected after reconcile:\n"
+            + completed.stdout[-4000:]
+            + completed.stderr[-4000:],
+        )
+        completed = subprocess.run(
+            ["python", str(OPERABILITY_VALIDATOR)],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        require(
+            completed.returncode == 0,
+            "operability authority rejected after failure-drill reconcile:\n"
+            + completed.stdout[-4000:]
+            + completed.stderr[-4000:],
+        )
+    except Exception as exc:
+        for path, data in originals.items():
+            path.write_bytes(data)
+        raise Fail(f"failure-drill reconcile validation failed; restored prior authority: {exc}") from exc
+
+
 def main() -> int:
-    for path in (REGISTRY, WRITER, VALIDATOR, WORKFLOW):
+    for path in (REGISTRY, WRITER, VALIDATOR, WORKFLOW, OPERABILITY_VALIDATOR):
         require(path.is_file(), f"failure-drill admission missing: {path.relative_to(ROOT)}")
     registry = load(REGISTRY)
     drills = validate_registry_before_reconcile(registry)
@@ -101,7 +141,6 @@ def main() -> int:
     readiness["completedScenarioCount"] = len(scenarios)
     readiness["allRequiredScenarioClassesCompleted"] = len(scenarios) == 4
     readiness["productionReady"] = False
-    write(CONTRACT, contract)
 
     status = load(STATUS)
     require(status.get("productionDecision") == "NO_GO", "production decision must remain NO_GO")
@@ -114,9 +153,9 @@ def main() -> int:
     append_once(existing, EVIDENCE)
     for ref in REFS:
         append_once(refs, ref)
-    write(STATUS, status)
 
-    subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=True)
+    commit_outputs_transactionally({CONTRACT: contract, STATUS: status})
+
     print("Memory OS production-shaped failure-drill reconciliation PASS")
     print(f"registered drills: {len(drills)}")
     print(f"completed scenario classes: {len(scenarios)}/4")
