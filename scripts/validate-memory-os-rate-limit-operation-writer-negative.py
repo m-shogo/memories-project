@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import importlib.util
+import os
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -20,6 +22,38 @@ def load_writer():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def git(*args: str, env: dict[str, str] | None = None) -> str:
+    completed = subprocess.run(
+        ["git", *args],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise AssertionError(
+            f"git {' '.join(args)} failed: {completed.stderr.strip()}"
+        )
+    return completed.stdout.strip()
+
+
+def detached_side_commit() -> str:
+    tree = git("rev-parse", "HEAD^{tree}")
+    parent = git("rev-parse", "HEAD^")
+    env = os.environ.copy()
+    env.update(
+        {
+            "GIT_AUTHOR_NAME": "memory-os-lineage-test",
+            "GIT_AUTHOR_EMAIL": "memory-os-lineage-test@example.invalid",
+            "GIT_COMMITTER_NAME": "memory-os-lineage-test",
+            "GIT_COMMITTER_EMAIL": "memory-os-lineage-test@example.invalid",
+        }
+    )
+    return git("commit-tree", tree, "-p", parent, "-m", "synthetic side commit", env=env)
 
 
 def main() -> int:
@@ -78,7 +112,22 @@ def main() -> int:
     if AlternateLedgerValidator.calls != 0:
         raise AssertionError("alternate ledger unexpectedly invoked canonical validation")
 
+    validator = writer.load_validator()
+    current_head = git("rev-parse", "HEAD")
+    validator.require_source_ancestor(current_head)
+    side_commit = detached_side_commit()
+    try:
+        validator.require_source_ancestor(side_commit)
+    except validator.ValidationFailure as exc:
+        if "ancestor of current HEAD" not in str(exc):
+            raise AssertionError(f"unexpected lineage rejection: {exc}") from exc
+    else:
+        raise AssertionError("detached side commit was incorrectly accepted as source authority")
+    if git("rev-parse", "HEAD") != current_head:
+        raise AssertionError("lineage negative changed the current branch ref")
+
     print("PASS: canonical rate-limit operation ledger is validated before append")
+    print("PASS: detached rate-limit operation source commits are rejected")
     return 0
 
 
