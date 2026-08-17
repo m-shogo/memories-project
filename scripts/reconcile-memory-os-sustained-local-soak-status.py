@@ -19,6 +19,9 @@ AGGREGATE_PATH = RESULT_DIR / "sustained-local-soak-results.aggregate.v1.json"
 REVIEW_PATH = RESULT_DIR / "sustained-local-soak-trend-review.v1.json"
 AGGREGATE_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak-aggregate.py"
 INDEPENDENT_REVIEW_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-soak-independent-review.py"
+SOAK_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak.py"
+LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 
 FOUNDATION_REFS = (
     "contracts/operations/sustained-local-soak-contract.v1.json",
@@ -112,6 +115,24 @@ def run_validator(path: Path, label: str, *args: str) -> None:
         check=False,
     )
     require(completed.returncode == 0, f"{label} failed:\n{completed.stdout[-4000:]}{completed.stderr[-4000:]}")
+
+
+def write_and_validate_transactionally(
+    contract: dict[str, Any], load_contract: dict[str, Any], status: dict[str, Any]
+) -> None:
+    paths = (CONTRACT_PATH, LOAD_PATH, STATUS_PATH)
+    original_bytes = {path: path.read_bytes() for path in paths}
+    try:
+        write(CONTRACT_PATH, contract)
+        write(LOAD_PATH, load_contract)
+        write(STATUS_PATH, status)
+        run_validator(SOAK_VALIDATOR, "post-write sustained local soak validator")
+        run_validator(LOAD_VALIDATOR, "post-write load validator")
+        run_validator(OPERABILITY_VALIDATOR, "post-write operability validator")
+    except Exception:
+        for path in paths:
+            path.write_bytes(original_bytes[path])
+        raise
 
 
 def main() -> int:
@@ -294,9 +315,7 @@ def main() -> int:
     require(load_status.get("status") == "PARTIAL", "OPS-P0-006 status drift")
     require(load_readiness.get("sustainedSoakEvidence") is False, "generic sustainedSoakEvidence drift")
 
-    write(CONTRACT_PATH, contract)
-    write(LOAD_PATH, load_contract)
-    write(STATUS_PATH, status)
+    write_and_validate_transactionally(contract, load_contract, status)
     print("Memory OS sustained local soak status reconciled")
     print(f"committed LOCAL_LONG_SOAK runs: {run_count}")
     print(f"trend review completed: {str(readiness['trendReviewCompleted']).lower()}")
