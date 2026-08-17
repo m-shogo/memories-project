@@ -8,6 +8,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Callable
@@ -19,6 +20,7 @@ LIFECYCLE = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 WRITER = ROOT / "scripts/register-memory-os-migration-rehearsal-evidence.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-migration-evidence-registry.py"
+LOCAL_ARTIFACT_VALIDATOR = ROOT / "scripts/validate-memory-os-local-migration-recovery-artifact.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-migration-evidence-registry.py"
 
 
@@ -182,6 +184,33 @@ def expect_record_lineage_rejected(writer: ModuleType, contract: dict[str, Any])
     raise Fail("writer accepted non-ancestor migration sourceCommitSha")
 
 
+def expect_local_artifact_lineage_rejected() -> None:
+    registry = load_json(REGISTRY)
+    records = registry.get("records")
+    require(isinstance(records, list) and records and isinstance(records[0], dict), "migration ledger needs one canonical record for local artifact lineage negative")
+    evidence_ref = records[0].get("recoveryPointRestoreEvidenceRef")
+    require(isinstance(evidence_ref, str) and evidence_ref, "canonical record missing recoveryPointRestoreEvidenceRef")
+    result = load_json(ROOT / evidence_ref)
+    result["commitSha"] = make_side_commit()
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", encoding="utf-8", delete=False) as handle:
+        json.dump(result, handle, indent=2)
+        handle.write("\n")
+        temp_path = Path(handle.name)
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(LOCAL_ARTIFACT_VALIDATOR), "--path", str(temp_path), "--require-result"],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        require(completed.returncode != 0, "local recovery artifact validator accepted non-ancestor commitSha")
+        require("ancestor" in completed.stdout.lower(), f"local artifact lineage was rejected for wrong reason: {completed.stdout[-1200:]}")
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
 def expect_recovery_evidence_mutation_rejected(writer: ModuleType, contract: dict[str, Any]) -> None:
     registry = load_json(REGISTRY)
     records = registry.get("records")
@@ -238,8 +267,9 @@ def main() -> int:
     expect_status_rejected_without_partial_writes()
     expect_append_lock_contract_rejected(writer)
     expect_record_lineage_rejected(writer, contract)
+    expect_local_artifact_lineage_rejected()
     expect_recovery_evidence_mutation_rejected(writer, contract)
-    print("PASS: migration rehearsal ledger/contract corruption, reconcile partial writes, append-lock drift, source-lineage drift and recovery-evidence mutation are rejected")
+    print("PASS: migration rehearsal ledger/contract corruption, reconcile partial writes, append-lock drift, registry/local-artifact source-lineage drift and recovery-evidence mutation are rejected")
     return 0
 
 
