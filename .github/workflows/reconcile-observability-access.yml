@@ -6,8 +6,11 @@ on:
       - ".github/workflows/reconcile-observability-access.yml"
       - "contracts/operations/observability-retention-access-contract.v1.json"
       - "docs/runbooks/memory-os-observability-access.md"
+      - "scripts/validate-memory-os-observability.py"
       - "scripts/validate-memory-os-observability-access.py"
       - "scripts/validate-memory-os-observability-access-reconcile-negative.py"
+      - "scripts/validate-memory-os-operability.py"
+      - "scripts/validate-memory-os-entry-docs.py"
       - "scripts/reconcile-memory-os-observability-access.py"
   push:
     branches:
@@ -16,8 +19,11 @@ on:
       - ".github/workflows/reconcile-observability-access.yml"
       - "contracts/operations/observability-retention-access-contract.v1.json"
       - "docs/runbooks/memory-os-observability-access.md"
+      - "scripts/validate-memory-os-observability.py"
       - "scripts/validate-memory-os-observability-access.py"
       - "scripts/validate-memory-os-observability-access-reconcile-negative.py"
+      - "scripts/validate-memory-os-operability.py"
+      - "scripts/validate-memory-os-entry-docs.py"
       - "scripts/reconcile-memory-os-observability-access.py"
   workflow_dispatch:
 
@@ -60,8 +66,11 @@ jobs:
       - name: Compile and validate policy
         run: |
           python -m py_compile \
+            scripts/validate-memory-os-observability.py \
             scripts/validate-memory-os-observability-access.py \
             scripts/validate-memory-os-observability-access-reconcile-negative.py \
+            scripts/validate-memory-os-operability.py \
+            scripts/validate-memory-os-entry-docs.py \
             scripts/reconcile-memory-os-observability-access.py
           python scripts/validate-memory-os-observability-access.py
           python scripts/validate-memory-os-observability-access-reconcile-negative.py
