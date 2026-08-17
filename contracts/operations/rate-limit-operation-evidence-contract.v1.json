@@ -76,7 +76,10 @@
     "rawUrlForbidden": true,
     "databaseOrStoreCredentialForbidden": true,
     "freeFormEvidenceTextForbidden": true,
-    "evidenceRefsMustBeRepositoryRelative": true
+    "evidenceRefsMustBeRepositoryRelative": true,
+    "evidenceRefsMustBeTracked": true,
+    "evidenceRefsMustBeSymlinkFree": true,
+    "evidenceRefsMustMatchHeadBytes": true
   },
   "readiness": {
     "recordContractDefined": true,
