@@ -102,6 +102,8 @@ jobs:
             scripts/register-memory-os-migration-rehearsal-evidence.py \
             scripts/validate-memory-os-migration-evidence-registry.py \
             scripts/validate-memory-os-release-baseline-registry.py \
+            scripts/validate-memory-os-migration-lifecycle.py \
+            scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-migration-production-shaped-admission-negative.py >> "$log" 2>&1 || code=$?
