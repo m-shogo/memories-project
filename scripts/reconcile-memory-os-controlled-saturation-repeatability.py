@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -12,9 +13,12 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/controlled-saturation-repeatability-contract.v1.json"
 RESULT = ROOT / "docs/fixtures/memory-os-operability/controlled-saturation-repeatability-results.v1.json"
 VALIDATOR = ROOT / "scripts/validate-memory-os-controlled-saturation-repeatability.py"
+LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 LOAD = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 WORKFLOW = ROOT / ".github/workflows/controlled-saturation-repeatability.yml"
+TRANSACTION_PATHS = (CONTRACT, LOAD, STATUS)
 
 EVIDENCE = (
     "two-run local controlled-saturation repeatability authority classifies a throughput/latency degradation knee or actual failure signal on independent PostgreSQL+MinIO runners; even a repeatable local signal remains non-production and cannot itself establish a capacity boundary or approve an operating threshold"
@@ -53,8 +57,26 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
+def run_post_write_validators() -> None:
+    for validator in (VALIDATOR, LOAD_VALIDATOR, OPERABILITY_VALIDATOR):
+        subprocess.run([sys.executable, str(validator)], cwd=ROOT, check=True)
+
+
+def write_transactionally(contract: dict[str, Any], load_contract: dict[str, Any], status: dict[str, Any]) -> None:
+    originals = {path: path.read_bytes() for path in TRANSACTION_PATHS}
+    try:
+        write(CONTRACT, contract)
+        write(LOAD, load_contract)
+        write(STATUS, status)
+        run_post_write_validators()
+    except BaseException:
+        for path, content in originals.items():
+            path.write_bytes(content)
+        raise
+
+
 def main() -> int:
-    subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=True)
+    subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, check=True)
     result = load(RESULT)
     repeatable = result.get("repeatableLocalDegradationSignalObserved") is True
 
@@ -106,12 +128,7 @@ def main() -> int:
                 rewritten.append(item)
         gate["missingEvidence"] = rewritten
 
-    # All inputs and fail-closed invariants are validated before any derived
-    # authority is written. A later validation failure must not leave a
-    # partially reconciled CONTRACT/LOAD/STATUS tuple on disk.
-    write(CONTRACT, contract)
-    write(LOAD, load_contract)
-    write(STATUS, status)
+    write_transactionally(contract, load_contract, status)
 
     print("Memory OS controlled saturation repeatability reconciliation PASS")
     print(f"repeatable local degradation signal: {repeatable}")
