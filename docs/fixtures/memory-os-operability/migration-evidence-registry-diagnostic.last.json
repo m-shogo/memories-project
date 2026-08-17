@@ -3,8 +3,8 @@
   "workflow": "migration-evidence-registry",
   "result": "FAIL",
   "exitCode": 1,
-  "sourceCommitSha": "fdbee880b96978afd2424171420ddd58478d9220",
-  "output": "STAGE: typed-recovery-self-test\ntyped recovery evidence negative self-tests PASS\nSTAGE: ledger-corruption-negatives\nPASS: migration rehearsal ledger/contract corruption, reconcile partial writes, append-lock drift, source-lineage drift and recovery-evidence mutation are rejected\nSTAGE: local-artifact-static-validation\nMemory OS local migration recovery-artifact validation PASS\nresult: NOT_REQUESTED\nproduction evidence: false\nSTAGE: committed-result-ledger-consistency\nMIGRATION RECOVERY RESULT ORPHAN RECONCILE FAILED: recovery result working bytes differ from HEAD: docs/evidence/migrations/recovery/mig_20260817_521d7296cd4f.json\n",
+  "sourceCommitSha": "794c76846527cfbadb63feb33106d46e78ad8805",
+  "output": "STAGE: typed-recovery-self-test\ntyped recovery evidence negative self-tests PASS\nSTAGE: ledger-corruption-negatives\nPASS: migration rehearsal ledger/contract corruption, reconcile partial writes, append-lock drift, source-lineage drift and recovery-evidence mutation are rejected\nSTAGE: local-artifact-static-validation\nMemory OS local migration recovery-artifact validation PASS\nresult: NOT_REQUESTED\nproduction evidence: false\nSTAGE: committed-result-ledger-consistency\nReconciled committed local migration recovery result orphans:\n- mig_20260817_8ddbc1a795cf\n- mig_20260817_521d7296cd4f\nproductionEvidence: false\nproductionReady: false\nSTAGE: registry-validation\nMIGRATION EVIDENCE REGISTRY VALIDATION FAILED: contract rehearsal count drift\n",
   "containsSecrets": false,
   "productionEvidence": false,
   "productionReady": false
