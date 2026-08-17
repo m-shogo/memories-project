@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "rate-limit-emergency-decision-drill",
+  "sourceCommitSha": "19dddd4f8be24cbf83f7ab06bc90674cadd3137c",
+  "failureStage": "static-validation",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "STAGE: compile\nSTAGE: static-validation\nRATE-LIMIT EMERGENCY DRILL VALIDATION FAILED: source commit lineage authority drift\n",
+  "containsSecrets": false,
+  "runtimeTrafficChanged": false,
+  "productionTraffic": false,
+  "productionCredentials": false,
+  "productionEvidence": false,
+  "productionControlPlaneExercised": false
+}
