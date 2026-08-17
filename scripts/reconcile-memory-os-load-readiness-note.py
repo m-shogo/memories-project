@@ -19,7 +19,6 @@ REQUIRED_TRUE = (
     "multiAccountDeletionWorkerSaturationProven",
     "deletionLeaseExpiryRecoverySimulationProven",
     "deletionPartialObjectErasureRecoveryProven",
-    "deletionActualProcessKillProven",
     "deletionContainerKillRecoveryProven",
     "deletionReplacementContainerRecoveryProven",
     "localSustainedSoakEvidence",
@@ -39,6 +38,7 @@ def main() -> int:
         if readiness.get(key) is not True:
             raise SystemExit(f"cannot summarize unproven readiness flag: {key}")
     for key in (
+        "deletionActualProcessKillProven",
         "capacityBoundaryEstablished",
         "sustainedSoakEvidence",
         "operationalThresholds",
@@ -52,12 +52,12 @@ def main() -> int:
     readiness["note"] = (
         "Local evidence now proves post-fence deletion rejection, Preview/Apply/upload-authorization/upload-completion "
         "pre-fence linearization across the primary account-bound HTTP surfaces, bounded multi-account deletion-worker "
-        "saturation, lease-expiry attempt-2 recovery including partial object erasure, actual Linux SIGKILL worker recovery, "
-        "actual Docker worker-container SIGKILL plus independent replacement-container attempt-2 convergence, and repeated "
-        "60-minute-or-longer LOCAL_LONG_SOAK execution with descriptive trend review. It still does not establish leak proof, "
-        "a production capacity boundary, physical host/node/AZ failure recovery, production-equivalent dependency behavior, "
-        "production-shaped sustained-soak evidence or independently reviewed operating thresholds; OPS-P0-006 remains PARTIAL "
-        "and Production remains NO_GO."
+        "saturation, lease-expiry attempt-2 recovery including partial object erasure, Docker worker-container SIGKILL plus "
+        "independent replacement-container attempt-2 convergence, and repeated 60-minute-or-longer LOCAL_LONG_SOAK execution "
+        "with descriptive trend review. The current canonical readiness flags do not claim raw process-kill recovery, and the "
+        "local evidence still does not establish leak proof, a production capacity boundary, physical host/node/AZ failure "
+        "recovery, production-equivalent dependency behavior, production-shaped sustained-soak evidence or independently "
+        "reviewed operating thresholds; OPS-P0-006 remains PARTIAL and Production remains NO_GO."
     )
 
     deferred = document.get("deferredScenarios")
@@ -71,8 +71,8 @@ def main() -> int:
         raise SystemExit("deletion-under-load deferred scenario missing")
     deletion["reason"] = (
         "post-fence former-session load, primary Preview/Apply/upload-authorization/upload-completion pre-fence linearization, "
-        "bounded multi-account worker saturation, lease-expiry recovery, actual process SIGKILL and actual Docker container "
-        "kill/replacement recovery are proven against local dependencies; physical host/node/AZ loss, production-equivalent "
+        "bounded multi-account worker saturation, lease-expiry recovery and Docker container kill/replacement recovery are "
+        "proven against local dependencies; raw process-kill readiness, physical host/node/AZ loss, production-equivalent "
         "multi-instance topology and dependency behavior, capacity boundary and independently reviewed operating thresholds remain deferred"
     )
     if deletion.get("requiredDependencyMode") != "PRODUCTION_EQUIVALENT":
@@ -82,8 +82,8 @@ def main() -> int:
     print("Memory OS load readiness summary reconciliation PASS")
     print("primary account-bound pre-fence aggregate: proven")
     print("multi-account deletion-worker saturation: proven")
-    print("actual Linux SIGKILL recovery: proven")
-    print("actual Docker container kill/replacement recovery: proven")
+    print("raw process-kill readiness: false")
+    print("Docker container kill/replacement recovery: proven")
     print("repeated local sustained soak evidence: proven")
     print("physical host/node/AZ recovery: false")
     print("production-shaped sustained soak evidence: false")
