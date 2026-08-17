@@ -855,7 +855,11 @@
         "reviewed production parser artifact record with exact bytes, build provenance, Security, Runtime and Release Owner approvals",
         "exact registered old parser artifact replay test with deterministic accepted/rejected accounting and protocol binding",
         "independent immutable retention evidence for every parser artifact required by a rollback-eligible approved release",
-        "approved release artifact-set digest binding and retirement proof that no rollback release depends on a deleted artifact"
+        "approved release artifact-set digest binding and retirement proof that no rollback release depends on a deleted artifact",
+        "approved source and rollback-target release pair with verified rollback eligibility and retained exact artifacts",
+        "admitted isolated rollback rehearsal request with distinct Release Owner and Database Recovery Owner approvals",
+        "executed rollback rehearsal proving startup, session, tenant, deletion, idempotency, parser artifact and exact object-version invariants",
+        "traffic-drain and rollback timing evidence with monitored stop conditions and independent review"
       ],
       "evidenceRefs": [
         ".github/workflows/security-contracts.yml",
