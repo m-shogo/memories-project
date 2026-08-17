@@ -53,6 +53,11 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
+def validate_current_authority() -> None:
+    completed = subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=False)
+    require(completed.returncode == 0, "canonical human tabletop authority is invalid before reconcile")
+
+
 def commit_validated_pair(contract: dict[str, Any], status: dict[str, Any]) -> None:
     original_contract = CONTRACT.read_bytes()
     original_status = STATUS.read_bytes()
@@ -70,6 +75,7 @@ def commit_validated_pair(contract: dict[str, Any], status: dict[str, Any]) -> N
 def main() -> int:
     for path in (WRITER, VALIDATOR, WORKFLOW):
         require(path.is_file(), f"human tabletop admission missing: {path.relative_to(ROOT)}")
+    validate_current_authority()
     required = set(load(CONTRACT).get("requiredScenarioIds", []))
     accepted = {path.stem for path in LEDGER.glob("IR-DRILL-*.json") if path.is_file()}
     require(accepted <= required, "ledger contains unrecognized scenario")
