@@ -21,6 +21,8 @@ STATUS = ROOT / "contracts/operations/production-operability-status.json"
 WRITER = ROOT / "scripts/register-memory-os-migration-rehearsal-evidence.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-migration-evidence-registry.py"
 LOCAL_ARTIFACT_VALIDATOR = ROOT / "scripts/validate-memory-os-local-migration-recovery-artifact.py"
+LOCAL_ARTIFACT_RECONCILER = ROOT / "scripts/reconcile-memory-os-local-migration-recovery-artifact.py"
+LOCAL_ARTIFACT_CONTRACT = ROOT / "contracts/operations/local-migration-recovery-artifact-contract.v1.json"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-migration-evidence-registry.py"
 
 
@@ -87,6 +89,34 @@ def expect_reconcile_rejected_without_mutation(name: str, mutate: Callable[[dict
     finally:
         for path, data in originals.items():
             path.write_bytes(data)
+
+
+def expect_local_artifact_reconcile_rejected_on_corrupt_registry() -> None:
+    registry = load_json(REGISTRY)
+    records = registry.get("records")
+    require(isinstance(records, list) and records and isinstance(records[-1], dict), "migration ledger needs one canonical record for local reconcile negative")
+    run_id = records[-1].get("migrationRunId")
+    require(isinstance(run_id, str) and run_id, "latest migration run id missing")
+    original_registry = REGISTRY.read_bytes()
+    original_contract = LOCAL_ARTIFACT_CONTRACT.read_bytes()
+    corrupt = copy.deepcopy(registry)
+    corrupt["rehearsalEvidenceCount"] = True
+    REGISTRY.write_text(json.dumps(corrupt, indent=2) + "\n", encoding="utf-8")
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(LOCAL_ARTIFACT_RECONCILER), "--run-id", run_id],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        require(completed.returncode != 0, "local artifact reconciler accepted corrupt migration registry")
+        require(LOCAL_ARTIFACT_CONTRACT.read_bytes() == original_contract,
+                "local artifact reconciler mutated contract after rejecting corrupt migration registry")
+    finally:
+        REGISTRY.write_bytes(original_registry)
+        LOCAL_ARTIFACT_CONTRACT.write_bytes(original_contract)
 
 
 def expect_status_rejected_without_partial_writes() -> None:
@@ -268,8 +298,9 @@ def main() -> int:
     expect_append_lock_contract_rejected(writer)
     expect_record_lineage_rejected(writer, contract)
     expect_local_artifact_lineage_rejected()
+    expect_local_artifact_reconcile_rejected_on_corrupt_registry()
     expect_recovery_evidence_mutation_rejected(writer, contract)
-    print("PASS: migration rehearsal ledger/contract corruption, reconcile partial writes, append-lock drift, registry/local-artifact source-lineage drift and recovery-evidence mutation are rejected")
+    print("PASS: migration rehearsal ledger/contract corruption, reconcile partial writes, local reconcile corruption rejection, append-lock drift, registry/local-artifact source-lineage drift and recovery-evidence mutation are rejected")
     return 0
 
 
