@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pin human-tabletop sourceCommitSha to the current branch lineage."""
+"""Pin human-tabletop sourceCommitSha and reconcile rollback authority."""
 
 from __future__ import annotations
 
@@ -10,6 +10,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WRITER = ROOT / "scripts/register-memory-os-incident-human-tabletop.py"
+VALIDATOR = ROOT / "scripts/validate-memory-os-incident-human-tabletops.py"
+RECONCILER = ROOT / "scripts/reconcile-memory-os-incident-human-tabletops.py"
+CONTRACT = ROOT / "contracts/operations/incident-human-tabletop-evidence-contract.v1.json"
+STATUS = ROOT / "contracts/operations/production-operability-status.json"
+POST_WRITE_MARKER = Path("/tmp/memory-os-incident-human-tabletop-post-write-negative.count")
 
 
 def load_writer():
@@ -38,6 +43,41 @@ def descendant_commit() -> str:
     ).strip()
 
 
+def expect_post_write_rollback() -> None:
+    validator_bytes = VALIDATOR.read_bytes()
+    contract_bytes = CONTRACT.read_bytes()
+    status_bytes = STATUS.read_bytes()
+    wrapper = f'''#!/usr/bin/env python3
+from pathlib import Path
+marker = Path({str(POST_WRITE_MARKER)!r})
+count = int(marker.read_text(encoding="utf-8")) if marker.exists() else 0
+marker.write_text(str(count + 1), encoding="utf-8")
+raise SystemExit(1)
+'''
+    try:
+        POST_WRITE_MARKER.unlink(missing_ok=True)
+        VALIDATOR.write_text(wrapper, encoding="utf-8")
+        completed = subprocess.run(
+            ["python", str(RECONCILER)],
+            cwd=ROOT,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        if completed.returncode == 0:
+            raise RuntimeError("human tabletop reconciler accepted injected post-write validator failure")
+        if CONTRACT.read_bytes() != contract_bytes:
+            raise RuntimeError("post-write failure left human tabletop contract mutated")
+        if STATUS.read_bytes() != status_bytes:
+            raise RuntimeError("post-write failure left production operability status mutated")
+    finally:
+        VALIDATOR.write_bytes(validator_bytes)
+        POST_WRITE_MARKER.unlink(missing_ok=True)
+        CONTRACT.write_bytes(contract_bytes)
+        STATUS.write_bytes(status_bytes)
+
+
 def main() -> int:
     writer = load_writer()
     head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
@@ -48,7 +88,9 @@ def main() -> int:
         raise RuntimeError("negative descendant commit was not created")
     if writer.source_is_ancestor(future):
         raise RuntimeError("future/side commit was accepted as human tabletop source authority")
+    expect_post_write_rollback()
     print("PASS: human tabletop source authority is ancestor-only without creating human evidence")
+    print("PASS: human tabletop post-write validation failure rolls back contract and status")
     return 0
 
 
