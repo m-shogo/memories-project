@@ -34,6 +34,11 @@ REFS = (
     "scripts/reconcile-memory-os-version-compatibility-foundation-status.py",
     ".github/workflows/version-compatibility-foundations.yml",
 )
+ZERO_COUNT_FIELDS = (
+    "approvedReleaseCount",
+    "approvedRollbackPairCount",
+    "reviewedParserArtifactCount",
+)
 
 
 class ReconcileFailure(RuntimeError):
@@ -63,14 +68,19 @@ def append_once(items: list[Any], value: str) -> bool:
     return True
 
 
+def require_zero_count(boundaries: dict[str, Any], field: str) -> None:
+    value = boundaries.get(field)
+    require(isinstance(value, int) and not isinstance(value, bool) and value == 0,
+            f"compatibility foundation {field} must be integer zero")
+
+
 def main() -> int:
     foundation = load(FOUNDATION_PATH)
     boundaries = foundation.get("aggregateBoundaries")
-    require(isinstance(boundaries, dict) and
-            boundaries.get("canonicalReleaseMatrixChanged") is False and
-            boundaries.get("approvedReleaseCount") == 0 and
-            boundaries.get("approvedRollbackPairCount") == 0 and
-            boundaries.get("reviewedParserArtifactCount") == 0 and
+    require(isinstance(boundaries, dict), "compatibility foundation boundary missing")
+    for field in ZERO_COUNT_FIELDS:
+        require_zero_count(boundaries, field)
+    require(boundaries.get("canonicalReleaseMatrixChanged") is False and
             boundaries.get("productionEvidence") is False and
             boundaries.get("releaseCompatibilityEvidence") is False and
             boundaries.get("productionReady") is False and
