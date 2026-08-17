@@ -11,6 +11,7 @@ on:
       - "docs/fixtures/memory-os-operability/rate-limit-operation-record.template.v1.json"
       - "scripts/create-memory-os-rate-limit-operation-evidence.py"
       - "scripts/validate-memory-os-rate-limit-operation-evidence.py"
+      - "scripts/validate-memory-os-rate-limit-operation-writer-negative.py"
       - "scripts/reconcile-memory-os-rate-limit-operation-evidence.py"
       - "scripts/validate-memory-os-rate-limit-operations.py"
   push:
@@ -25,6 +26,7 @@ on:
       - "docs/fixtures/memory-os-operability/rate-limit-operation-record.template.v1.json"
       - "scripts/create-memory-os-rate-limit-operation-evidence.py"
       - "scripts/validate-memory-os-rate-limit-operation-evidence.py"
+      - "scripts/validate-memory-os-rate-limit-operation-writer-negative.py"
       - "scripts/reconcile-memory-os-rate-limit-operation-evidence.py"
       - "scripts/validate-memory-os-rate-limit-operations.py"
   workflow_dispatch:
@@ -71,9 +73,11 @@ jobs:
           python -m py_compile \
             scripts/create-memory-os-rate-limit-operation-evidence.py \
             scripts/validate-memory-os-rate-limit-operation-evidence.py \
+            scripts/validate-memory-os-rate-limit-operation-writer-negative.py \
             scripts/reconcile-memory-os-rate-limit-operation-evidence.py \
             scripts/validate-memory-os-rate-limit-operations.py
           python scripts/validate-memory-os-rate-limit-operation-evidence.py
+          python scripts/validate-memory-os-rate-limit-operation-writer-negative.py
 
       - name: Self-prove exclusive writer and duplicate rejection
         run: |
