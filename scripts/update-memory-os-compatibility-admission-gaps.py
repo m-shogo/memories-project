@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +16,11 @@ PARSERS = ROOT / "contracts/operations/parser-artifact-registry.v1.json"
 FOUNDATIONS = ROOT / "contracts/operations/version-compatibility-foundations.v1.json"
 EXECUTION = ROOT / "contracts/operations/version-compatibility-execution-evidence.v1.json"
 OUTPUT = ROOT / "contracts/operations/compatibility-admission-gaps.v1.json"
+RELEASE_WRITER = ROOT / "scripts/register-memory-os-release-baseline.py"
+CLIENT_WRITER = ROOT / "scripts/register-memory-os-client-baseline.py"
+PARSER_WRITER = ROOT / "scripts/register-memory-os-parser-artifact.py"
+FOUNDATIONS_VALIDATOR = ROOT / "scripts/validate-memory-os-version-compatibility-foundations.py"
+EXECUTION_VALIDATOR = ROOT / "scripts/validate-memory-os-version-compatibility-execution-evidence.py"
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -23,6 +30,59 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def load_module(path: Path, name: str) -> Any:
+    if not path.is_file():
+        raise SystemExit(f"canonical authority module missing: {path.relative_to(ROOT)}")
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"cannot load canonical authority module: {path.relative_to(ROOT)}")
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except Exception as exc:
+        raise SystemExit(f"cannot load canonical authority module {path.name}: {exc}") from exc
+    return module
+
+
+def run_validator(path: Path) -> None:
+    if not path.is_file():
+        raise SystemExit(f"canonical compatibility validator missing: {path.relative_to(ROOT)}")
+    completed = subprocess.run(["python", str(path)], cwd=ROOT, check=False)
+    if completed.returncode != 0:
+        raise SystemExit(f"canonical compatibility validator failed: {path.name}")
+
+
+def non_negative_count(value: Any, field: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise SystemExit(f"{field} must be a non-negative integer")
+    return value
+
+
+def validate_registry_authorities(
+    releases: dict[str, Any],
+    clients: dict[str, Any],
+    parsers: dict[str, Any],
+) -> None:
+    release_writer = load_module(RELEASE_WRITER, "compat_release_writer")
+    client_writer = load_module(CLIENT_WRITER, "compat_client_writer")
+    parser_writer = load_module(PARSER_WRITER, "compat_parser_writer")
+
+    if Path(getattr(release_writer, "REGISTRY_PATH", "")).resolve() != RELEASES.resolve():
+        raise SystemExit("release registry authority drift")
+    if Path(getattr(client_writer, "REGISTRY", "")).resolve() != CLIENTS.resolve():
+        raise SystemExit("client registry authority drift")
+    if Path(getattr(parser_writer, "REGISTRY_PATH", "")).resolve() != PARSERS.resolve():
+        raise SystemExit("parser registry authority drift")
+
+    try:
+        release_contract = load(Path(release_writer.CONTRACT_PATH))
+        release_writer.validate_registry_for_append(releases, release_contract)
+        client_writer.validate_registry_for_append(clients)
+        parser_writer.validate_registry_for_append(parsers)
+    except Exception as exc:
+        raise SystemExit(f"compatibility registry authority invalid: {exc}") from exc
+
+
 def main() -> int:
     releases = load(RELEASES)
     clients = load(CLIENTS)
@@ -30,12 +90,18 @@ def main() -> int:
     foundations = load(FOUNDATIONS)
     execution = load(EXECUTION)
 
-    release_count = releases.get("approvedReleaseCount")
-    client_count = clients.get("approvedClientBaselineCount")
-    parser_count = parsers.get("reviewedArtifactCount")
-    rollback_count = foundations.get("aggregateBoundaries", {}).get("approvedRollbackPairCount")
-    if not all(isinstance(value, int) and value >= 0 for value in (release_count, client_count, parser_count, rollback_count)):
-        raise SystemExit("compatibility registry counts must be non-negative integers")
+    # Validate complete append-only registry semantics before deriving any report.
+    validate_registry_authorities(releases, clients, parsers)
+    run_validator(FOUNDATIONS_VALIDATOR)
+    run_validator(EXECUTION_VALIDATOR)
+
+    release_count = non_negative_count(releases.get("approvedReleaseCount"), "approvedReleaseCount")
+    client_count = non_negative_count(clients.get("approvedClientBaselineCount"), "approvedClientBaselineCount")
+    parser_count = non_negative_count(parsers.get("reviewedArtifactCount"), "reviewedArtifactCount")
+    rollback_count = non_negative_count(
+        foundations.get("aggregateBoundaries", {}).get("approvedRollbackPairCount"),
+        "approvedRollbackPairCount",
+    )
 
     execution_readiness = execution.get("readiness", {})
     proven_candidate = {
