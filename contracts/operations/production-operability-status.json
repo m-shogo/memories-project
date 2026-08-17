@@ -577,8 +577,8 @@
         "host or container restart between spool seal and ResumeCommit with durable spool remount verification",
         "independent child-process orphan/reaping scan after parser process-group termination",
         "database loss or failover drill",
-        "expanded parser restart matrix across timeout, CPU, memory, cancellation, process-group and host-restart failures",
-        "mixed-version failure drill"
+        "mixed-version failure drill",
+        "in-flight parser cancellation latency and process-group termination proof while the worker is blocked"
       ],
       "evidenceRefs": [
         "contracts/operations/chaos-failure-drill-contract.v1.json",
