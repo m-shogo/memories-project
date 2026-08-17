@@ -8,6 +8,7 @@
   "runner": "scripts/run-memory-os-rate-limit-emergency-drill.py",
   "validator": "scripts/validate-memory-os-rate-limit-emergency-drill.py",
   "resultPath": "docs/fixtures/memory-os-operability/rate-limit-emergency-drill-results.sample.v1.json",
+  "sourceCommitMustBeAncestorOfCurrentHead": true,
   "scenario": {
     "scenarioId": "apple-exchange-emergency-expiry-and-recovery-local-ci",
     "policyId": "apple-exchange",
