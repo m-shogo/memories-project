@@ -1,7 +1,7 @@
 {
   "contractId": "memory-os.operability.rate-limit-operation-evidence.v1",
   "schemaVersion": "memory-os-rate-limit-operation-evidence.v1",
-  "recordSchemaVersion": "memory-os-rate-limit-operation-record.v1",
+  "recordSchemaVersion": "memory-os-rate-limit-operation-record.v2",
   "description": "Append-only evidence format for rate-limit emergency-mode activation, recovery and drills. Records contain only operational identifiers, closed enums, exact source authority and privacy-safe verification results. They are not a production control plane and cannot activate or restore a mode by themselves.",
   "sourceOperationsContract": "contracts/operations/rate-limit-operations-contract.v1.json",
   "sourcePolicyContract": "contracts/operations/rate-limit-policy-contract.v1.json",
@@ -64,7 +64,10 @@
     "productionRequiresConfirmation": true,
     "restoredRequiresAllChecksPass": true,
     "failedRequiresOpenRisk": true,
-    "appendOnly": true
+    "appendOnly": true,
+    "writerComputesEvidenceDigests": true,
+    "evidenceDigestsCoverEveryEvidenceRef": true,
+    "evidenceDigestsUseSha256": true
   },
   "privacy": {
     "classification": "operational_sensitive_no_secrets",
