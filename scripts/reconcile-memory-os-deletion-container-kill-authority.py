@@ -91,20 +91,18 @@ def main() -> int:
 
     load_contract = load(LOAD_CONTRACT)
     load_readiness = load_contract.setdefault("readiness", {})
-    if load_readiness.get("deletionActualProcessKillProven") is not True:
-        raise SystemExit("actual process-kill proof must remain proven")
     load_readiness["deletionContainerKillRecoveryProven"] = True
     load_readiness["deletionReplacementContainerRecoveryProven"] = True
     load_readiness["deletionHostFailureRecoveryProven"] = False
     note = str(load_readiness.get("note", ""))
-    addition = " Docker worker-container kill/replacement recovery is proven locally; physical host/node/AZ failure remains unproven."
+    addition = " Docker worker-container kill/replacement recovery is proven locally; raw process-kill readiness and physical host/node/AZ failure remain unproven."
     if addition.strip() not in note:
         load_readiness["note"] = note + addition
     for item in load_contract.get("deferredScenarios", []):
         if item.get("scenarioId") == "deletion-under-load":
             item["reason"] = (
                 "post-fence former-session load, all primary account-bound pre-fence surfaces, multi-account worker saturation, "
-                "lease-expiry/partial-object recovery, actual Linux SIGKILL and Docker worker-container kill/replacement now pass locally; "
+                "lease-expiry/partial-object recovery and Docker worker-container kill/replacement pass locally; raw process-kill readiness, "
                 "physical host/node failure, production dependency behavior and independently reviewed deletion-load thresholds remain deferred"
             )
             break
@@ -155,7 +153,8 @@ def main() -> int:
         raise
 
     print("Memory OS deletion container-kill canonical reconciliation PASS")
-    print("actual Docker container kill/replacement: proven")
+    print("Docker container kill/replacement recovery: proven")
+    print("raw process-kill readiness: unchanged")
     print("actual physical host/node failure: false")
     print("OPS-P0-006: PARTIAL")
     print("OPS-P0-009: PARTIAL")
