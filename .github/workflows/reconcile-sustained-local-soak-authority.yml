@@ -28,6 +28,7 @@ on:
       - "scripts/reconcile-memory-os-sustained-local-soak-status.py"
       - "scripts/reconcile-memory-os-local-long-soak-load-projection.py"
       - "scripts/validate-memory-os-local-long-soak-load-projection-negative.py"
+      - "scripts/validate-memory-os-load-evidence-index.py"
       - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
@@ -91,6 +92,7 @@ jobs:
             scripts/reconcile-memory-os-sustained-local-soak-status.py \
             scripts/reconcile-memory-os-local-long-soak-load-projection.py \
             scripts/validate-memory-os-local-long-soak-load-projection-negative.py \
+            scripts/validate-memory-os-load-evidence-index.py \
             scripts/validate-memory-os-load.py \
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
@@ -134,6 +136,7 @@ jobs:
             python scripts/validate-memory-os-sustained-soak-independent-review-negative.py >> "$log" 2>&1 || code=$?
             python scripts/validate-memory-os-sustained-soak-human-evidence-path-negative.py >> "$log" 2>&1 || code=$?
             python scripts/validate-memory-os-sustained-local-soak-aggregate.py --require-local-evidence >> "$log" 2>&1 || code=$?
+            python scripts/validate-memory-os-load-evidence-index.py >> "$log" 2>&1 || code=$?
             python scripts/validate-memory-os-load.py >> "$log" 2>&1 || code=$?
             python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?
           fi
