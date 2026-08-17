@@ -862,7 +862,10 @@
         "approved source and rollback-target release pair with verified rollback eligibility and retained exact artifacts",
         "admitted isolated rollback rehearsal request with distinct Release Owner and Database Recovery Owner approvals",
         "executed rollback rehearsal proving startup, session, tenant, deletion, idempotency, parser artifact and exact object-version invariants",
-        "traffic-drain and rollback timing evidence with monitored stop conditions and independent review"
+        "traffic-drain and rollback timing evidence with monitored stop conditions and independent review",
+        "approved predecessor release record with three distinct required approvers and complete compatibility, restore, security, migration, parser and load evidence",
+        "rollback-eligible approved release whose binary and retained artifacts are verified against the expanded target schema",
+        "independent review of the first release registration and writer execution evidence"
       ],
       "evidenceRefs": [
         ".github/workflows/security-contracts.yml",
