@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -14,6 +15,7 @@ CONTRACT_PATH = ROOT / "contracts/operations/rollback-rehearsal-gate-contract.v1
 RELEASE_REGISTRY_PATH = ROOT / "contracts/operations/release-baseline-registry.v1.json"
 REHEARSAL_REGISTRY_PATH = ROOT / "contracts/operations/rollback-rehearsal-registry.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+WRITER_PATH = ROOT / "scripts/request-memory-os-rollback-rehearsal.py"
 
 EXISTING = (
     "fail-closed rollback rehearsal admission authority requiring distinct approved source and rollback-target releases before any isolated rehearsal request can be recorded",
@@ -59,6 +61,15 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def load_module(path: Path, name: str) -> Any:
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None,
+            f"cannot load authority module: {path.relative_to(ROOT)}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def append_once(items: list[Any], value: str) -> bool:
     if value in items:
         return False
@@ -70,6 +81,12 @@ def main() -> int:
     contract = load(CONTRACT_PATH)
     releases = load(RELEASE_REGISTRY_PATH)
     rehearsals = load(REHEARSAL_REGISTRY_PATH)
+    try:
+        writer = load_module(WRITER_PATH, "rollback_rehearsal_writer_reconcile")
+        writer.validate_registry_for_append(rehearsals, contract, releases)
+    except Exception as exc:
+        raise ReconcileFailure(f"rollback rehearsal append authority invalid: {exc}") from exc
+
     readiness = contract.get("readiness")
     state = contract.get("currentAdmissionState")
     require(isinstance(readiness, dict) and isinstance(state, dict),
