@@ -205,6 +205,7 @@ def main() -> int:
     canonical_review = load(ROOT / "docs/fixtures/memory-os-operability/sustained-local-soak-trend-review.v1.json")
 
     cases: list[tuple[str, Callable[[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]], None]]] = [
+        ("append lock authority substituted", lambda c, r, l, v: c.__setitem__("appendLockPath", "contracts/operations/.sustained-soak-independent-review.alternate.lock")),
         ("registry criteria count manufactured", lambda c, r, l, v: r.__setitem__("registeredCriteriaCount", 1)),
         ("registry review count manufactured", lambda c, r, l, v: r.__setitem__("registeredReviewCount", 1)),
         ("registry approved criteria count manufactured", lambda c, r, l, v: r.__setitem__("approvedLeakStabilityCriteriaCount", 1)),
@@ -280,6 +281,7 @@ def main() -> int:
     print("Memory OS sustained-soak independent review negative suite PASS")
     print("historical PASS review counted as current authority: false")
     print("alternate append lock authority accepted: false")
+    print("standalone validator alternate append lock authority accepted: false")
     print("corrupt append-only registry normalized by append: false")
     print("corrupt append-only registry projected by reconcile: false")
     print("boolean registry counts accepted before append: false")
