@@ -6,6 +6,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -47,6 +48,17 @@ class ValidationFailure(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise ValidationFailure(message)
+
+
+def require_source_ancestor(source_sha: str) -> None:
+    completed = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", source_sha, "HEAD"],
+        cwd=ROOT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    require(completed.returncode == 0,
+            "sourceCommitSha must be an ancestor of current HEAD")
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -145,6 +157,7 @@ def validate_record(record: dict[str, Any], contract: dict[str, Any],
     require(isinstance(source_sha, str) and SHA_RE.fullmatch(source_sha) is not None and
             source_sha != "0" * 40,
             "sourceCommitSha must be a non-placeholder full SHA")
+    require_source_ancestor(source_sha)
 
     require(record.get("environment") in set(rules["environmentValues"]),
             "environment is not allowed")
@@ -293,9 +306,9 @@ def main() -> int:
     require(rules.get("maximumEmergencyDurationMinutes") == 60,
             "maximum emergency duration drift")
     for flag in (
-        "fullSourceCommitShaRequired", "operatorReviewerMustDiffer",
-        "productionRequiresConfirmation", "restoredRequiresAllChecksPass",
-        "failedRequiresOpenRisk", "appendOnly",
+        "fullSourceCommitShaRequired", "sourceCommitMustBeAncestorOfCurrentHead",
+        "operatorReviewerMustDiffer", "productionRequiresConfirmation",
+        "restoredRequiresAllChecksPass", "failedRequiresOpenRisk", "appendOnly",
     ):
         require(rules.get(flag) is True, f"record.{flag} must be true")
 
