@@ -14,7 +14,10 @@ PROOF_RESULT = ROOT / "docs/fixtures/memory-os-operability/deletion-worker-sigki
 PROOF_VALIDATOR = ROOT / "scripts/validate-memory-os-deletion-worker-sigkill-recovery.py"
 LOAD_CONTRACT = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
+READINESS_NORMALIZER = ROOT / "scripts/reconcile-memory-os-load-readiness-note.py"
+MISSING_EVIDENCE_NORMALIZER = ROOT / "scripts/reconcile-memory-os-load-missing-evidence.py"
 LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 
 PROOF_REFS = [
     "contracts/operations/deletion-worker-sigkill-recovery-contract.v1.json",
@@ -58,6 +61,13 @@ def replace_if_present(values: list[Any], old: str, new: str) -> None:
             return
 
 
+def normalize_and_validate_authority() -> None:
+    subprocess.run(["python", str(READINESS_NORMALIZER)], cwd=ROOT, check=True)
+    subprocess.run(["python", str(MISSING_EVIDENCE_NORMALIZER)], cwd=ROOT, check=True)
+    subprocess.run(["python", str(LOAD_VALIDATOR)], cwd=ROOT, check=True)
+    subprocess.run(["python", str(OPERABILITY_VALIDATOR)], cwd=ROOT, check=True)
+
+
 def main() -> int:
     subprocess.run(["python", str(PROOF_VALIDATOR), "--require-result"], cwd=ROOT, check=True)
     contract = load(PROOF_CONTRACT)
@@ -78,29 +88,19 @@ def main() -> int:
         if environment.get(key) is not False:
             raise SystemExit(f"local SIGKILL result cannot enable {key}")
 
+    original_load = LOAD_CONTRACT.read_bytes()
+    original_status = STATUS.read_bytes()
+
     load_contract = load(LOAD_CONTRACT)
     load_readiness = load_contract.setdefault("readiness", {})
     if load_readiness.get("deletionLeaseExpiryRecoverySimulationProven") is not True:
         raise SystemExit("lease-expiry simulation evidence must remain proven")
-    load_readiness["deletionActualProcessKillProven"] = True
+    # Keep the current aggregate readiness boundary: the exact local SIGKILL result is evidence,
+    # but raw process-kill readiness remains deliberately unpromoted.
+    load_readiness["deletionActualProcessKillProven"] = False
     load_readiness["deletionHostFailureRecoveryProven"] = False
-    note = str(load_readiness.get("note", ""))
-    addition = " Actual Linux SIGKILL worker recovery is now proven locally; host/container failure and production topology remain unproven."
-    if addition.strip() not in note:
-        load_readiness["note"] = note + addition
-    for item in load_contract.get("deferredScenarios", []):
-        if item.get("scenarioId") == "deletion-under-load":
-            item["reason"] = (
-                "post-fence former-session load, all primary account-bound pre-fence surfaces, bounded multi-account worker saturation, "
-                "lease-expiry/partial-object recovery, and actual Linux SIGKILL attempt-2 reclaim now pass against local PostgreSQL and MinIO; "
-                "host/container failure, production dependency behavior and independently reviewed deletion-load thresholds remain deferred"
-            )
-            break
-    else:
-        raise SystemExit("deletion-under-load deferred scenario missing")
     for ref in PROOF_REFS:
         append_unique(load_contract.setdefault("evidenceRefs", []), ref)
-    write(LOAD_CONTRACT, load_contract)
 
     status = load(STATUS)
     areas = {area.get("id"): area for area in status.get("areas", [])}
@@ -113,17 +113,6 @@ def main() -> int:
             raise SystemExit(f"{gate.get('id')} must remain blocking PARTIAL")
 
     append_unique(load_gate.setdefault("existingEvidence", []), LOAD_EVIDENCE)
-    load_missing = load_gate.setdefault("missingEvidence", [])
-    replace_if_present(
-        load_missing,
-        "actual deletion-worker process kill and host failure behavior, production topology and independently reviewed deletion-load thresholds",
-        "actual deletion-worker host/container failure behavior, production topology and independently reviewed deletion-load thresholds",
-    )
-    replace_if_present(
-        load_missing,
-        "actual deletion-worker process kill and host/container interruption recovery, production topology and independently reviewed deletion-load thresholds",
-        "actual deletion-worker host/container interruption recovery, production topology and independently reviewed deletion-load thresholds",
-    )
     for ref in PROOF_REFS:
         append_unique(load_gate.setdefault("evidenceRefs", []), ref)
 
@@ -133,11 +122,19 @@ def main() -> int:
 
     if status.get("productionDecision") != "NO_GO":
         raise SystemExit("productionDecision must remain NO_GO")
-    write(STATUS, status)
-    subprocess.run(["python", str(LOAD_VALIDATOR)], cwd=ROOT, check=True)
+
+    try:
+        write(LOAD_CONTRACT, load_contract)
+        write(STATUS, status)
+        normalize_and_validate_authority()
+    except BaseException:
+        LOAD_CONTRACT.write_bytes(original_load)
+        STATUS.write_bytes(original_status)
+        raise
 
     print("Memory OS deletion SIGKILL canonical reconciliation PASS")
-    print("actual process kill recovery: proven")
+    print("exact local SIGKILL evidence: retained")
+    print("raw process-kill readiness: false")
     print("actual host/container failure: false")
     print("OPS-P0-006: PARTIAL")
     print("OPS-P0-009: PARTIAL")
