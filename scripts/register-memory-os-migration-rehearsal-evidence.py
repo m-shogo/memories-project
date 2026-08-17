@@ -212,6 +212,7 @@ def validate_record(record: dict[str, Any], required_fields: set[str], registry_
 
 
 def validate_registry_for_append(registry: dict[str, Any], registry_contract: dict[str, Any]) -> None:
+    require(registry_contract.get("appendLockPath") == str(LOCK.relative_to(ROOT)), "migration evidence append lock authority drift")
     require(set(registry) == REGISTRY_FIELDS, "migration evidence registry field set drift")
     require(registry.get("schemaVersion") == "memory-os-migration-evidence-registry.v1", "registry schema drift")
     require(registry.get("registryClass") == "NON_PRODUCTION_MIGRATION_REHEARSAL_EVIDENCE", "registry class drift")
