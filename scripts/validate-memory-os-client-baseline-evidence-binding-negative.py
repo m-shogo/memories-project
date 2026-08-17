@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Focused negative coverage for reviewed client evidence source binding."""
+"""Focused negative coverage for reviewed client evidence source binding and reconcile rollback."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 WRITER = ROOT / "scripts/register-memory-os-client-baseline.py"
+RECONCILER = ROOT / "scripts/reconcile-memory-os-client-baseline-registry.py"
 EVIDENCE = ROOT / "docs/evidence/clients/README.md"
 
 
@@ -18,12 +19,16 @@ def require(condition: bool, message: str) -> None:
         raise RuntimeError(message)
 
 
-def load_writer() -> Any:
-    spec = importlib.util.spec_from_file_location("memory_os_client_baseline_writer_negative", WRITER)
-    require(spec is not None and spec.loader is not None, "cannot load client baseline writer")
+def load_module(path: Path, name: str) -> Any:
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load {path.relative_to(ROOT)}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def load_writer() -> Any:
+    return load_module(WRITER, "memory_os_client_baseline_writer_negative")
 
 
 def head() -> str:
@@ -42,6 +47,41 @@ def expect_rejected(writer: Any, ref: str, source: str, expected: str) -> None:
         require(expected in str(exc), f"unexpected rejection: {exc}")
         return
     raise RuntimeError(f"client evidence corruption was accepted: {expected}")
+
+
+def prove_reconcile_rollback() -> None:
+    reconciler = load_module(RECONCILER, "memory_os_client_baseline_reconciler_negative")
+    paths = (reconciler.CONTRACT, reconciler.SUPPORT, reconciler.STATUS)
+    original = {path: path.read_bytes() for path in paths}
+    observed_post_write_failure = False
+
+    def controlled_validator(path: Path, label: str) -> None:
+        nonlocal observed_post_write_failure
+        if label == "post-write operability validator":
+            observed_post_write_failure = True
+            raise reconciler.Fail("synthetic post-write operability validation failure")
+
+    reconciler.run_validator = controlled_validator
+    try:
+        try:
+            reconciler.main()
+        except reconciler.Fail as exc:
+            require(
+                "synthetic post-write operability validation failure" in str(exc),
+                f"unexpected reconcile failure: {exc}",
+            )
+        else:
+            raise RuntimeError("client baseline reconcile unexpectedly succeeded after synthetic post-write failure")
+        require(observed_post_write_failure, "synthetic post-write validator was not reached")
+        for path in paths:
+            require(
+                path.read_bytes() == original[path],
+                f"client reconcile rollback changed canonical authority: {path.relative_to(ROOT)}",
+            )
+    finally:
+        for path in paths:
+            if path.read_bytes() != original[path]:
+                path.write_bytes(original[path])
 
 
 def main() -> int:
@@ -70,6 +110,8 @@ def main() -> int:
     finally:
         temporary.unlink(missing_ok=True)
 
+    prove_reconcile_rollback()
+
     require(EVIDENCE.read_bytes() == original, "client evidence fixture was not restored")
     status = subprocess.run(
         ["git", "status", "--porcelain"], cwd=ROOT, text=True,
@@ -77,7 +119,7 @@ def main() -> int:
     )
     require(status.returncode == 0 and status.stdout.strip() == "",
             "negative suite left working-tree changes")
-    print("PASS: client baseline evidence source binding rejects mutation and post-source files")
+    print("PASS: client baseline evidence binding and reconcile rollback are fail-closed")
     return 0
 
 
