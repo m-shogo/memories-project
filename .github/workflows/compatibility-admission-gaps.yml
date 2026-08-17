@@ -5,6 +5,8 @@ on:
     paths:
       - ".github/workflows/compatibility-admission-gaps.yml"
       - "scripts/update-memory-os-compatibility-admission-gaps.py"
+      - "scripts/validate-memory-os-version-compatibility-execution-evidence.py"
+      - "scripts/validate-memory-os-client-server-support-window.py"
       - "contracts/operations/release-baseline-registry.v1.json"
       - "contracts/operations/client-baseline-registry.v1.json"
       - "contracts/operations/parser-artifact-registry.v1.json"
@@ -16,6 +18,8 @@ on:
     paths:
       - ".github/workflows/compatibility-admission-gaps.yml"
       - "scripts/update-memory-os-compatibility-admission-gaps.py"
+      - "scripts/validate-memory-os-version-compatibility-execution-evidence.py"
+      - "scripts/validate-memory-os-client-server-support-window.py"
       - "contracts/operations/release-baseline-registry.v1.json"
       - "contracts/operations/client-baseline-registry.v1.json"
       - "contracts/operations/parser-artifact-registry.v1.json"
@@ -57,7 +61,10 @@ jobs:
       - name: Regenerate compatibility admission gaps
         run: |
           set -euo pipefail
-          python -m py_compile scripts/update-memory-os-compatibility-admission-gaps.py
+          python -m py_compile \
+            scripts/update-memory-os-compatibility-admission-gaps.py \
+            scripts/validate-memory-os-version-compatibility-execution-evidence.py \
+            scripts/validate-memory-os-client-server-support-window.py
           python scripts/update-memory-os-compatibility-admission-gaps.py
           python scripts/validate-memory-os-version-compatibility-execution-evidence.py
           python scripts/validate-memory-os-client-server-support-window.py
