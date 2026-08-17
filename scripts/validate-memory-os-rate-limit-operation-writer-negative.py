@@ -66,6 +66,70 @@ def expect_evidence_ref_rejection(validator, ref: str, expected: str) -> None:
         raise AssertionError(f"unsafe evidence ref was incorrectly accepted: {ref}")
 
 
+def digest_binding_negative(writer, validator, current_head: str) -> None:
+    contract, policy_ids = validator.load_contract_context()
+    required_checks = contract["record"]["requiredVerificationChecks"]
+    record = {
+        "schemaVersion": contract["recordSchemaVersion"],
+        "operationId": "RLOP-20260101T000000Z-digesttest",
+        "incidentReference": "DRILL-DIGEST_BINDING",
+        "sourceCommitSha": current_head,
+        "environment": "CI",
+        "operator": "ci_operator",
+        "reviewer": "ci_reviewer",
+        "previousMode": "NORMAL_CONFIGURED",
+        "newMode": "STRICT_LOCAL_EMERGENCY",
+        "proxyMode": "TRUSTED_PROXY_DISABLED",
+        "affectedPolicyIds": [sorted(policy_ids)[0]],
+        "startedAt": "2026-01-01T00:00:00Z",
+        "expiresAt": "2026-01-01T00:30:00Z",
+        "activationReason": "DRILL",
+        "lifecycle": "ACTIVE",
+        "productionConfirmation": None,
+        "verificationResults": [
+            {"checkId": check, "result": "NOT_RUN", "evidenceRefs": []}
+            for check in required_checks
+        ],
+        "restoredAt": None,
+        "openRisks": ["digest_binding_test"],
+        "evidenceRefs": [
+            "contracts/operations/rate-limit-operation-evidence-contract.v1.json"
+        ],
+        "evidenceDigestsByRef": {},
+    }
+    validator.validate_record(record, contract, policy_ids, writer_input=True)
+    computed = validator.expected_evidence_digests(record)
+    if not computed:
+        raise AssertionError("writer-computed evidence digest set unexpectedly empty")
+
+    self_claimed = dict(record)
+    self_claimed["evidenceDigestsByRef"] = dict(computed)
+    try:
+        validator.validate_record(self_claimed, contract, policy_ids, writer_input=True)
+    except validator.ValidationFailure as exc:
+        if "writer input evidenceDigestsByRef must be empty" not in str(exc):
+            raise AssertionError(f"unexpected self-claimed digest rejection: {exc}") from exc
+    else:
+        raise AssertionError("writer input was allowed to self-claim evidence digests")
+
+    stored = dict(record)
+    stored["evidenceDigestsByRef"] = dict(computed)
+    validator.validate_record(stored, contract, policy_ids)
+
+    tampered = dict(stored)
+    tampered_digests = dict(computed)
+    first_ref = sorted(tampered_digests)[0]
+    tampered_digests[first_ref] = "0" * 64
+    tampered["evidenceDigestsByRef"] = tampered_digests
+    try:
+        validator.validate_record(tampered, contract, policy_ids)
+    except validator.ValidationFailure as exc:
+        if "does not match current evidence bytes" not in str(exc):
+            raise AssertionError(f"unexpected digest mismatch rejection: {exc}") from exc
+    else:
+        raise AssertionError("stale evidence digest was incorrectly accepted")
+
+
 def main() -> int:
     writer = load_writer()
 
@@ -156,12 +220,15 @@ def main() -> int:
         symlink.unlink(missing_ok=True)
         untracked.unlink(missing_ok=True)
 
+    digest_binding_negative(writer, validator, current_head)
+
     if git("status", "--porcelain"):
         raise AssertionError("rate-limit operation negatives left the checkout dirty")
 
     print("PASS: canonical rate-limit operation ledger is validated before append")
     print("PASS: detached rate-limit operation source commits are rejected")
     print("PASS: untracked and symlinked operation evidence refs are rejected")
+    print("PASS: operation evidence digests are writer-computed and tamper-evident")
     return 0
 
 
