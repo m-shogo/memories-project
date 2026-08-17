@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reject incident authority normalization that would auto-heal unproven readiness."""
+"""Reject unsafe incident authority normalization and prove rollback on post-write failure."""
 
 from __future__ import annotations
 
@@ -46,6 +46,7 @@ def main() -> int:
     original_result_bytes = RESULT_PATH.read_bytes()
     original_status_bytes = STATUS_PATH.read_bytes()
     contract = json.loads(original_contract_bytes.decode("utf-8"))
+    status = json.loads(original_status_bytes.decode("utf-8"))
     result = json.loads(original_result_bytes.decode("utf-8"))
 
     for field in UNPROVEN_READINESS:
@@ -74,6 +75,18 @@ def main() -> int:
     malformed["environment"]["syntheticScenariosOnly"] = False
     expect_result_rejected(reconciler, malformed, contract, "synthetic scenario boundary")
 
+    # Exercise the actual write boundary: pre-state is canonical, candidate bytes are
+    # written, canonical validation fails on an unproven readiness promotion, and the
+    # reconciler must restore both canonical files byte-for-byte.
+    rollback_contract = copy.deepcopy(contract)
+    rollback_contract["readiness"]["productionReady"] = True
+    try:
+        reconciler.commit_validated_pair(rollback_contract, copy.deepcopy(status))
+    except reconciler.ReconcileFailure:
+        pass
+    else:
+        raise RuntimeError("reconciler accepted invalid post-write incident authority")
+
     if CONTRACT_PATH.read_bytes() != original_contract_bytes:
         raise RuntimeError("negative validation mutated incident control contract")
     if RESULT_PATH.read_bytes() != original_result_bytes:
@@ -81,7 +94,7 @@ def main() -> int:
     if STATUS_PATH.read_bytes() != original_status_bytes:
         raise RuntimeError("negative validation mutated production operability status")
 
-    print("PASS: incident authority reconcile rejects unproven readiness and malformed results without mutation")
+    print("PASS: incident authority reconcile rejects unsafe input and rolls back post-write validation failures")
     return 0
 
 
