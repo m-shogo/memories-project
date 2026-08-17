@@ -16,6 +16,23 @@ CONTRACT_PATH = ROOT / "contracts/operations/deletion-under-load-contract.v1.jso
 LOAD_PATH = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json"
+DELETION_VALIDATOR = ROOT / "scripts/validate-memory-os-deletion-under-load.py"
+LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+LEGACY_DELETION_GAP = (
+    "request-linearization proof for operations already in flight before the deletion fence plus "
+    "multi-account worker saturation, production topology and independently reviewed deletion-load thresholds"
+)
+BASE_DELETION_REASON = (
+    "post-fence former-session load and concurrent worker erasure now pass against local "
+    "PostgreSQL and MinIO; request linearization for calls already in flight before the 202 "
+    "fence, multiple-account worker saturation and production dependency behavior remain deferred"
+)
+BASE_NOTE = (
+    "Mock and local dependency checkpoints now include bounded ramp, short CI stability and "
+    "post-fence deletion load. They establish neither production capacity nor pre-fence request "
+    "linearization, sustained-soak/leak proof or production-equivalent behavior; OPS-P0-006 remains PARTIAL."
+)
 
 
 class ReconcileFailure(RuntimeError):
@@ -45,17 +62,70 @@ def append_once(items: list[Any], value: Any) -> bool:
     return True
 
 
+def run_validator(path: Path, label: str, *args: str) -> None:
+    require(path.is_file(), f"canonical {label} validator missing")
+    completed = subprocess.run(
+        [sys.executable, str(path), *args],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        check=False,
+    )
+    require(
+        completed.returncode == 0,
+        f"canonical {label} validation failed: {completed.stdout[-2000:]}",
+    )
+
+
+def stronger_deletion_authority_present(load_readiness: dict[str, Any]) -> bool:
+    return all(
+        load_readiness.get(field) is True
+        for field in (
+            "primaryAccountBoundPreFenceLinearizationAggregateProven",
+            "multiAccountDeletionWorkerSaturationProven",
+            "deletionLeaseExpiryRecoverySimulationProven",
+            "deletionContainerKillRecoveryProven",
+        )
+    )
+
+
+def write_and_validate_transactionally(
+    contract: dict[str, Any],
+    load_contract: dict[str, Any],
+    status: dict[str, Any],
+) -> None:
+    originals = {
+        CONTRACT_PATH: CONTRACT_PATH.read_bytes(),
+        LOAD_PATH: LOAD_PATH.read_bytes(),
+        STATUS_PATH: STATUS_PATH.read_bytes(),
+    }
+    try:
+        CONTRACT_PATH.write_text(
+            json.dumps(contract, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        LOAD_PATH.write_text(
+            json.dumps(load_contract, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        STATUS_PATH.write_text(
+            json.dumps(status, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        run_validator(DELETION_VALIDATOR, "deletion-under-load", "--require-reconciled")
+        run_validator(LOAD_VALIDATOR, "load")
+        run_validator(OPERABILITY_VALIDATOR, "operability")
+    except Exception:
+        for path, data in originals.items():
+            path.write_bytes(data)
+        raise
+
+
 def main() -> int:
     expected_sha = os.getenv("EXPECTED_COMMIT_SHA", "")
     require(expected_sha, "EXPECTED_COMMIT_SHA is required")
-    validation = subprocess.run(
-        [sys.executable, str(ROOT / "scripts/validate-memory-os-deletion-under-load.py"),
-         "--expected-commit-sha", expected_sha],
-        cwd=ROOT,
-        check=False,
-    )
-    require(validation.returncode == 0,
-            "deletion-under-load result validation failed")
+    run_validator(DELETION_VALIDATOR, "deletion-under-load", "--expected-commit-sha", expected_sha)
 
     contract = load(CONTRACT_PATH)
     result = load(RESULT_PATH)
@@ -104,22 +174,16 @@ def main() -> int:
 
     deferred = load_contract.get("deferredScenarios")
     require(isinstance(deferred, list), "deferredScenarios missing")
-    reason = (
-        "post-fence former-session load and concurrent worker erasure now pass against local "
-        "PostgreSQL and MinIO; request linearization for calls already in flight before the 202 "
-        "fence, multiple-account worker saturation and production dependency behavior remain deferred"
-    )
     for current in deferred:
         if isinstance(current, dict) and current.get("scenarioId") == "deletion-under-load":
-            if current.get("reason") != reason:
-                current["reason"] = reason
+            if current.get("requiredDependencyMode") != "PRODUCTION_EQUIVALENT":
+                current["requiredDependencyMode"] = "PRODUCTION_EQUIVALENT"
                 changed_load = True
-            current["requiredDependencyMode"] = "PRODUCTION_EQUIVALENT"
             break
     else:
         deferred.append({
             "scenarioId": "deletion-under-load",
-            "reason": reason,
+            "reason": BASE_DELETION_REASON,
             "requiredDependencyMode": "PRODUCTION_EQUIVALENT",
         })
         changed_load = True
@@ -132,13 +196,9 @@ def main() -> int:
     for field in ("operationalThresholds", "capacityBoundaryEstablished", "productionEquivalentDependencies"):
         require(load_readiness.get(field) is False,
                 f"deletion load cannot promote load readiness: {field}")
-    note = (
-        "Mock and local dependency checkpoints now include bounded ramp, short CI stability and "
-        "post-fence deletion load. They establish neither production capacity nor pre-fence request "
-        "linearization, sustained-soak/leak proof or production-equivalent behavior; OPS-P0-006 remains PARTIAL."
-    )
-    if load_readiness.get("note") != note:
-        load_readiness["note"] = note
+    current_note = load_readiness.get("note")
+    if not isinstance(current_note, str) or not current_note.strip():
+        load_readiness["note"] = BASE_NOTE
         changed_load = True
 
     load_refs = load_contract.get("evidenceRefs")
@@ -169,10 +229,11 @@ def main() -> int:
         existing,
         "local PostgreSQL and MinIO deletion-under-load checkpoint proves that after a durable 202 epoch fence, 400 concurrent requests using the former session all return 401 while the leased deletion worker completes and leaves zero owned rows",
     )
-    changed_status = append_once(
-        missing,
-        "request-linearization proof for operations already in flight before the deletion fence plus multi-account worker saturation, production topology and independently reviewed deletion-load thresholds",
-    ) or changed_status
+    if not stronger_deletion_authority_present(load_readiness):
+        changed_status = append_once(missing, LEGACY_DELETION_GAP) or changed_status
+    elif LEGACY_DELETION_GAP in missing:
+        missing.remove(LEGACY_DELETION_GAP)
+        changed_status = True
     for ref in (
         "contracts/operations/deletion-under-load-contract.v1.json",
         "services/import-api/internal/httpserver/deletion_under_load_test.go",
@@ -184,17 +245,17 @@ def main() -> int:
         require((ROOT / ref).is_file(), f"deletion-under-load status evidence missing: {ref}")
         changed_status = append_once(refs, ref) or changed_status
 
-    if changed_contract:
-        CONTRACT_PATH.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n",
-                                 encoding="utf-8")
-    if changed_load:
-        LOAD_PATH.write_text(json.dumps(load_contract, indent=2, ensure_ascii=False) + "\n",
-                             encoding="utf-8")
+    if not (changed_contract or changed_load or changed_status):
+        run_validator(DELETION_VALIDATOR, "deletion-under-load", "--require-reconciled")
+        run_validator(LOAD_VALIDATOR, "load")
+        run_validator(OPERABILITY_VALIDATOR, "operability")
+        print("Deletion-under-load authority already reconciled without weakening stronger proofs")
+        return 0
+
     if changed_status:
         status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
-        STATUS_PATH.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n",
-                               encoding="utf-8")
-    print("Registered post-fence deletion load; pre-fence linearization remains unproven")
+    write_and_validate_transactionally(contract, load_contract, status)
+    print("Registered post-fence deletion load without weakening stronger deletion authority")
     return 0
 
 
