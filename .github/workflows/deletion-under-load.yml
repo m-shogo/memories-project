@@ -148,7 +148,9 @@ jobs:
             git reset --hard origin/so
             cp /tmp/memory-os-deletion-under-load/result.json \
               docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json
+            rm -f docs/fixtures/memory-os-operability/deletion-under-load-diagnostic.last.json
             git add docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json
+            git add -u
             if git diff --cached --quiet; then
               published=true
               break
