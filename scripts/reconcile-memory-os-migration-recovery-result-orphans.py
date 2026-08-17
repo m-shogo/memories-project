@@ -59,6 +59,15 @@ def git(*args: str) -> str:
     return completed.stdout.strip()
 
 
+def git_bytes(*args: str) -> bytes:
+    completed = subprocess.run(
+        ["git", *args], cwd=ROOT,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+    )
+    require(completed.returncode == 0, f"git {' '.join(args)} failed: {completed.stderr.decode('utf-8', errors='replace').strip()}")
+    return completed.stdout
+
+
 def load_writer() -> ModuleType:
     spec = importlib.util.spec_from_file_location("memory_os_migration_writer_for_orphan_reconcile", WRITER)
     require(spec is not None and spec.loader is not None, "cannot load canonical migration rehearsal writer")
@@ -84,7 +93,7 @@ def committed_creation(path: Path) -> tuple[int, str]:
     require(not path.is_symlink(), f"recovery result cannot be symlink: {relative}")
     require(path.resolve().is_relative_to(RESULT_ROOT.resolve()), f"recovery result escaped evidence root: {relative}")
     git("ls-files", "--error-unmatch", "--", relative)
-    current_blob = git("show", f"HEAD:{relative}").encode("utf-8")
+    current_blob = git_bytes("show", f"HEAD:{relative}")
     require(current_blob == path.read_bytes(), f"recovery result working bytes differ from HEAD: {relative}")
     creations = [line for line in git("log", "--diff-filter=A", "--format=%H", "--", relative).splitlines() if line]
     require(len(creations) == 1, f"recovery result must have exactly one creation commit: {relative}")
@@ -277,6 +286,6 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except (Fail, Exception) as exc:
+    except Exception as exc:
         print(f"MIGRATION RECOVERY RESULT ORPHAN RECONCILE FAILED: {exc}", file=sys.stderr)
         raise SystemExit(1)
