@@ -7,6 +7,7 @@ import argparse
 import copy
 import datetime as dt
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,11 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/migration-operation-evidence-contract.v1.json"
 LIFECYCLE_PATH = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+POST_WRITE_VALIDATORS = (
+    ROOT / "scripts/validate-memory-os-migration-operation-evidence.py",
+    ROOT / "scripts/validate-memory-os-migration-lifecycle.py",
+    ROOT / "scripts/validate-memory-os-operability.py",
+)
 
 EVIDENCE_REFS = (
     "contracts/operations/migration-operation-evidence-contract.v1.json",
@@ -56,6 +62,10 @@ def load(path: Path) -> dict[str, Any]:
         raise ReconcileFailure(f"invalid JSON in {path.relative_to(ROOT)}: {exc}") from exc
     require(isinstance(value, dict), f"root must be an object: {path.relative_to(ROOT)}")
     return value
+
+
+def render(value: dict[str, Any]) -> bytes:
+    return (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
 
 
 def unique(values: list[Any]) -> list[Any]:
@@ -158,6 +168,35 @@ def normalize_status(status: dict[str, Any]) -> dict[str, Any]:
     return status
 
 
+def run_validator(path: Path) -> None:
+    require(path.is_file(), f"canonical validator missing: {path.relative_to(ROOT)}")
+    completed = subprocess.run(["python", str(path)], cwd=ROOT, check=False)
+    require(completed.returncode == 0,
+            f"reconciled migration operation authority failed validation: {path.name}")
+
+
+def commit_validated_triple(
+    contract: dict[str, Any],
+    lifecycle: dict[str, Any],
+    status: dict[str, Any],
+) -> None:
+    originals = {
+        CONTRACT_PATH: CONTRACT_PATH.read_bytes(),
+        LIFECYCLE_PATH: LIFECYCLE_PATH.read_bytes(),
+        STATUS_PATH: STATUS_PATH.read_bytes(),
+    }
+    try:
+        CONTRACT_PATH.write_bytes(render(contract))
+        LIFECYCLE_PATH.write_bytes(render(lifecycle))
+        STATUS_PATH.write_bytes(render(status))
+        for validator in POST_WRITE_VALIDATORS:
+            run_validator(validator)
+    except BaseException:
+        for path, payload in originals.items():
+            path.write_bytes(payload)
+        raise
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
@@ -188,18 +227,7 @@ def main() -> int:
         print("Memory OS migration operation authority already normalized")
         return 0
 
-    CONTRACT_PATH.write_text(
-        json.dumps(candidate_contract, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
-    LIFECYCLE_PATH.write_text(
-        json.dumps(candidate_lifecycle, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
-    STATUS_PATH.write_text(
-        json.dumps(candidate_status, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    commit_validated_triple(candidate_contract, candidate_lifecycle, candidate_status)
     print("Normalized migration operation contract, lifecycle and OPS-P0-001 authority")
     return 0
 
