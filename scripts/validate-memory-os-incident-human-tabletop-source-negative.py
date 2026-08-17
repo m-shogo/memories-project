@@ -52,7 +52,7 @@ from pathlib import Path
 marker = Path({str(POST_WRITE_MARKER)!r})
 count = int(marker.read_text(encoding="utf-8")) if marker.exists() else 0
 marker.write_text(str(count + 1), encoding="utf-8")
-raise SystemExit(1)
+raise SystemExit(0 if count == 0 else 1)
 '''
     try:
         POST_WRITE_MARKER.unlink(missing_ok=True)
