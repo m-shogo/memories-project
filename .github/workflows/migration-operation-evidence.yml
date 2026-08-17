@@ -12,6 +12,7 @@ on:
       - "scripts/migration_operation_evidence_lib.py"
       - "scripts/create-memory-os-migration-operation-evidence.py"
       - "scripts/validate-memory-os-migration-operation-evidence.py"
+      - "scripts/validate-memory-os-migration-operation-evidence-reconcile-negative.py"
       - "scripts/reconcile-memory-os-migration-operation-evidence.py"
       - "scripts/validate-memory-os-migration-lifecycle.py"
       - "scripts/validate-memory-os-operability.py"
@@ -26,6 +27,7 @@ on:
       - "scripts/migration_operation_evidence_lib.py"
       - "scripts/create-memory-os-migration-operation-evidence.py"
       - "scripts/validate-memory-os-migration-operation-evidence.py"
+      - "scripts/validate-memory-os-migration-operation-evidence-reconcile-negative.py"
       - "scripts/reconcile-memory-os-migration-operation-evidence.py"
       - "scripts/validate-memory-os-migration-lifecycle.py"
       - "scripts/validate-memory-os-operability.py"
@@ -72,12 +74,14 @@ jobs:
             scripts/migration_operation_evidence_lib.py \
             scripts/create-memory-os-migration-operation-evidence.py \
             scripts/validate-memory-os-migration-operation-evidence.py \
+            scripts/validate-memory-os-migration-operation-evidence-reconcile-negative.py \
             scripts/reconcile-memory-os-migration-operation-evidence.py \
             scripts/validate-memory-os-migration-lifecycle.py \
             scripts/validate-memory-os-operability.py
 
       - name: Reconcile authority in working tree
         run: |
+          python scripts/validate-memory-os-migration-operation-evidence-reconcile-negative.py
           python scripts/reconcile-memory-os-migration-operation-evidence.py
           python scripts/reconcile-memory-os-migration-operation-evidence.py --check
 
