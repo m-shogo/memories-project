@@ -6,15 +6,18 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 WRITER_PATH = ROOT / "scripts/request-memory-os-rollback-rehearsal.py"
+RECONCILER_PATH = ROOT / "scripts/reconcile-memory-os-rollback-rehearsal-gate.py"
 CONTRACT_PATH = ROOT / "contracts/operations/rollback-rehearsal-gate-contract.v1.json"
 RELEASE_REGISTRY_PATH = ROOT / "contracts/operations/release-baseline-registry.v1.json"
 REGISTRY_PATH = ROOT / "contracts/operations/rollback-rehearsal-registry.v1.json"
+STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -41,11 +44,37 @@ def expect_rejected(label: str, action: Callable[[], None]) -> None:
     raise RuntimeError(f"corruption was accepted: {label}")
 
 
+def reconcile_rejects_without_status_write(
+    registry: dict[str, Any], registry_bytes: bytes, status_bytes: bytes, label: str
+) -> None:
+    try:
+        REGISTRY_PATH.write_text(
+            json.dumps(registry, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
+        completed = subprocess.run(
+            [sys.executable, str(RECONCILER_PATH)],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if completed.returncode == 0:
+            raise RuntimeError(f"reconciler accepted corrupt registry: {label}")
+        if STATUS_PATH.read_bytes() != status_bytes:
+            raise RuntimeError(f"reconciler mutated production status on rejection: {label}")
+    finally:
+        REGISTRY_PATH.write_bytes(registry_bytes)
+        STATUS_PATH.write_bytes(status_bytes)
+
+
 def main() -> int:
     writer = load_writer()
     contract = load_json(CONTRACT_PATH)
     release_registry = load_json(RELEASE_REGISTRY_PATH)
     registry = load_json(REGISTRY_PATH)
+    registry_bytes = REGISTRY_PATH.read_bytes()
+    status_bytes = STATUS_PATH.read_bytes()
 
     writer.validate_registry_for_append(
         copy.deepcopy(registry), copy.deepcopy(contract), copy.deepcopy(release_registry)
@@ -70,6 +99,10 @@ def main() -> int:
                 candidate, copy.deepcopy(contract), copy.deepcopy(release_registry)
             ),
         )
+        if label in {"registryClass", "appendOnly", "productionEvidence", "boolean count"}:
+            reconcile_rejects_without_status_write(
+                copy.deepcopy(candidate), registry_bytes, status_bytes, label
+            )
 
     release_cases: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
         ("release productionEvidence", lambda value: value.__setitem__("productionEvidence", True)),
@@ -85,7 +118,12 @@ def main() -> int:
             ),
         )
 
-    print("PASS: rollback rehearsal registry corruption is rejected before append")
+    if REGISTRY_PATH.read_bytes() != registry_bytes:
+        raise RuntimeError("rollback registry bytes changed after negative suite")
+    if STATUS_PATH.read_bytes() != status_bytes:
+        raise RuntimeError("production status bytes changed after negative suite")
+
+    print("PASS: rollback rehearsal registry corruption is rejected before append or reconcile")
     return 0
 
 
