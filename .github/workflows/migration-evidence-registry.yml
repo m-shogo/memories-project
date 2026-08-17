@@ -165,12 +165,12 @@ jobs:
             fi
           fi
           if [[ "$code" == "0" ]]; then
-            echo "STAGE: registry-validation" >> "$log"
-            python scripts/validate-memory-os-migration-evidence-registry.py >> "$log" 2>&1 || code=$?
-          fi
-          if [[ "$code" == "0" ]]; then
             echo "STAGE: authority-reconcile" >> "$log"
             python scripts/reconcile-memory-os-migration-evidence-registry.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: registry-validation" >> "$log"
+            python scripts/validate-memory-os-migration-evidence-registry.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?
