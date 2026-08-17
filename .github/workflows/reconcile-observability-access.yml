@@ -5,6 +5,8 @@ on:
     paths:
       - ".github/workflows/reconcile-observability-access.yml"
       - "contracts/operations/observability-retention-access-contract.v1.json"
+      - "contracts/operations/observability-event-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "docs/runbooks/memory-os-observability-access.md"
       - "scripts/validate-memory-os-observability.py"
       - "scripts/validate-memory-os-observability-access.py"
@@ -18,6 +20,8 @@ on:
     paths:
       - ".github/workflows/reconcile-observability-access.yml"
       - "contracts/operations/observability-retention-access-contract.v1.json"
+      - "contracts/operations/observability-event-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "docs/runbooks/memory-os-observability-access.md"
       - "scripts/validate-memory-os-observability.py"
       - "scripts/validate-memory-os-observability-access.py"
