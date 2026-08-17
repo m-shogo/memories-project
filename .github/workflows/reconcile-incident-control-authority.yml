@@ -8,6 +8,9 @@ on:
       - "scripts/reconcile-memory-os-incident-control-authority.py"
       - "scripts/validate-memory-os-incident-control-authority-reconcile-negative.py"
       - "scripts/validate-memory-os-incident-control-exercise.py"
+      - "scripts/validate-memory-os-incident-response.py"
+      - "scripts/validate-memory-os-incident-tabletop.py"
+      - "scripts/validate-memory-os-operability.py"
   push:
     branches:
       - so
@@ -17,6 +20,9 @@ on:
       - "scripts/reconcile-memory-os-incident-control-authority.py"
       - "scripts/validate-memory-os-incident-control-authority-reconcile-negative.py"
       - "scripts/validate-memory-os-incident-control-exercise.py"
+      - "scripts/validate-memory-os-incident-response.py"
+      - "scripts/validate-memory-os-incident-tabletop.py"
+      - "scripts/validate-memory-os-operability.py"
   schedule:
     - cron: "37 22 * * *"
   workflow_dispatch:
@@ -62,7 +68,10 @@ jobs:
           python -m py_compile \
             scripts/reconcile-memory-os-incident-control-authority.py \
             scripts/validate-memory-os-incident-control-authority-reconcile-negative.py \
-            scripts/validate-memory-os-incident-control-exercise.py
+            scripts/validate-memory-os-incident-control-exercise.py \
+            scripts/validate-memory-os-incident-response.py \
+            scripts/validate-memory-os-incident-tabletop.py \
+            scripts/validate-memory-os-operability.py
           python scripts/validate-memory-os-incident-control-authority-reconcile-negative.py
           python scripts/reconcile-memory-os-incident-control-authority.py
           python scripts/reconcile-memory-os-incident-control-authority.py --check
