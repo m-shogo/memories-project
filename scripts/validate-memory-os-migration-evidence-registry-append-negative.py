@@ -87,6 +87,30 @@ def expect_reconcile_rejected_without_mutation(name: str, mutate: Callable[[dict
             path.write_bytes(data)
 
 
+def expect_status_rejected_without_partial_writes() -> None:
+    originals = {path: path.read_bytes() for path in (CONTRACT, LIFECYCLE, STATUS)}
+    corrupt = load_json(STATUS)
+    corrupt["productionDecision"] = "GO"
+    STATUS.write_text(json.dumps(corrupt, indent=2) + "\n", encoding="utf-8")
+    corrupted_status = STATUS.read_bytes()
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(RECONCILER)],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        require(completed.returncode != 0, "reconciler accepted productionDecision=GO")
+        require(CONTRACT.read_bytes() == originals[CONTRACT], "reconciler partially mutated migration contract before rejecting status")
+        require(LIFECYCLE.read_bytes() == originals[LIFECYCLE], "reconciler partially mutated migration lifecycle before rejecting status")
+        require(STATUS.read_bytes() == corrupted_status, "reconciler mutated corrupt status while rejecting it")
+    finally:
+        for path, data in originals.items():
+            path.write_bytes(data)
+
+
 def expect_append_lock_contract_rejected(writer: ModuleType) -> None:
     corrupt_contract = load_json(CONTRACT)
     corrupt_contract["appendLockPath"] = "contracts/operations/.migration-evidence-registry-alternate.lock"
@@ -211,10 +235,11 @@ def main() -> int:
     for name, mutate in contract_cases:
         expect_contract_authority_rejected(writer, name, mutate)
 
+    expect_status_rejected_without_partial_writes()
     expect_append_lock_contract_rejected(writer)
     expect_record_lineage_rejected(writer, contract)
     expect_recovery_evidence_mutation_rejected(writer, contract)
-    print("PASS: migration rehearsal ledger and contract corruption, append-lock drift, source-lineage drift and recovery-evidence mutation are rejected")
+    print("PASS: migration rehearsal ledger/contract corruption, reconcile partial writes, append-lock drift, source-lineage drift and recovery-evidence mutation are rejected")
     return 0
 
 
