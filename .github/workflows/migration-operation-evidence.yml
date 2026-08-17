@@ -12,6 +12,8 @@ on:
       - "scripts/create-memory-os-migration-operation-evidence.py"
       - "scripts/validate-memory-os-migration-operation-evidence.py"
       - "scripts/reconcile-memory-os-migration-operation-evidence.py"
+      - "scripts/validate-memory-os-migration-lifecycle.py"
+      - "scripts/validate-memory-os-operability.py"
       - "docs/evidence/migration-operations/**"
       - "docs/fixtures/memory-os-operability/migration-operation-record.template.v1.json"
   pull_request:
@@ -23,6 +25,8 @@ on:
       - "scripts/create-memory-os-migration-operation-evidence.py"
       - "scripts/validate-memory-os-migration-operation-evidence.py"
       - "scripts/reconcile-memory-os-migration-operation-evidence.py"
+      - "scripts/validate-memory-os-migration-lifecycle.py"
+      - "scripts/validate-memory-os-operability.py"
       - "docs/evidence/migration-operations/**"
       - "docs/fixtures/memory-os-operability/migration-operation-record.template.v1.json"
   workflow_dispatch:
@@ -66,7 +70,9 @@ jobs:
             scripts/migration_operation_evidence_lib.py \
             scripts/create-memory-os-migration-operation-evidence.py \
             scripts/validate-memory-os-migration-operation-evidence.py \
-            scripts/reconcile-memory-os-migration-operation-evidence.py
+            scripts/reconcile-memory-os-migration-operation-evidence.py \
+            scripts/validate-memory-os-migration-lifecycle.py \
+            scripts/validate-memory-os-operability.py
 
       - name: Reconcile authority in working tree
         run: |
