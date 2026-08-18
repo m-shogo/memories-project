@@ -25,6 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/client-baseline-registry-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/client-baseline-registry.v1.json"
 LOCK = ROOT / "contracts/operations/.client-baseline-registry.lock"
+VALIDATOR = ROOT / "scripts/validate-memory-os-client-baseline-registry.py"
 CONFIRMATION = "REGISTER REVIEWED CLIENT BASELINE"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -86,6 +87,35 @@ def strings(value: Any, field: str, minimum: int = 1) -> list[str]:
     require(all(isinstance(item, str) and item.strip() for item in value), f"{field} contains invalid value")
     require(len(value) == len(set(value)), f"{field} contains duplicates")
     return value
+
+
+def validate_contract_authority() -> dict[str, Any]:
+    contract = load(CONTRACT)
+    require(contract.get("schemaVersion") == "memory-os-client-baseline-registry-contract.v1", "client contract schema drift")
+    require(contract.get("registryPath") == str(REGISTRY.relative_to(ROOT)), "client registryPath authority drift")
+    require(contract.get("appendLockPath") == str(LOCK.relative_to(ROOT)), "client append lock authority drift")
+    require(contract.get("writer") == str(Path(__file__).resolve().relative_to(ROOT)), "client writer authority drift")
+    require(contract.get("validator") == str(VALIDATOR.relative_to(ROOT)), "client validator authority drift")
+    require(contract.get("recordSchemaVersion") == "memory-os-client-baseline-record.v1", "client record schema authority drift")
+    require(contract.get("appendOnly") is True and contract.get("productionDecision") == "NO_GO", "client production boundary drift")
+    require(set(contract.get("allowedClientClasses", [])) == CLIENT_CLASSES, "client class authority drift")
+    policy = contract.get("approvalPolicy")
+    require(isinstance(policy, dict), "client approval policy missing")
+    require(policy.get("approvalClass") == "REVIEWED_CLIENT_BASELINE", "client approval class drift")
+    require(policy.get("minimumDistinctApprovers") == 3, "client approver minimum drift")
+    require(set(policy.get("requiredRoles", [])) == REQUIRED_ROLES, "client approval roles drift")
+    for key in (
+        "selfApprovalForbidden", "sourceCommitIsInsufficient", "ciPassIsInsufficient",
+        "marketingVersionIsInsufficient", "artifactDigestWithoutBytesIsInsufficient",
+        "productionTrafficForbiddenForRegistration",
+    ):
+        require(policy.get(key) is True, f"client approval policy weakened: {key}")
+    guards = strings(contract.get("registrationGuards"), "registrationGuards", 12)
+    require(any("ancestor of current HEAD" in guard for guard in guards), "client source lineage guard missing")
+    require(any("sourceCommitSha" in guard and "current bytes" in guard for guard in guards), "client source-bound evidence guard missing")
+    require(any("historical registered evidence" in guard for guard in guards), "client historical evidence guard missing")
+    require(any("canonical exclusive append lock" in guard for guard in guards), "client canonical append lock guard missing")
+    return contract
 
 
 def outside_repo(path: Path, field: str) -> None:
@@ -219,7 +249,7 @@ def validate_historical_record(record: dict[str, Any], required_fields: set[str]
 
 
 def validate_registry_for_append(registry: dict[str, Any]) -> None:
-    contract = load(CONTRACT)
+    contract = validate_contract_authority()
     required_fields = set(strings(contract.get("requiredRecordFields"), "requiredRecordFields", 23))
     require(set(registry) == REGISTRY_FIELDS, "client registry field set drift")
     require(registry.get("schemaVersion") == "memory-os-client-baseline-registry.v1",
@@ -306,7 +336,7 @@ def main() -> int:
     require(artifact_path.is_file(), "artifact file missing")
     require(git("status", "--porcelain") == "", "working tree must be clean before client baseline registration")
 
-    contract = load(CONTRACT)
+    contract = validate_contract_authority()
     required = set(strings(contract.get("requiredRecordFields"), "requiredRecordFields", 23))
     record = load(record_path)
     validate_record(record, required, artifact_path)
