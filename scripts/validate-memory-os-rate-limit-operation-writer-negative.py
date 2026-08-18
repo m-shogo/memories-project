@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -130,6 +131,73 @@ def digest_binding_negative(writer, validator, current_head: str) -> None:
         raise AssertionError("stale evidence digest was incorrectly accepted")
 
 
+def post_append_rollback_negative(writer) -> None:
+    class FakeValidationFailure(RuntimeError):
+        pass
+
+    class PostAppendRejectingValidator:
+        ValidationFailure = FakeValidationFailure
+        calls = 0
+
+        @staticmethod
+        def load_contract_context():
+            return {}, set()
+
+        @staticmethod
+        def validate_record(record, contract, policy_ids, writer_input=False) -> None:
+            if not isinstance(record.get("operationId"), str):
+                raise AssertionError("synthetic writer input lost operationId")
+
+        @staticmethod
+        def expected_evidence_digests(record):
+            return {}
+
+        @classmethod
+        def main(cls) -> int:
+            cls.calls += 1
+            if cls.calls == 1:
+                return 0
+            raise FakeValidationFailure("synthetic post-append authority rejection")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        ledger = root / "ledger"
+        input_path = root / "record.json"
+        operation_id = "RLOP-20260101T000000Z-postappend"
+        input_path.write_text(f'{{"operationId":"{operation_id}"}}\n', encoding="utf-8")
+
+        original_default_ledger = writer.DEFAULT_LEDGER
+        original_load_validator = writer.load_validator
+        original_argv = sys.argv[:]
+        try:
+            writer.DEFAULT_LEDGER = ledger
+            writer.load_validator = lambda: PostAppendRejectingValidator
+            sys.argv = [
+                str(writer.WRITER_PATH) if hasattr(writer, "WRITER_PATH") else "writer",
+                "--input",
+                str(input_path),
+            ]
+            try:
+                writer.main()
+            except writer.WriterFailure as exc:
+                if "failed validation after append" not in str(exc):
+                    raise AssertionError(f"unexpected post-append rejection: {exc}") from exc
+            else:
+                raise AssertionError("post-append canonical validation failure was accepted")
+        finally:
+            writer.DEFAULT_LEDGER = original_default_ledger
+            writer.load_validator = original_load_validator
+            sys.argv = original_argv
+
+        target = ledger / f"{operation_id}.json"
+        if target.exists():
+            raise AssertionError("invalid operation append was not rolled back")
+        if PostAppendRejectingValidator.calls != 2:
+            raise AssertionError(
+                "canonical authority was not validated exactly before and after append"
+            )
+
+
 def main() -> int:
     writer = load_writer()
 
@@ -148,7 +216,7 @@ def main() -> int:
             RejectingValidator(), writer.DEFAULT_LEDGER.resolve()
         )
     except writer.WriterFailure as exc:
-        if "existing canonical ledger authority is invalid" not in str(exc):
+        if "failed validation before append" not in str(exc):
             raise AssertionError(f"unexpected canonical rejection: {exc}") from exc
     else:
         raise AssertionError("canonical ledger corruption was incorrectly accepted")
@@ -165,7 +233,7 @@ def main() -> int:
             NonZeroValidator(), writer.DEFAULT_LEDGER.resolve()
         )
     except writer.WriterFailure as exc:
-        if "validation returned non-zero: 7" not in str(exc):
+        if "returned non-zero before append: 7" not in str(exc):
             raise AssertionError(f"unexpected non-zero rejection: {exc}") from exc
     else:
         raise AssertionError("non-zero canonical validation was incorrectly accepted")
@@ -185,6 +253,8 @@ def main() -> int:
         )
     if AlternateLedgerValidator.calls != 0:
         raise AssertionError("alternate ledger unexpectedly invoked canonical validation")
+
+    post_append_rollback_negative(writer)
 
     validator = writer.load_validator()
     current_head = git("rev-parse", "HEAD")
@@ -226,6 +296,7 @@ def main() -> int:
         raise AssertionError("rate-limit operation negatives left the checkout dirty")
 
     print("PASS: canonical rate-limit operation ledger is validated before append")
+    print("PASS: invalid canonical operation append is rolled back after validation")
     print("PASS: detached rate-limit operation source commits are rejected")
     print("PASS: untracked and symlinked operation evidence refs are rejected")
     print("PASS: operation evidence digests are writer-computed and tamper-evident")
