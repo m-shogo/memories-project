@@ -124,6 +124,7 @@
     "independentReviewsCannotIncludeCredentials": true,
     "independentReviewsCannotAuthorizeAutomaticProductionPromotion": true,
     "appendLockMustRemainCanonical": true,
+    "appendMustRevalidateCanonicalRegistryAndRollbackOnFailure": true,
     "productionCredentialsForbiddenInRecord": true,
     "rawEndpointUrlsForbiddenInRecord": true,
     "personalIdentifiersForbiddenInRecord": true,
