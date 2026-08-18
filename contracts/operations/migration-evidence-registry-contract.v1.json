@@ -75,7 +75,8 @@
     "productionTrafficForbidden": true,
     "productionCredentialsForbidden": true,
     "productionEvidenceForbidden": true,
-    "atomicRegistryReplacement": true
+    "atomicRegistryReplacement": true,
+    "appendMustRevalidateCanonicalRegistryAndRollbackOnFailure": true
   },
   "restoreCapabilityAuthorities": {
     "LOCAL_POSTGRES_REHEARSAL": {
