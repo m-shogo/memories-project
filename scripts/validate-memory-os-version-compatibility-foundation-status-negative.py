@@ -93,7 +93,8 @@ def expect_nonempty_source_inventory_allowed(module, validator_mode: bool) -> No
     releases = {"approvedReleaseCount": 2, "releases": [{"id": "rel_a"}, {"id": "rel_b"}]}
     rollback = {"rehearsalRequestCount": 1, "requests": [{"id": "rr_a"}]}
     parsers = {"reviewedArtifactCount": 1, "artifacts": [{"id": "pa_a"}]}
-    pairs = {"approvedPairCount": 1, "pairs": [{"id": "pair_a"}]}
+    pair_row = {"id": "pair_a"}
+    pairs = {"approvedPairCount": 1, "pairs": [pair_row]}
     release_contract = {"contract": "release"}
     rollback_contract = {"contract": "rollback"}
     values = {
@@ -129,12 +130,23 @@ def expect_nonempty_source_inventory_allowed(module, validator_mode: bool) -> No
             require(registry is pairs,
                     "pair shared validator did not receive synthetic authority")
 
+    reviewed_pairs: list[dict] = []
+
+    class PairReviewValidator:
+        @staticmethod
+        def validate_pair_reviews(pair):
+            require(pair is pair_row,
+                    "pair review validator did not receive synthetic pair authority")
+            reviewed_pairs.append(pair)
+
     writers = {
         module.RELEASE_WRITER_PATH: ReleaseWriter,
         module.ROLLBACK_WRITER_PATH: RollbackWriter,
         module.PARSER_WRITER_PATH: ParserWriter,
         module.PAIR_WRITER_PATH: PairWriter,
     }
+    if not validator_mode:
+        writers[module.PAIR_REVIEW_VALIDATOR_PATH] = PairReviewValidator
     original_load = module.load
     original_load_module = module.load_module
     try:
@@ -151,6 +163,9 @@ def expect_nonempty_source_inventory_allowed(module, validator_mode: bool) -> No
     require(counts["rollbackRequests"] == 1, "rollback request source inventory was not preserved")
     require(counts["reviewedParserArtifacts"] == 1, "parser source inventory was not preserved")
     require(counts["approvedReleasePairs"] == 1, "release pair source inventory was not preserved")
+    if not validator_mode:
+        require(reviewed_pairs == [pair_row],
+                "foundation reconciler did not revalidate typed release-pair reviews")
 
 
 def main() -> int:
@@ -183,7 +198,7 @@ def main() -> int:
         False, "release compatibility pair",
     )
 
-    print("PASS: compatibility foundations accept canonical non-empty source inventory while rejecting authority drift")
+    print("PASS: compatibility foundations accept canonical non-empty source inventory while rejecting authority drift and revalidating typed pair reviews")
     return 0
 
 
