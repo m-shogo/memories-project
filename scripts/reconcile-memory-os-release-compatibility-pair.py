@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import subprocess
+import sys
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Callable
@@ -20,6 +21,8 @@ STATUS = ROOT / "contracts/operations/production-operability-status.json"
 VALIDATOR = ROOT / "scripts/validate-memory-os-release-compatibility-pair.py"
 WRITER = ROOT / "scripts/register-memory-os-release-compatibility-pair.py"
 INDEPENDENT_REVIEW_VALIDATOR = ROOT / "scripts/validate-memory-os-release-compatibility-pair-independent-review.py"
+VERSION_EXECUTION_VALIDATOR = ROOT / "scripts/validate-memory-os-version-compatibility-execution-evidence.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 REFS = (
     "contracts/operations/release-compatibility-pair-contract.v1.json",
     "contracts/operations/release-compatibility-pair-registry.v1.json",
@@ -94,6 +97,16 @@ def remove_satisfied_pair_count_gaps(blocking_gaps: list[Any]) -> None:
     ]
 
 
+def run_canonical_validators() -> None:
+    for validator in (
+        VALIDATOR,
+        INDEPENDENT_REVIEW_VALIDATOR,
+        VERSION_EXECUTION_VALIDATOR,
+        OPERABILITY_VALIDATOR,
+    ):
+        subprocess.run([sys.executable, str(validator)], cwd=ROOT, check=True)
+
+
 def commit_authority_transaction(
     contract: dict[str, Any],
     gaps: dict[str, Any],
@@ -112,7 +125,7 @@ def commit_authority_transaction(
         write(GAPS, gaps)
         write(STATUS, status)
         if validator_runner is None:
-            subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=True)
+            run_canonical_validators()
         else:
             validator_runner()
     except BaseException:
