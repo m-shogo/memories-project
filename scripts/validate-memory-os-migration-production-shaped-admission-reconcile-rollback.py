@@ -37,17 +37,27 @@ def main() -> int:
     module = load_reconciler()
     originals = {path: path.read_bytes() for path in (CONTRACT, LIFECYCLE, STATUS)}
 
-    with tempfile.TemporaryDirectory(prefix="memory-os-migration-post-validator-") as tmp:
-        failing_validator = Path(tmp) / "fail_validator.py"
-        failing_validator.write_text("raise SystemExit(73)\n", encoding="utf-8")
-        module.VALIDATOR = failing_validator
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        prefix=".migration-production-post-validator-",
+        suffix=".py",
+        dir=ROOT / "scripts",
+        delete=False,
+    ) as handle:
+        handle.write("raise SystemExit(73)\n")
+        failing_validator = Path(handle.name)
 
+    try:
+        module.VALIDATOR = failing_validator
         try:
             module.main()
         except subprocess.CalledProcessError as exc:
             require(exc.returncode == 73, "reconciler failed before the injected post-write validator")
         else:
             raise Fail("reconciler accepted an injected post-write validator failure")
+    finally:
+        failing_validator.unlink(missing_ok=True)
 
     for path, expected in originals.items():
         require(path.read_bytes() == expected, f"reconciler failed to roll back {path.relative_to(ROOT)}")
