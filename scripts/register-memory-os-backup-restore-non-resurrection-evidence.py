@@ -223,6 +223,10 @@ def validate_record(record: dict[str, Any]) -> None:
     required_fields = set(contract.get("requiredRecordFields", []))
     required_domains = tuple(contract.get("requiredDomains", []))
     require(required_fields and required_domains, "non-resurrection contract incomplete")
+    require(
+        contract.get("recordRules", {}).get("typedRegistryMustRevalidateAfterAppendAndRollbackOnFailure") is True,
+        "typed non-resurrection transactional append authority drift",
+    )
     require(set(record) == required_fields, f"record field set drift: {sorted(set(record) ^ required_fields)}")
     require(record.get("schemaVersion") == contract.get("recordSchemaVersion"), "record schemaVersion drift")
     require(isinstance(record.get("recordId"), str) and RECORD_ID.fullmatch(record["recordId"]), "recordId invalid")
@@ -334,6 +338,32 @@ def atomic_write(value: dict[str, Any]) -> None:
         except FileNotFoundError:
             pass
 
+def atomic_restore(payload: bytes) -> None:
+    fd, temp_name = tempfile.mkstemp(prefix=".backup-restore-non-resurrection-rollback.", suffix=".tmp", dir=REGISTRY.parent)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, REGISTRY)
+    finally:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
+
+def write_registry_transactionally(value: dict[str, Any]) -> None:
+    try:
+        original = REGISTRY.read_bytes()
+    except OSError as exc:
+        raise Fail("cannot snapshot typed non-resurrection registry before append") from exc
+    atomic_write(value)
+    try:
+        validate_registry_for_append(load(REGISTRY))
+    except Exception:
+        atomic_restore(original)
+        raise
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--record", required=True)
@@ -365,7 +395,7 @@ def main() -> int:
         registry["candidateCoveredCount"] = sum(1 for row in rows if candidate_complete(row))
         registry["productionEvidence"] = False
         registry["productionReady"] = False
-        atomic_write(registry)
+        write_registry_transactionally(registry)
     finally:
         os.close(lock_fd)
         try:
