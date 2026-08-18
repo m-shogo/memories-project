@@ -153,37 +153,45 @@ def main() -> int:
     readiness["admittedRehearsalCount"] = len(admissions)
     readiness["productionShapedRehearsalCompleted"] = complete
     readiness["productionReady"] = False
-    write(CONTRACT, contract)
 
-    lifecycle = load(LIFECYCLE)
-    life_ready = lifecycle.get("readiness")
-    require(isinstance(life_ready, dict), "migration lifecycle readiness missing")
-    require(life_ready.get("operatorEvidenceRecordImplemented") is True, "operator evidence registry must already be implemented")
-    if complete:
-        life_ready["productionShapedRehearsalCompleted"] = True
-        life_ready["mixedVersionCompatibilityProven"] = True
-        life_ready["isolatedRestoreLinked"] = True
-    else:
-        require(life_ready.get("productionShapedRehearsalCompleted") is False, "empty admission registry cannot retain production-shaped rehearsal=true")
-        require(life_ready.get("mixedVersionCompatibilityProven") is False, "empty admission registry cannot retain approved mixed-version proof=true")
-        require(life_ready.get("isolatedRestoreLinked") is False, "empty admission registry cannot retain isolated restore link=true")
-    require(life_ready.get("ready") is False, "admission alone cannot make migration lifecycle ready")
-    write(LIFECYCLE, lifecycle)
+    originals = {path: path.read_bytes() for path in (CONTRACT, LIFECYCLE, STATUS)}
+    try:
+        write(CONTRACT, contract)
 
-    status = load(STATUS)
-    require(status.get("productionDecision") == "NO_GO", "production decision must remain NO_GO")
-    gate = next((row for row in status.get("areas", []) if isinstance(row, dict) and row.get("id") == "OPS-P0-001"), None)
-    require(isinstance(gate, dict), "OPS-P0-001 missing")
-    require(gate.get("blocking") is True, "OPS-P0-001 must remain blocking until canonical migration readiness is complete")
-    existing = gate.get("existingEvidence")
-    refs = gate.get("evidenceRefs")
-    require(isinstance(existing, list) and isinstance(refs, list), "OPS-P0-001 authority arrays missing")
-    append_once(existing, EVIDENCE)
-    for ref in REFS:
-        append_once(refs, ref)
-    write(STATUS, status)
+        lifecycle = load(LIFECYCLE)
+        life_ready = lifecycle.get("readiness")
+        require(isinstance(life_ready, dict), "migration lifecycle readiness missing")
+        require(life_ready.get("operatorEvidenceRecordImplemented") is True, "operator evidence registry must already be implemented")
+        if complete:
+            life_ready["productionShapedRehearsalCompleted"] = True
+            life_ready["mixedVersionCompatibilityProven"] = True
+            life_ready["isolatedRestoreLinked"] = True
+        else:
+            require(life_ready.get("productionShapedRehearsalCompleted") is False, "empty admission registry cannot retain production-shaped rehearsal=true")
+            require(life_ready.get("mixedVersionCompatibilityProven") is False, "empty admission registry cannot retain approved mixed-version proof=true")
+            require(life_ready.get("isolatedRestoreLinked") is False, "empty admission registry cannot retain isolated restore link=true")
+        require(life_ready.get("ready") is False, "admission alone cannot make migration lifecycle ready")
+        write(LIFECYCLE, lifecycle)
 
-    subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=True)
+        status = load(STATUS)
+        require(status.get("productionDecision") == "NO_GO", "production decision must remain NO_GO")
+        gate = next((row for row in status.get("areas", []) if isinstance(row, dict) and row.get("id") == "OPS-P0-001"), None)
+        require(isinstance(gate, dict), "OPS-P0-001 missing")
+        require(gate.get("blocking") is True, "OPS-P0-001 must remain blocking until canonical migration readiness is complete")
+        existing = gate.get("existingEvidence")
+        refs = gate.get("evidenceRefs")
+        require(isinstance(existing, list) and isinstance(refs, list), "OPS-P0-001 authority arrays missing")
+        append_once(existing, EVIDENCE)
+        for ref in REFS:
+            append_once(refs, ref)
+        write(STATUS, status)
+
+        subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=True)
+    except Exception:
+        for path, content in originals.items():
+            path.write_bytes(content)
+        raise
+
     print("Memory OS migration production-shaped admission reconciliation PASS")
     print(f"admitted rehearsals: {len(admissions)}")
     print(f"approved release pairs available: {approved_pair_count}")
