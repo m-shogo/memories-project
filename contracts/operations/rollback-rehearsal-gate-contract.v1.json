@@ -42,7 +42,7 @@
     "retained parser artifacts and exact object-version evidence are referenced",
     "all entry-criteria, recovery-point, forward-fix and artifact evidence references are tracked repository-contained regular files with no symlink components and working bytes equal exact HEAD at admission",
     "every admitted request stores append-time SHA-256 digests for all entry-criteria, recovery-point, forward-fix and artifact evidence references and historical validation rejects later byte drift",
-    "Release Owner and Database Recovery Owner are distinct pseudonymous approvers",
+    "Release Owner and Database Recovery Owner are distinct pseudonymous approvers and each approver entry contains exactly role and approverRef",
     "rehearsal ID and release-pair request are unique",
     "registry update uses the canonical exclusive append lock and atomic replacement"
   ],
