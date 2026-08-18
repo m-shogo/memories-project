@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -65,6 +66,26 @@ def safe_ref(value: Any, field: str) -> str:
             f"{field} contains an unsafe path")
     require((ROOT / path).is_file(), f"{field} path missing: {value}")
     return value
+
+
+def commit_is_ancestor(sha: str) -> bool:
+    """Compatibility helper for lineage negatives; canonical semantics live in the writer guard."""
+    if not isinstance(sha, str) or not sha:
+        return False
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+    )
+    if head.returncode != 0:
+        return False
+    completed = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", sha, head.stdout.strip()],
+        cwd=ROOT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    return completed.returncode == 0
 
 
 def main() -> int:
