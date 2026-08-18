@@ -50,25 +50,25 @@ def expect_registry_rejection(module, count, count_field: str,
     require(rejected, f"invalid empty authority accepted for {label}: {registry!r}")
 
 
-def expect_source_authority_rejection(module) -> None:
-    path = module.RELEASE_REGISTRY_PATH
+def expect_source_authority_rejection(module, path: Path, field: str,
+                                      replacement, label: str) -> None:
     original = path.read_bytes()
     try:
         registry = json.loads(original.decode("utf-8"))
-        registry["registryClass"] = "CORRUPTED_RELEASE_AUTHORITY"
+        registry[field] = replacement
         path.write_text(json.dumps(registry, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         rejected = False
         try:
             module.validate_source_registries()
         except module.ReconcileFailure as exc:
             require("compatibility source authority invalid" in str(exc),
-                    f"unexpected source-authority rejection: {exc}")
+                    f"unexpected source-authority rejection for {label}: {exc}")
             rejected = True
-        require(rejected, "corrupt canonical release authority was accepted before reconcile")
+        require(rejected, f"corrupt canonical {label} authority was accepted before reconcile")
     finally:
         path.write_bytes(original)
     require(path.read_bytes() == original,
-            "canonical release authority changed after source-authority rejection")
+            f"canonical {label} authority changed after source-authority rejection")
 
 
 def main() -> int:
@@ -88,7 +88,18 @@ def main() -> int:
         module.require_empty_registry({count_field: 0, items_field: []},
                                       count_field, items_field, label)
 
-    expect_source_authority_rejection(module)
+    expect_source_authority_rejection(
+        module, module.RELEASE_REGISTRY_PATH, "registryClass",
+        "CORRUPTED_RELEASE_AUTHORITY", "release",
+    )
+    expect_source_authority_rejection(
+        module, module.ROLLBACK_REGISTRY_PATH, "appendOnly",
+        False, "rollback rehearsal",
+    )
+    expect_source_authority_rejection(
+        module, module.PARSER_REGISTRY_PATH, "productionEvidence",
+        True, "parser artifact",
+    )
 
     print("PASS: compatibility foundation counts and canonical source authorities fail closed")
     return 0
