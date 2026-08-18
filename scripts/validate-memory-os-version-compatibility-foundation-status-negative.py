@@ -37,6 +37,18 @@ def expect_rejection(module, value, field: str) -> None:
     require(rejected, f"invalid zero-count authority accepted for {field}: {value!r}")
 
 
+def expect_registry_rejection(module, count, count_field: str,
+                              items_field: str, label: str, items=None) -> None:
+    registry = {count_field: count, items_field: [] if items is None else items}
+    rejected = False
+    try:
+        module.require_empty_registry(registry, count_field, items_field, label)
+    except module.ReconcileFailure as exc:
+        require(label in str(exc), f"unexpected registry rejection for {label}: {exc}")
+        rejected = True
+    require(rejected, f"invalid empty authority accepted for {label}: {registry!r}")
+
+
 def main() -> int:
     module = load_reconciler()
     for field in module.ZERO_COUNT_FIELDS:
@@ -44,7 +56,17 @@ def main() -> int:
         expect_rejection(module, True, field)
         expect_rejection(module, -1, field)
         module.require_zero_count({field: 0}, field)
-    print("PASS: compatibility foundation counts reject booleans and non-zero values")
+
+    for _path, count_field, items_field, label in module.EMPTY_AUTHORITIES:
+        expect_registry_rejection(module, False, count_field, items_field, label)
+        expect_registry_rejection(module, True, count_field, items_field, label)
+        expect_registry_rejection(module, -1, count_field, items_field, label)
+        expect_registry_rejection(module, 1, count_field, items_field, label)
+        expect_registry_rejection(module, 0, count_field, items_field, label, items=[{"forged": True}])
+        module.require_empty_registry({count_field: 0, items_field: []},
+                                      count_field, items_field, label)
+
+    print("PASS: compatibility foundation and dependent authority counts reject booleans and drift")
     return 0
 
 

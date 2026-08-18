@@ -12,6 +12,9 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 FOUNDATION_PATH = ROOT / "contracts/operations/version-compatibility-foundations.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+RELEASE_REGISTRY_PATH = ROOT / "contracts/operations/release-baseline-registry.v1.json"
+ROLLBACK_REGISTRY_PATH = ROOT / "contracts/operations/rollback-rehearsal-registry.v1.json"
+PARSER_REGISTRY_PATH = ROOT / "contracts/operations/parser-artifact-registry.v1.json"
 
 EXISTING = (
     "supplemental compatibility foundation authority records candidate-only, local-CI-only and empty-registry evidence without changing the canonical approved-release matrix",
@@ -38,6 +41,11 @@ ZERO_COUNT_FIELDS = (
     "approvedReleaseCount",
     "approvedRollbackPairCount",
     "reviewedParserArtifactCount",
+)
+EMPTY_AUTHORITIES = (
+    (RELEASE_REGISTRY_PATH, "approvedReleaseCount", "releases", "approved release authority"),
+    (ROLLBACK_REGISTRY_PATH, "rehearsalRequestCount", "requests", "rollback rehearsal authority"),
+    (PARSER_REGISTRY_PATH, "reviewedArtifactCount", "artifacts", "parser artifact authority"),
 )
 
 
@@ -74,6 +82,14 @@ def require_zero_count(boundaries: dict[str, Any], field: str) -> None:
             f"compatibility foundation {field} must be integer zero")
 
 
+def require_empty_registry(registry: dict[str, Any], count_field: str,
+                           items_field: str, label: str) -> None:
+    count = registry.get(count_field)
+    require(isinstance(count, int) and not isinstance(count, bool) and count == 0,
+            f"{label} {count_field} must be integer zero")
+    require(registry.get(items_field) == [], f"{label} must remain empty")
+
+
 def main() -> int:
     foundation = load(FOUNDATION_PATH)
     boundaries = foundation.get("aggregateBoundaries")
@@ -86,6 +102,9 @@ def main() -> int:
             boundaries.get("productionReady") is False and
             boundaries.get("productionDecision") == "NO_GO",
             "compatibility foundation boundary drift")
+
+    for path, count_field, items_field, label in EMPTY_AUTHORITIES:
+        require_empty_registry(load(path), count_field, items_field, label)
 
     status = load(STATUS_PATH)
     require(status.get("productionDecision") == "NO_GO",
