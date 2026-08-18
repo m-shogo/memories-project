@@ -98,6 +98,8 @@ def validate_contract_authority() -> dict[str, Any]:
     require(contract.get("validator") == str(VALIDATOR.relative_to(ROOT)), "client validator authority drift")
     require(contract.get("recordSchemaVersion") == "memory-os-client-baseline-record.v1", "client record schema authority drift")
     require(contract.get("appendOnly") is True and contract.get("productionDecision") == "NO_GO", "client production boundary drift")
+    require(contract.get("appendMustRevalidateCanonicalRegistryAndRollbackOnFailure") is True,
+            "client append rollback authority drift")
     require(set(contract.get("allowedClientClasses", [])) == CLIENT_CLASSES, "client class authority drift")
     policy = contract.get("approvalPolicy")
     require(isinstance(policy, dict), "client approval policy missing")
@@ -115,6 +117,8 @@ def validate_contract_authority() -> dict[str, Any]:
     require(any("sourceCommitSha" in guard and "current bytes" in guard for guard in guards), "client source-bound evidence guard missing")
     require(any("historical registered evidence" in guard for guard in guards), "client historical evidence guard missing")
     require(any("canonical exclusive append lock" in guard for guard in guards), "client canonical append lock guard missing")
+    require(any("revalidated after append" in guard and "restored" in guard for guard in guards),
+            "client post-append rollback guard missing")
     return contract
 
 
@@ -321,6 +325,30 @@ def atomic_write(value: dict[str, Any]) -> None:
             pass
 
 
+def atomic_write_bytes(value: bytes) -> None:
+    fd, name = tempfile.mkstemp(prefix=".client-baseline-registry.", suffix=".tmp", dir=REGISTRY.parent)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(value)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(name, REGISTRY)
+    finally:
+        try:
+            os.unlink(name)
+        except FileNotFoundError:
+            pass
+
+
+def append_registry_transactionally(registry: dict[str, Any], original_bytes: bytes) -> None:
+    atomic_write(registry)
+    try:
+        validate_registry_for_append(load(REGISTRY))
+    except Exception:
+        atomic_write_bytes(original_bytes)
+        raise
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--record", required=True)
@@ -345,6 +373,7 @@ def main() -> int:
     try:
         os.write(lock_fd, (record["clientBaselineId"] + "\n").encode("ascii"))
         os.fsync(lock_fd)
+        original_registry_bytes = REGISTRY.read_bytes()
         registry = load(REGISTRY)
         validate_registry_for_append(registry)
         clients = registry["clients"]
@@ -354,7 +383,7 @@ def main() -> int:
         registry["approvedClientBaselineCount"] = len(clients)
         latest = registry["latestApprovedClientByClass"]
         latest[record["clientClass"]] = record["clientBaselineId"]
-        atomic_write(registry)
+        append_registry_transactionally(registry, original_registry_bytes)
     finally:
         os.close(lock_fd)
         try:
