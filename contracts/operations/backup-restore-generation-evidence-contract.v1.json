@@ -149,6 +149,7 @@
     "independentReviewReviewerPseudonymsMustBeDistinct": true,
     "independentReviewPayloadMustRemainAppendOnlyAfterFirstCommit": true,
     "independentReviewCannotAuthorizeAutomaticPromotion": true,
+    "registryMustRevalidateAfterAppendAndRollbackOnFailure": true,
     "criticalOrHighOpenFindingsForbidden": true,
     "productionTrafficForbidden": true,
     "productionCredentialsForbidden": true,
@@ -201,6 +202,7 @@
     "measured RPO exceeding approved target cannot become candidate",
     "generic non-resurrection PASS without typed domain coverage cannot become candidate",
     "HIGH or CRITICAL unresolved finding",
+    "generation evidence post-append validation failure must rollback registry",
     "mutable latest alias",
     "production evidence relabel"
   ],
