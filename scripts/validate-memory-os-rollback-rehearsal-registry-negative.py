@@ -137,6 +137,50 @@ def validate_evidence_ref_containment(writer: Any) -> None:
                 pass
 
 
+def validate_evidence_digest_authority(writer: Any) -> None:
+    request = {
+        "databasePolicy": {
+            "recoveryPointEvidenceRef": "contracts/operations/rollback-rehearsal-gate-contract.v1.json",
+            "forwardFixDecisionRef": "contracts/operations/rollback-rehearsal-registry.v1.json",
+        },
+        "artifactPolicy": {
+            "parserArtifactEvidenceRef": "contracts/operations/release-baseline-registry.v1.json",
+            "objectVersionEvidenceRef": "contracts/operations/production-operability-status.json",
+        },
+        "entryCriteriaRefs": [
+            "scripts/request-memory-os-rollback-rehearsal.py",
+            "scripts/validate-memory-os-rollback-rehearsal-gate.py",
+            "scripts/reconcile-memory-os-rollback-rehearsal-gate.py",
+            "contracts/operations/rollback-rehearsal-gate-contract.v1.json",
+            "contracts/operations/release-baseline-registry.v1.json",
+        ],
+    }
+    request[writer.EVIDENCE_DIGEST_FIELD] = writer.evidence_digest_map(request)
+    writer.validate_evidence_digest_binding(request, required=True)
+
+    stale = copy.deepcopy(request)
+    first_ref = next(iter(stale[writer.EVIDENCE_DIGEST_FIELD]))
+    stale[writer.EVIDENCE_DIGEST_FIELD][first_ref] = "0" * 64
+    expect_rejected(
+        "stale evidence digest",
+        lambda: writer.validate_evidence_digest_binding(stale, required=True),
+    )
+
+    missing = copy.deepcopy(request)
+    missing[writer.EVIDENCE_DIGEST_FIELD].pop(first_ref)
+    expect_rejected(
+        "missing evidence digest",
+        lambda: writer.validate_evidence_digest_binding(missing, required=True),
+    )
+
+    absent = copy.deepcopy(request)
+    absent.pop(writer.EVIDENCE_DIGEST_FIELD)
+    expect_rejected(
+        "missing digest authority",
+        lambda: writer.validate_evidence_digest_binding(absent, required=True),
+    )
+
+
 def validate_planning_progression(reconciler: Any) -> None:
     contract = copy.deepcopy(load_json(CONTRACT_PATH))
     changed = reconciler.reconcile_contract(contract, 2, 1, 1, 1)
@@ -245,6 +289,7 @@ def main() -> int:
         copy.deepcopy(registry), copy.deepcopy(contract), copy.deepcopy(release_registry)
     )
     validate_evidence_ref_containment(writer)
+    validate_evidence_digest_authority(writer)
     validate_planning_progression(reconciler)
     validate_transaction_rollback(reconciler)
 
@@ -296,7 +341,7 @@ def main() -> int:
     if STATUS_PATH.read_bytes() != status_bytes:
         raise RuntimeError("production status bytes changed after negative suite")
 
-    print("PASS: rollback rehearsal authority accepts planning progression while rejecting corruption, unsafe refs and aggregate partial writes")
+    print("PASS: rollback rehearsal authority accepts planning progression while rejecting corruption, unsafe refs, evidence byte drift and aggregate partial writes")
     return 0
 
 
