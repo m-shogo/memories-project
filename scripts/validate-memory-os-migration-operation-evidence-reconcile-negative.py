@@ -17,6 +17,7 @@ RECONCILER = ROOT / "scripts/reconcile-memory-os-migration-operation-evidence.py
 CONTRACT = ROOT / "contracts/operations/migration-operation-evidence-contract.v1.json"
 LIFECYCLE = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
+TEMPLATE = ROOT / "docs/fixtures/memory-os-operability/migration-operation-record.template.v1.json"
 
 
 class NegativeFailure(RuntimeError):
@@ -67,6 +68,48 @@ def prove_canonical_ledger_preappend_guard(tmp_path: Path) -> None:
     creator.validate_canonical_ledger_before_append(custom_ledger)
 
 
+def prove_postappend_failure_removes_new_record(tmp_path: Path) -> None:
+    creator = load_module(CREATOR, "migration_operation_creator_postappend_negative")
+    ledger = tmp_path / "canonical-ledger"
+    counter = tmp_path / "validator-count.txt"
+    validator = tmp_path / "ledger-pass-then-fail.py"
+    validator.write_text(
+        "from pathlib import Path\n"
+        f"counter = Path({str(counter)!r})\n"
+        "count = int(counter.read_text() or '0') if counter.exists() else 0\n"
+        "counter.write_text(str(count + 1))\n"
+        "raise SystemExit(0 if count == 0 else 1)\n",
+        encoding="utf-8",
+    )
+    creator.DEFAULT_LEDGER = ledger
+    creator.VALIDATOR = validator
+
+    record_path = tmp_path / "record.json"
+    record = json.loads(TEMPLATE.read_text(encoding="utf-8"))
+    record["migrationRunId"] = "mgr_postappend_rollback_negative"
+    record_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    target = ledger / creator.expected_filename(record)
+
+    argv = sys.argv
+    sys.argv = [str(CREATOR), str(record_path), "--ledger-dir", str(ledger)]
+    try:
+        rejected = False
+        try:
+            creator.main()
+        except creator.EvidenceValidationError as exc:
+            require("failed validation after append" in str(exc),
+                    f"unexpected post-append rejection: {exc}")
+            rejected = True
+        require(rejected, "post-append canonical validation failure was not rejected")
+    finally:
+        sys.argv = argv
+
+    require(not target.exists(),
+            "new migration operation evidence remained after post-append validation failure")
+    require(counter.read_text(encoding="utf-8") == "2",
+            "controlled validator did not run once before and once after append")
+
+
 def prove_contract_guard_is_required(contract_payload: bytes) -> None:
     candidate = json.loads(contract_payload.decode("utf-8"))
     candidate["appendOnlyGuards"]["canonicalLedgerMustValidateBeforeAppend"] = False
@@ -103,6 +146,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="migration-operation-reconcile-negative-") as tmp:
         tmp_path = Path(tmp)
         prove_canonical_ledger_preappend_guard(tmp_path)
+        prove_postappend_failure_removes_new_record(tmp_path)
         pass_validator = tmp_path / "pass.py"
         fail_validator = tmp_path / "fail.py"
         pass_validator.write_text("raise SystemExit(0)\n", encoding="utf-8")
