@@ -92,6 +92,7 @@
     "unresolvedCriticalOrHighFindingsForbidden": true,
     "admissionRegistryCorruptionMustBeRejectedBeforeAppendOrReconcile": true,
     "appendLockMustRemainCanonical": true,
+    "appendMustRevalidateCanonicalRegistryAndRollbackOnFailure": true,
     "workflowWritesMustRemainBoundToValidatedSourceHead": true,
     "productionEvidenceMustRemainFalse": true,
     "applicationProductionReadyMustRemainFalse": true
