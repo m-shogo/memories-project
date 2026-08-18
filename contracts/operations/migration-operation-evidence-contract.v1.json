@@ -89,6 +89,8 @@
     "exclusiveCreateRequired": true,
     "existingMigrationRunIdCannotBeOverwritten": true,
     "canonicalLedgerMustValidateBeforeAppend": true,
+    "canonicalLedgerMustValidateAfterAppend": true,
+    "postAppendValidationFailureMustRemoveNewRecord": true,
     "oneRecordPerFile": true,
     "filenameMustEqualMigrationRunIdPlusJson": true,
     "recordMutationForbidden": true,
