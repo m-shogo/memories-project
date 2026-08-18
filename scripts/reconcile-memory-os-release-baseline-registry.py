@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Register the approved-release registry foundation without approving a release."""
+"""Reconcile approved-release registry authority without promoting production readiness."""
 
 from __future__ import annotations
 
+import copy
 import datetime as dt
 import importlib.util
 import json
@@ -22,19 +23,17 @@ EVIDENCE_BINDING_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-release-bas
 VERSION_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-version-compatibility.py"
 OPERABILITY_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-operability.py"
 
-EXISTING = (
+STATIC_EXISTING = (
     "append-only approved release baseline registry authority separating historical candidates, CI results, tags and branch heads from multi-role production release approval",
-    "empty release registry explicitly records that no approved predecessor or rollback-eligible release exists",
     "release records require distinct Security, Operability and Release Owner approvals plus immutable API, migration, parser artifact and runtime configuration digests",
     "release evidence references are source-bound to tracked non-symlink Git blobs at the approved release commit, so later evidence-path edits invalidate the authority instead of silently changing a historical release",
     "fail-closed release registry validator prevents active or rejected historical candidates from being relabeled as approved releases",
     "exclusive-lock and atomic-replacement release writer verifies exact clean HEAD, exact tag binding, external input record, three-role approval, complete source-bound evidence and unique release ID, tag and commit without manufacturing any authority",
 )
-MISSING = (
-    "approved predecessor release record with three distinct required approvers and complete compatibility, restore, security, migration, parser and load evidence",
-    "rollback-eligible approved release whose binary and retained artifacts are verified against the expanded target schema",
-    "independent review of the first release registration and writer execution evidence",
-)
+EMPTY_REGISTRY_EVIDENCE = "empty release registry explicitly records that no approved predecessor or rollback-eligible release exists"
+PREDECESSOR_GAP = "approved predecessor release record with three distinct required approvers and complete compatibility, restore, security, migration, parser and load evidence"
+ROLLBACK_GAP = "rollback-eligible approved release whose binary and retained artifacts are verified against the expanded target schema"
+INDEPENDENT_REVIEW_GAP = "independent review of the first release registration and writer execution evidence"
 OBSOLETE_MISSING = (
     "implemented append-only release registration writer with exclusive release ID, tag and commit uniqueness enforcement",
 )
@@ -86,6 +85,12 @@ def append_once(items: list[Any], value: str) -> bool:
     return True
 
 
+def remove_value(items: list[Any], value: str) -> bool:
+    before = len(items)
+    items[:] = [item for item in items if item != value]
+    return len(items) != before
+
+
 def run_canonical_validators() -> None:
     for validator in (
         VALIDATOR_PATH,
@@ -96,13 +101,21 @@ def run_canonical_validators() -> None:
         subprocess.run([sys.executable, str(validator)], cwd=ROOT, check=True)
 
 
-def commit_status_transaction(
+def commit_authority_transaction(
+    contract: dict[str, Any],
     status: dict[str, Any],
     *,
     validator_runner: Callable[[], None] | None = None,
 ) -> None:
-    original = STATUS_PATH.read_bytes()
+    originals = {
+        CONTRACT_PATH: CONTRACT_PATH.read_bytes(),
+        STATUS_PATH: STATUS_PATH.read_bytes(),
+    }
     try:
+        CONTRACT_PATH.write_text(
+            json.dumps(contract, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
         STATUS_PATH.write_text(
             json.dumps(status, indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",
@@ -112,18 +125,28 @@ def commit_status_transaction(
         else:
             validator_runner()
     except BaseException:
-        STATUS_PATH.write_bytes(original)
+        for path, payload in originals.items():
+            path.write_bytes(payload)
         raise
 
 
-def main() -> int:
-    contract = load(CONTRACT_PATH)
-    registry = load(REGISTRY_PATH)
-    writer = load_writer()
-    try:
-        writer.validate_registry_for_append(registry, contract)
-    except Exception as exc:
-        raise ReconcileFailure(f"release registry append-only authority invalid: {exc}") from exc
+def release_inventory(registry: dict[str, Any]) -> tuple[int, bool]:
+    releases = registry.get("releases")
+    count = registry.get("approvedReleaseCount")
+    require(isinstance(releases, list) and all(isinstance(item, dict) for item in releases),
+            "release registry releases invalid")
+    require(isinstance(count, int) and not isinstance(count, bool) and count == len(releases),
+            "approvedReleaseCount drift")
+    rollback_eligible = any(
+        item.get("rollbackEligibility", {}).get("status") in {"ELIGIBLE", "CONDITIONALLY_ELIGIBLE"}
+        for item in releases
+    )
+    return count, rollback_eligible
+
+
+def reconcile_contract_readiness(
+    contract: dict[str, Any], approved_count: int, rollback_eligible: bool
+) -> bool:
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "release registry readiness missing")
     for foundation in (
@@ -131,19 +154,41 @@ def main() -> int:
     ):
         require(readiness.get(foundation) is True,
                 f"release registry foundation is incomplete: {foundation}")
-    require(registry.get("approvedReleaseCount") == 0 and
-            registry.get("releases") == [],
-            "foundation reconcile cannot run after a release is registered")
-    require(readiness.get("approvedReleaseCount") == 0 and
-            readiness.get("approvedPredecessorAvailable") is False and
-            readiness.get("rollbackEligibleReleaseAvailable") is False and
-            readiness.get("independentReviewCompleted") is False and
-            readiness.get("productionReady") is False,
-            "empty release registry readiness drift")
 
-    status = load(STATUS_PATH)
+    changed = False
+    desired = {
+        "approvedReleaseCount": approved_count,
+        "approvedPredecessorAvailable": approved_count > 0,
+        "rollbackEligibleReleaseAvailable": rollback_eligible,
+        "independentReviewCompleted": False,
+        "productionReady": False,
+    }
+    for field, value in desired.items():
+        if readiness.get(field) != value:
+            readiness[field] = value
+            changed = True
+
+    if approved_count == 0:
+        note = (
+            "The writer exists but cannot manufacture approvals, evidence, a release tag or production readiness. "
+            "No release is approved, so approved predecessor and rollback eligibility remain unavailable."
+        )
+    else:
+        note = (
+            f"The append-only registry contains {approved_count} human-approved release baseline(s). "
+            "This establishes release inventory only; independent integrated review and application production readiness remain separate and automatic promotion is forbidden."
+        )
+    if readiness.get("note") != note:
+        readiness["note"] = note
+        changed = True
+    return changed
+
+
+def reconcile_status(
+    status: dict[str, Any], approved_count: int, rollback_eligible: bool
+) -> bool:
     require(status.get("productionDecision") == "NO_GO",
-            "release registry foundation cannot change production decision")
+            "release registry cannot change production decision")
     gate = next((item for item in status.get("areas", [])
                  if isinstance(item, dict) and item.get("id") == "OPS-P0-008"), None)
     require(isinstance(gate, dict) and gate.get("status") == "PARTIAL",
@@ -156,24 +201,43 @@ def main() -> int:
     require(isinstance(refs, list), "OPS-P0-008 evidenceRefs must be a list")
 
     changed = False
-    for item in EXISTING:
+    for item in STATIC_EXISTING:
         changed = append_once(existing, item) or changed
+    if approved_count == 0:
+        changed = append_once(existing, EMPTY_REGISTRY_EVIDENCE) or changed
+    else:
+        changed = remove_value(existing, EMPTY_REGISTRY_EVIDENCE) or changed
+
     for item in OBSOLETE_MISSING:
-        if item in missing:
-            missing.remove(item)
-            changed = True
-    for item in MISSING:
-        changed = append_once(missing, item) or changed
+        changed = remove_value(missing, item) or changed
+    if approved_count == 0:
+        changed = append_once(missing, PREDECESSOR_GAP) or changed
+    else:
+        changed = remove_value(missing, PREDECESSOR_GAP) or changed
+    if rollback_eligible:
+        changed = remove_value(missing, ROLLBACK_GAP) or changed
+    else:
+        changed = append_once(missing, ROLLBACK_GAP) or changed
+    changed = append_once(missing, INDEPENDENT_REVIEW_GAP) or changed
+
     for ref in REFS:
         require((ROOT / ref).is_file(), f"release registry evidence missing: {ref}")
         changed = append_once(refs, ref) or changed
 
     lowered = [str(item).lower() for item in missing]
-    require(any("approved" in item and "predecessor" in item and "release" in item
-                for item in lowered),
-            "approved predecessor release gap disappeared")
-    require(any("rollback-eligible" in item for item in lowered),
-            "rollback-eligible release gap disappeared")
+    if approved_count == 0:
+        require(any("approved" in item and "predecessor" in item and "release" in item
+                    for item in lowered),
+                "approved predecessor release gap disappeared")
+    else:
+        require(PREDECESSOR_GAP not in missing,
+                "approved predecessor gap survived approved release inventory")
+    if not rollback_eligible:
+        require(any("rollback-eligible" in item for item in lowered),
+                "rollback-eligible release gap disappeared")
+    else:
+        require(ROLLBACK_GAP not in missing,
+                "rollback-eligible release gap survived verified rollback authority")
     require(any("independent review" in item for item in lowered),
             "release registration review gap disappeared")
     require(not any("implemented append-only release registration writer" in item
@@ -181,20 +245,43 @@ def main() -> int:
             "implemented writer remains listed as missing")
     require(gate.get("status") == "PARTIAL" and
             status.get("productionDecision") == "NO_GO",
-            "release foundation changed readiness")
+            "release authority changed production readiness")
+    return changed
 
-    if not changed:
-        print("Release baseline registry foundation already reconciled")
+
+def main() -> int:
+    contract = load(CONTRACT_PATH)
+    registry = load(REGISTRY_PATH)
+    writer = load_writer()
+    try:
+        writer.validate_registry_for_append(registry, contract)
+    except Exception as exc:
+        raise ReconcileFailure(f"release registry append-only authority invalid: {exc}") from exc
+
+    approved_count, rollback_eligible = release_inventory(registry)
+    candidate_contract = copy.deepcopy(contract)
+    contract_changed = reconcile_contract_readiness(
+        candidate_contract, approved_count, rollback_eligible
+    )
+
+    status = load(STATUS_PATH)
+    status_changed = reconcile_status(status, approved_count, rollback_eligible)
+
+    if not contract_changed and not status_changed:
+        print("Release baseline registry authority already reconciled")
         return 0
     status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
-    commit_status_transaction(status)
-    print("Registered release writer foundation; approved release count remains zero")
+    commit_authority_transaction(candidate_contract, status)
+    print("Reconciled approved release baseline inventory; OPS-P0-008 remains PARTIAL")
+    print(f"approved releases: {approved_count}")
+    print(f"rollback-eligible release available: {rollback_eligible}")
+    print("productionDecision: NO_GO")
     return 0
 
 
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except ReconcileFailure as exc:
+    except (ReconcileFailure, subprocess.CalledProcessError) as exc:
         print(f"RELEASE BASELINE REGISTRY RECONCILE FAILED: {exc}", file=sys.stderr)
         raise SystemExit(1)
