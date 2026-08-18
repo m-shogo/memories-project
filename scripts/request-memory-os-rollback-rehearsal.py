@@ -27,12 +27,27 @@ RELEASE_REGISTRY_PATH = ROOT / "contracts/operations/release-baseline-registry.v
 RELEASE_WRITER_PATH = ROOT / "scripts/register-memory-os-release-baseline.py"
 REHEARSAL_REGISTRY_PATH = ROOT / "contracts/operations/rollback-rehearsal-registry.v1.json"
 LOCK_PATH = ROOT / "contracts/operations/.rollback-rehearsal-registry.lock"
+APPROVAL_EVIDENCE_DIR = Path("docs/evidence/rollback-rehearsal/approvals")
 CONFIRMATION = "REQUEST ISOLATED ROLLBACK REHEARSAL"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 REHEARSAL_ID_RE = re.compile(r"^rrh_[0-9]{8}_[a-z0-9][a-z0-9._-]{2,63}$")
 APPROVER_RE = re.compile(r"^apr_[a-z0-9][a-z0-9_-]{7,63}$")
-APPROVER_FIELDS = {"role", "approverRef"}
+APPROVER_FIELDS = {"role", "approverRef", "approvalEvidenceRef"}
+APPROVAL_SCHEMA = "memory-os-rollback-rehearsal-approval.v1"
+APPROVAL_FIELDS = {
+    "schemaVersion",
+    "rehearsalId",
+    "sourceReleaseId",
+    "rollbackTargetReleaseId",
+    "reviewRole",
+    "decision",
+    "approvedAt",
+    "reviewerPseudonym",
+    "productionTraffic",
+    "productionCredentials",
+    "automaticPromotion",
+}
 TRAFFIC_POLICY_FIELDS = {
     "productionTrafficAllowed",
     "productionCredentialsAllowed",
@@ -74,7 +89,7 @@ REQUIRED_REQUEST_FIELDS = {
 }
 EVIDENCE_DIGEST_GUARD = (
     "every admitted request stores append-time SHA-256 digests for all entry-criteria, "
-    "recovery-point, forward-fix and artifact evidence references and historical validation "
+    "recovery-point, forward-fix, artifact and human approval evidence references and historical validation "
     "rejects later byte drift"
 )
 REGISTRY_FIELDS = {
@@ -200,11 +215,20 @@ def validate_contract_for_append(contract: dict[str, Any]) -> set[str]:
     }
     for field, expected in expected_paths.items():
         require(contract.get(field) == expected, f"rollback rehearsal contract path drift: {field}")
+    require(contract.get("approvalSchemaVersion") == APPROVAL_SCHEMA,
+            "rollback rehearsal approval schema drift")
+    require(contract.get("approvalEvidenceDirectory") == APPROVAL_EVIDENCE_DIR.as_posix(),
+            "rollback rehearsal approval evidence directory drift")
+    required_approval_fields = set(strings(
+        contract.get("requiredApprovalFields"), "requiredApprovalFields", len(APPROVAL_FIELDS)
+    ))
+    require(required_approval_fields == APPROVAL_FIELDS,
+            "rollback rehearsal approval fields drift")
     required_fields = set(strings(contract.get("requiredRequestFields"),
                                   "requiredRequestFields", len(REQUIRED_REQUEST_FIELDS)))
     require(required_fields == REQUIRED_REQUEST_FIELDS,
             "rollback rehearsal required request fields drift")
-    guards = strings(contract.get("admissionGuards"), "admissionGuards", 13)
+    guards = strings(contract.get("admissionGuards"), "admissionGuards", 14)
     require(EVIDENCE_DIGEST_GUARD in guards,
             "rollback rehearsal immutable evidence digest guard missing")
     environment = contract.get("environmentPolicy")
@@ -227,6 +251,45 @@ def validate_contract_for_append(contract: dict[str, Any]) -> set[str]:
     return required_fields
 
 
+def approval_evidence_ref(value: Any, field: str) -> str:
+    ref = safe_ref(value, field)
+    parts = Path(ref).parts
+    prefix = APPROVAL_EVIDENCE_DIR.parts
+    require(parts[:len(prefix)] == prefix,
+            f"{field} must be under {APPROVAL_EVIDENCE_DIR.as_posix()}")
+    return ref
+
+
+def approval_document(approver: dict[str, Any], request: dict[str, Any]) -> None:
+    ref = approval_evidence_ref(
+        approver.get("approvalEvidenceRef"), "approvers.approvalEvidenceRef"
+    )
+    document = load(ROOT / ref)
+    require(set(document) == APPROVAL_FIELDS,
+            "rollback rehearsal approval evidence field set drift")
+    require(document.get("schemaVersion") == APPROVAL_SCHEMA,
+            "rollback rehearsal approval schemaVersion drift")
+    require(document.get("rehearsalId") == request.get("rehearsalId"),
+            "rollback rehearsal approval rehearsalId binding mismatch")
+    require(document.get("sourceReleaseId") == request.get("sourceReleaseId"),
+            "rollback rehearsal approval sourceReleaseId binding mismatch")
+    require(document.get("rollbackTargetReleaseId") == request.get("rollbackTargetReleaseId"),
+            "rollback rehearsal approval rollbackTargetReleaseId binding mismatch")
+    require(document.get("reviewRole") == approver.get("role"),
+            "rollback rehearsal approval reviewRole binding mismatch")
+    require(document.get("reviewerPseudonym") == approver.get("approverRef"),
+            "rollback rehearsal approval reviewer binding mismatch")
+    require(document.get("decision") == "APPROVED",
+            "rollback rehearsal approval decision must be APPROVED")
+    approved_at = parse_utc(document.get("approvedAt"), "approvalEvidence.approvedAt")
+    requested_at = parse_utc(request.get("requestedAt"), "requestedAt")
+    require(approved_at >= requested_at,
+            "rollback rehearsal approval predates request")
+    for field in ("productionTraffic", "productionCredentials", "automaticPromotion"):
+        require(document.get(field) is False,
+                f"rollback rehearsal approval {field} must remain false")
+
+
 def evidence_refs(request: dict[str, Any]) -> list[str]:
     database = request.get("databasePolicy")
     artifacts = request.get("artifactPolicy")
@@ -245,6 +308,14 @@ def evidence_refs(request: dict[str, Any]) -> list[str]:
     refs.extend(
         safe_ref(ref, "entryCriteriaRefs")
         for ref in strings(request.get("entryCriteriaRefs"), "entryCriteriaRefs", 5)
+    )
+    approvers = request.get("approvers")
+    require(isinstance(approvers, list) and len(approvers) == 2,
+            "exactly two rehearsal approvers are required for evidence binding")
+    refs.extend(
+        approval_evidence_ref(approver.get("approvalEvidenceRef"), "approvers.approvalEvidenceRef")
+        for approver in approvers
+        if isinstance(approver, dict)
     )
     return list(dict.fromkeys(refs))
 
@@ -298,24 +369,31 @@ def validate_release_registry_for_append(release_registry: dict[str, Any]) -> No
         raise RequestFailure(f"approved release registry authority invalid: {exc}") from exc
 
 
-def validate_approvers(value: Any) -> None:
+def validate_approvers(value: Any, request: dict[str, Any] | None = None) -> None:
     require(isinstance(value, list) and len(value) == 2,
             "exactly two rehearsal approvers are required")
     roles: set[str] = set()
     identities: set[str] = set()
+    refs: set[str] = set()
     for approver in value:
         require(isinstance(approver, dict), "approver entry must be an object")
         require(set(approver) == APPROVER_FIELDS,
                 "approver entry field set drift")
         role = approver.get("role")
         identity = approver.get("approverRef")
+        ref = approver.get("approvalEvidenceRef")
         require(role in REQUIRED_ROLES and role not in roles,
                 f"approval role invalid or duplicated: {role}")
         require(isinstance(identity, str) and APPROVER_RE.fullmatch(identity) is not None,
                 "approverRef must be an operational pseudonym")
         require(identity not in identities, "duplicate rehearsal approver detected")
+        require(isinstance(ref, str) and ref and ref not in refs,
+                "approvalEvidenceRef must be distinct")
+        if request is not None:
+            approval_document(approver, request)
         roles.add(role)
         identities.add(identity)
+        refs.add(ref)
     require(roles == REQUIRED_ROLES, "required rehearsal approval roles incomplete")
 
 
@@ -400,14 +478,14 @@ def validate_request(
 
     for ref in strings(request.get("entryCriteriaRefs"), "entryCriteriaRefs", 5):
         safe_ref(ref, "entryCriteriaRefs")
-    validate_evidence_digest_binding(request, required=require_evidence_digests)
 
     stop_conditions = strings(request.get("stopConditions"), "stopConditions", 6)
     for condition in target_conditions:
         require(condition in stop_conditions,
                 "rollback target condition is missing from stopConditions")
 
-    validate_approvers(request.get("approvers"))
+    validate_approvers(request.get("approvers"), request)
+    validate_evidence_digest_binding(request, required=require_evidence_digests)
 
     risks = request.get("openRisks")
     require(isinstance(risks, list), "openRisks must be a list")
