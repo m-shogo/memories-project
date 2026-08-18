@@ -154,6 +154,13 @@ def main() -> int:
         writer.LOCK = original_lock
         validator.load_writer = original_load_writer
 
+    contract = json.loads(writer.CONTRACT.read_text(encoding="utf-8"))
+    require(
+        contract.get("rules", {}).get("appendMustRevalidateCanonicalRegistryAndRollbackOnFailure") is True,
+        "promotion review transactional append contract guard missing",
+    )
+    print("PASS accept: promotion review transactional append contract guard")
+
     registry = empty_registry()
     writer.validate_registry_for_append(registry)
     print("PASS accept: empty append-only promotion registry authority")
@@ -169,6 +176,27 @@ def main() -> int:
         value = copy.deepcopy(registry)
         mutate(value)
         expect_rejected(name, lambda value=value: writer.validate_registry_for_append(value))
+
+    original_registry_path = writer.REGISTRY
+    original_validate_registry = writer.validate_registry_for_append
+    with tempfile.TemporaryDirectory(prefix="memory-os-promotion-review-append-rollback-") as registry_tmp:
+        temp_registry = Path(registry_tmp) / "promotion-registry.json"
+        write_json(temp_registry, registry)
+        before = temp_registry.read_bytes()
+        writer.REGISTRY = temp_registry
+        writer.validate_registry_for_append = lambda value: (_ for _ in ()).throw(writer.Fail("synthetic post-append validation failure"))
+        try:
+            candidate = copy.deepcopy(registry)
+            candidate["limitations"] = ["synthetic write that must be rolled back"]
+            expect_rejected(
+                "promotion registry post-append validation rollback",
+                lambda: writer.write_registry_transactionally(candidate),
+            )
+            require(temp_registry.read_bytes() == before, "promotion registry bytes changed after rejected transactional append")
+            print("PASS preserve: promotion registry append failure rolled back byte-for-byte")
+        finally:
+            writer.REGISTRY = original_registry_path
+            writer.validate_registry_for_append = original_validate_registry
 
     require(writer.EVIDENCE_ROOT.is_dir(), "monitored backup/restore evidence namespace missing")
     with tempfile.TemporaryDirectory(prefix=".promotion-review-negative-", dir=writer.EVIDENCE_ROOT) as tmp:
@@ -335,6 +363,7 @@ def main() -> int:
     print("review authority path escape accepted: false")
     print("promotion review lock substitution accepted: false")
     print("corrupt promotion registry accepted on append: false")
+    print("post-append promotion registry validation failure persisted: false")
     print("review can change traffic: false")
     print("GO recommendation implies production ready: false")
     print("production evidence: false")
