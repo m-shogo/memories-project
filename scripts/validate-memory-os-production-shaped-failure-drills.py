@@ -69,6 +69,7 @@ def validate_writer_authority(writer: ModuleType) -> None:
     require(writer.GEN_REGISTRY.resolve() == GEN_REGISTRY.resolve(), "failure-drill writer generation registry authority drift")
     require(writer.VALIDATOR.resolve() == Path(__file__).resolve(), "failure-drill writer validator authority drift")
     require(writer.LOCK.resolve() == LOCK.resolve(), "failure-drill writer lock authority drift")
+    require(callable(getattr(writer, "append_registry_transactionally", None)), "failure-drill writer transactional append authority missing")
 
 
 def validate_generation_registry_authority() -> None:
@@ -158,6 +159,7 @@ def main() -> int:
     require(scenario_ids == {"FAIL-PROD-001", "FAIL-PROD-002", "FAIL-PROD-003", "FAIL-PROD-004"}, "scenario set drift")
     requirements = contract.get("recordRequirements")
     require(isinstance(requirements, dict) and requirements and all(value is True for value in requirements.values()), "record requirements must remain true")
+    require(requirements.get("appendMustRevalidateCanonicalRegistryAndRollbackOnFailure") is True, "transactional append requirement must remain true")
     promotion = contract.get("promotionRules")
     require(isinstance(promotion, dict), "promotionRules missing")
     for key, value in promotion.items():
