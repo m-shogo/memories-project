@@ -8,6 +8,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
@@ -92,6 +93,48 @@ def validator_rejects_lock_drift(contract: dict[str, Any], contract_bytes: bytes
             raise RuntimeError("standalone validator accepted alternate append lock authority")
     finally:
         CONTRACT_PATH.write_bytes(contract_bytes)
+
+
+def validate_evidence_ref_containment(writer: Any) -> None:
+    fixture_root = ROOT / "docs/fixtures/memory-os-operability"
+    leaf_link = fixture_root / ".rollback-rehearsal-ref-link"
+    parent_link = fixture_root / ".rollback-rehearsal-ref-parent"
+    untracked = fixture_root / ".rollback-rehearsal-ref-untracked.json"
+    for path in (leaf_link, parent_link, untracked):
+        try:
+            if path.is_symlink() or path.is_file():
+                path.unlink()
+        except FileNotFoundError:
+            pass
+    try:
+        leaf_link.symlink_to(ROOT / "README.md")
+        expect_rejected(
+            "leaf symlink evidence ref",
+            lambda: writer.safe_ref(str(leaf_link.relative_to(ROOT)), "negative.leaf"),
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            outside = Path(temp_dir) / "outside.json"
+            outside.write_text("{}\n", encoding="utf-8")
+            parent_link.symlink_to(Path(temp_dir), target_is_directory=True)
+            expect_rejected(
+                "parent symlink evidence ref",
+                lambda: writer.safe_ref(
+                    str((parent_link / outside.name).relative_to(ROOT)), "negative.parent"
+                ),
+            )
+            parent_link.unlink()
+        untracked.write_text("{}\n", encoding="utf-8")
+        expect_rejected(
+            "untracked evidence ref",
+            lambda: writer.safe_ref(str(untracked.relative_to(ROOT)), "negative.untracked"),
+        )
+    finally:
+        for path in (leaf_link, parent_link, untracked):
+            try:
+                if path.is_symlink() or path.is_file():
+                    path.unlink()
+            except FileNotFoundError:
+                pass
 
 
 def validate_planning_progression(reconciler: Any) -> None:
@@ -201,6 +244,7 @@ def main() -> int:
     writer.validate_registry_for_append(
         copy.deepcopy(registry), copy.deepcopy(contract), copy.deepcopy(release_registry)
     )
+    validate_evidence_ref_containment(writer)
     validate_planning_progression(reconciler)
     validate_transaction_rollback(reconciler)
 
@@ -251,7 +295,7 @@ def main() -> int:
     if STATUS_PATH.read_bytes() != status_bytes:
         raise RuntimeError("production status bytes changed after negative suite")
 
-    print("PASS: rollback rehearsal authority accepts planning progression while rejecting corruption and aggregate partial writes")
+    print("PASS: rollback rehearsal authority accepts planning progression while rejecting corruption, unsafe refs and aggregate partial writes")
     return 0
 
 
