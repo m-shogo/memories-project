@@ -86,6 +86,7 @@
     "independentReviewsCannotIncludeCredentials": true,
     "independentReviewsCannotAuthorizeAutomaticProductionPromotion": true,
     "appendLockMustRemainCanonical": true,
+    "appendMustRevalidateCanonicalRegistryAndRollbackOnFailure": true,
     "unresolvedCriticalOrHighFindingsForbidden": true
   },
   "promotionRules": {
