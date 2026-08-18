@@ -224,6 +224,17 @@ def validate_evidence_digest_authority(writer: Any) -> None:
         lambda: writer.validate_evidence_digest_binding(absent, required=True),
     )
 
+    evidence_path = ROOT / first_ref
+    original = evidence_path.read_bytes()
+    try:
+        evidence_path.write_bytes(original + b"\n")
+        expect_rejected(
+            "tracked evidence differs from exact HEAD",
+            lambda: writer.validate_evidence_digest_binding(request, required=True),
+        )
+    finally:
+        evidence_path.write_bytes(original)
+
 
 def validate_planning_progression(reconciler: Any) -> None:
     contract = copy.deepcopy(load_json(CONTRACT_PATH))
@@ -386,7 +397,7 @@ def main() -> int:
     if STATUS_PATH.read_bytes() != status_bytes:
         raise RuntimeError("production status bytes changed after negative suite")
 
-    print("PASS: rollback rehearsal authority accepts planning progression while rejecting corrupt contract/registry authority, unsafe refs, evidence byte drift and aggregate partial writes")
+    print("PASS: rollback rehearsal authority accepts planning progression while rejecting corrupt contract/registry authority, unsafe refs, uncommitted or stale evidence bytes and aggregate partial writes")
     return 0
 
 
