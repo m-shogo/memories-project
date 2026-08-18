@@ -35,6 +35,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-drill-objective-authority-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-load-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request-append-rollback-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-drill-request.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
@@ -82,6 +83,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-drill-objective-authority-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-load-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request-append-rollback-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-drill-request.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
@@ -153,6 +155,7 @@ jobs:
               scripts/validate-memory-os-backup-restore-drill-objective-authority-negative.py \
               scripts/validate-memory-os-backup-restore-drill-request-load-negative.py \
               scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py \
+              scripts/validate-memory-os-backup-restore-drill-request-append-rollback-negative.py \
               scripts/reconcile-memory-os-backup-restore-drill-request.py \
               scripts/register-memory-os-backup-restore-generation-evidence.py \
               scripts/validate-memory-os-backup-restore-generation-evidence.py \
@@ -175,6 +178,7 @@ jobs:
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-objective-authority-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-request-load-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-request-append-rollback-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-backup-restore-drill-request.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-request.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1 || code=$?; fi
@@ -284,6 +288,7 @@ jobs:
           python scripts/validate-memory-os-backup-restore-drill-objective-authority-negative.py
           python scripts/validate-memory-os-backup-restore-drill-request-load-negative.py
           python scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py
+          python scripts/validate-memory-os-backup-restore-drill-request-append-rollback-negative.py
           python scripts/validate-memory-os-backup-restore-generation-evidence.py
           python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py
           python scripts/validate-memory-os-backup-restore-generation-binding.py
