@@ -3,14 +3,17 @@
 
 from __future__ import annotations
 
+import copy
 import importlib.util
+import json
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 WRITER = ROOT / "scripts/register-memory-os-client-baseline.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-client-baseline-registry.py"
+REGISTRY = ROOT / "contracts/operations/client-baseline-registry.v1.json"
 EVIDENCE = ROOT / "docs/evidence/clients/README.md"
 
 
@@ -47,6 +50,89 @@ def expect_rejected(writer: Any, ref: str, source: str, expected: str) -> None:
         require(expected in str(exc), f"unexpected rejection: {exc}")
         return
     raise RuntimeError(f"client evidence corruption was accepted: {expected}")
+
+
+def expect_registry_rejected(writer: Any, base: dict[str, Any], label: str,
+                             mutate: Callable[[dict[str, Any]], None]) -> None:
+    candidate = copy.deepcopy(base)
+    mutate(candidate)
+    try:
+        writer.validate_registry_for_append(candidate)
+    except writer.Failure:
+        return
+    raise RuntimeError(f"historical client semantic corruption was accepted: {label}")
+
+
+def synthetic_registry(writer: Any, source: str, evidence_ref: str) -> dict[str, Any]:
+    base = json.loads(REGISTRY.read_text(encoding="utf-8"))
+    record = {
+        "schemaVersion": "memory-os-client-baseline-record.v1",
+        "clientBaselineId": "clb_20260818_synthetic",
+        "clientClass": "IOS_APP",
+        "marketingVersion": "1.0.0",
+        "buildNumber": "1",
+        "sourceCommitSha": source,
+        "artifactKind": "IOS_IPA",
+        "artifactSha256": "0" * 64,
+        "artifactByteLength": 1,
+        "approvedAt": "2026-08-18T00:00:00Z",
+        "approvalClass": "REVIEWED_CLIENT_BASELINE",
+        "approvers": [
+            {"role": "CLIENT_OWNER", "approverRef": "apr_client001"},
+            {"role": "SECURITY_REVIEWER", "approverRef": "apr_security02"},
+            {"role": "COMPATIBILITY_REVIEWER", "approverRef": "apr_compat003"},
+        ],
+        "apiMajor": "v1",
+        "apiContractSha256": "1" * 64,
+        "signedUploadContract": "memory-os-signed-upload.v1",
+        "clientBehaviorContractSha256": "2" * 64,
+        "buildProvenanceEvidenceRefs": [evidence_ref],
+        "securityEvidenceRefs": [evidence_ref],
+        "compatibilityEvidenceRefs": [evidence_ref],
+        "artifactRetentionEvidenceRefs": [evidence_ref],
+        "evidenceComplete": True,
+        "approvedForPairing": True,
+        "productionEvidence": False,
+        "productionReady": False,
+    }
+    base["clients"] = [record]
+    base["approvedClientBaselineCount"] = 1
+    base["latestApprovedClientByClass"] = {
+        "IOS_APP": record["clientBaselineId"],
+        "PORTAL": None,
+    }
+    writer.validate_registry_for_append(copy.deepcopy(base))
+    return base
+
+
+def prove_historical_semantics(writer: Any, source: str, evidence_ref: str) -> None:
+    base = synthetic_registry(writer, source, evidence_ref)
+    expect_registry_rejected(
+        writer, base, "duplicate approver",
+        lambda value: value["clients"][0]["approvers"].__setitem__(
+            1, copy.deepcopy(value["clients"][0]["approvers"][0])
+        ),
+    )
+    expect_registry_rejected(
+        writer, base, "approvedForPairing false",
+        lambda value: value["clients"][0].__setitem__("approvedForPairing", False),
+    )
+    expect_registry_rejected(
+        writer, base, "evidenceComplete false",
+        lambda value: value["clients"][0].__setitem__("evidenceComplete", False),
+    )
+    expect_registry_rejected(
+        writer, base, "API major drift",
+        lambda value: value["clients"][0].__setitem__("apiMajor", "v2"),
+    )
+    expect_registry_rejected(
+        writer, base, "client artifact kind mismatch",
+        lambda value: value["clients"][0].__setitem__("artifactKind", "PORTAL_BUNDLE"),
+    )
+    expect_registry_rejected(
+        writer, base, "production readiness promotion",
+        lambda value: value["clients"][0].__setitem__("productionReady", True),
+    )
 
 
 def prove_reconcile_rollback() -> None:
@@ -91,6 +177,7 @@ def main() -> int:
     original = EVIDENCE.read_bytes()
 
     writer.validate_evidence_ref_at_source(ref, source, "positive")
+    prove_historical_semantics(writer, source, ref)
 
     try:
         EVIDENCE.write_bytes(original + b"\nsource-binding-negative\n")
@@ -119,7 +206,7 @@ def main() -> int:
     )
     require(status.returncode == 0 and status.stdout.strip() == "",
             "negative suite left working-tree changes")
-    print("PASS: client baseline evidence binding and reconcile rollback are fail-closed")
+    print("PASS: client baseline historical semantics, evidence binding and reconcile rollback are fail-closed")
     return 0
 
 
