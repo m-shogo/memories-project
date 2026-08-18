@@ -18,6 +18,7 @@ on:
       - "scripts/validate-memory-os-production-equivalent-environment-generation-source-binding-negative.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation-lineage-negative.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation-authority-path-negative.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-generation-append-rollback-negative.py"
       - "scripts/reconcile-memory-os-production-equivalent-generation-status.py"
       - "scripts/validate-memory-os-operability.py"
   push:
@@ -39,6 +40,7 @@ on:
       - "scripts/validate-memory-os-production-equivalent-environment-generation-source-binding-negative.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation-lineage-negative.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation-authority-path-negative.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-generation-append-rollback-negative.py"
       - "scripts/reconcile-memory-os-production-equivalent-generation-status.py"
       - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
@@ -89,6 +91,7 @@ jobs:
             scripts/validate-memory-os-production-equivalent-environment-generation-source-binding-negative.py \
             scripts/validate-memory-os-production-equivalent-environment-generation-lineage-negative.py \
             scripts/validate-memory-os-production-equivalent-environment-generation-authority-path-negative.py \
+            scripts/validate-memory-os-production-equivalent-environment-generation-append-rollback-negative.py \
             scripts/reconcile-memory-os-production-equivalent-generation-status.py \
             >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-production-equivalent-generation-status.py >> "$log" 2>&1 || code=$?; fi
@@ -96,6 +99,7 @@ jobs:
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-equivalent-environment-generation-source-binding-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-equivalent-environment-generation-lineage-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-equivalent-environment-generation-authority-path-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-equivalent-environment-generation-append-rollback-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-equivalent-environment-generation.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?; fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
