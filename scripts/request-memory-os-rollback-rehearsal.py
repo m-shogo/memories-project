@@ -92,6 +92,10 @@ EVIDENCE_DIGEST_GUARD = (
     "recovery-point, forward-fix, artifact and human approval evidence references and historical validation "
     "rejects later byte drift"
 )
+TRANSACTIONAL_APPEND_GUARD = (
+    "registry append revalidates the canonical append-only authority after atomic replacement and restores "
+    "the original registry bytes on failure"
+)
 REGISTRY_FIELDS = {
     "schemaVersion",
     "registryClass",
@@ -296,9 +300,11 @@ def validate_contract_for_append(contract: dict[str, Any]) -> set[str]:
                                   "requiredRequestFields", len(REQUIRED_REQUEST_FIELDS)))
     require(required_fields == REQUIRED_REQUEST_FIELDS,
             "rollback rehearsal required request fields drift")
-    guards = strings(contract.get("admissionGuards"), "admissionGuards", 14)
+    guards = strings(contract.get("admissionGuards"), "admissionGuards", 15)
     require(EVIDENCE_DIGEST_GUARD in guards,
             "rollback rehearsal immutable evidence digest guard missing")
+    require(TRANSACTIONAL_APPEND_GUARD in guards,
+            "rollback rehearsal transactional append guard missing")
     environment = contract.get("environmentPolicy")
     require(isinstance(environment, dict) and
             environment.get("allowedEnvironmentClass") == "ISOLATED_NON_PRODUCTION_REHEARSAL" and
@@ -350,7 +356,7 @@ def approval_document(approver: dict[str, Any], request: dict[str, Any]) -> None
             "rollback rehearsal approval reviewer binding mismatch")
     require(document.get("decision") == "APPROVED",
             "rollback rehearsal approval decision must be APPROVED")
-    approved_at = parse_utc(document.get("approvedAt"), "approvalEvidence.aprovedAt")
+    approved_at = parse_utc(document.get("approvedAt"), "approvalEvidence.approvedAt")
     requested_at = parse_utc(request.get("requestedAt"), "requestedAt")
     require(approved_at >= requested_at,
             "rollback rehearsal approval predates request")
