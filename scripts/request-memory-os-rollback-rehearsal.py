@@ -277,8 +277,11 @@ def validate_request(
     request: dict[str, Any], required_fields: set[str], release_registry: dict[str, Any],
     *, require_evidence_digests: bool = False,
 ) -> None:
-    require(set(request) >= required_fields,
-            f"request missing fields: {sorted(required_fields - set(request))}")
+    expected_fields = set(required_fields)
+    if require_evidence_digests:
+        expected_fields.add(EVIDENCE_DIGEST_FIELD)
+    require(set(request) == expected_fields,
+            f"request field set drift: {sorted(set(request) ^ expected_fields)}")
     require(request.get("schemaVersion") == "memory-os-rollback-rehearsal-request.v1",
             "request schemaVersion drift")
     rehearsal_id = request.get("rehearsalId")
