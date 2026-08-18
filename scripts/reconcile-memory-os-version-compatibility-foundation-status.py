@@ -24,6 +24,7 @@ PARSER_REGISTRY_PATH = ROOT / "contracts/operations/parser-artifact-registry.v1.
 PARSER_WRITER_PATH = ROOT / "scripts/register-memory-os-parser-artifact.py"
 PAIR_REGISTRY_PATH = ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"
 PAIR_WRITER_PATH = ROOT / "scripts/register-memory-os-release-compatibility-pair.py"
+PAIR_REVIEW_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-release-compatibility-pair-independent-review.py"
 FOUNDATION_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-version-compatibility-foundations.py"
 OPERABILITY_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-operability.py"
 
@@ -151,11 +152,20 @@ def validate_source_registries() -> dict[str, int]:
     rollback_writer = load_module(ROLLBACK_WRITER_PATH, "memory_os_rollback_rehearsal_writer_for_foundation")
     parser_writer = load_module(PARSER_WRITER_PATH, "memory_os_parser_artifact_writer_for_foundation")
     pair_writer = load_module(PAIR_WRITER_PATH, "memory_os_release_pair_writer_for_foundation")
+    pair_review_validator = load_module(
+        PAIR_REVIEW_VALIDATOR_PATH,
+        "memory_os_release_pair_review_for_foundation",
+    )
     try:
         release_writer.validate_registry_for_append(releases, release_contract)
         rollback_writer.validate_registry_for_append(rollback, rollback_contract, releases)
         parser_writer.validate_registry_for_append(parsers)
         pair_writer.validate_registry_for_append(pairs)
+        pair_rows = pairs.get("pairs")
+        require(isinstance(pair_rows, list), "release compatibility pair rows invalid")
+        for row in pair_rows:
+            require(isinstance(row, dict), "release compatibility pair row must be an object")
+            pair_review_validator.validate_pair_reviews(row)
     except Exception as exc:
         raise ReconcileFailure(f"compatibility source authority invalid: {exc}") from exc
     counts = {
