@@ -88,6 +88,7 @@
   "appendOnlyGuards": {
     "exclusiveCreateRequired": true,
     "existingMigrationRunIdCannotBeOverwritten": true,
+    "canonicalLedgerMustValidateBeforeAppend": true,
     "oneRecordPerFile": true,
     "filenameMustEqualMigrationRunIdPlusJson": true,
     "recordMutationForbidden": true,
