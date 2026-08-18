@@ -69,6 +69,11 @@
     "evidenceDigestsCoverEveryEvidenceRef": true,
     "evidenceDigestsUseSha256": true
   },
+  "appendOnlyGuards": {
+    "canonicalLedgerMustValidateBeforeAppend": true,
+    "canonicalLedgerMustValidateAfterAppend": true,
+    "postAppendValidationFailureMustRemoveNewRecord": true
+  },
   "privacy": {
     "classification": "operational_sensitive_no_secrets",
     "rawIpForbidden": true,
