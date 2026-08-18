@@ -259,17 +259,18 @@ def main() -> int:
     contract = load(CONTRACT_PATH)
     releases = load(RELEASE_REGISTRY_PATH)
     rehearsals = load(REHEARSAL_REGISTRY_PATH)
-    try:
-        writer = load_module(WRITER_PATH, "rollback_rehearsal_writer_reconcile")
-        writer.validate_registry_for_append(rehearsals, contract, releases)
-    except Exception as exc:
-        raise ReconcileFailure(f"rollback rehearsal append authority invalid: {exc}") from exc
 
     release_count, eligible_count, admissible_pairs, request_count = derive_counts(releases, rehearsals)
     candidate_contract = copy.deepcopy(contract)
     contract_changed = reconcile_contract(
         candidate_contract, release_count, eligible_count, admissible_pairs, request_count
     )
+    try:
+        writer = load_module(WRITER_PATH, "rollback_rehearsal_writer_reconcile")
+        writer.validate_registry_for_append(rehearsals, candidate_contract, releases)
+    except Exception as exc:
+        raise ReconcileFailure(f"rollback rehearsal append authority invalid: {exc}") from exc
+
     status = load(STATUS_PATH)
     status_changed = reconcile_status(status, release_count, admissible_pairs, request_count)
 
