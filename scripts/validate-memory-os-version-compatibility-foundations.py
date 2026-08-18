@@ -8,6 +8,7 @@ readiness.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
 import subprocess
@@ -19,6 +20,14 @@ ROOT = Path(__file__).resolve().parents[1]
 FOUNDATION_PATH = ROOT / "contracts/operations/version-compatibility-foundations.v1.json"
 CANONICAL_PATH = ROOT / "contracts/operations/version-compatibility-contract.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+RELEASE_CONTRACT_PATH = ROOT / "contracts/operations/release-baseline-registry-contract.v1.json"
+RELEASE_REGISTRY_PATH = ROOT / "contracts/operations/release-baseline-registry.v1.json"
+RELEASE_WRITER_PATH = ROOT / "scripts/register-memory-os-release-baseline.py"
+ROLLBACK_CONTRACT_PATH = ROOT / "contracts/operations/rollback-rehearsal-gate-contract.v1.json"
+ROLLBACK_REGISTRY_PATH = ROOT / "contracts/operations/rollback-rehearsal-registry.v1.json"
+ROLLBACK_WRITER_PATH = ROOT / "scripts/request-memory-os-rollback-rehearsal.py"
+PARSER_REGISTRY_PATH = ROOT / "contracts/operations/parser-artifact-registry.v1.json"
+PARSER_WRITER_PATH = ROOT / "scripts/register-memory-os-parser-artifact.py"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 EXPECTED_FOUNDATIONS = {
@@ -71,6 +80,16 @@ def load(path: Path) -> dict[str, Any]:
         raise ValidationFailure(f"invalid JSON: {path.relative_to(ROOT)}: {exc}") from exc
     require(isinstance(value, dict), f"root must be an object: {path.relative_to(ROOT)}")
     return value
+
+
+def load_module(path: Path, name: str) -> Any:
+    require(path.is_file(), f"missing authority module: {path.relative_to(ROOT)}")
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None,
+            f"cannot load authority module: {path.relative_to(ROOT)}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def unique_strings(value: Any, field: str, minimum: int = 1) -> list[str]:
@@ -164,9 +183,18 @@ def validate_foundation_contract() -> dict[str, Any]:
         "productionReady": False,
         "productionDecision": "NO_GO",
     }
+    count_fields = {
+        "approvedReleaseCount",
+        "approvedRollbackPairCount",
+        "reviewedParserArtifactCount",
+    }
     for field, expected in expected_boundary.items():
-        require(boundary.get(field) == expected,
-                f"aggregate boundary drift: {field}")
+        value = boundary.get(field)
+        if field in count_fields:
+            require(isinstance(value, int) and not isinstance(value, bool) and value == 0,
+                    f"aggregate boundary {field} must be integer zero")
+        else:
+            require(value == expected, f"aggregate boundary drift: {field}")
 
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "foundation readiness missing")
@@ -312,14 +340,31 @@ def validate_postgresql_result() -> None:
 
 
 def validate_empty_authorities() -> None:
-    releases = load(ROOT / "contracts/operations/release-baseline-registry.v1.json")
-    rollback = load(ROOT / "contracts/operations/rollback-rehearsal-registry.v1.json")
-    parsers = load(ROOT / "contracts/operations/parser-artifact-registry.v1.json")
-    require(releases.get("approvedReleaseCount") == 0 and releases.get("releases") == [],
+    releases = load(RELEASE_REGISTRY_PATH)
+    rollback = load(ROLLBACK_REGISTRY_PATH)
+    parsers = load(PARSER_REGISTRY_PATH)
+    release_contract = load(RELEASE_CONTRACT_PATH)
+    rollback_contract = load(ROLLBACK_CONTRACT_PATH)
+    release_writer = load_module(RELEASE_WRITER_PATH, "memory_os_release_baseline_writer_for_foundation_validator")
+    rollback_writer = load_module(ROLLBACK_WRITER_PATH, "memory_os_rollback_rehearsal_writer_for_foundation_validator")
+    parser_writer = load_module(PARSER_WRITER_PATH, "memory_os_parser_artifact_writer_for_foundation_validator")
+    try:
+        release_writer.validate_registry_for_append(releases, release_contract)
+        rollback_writer.validate_registry_for_append(rollback, rollback_contract, releases)
+        parser_writer.validate_registry_for_append(parsers)
+    except Exception as exc:
+        raise ValidationFailure(f"compatibility source authority invalid: {exc}") from exc
+    release_count = releases.get("approvedReleaseCount")
+    rollback_count = rollback.get("rehearsalRequestCount")
+    parser_count = parsers.get("reviewedArtifactCount")
+    require(isinstance(release_count, int) and not isinstance(release_count, bool) and
+            release_count == 0 and releases.get("releases") == [],
             "approved release authority is no longer empty")
-    require(rollback.get("rehearsalRequestCount") == 0 and rollback.get("requests") == [],
+    require(isinstance(rollback_count, int) and not isinstance(rollback_count, bool) and
+            rollback_count == 0 and rollback.get("requests") == [],
             "rollback rehearsal authority is no longer empty")
-    require(parsers.get("reviewedArtifactCount") == 0 and parsers.get("artifacts") == [],
+    require(isinstance(parser_count, int) and not isinstance(parser_count, bool) and
+            parser_count == 0 and parsers.get("artifacts") == [],
             "parser artifact authority is no longer empty")
 
 
