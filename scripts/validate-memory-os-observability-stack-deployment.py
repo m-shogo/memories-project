@@ -51,6 +51,8 @@ def load_writer() -> ModuleType:
             "stack writer generation executable authority drift")
     require(callable(getattr(module, "validate_registry_for_append", None)),
             "stack writer registry validator missing")
+    require(callable(getattr(module, "commit_registry_candidate", None)),
+            "stack writer transactional append authority missing")
     return module
 
 
@@ -66,6 +68,8 @@ def main() -> int:
     requirements = contract.get("recordRequirements")
     require(isinstance(requirements, dict) and requirements and all(value is True for value in requirements.values()), "record requirements must remain fail-closed")
     require(requirements.get("appendLockMustRemainCanonical") is True, "append lock requirement drift")
+    require(requirements.get("appendMustRevalidateCanonicalRegistryAndRollbackOnFailure") is True,
+            "transactional append rollback requirement drift")
     promotion = contract.get("promotionRules")
     require(isinstance(promotion, dict) and promotion and all(value is False or key == "automaticProductionReadyForbidden" and value is True for key, value in promotion.items()), "promotion rules drift")
 
