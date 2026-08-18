@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+CREATOR = ROOT / "scripts/create-memory-os-migration-operation-evidence.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-migration-operation-evidence.py"
 CONTRACT = ROOT / "contracts/operations/migration-operation-evidence-contract.v1.json"
 LIFECYCLE = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
@@ -24,9 +25,9 @@ def require(condition: bool, message: str) -> None:
         raise NegativeFailure(message)
 
 
-def load_reconciler():
-    spec = importlib.util.spec_from_file_location("migration_operation_reconciler", RECONCILER)
-    require(spec is not None and spec.loader is not None, "cannot load migration operation reconciler")
+def load_module(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load {path.name}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -44,13 +45,32 @@ def prove_stronger_authority_is_preserved(module, lifecycle_payload: bytes) -> N
                 f"weaker operation evidence rolled back stronger lifecycle authority: {field}")
 
 
+def prove_canonical_ledger_preappend_guard(tmp_path: Path) -> None:
+    creator = load_module(CREATOR, "migration_operation_creator_negative")
+    fail_validator = tmp_path / "ledger-fail.py"
+    fail_validator.write_text("raise SystemExit(1)\n", encoding="utf-8")
+    creator.VALIDATOR = fail_validator
+
+    rejected = False
+    try:
+        creator.validate_canonical_ledger_before_append(creator.DEFAULT_LEDGER)
+    except creator.EvidenceValidationError as exc:
+        require("failed validation before append" in str(exc),
+                f"unexpected canonical ledger rejection: {exc}")
+        rejected = True
+    require(rejected, "canonical append did not require current ledger validation")
+
+    custom_ledger = tmp_path / "isolated-ledger"
+    creator.validate_canonical_ledger_before_append(custom_ledger)
+
+
 def main() -> int:
     originals = {
         CONTRACT: CONTRACT.read_bytes(),
         LIFECYCLE: LIFECYCLE.read_bytes(),
         STATUS: STATUS.read_bytes(),
     }
-    module = load_reconciler()
+    module = load_module(RECONCILER, "migration_operation_reconciler")
     prove_stronger_authority_is_preserved(module, originals[LIFECYCLE])
 
     candidates = [json.loads(payload.decode("utf-8")) for payload in originals.values()]
@@ -59,6 +79,7 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory(prefix="migration-operation-reconcile-negative-") as tmp:
         tmp_path = Path(tmp)
+        prove_canonical_ledger_preappend_guard(tmp_path)
         pass_validator = tmp_path / "pass.py"
         fail_validator = tmp_path / "fail.py"
         pass_validator.write_text("raise SystemExit(0)\n", encoding="utf-8")
@@ -76,7 +97,7 @@ def main() -> int:
     for path, payload in originals.items():
         require(path.read_bytes() == payload,
                 f"{path.name} changed after rejected migration operation reconcile")
-    print("PASS: migration operation reconcile is monotonic and rollback-safe")
+    print("PASS: migration operation append and reconcile are fail-closed and rollback-safe")
     return 0
 
 
