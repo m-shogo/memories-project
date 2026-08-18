@@ -168,6 +168,50 @@ def expect_nonempty_source_inventory_allowed(module, validator_mode: bool) -> No
                 "foundation reconciler did not revalidate typed release-pair reviews")
 
 
+def expect_aggregate_validator_chain(reconciler) -> None:
+    expected = [reconciler.FOUNDATION_VALIDATOR_PATH, reconciler.OPERABILITY_VALIDATOR_PATH]
+    observed: list[Path] = []
+    original = reconciler.run_validator
+
+    def fake_run(path: Path, _label: str) -> None:
+        observed.append(path)
+
+    reconciler.run_validator = fake_run
+    try:
+        reconciler.run_canonical_validators()
+    finally:
+        reconciler.run_validator = original
+    require(observed == expected,
+            "foundation reconciler does not enforce foundation/operability validators in order")
+
+
+def expect_aggregate_transaction_rollback(reconciler) -> None:
+    path = reconciler.STATUS_PATH
+    original = path.read_bytes()
+    status = json.loads(original.decode("utf-8"))
+    gate = next(
+        (item for item in status.get("areas", []) if isinstance(item, dict) and item.get("id") == "OPS-P0-008"),
+        None,
+    )
+    require(isinstance(gate, dict), "OPS-P0-008 missing for foundation rollback probe")
+    existing = gate.get("existingEvidence")
+    require(isinstance(existing, list), "OPS-P0-008 existingEvidence missing for foundation rollback probe")
+    existing.append("synthetic foundation aggregate rollback probe")
+
+    def fail_post_write() -> None:
+        raise RuntimeError("synthetic foundation aggregate validator failure")
+
+    try:
+        reconciler.commit_status_transaction(status, validator_runner=fail_post_write)
+    except RuntimeError as exc:
+        require("synthetic foundation aggregate validator failure" in str(exc),
+                f"unexpected foundation rollback failure reason: {exc}")
+    else:
+        raise NegativeFailure("foundation reconcile accepted synthetic post-write aggregate failure")
+    require(path.read_bytes() == original,
+            "foundation reconcile left partial production status after aggregate failure")
+
+
 def main() -> int:
     reconciler = load_module(RECONCILER, "compatibility_foundation_status_reconciler")
     validator = load_module(FOUNDATION_VALIDATOR, "compatibility_foundation_validator")
@@ -180,6 +224,8 @@ def main() -> int:
 
     expect_nonempty_source_inventory_allowed(reconciler, validator_mode=False)
     expect_nonempty_source_inventory_allowed(validator, validator_mode=True)
+    expect_aggregate_validator_chain(reconciler)
+    expect_aggregate_transaction_rollback(reconciler)
 
     expect_source_authority_rejection(
         reconciler, validator, reconciler.RELEASE_REGISTRY_PATH, "registryClass",
@@ -198,7 +244,7 @@ def main() -> int:
         False, "release compatibility pair",
     )
 
-    print("PASS: compatibility foundations accept canonical non-empty source inventory while rejecting authority drift and revalidating typed pair reviews")
+    print("PASS: compatibility foundations accept canonical source progression while rejecting authority drift and rolling back aggregate failures")
     return 0
 
 
