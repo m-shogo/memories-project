@@ -33,6 +33,24 @@ SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 REHEARSAL_ID_RE = re.compile(r"^rrh_[0-9]{8}_[a-z0-9][a-z0-9._-]{2,63}$")
 APPROVER_RE = re.compile(r"^apr_[a-z0-9][a-z0-9_-]{7,63}$")
 APPROVER_FIELDS = {"role", "approverRef"}
+TRAFFIC_POLICY_FIELDS = {
+    "productionTrafficAllowed",
+    "productionCredentialsAllowed",
+    "automaticPromotionAllowed",
+    "syntheticOrApprovedSanitizedDataOnly",
+}
+DATABASE_POLICY_FIELDS = {
+    "destructiveDownMigrationAllowed",
+    "automaticRecoveryDecisionAllowed",
+    "recoveryPointEvidenceRef",
+    "forwardFixDecisionRef",
+}
+ARTIFACT_POLICY_FIELDS = {
+    "exactRetainedArtifactsRequired",
+    "parserArtifactEvidenceRef",
+    "objectVersionEvidenceRef",
+}
+RISK_FIELDS = {"riskId", "ownerRef", "deadline", "status"}
 REQUIRED_ROLES = {"RELEASE_OWNER", "DATABASE_RECOVERY_OWNER"}
 EVIDENCE_DIGEST_FIELD = "evidenceDigests"
 REQUIRED_REQUEST_FIELDS = {
@@ -124,6 +142,12 @@ def strings(value: Any, field: str, minimum: int = 1) -> list[str]:
     require(all(isinstance(item, str) and item.strip() for item in value),
             f"{field} contains an invalid value")
     require(len(value) == len(set(value)), f"{field} contains duplicates")
+    return value
+
+
+def exact_object(value: Any, fields: set[str], field: str) -> dict[str, Any]:
+    require(isinstance(value, dict), f"{field} must be an object")
+    require(set(value) == fields, f"{field} field set drift")
     return value
 
 
@@ -353,16 +377,14 @@ def validate_request(
 
     require(request.get("environmentClass") == "ISOLATED_NON_PRODUCTION_REHEARSAL",
             "environmentClass must be isolated non-production rehearsal")
-    traffic = request.get("trafficPolicy")
-    require(isinstance(traffic, dict) and
-            traffic.get("productionTrafficAllowed") is False and
+    traffic = exact_object(request.get("trafficPolicy"), TRAFFIC_POLICY_FIELDS, "trafficPolicy")
+    require(traffic.get("productionTrafficAllowed") is False and
             traffic.get("productionCredentialsAllowed") is False and
             traffic.get("automaticPromotionAllowed") is False and
             traffic.get("syntheticOrApprovedSanitizedDataOnly") is True,
             "traffic policy violates rehearsal boundary")
-    database = request.get("databasePolicy")
-    require(isinstance(database, dict) and
-            database.get("destructiveDownMigrationAllowed") is False and
+    database = exact_object(request.get("databasePolicy"), DATABASE_POLICY_FIELDS, "databasePolicy")
+    require(database.get("destructiveDownMigrationAllowed") is False and
             database.get("automaticRecoveryDecisionAllowed") is False,
             "database policy violates rehearsal boundary")
     safe_ref(database.get("recoveryPointEvidenceRef"),
@@ -370,8 +392,7 @@ def validate_request(
     safe_ref(database.get("forwardFixDecisionRef"),
              "databasePolicy.forwardFixDecisionRef")
 
-    artifacts = request.get("artifactPolicy")
-    require(isinstance(artifacts, dict), "artifactPolicy missing")
+    artifacts = exact_object(request.get("artifactPolicy"), ARTIFACT_POLICY_FIELDS, "artifactPolicy")
     for field in ("parserArtifactEvidenceRef", "objectVersionEvidenceRef"):
         safe_ref(artifacts.get(field), f"artifactPolicy.{field}")
     require(artifacts.get("exactRetainedArtifactsRequired") is True,
@@ -391,8 +412,9 @@ def validate_request(
     risks = request.get("openRisks")
     require(isinstance(risks, list), "openRisks must be a list")
     for risk in risks:
-        require(isinstance(risk, dict) and risk.get("riskId") and
-                risk.get("ownerRef") and risk.get("deadline") and risk.get("status"),
+        risk = exact_object(risk, RISK_FIELDS, "openRisks entry")
+        require(risk.get("riskId") and risk.get("ownerRef") and
+                risk.get("deadline") and risk.get("status"),
                 "open risk entry is incomplete")
 
     serialized = json.dumps(request, ensure_ascii=False).lower()
