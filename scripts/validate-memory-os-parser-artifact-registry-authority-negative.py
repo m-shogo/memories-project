@@ -154,6 +154,107 @@ def synthetic_bound_registry(base: dict[str, Any]) -> dict[str, Any]:
     return candidate
 
 
+def prove_nonempty_progression(reconciler: Any, base: dict[str, Any]) -> None:
+    original_registry = REGISTRY_PATH.read_bytes()
+    original_contract = CONTRACT_PATH.read_bytes()
+    original_status = STATUS_PATH.read_bytes()
+    original_load_writer = reconciler.load_writer
+    original_transaction = reconciler.commit_authority_transaction
+    captured: dict[str, dict[str, Any]] = {}
+
+    class SyntheticWriter:
+        @staticmethod
+        def validate_registry_for_append(_registry: dict[str, Any]) -> None:
+            return None
+
+    def capture(contract: dict[str, Any], status: dict[str, Any], **_kwargs: Any) -> None:
+        captured["contract"] = copy.deepcopy(contract)
+        captured["status"] = copy.deepcopy(status)
+
+    try:
+        REGISTRY_PATH.write_text(
+            json.dumps(synthetic_bound_registry(base), indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        reconciler.load_writer = lambda: SyntheticWriter
+        reconciler.commit_authority_transaction = capture
+        result = reconciler.main()
+        require(result == 0, "nonempty parser progression reconcile failed")
+    finally:
+        reconciler.load_writer = original_load_writer
+        reconciler.commit_authority_transaction = original_transaction
+        REGISTRY_PATH.write_bytes(original_registry)
+        CONTRACT_PATH.write_bytes(original_contract)
+        STATUS_PATH.write_bytes(original_status)
+
+    contract = captured.get("contract")
+    status = captured.get("status")
+    require(isinstance(contract, dict) and isinstance(status, dict),
+            "nonempty parser progression did not produce derived authority")
+    state = contract.get("currentAuthorityState")
+    readiness = contract.get("readiness")
+    boundary = contract.get("evidenceBoundary")
+    require(isinstance(state, dict) and state.get("reviewedArtifactCount") == 1 and
+            state.get("replayProvenArtifactCount") == 1 and
+            state.get("retainedRollbackArtifactCount") == 0 and
+            state.get("compatibleApprovedReleaseCount") == 1 and
+            state.get("decision") == "ARTIFACT_AUTHORITY_AVAILABLE",
+            "nonempty parser progression state drift")
+    require(isinstance(readiness, dict) and readiness.get("reviewedArtifactAvailable") is True and
+            readiness.get("oldArtifactReplayExecuted") is True and
+            readiness.get("rollbackArtifactAvailable") is False and
+            readiness.get("independentRetentionVerified") is False and
+            readiness.get("independentReviewCompleted") is False and
+            readiness.get("productionReady") is False,
+            "nonempty parser progression readiness overclaim")
+    require(isinstance(boundary, dict) and boundary.get("productionArtifactApproved") is True and
+            boundary.get("oldArtifactReplayProven") is True and
+            boundary.get("rollbackArtifactAvailable") is False and
+            boundary.get("productionEvidence") is False and
+            boundary.get("productionReady") is False,
+            "nonempty parser progression evidence boundary drift")
+    require(status.get("productionDecision") == "NO_GO",
+            "nonempty parser progression changed production decision")
+    gate = next((item for item in status.get("areas", [])
+                 if isinstance(item, dict) and item.get("id") == "OPS-P0-008"), None)
+    require(isinstance(gate, dict) and gate.get("status") == "PARTIAL" and gate.get("blocking") is True,
+            "nonempty parser progression changed OPS-P0-008 readiness")
+    missing = gate.get("missingEvidence")
+    require(isinstance(missing, list), "nonempty parser progression missingEvidence invalid")
+    require(reconciler.REVIEWED_ARTIFACT_GAP not in missing and reconciler.REPLAY_GAP not in missing,
+            "satisfied parser artifact/replay gaps were not removed")
+    require(reconciler.RETENTION_GAP in missing and reconciler.RELEASE_BINDING_GAP in missing,
+            "stronger parser retention/release binding blockers disappeared")
+
+
+def prove_transaction_rollback(reconciler: Any) -> None:
+    original_contract = CONTRACT_PATH.read_bytes()
+    original_status = STATUS_PATH.read_bytes()
+    contract = json.loads(original_contract.decode("utf-8"))
+    status = json.loads(original_status.decode("utf-8"))
+    contract["currentAuthorityState"]["decision"] = "CONTROLLED_ROLLBACK_TEST"
+    status["asOf"] = "2099-12-31"
+
+    def fail_after_write() -> None:
+        raise RuntimeError("controlled post-write parser validation failure")
+
+    try:
+        reconciler.commit_authority_transaction(
+            contract,
+            status,
+            validator_runner=fail_after_write,
+        )
+    except RuntimeError as exc:
+        require("controlled post-write parser validation failure" in str(exc),
+                "parser rollback negative failed for wrong reason")
+    else:
+        raise NegativeFailure("parser authority transaction accepted controlled post-write failure")
+    require(CONTRACT_PATH.read_bytes() == original_contract,
+            "parser contract was not rolled back byte-for-byte")
+    require(STATUS_PATH.read_bytes() == original_status,
+            "parser production status was not rolled back byte-for-byte")
+
+
 def main() -> int:
     writer = load_writer()
     reconciler = load_reconciler()
@@ -241,10 +342,13 @@ def main() -> int:
     finally:
         writer.approved_release_ids = original_release_ids
 
+    prove_nonempty_progression(reconciler, base)
+    prove_transaction_rollback(reconciler)
+
     require(REGISTRY_PATH.read_bytes() == json.dumps(base, indent=2, ensure_ascii=False).encode("utf-8") + b"\n" or
             json.loads(REGISTRY_PATH.read_text(encoding="utf-8")) == base,
             "parser registry was not restored after reconcile negatives")
-    print("Parser artifact registry rejects aggregate corruption, evidence digest drift, and historical artifact semantic drift")
+    print("Parser artifact authority rejects corruption/historical drift, permits nonempty non-promoting progression, and rolls back post-write failure")
     return 0
 
 
