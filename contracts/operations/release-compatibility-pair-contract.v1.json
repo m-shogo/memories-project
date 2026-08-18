@@ -59,6 +59,7 @@
     "evidenceDigestReferenceSetsMustExactlyMatchRecordRefs": true,
     "evidenceBytesMustRemainEqualToAdmittedDigests": true,
     "appendLockMustRemainCanonical": true,
+    "appendMustRevalidateCanonicalRegistryAndRollbackOnFailure": true,
     "criticalOrHighOpenFindingsForbidden": true,
     "pairEvidenceCompleteRequiredForAdmission": true,
     "productionEvidenceForbidden": true,
