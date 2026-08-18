@@ -47,6 +47,8 @@ def load_writer() -> ModuleType:
             "release writer registry authority drift")
     require(getattr(module, "LOCK_PATH", None) == LOCK,
             "release writer append lock authority drift")
+    require(callable(getattr(module, "append_registry_transactionally", None)),
+            "release writer transactional append authority missing")
     return module
 
 
@@ -109,6 +111,30 @@ def expect_contract_rejected(
     except Exception:
         return
     raise Fail(f"release writer accepted corrupt contract: {name}")
+
+
+def expect_append_rollback(writer: ModuleType, contract: dict[str, Any]) -> None:
+    original = REGISTRY.read_bytes()
+    candidate = copy.deepcopy(load(REGISTRY))
+    candidate["approvedReleaseCount"] = candidate.get("approvedReleaseCount", 0) + 1
+    original_validator = writer.validate_registry_for_append
+
+    def fail_after_write(registry: dict[str, Any], candidate_contract: dict[str, Any]) -> None:
+        raise writer.RegistrationFailure("synthetic post-append release validation failure")
+
+    try:
+        writer.validate_registry_for_append = fail_after_write
+        try:
+            writer.append_registry_transactionally(candidate, contract, original)
+        except writer.RegistrationFailure:
+            pass
+        else:
+            raise Fail("release writer accepted synthetic post-append validation failure")
+        require(REGISTRY.read_bytes() == original,
+                "release registry did not roll back byte-for-byte after post-append failure")
+    finally:
+        writer.validate_registry_for_append = original_validator
+        REGISTRY.write_bytes(original)
 
 
 def expect_reconcile_rejected_without_mutation(
@@ -309,6 +335,7 @@ def main() -> int:
     contract = load(CONTRACT)
     validate_lock_binding(writer, contract)
     expect_lock_binding_rejected(writer, contract)
+    expect_append_rollback(writer, contract)
     validate_reconcile_validator_chain(reconciler)
     validate_record_shape_authority(writer, contract)
     validate_nonempty_progression(reconciler)
@@ -316,6 +343,7 @@ def main() -> int:
 
     contract_cases: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
         ("append lock path drift", lambda value: value.__setitem__("appendLockPath", "contracts/operations/.alternate-release.lock")),
+        ("append rollback guard disabled", lambda value: value.__setitem__("appendMustRevalidateCanonicalRegistryAndRollbackOnFailure", False)),
         ("required fields drift", lambda value: value.__setitem__("requiredFields", value["requiredFields"][:-1])),
         ("boolean minimum approvers", lambda value: value["approvalPolicy"].__setitem__("minimumDistinctApprovers", True)),
         ("approval role drift", lambda value: value["approvalPolicy"].__setitem__("requiredRoles", ["RELEASE_OWNER"])),
@@ -339,7 +367,7 @@ def main() -> int:
     for name, mutate in cases:
         expect_writer_rejected(writer, contract, name, mutate)
         expect_reconcile_rejected_without_mutation(name, mutate)
-    print("PASS: release baseline contract/record/registry corruption, approved-inventory progression and aggregate rollback are fail-closed")
+    print("PASS: release baseline contract/record/registry corruption, transactional append rollback, approved-inventory progression and aggregate rollback are fail-closed")
     return 0
 
 
