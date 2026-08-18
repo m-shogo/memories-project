@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Focused negative coverage for reviewed client evidence source binding and reconcile rollback."""
+"""Focused negative coverage for reviewed client evidence source binding and transactional authority rollback."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from typing import Any, Callable
 ROOT = Path(__file__).resolve().parents[1]
 WRITER = ROOT / "scripts/register-memory-os-client-baseline.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-client-baseline-registry.py"
+CONTRACT = ROOT / "contracts/operations/client-baseline-registry-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/client-baseline-registry.v1.json"
 EVIDENCE = ROOT / "docs/evidence/clients/README.md"
 
@@ -135,6 +136,49 @@ def prove_historical_semantics(writer: Any, source: str, evidence_ref: str) -> N
     )
 
 
+def prove_contract_rollback_guard(writer: Any) -> None:
+    original = CONTRACT.read_bytes()
+    candidate = json.loads(original.decode("utf-8"))
+    candidate["appendMustRevalidateCanonicalRegistryAndRollbackOnFailure"] = False
+    try:
+        CONTRACT.write_text(json.dumps(candidate, indent=2) + "\n", encoding="utf-8")
+        try:
+            writer.validate_contract_authority()
+        except writer.Failure as exc:
+            require("append rollback authority drift" in str(exc),
+                    f"unexpected contract guard rejection: {exc}")
+        else:
+            raise RuntimeError("client append rollback contract guard weakening was accepted")
+    finally:
+        CONTRACT.write_bytes(original)
+
+
+def prove_append_rollback(writer: Any) -> None:
+    original = REGISTRY.read_bytes()
+    candidate = json.loads(original.decode("utf-8"))
+    candidate["approvedClientBaselineCount"] = 999
+    original_validator = writer.validate_registry_for_append
+
+    def controlled_validator(_value: dict[str, Any]) -> None:
+        raise writer.Failure("synthetic post-append client registry validation failure")
+
+    writer.validate_registry_for_append = controlled_validator
+    try:
+        try:
+            writer.append_registry_transactionally(candidate, original)
+        except writer.Failure as exc:
+            require("synthetic post-append client registry validation failure" in str(exc),
+                    f"unexpected append rollback failure: {exc}")
+        else:
+            raise RuntimeError("client registry append unexpectedly succeeded after synthetic post-write failure")
+        require(REGISTRY.read_bytes() == original,
+                "client registry append rollback did not restore original bytes")
+    finally:
+        writer.validate_registry_for_append = original_validator
+        if REGISTRY.read_bytes() != original:
+            REGISTRY.write_bytes(original)
+
+
 def prove_reconcile_rollback() -> None:
     reconciler = load_module(RECONCILER, "memory_os_client_baseline_reconciler_negative")
     paths = (reconciler.CONTRACT, reconciler.SUPPORT, reconciler.STATUS)
@@ -197,6 +241,8 @@ def main() -> int:
     finally:
         temporary.unlink(missing_ok=True)
 
+    prove_contract_rollback_guard(writer)
+    prove_append_rollback(writer)
     prove_reconcile_rollback()
 
     require(EVIDENCE.read_bytes() == original, "client evidence fixture was not restored")
@@ -206,7 +252,7 @@ def main() -> int:
     )
     require(status.returncode == 0 and status.stdout.strip() == "",
             "negative suite left working-tree changes")
-    print("PASS: client baseline historical semantics, evidence binding and reconcile rollback are fail-closed")
+    print("PASS: client baseline historical semantics, evidence binding, append rollback and reconcile rollback are fail-closed")
     return 0
 
 
