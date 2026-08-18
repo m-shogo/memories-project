@@ -25,10 +25,12 @@ RESULT_ROOT = ROOT / "docs/evidence/migrations/recovery"
 REGISTRY = ROOT / "contracts/operations/migration-evidence-registry.v1.json"
 REGISTRY_CONTRACT = ROOT / "contracts/operations/migration-evidence-registry-contract.v1.json"
 LIFECYCLE = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
+STATUS = ROOT / "contracts/operations/production-operability-status.json"
 LOCAL_CONTRACT = ROOT / "contracts/operations/local-migration-recovery-artifact-contract.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-migration-rehearsal-evidence.py"
 RESULT_VALIDATOR = ROOT / "scripts/validate-memory-os-local-migration-recovery-artifact.py"
 LOCAL_RECONCILER = ROOT / "scripts/reconcile-memory-os-local-migration-recovery-artifact.py"
+GLOBAL_RECONCILER = ROOT / "scripts/reconcile-memory-os-migration-evidence-registry.py"
 CREATION_SUBJECT = "test(migration): record local recovery artifact rehearsal"
 
 
@@ -232,10 +234,26 @@ def reconcile(orphans: list[tuple[int, Path, dict[str, Any]]], writer: ModuleTyp
     registry["latestRehearsalRunId"] = records[-1].get("migrationRunId") if records else None
     writer.validate_registry_for_append(registry, contract)
 
-    originals = {REGISTRY: REGISTRY.read_bytes(), LOCAL_CONTRACT: LOCAL_CONTRACT.read_bytes()}
+    originals = {
+        REGISTRY: REGISTRY.read_bytes(),
+        REGISTRY_CONTRACT: REGISTRY_CONTRACT.read_bytes(),
+        LIFECYCLE: LIFECYCLE.read_bytes(),
+        LOCAL_CONTRACT: LOCAL_CONTRACT.read_bytes(),
+        STATUS: STATUS.read_bytes(),
+    }
+    previous_registry = json.loads(originals[REGISTRY].decode("utf-8"))
     lock_fd = writer.acquire_lock()
     try:
-        writer.atomic_write(registry)
+        writer.write_registry_transactionally(registry, previous_registry, contract)
+        completed = subprocess.run(
+            ["python", str(GLOBAL_RECONCILER)],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        require(completed.returncode == 0, f"migration ledger authority reconcile failed: {completed.stdout.strip()}")
         for run_id in new_run_ids:
             completed = subprocess.run(
                 ["python", str(LOCAL_RECONCILER), "--run-id", run_id],
