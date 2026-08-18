@@ -61,8 +61,17 @@ The request must stop before mutation or traffic movement when any of the follow
 - tenant isolation, deletion fencing, idempotency or session authority is ambiguous
 - monitoring, evidence capture or human command authority is incomplete
 
-## Current state
+## Current state authority
 
-No release is approved. No rollback-eligible target exists. Therefore no rehearsal request is admissible.
+The approved release registry and append-only rollback rehearsal registry are the
+sole authorities for the current approved-release count, rollback-eligible
+release count, admissible release-pair count and reviewed rehearsal-request
+count. Those values may progress only through their reviewed writers and this
+runbook never supplies or overrides them.
+
+A reviewed rehearsal request is planning authority only. Even when an admissible
+release pair and reviewed request exist, `rehearsalExecuted`, independent review,
+production evidence, production readiness, production credentials and production
+traffic remain separate authorities and are never inferred from admission.
 
 Production remains **NO_GO**.
