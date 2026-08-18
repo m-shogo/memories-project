@@ -159,6 +159,28 @@ def expect_nonempty_source_inventory_allowed(module, validator_mode: bool) -> No
             "compatibility foundation did not delegate pair authority to the shared pair writer guard")
 
 
+def expect_stale_empty_evidence_cleanup(reconciler) -> None:
+    existing = [reconciler.LEGACY_EMPTY_SOURCE_EVIDENCE]
+    source_counts = {
+        "approvedReleases": 1,
+        "rollbackRequests": 0,
+        "reviewedParserArtifacts": 0,
+        "approvedReleasePairs": 0,
+    }
+    changed = reconciler.reconcile_existing_evidence(existing, source_counts)
+    require(changed, "nonempty source inventory did not reconcile existingEvidence")
+    require(reconciler.LEGACY_EMPTY_SOURCE_EVIDENCE not in existing,
+            "stale empty-inventory evidence survived legitimate source progression")
+    for item in reconciler.EXISTING:
+        require(item in existing, "canonical compatibility foundation evidence missing after progression")
+
+    empty_existing = [reconciler.LEGACY_EMPTY_SOURCE_EVIDENCE]
+    empty_counts = {field: 0 for field in source_counts}
+    reconciler.reconcile_existing_evidence(empty_existing, empty_counts)
+    require(reconciler.LEGACY_EMPTY_SOURCE_EVIDENCE in empty_existing,
+            "empty-inventory evidence was removed before any source authority existed")
+
+
 def expect_aggregate_validator_chain(reconciler) -> None:
     expected = [reconciler.FOUNDATION_VALIDATOR_PATH, reconciler.OPERABILITY_VALIDATOR_PATH]
     observed: list[Path] = []
@@ -215,6 +237,7 @@ def main() -> int:
 
     expect_nonempty_source_inventory_allowed(reconciler, validator_mode=False)
     expect_nonempty_source_inventory_allowed(validator, validator_mode=True)
+    expect_stale_empty_evidence_cleanup(reconciler)
     expect_aggregate_validator_chain(reconciler)
     expect_aggregate_transaction_rollback(reconciler)
 
@@ -235,7 +258,7 @@ def main() -> int:
         False, "release compatibility pair",
     )
 
-    print("PASS: compatibility foundations reuse shared source authority and roll back aggregate failures")
+    print("PASS: compatibility foundations preserve source progression, shared authority and aggregate rollback")
     return 0
 
 
