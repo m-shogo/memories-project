@@ -20,6 +20,7 @@ CONTRACT_PATH = ROOT / "contracts/operations/parser-artifact-registry-contract.v
 REGISTRY_PATH = ROOT / "contracts/operations/parser-artifact-registry.v1.json"
 LOCK_PATH = ROOT / "contracts/operations/.parser-artifact-registry.lock"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+NONCANONICAL_RELEASE_BINDING_GAP = "approved release artifact-set digest binding and retirement proof that no rollback release depends on a deleted artifact"
 
 
 class NegativeFailure(RuntimeError):
@@ -223,8 +224,10 @@ def prove_nonempty_progression(reconciler: Any, base: dict[str, Any]) -> None:
     require(isinstance(missing, list), "nonempty parser progression missingEvidence invalid")
     require(reconciler.REVIEWED_ARTIFACT_GAP not in missing and reconciler.REPLAY_GAP not in missing,
             "satisfied parser artifact/replay gaps were not removed")
-    require(reconciler.RETENTION_GAP in missing and reconciler.RELEASE_BINDING_GAP in missing,
-            "stronger parser retention/release binding blockers disappeared")
+    require(reconciler.RETENTION_GAP in missing,
+            "stronger parser retention blocker disappeared")
+    require(NONCANONICAL_RELEASE_BINDING_GAP not in missing,
+            "parser reconcile reintroduced a noncanonical release-binding blocker")
 
 
 def prove_transaction_rollback(reconciler: Any) -> None:
@@ -348,7 +351,7 @@ def main() -> int:
     require(REGISTRY_PATH.read_bytes() == json.dumps(base, indent=2, ensure_ascii=False).encode("utf-8") + b"\n" or
             json.loads(REGISTRY_PATH.read_text(encoding="utf-8")) == base,
             "parser registry was not restored after reconcile negatives")
-    print("Parser artifact authority rejects corruption/historical drift, permits nonempty non-promoting progression, and rolls back post-write failure")
+    print("Parser artifact authority rejects corruption/historical drift, preserves canonical blocker monotonicity, permits nonempty non-promoting progression, and rolls back post-write failure")
     return 0
 
 
