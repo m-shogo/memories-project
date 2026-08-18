@@ -138,6 +138,7 @@
     "externalInputRequired": true,
     "cleanWorkingTreeRequired": true,
     "exclusiveLockAndAtomicRegistryUpdateRequired": true,
+    "appendMustRevalidateCanonicalRegistryAndRollbackOnFailure": true,
     "executionTimeRevalidationRequired": true
   },
   "forbiddenAdmissionSources": [
