@@ -70,6 +70,7 @@
     "reviewDoesNotCreateProductionEvidence": true,
     "reviewDoesNotCreateProductionReady": true,
     "appendOnlyDecisionHistoryRequired": true,
+    "appendMustRevalidateCanonicalRegistryAndRollbackOnFailure": true,
     "historicalReviewRemainsAuditableAfterCandidateSupersession": true,
     "currentPromotionAuthorityRevokedWhenCandidateStopsBeingCurrent": true,
     "currentPromotionAuthorityCannotBeAutoCreatedOrReactivated": true,
