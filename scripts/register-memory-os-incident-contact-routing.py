@@ -336,6 +336,16 @@ def atomic_write(value: dict[str, Any]) -> None:
             pass
 
 
+def commit_registry_candidate(original_registry: dict[str, Any], candidate_registry: dict[str, Any]) -> None:
+    validate_registry_for_append(candidate_registry)
+    atomic_write(candidate_registry)
+    try:
+        validate_registry_for_append(load(REGISTRY))
+    except Exception:
+        atomic_write(original_registry)
+        raise
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--record", required=True)
@@ -359,8 +369,9 @@ def main() -> int:
     try:
         os.write(lock_fd, (record["contactRoutingId"] + "\n").encode("ascii"))
         os.fsync(lock_fd)
-        registry = load(REGISTRY)
-        validate_registry_for_append(registry)
+        original_registry = load(REGISTRY)
+        validate_registry_for_append(original_registry)
+        registry = json.loads(json.dumps(original_registry))
         routings = registry["routings"]
         require(all(item.get("contactRoutingId") != record["contactRoutingId"] for item in routings), "contactRoutingId already registered")
         require(all(item.get("environmentIdentityDigest") != record["environmentIdentityDigest"] for item in routings), "environment identity already has contact routing admission")
@@ -369,7 +380,7 @@ def main() -> int:
         registry["productionEquivalentRoutingCount"] = sum(1 for item in routings if item.get("environmentClass") == "PRODUCTION_EQUIVALENT")
         registry["productionRoutingCount"] = sum(1 for item in routings if item.get("environmentClass") == "PRODUCTION")
         registry["productionReady"] = False
-        atomic_write(registry)
+        commit_registry_candidate(original_registry, registry)
     finally:
         os.close(lock_fd)
         try:
