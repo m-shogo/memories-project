@@ -49,6 +49,8 @@ def load_writer() -> ModuleType:
     require(spec is not None and spec.loader is not None, "cannot load migration admission writer")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    require(callable(getattr(module, "append_registry_transactionally", None)),
+            "migration admission transactional append authority missing")
     return module
 
 
@@ -67,6 +69,49 @@ def expect_rejected(writer: ModuleType, name: str, mutate: Callable[[dict[str, A
     except Exception:
         return
     raise Fail(f"writer accepted corrupt registry: {name}")
+
+
+def expect_contract_append_rollback_guard_rejected(writer: ModuleType) -> None:
+    original = CONTRACT.read_bytes()
+    contract = load_json(CONTRACT)
+    rules = contract.get("admissionRules")
+    require(isinstance(rules, dict), "migration admission rules missing for append rollback negative")
+    rules["appendMustRevalidateCanonicalRegistryAndRollbackOnFailure"] = False
+    CONTRACT.write_text(json.dumps(contract, indent=2) + "\n", encoding="utf-8")
+    try:
+        try:
+            writer.validate_registry_for_append(load_json(REGISTRY))
+        except Exception as exc:
+            require("post-append revalidation and rollback" in str(exc),
+                    "migration append rollback contract drift rejected for unrelated reason")
+            return
+        raise Fail("migration admission writer accepted disabled append rollback contract guard")
+    finally:
+        CONTRACT.write_bytes(original)
+
+
+def expect_append_rollback(writer: ModuleType) -> None:
+    original = REGISTRY.read_bytes()
+    candidate = copy.deepcopy(load_json(REGISTRY))
+    candidate["admittedRehearsalCount"] = candidate.get("admittedRehearsalCount", 0) + 1
+    original_validator = writer.validate_registry_for_append
+
+    def fail_after_write(_: dict[str, Any]) -> None:
+        raise writer.Fail("synthetic post-append migration admission validation failure")
+
+    try:
+        writer.validate_registry_for_append = fail_after_write
+        try:
+            writer.append_registry_transactionally(candidate, original)
+        except writer.Fail:
+            pass
+        else:
+            raise Fail("migration admission writer accepted synthetic post-append validation failure")
+        require(REGISTRY.read_bytes() == original,
+                "migration admission registry did not roll back byte-for-byte after post-append failure")
+    finally:
+        writer.validate_registry_for_append = original_validator
+        REGISTRY.write_bytes(original)
 
 
 def expect_reconcile_rejected_without_mutation(name: str, mutate: Callable[[dict[str, Any]], None]) -> None:
@@ -310,6 +355,8 @@ def main() -> int:
     for name, mutate in cases:
         expect_rejected(writer, name, mutate)
         expect_reconcile_rejected_without_mutation(name, mutate)
+    expect_contract_append_rollback_guard_rejected(writer)
+    expect_append_rollback(writer)
     expect_upstream_reconcile_rejected_without_mutation(RELEASES, "release baseline registry drift")
     expect_upstream_reconcile_rejected_without_mutation(RELEASE_PAIRS, "release compatibility pair registry drift")
     expect_upstream_reconcile_rejected_without_mutation(GENERATIONS, "environment generation registry drift")
@@ -321,7 +368,7 @@ def main() -> int:
     expect_external_evidence_containment_rejected(writer)
     expect_mutated_review_history_rejected(writer)
     expect_append_lock_contract_drift_rejected()
-    print("PASS: migration production-shaped admission registry, digest authority, append-lock authority, upstream release-pair, ledger, release, external evidence containment, and independent-review authority drift are rejected")
+    print("PASS: migration production-shaped admission registry, digest authority, transactional append rollback, append-lock authority, upstream release-pair, ledger, release, external evidence containment, and independent-review authority drift are rejected")
     return 0
 
 
