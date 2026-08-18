@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -48,6 +49,16 @@ def load_module(path: Path, name: str) -> Any:
     return module
 
 
+def git(*arguments: str) -> str:
+    completed = subprocess.run(
+        ["git", *arguments], cwd=ROOT, text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+    )
+    require(completed.returncode == 0,
+            f"git {' '.join(arguments)} failed while validating authority")
+    return completed.stdout.strip()
+
+
 def strings(value: Any, field: str, minimum: int = 1) -> list[str]:
     require(isinstance(value, list) and len(value) >= minimum,
             f"{field} requires at least {minimum} entries")
@@ -62,7 +73,21 @@ def safe_ref(value: Any, field: str) -> str:
     path = Path(value)
     require(not path.is_absolute() and ".." not in path.parts,
             f"{field} contains an unsafe path")
-    require((ROOT / path).is_file(), f"{field} path missing: {value}")
+    candidate = ROOT / path
+    current = ROOT
+    for part in path.parts:
+        current = current / part
+        require(not current.is_symlink(), f"{field} contains a symlink path")
+    try:
+        resolved = candidate.resolve(strict=True)
+        resolved.relative_to(ROOT.resolve())
+    except (FileNotFoundError, ValueError) as exc:
+        raise ValidationFailure(
+            f"{field} escapes or is missing from the repository: {value}"
+        ) from exc
+    require(resolved.is_file(), f"{field} does not reference a regular file: {value}")
+    require(bool(git("ls-files", "--error-unmatch", "--", value)),
+            f"{field} is not tracked by the repository: {value}")
     return value
 
 
