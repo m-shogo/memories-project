@@ -6,16 +6,21 @@ from __future__ import annotations
 import datetime as dt
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/release-baseline-registry-contract.v1.json"
 REGISTRY_PATH = ROOT / "contracts/operations/release-baseline-registry.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 WRITER_PATH = ROOT / "scripts/register-memory-os-release-baseline.py"
+VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-release-baseline-registry.py"
+EVIDENCE_BINDING_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-release-baseline-evidence-binding.py"
+VERSION_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-version-compatibility.py"
+OPERABILITY_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-operability.py"
 
 EXISTING = (
     "append-only approved release baseline registry authority separating historical candidates, CI results, tags and branch heads from multi-role production release approval",
@@ -79,6 +84,36 @@ def append_once(items: list[Any], value: str) -> bool:
         return False
     items.append(value)
     return True
+
+
+def run_canonical_validators() -> None:
+    for validator in (
+        VALIDATOR_PATH,
+        EVIDENCE_BINDING_VALIDATOR_PATH,
+        VERSION_VALIDATOR_PATH,
+        OPERABILITY_VALIDATOR_PATH,
+    ):
+        subprocess.run([sys.executable, str(validator)], cwd=ROOT, check=True)
+
+
+def commit_status_transaction(
+    status: dict[str, Any],
+    *,
+    validator_runner: Callable[[], None] | None = None,
+) -> None:
+    original = STATUS_PATH.read_bytes()
+    try:
+        STATUS_PATH.write_text(
+            json.dumps(status, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        if validator_runner is None:
+            run_canonical_validators()
+        else:
+            validator_runner()
+    except BaseException:
+        STATUS_PATH.write_bytes(original)
+        raise
 
 
 def main() -> int:
@@ -152,8 +187,7 @@ def main() -> int:
         print("Release baseline registry foundation already reconciled")
         return 0
     status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
-    STATUS_PATH.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n",
-                           encoding="utf-8")
+    commit_status_transaction(status)
     print("Registered release writer foundation; approved release count remains zero")
     return 0
 
