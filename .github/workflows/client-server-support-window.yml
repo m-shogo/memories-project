@@ -13,6 +13,7 @@ on:
       - "contracts/operations/production-operability-status.json"
       - "scripts/register-memory-os-client-baseline.py"
       - "scripts/register-memory-os-release-baseline.py"
+      - "scripts/reconcile-memory-os-client-baseline-registry.py"
       - "scripts/validate-memory-os-client-server-support-window.py"
       - "scripts/validate-memory-os-client-server-support-window-negative.py"
       - "scripts/reconcile-memory-os-client-server-support-window-status.py"
@@ -31,6 +32,7 @@ on:
       - "contracts/operations/production-operability-status.json"
       - "scripts/register-memory-os-client-baseline.py"
       - "scripts/register-memory-os-release-baseline.py"
+      - "scripts/reconcile-memory-os-client-baseline-registry.py"
       - "scripts/validate-memory-os-client-server-support-window.py"
       - "scripts/validate-memory-os-client-server-support-window-negative.py"
       - "scripts/reconcile-memory-os-client-server-support-window-status.py"
@@ -75,6 +77,7 @@ jobs:
           python -m py_compile \
             scripts/register-memory-os-client-baseline.py \
             scripts/register-memory-os-release-baseline.py \
+            scripts/reconcile-memory-os-client-baseline-registry.py \
             scripts/validate-memory-os-client-server-support-window.py \
             scripts/validate-memory-os-client-server-support-window-negative.py \
             scripts/reconcile-memory-os-client-server-support-window-status.py \
