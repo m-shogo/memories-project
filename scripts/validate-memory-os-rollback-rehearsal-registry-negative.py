@@ -113,6 +113,21 @@ def validate_contract_append_authority(
             ),
         ),
         (
+            "contract approval schema",
+            lambda value: value.__setitem__("approvalSchemaVersion", "memory-os-rollback-rehearsal-approval.v0"),
+        ),
+        (
+            "contract approval directory",
+            lambda value: value.__setitem__("approvalEvidenceDirectory", "docs/evidence/other/approvals"),
+        ),
+        (
+            "contract approval fields",
+            lambda value: value.__setitem__(
+                "requiredApprovalFields",
+                [item for item in value["requiredApprovalFields"] if item != "decision"],
+            ),
+        ),
+        (
             "contract digest guard",
             lambda value: value.__setitem__(
                 "admissionGuards",
@@ -182,64 +197,89 @@ def validate_evidence_ref_containment(writer: Any) -> None:
 
 
 def validate_evidence_digest_authority(writer: Any) -> None:
-    request = {
-        "databasePolicy": {
-            "recoveryPointEvidenceRef": "contracts/operations/rollback-rehearsal-gate-contract.v1.json",
-            "forwardFixDecisionRef": "contracts/operations/rollback-rehearsal-registry.v1.json",
-        },
-        "artifactPolicy": {
-            "parserArtifactEvidenceRef": "contracts/operations/release-baseline-registry.v1.json",
-            "objectVersionEvidenceRef": "contracts/operations/production-operability-status.json",
-        },
-        "entryCriteriaRefs": [
-            "scripts/request-memory-os-rollback-rehearsal.py",
-            "scripts/validate-memory-os-rollback-rehearsal-gate.py",
-            "scripts/reconcile-memory-os-rollback-rehearsal-gate.py",
-            "contracts/operations/rollback-rehearsal-gate-contract.v1.json",
-            "contracts/operations/release-baseline-registry.v1.json",
-        ],
-    }
-    request[writer.EVIDENCE_DIGEST_FIELD] = writer.evidence_digest_map(request)
-    writer.validate_evidence_digest_binding(request, required=True)
-
-    stale = copy.deepcopy(request)
-    first_ref = next(iter(stale[writer.EVIDENCE_DIGEST_FIELD]))
-    stale[writer.EVIDENCE_DIGEST_FIELD][first_ref] = "0" * 64
-    expect_rejected(
-        "stale evidence digest",
-        lambda: writer.validate_evidence_digest_binding(stale, required=True),
-    )
-
-    missing = copy.deepcopy(request)
-    missing[writer.EVIDENCE_DIGEST_FIELD].pop(first_ref)
-    expect_rejected(
-        "missing evidence digest",
-        lambda: writer.validate_evidence_digest_binding(missing, required=True),
-    )
-
-    absent = copy.deepcopy(request)
-    absent.pop(writer.EVIDENCE_DIGEST_FIELD)
-    expect_rejected(
-        "missing digest authority",
-        lambda: writer.validate_evidence_digest_binding(absent, required=True),
-    )
-
-    evidence_path = ROOT / first_ref
-    original = evidence_path.read_bytes()
+    original_approval_ref = writer.approval_evidence_ref
+    writer.approval_evidence_ref = lambda value, field: writer.safe_ref(value, field)
     try:
-        evidence_path.write_bytes(original + b"\n")
+        request = {
+            "databasePolicy": {
+                "recoveryPointEvidenceRef": "contracts/operations/rollback-rehearsal-gate-contract.v1.json",
+                "forwardFixDecisionRef": "contracts/operations/rollback-rehearsal-registry.v1.json",
+            },
+            "artifactPolicy": {
+                "parserArtifactEvidenceRef": "contracts/operations/release-baseline-registry.v1.json",
+                "objectVersionEvidenceRef": "contracts/operations/production-operability-status.json",
+            },
+            "entryCriteriaRefs": [
+                "scripts/request-memory-os-rollback-rehearsal.py",
+                "scripts/validate-memory-os-rollback-rehearsal-gate.py",
+                "scripts/reconcile-memory-os-rollback-rehearsal-gate.py",
+                "contracts/operations/rollback-rehearsal-gate-contract.v1.json",
+                "contracts/operations/release-baseline-registry.v1.json",
+            ],
+            "approvers": [
+                {
+                    "role": "RELEASE_OWNER",
+                    "approverRef": "apr_release_ci11",
+                    "approvalEvidenceRef": "contracts/operations/rollback-rehearsal-gate-contract.v1.json",
+                },
+                {
+                    "role": "DATABASE_RECOVERY_OWNER",
+                    "approverRef": "apr_database_ci22",
+                    "approvalEvidenceRef": "contracts/operations/release-baseline-registry-contract.v1.json",
+                },
+            ],
+        }
+        request[writer.EVIDENCE_DIGEST_FIELD] = writer.evidence_digest_map(request)
+        writer.validate_evidence_digest_binding(request, required=True)
+
+        stale = copy.deepcopy(request)
+        first_ref = next(iter(stale[writer.EVIDENCE_DIGEST_FIELD]))
+        stale[writer.EVIDENCE_DIGEST_FIELD][first_ref] = "0" * 64
         expect_rejected(
-            "tracked evidence differs from exact HEAD",
-            lambda: writer.validate_evidence_digest_binding(request, required=True),
+            "stale evidence digest",
+            lambda: writer.validate_evidence_digest_binding(stale, required=True),
         )
+
+        missing = copy.deepcopy(request)
+        missing[writer.EVIDENCE_DIGEST_FIELD].pop(first_ref)
+        expect_rejected(
+            "missing evidence digest",
+            lambda: writer.validate_evidence_digest_binding(missing, required=True),
+        )
+
+        absent = copy.deepcopy(request)
+        absent.pop(writer.EVIDENCE_DIGEST_FIELD)
+        expect_rejected(
+            "missing digest authority",
+            lambda: writer.validate_evidence_digest_binding(absent, required=True),
+        )
+
+        evidence_path = ROOT / first_ref
+        original = evidence_path.read_bytes()
+        try:
+            evidence_path.write_bytes(original + b"\n")
+            expect_rejected(
+                "tracked evidence differs from exact HEAD",
+                lambda: writer.validate_evidence_digest_binding(request, required=True),
+            )
+        finally:
+            evidence_path.write_bytes(original)
     finally:
-        evidence_path.write_bytes(original)
+        writer.approval_evidence_ref = original_approval_ref
 
 
 def validate_approver_field_authority(writer: Any) -> None:
     valid = [
-        {"role": "RELEASE_OWNER", "approverRef": "apr_release_ci11"},
-        {"role": "DATABASE_RECOVERY_OWNER", "approverRef": "apr_database_ci22"},
+        {
+            "role": "RELEASE_OWNER",
+            "approverRef": "apr_release_ci11",
+            "approvalEvidenceRef": "docs/evidence/rollback-rehearsal/approvals/release.json",
+        },
+        {
+            "role": "DATABASE_RECOVERY_OWNER",
+            "approverRef": "apr_database_ci22",
+            "approvalEvidenceRef": "docs/evidence/rollback-rehearsal/approvals/database.json",
+        },
     ]
     writer.validate_approvers(copy.deepcopy(valid))
 
@@ -251,11 +291,72 @@ def validate_approver_field_authority(writer: Any) -> None:
     )
 
     missing = copy.deepcopy(valid)
-    missing[1].pop("approverRef")
+    missing[1].pop("approvalEvidenceRef")
     expect_rejected(
-        "approver missing field",
+        "approver missing approval evidence field",
         lambda: writer.validate_approvers(missing),
     )
+
+    duplicate_ref = copy.deepcopy(valid)
+    duplicate_ref[1]["approvalEvidenceRef"] = duplicate_ref[0]["approvalEvidenceRef"]
+    expect_rejected(
+        "duplicate approval evidence ref",
+        lambda: writer.validate_approvers(duplicate_ref),
+    )
+
+
+def validate_typed_approval_semantics(writer: Any) -> None:
+    request = {
+        "rehearsalId": "rrh_20991231_typed-approval",
+        "requestedAt": "2099-12-31T00:00:00Z",
+        "sourceReleaseId": "rel_20991231_source",
+        "rollbackTargetReleaseId": "rel_20991230_target",
+    }
+    approver = {
+        "role": "RELEASE_OWNER",
+        "approverRef": "apr_release_ci11",
+        "approvalEvidenceRef": "docs/evidence/rollback-rehearsal/approvals/release.json",
+    }
+    valid_document = {
+        "schemaVersion": writer.APPROVAL_SCHEMA,
+        "rehearsalId": request["rehearsalId"],
+        "sourceReleaseId": request["sourceReleaseId"],
+        "rollbackTargetReleaseId": request["rollbackTargetReleaseId"],
+        "reviewRole": approver["role"],
+        "decision": "APPROVED",
+        "approvedAt": "2099-12-31T00:00:01Z",
+        "reviewerPseudonym": approver["approverRef"],
+        "productionTraffic": False,
+        "productionCredentials": False,
+        "automaticPromotion": False,
+    }
+    original_ref = writer.approval_evidence_ref
+    original_load = writer.load
+    document = copy.deepcopy(valid_document)
+    writer.approval_evidence_ref = lambda value, field: str(value)
+    writer.load = lambda path: copy.deepcopy(document)
+    try:
+        writer.approval_document(approver, request)
+        mutations: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
+            ("approval decision", lambda value: value.__setitem__("decision", "REJECTED")),
+            ("approval rehearsal binding", lambda value: value.__setitem__("rehearsalId", "rrh_20991231_other")),
+            ("approval release binding", lambda value: value.__setitem__("sourceReleaseId", "rel_other")),
+            ("approval role binding", lambda value: value.__setitem__("reviewRole", "DATABASE_RECOVERY_OWNER")),
+            ("approval reviewer binding", lambda value: value.__setitem__("reviewerPseudonym", "apr_other_ci33")),
+            ("approval traffic boundary", lambda value: value.__setitem__("productionTraffic", True)),
+            ("approval credential boundary", lambda value: value.__setitem__("productionCredentials", True)),
+            ("approval promotion boundary", lambda value: value.__setitem__("automaticPromotion", True)),
+            ("approval timestamp ordering", lambda value: value.__setitem__("approvedAt", "2099-12-30T23:59:59Z")),
+            ("approval unknown field", lambda value: value.__setitem__("productionReady", True)),
+        ]
+        for label, mutate in mutations:
+            document.clear()
+            document.update(copy.deepcopy(valid_document))
+            mutate(document)
+            expect_rejected(label, lambda: writer.approval_document(approver, request))
+    finally:
+        writer.approval_evidence_ref = original_ref
+        writer.load = original_load
 
 
 def validate_nested_request_field_authority(writer: Any) -> None:
@@ -323,45 +424,58 @@ def validate_nested_request_field_authority(writer: Any) -> None:
             "tenant or deletion authority is ambiguous",
         ],
         "approvers": [
-            {"role": "RELEASE_OWNER", "approverRef": "apr_release_ci11"},
-            {"role": "DATABASE_RECOVERY_OWNER", "approverRef": "apr_database_ci22"},
+            {
+                "role": "RELEASE_OWNER",
+                "approverRef": "apr_release_ci11",
+                "approvalEvidenceRef": "docs/evidence/rollback-rehearsal/approvals/release.json",
+            },
+            {
+                "role": "DATABASE_RECOVERY_OWNER",
+                "approverRef": "apr_database_ci22",
+                "approvalEvidenceRef": "docs/evidence/rollback-rehearsal/approvals/database.json",
+            },
         ],
         "openRisks": [],
     }
-    writer.validate_request(
-        copy.deepcopy(request), writer.REQUIRED_REQUEST_FIELDS, release_registry
-    )
-
-    mutations: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
-        (
-            "trafficPolicy unknown field",
-            lambda value: value["trafficPolicy"].__setitem__("productionEndpoint", True),
-        ),
-        (
-            "databasePolicy unknown field",
-            lambda value: value["databasePolicy"].__setitem__("rollbackExecuted", True),
-        ),
-        (
-            "artifactPolicy unknown field",
-            lambda value: value["artifactPolicy"].__setitem__("productionArtifact", True),
-        ),
-        (
-            "openRisks unknown field",
-            lambda value: value.__setitem__(
-                "openRisks",
-                [{"riskId": "risk_ci", "ownerRef": "apr_release_ci11", "deadline": "2099-12-31", "status": "OPEN", "approved": True}],
-            ),
-        ),
-    ]
-    for label, mutate in mutations:
-        candidate = copy.deepcopy(request)
-        mutate(candidate)
-        expect_rejected(
-            label,
-            lambda candidate=candidate: writer.validate_request(
-                candidate, writer.REQUIRED_REQUEST_FIELDS, release_registry
-            ),
+    original_approval_document = writer.approval_document
+    writer.approval_document = lambda approver, request: None
+    try:
+        writer.validate_request(
+            copy.deepcopy(request), writer.REQUIRED_REQUEST_FIELDS, release_registry
         )
+
+        mutations: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
+            (
+                "trafficPolicy unknown field",
+                lambda value: value["trafficPolicy"].__setitem__("productionEndpoint", True),
+            ),
+            (
+                "databasePolicy unknown field",
+                lambda value: value["databasePolicy"].__setitem__("rollbackExecuted", True),
+            ),
+            (
+                "artifactPolicy unknown field",
+                lambda value: value["artifactPolicy"].__setitem__("productionArtifact", True),
+            ),
+            (
+                "openRisks unknown field",
+                lambda value: value.__setitem__(
+                    "openRisks",
+                    [{"riskId": "risk_ci", "ownerRef": "apr_release_ci11", "deadline": "2099-12-31", "status": "OPEN", "approved": True}],
+                ),
+            ),
+        ]
+        for label, mutate in mutations:
+            candidate = copy.deepcopy(request)
+            mutate(candidate)
+            expect_rejected(
+                label,
+                lambda candidate=candidate: writer.validate_request(
+                    candidate, writer.REQUIRED_REQUEST_FIELDS, release_registry
+                ),
+            )
+    finally:
+        writer.approval_document = original_approval_document
 
 
 def validate_planning_progression(reconciler: Any) -> None:
@@ -475,6 +589,7 @@ def main() -> int:
     validate_evidence_ref_containment(writer)
     validate_evidence_digest_authority(writer)
     validate_approver_field_authority(writer)
+    validate_typed_approval_semantics(writer)
     validate_nested_request_field_authority(writer)
     validate_planning_progression(reconciler)
     validate_transaction_rollback(reconciler)
@@ -527,7 +642,7 @@ def main() -> int:
     if STATUS_PATH.read_bytes() != status_bytes:
         raise RuntimeError("production status bytes changed after negative suite")
 
-    print("PASS: rollback rehearsal authority accepts planning progression while rejecting corrupt contract/registry authority, unsafe refs, uncommitted or stale evidence bytes, closed-shape request drift and aggregate partial writes")
+    print("PASS: rollback rehearsal authority accepts planning progression while rejecting corrupt contract/registry authority, unsafe refs, uncommitted or stale evidence bytes, typed approval drift, closed-shape request drift and aggregate partial writes")
     return 0
 
 
