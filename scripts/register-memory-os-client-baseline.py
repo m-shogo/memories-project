@@ -51,6 +51,10 @@ REGISTRY_FIELDS = {
     "clients",
     "limitations",
 }
+FORBIDDEN_RECORD_CONTENT = (
+    "postgres://", "postgresql://", "authorization: bearer", "password=", "minioadmin",
+    "secretaccesskey", "apple developer", "account_id", "session_id", "job_id", "preview_id", "object_key", "@",
+)
 
 
 class Failure(RuntimeError):
@@ -158,7 +162,65 @@ def validate_record_evidence(record: dict[str, Any], prefix: str = "record") -> 
             validate_evidence_ref_at_source(ref, source, f"{prefix}.{field}")
 
 
+def validate_historical_record(record: dict[str, Any], required_fields: set[str], prefix: str = "record") -> None:
+    require(set(record) >= required_fields, f"{prefix} missing fields: {sorted(required_fields - set(record))}")
+    require(record.get("schemaVersion") == "memory-os-client-baseline-record.v1", f"{prefix} schema drift")
+    require(isinstance(record.get("clientBaselineId"), str) and BASELINE_ID.fullmatch(record["clientBaselineId"]) is not None,
+            f"{prefix}.clientBaselineId invalid")
+    client_class = record.get("clientClass")
+    require(client_class in CLIENT_CLASSES, f"{prefix}.clientClass invalid")
+    require(isinstance(record.get("marketingVersion"), str) and VERSION.fullmatch(record["marketingVersion"]) is not None,
+            f"{prefix}.marketingVersion invalid")
+    require(isinstance(record.get("buildNumber"), str) and BUILD.fullmatch(record["buildNumber"]) is not None,
+            f"{prefix}.buildNumber invalid")
+    source = record.get("sourceCommitSha")
+    require(isinstance(source, str) and SHA40.fullmatch(source) is not None, f"{prefix}.sourceCommitSha invalid")
+    validate_source_commit_lineage(source)
+    artifact_kind = record.get("artifactKind")
+    require(artifact_kind in ARTIFACT_KINDS, f"{prefix}.artifactKind invalid")
+    if client_class == "IOS_APP":
+        require(artifact_kind in {"IOS_IPA", "IOS_XCARCHIVE_EXPORT"}, f"{prefix} iOS artifact kind mismatch")
+    if client_class == "PORTAL":
+        require(artifact_kind == "PORTAL_BUNDLE", f"{prefix} Portal artifact kind mismatch")
+    utc_timestamp(record.get("approvedAt"), f"{prefix}.approvedAt")
+    require(record.get("approvalClass") == "REVIEWED_CLIENT_BASELINE", f"{prefix}.approvalClass invalid")
+    require(record.get("apiMajor") == "v1", f"{prefix}.apiMajor drift")
+    require(record.get("signedUploadContract") == "memory-os-signed-upload.v1", f"{prefix}.signedUploadContract drift")
+    for field in ("artifactSha256", "apiContractSha256", "clientBehaviorContractSha256"):
+        require(isinstance(record.get(field), str) and SHA256.fullmatch(record[field]) is not None,
+                f"{prefix}.{field} must be SHA-256")
+    require(isinstance(record.get("artifactByteLength"), int) and not isinstance(record.get("artifactByteLength"), bool) and
+            record["artifactByteLength"] > 0, f"{prefix}.artifactByteLength invalid")
+    require(record.get("evidenceComplete") is True and record.get("approvedForPairing") is True,
+            f"{prefix} requires complete pairing approval")
+    require(record.get("productionEvidence") is False and record.get("productionReady") is False,
+            f"{prefix} cannot be production evidence/readiness")
+
+    approvers = record.get("approvers")
+    require(isinstance(approvers, list) and len(approvers) == 3,
+            f"{prefix} requires exactly three approvers")
+    roles: set[str] = set()
+    identities: set[str] = set()
+    for item in approvers:
+        require(isinstance(item, dict), f"{prefix} approver entry invalid")
+        role = item.get("role")
+        identity = item.get("approverRef")
+        require(role in REQUIRED_ROLES and role not in roles, f"{prefix} approval role invalid/duplicate: {role}")
+        require(isinstance(identity, str) and APPROVER.fullmatch(identity) is not None, f"{prefix} approverRef invalid")
+        require(identity not in identities, f"{prefix} duplicate/self approval detected")
+        roles.add(role)
+        identities.add(identity)
+    require(roles == REQUIRED_ROLES, f"{prefix} required approval roles incomplete")
+
+    validate_record_evidence(record, prefix)
+    serialized = json.dumps(record, ensure_ascii=False).lower()
+    for forbidden in FORBIDDEN_RECORD_CONTENT:
+        require(forbidden not in serialized, f"{prefix} contains forbidden content: {forbidden}")
+
+
 def validate_registry_for_append(registry: dict[str, Any]) -> None:
+    contract = load(CONTRACT)
+    required_fields = set(strings(contract.get("requiredRecordFields"), "requiredRecordFields", 23))
     require(set(registry) == REGISTRY_FIELDS, "client registry field set drift")
     require(registry.get("schemaVersion") == "memory-os-client-baseline-registry.v1",
             "client registry schema drift")
@@ -181,18 +243,12 @@ def validate_registry_for_append(registry: dict[str, Any]) -> None:
     digests: set[str] = set()
     expected_latest: dict[str, str | None] = {"IOS_APP": None, "PORTAL": None}
     for index, item in enumerate(clients):
+        validate_historical_record(item, required_fields, f"clients[{index}]")
         baseline_id = item.get("clientBaselineId")
         client_class = item.get("clientClass")
         artifact_digest = item.get("artifactSha256")
-        require(isinstance(baseline_id, str) and BASELINE_ID.fullmatch(baseline_id) is not None,
-                "registered clientBaselineId invalid")
-        require(client_class in CLIENT_CLASSES, "registered clientClass invalid")
-        require(isinstance(artifact_digest, str) and SHA256.fullmatch(artifact_digest) is not None,
-                "registered artifactSha256 invalid")
         require(baseline_id not in ids, f"duplicate registered clientBaselineId: {baseline_id}")
         require(artifact_digest not in digests, f"duplicate registered artifactSha256: {artifact_digest}")
-        validate_source_commit_lineage(item.get("sourceCommitSha", ""))
-        validate_record_evidence(item, f"clients[{index}]")
         ids.add(baseline_id)
         digests.add(artifact_digest)
         expected_latest[client_class] = baseline_id
@@ -201,46 +257,7 @@ def validate_registry_for_append(registry: dict[str, Any]) -> None:
 
 
 def validate_record(record: dict[str, Any], required_fields: set[str], artifact: Path) -> None:
-    require(set(record) >= required_fields, f"record missing fields: {sorted(required_fields - set(record))}")
-    require(record.get("schemaVersion") == "memory-os-client-baseline-record.v1", "record schema drift")
-    require(isinstance(record.get("clientBaselineId"), str) and BASELINE_ID.fullmatch(record["clientBaselineId"]) is not None, "clientBaselineId invalid")
-    require(record.get("clientClass") in CLIENT_CLASSES, "clientClass invalid")
-    require(isinstance(record.get("marketingVersion"), str) and VERSION.fullmatch(record["marketingVersion"]) is not None, "marketingVersion invalid")
-    require(isinstance(record.get("buildNumber"), str) and BUILD.fullmatch(record["buildNumber"]) is not None, "buildNumber invalid")
-    require(isinstance(record.get("sourceCommitSha"), str) and SHA40.fullmatch(record["sourceCommitSha"]) is not None, "sourceCommitSha invalid")
-    validate_source_commit_lineage(record["sourceCommitSha"])
-    require(record.get("artifactKind") in ARTIFACT_KINDS, "artifactKind invalid")
-    if record["clientClass"] == "IOS_APP":
-        require(record["artifactKind"] in {"IOS_IPA", "IOS_XCARCHIVE_EXPORT"}, "iOS baseline requires iOS artifact kind")
-    if record["clientClass"] == "PORTAL":
-        require(record["artifactKind"] == "PORTAL_BUNDLE", "Portal baseline requires portal artifact kind")
-    utc_timestamp(record.get("approvedAt"), "approvedAt")
-    require(record.get("approvalClass") == "REVIEWED_CLIENT_BASELINE", "approvalClass invalid")
-    require(record.get("apiMajor") == "v1", "apiMajor must remain v1")
-    require(record.get("signedUploadContract") == "memory-os-signed-upload.v1", "signed upload contract drift")
-    for field in ("artifactSha256", "apiContractSha256", "clientBehaviorContractSha256"):
-        require(isinstance(record.get(field), str) and SHA256.fullmatch(record[field]) is not None, f"{field} must be SHA-256")
-    require(isinstance(record.get("artifactByteLength"), int) and not isinstance(record.get("artifactByteLength"), bool) and record["artifactByteLength"] > 0, "artifactByteLength invalid")
-    require(record.get("evidenceComplete") is True and record.get("approvedForPairing") is True, "baseline requires complete pairing approval")
-    require(record.get("productionEvidence") is False and record.get("productionReady") is False, "client baseline cannot be production evidence/readiness")
-
-    approvers = record.get("approvers")
-    require(isinstance(approvers, list) and len(approvers) == 3, "exactly three approvers required")
-    roles: set[str] = set()
-    identities: set[str] = set()
-    for item in approvers:
-        require(isinstance(item, dict), "approver entry invalid")
-        role = item.get("role")
-        identity = item.get("approverRef")
-        require(role in REQUIRED_ROLES and role not in roles, f"approval role invalid/duplicate: {role}")
-        require(isinstance(identity, str) and APPROVER.fullmatch(identity) is not None, "approverRef invalid")
-        require(identity not in identities, "duplicate/self approval detected")
-        roles.add(role)
-        identities.add(identity)
-    require(roles == REQUIRED_ROLES, "required approval roles incomplete")
-
-    validate_record_evidence(record)
-
+    validate_historical_record(record, required_fields)
     hasher = hashlib.sha256()
     size = 0
     with artifact.open("rb") as handle:
@@ -249,13 +266,6 @@ def validate_record(record: dict[str, Any], required_fields: set[str], artifact:
             hasher.update(chunk)
     require(size == record["artifactByteLength"], "artifact byte length mismatch")
     require(hasher.hexdigest() == record["artifactSha256"], "artifact SHA-256 mismatch")
-
-    serialized = json.dumps(record, ensure_ascii=False).lower()
-    for forbidden in (
-        "postgres://", "postgresql://", "authorization: bearer", "password=", "minioadmin",
-        "secretaccesskey", "apple developer", "account_id", "session_id", "job_id", "preview_id", "object_key", "@",
-    ):
-        require(forbidden not in serialized, f"record contains forbidden content: {forbidden}")
 
 
 def acquire_lock() -> int:
