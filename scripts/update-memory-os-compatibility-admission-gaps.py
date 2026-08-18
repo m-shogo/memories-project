@@ -201,7 +201,7 @@ def main() -> int:
         "alreadyProvenCandidateLocalOnly": proven_candidate,
         "blockingGaps": blockers,
         "blockingGapCount": len(blockers),
-        "releaseCompatibilityEvidence": False,
+        "releaseCompatibilityEvidence": pair_count > 0,
         "productionEvidence": False,
         "productionReady": False,
         "productionDecision": "NO_GO",
