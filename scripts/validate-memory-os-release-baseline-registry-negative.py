@@ -50,6 +50,20 @@ def load_writer() -> ModuleType:
     return module
 
 
+def load_reconciler() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("memory_os_release_baseline_reconciler_negative", RECONCILER)
+    require(spec is not None and spec.loader is not None, "cannot load release baseline reconciler")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    require(getattr(module, "CONTRACT_PATH", None) == CONTRACT,
+            "release reconciler contract authority drift")
+    require(getattr(module, "REGISTRY_PATH", None) == REGISTRY,
+            "release reconciler registry authority drift")
+    require(getattr(module, "STATUS_PATH", None) == STATUS,
+            "release reconciler status authority drift")
+    return module
+
+
 def validate_lock_binding(writer: ModuleType, contract: dict[str, Any]) -> None:
     require(contract.get("appendLockPath") == str(LOCK.relative_to(ROOT)),
             "release contract append lock binding drift")
@@ -107,11 +121,68 @@ def expect_reconcile_rejected_without_mutation(
         STATUS.write_bytes(status_before)
 
 
+def validate_reconcile_validator_chain(reconciler: ModuleType) -> None:
+    expected = [
+        reconciler.VALIDATOR_PATH,
+        reconciler.EVIDENCE_BINDING_VALIDATOR_PATH,
+        reconciler.VERSION_VALIDATOR_PATH,
+        reconciler.OPERABILITY_VALIDATOR_PATH,
+    ]
+    observed: list[Path] = []
+    original_run = reconciler.subprocess.run
+
+    def fake_run(command: list[str], *, cwd: Path, check: bool) -> None:
+        require(cwd == ROOT, "release aggregate validator cwd drift")
+        require(check is True, "release aggregate validators must fail closed")
+        require(len(command) == 2 and command[0] == sys.executable,
+                "release aggregate validator command drift")
+        observed.append(Path(command[1]))
+
+    reconciler.subprocess.run = fake_run
+    try:
+        reconciler.run_canonical_validators()
+    finally:
+        reconciler.subprocess.run = original_run
+
+    require(observed == expected,
+            "release reconcile does not enforce registry/evidence/version/operability validators in order")
+
+
+def validate_reconcile_rollback(reconciler: ModuleType) -> None:
+    original = STATUS.read_bytes()
+    status = copy.deepcopy(load(STATUS))
+    gate = next(
+        (item for item in status.get("areas", []) if isinstance(item, dict) and item.get("id") == "OPS-P0-008"),
+        None,
+    )
+    require(isinstance(gate, dict), "OPS-P0-008 missing for release rollback probe")
+    evidence = gate.get("existingEvidence")
+    require(isinstance(evidence, list), "OPS-P0-008 existingEvidence missing for release rollback probe")
+    evidence.append("synthetic release baseline rollback probe")
+
+    def fail_post_write() -> None:
+        raise RuntimeError("synthetic release aggregate validator failure")
+
+    try:
+        reconciler.commit_status_transaction(status, validator_runner=fail_post_write)
+    except RuntimeError as exc:
+        require("synthetic release aggregate validator failure" in str(exc),
+                "unexpected release rollback failure reason")
+    else:
+        raise Fail("release reconcile accepted synthetic post-write aggregate failure")
+
+    require(STATUS.read_bytes() == original,
+            "release reconcile left partial status after post-write aggregate failure")
+
+
 def main() -> int:
     writer = load_writer()
+    reconciler = load_reconciler()
     contract = load(CONTRACT)
     validate_lock_binding(writer, contract)
     expect_lock_binding_rejected(writer, contract)
+    validate_reconcile_validator_chain(reconciler)
+    validate_reconcile_rollback(reconciler)
     cases: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
         ("schema drift", lambda value: value.__setitem__("schemaVersion", "invalid")),
         ("registry class drift", lambda value: value.__setitem__("registryClass", "CANDIDATE_RELEASES")),
@@ -126,7 +197,7 @@ def main() -> int:
     for name, mutate in cases:
         expect_writer_rejected(writer, contract, name, mutate)
         expect_reconcile_rejected_without_mutation(name, mutate)
-    print("PASS: release baseline registry/append-lock corruption is rejected before append/reconcile")
+    print("PASS: release baseline registry/append-lock corruption and aggregate reconcile failures are fail-closed")
     return 0
 
 
