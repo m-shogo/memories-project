@@ -29,6 +29,10 @@ def require(condition: bool, message: str) -> None:
         raise ValidationFailure(message)
 
 
+def valid_count(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -157,6 +161,11 @@ def main() -> int:
 
     state = contract.get("currentAdmissionState")
     require(isinstance(state, dict), "currentAdmissionState missing")
+    for field in (
+        "approvedReleaseCount", "rollbackEligibleReleaseCount",
+        "admissibleReleasePairCount", "rehearsalRequestCount",
+    ):
+        require(valid_count(state.get(field)), f"current admission state count invalid: {field}")
     require(state.get("approvedReleaseCount") == len(releases) and
             state.get("rollbackEligibleReleaseCount") == len(eligible) and
             state.get("admissibleReleasePairCount") == admissible_pairs and
