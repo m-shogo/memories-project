@@ -21,9 +21,7 @@ DEFAULT_LEDGER = ROOT / "docs/evidence/migration-operations"
 VALIDATOR = ROOT / "scripts/validate-memory-os-migration-operation-evidence.py"
 
 
-def validate_canonical_ledger_before_append(ledger: Path) -> None:
-    if ledger.resolve() != DEFAULT_LEDGER.resolve():
-        return
+def run_canonical_validator() -> None:
     completed = subprocess.run(
         [sys.executable, str(VALIDATOR)],
         cwd=ROOT,
@@ -35,9 +33,33 @@ def validate_canonical_ledger_before_append(ledger: Path) -> None:
     if completed.returncode != 0:
         detail = completed.stderr.strip() or completed.stdout.strip()
         raise EvidenceValidationError(
-            "canonical migration operation ledger failed validation before append"
+            "canonical migration operation ledger failed validation"
             + (f": {detail}" if detail else "")
         )
+
+
+def validate_canonical_ledger_before_append(ledger: Path) -> None:
+    if ledger.resolve() != DEFAULT_LEDGER.resolve():
+        return
+    try:
+        run_canonical_validator()
+    except EvidenceValidationError as exc:
+        detail = str(exc).removeprefix("canonical migration operation ledger failed validation")
+        raise EvidenceValidationError(
+            "canonical migration operation ledger failed validation before append" + detail
+        ) from exc
+
+
+def validate_canonical_ledger_after_append(ledger: Path) -> None:
+    if ledger.resolve() != DEFAULT_LEDGER.resolve():
+        return
+    try:
+        run_canonical_validator()
+    except EvidenceValidationError as exc:
+        detail = str(exc).removeprefix("canonical migration operation ledger failed validation")
+        raise EvidenceValidationError(
+            "canonical migration operation ledger failed validation after append" + detail
+        ) from exc
 
 
 def main() -> int:
@@ -66,6 +88,12 @@ def main() -> int:
         raise EvidenceValidationError(
             f"migrationRunId already exists and cannot be overwritten: {record['migrationRunId']}"
         ) from exc
+
+    try:
+        validate_canonical_ledger_after_append(ledger)
+    except Exception:
+        target.unlink(missing_ok=True)
+        raise
 
     print(f"Created append-only migration operation evidence: {target}")
     return 0
