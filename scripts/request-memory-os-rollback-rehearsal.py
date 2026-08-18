@@ -224,9 +224,22 @@ def evidence_refs(request: dict[str, Any]) -> list[str]:
     return list(dict.fromkeys(refs))
 
 
+def committed_evidence_bytes(ref: str) -> bytes:
+    completed = subprocess.run(
+        ["git", "show", f"HEAD:{ref}"], cwd=ROOT,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+    )
+    require(completed.returncode == 0,
+            f"rollback rehearsal evidence is not present in exact HEAD: {ref}")
+    current = (ROOT / ref).read_bytes()
+    require(current == completed.stdout,
+            f"rollback rehearsal evidence differs from exact HEAD bytes: {ref}")
+    return completed.stdout
+
+
 def evidence_digest_map(request: dict[str, Any]) -> dict[str, str]:
     return {
-        ref: hashlib.sha256((ROOT / ref).read_bytes()).hexdigest()
+        ref: hashlib.sha256(committed_evidence_bytes(ref)).hexdigest()
         for ref in evidence_refs(request)
     }
 
@@ -246,7 +259,7 @@ def validate_evidence_digest_binding(
         digest = digests.get(ref)
         require(isinstance(digest, str) and SHA256_RE.fullmatch(digest) is not None,
                 f"rollback rehearsal evidence digest invalid: {ref}")
-        current = hashlib.sha256((ROOT / ref).read_bytes()).hexdigest()
+        current = hashlib.sha256(committed_evidence_bytes(ref)).hexdigest()
         require(digest == current,
                 f"rollback rehearsal evidence bytes changed after admission: {ref}")
 
