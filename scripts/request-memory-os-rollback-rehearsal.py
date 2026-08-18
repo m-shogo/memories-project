@@ -42,6 +42,13 @@ REGISTRY_FIELDS = {
     "requests",
     "limitations",
 }
+EXPECTED_LIMITATIONS = (
+    "only distinct approved release-baseline records may be referenced as source and rollback target",
+    "the rollback target must already be verified ELIGIBLE or CONDITIONALLY_ELIGIBLE and all eligibility conditions remain binding stop conditions",
+    "reviewed rehearsal requests are planning authority only and never prove rehearsal execution, rollback execution or production readiness",
+    "production traffic, production credentials, destructive down migration and automatic promotion remain forbidden",
+    "historical candidate, branch, tag and CI evidence cannot substitute for approved release or reviewed rehearsal authority",
+)
 
 
 class RequestFailure(RuntimeError):
@@ -270,9 +277,8 @@ def validate_registry_for_append(
     require(registry.get("productionEvidence") is False,
             "rollback rehearsal registry cannot claim production evidence")
     limitations = registry.get("limitations")
-    require(isinstance(limitations, list) and
-            all(isinstance(item, str) and item for item in limitations),
-            "rollback rehearsal registry limitations invalid")
+    require(limitations == list(EXPECTED_LIMITATIONS),
+            "rollback rehearsal registry limitations drift")
     requests = registry.get("requests")
     require(isinstance(requests, list) and all(isinstance(item, dict) for item in requests),
             "rollback rehearsal registry contains invalid requests")
