@@ -19,6 +19,7 @@ on:
       - "scripts/register-memory-os-migration-production-shaped-admission.py"
       - "scripts/validate-memory-os-migration-production-shaped-admission.py"
       - "scripts/validate-memory-os-migration-production-shaped-admission-negative.py"
+      - "scripts/validate-memory-os-migration-production-shaped-admission-reconcile-rollback.py"
       - "scripts/reconcile-memory-os-migration-production-shaped-admission.py"
       - "scripts/register-memory-os-release-baseline.py"
       - "scripts/register-memory-os-release-compatibility-pair.py"
@@ -49,6 +50,7 @@ on:
       - "scripts/register-memory-os-migration-production-shaped-admission.py"
       - "scripts/validate-memory-os-migration-production-shaped-admission.py"
       - "scripts/validate-memory-os-migration-production-shaped-admission-negative.py"
+      - "scripts/validate-memory-os-migration-production-shaped-admission-reconcile-rollback.py"
       - "scripts/reconcile-memory-os-migration-production-shaped-admission.py"
       - "scripts/register-memory-os-release-baseline.py"
       - "scripts/register-memory-os-release-compatibility-pair.py"
@@ -94,6 +96,7 @@ jobs:
             scripts/register-memory-os-migration-production-shaped-admission.py \
             scripts/validate-memory-os-migration-production-shaped-admission.py \
             scripts/validate-memory-os-migration-production-shaped-admission-negative.py \
+            scripts/validate-memory-os-migration-production-shaped-admission-reconcile-rollback.py \
             scripts/reconcile-memory-os-migration-production-shaped-admission.py \
             scripts/register-memory-os-release-baseline.py \
             scripts/register-memory-os-release-compatibility-pair.py \
@@ -107,6 +110,9 @@ jobs:
             >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-migration-production-shaped-admission-negative.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-migration-production-shaped-admission-reconcile-rollback.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/reconcile-memory-os-migration-production-shaped-admission.py >> "$log" 2>&1 || code=$?
