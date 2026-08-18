@@ -2,6 +2,7 @@
   "schemaVersion": "memory-os-compatibility-admission-gaps.v1",
   "sourceAuthorities": [
     "contracts/operations/release-baseline-registry.v1.json",
+    "contracts/operations/release-compatibility-pair-registry.v1.json",
     "contracts/operations/client-baseline-registry.v1.json",
     "contracts/operations/parser-artifact-registry.v1.json",
     "contracts/operations/version-compatibility-foundations.v1.json",
