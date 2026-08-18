@@ -80,6 +80,24 @@ def git(*args: str) -> str:
     return completed.stdout.strip()
 
 
+def validate_contract_authority() -> dict[str, Any]:
+    contract = load(CONTRACT)
+    require(contract.get("schemaVersion") == "memory-os-release-compatibility-pair.v1", "pair contract schema drift")
+    require(contract.get("releaseRegistry") == str(RELEASES.relative_to(ROOT)), "pair release registry authority drift")
+    require(contract.get("registry") == str(REGISTRY.relative_to(ROOT)), "pair registry authority drift")
+    require(contract.get("appendLockPath") == str(LOCK.relative_to(ROOT)), "pair append lock authority drift")
+    require(contract.get("writer") == str(Path(__file__).resolve().relative_to(ROOT)), "pair writer authority drift")
+    require(contract.get("independentReviewValidator") == str(INDEPENDENT_REVIEW_VALIDATOR.relative_to(ROOT)), "pair independent review validator authority drift")
+    require(contract.get("independentReviewEvidenceRoot") == "docs/evidence/release-compatibility-pairs/reviews", "pair independent review evidence root drift")
+    rules = contract.get("rules")
+    require(isinstance(rules, dict) and rules and all(value is True for value in rules.values()), "pair contract rules must remain fail-closed")
+    require(rules.get("appendLockMustRemainCanonical") is True, "pair append lock rule drift")
+    require(rules.get("exactlyTwoTypedIndependentReviewsRequired") is True, "pair typed independent review rule drift")
+    require(rules.get("independentReviewsCannotAuthorizeAutomaticPromotion") is True, "pair automatic promotion boundary drift")
+    require(rules.get("productionEvidenceForbidden") is True and rules.get("productionReadyForbidden") is True, "pair production boundary drift")
+    return contract
+
+
 def repo_regular_file(ref: str, field: str) -> Path:
     require(isinstance(ref, str) and ref and not Path(ref).is_absolute() and ".." not in Path(ref).parts, f"{field} invalid reference")
     path = ROOT / ref
@@ -175,7 +193,7 @@ def rollback_status(record: dict[str, Any]) -> str:
 
 
 def validate_record(record: dict[str, Any]) -> None:
-    contract = load(CONTRACT)
+    contract = validate_contract_authority()
     required = set(contract.get("requiredRecordFields", []))
     require(set(record) == required, f"pair record field drift: {sorted(set(record) ^ required)}")
     require(record.get("schemaVersion") == contract.get("recordSchemaVersion"), "pair schemaVersion drift")
@@ -230,6 +248,7 @@ def validate_record(record: dict[str, Any]) -> None:
 
 
 def validate_registry_for_append(registry: dict[str, Any]) -> None:
+    validate_contract_authority()
     require(set(registry) == REGISTRY_FIELDS, "pair registry field set drift")
     require(registry.get("schemaVersion") == "memory-os-release-compatibility-pair-registry.v1", "pair registry schema drift")
     require(registry.get("appendOnly") is True, "pair registry must remain append-only")
