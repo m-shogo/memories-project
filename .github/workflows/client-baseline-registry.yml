@@ -9,9 +9,13 @@ on:
       - "contracts/operations/client-server-support-window-contract.v1.json"
       - "contracts/operations/client-server-skew-registry.v1.json"
       - "contracts/operations/release-baseline-registry.v1.json"
+      - "contracts/operations/release-compatibility-pair-contract.v1.json"
+      - "contracts/operations/release-compatibility-pair-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
       - "contracts/operations/compatibility-admission-gaps.v1.json"
       - "scripts/register-memory-os-client-baseline.py"
+      - "scripts/register-memory-os-release-compatibility-pair.py"
+      - "scripts/validate-memory-os-release-compatibility-pair-independent-review.py"
       - "scripts/validate-memory-os-client-baseline-registry.py"
       - "scripts/validate-memory-os-client-baseline-lineage-negative.py"
       - "scripts/validate-memory-os-client-baseline-evidence-binding-negative.py"
@@ -30,9 +34,13 @@ on:
       - "contracts/operations/client-server-support-window-contract.v1.json"
       - "contracts/operations/client-server-skew-registry.v1.json"
       - "contracts/operations/release-baseline-registry.v1.json"
+      - "contracts/operations/release-compatibility-pair-contract.v1.json"
+      - "contracts/operations/release-compatibility-pair-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
       - "contracts/operations/compatibility-admission-gaps.v1.json"
       - "scripts/register-memory-os-client-baseline.py"
+      - "scripts/register-memory-os-release-compatibility-pair.py"
+      - "scripts/validate-memory-os-release-compatibility-pair-independent-review.py"
       - "scripts/validate-memory-os-client-baseline-registry.py"
       - "scripts/validate-memory-os-client-baseline-lineage-negative.py"
       - "scripts/validate-memory-os-client-baseline-evidence-binding-negative.py"
@@ -81,6 +89,8 @@ jobs:
           echo "STAGE: py_compile" >> "$log"
           python -m py_compile \
             scripts/register-memory-os-client-baseline.py \
+            scripts/register-memory-os-release-compatibility-pair.py \
+            scripts/validate-memory-os-release-compatibility-pair-independent-review.py \
             scripts/validate-memory-os-client-baseline-registry.py \
             scripts/validate-memory-os-client-baseline-lineage-negative.py \
             scripts/validate-memory-os-client-baseline-evidence-binding-negative.py \
