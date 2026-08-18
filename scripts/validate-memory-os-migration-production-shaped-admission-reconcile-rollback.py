@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove production-shaped migration reconcile rolls back post-write validation failures."""
+"""Prove production-shaped migration reconcile rolls back post-write aggregate failures."""
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ def main() -> int:
     with tempfile.NamedTemporaryFile(
         mode="w",
         encoding="utf-8",
-        prefix=".migration-production-post-validator-",
+        prefix=".migration-production-post-operability-",
         suffix=".py",
         dir=ROOT / "scripts",
         delete=False,
@@ -49,20 +49,20 @@ def main() -> int:
         failing_validator = Path(handle.name)
 
     try:
-        module.VALIDATOR = failing_validator
+        module.OPERABILITY_VALIDATOR = failing_validator
         try:
             module.main()
         except subprocess.CalledProcessError as exc:
-            require(exc.returncode == 73, "reconciler failed before the injected post-write validator")
+            require(exc.returncode == 73, "reconciler failed before the injected post-write aggregate validator")
         else:
-            raise Fail("reconciler accepted an injected post-write validator failure")
+            raise Fail("reconciler accepted an injected post-write aggregate validator failure")
     finally:
         failing_validator.unlink(missing_ok=True)
 
     for path, expected in originals.items():
         require(path.read_bytes() == expected, f"reconciler failed to roll back {path.relative_to(ROOT)}")
 
-    print("PASS: migration production-shaped admission reconciler rolls back all derived authorities after post-write validation failure")
+    print("PASS: migration production-shaped admission reconciler rolls back contract, lifecycle, and status after post-write aggregate validation failure")
     return 0
 
 
