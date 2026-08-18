@@ -32,6 +32,10 @@ REFS = (
     ".github/workflows/release-compatibility-pair.yml",
 )
 EVIDENCE_PREFIX = "approved release compatibility-pair authority is append-only and fail-closed:"
+PAIR_COUNT_GAP_IDS = {
+    "COMPAT-GAP-APPROVED-RELEASE-PAIR",
+    "COMPAT-GAP-ROLLBACK-PAIR",
+}
 
 
 class Fail(RuntimeError):
@@ -77,6 +81,17 @@ def gap_unsatisfied(gap: dict[str, Any]) -> bool:
         minimum = gap.get("requiredMinimum")
         return isinstance(minimum, int) and not isinstance(minimum, bool) and current < minimum
     return True
+
+
+def remove_satisfied_pair_count_gaps(blocking_gaps: list[Any]) -> None:
+    blocking_gaps[:] = [
+        gap for gap in blocking_gaps
+        if not (
+            isinstance(gap, dict)
+            and gap.get("id") in PAIR_COUNT_GAP_IDS
+            and not gap_unsatisfied(gap)
+        )
+    ]
 
 
 def commit_authority_transaction(
@@ -167,6 +182,7 @@ def main() -> int:
             gap["current"] = release_count
         elif gap.get("id") == "COMPAT-GAP-ROLLBACK-PAIR":
             gap["current"] = pair_count
+    remove_satisfied_pair_count_gaps(blocking_gaps)
     gaps["blockingGapCount"] = sum(
         1 for gap in blocking_gaps
         if isinstance(gap, dict) and gap.get("blocking") is True and gap_unsatisfied(gap)
