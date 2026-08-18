@@ -8,10 +8,10 @@
   "latestRehearsalId": null,
   "requests": [],
   "limitations": [
-    "no approved release baseline exists",
-    "no rollback-eligible approved target exists",
-    "no admissible source-target release pair exists",
-    "no rollback rehearsal has been requested or executed",
-    "historical candidate and CI evidence cannot enter this registry"
+    "only distinct approved release-baseline records may be referenced as source and rollback target",
+    "the rollback target must already be verified ELIGIBLE or CONDITIONALLY_ELIGIBLE and all eligibility conditions remain binding stop conditions",
+    "reviewed rehearsal requests are planning authority only and never prove rehearsal execution, rollback execution or production readiness",
+    "production traffic, production credentials, destructive down migration and automatic promotion remain forbidden",
+    "historical candidate, branch, tag and CI evidence cannot substitute for approved release or reviewed rehearsal authority"
   ]
 }
