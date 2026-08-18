@@ -19,6 +19,7 @@ EXECUTION = ROOT / "contracts/operations/version-compatibility-execution-evidenc
 OUTPUT = ROOT / "contracts/operations/compatibility-admission-gaps.v1.json"
 RELEASE_WRITER = ROOT / "scripts/register-memory-os-release-baseline.py"
 PAIR_WRITER = ROOT / "scripts/register-memory-os-release-compatibility-pair.py"
+PAIR_REVIEW_VALIDATOR = ROOT / "scripts/validate-memory-os-release-compatibility-pair-independent-review.py"
 CLIENT_WRITER = ROOT / "scripts/register-memory-os-client-baseline.py"
 PARSER_WRITER = ROOT / "scripts/register-memory-os-parser-artifact.py"
 FOUNDATIONS_VALIDATOR = ROOT / "scripts/validate-memory-os-version-compatibility-foundations.py"
@@ -68,6 +69,7 @@ def validate_registry_authorities(
 ) -> None:
     release_writer = load_module(RELEASE_WRITER, "compat_release_writer")
     pair_writer = load_module(PAIR_WRITER, "compat_pair_writer")
+    pair_review_validator = load_module(PAIR_REVIEW_VALIDATOR, "compat_pair_review_validator")
     client_writer = load_module(CLIENT_WRITER, "compat_client_writer")
     parser_writer = load_module(PARSER_WRITER, "compat_parser_writer")
 
@@ -75,6 +77,8 @@ def validate_registry_authorities(
         raise SystemExit("release registry authority drift")
     if Path(getattr(pair_writer, "REGISTRY", "")).resolve() != PAIRS.resolve():
         raise SystemExit("release pair registry authority drift")
+    if Path(getattr(pair_writer, "INDEPENDENT_REVIEW_VALIDATOR", "")).resolve() != PAIR_REVIEW_VALIDATOR.resolve():
+        raise SystemExit("release pair independent review authority drift")
     if Path(getattr(client_writer, "REGISTRY", "")).resolve() != CLIENTS.resolve():
         raise SystemExit("client registry authority drift")
     if Path(getattr(parser_writer, "REGISTRY_PATH", "")).resolve() != PARSERS.resolve():
@@ -84,6 +88,8 @@ def validate_registry_authorities(
         release_contract = load(Path(release_writer.CONTRACT_PATH))
         release_writer.validate_registry_for_append(releases, release_contract)
         pair_writer.validate_registry_for_append(pairs)
+        for pair in pairs.get("pairs", []):
+            pair_review_validator.validate_pair_reviews(pair)
         client_writer.validate_registry_for_append(clients)
         parser_writer.validate_registry_for_append(parsers)
     except Exception as exc:
