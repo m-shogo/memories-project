@@ -256,6 +256,7 @@ def main() -> int:
         ("boolean count", lambda value: value.__setitem__("rehearsalRequestCount", False)),
         ("count drift", lambda value: value.__setitem__("rehearsalRequestCount", 1)),
         ("latest pointer drift", lambda value: value.__setitem__("latestRehearsalId", "rrh_20991231_forged")),
+        ("limitations drift", lambda value: value.__setitem__("limitations", ["production traffic allowed"])),
         ("unknown field", lambda value: value.__setitem__("unexpectedAuthority", True)),
     ]
     for label, mutate in registry_cases:
@@ -267,7 +268,7 @@ def main() -> int:
                 candidate, copy.deepcopy(contract), copy.deepcopy(release_registry)
             ),
         )
-        if label in {"registryClass", "appendOnly", "productionEvidence", "boolean count"}:
+        if label in {"registryClass", "appendOnly", "productionEvidence", "boolean count", "limitations drift"}:
             reconcile_rejects_without_authority_write(
                 copy.deepcopy(candidate), registry_bytes, contract_bytes, status_bytes, label
             )
