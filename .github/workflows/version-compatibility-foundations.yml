@@ -13,6 +13,8 @@ on:
       - "contracts/operations/rollback-rehearsal-registry.v1.json"
       - "contracts/operations/parser-artifact-registry-contract.v1.json"
       - "contracts/operations/parser-artifact-registry.v1.json"
+      - "contracts/operations/release-compatibility-pair-contract.v1.json"
+      - "contracts/operations/release-compatibility-pair-registry.v1.json"
       - "docs/runbooks/memory-os-version-compatibility-foundations.md"
       - "scripts/reconcile-memory-os-version-compatibility-canonical.py"
       - "scripts/validate-memory-os-version-compatibility.py"
@@ -25,6 +27,7 @@ on:
       - "scripts/validate-memory-os-rollback-rehearsal-gate.py"
       - "scripts/register-memory-os-parser-artifact.py"
       - "scripts/validate-memory-os-parser-artifact-registry.py"
+      - "scripts/register-memory-os-release-compatibility-pair.py"
       - "scripts/validate-memory-os-operability.py"
       - "docs/fixtures/memory-os-operability/mixed-version-session-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json"
@@ -44,6 +47,8 @@ on:
       - "contracts/operations/rollback-rehearsal-registry.v1.json"
       - "contracts/operations/parser-artifact-registry-contract.v1.json"
       - "contracts/operations/parser-artifact-registry.v1.json"
+      - "contracts/operations/release-compatibility-pair-contract.v1.json"
+      - "contracts/operations/release-compatibility-pair-registry.v1.json"
       - "docs/runbooks/memory-os-version-compatibility-foundations.md"
       - "scripts/reconcile-memory-os-version-compatibility-canonical.py"
       - "scripts/validate-memory-os-version-compatibility.py"
@@ -56,6 +61,7 @@ on:
       - "scripts/validate-memory-os-rollback-rehearsal-gate.py"
       - "scripts/register-memory-os-parser-artifact.py"
       - "scripts/validate-memory-os-parser-artifact-registry.py"
+      - "scripts/register-memory-os-release-compatibility-pair.py"
       - "scripts/validate-memory-os-operability.py"
       - "docs/fixtures/memory-os-operability/mixed-version-session-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json"
@@ -117,10 +123,11 @@ jobs:
             scripts/validate-memory-os-rollback-rehearsal-gate.py \
             scripts/register-memory-os-parser-artifact.py \
             scripts/validate-memory-os-parser-artifact-registry.py \
+            scripts/register-memory-os-release-compatibility-pair.py \
             scripts/validate-memory-os-operability.py
           python scripts/validate-memory-os-version-compatibility-foundation-status-negative.py
 
-      - name: Validate empty upstream admission authorities
+      - name: Validate upstream admission authorities
         run: |
           set -euo pipefail
           python scripts/validate-memory-os-release-baseline-registry.py
