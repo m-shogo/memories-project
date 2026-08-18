@@ -255,6 +255,33 @@ def main() -> int:
         writer.Fail.__module__,
         "memory_os_restore_drill_request_writer_for_generation_evidence",
     }
+    contract = load(CONTRACT)
+    require(
+        contract.get("recordRules", {}).get("registryMustRevalidateAfterAppendAndRollbackOnFailure") is True,
+        "generation evidence transactional append contract guard missing",
+    )
+    print("PASS accept: generation evidence transactional append contract guard")
+
+    with tempfile.TemporaryDirectory(prefix="memory-os-generation-append-rollback-") as transaction_tmp:
+        temp_registry = Path(transaction_tmp) / "generation-evidence-registry.json"
+        original_payload = {"sentinel": "original authority bytes"}
+        write_json(temp_registry, original_payload)
+        before = temp_registry.read_bytes()
+        original_registry = writer.REGISTRY
+        original_validator = writer.validate_registry_for_append
+        writer.REGISTRY = temp_registry
+        writer.validate_registry_for_append = lambda value: (_ for _ in ()).throw(writer.Fail("synthetic post-append validation failure"))
+        try:
+            expect_rejected(
+                "generation evidence post-append validation rollback",
+                lambda: writer.write_registry_transactionally({"sentinel": "mutated authority bytes"}),
+            )
+            require(temp_registry.read_bytes() == before, "generation evidence registry bytes changed after rejected transactional append")
+            print("PASS preserve: generation evidence append failure rolled back byte-for-byte")
+        finally:
+            writer.REGISTRY = original_registry
+            writer.validate_registry_for_append = original_validator
+
     commit_sha = head_sha()
 
     original_drill_loader = writer.load_drill_writer
@@ -496,6 +523,7 @@ def main() -> int:
     print("request bypass to generation evidence: false")
     print("direct candidate bypasses canonical drill registry authority: false")
     print("recovery objective aggregate/current authority drift accepted: false")
+    print("generation evidence post-append validation failure persisted: false")
     print("stale request creates current candidate: false")
     print("generic non-resurrection PASS creates candidate: false")
     print("generation review refs escape repository: false")
