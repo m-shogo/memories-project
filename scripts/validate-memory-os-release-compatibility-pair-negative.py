@@ -182,15 +182,22 @@ def main() -> int:
     finally:
         writer.validated_release_registry = original_registry_provider
 
-    try:
-        corrupt_contract = copy.deepcopy(contract)
-        corrupt_contract["appendLockPath"] = "contracts/operations/.release-compatibility-pair-alternate.lock"
-        CONTRACT.write_text(json.dumps(corrupt_contract, indent=2) + "\n", encoding="utf-8")
-        expect_validator_rejected("append lock binding drift")
-    finally:
-        CONTRACT.write_bytes(contract_bytes)
-
     base = load(REGISTRY)
+    contract_cases: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
+        ("append lock binding drift", lambda value: value.__setitem__("appendLockPath", "contracts/operations/.release-compatibility-pair-alternate.lock")),
+        ("independent review validator drift", lambda value: value.__setitem__("independentReviewValidator", "scripts/validate-memory-os-operability.py")),
+        ("registry authority drift", lambda value: value.__setitem__("registry", "contracts/operations/release-baseline-registry.v1.json")),
+    ]
+    for label, mutate in contract_cases:
+        try:
+            corrupt_contract = copy.deepcopy(contract)
+            mutate(corrupt_contract)
+            CONTRACT.write_text(json.dumps(corrupt_contract, indent=2) + "\n", encoding="utf-8")
+            expect_rejected(f"direct writer {label}", lambda: writer.validate_registry_for_append(base))
+            expect_validator_rejected(label)
+        finally:
+            CONTRACT.write_bytes(contract_bytes)
+
     cases: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
         ("schema drift", lambda value: value.__setitem__("schemaVersion", "invalid")),
         ("appendOnly false", lambda value: value.__setitem__("appendOnly", False)),
@@ -209,7 +216,7 @@ def main() -> int:
 
     require(REGISTRY.read_bytes() == (ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json").read_bytes(),
             "negative suite mutated canonical pair registry")
-    print("PASS: release compatibility pair authority rejects append-lock substitution, registry corruption, evidence digest drift, uncommitted/symlink evidence, and nested rollback ineligibility")
+    print("PASS: release compatibility pair authority rejects contract substitution, registry corruption, evidence digest drift, uncommitted/symlink evidence, and nested rollback ineligibility")
     return 0
 
 
