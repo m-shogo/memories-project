@@ -124,7 +124,6 @@ def commit_authority_transaction(
 def main() -> int:
     registry = load(REGISTRY)
     writer = load_module(WRITER, "memory_os_release_pair_writer_for_reconcile")
-    review_validator = load_module(INDEPENDENT_REVIEW_VALIDATOR, "memory_os_release_pair_review_for_reconcile")
     try:
         writer.validate_registry_for_append(registry)
     except Exception as exc:
@@ -132,13 +131,6 @@ def main() -> int:
 
     pairs = registry.get("pairs")
     require(isinstance(pairs, list), "pair registry pairs invalid")
-    try:
-        for row in pairs:
-            require(isinstance(row, dict), "pair registry row must be object")
-            review_validator.validate_pair_reviews(row)
-    except Exception as exc:
-        raise Fail(f"release pair typed independent review authority invalid: {exc}") from exc
-
     releases = writer.validated_release_registry()
     contract = load(CONTRACT)
     execution = load(EXECUTION)
@@ -221,7 +213,7 @@ def main() -> int:
     print(f"approved releases: {release_count}")
     print(f"approved rollback pairs: {pair_count}")
     print(f"release compatibility evidence: {str(pair_count > 0).lower()}")
-    print("typed independent review authority: enforced before derived writes")
+    print("typed independent review authority: enforced by shared pair registry guard before derived writes")
     print("candidate/local execution authority: unchanged")
     print("OPS-P0-008: PARTIAL")
     print("productionDecision: NO_GO")
