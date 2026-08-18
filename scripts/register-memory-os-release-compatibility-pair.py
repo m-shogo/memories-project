@@ -298,6 +298,34 @@ def atomic_write(value: dict[str, Any]) -> None:
             pass
 
 
+def atomic_restore(payload: bytes) -> None:
+    descriptor, temp_name = tempfile.mkstemp(prefix=".release-pair-rollback.", suffix=".tmp", dir=REGISTRY.parent)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, REGISTRY)
+    finally:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
+
+
+def write_registry_transactionally(value: dict[str, Any]) -> None:
+    try:
+        original = REGISTRY.read_bytes()
+    except OSError as exc:
+        raise Fail("cannot snapshot release compatibility pair registry before append") from exc
+    atomic_write(value)
+    try:
+        validate_registry_for_append(load(REGISTRY))
+    except Exception:
+        atomic_restore(original)
+        raise
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--record", required=True)
@@ -339,7 +367,7 @@ def main() -> int:
             "independent Security and Operability reviews must remain typed, pair-bound, role-separated, digest-bound and non-promoting",
             "candidate/local mixed-version evidence cannot substitute approved release baselines"
         ]
-        atomic_write(registry)
+        write_registry_transactionally(registry)
     finally:
         os.close(lock_fd)
         try:
