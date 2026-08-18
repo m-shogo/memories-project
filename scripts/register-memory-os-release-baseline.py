@@ -159,6 +159,8 @@ def validate_contract_for_append(contract: dict[str, Any]) -> set[str]:
         require(contract.get(field) == expected, f"release contract path drift: {field}")
     require(contract.get("appendOnly") is True,
             "release contract must remain append-only")
+    require(contract.get("appendMustRevalidateCanonicalRegistryAndRollbackOnFailure") is True,
+            "release contract must require post-append revalidation and rollback")
     require(contract.get("productionDecision") == "NO_GO",
             "release contract cannot authorize production")
     required_fields = set(strings(contract.get("requiredFields"), "requiredFields", len(RECORD_FIELDS)))
@@ -354,6 +356,35 @@ def atomic_write(value: dict[str, Any]) -> None:
             pass
 
 
+def atomic_write_bytes(value: bytes) -> None:
+    descriptor, temp_name = tempfile.mkstemp(
+        prefix=".release-baseline-registry.", suffix=".tmp",
+        dir=REGISTRY_PATH.parent,
+    )
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(value)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, REGISTRY_PATH)
+    finally:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
+
+
+def append_registry_transactionally(
+    registry: dict[str, Any], contract: dict[str, Any], original_bytes: bytes
+) -> None:
+    atomic_write(registry)
+    try:
+        validate_registry_for_append(load(REGISTRY_PATH), contract)
+    except Exception:
+        atomic_write_bytes(original_bytes)
+        raise
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--record", required=True,
@@ -387,6 +418,7 @@ def main() -> int:
     try:
         os.write(lock_fd, f"{record['releaseId']}\n".encode("ascii"))
         os.fsync(lock_fd)
+        original_registry_bytes = REGISTRY_PATH.read_bytes()
         registry = load(REGISTRY_PATH)
         validate_registry_for_append(registry, contract)
         releases = registry["releases"]
@@ -404,7 +436,7 @@ def main() -> int:
                     if item.get("rollbackEligibility", {}).get("status") in
                     {"ELIGIBLE", "CONDITIONALLY_ELIGIBLE"}]
         registry["latestRollbackEligibleReleaseId"] = eligible[-1] if eligible else None
-        atomic_write(registry)
+        append_registry_transactionally(registry, contract, original_registry_bytes)
     finally:
         os.close(lock_fd)
         try:
