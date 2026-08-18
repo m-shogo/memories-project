@@ -28,6 +28,8 @@ ROLLBACK_REGISTRY_PATH = ROOT / "contracts/operations/rollback-rehearsal-registr
 ROLLBACK_WRITER_PATH = ROOT / "scripts/request-memory-os-rollback-rehearsal.py"
 PARSER_REGISTRY_PATH = ROOT / "contracts/operations/parser-artifact-registry.v1.json"
 PARSER_WRITER_PATH = ROOT / "scripts/register-memory-os-parser-artifact.py"
+PAIR_REGISTRY_PATH = ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"
+PAIR_WRITER_PATH = ROOT / "scripts/register-memory-os-release-compatibility-pair.py"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 EXPECTED_FOUNDATIONS = {
@@ -60,6 +62,8 @@ REQUIRED_STATUS_REFS = {
     "scripts/reconcile-memory-os-version-compatibility-foundation-status.py",
     ".github/workflows/version-compatibility-foundations.yml",
 }
+PAIR_MISSING = "approved predecessor and successor release pair despite candidate-only mixed-version evidence"
+PARSER_MISSING = "reviewed production parser artifact with exact-byte replay and immutable rollback retention evidence"
 
 
 class ValidationFailure(RuntimeError):
@@ -339,24 +343,37 @@ def validate_postgresql_result() -> None:
             "PostgreSQL logical upgrade assertions are incomplete")
 
 
-def validate_source_authorities() -> None:
+def validate_source_authorities() -> dict[str, int]:
     releases = load(RELEASE_REGISTRY_PATH)
     rollback = load(ROLLBACK_REGISTRY_PATH)
     parsers = load(PARSER_REGISTRY_PATH)
+    pairs = load(PAIR_REGISTRY_PATH)
     release_contract = load(RELEASE_CONTRACT_PATH)
     rollback_contract = load(ROLLBACK_CONTRACT_PATH)
     release_writer = load_module(RELEASE_WRITER_PATH, "memory_os_release_baseline_writer_for_foundation_validator")
     rollback_writer = load_module(ROLLBACK_WRITER_PATH, "memory_os_rollback_rehearsal_writer_for_foundation_validator")
     parser_writer = load_module(PARSER_WRITER_PATH, "memory_os_parser_artifact_writer_for_foundation_validator")
+    pair_writer = load_module(PAIR_WRITER_PATH, "memory_os_release_pair_writer_for_foundation_validator")
     try:
         release_writer.validate_registry_for_append(releases, release_contract)
         rollback_writer.validate_registry_for_append(rollback, rollback_contract, releases)
         parser_writer.validate_registry_for_append(parsers)
+        pair_writer.validate_registry_for_append(pairs)
     except Exception as exc:
         raise ValidationFailure(f"compatibility source authority invalid: {exc}") from exc
+    counts = {
+        "approvedReleases": releases.get("approvedReleaseCount"),
+        "rollbackRequests": rollback.get("rehearsalRequestCount"),
+        "reviewedParserArtifacts": parsers.get("reviewedArtifactCount"),
+        "approvedReleasePairs": pairs.get("approvedPairCount"),
+    }
+    for field, value in counts.items():
+        require(isinstance(value, int) and not isinstance(value, bool) and value >= 0,
+                f"compatibility source {field} must be a non-negative integer")
+    return counts
 
 
-def validate_status() -> None:
+def validate_status(source_counts: dict[str, int]) -> None:
     status = load(STATUS_PATH)
     require(status.get("productionDecision") == "NO_GO",
             "foundation authority changed production decision")
@@ -373,18 +390,29 @@ def validate_status() -> None:
     require(REQUIRED_STATUS_REFS.issubset(set(refs)),
             "OPS-P0-008 omits bounded foundation authority refs")
     existing = [str(item).lower() for item in area.get("existingEvidence", [])]
-    missing = [str(item).lower() for item in area.get("missingEvidence", [])]
+    missing_raw = area.get("missingEvidence")
+    require(isinstance(missing_raw, list), "OPS-P0-008 missingEvidence must be a list")
+    missing = [str(item).lower() for item in missing_raw]
     require(any("supplemental compatibility foundation authority" in item
                 for item in existing),
             "OPS-P0-008 omits bounded foundation evidence")
-    for terms in (
-        ("approved", "predecessor", "successor"),
+    required_terms = [
         ("rolling", "rollback", "rollback-eligible"),
-        ("reviewed", "parser artifact", "retention"),
         ("client/server", "skew"),
         ("blue-green", "connection-pool", "failover"),
         ("independent review", "critical", "high"),
-    ):
+    ]
+    if source_counts["approvedReleasePairs"] == 0:
+        required_terms.append(("approved", "predecessor", "successor"))
+        require(PAIR_MISSING in missing_raw, "approved release pair gap missing while pair authority is empty")
+    else:
+        require(PAIR_MISSING not in missing_raw, "satisfied approved release pair gap was reintroduced")
+    if source_counts["reviewedParserArtifacts"] == 0:
+        required_terms.append(("reviewed", "parser artifact", "retention"))
+        require(PARSER_MISSING in missing_raw, "parser artifact gap missing while parser authority is empty")
+    else:
+        require(PARSER_MISSING not in missing_raw, "satisfied parser artifact gap was reintroduced")
+    for terms in required_terms:
         require(any(all(term in item for term in terms) for item in missing),
                 f"required compatibility gap disappeared: {terms}")
 
@@ -395,12 +423,13 @@ def main() -> int:
     validate_session_result()
     validate_apply_result()
     validate_postgresql_result()
-    validate_source_authorities()
-    validate_status()
+    source_counts = validate_source_authorities()
+    validate_status(source_counts)
     print("Memory OS bounded compatibility foundation validation PASS")
     print("foundations: 5")
-    print("foundation-derived approved release pairs: 0")
-    print("foundation-derived reviewed parser artifacts: 0")
+    print(f"approved source release pairs: {source_counts['approvedReleasePairs']}")
+    print(f"reviewed source parser artifacts: {source_counts['reviewedParserArtifacts']}")
+    print("foundation production authority: unchanged")
     print("production decision: NO_GO")
     return 0
 
