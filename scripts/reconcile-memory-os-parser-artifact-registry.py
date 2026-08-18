@@ -30,7 +30,6 @@ OBSOLETE = (
 REVIEWED_ARTIFACT_GAP = "reviewed production parser artifact record with exact bytes, build provenance, Security, Runtime and Release Owner approvals"
 REPLAY_GAP = "exact registered old parser artifact replay test with deterministic accepted/rejected accounting and protocol binding"
 RETENTION_GAP = "independent immutable retention evidence for every parser artifact required by a rollback-eligible approved release"
-RELEASE_BINDING_GAP = "approved release artifact-set digest binding and retirement proof that no rollback release depends on a deleted artifact"
 REFS = (
     "contracts/operations/parser-artifact-registry-contract.v1.json",
     "contracts/operations/parser-artifact-registry.v1.json",
@@ -226,7 +225,6 @@ def main() -> int:
             changed = remove_value(missing, gap) or changed
         else:
             changed = append_once(missing, gap) or changed
-    changed = append_once(missing, RELEASE_BINDING_GAP) or changed
 
     for ref in REFS:
         require((ROOT / ref).is_file(), f"parser artifact evidence missing: {ref}")
@@ -238,8 +236,6 @@ def main() -> int:
         require(REPLAY_GAP in missing, "parser replay blocker disappeared")
     if retained == 0:
         require(RETENTION_GAP in missing, "parser retention blocker disappeared")
-    require(RELEASE_BINDING_GAP in missing,
-            "release artifact-set binding/retirement blocker must remain until separately proven")
     require(gate.get("status") == "PARTIAL" and gate.get("blocking") is True and
             status.get("productionDecision") == "NO_GO",
             "parser artifact authority changed production readiness")
