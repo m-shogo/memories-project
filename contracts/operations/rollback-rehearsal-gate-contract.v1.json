@@ -60,7 +60,8 @@
     "Release Owner and Database Recovery Owner are distinct pseudonymous approvers whose typed approval documents are bound to the exact rehearsal ID and approved release pair",
     "typed approval documents must record APPROVED and keep production traffic, production credentials and automatic promotion false",
     "rehearsal ID and release-pair request are unique",
-    "registry update uses the canonical exclusive append lock and atomic replacement"
+    "registry update uses the canonical exclusive append lock and atomic replacement",
+    "registry append revalidates the canonical append-only authority after atomic replacement and restores the original registry bytes on failure"
   ],
   "forbiddenAdmissionSources": [
     "historical candidate commit",
