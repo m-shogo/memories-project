@@ -9,6 +9,7 @@
   "writer": "scripts/register-memory-os-release-baseline.py",
   "recordSchemaVersion": "memory-os-release-baseline-record.v1",
   "appendOnly": true,
+  "appendMustRevalidateCanonicalRegistryAndRollbackOnFailure": true,
   "productionDecision": "NO_GO",
   "requiredFields": [
     "schemaVersion",
@@ -101,6 +102,7 @@
     "approval roles are complete and assigned to distinct approver identifiers",
     "record states evidenceComplete and productionReady true before registry mutation",
     "registry update is protected by an exclusive filesystem lock and atomic replacement",
+    "registry is revalidated after append and restored byte-for-byte if post-append validation fails",
     "registry change still requires validator execution and independent Git review"
   ],
   "readiness": {
