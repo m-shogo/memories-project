@@ -34,6 +34,7 @@
     "mutableLatestAliasForbiddenAsEvidenceKey": true,
     "unknownGenerationFailsClosed": true,
     "appendOnlyRegistrationRequired": true,
+    "appendMustRevalidateCanonicalRegistryAndRollbackOnFailure": true,
     "supersededGenerationChainRequiredPerEnvironment": true,
     "registrationDoesNotImplyPreflightEligibility": true,
     "preflightEligibilityRequiresValidatedEquivalentDependenciesAndIndependentReview": true
