@@ -236,6 +236,28 @@ def validate_evidence_digest_authority(writer: Any) -> None:
         evidence_path.write_bytes(original)
 
 
+def validate_approver_field_authority(writer: Any) -> None:
+    valid = [
+        {"role": "RELEASE_OWNER", "approverRef": "apr_release_ci11"},
+        {"role": "DATABASE_RECOVERY_OWNER", "approverRef": "apr_database_ci22"},
+    ]
+    writer.validate_approvers(copy.deepcopy(valid))
+
+    unknown = copy.deepcopy(valid)
+    unknown[0]["decision"] = "APPROVED"
+    expect_rejected(
+        "approver unknown field",
+        lambda: writer.validate_approvers(unknown),
+    )
+
+    missing = copy.deepcopy(valid)
+    missing[1].pop("approverRef")
+    expect_rejected(
+        "approver missing field",
+        lambda: writer.validate_approvers(missing),
+    )
+
+
 def validate_planning_progression(reconciler: Any) -> None:
     contract = copy.deepcopy(load_json(CONTRACT_PATH))
     changed = reconciler.reconcile_contract(contract, 2, 1, 1, 1)
@@ -346,6 +368,7 @@ def main() -> int:
     validate_contract_append_authority(writer, contract, registry, release_registry)
     validate_evidence_ref_containment(writer)
     validate_evidence_digest_authority(writer)
+    validate_approver_field_authority(writer)
     validate_planning_progression(reconciler)
     validate_transaction_rollback(reconciler)
 
@@ -397,7 +420,7 @@ def main() -> int:
     if STATUS_PATH.read_bytes() != status_bytes:
         raise RuntimeError("production status bytes changed after negative suite")
 
-    print("PASS: rollback rehearsal authority accepts planning progression while rejecting corrupt contract/registry authority, unsafe refs, uncommitted or stale evidence bytes and aggregate partial writes")
+    print("PASS: rollback rehearsal authority accepts planning progression while rejecting corrupt contract/registry authority, unsafe refs, uncommitted or stale evidence bytes, approver shape drift and aggregate partial writes")
     return 0
 
 
