@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "backup-restore-promotion-review",
+  "sourceCommitSha": "3f8602e61ca7ded20db57e3069cf5f72bc24b03f",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "BACKUP RESTORE PROMOTION REVIEW RECONCILE FAILED: post-reconcile promotion review validator failed:\nBACKUP RESTORE PROMOTION REVIEW VALIDATION FAILED: promotion review negative suite failed:\nPASS reject: promotion review append lock authority substitution\nPASS accept: empty append-only promotion registry authority\nPASS reject: promotion registry schema drift\nPASS reject: promotion registry append-only disabled\nPASS reject: promotion registry production-ready relabel\nPASS reject: promotion registry boolean registered count\nPASS reject: promotion registry boolean decision count\nPASS reject: empty promotion registry current pointer drift\nPASS reject: empty promotion registry latest pointer drift\nPASS reject: no current final recovery candidate\nPASS preserve: unexpected implementation TypeError is not normalized as domain rejection\nPASS reject: absolute review authority ref\nPASS reject: parent-traversal review authority ref\nPASS reject: review evidence outside monitored namespace\nPASS reject: review authority symlink escapes repository root\nTraceback (most recent call last):\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-backup-restore-promotion-review-negative.py\", line 347, in <module>\n    raise SystemExit(main())\n                     ^^^^^^\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-backup-restore-promotion-review-negative.py\", line 205, in main\n    writer.validate_record(valid)\n  File \"/home/runner/work/memories-project/memories-project/scripts/register-memory-os-backup-restore-promotion-review.py\", line 195, in validate_record\n    require(\n  File \"/home/runner/work/memories-project/memories-project/scripts/register-memory-os-backup-restore-promotion-review.py\", line 37, in require\n    raise Fail(message)\nmemory_os_promotion_review_writer_negative.Fail: promotion review transactional append authority drift\n\n\n",
+  "containsSecrets": false,
+  "reviewCreated": false,
+  "trafficChanged": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
