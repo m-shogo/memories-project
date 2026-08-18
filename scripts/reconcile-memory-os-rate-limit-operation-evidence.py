@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import importlib.util
 import json
 import subprocess
 import sys
@@ -14,6 +15,8 @@ ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE_PATH = ROOT / "contracts/operations/rate-limit-operation-evidence-contract.v1.json"
 OPERATIONS_PATH = ROOT / "contracts/operations/rate-limit-operations-contract.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+WRITER_PATH = ROOT / "scripts/create-memory-os-rate-limit-operation-evidence.py"
+EVIDENCE_VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit-operation-evidence.py"
 OPERATIONS_VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit-operations.py"
 
 OLD_GAP = (
@@ -55,6 +58,17 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def load_writer() -> Any:
+    spec = importlib.util.spec_from_file_location(
+        "memory_os_rate_limit_operation_writer_reconcile", WRITER_PATH
+    )
+    require(spec is not None and spec.loader is not None,
+            "unable to load rate-limit operation evidence writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def append_once(items: list[Any], value: str) -> bool:
     if value in items:
         return False
@@ -62,9 +76,9 @@ def append_once(items: list[Any], value: str) -> bool:
     return True
 
 
-def validate_written_authority() -> None:
+def run_validator(path: Path, label: str) -> None:
     completed = subprocess.run(
-        [sys.executable, str(OPERATIONS_VALIDATOR)],
+        [sys.executable, str(path)],
         cwd=ROOT,
         text=True,
         stdout=subprocess.PIPE,
@@ -72,7 +86,23 @@ def validate_written_authority() -> None:
         check=False,
     )
     require(completed.returncode == 0,
-            f"rate-limit operation evidence post-write validation failed:\n{completed.stdout[-4000:]}")
+            f"{label} validation failed:\n{completed.stdout[-4000:]}")
+
+
+def validate_evidence_authority(evidence: dict[str, Any]) -> None:
+    try:
+        load_writer().validate_contract_append_guards(evidence)
+    except Exception as exc:
+        raise ReconcileFailure(
+            f"rate-limit operation evidence append authority invalid: {exc}"
+        ) from exc
+    run_validator(EVIDENCE_VALIDATOR, "rate-limit operation evidence")
+
+
+def validate_written_authority() -> None:
+    evidence = load(EVIDENCE_PATH)
+    validate_evidence_authority(evidence)
+    run_validator(OPERATIONS_VALIDATOR, "rate-limit operation evidence post-write")
 
 
 def transactional_write(operations: dict[str, Any], status: dict[str, Any]) -> None:
@@ -98,6 +128,7 @@ def transactional_write(operations: dict[str, Any], status: dict[str, Any]) -> N
 
 def main() -> int:
     evidence = load(EVIDENCE_PATH)
+    validate_evidence_authority(evidence)
     evidence_readiness = evidence.get("readiness")
     require(isinstance(evidence_readiness, dict), "evidence readiness must be an object")
     for foundation in (
