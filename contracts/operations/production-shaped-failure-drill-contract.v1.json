@@ -84,6 +84,7 @@
     "allScenarioAssertionsRequireEvidenceRefs": true,
     "evidenceRefsMustBeCommittedSymlinkFreeAndDigestBound": true,
     "appendLockMustRemainCanonical": true,
+    "appendMustRevalidateCanonicalRegistryAndRollbackOnFailure": true,
     "independentOperabilityReviewRequired": true,
     "independentSecurityReviewRequired": true,
     "typedIndependentReviewsMustBindDrillScenarioEnvironmentAndSource": true,
