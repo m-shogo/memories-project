@@ -85,6 +85,7 @@
     "docs/evidence/migrations/recovery/mig_20260817_b03c6f39e7e6.json",
     "docs/evidence/migrations/recovery/mig_20260817_23a3145b7017.json",
     "scripts/validate-memory-os-migration-evidence-registry.py",
-    "docs/evidence/migrations/recovery/mig_20260817_b9d343e14ac7.json"
+    "docs/evidence/migrations/recovery/mig_20260817_b9d343e14ac7.json",
+    "docs/evidence/migrations/recovery/mig_20260818_45f3214d1873.json"
   ]
 }

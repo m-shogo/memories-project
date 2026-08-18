@@ -95,7 +95,8 @@
         "scripts/reconcile-memory-os-migration-operation-evidence.py",
         "docs/evidence/migration-operations/README.md",
         "docs/fixtures/memory-os-operability/migration-operation-record.template.v1.json",
-        ".github/workflows/migration-operation-evidence.yml"
+        ".github/workflows/migration-operation-evidence.yml",
+        "docs/evidence/migrations/recovery/mig_20260818_45f3214d1873.json"
       ]
     },
     {
