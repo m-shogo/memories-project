@@ -32,6 +32,16 @@ TAG_RE = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$")
 APPROVER_RE = re.compile(r"^apr_[a-z0-9][a-z0-9_-]{7,63}$")
 REQUIRED_ROLES = {"SECURITY_REVIEWER", "OPERABILITY_REVIEWER", "RELEASE_OWNER"}
 ROLLBACK_VALUES = {"ELIGIBLE", "CONDITIONALLY_ELIGIBLE", "NOT_ELIGIBLE"}
+RECORD_FIELDS = {
+    "schemaVersion", "releaseId", "releaseTag", "commitSha", "approvedAt",
+    "approvalClass", "approvers", "apiContractSha256", "migrationSequenceSha256",
+    "parserArtifactSetSha256", "runtimeConfigurationSchemaSha256",
+    "compatibilityEvidenceRefs", "restoreEvidenceRefs", "securityEvidenceRefs",
+    "rollbackEligibility", "openRisks", "evidenceComplete", "productionReady",
+}
+APPROVER_FIELDS = {"role", "approverRef"}
+ROLLBACK_FIELDS = {"status", "verified", "conditions"}
+RISK_FIELDS = {"riskId", "ownerRef", "deadline", "status"}
 REGISTRY_FIELDS = {
     "schemaVersion",
     "registryClass",
@@ -84,6 +94,12 @@ def strings(value: Any, field: str, minimum: int = 1) -> list[str]:
     return value
 
 
+def exact_object(value: Any, fields: set[str], field: str) -> dict[str, Any]:
+    require(isinstance(value, dict), f"{field} must be an object")
+    require(set(value) == fields, f"{field} field set drift")
+    return value
+
+
 def require_utc_timestamp(value: Any, field: str) -> None:
     require(isinstance(value, str) and value.endswith("Z"),
             f"{field} must be an RFC3339 UTC timestamp")
@@ -130,9 +146,56 @@ def validate_evidence_ref_binding(commit_sha: str, ref: str) -> None:
             f"release evidence changed after source commit: {ref}")
 
 
+def validate_contract_for_append(contract: dict[str, Any]) -> set[str]:
+    require(contract.get("schemaVersion") == "memory-os-release-baseline-registry-contract.v1",
+            "release contract schemaVersion drift")
+    expected_paths = {
+        "registryPath": str(REGISTRY_PATH.relative_to(ROOT)),
+        "appendLockPath": str(LOCK_PATH.relative_to(ROOT)),
+        "validator": "scripts/validate-memory-os-release-baseline-registry.py",
+        "writer": str(Path(__file__).resolve().relative_to(ROOT)),
+    }
+    for field, expected in expected_paths.items():
+        require(contract.get(field) == expected, f"release contract path drift: {field}")
+    require(contract.get("appendOnly") is True,
+            "release contract must remain append-only")
+    require(contract.get("productionDecision") == "NO_GO",
+            "release contract cannot authorize production")
+    required_fields = set(strings(contract.get("requiredFields"), "requiredFields", len(RECORD_FIELDS)))
+    require(required_fields == RECORD_FIELDS,
+            "release contract requiredFields drift")
+
+    approval = contract.get("approvalPolicy")
+    require(isinstance(approval, dict), "release approvalPolicy missing")
+    require(approval.get("approvalClass") == "PRODUCTION_RELEASE_BASELINE",
+            "release approval class drift")
+    minimum = approval.get("minimumDistinctApprovers")
+    require(isinstance(minimum, int) and not isinstance(minimum, bool) and minimum == 3,
+            "release minimum distinct approvers drift")
+    require(set(strings(approval.get("requiredRoles"), "approvalPolicy.requiredRoles", 3)) == REQUIRED_ROLES,
+            "release required approval roles drift")
+    for field in (
+        "selfApprovalForbidden", "candidateCommitIsInsufficient", "ciPassIsInsufficient",
+        "tagAloneIsInsufficient", "branchHeadIsInsufficient",
+        "productionTrafficIsForbiddenBeforeRegistration",
+    ):
+        require(approval.get(field) is True, f"release approval policy drift: {field}")
+
+    binding = contract.get("evidenceBinding")
+    require(isinstance(binding, dict) and binding.get("sourceCommitField") == "commitSha",
+            "release evidence binding source field drift")
+    for field in (
+        "sourceCommitMustBeAncestorOfCurrentHead", "repositoryTrackedRequired",
+        "repositoryContainmentRequired", "symlinkForbidden", "parentDirectorySymlinkForbidden",
+        "sourceCommitBlobRequired", "currentBytesMustMatchSourceCommit",
+    ):
+        require(binding.get(field) is True, f"release evidence binding drift: {field}")
+    return required_fields
+
+
 def validate_record(record: dict[str, Any], required_fields: set[str]) -> None:
-    require(set(record) >= required_fields,
-            f"record missing fields: {sorted(required_fields - set(record))}")
+    require(set(record) == required_fields,
+            f"record field set drift: {sorted(set(record) ^ required_fields)}")
     require(record.get("schemaVersion") == "memory-os-release-baseline-record.v1",
             "record schemaVersion drift")
     require(isinstance(record.get("releaseId"), str) and
@@ -159,7 +222,7 @@ def validate_record(record: dict[str, Any], required_fields: set[str]) -> None:
     roles: set[str] = set()
     identities: set[str] = set()
     for approver in approvers:
-        require(isinstance(approver, dict), "approver entry must be an object")
+        approver = exact_object(approver, APPROVER_FIELDS, "approver entry")
         role = approver.get("role")
         identity = approver.get("approverRef")
         require(role in REQUIRED_ROLES and role not in roles,
@@ -185,8 +248,8 @@ def validate_record(record: dict[str, Any], required_fields: set[str]) -> None:
         for ref in strings(record.get(field), field, 1):
             validate_evidence_ref_binding(record["commitSha"], ref)
 
-    rollback = record.get("rollbackEligibility")
-    require(isinstance(rollback, dict) and rollback.get("status") in ROLLBACK_VALUES,
+    rollback = exact_object(record.get("rollbackEligibility"), ROLLBACK_FIELDS, "rollbackEligibility")
+    require(rollback.get("status") in ROLLBACK_VALUES,
             "rollbackEligibility invalid")
     conditions = rollback.get("conditions")
     require(isinstance(conditions, list), "rollback conditions must be a list")
@@ -204,8 +267,9 @@ def validate_record(record: dict[str, Any], required_fields: set[str]) -> None:
     risks = record.get("openRisks")
     require(isinstance(risks, list), "openRisks must be a list")
     for risk in risks:
-        require(isinstance(risk, dict) and risk.get("riskId") and
-                risk.get("ownerRef") and risk.get("deadline") and risk.get("status"),
+        risk = exact_object(risk, RISK_FIELDS, "open risk entry")
+        require(risk.get("riskId") and risk.get("ownerRef") and
+                risk.get("deadline") and risk.get("status"),
                 "open risk entry is incomplete")
 
     serialized = json.dumps(record, ensure_ascii=False).lower()
@@ -219,6 +283,7 @@ def validate_record(record: dict[str, Any], required_fields: set[str]) -> None:
 
 
 def validate_registry_for_append(registry: dict[str, Any], contract: dict[str, Any]) -> None:
+    required_fields = validate_contract_for_append(contract)
     require(set(registry) == REGISTRY_FIELDS, "release registry field set drift")
     require(registry.get("schemaVersion") == "memory-os-release-baseline-registry.v1",
             "release registry schemaVersion drift")
@@ -234,7 +299,6 @@ def validate_registry_for_append(registry: dict[str, Any], contract: dict[str, A
     require(isinstance(count, int) and not isinstance(count, bool),
             "approvedReleaseCount must be an integer")
     require(count == len(releases), "approvedReleaseCount drift")
-    required_fields = set(strings(contract.get("requiredFields"), "requiredFields", 18))
     release_ids: set[str] = set()
     tags: set[str] = set()
     commits: set[str] = set()
@@ -311,7 +375,7 @@ def main() -> int:
             "working tree must be clean before release registration")
     head = git("rev-parse", "HEAD")
     contract = load(CONTRACT_PATH)
-    required_fields = set(strings(contract.get("requiredFields"), "requiredFields", 18))
+    required_fields = validate_contract_for_append(contract)
     record = load(record_path)
     validate_record(record, required_fields)
     require(record["commitSha"] == head,
