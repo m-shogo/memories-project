@@ -8,12 +8,15 @@ on:
       - "contracts/operations/parser-artifact-registry.v1.json"
       - "contracts/operations/release-baseline-registry-contract.v1.json"
       - "contracts/operations/release-baseline-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "docs/runbooks/memory-os-parser-artifact-registry.md"
       - "scripts/register-memory-os-parser-artifact.py"
       - "scripts/register-memory-os-release-baseline.py"
       - "scripts/validate-memory-os-parser-artifact-registry.py"
       - "scripts/validate-memory-os-parser-artifact-registry-authority-negative.py"
       - "scripts/reconcile-memory-os-parser-artifact-registry.py"
+      - "scripts/validate-memory-os-version-compatibility.py"
+      - "scripts/validate-memory-os-operability.py"
       - "services/import-api/internal/parsersup/worker.go"
   push:
     branches:
@@ -24,12 +27,15 @@ on:
       - "contracts/operations/parser-artifact-registry.v1.json"
       - "contracts/operations/release-baseline-registry-contract.v1.json"
       - "contracts/operations/release-baseline-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "docs/runbooks/memory-os-parser-artifact-registry.md"
       - "scripts/register-memory-os-parser-artifact.py"
       - "scripts/register-memory-os-release-baseline.py"
       - "scripts/validate-memory-os-parser-artifact-registry.py"
       - "scripts/validate-memory-os-parser-artifact-registry-authority-negative.py"
       - "scripts/reconcile-memory-os-parser-artifact-registry.py"
+      - "scripts/validate-memory-os-version-compatibility.py"
+      - "scripts/validate-memory-os-operability.py"
       - "services/import-api/internal/parsersup/worker.go"
   schedule:
     - cron: "41 4 * * 2"
@@ -80,7 +86,9 @@ jobs:
             scripts/register-memory-os-release-baseline.py \
             scripts/validate-memory-os-parser-artifact-registry.py \
             scripts/validate-memory-os-parser-artifact-registry-authority-negative.py \
-            scripts/reconcile-memory-os-parser-artifact-registry.py
+            scripts/reconcile-memory-os-parser-artifact-registry.py \
+            scripts/validate-memory-os-version-compatibility.py \
+            scripts/validate-memory-os-operability.py
 
       - name: Validate reviewed artifact authority
         run: python scripts/validate-memory-os-parser-artifact-registry.py
