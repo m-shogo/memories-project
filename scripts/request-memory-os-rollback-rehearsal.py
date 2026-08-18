@@ -109,7 +109,19 @@ def safe_ref(value: Any, field: str) -> str:
     path = Path(value)
     require(not path.is_absolute() and ".." not in path.parts,
             f"{field} contains an unsafe path")
-    require((ROOT / path).is_file(), f"{field} does not exist: {value}")
+    candidate = ROOT / path
+    current = ROOT
+    for part in path.parts:
+        current = current / part
+        require(not current.is_symlink(), f"{field} contains a symlink path")
+    try:
+        resolved = candidate.resolve(strict=True)
+        resolved.relative_to(ROOT.resolve())
+    except (FileNotFoundError, ValueError) as exc:
+        raise RequestFailure(f"{field} escapes or is missing from the repository: {value}") from exc
+    require(resolved.is_file(), f"{field} does not reference a regular file: {value}")
+    require(bool(git("ls-files", "--error-unmatch", "--", value)),
+            f"{field} is not tracked by the repository: {value}")
     return value
 
 
