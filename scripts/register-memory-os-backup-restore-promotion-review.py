@@ -192,6 +192,10 @@ def validate_record(record: dict[str, Any], *, require_current_candidate: bool =
     """Validate immutable review data; history does not regain current authority automatically."""
     contract = load(CONTRACT)
     require(contract.get("reviewEvidenceRoot") == str(EVIDENCE_ROOT.relative_to(ROOT)), "promotion review evidence root authority drift")
+    require(
+        contract.get("rules", {}).get("appendMustRevalidateCanonicalRegistryAndRollbackOnFailure") is True,
+        "promotion review transactional append authority drift",
+    )
     required = set(contract.get("requiredRecordFields", []))
     require(required and set(record) == required, f"promotion review field set drift: {sorted(set(record) ^ required)}")
     require(record.get("schemaVersion") == contract.get("recordSchemaVersion"), "promotion review schemaVersion drift")
@@ -335,6 +339,34 @@ def atomic_write(value: dict[str, Any]) -> None:
             pass
 
 
+def atomic_restore(payload: bytes) -> None:
+    fd, temp_name = tempfile.mkstemp(prefix=".backup-restore-promotion-review-rollback.", suffix=".tmp", dir=REGISTRY.parent)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, REGISTRY)
+    finally:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
+
+
+def write_registry_transactionally(value: dict[str, Any]) -> None:
+    try:
+        original = REGISTRY.read_bytes()
+    except OSError as exc:
+        raise Fail("cannot snapshot promotion review registry before append") from exc
+    atomic_write(value)
+    try:
+        validate_registry_for_append(load(REGISTRY))
+    except Exception:
+        atomic_restore(original)
+        raise
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--record", required=True)
@@ -368,7 +400,7 @@ def main() -> int:
         registry["productionTrafficChanged"] = False
         registry["productionEvidence"] = False
         registry["productionReady"] = False
-        atomic_write(registry)
+        write_registry_transactionally(registry)
     finally:
         os.close(lock_fd)
         try:
