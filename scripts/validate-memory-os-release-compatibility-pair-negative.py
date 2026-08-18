@@ -185,6 +185,7 @@ def main() -> int:
     base = load(REGISTRY)
     contract_cases: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
         ("append lock binding drift", lambda value: value.__setitem__("appendLockPath", "contracts/operations/.release-compatibility-pair-alternate.lock")),
+        ("transactional append rule drift", lambda value: value["rules"].__setitem__("appendMustRevalidateCanonicalRegistryAndRollbackOnFailure", False)),
         ("independent review validator drift", lambda value: value.__setitem__("independentReviewValidator", "scripts/validate-memory-os-operability.py")),
         ("registry authority drift", lambda value: value.__setitem__("registry", "contracts/operations/release-baseline-registry.v1.json")),
     ]
@@ -214,9 +215,36 @@ def main() -> int:
         mutate(corrupt)
         expect_rejected(name, lambda corrupt=corrupt: writer.validate_registry_for_append(corrupt))
 
-    require(REGISTRY.read_bytes() == (ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json").read_bytes(),
+    original_registry_bytes = REGISTRY.read_bytes()
+    original_atomic_write = writer.atomic_write
+    original_post_validator = writer.validate_registry_for_append
+    observed = {"changed": False}
+    candidate = copy.deepcopy(base)
+    candidate["limitations"] = list(base.get("limitations", [])) + ["synthetic rollback sentinel"]
+
+    def observing_atomic_write(value: dict[str, Any]) -> None:
+        original_atomic_write(value)
+        observed["changed"] = REGISTRY.read_bytes() != original_registry_bytes
+
+    def reject_after_write(_value: dict[str, Any]) -> None:
+        raise writer.Fail("synthetic post-append validation failure")
+
+    try:
+        writer.atomic_write = observing_atomic_write
+        writer.validate_registry_for_append = reject_after_write
+        expect_rejected("post-append canonical validation failure", lambda: writer.write_registry_transactionally(candidate))
+        require(observed["changed"], "transactional append negative did not exercise a registry write")
+        require(REGISTRY.read_bytes() == original_registry_bytes,
+                "release pair registry was not restored after post-append validation failure")
+    finally:
+        writer.atomic_write = original_atomic_write
+        writer.validate_registry_for_append = original_post_validator
+        if REGISTRY.read_bytes() != original_registry_bytes:
+            writer.atomic_restore(original_registry_bytes)
+
+    require(REGISTRY.read_bytes() == original_registry_bytes,
             "negative suite mutated canonical pair registry")
-    print("PASS: release compatibility pair authority rejects contract substitution, registry corruption, evidence digest drift, uncommitted/symlink evidence, and nested rollback ineligibility")
+    print("PASS: release compatibility pair authority rejects contract substitution, registry corruption, evidence drift, and restores the registry after post-append validation failure")
     return 0
 
 
