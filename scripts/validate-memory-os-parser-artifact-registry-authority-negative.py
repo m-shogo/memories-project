@@ -48,6 +48,8 @@ def load_writer() -> Any:
             "parser writer registry authority drift")
     require(Path(module.LOCK_PATH).resolve() == LOCK_PATH.resolve(),
             "parser writer append lock authority drift")
+    require(callable(getattr(module, "append_registry_transactionally", None)),
+            "parser writer transactional append authority missing")
     return module
 
 
@@ -64,6 +66,47 @@ def expect_rejection(writer: Any, base: dict[str, Any], label: str,
     except writer.RegistrationFailure:
         return
     raise NegativeFailure(f"writer accepted corrupt parser registry: {label}")
+
+
+def expect_contract_guard_rejection(writer: Any) -> None:
+    original = CONTRACT_PATH.read_bytes()
+    contract = json.loads(original.decode("utf-8"))
+    contract["appendMustRevalidateCanonicalRegistryAndRollbackOnFailure"] = False
+    CONTRACT_PATH.write_text(json.dumps(contract, indent=2) + "\n", encoding="utf-8")
+    try:
+        try:
+            writer.validate_registry_for_append(json.loads(REGISTRY_PATH.read_text(encoding="utf-8")))
+        except writer.RegistrationFailure as exc:
+            require("post-append revalidation and rollback" in str(exc),
+                    "parser append rollback guard rejected for unrelated reason")
+            return
+        raise NegativeFailure("writer accepted disabled parser append rollback contract guard")
+    finally:
+        CONTRACT_PATH.write_bytes(original)
+
+
+def expect_append_rollback(writer: Any, base: dict[str, Any]) -> None:
+    original = REGISTRY_PATH.read_bytes()
+    candidate = copy.deepcopy(base)
+    candidate["reviewedArtifactCount"] = candidate.get("reviewedArtifactCount", 0) + 1
+    original_validator = writer.validate_registry_for_append
+
+    def fail_after_write(_: dict[str, Any]) -> None:
+        raise writer.RegistrationFailure("synthetic post-append parser validation failure")
+
+    try:
+        writer.validate_registry_for_append = fail_after_write
+        try:
+            writer.append_registry_transactionally(candidate, original)
+        except writer.RegistrationFailure:
+            pass
+        else:
+            raise NegativeFailure("parser writer accepted synthetic post-append validation failure")
+        require(REGISTRY_PATH.read_bytes() == original,
+                "parser registry did not roll back byte-for-byte after post-append failure")
+    finally:
+        writer.validate_registry_for_append = original_validator
+        REGISTRY_PATH.write_bytes(original)
 
 
 def expect_validator_rejection(label: str) -> None:
@@ -289,9 +332,13 @@ def main() -> int:
     contract = json.loads(contract_bytes.decode("utf-8"))
     require(contract.get("appendLockPath") == str(LOCK_PATH.relative_to(ROOT)),
             "parser contract append lock authority drift")
+    require(contract.get("appendMustRevalidateCanonicalRegistryAndRollbackOnFailure") is True,
+            "parser contract transactional append authority missing")
     base = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
     require(isinstance(base, dict), "parser registry must be object")
     writer.validate_registry_for_append(copy.deepcopy(base))
+    expect_append_rollback(writer, base)
+    expect_contract_guard_rejection(writer)
 
     cases: tuple[tuple[str, Callable[[dict[str, Any]], None]], ...] = (
         ("boolean reviewed count", lambda value: value.__setitem__("reviewedArtifactCount", True)),
@@ -376,7 +423,7 @@ def main() -> int:
     require(REGISTRY_PATH.read_bytes() == json.dumps(base, indent=2, ensure_ascii=False).encode("utf-8") + b"\n" or
             json.loads(REGISTRY_PATH.read_text(encoding="utf-8")) == base,
             "parser registry was not restored after reconcile negatives")
-    print("Parser artifact authority rejects corruption/historical drift, preserves canonical blocker monotonicity, permits nonempty non-promoting progression, validates aggregate authority transactionally, and rolls back post-write failure")
+    print("Parser artifact authority rejects corruption/historical drift, enforces transactional append rollback, preserves canonical blocker monotonicity, permits nonempty non-promoting progression, validates aggregate authority transactionally, and rolls back post-write failure")
     return 0
 
 
