@@ -51,6 +51,8 @@ def load_writer() -> ModuleType:
             "contact routing observability executable authority drift")
     require(callable(getattr(module, "validate_registry_for_append", None)),
             "contact routing writer registry validator missing")
+    require(callable(getattr(module, "commit_registry_candidate", None)),
+            "contact routing transactional append authority missing")
     return module
 
 
@@ -74,6 +76,8 @@ def main() -> int:
     rules = contract.get("bindingRules")
     require(isinstance(rules, dict) and rules and all(value is True for value in rules.values()), "binding rules must remain true")
     require(rules.get("appendLockMustRemainCanonical") is True, "append lock requirement drift")
+    require(rules.get("appendMustRevalidateCanonicalRegistryAndRollbackOnFailure") is True,
+            "transactional append rollback requirement drift")
     promotion = contract.get("promotionRules")
     require(isinstance(promotion, dict), "promotionRules missing")
     for key, value in promotion.items():
