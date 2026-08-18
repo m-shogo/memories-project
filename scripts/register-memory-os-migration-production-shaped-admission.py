@@ -366,6 +366,10 @@ def validate_record(record: dict[str, Any]) -> None:
 
 
 def validate_registry_for_append(registry: dict[str, Any]) -> None:
+    contract = load(CONTRACT)
+    rules = contract.get("admissionRules")
+    require(isinstance(rules, dict) and rules.get("appendMustRevalidateCanonicalRegistryAndRollbackOnFailure") is True,
+            "migration admission contract must require post-append revalidation and rollback")
     require(set(registry) == {"schemaVersion", "appendOnly", "admittedRehearsalCount", "admissions", "evidenceDigestsByAdmissionId", "productionEvidence", "productionReady"}, "registry field set drift")
     require(registry.get("schemaVersion") == "memory-os-migration-production-shaped-admission-registry.v1", "registry schema drift")
     require(registry.get("appendOnly") is True, "registry must remain append-only")
@@ -412,6 +416,30 @@ def atomic_write(value: dict[str, Any]) -> None:
             pass
 
 
+def atomic_write_bytes(value: bytes) -> None:
+    descriptor, temp_name = tempfile.mkstemp(prefix=".migration-production-admission.", suffix=".tmp", dir=REGISTRY.parent)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(value)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, REGISTRY)
+    finally:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
+
+
+def append_registry_transactionally(registry: dict[str, Any], original_bytes: bytes) -> None:
+    atomic_write(registry)
+    try:
+        validate_registry_for_append(load(REGISTRY))
+    except Exception:
+        atomic_write_bytes(original_bytes)
+        raise
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--record", required=True)
@@ -435,6 +463,7 @@ def main() -> int:
     try:
         os.write(lock_fd, (record["admissionId"] + "\n").encode("ascii"))
         os.fsync(lock_fd)
+        original_registry_bytes = REGISTRY.read_bytes()
         registry = load(REGISTRY)
         validate_registry_for_append(registry)
         admissions = registry["admissions"]
@@ -445,7 +474,7 @@ def main() -> int:
         registry["admittedRehearsalCount"] = len(admissions)
         registry["productionEvidence"] = False
         registry["productionReady"] = False
-        atomic_write(registry)
+        append_registry_transactionally(registry, original_registry_bytes)
     finally:
         os.close(lock_fd)
         try:
