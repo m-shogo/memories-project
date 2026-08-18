@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import importlib.util
 import json
 import os
@@ -28,9 +29,11 @@ REHEARSAL_REGISTRY_PATH = ROOT / "contracts/operations/rollback-rehearsal-regist
 LOCK_PATH = ROOT / "contracts/operations/.rollback-rehearsal-registry.lock"
 CONFIRMATION = "REQUEST ISOLATED ROLLBACK REHEARSAL"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 REHEARSAL_ID_RE = re.compile(r"^rrh_[0-9]{8}_[a-z0-9][a-z0-9._-]{2,63}$")
 APPROVER_RE = re.compile(r"^apr_[a-z0-9][a-z0-9_-]{7,63}$")
 REQUIRED_ROLES = {"RELEASE_OWNER", "DATABASE_RECOVERY_OWNER"}
+EVIDENCE_DIGEST_FIELD = "evidenceDigests"
 REGISTRY_FIELDS = {
     "schemaVersion",
     "registryClass",
@@ -132,6 +135,55 @@ def safe_ref(value: Any, field: str) -> str:
     return value
 
 
+def evidence_refs(request: dict[str, Any]) -> list[str]:
+    database = request.get("databasePolicy")
+    artifacts = request.get("artifactPolicy")
+    require(isinstance(database, dict), "databasePolicy missing for evidence binding")
+    require(isinstance(artifacts, dict), "artifactPolicy missing for evidence binding")
+    refs = [
+        safe_ref(database.get("recoveryPointEvidenceRef"),
+                 "databasePolicy.recoveryPointEvidenceRef"),
+        safe_ref(database.get("forwardFixDecisionRef"),
+                 "databasePolicy.forwardFixDecisionRef"),
+        safe_ref(artifacts.get("parserArtifactEvidenceRef"),
+                 "artifactPolicy.parserArtifactEvidenceRef"),
+        safe_ref(artifacts.get("objectVersionEvidenceRef"),
+                 "artifactPolicy.objectVersionEvidenceRef"),
+    ]
+    refs.extend(
+        safe_ref(ref, "entryCriteriaRefs")
+        for ref in strings(request.get("entryCriteriaRefs"), "entryCriteriaRefs", 5)
+    )
+    return list(dict.fromkeys(refs))
+
+
+def evidence_digest_map(request: dict[str, Any]) -> dict[str, str]:
+    return {
+        ref: hashlib.sha256((ROOT / ref).read_bytes()).hexdigest()
+        for ref in evidence_refs(request)
+    }
+
+
+def validate_evidence_digest_binding(
+    request: dict[str, Any], *, required: bool
+) -> None:
+    digests = request.get(EVIDENCE_DIGEST_FIELD)
+    if digests is None and not required:
+        return
+    require(isinstance(digests, dict),
+            "rollback rehearsal evidence digest authority missing")
+    refs = evidence_refs(request)
+    require(set(digests) == set(refs),
+            "rollback rehearsal evidence digest ref set drift")
+    for ref in refs:
+        digest = digests.get(ref)
+        require(isinstance(digest, str) and SHA256_RE.fullmatch(digest) is not None,
+                f"rollback rehearsal evidence digest invalid: {ref}")
+        current = hashlib.sha256((ROOT / ref).read_bytes()).hexdigest()
+        require(digest == current,
+                f"rollback rehearsal evidence bytes changed after admission: {ref}")
+
+
 def validate_release_registry_for_append(release_registry: dict[str, Any]) -> None:
     release_contract = load(RELEASE_CONTRACT_PATH)
     try:
@@ -141,8 +193,10 @@ def validate_release_registry_for_append(release_registry: dict[str, Any]) -> No
         raise RequestFailure(f"approved release registry authority invalid: {exc}") from exc
 
 
-def validate_request(request: dict[str, Any], required_fields: set[str],
-                     release_registry: dict[str, Any]) -> None:
+def validate_request(
+    request: dict[str, Any], required_fields: set[str], release_registry: dict[str, Any],
+    *, require_evidence_digests: bool = False,
+) -> None:
     require(set(request) >= required_fields,
             f"request missing fields: {sorted(required_fields - set(request))}")
     require(request.get("schemaVersion") == "memory-os-rollback-rehearsal-request.v1",
@@ -220,6 +274,8 @@ def validate_request(request: dict[str, Any], required_fields: set[str],
 
     for ref in strings(request.get("entryCriteriaRefs"), "entryCriteriaRefs", 5):
         safe_ref(ref, "entryCriteriaRefs")
+    validate_evidence_digest_binding(request, required=require_evidence_digests)
+
     stop_conditions = strings(request.get("stopConditions"), "stopConditions", 6)
     for condition in target_conditions:
         require(condition in stop_conditions,
@@ -291,7 +347,9 @@ def validate_registry_for_append(
     ids: set[str] = set()
     pairs: set[tuple[str, str]] = set()
     for record in requests:
-        validate_request(record, required_fields, release_registry)
+        validate_request(
+            record, required_fields, release_registry, require_evidence_digests=True
+        )
         rehearsal_id = record["rehearsalId"]
         pair = (record["sourceReleaseId"], record["rollbackTargetReleaseId"])
         require(rehearsal_id not in ids, "duplicate rehearsalId")
@@ -355,6 +413,8 @@ def main() -> int:
     validate_release_registry_for_append(release_registry)
     request = load(request_path)
     validate_request(request, required_fields, release_registry)
+    request[EVIDENCE_DIGEST_FIELD] = evidence_digest_map(request)
+    validate_evidence_digest_binding(request, required=True)
 
     lock_fd = acquire_lock()
     try:
