@@ -422,6 +422,9 @@ def main() -> int:
         os.fsync(lock_fd)
         registry = load(REHEARSAL_REGISTRY_PATH)
         validate_registry_for_append(registry, contract, release_registry)
+        validate_request(
+            request, required_fields, release_registry, require_evidence_digests=True
+        )
         requests = registry["requests"]
         require(all(item.get("rehearsalId") != request["rehearsalId"]
                     for item in requests),
