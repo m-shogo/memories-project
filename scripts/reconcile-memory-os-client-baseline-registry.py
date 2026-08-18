@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import sys
@@ -14,6 +15,7 @@ CONTRACT = ROOT / "contracts/operations/client-baseline-registry-contract.v1.jso
 REGISTRY = ROOT / "contracts/operations/client-baseline-registry.v1.json"
 SUPPORT = ROOT / "contracts/operations/client-server-support-window-contract.v1.json"
 RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
+SKEW = ROOT / "contracts/operations/client-server-skew-registry.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 WRITER = ROOT / "scripts/register-memory-os-client-baseline.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-client-baseline-registry.py"
@@ -49,6 +51,15 @@ def load(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
     return value
+
+
+def load_module(path: Path, name: str) -> Any:
+    require(path.is_file(), f"canonical authority missing: {path.relative_to(ROOT)}")
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load canonical authority: {path.relative_to(ROOT)}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def write(path: Path, value: dict[str, Any]) -> None:
@@ -97,6 +108,19 @@ def main() -> int:
         require(path.is_file(), f"client baseline foundation missing: {path.relative_to(ROOT)}")
 
     registry = load(REGISTRY)
+    releases = load(RELEASES)
+    skew = load(SKEW)
+    support_validator = load_module(SUPPORT_VALIDATOR, "memory_os_support_window_for_client_reconcile")
+    try:
+        support_validator.validate_upstream_registries(releases, registry)
+        pair_count = support_validator.validate_skew_registry(skew)
+    except Exception as exc:
+        raise Fail(f"client baseline upstream authority invalid: {exc}") from exc
+    require(
+        pair_count == 0,
+        "client baseline foundation cannot overwrite admitted client/server skew authority",
+    )
+
     clients = registry.get("clients")
     count = registry.get("approvedClientBaselineCount")
     latest = registry.get("latestApprovedClientByClass")
@@ -122,7 +146,6 @@ def main() -> int:
     readiness["productionReady"] = False
     contract["productionDecision"] = "NO_GO"
 
-    releases = load(RELEASES)
     release_count = releases.get("approvedReleaseCount")
     require(
         isinstance(release_count, int) and not isinstance(release_count, bool) and release_count >= 0,
@@ -135,8 +158,7 @@ def main() -> int:
     require(isinstance(boundary, dict) and isinstance(support_readiness, dict), "support window boundary/readiness missing")
     boundary["approvedBackendReleaseCount"] = release_count
     boundary["approvedClientBaselineCount"] = count
-    if release_count == 0 or count == 0:
-        boundary["admissibleSkewPairCount"] = 0
+    boundary["admissibleSkewPairCount"] = 0
     boundary["implementedClientSupportWindow"] = False
     boundary["clientServerSkewEvidence"] = False
     boundary["releaseCompatibilityEvidence"] = False
