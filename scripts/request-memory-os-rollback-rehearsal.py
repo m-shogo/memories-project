@@ -617,6 +617,28 @@ def validate_registry_for_append(
     require(registry.get("latestRehearsalId") == expected_latest,
             "latestRehearsalId drift")
 
+    releases = release_registry.get("releases")
+    require(isinstance(releases, list), "approved release registry releases must be a list")
+    eligible = [
+        item for item in releases
+        if isinstance(item, dict) and
+        isinstance(item.get("rollbackEligibility"), dict) and
+        item["rollbackEligibility"].get("status") in {"ELIGIBLE", "CONDITIONALLY_ELIGIBLE"} and
+        item["rollbackEligibility"].get("verified") is True
+    ]
+    admissible_pairs = max(0, len(releases) - 1) * len(eligible)
+    state = contract["currentAdmissionState"]
+    require(state.get("approvedReleaseCount") == len(releases) and
+            state.get("rollbackEligibleReleaseCount") == len(eligible) and
+            state.get("admissibleReleasePairCount") == admissible_pairs and
+            state.get("rehearsalRequestCount") == len(requests),
+            "rollback rehearsal derived source-count drift")
+    readiness = contract["readiness"]
+    require(readiness.get("approvedReleasePairAvailable") is (admissible_pairs > 0) and
+            readiness.get("rollbackTargetAvailable") is (len(eligible) > 0) and
+            readiness.get("rehearsalRequested") is (len(requests) > 0),
+            "rollback rehearsal derived readiness source-count drift")
+
 
 def acquire_lock() -> int:
     try:
