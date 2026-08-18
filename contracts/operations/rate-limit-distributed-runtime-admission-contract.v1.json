@@ -65,6 +65,7 @@
     "independentReviewRefsMustUseMonitoredNamespace": true,
     "evidenceRefsMustBeCommittedSymlinkFreeAndDigestBound": true,
     "appendLockMustRemainCanonical": true,
+    "appendMustRevalidateCanonicalRegistryAndRollbackOnFailure": true,
     "unresolvedCriticalOrHighFindingsForbidden": true
   },
   "requiredDrillClasses": [
