@@ -82,8 +82,15 @@ a later evidence record supersedes operational eligibility.
 7. Commit the registry change for independent review.
 8. Do not route production traffic until all separate production gates pass.
 
-## Current state
+## Current state authority
 
-No release is approved. The registry count is zero, no approved predecessor is
-available, and no rollback-eligible release exists. Production remains
-**NO_GO**.
+The append-only release registry is the sole authority for the current approved
+release count, approved predecessor availability and rollback-eligible release
+availability. Those values may progress only through a valid reviewed registry
+append; this document never supplies or overrides them.
+
+A nonzero approved-release inventory is still only release-baseline authority.
+It does not complete the separate integrated independent review, authorize
+application production readiness, change credentials, or route production
+traffic. Production remains **NO_GO** until the separate production-promotion
+authority is satisfied.
