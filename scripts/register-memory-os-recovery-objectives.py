@@ -95,6 +95,11 @@ def require_canonical_runtime_authorities() -> None:
     require(LOCK.parent == CANONICAL_REGISTRY.parent, "recovery objective lock must share registry authority directory")
     if CONTRACT == CANONICAL_CONTRACT:
         canonical_repo_file(CONTRACT, "recovery objective contract")
+        contract = load(CONTRACT)
+        require(
+            contract.get("rules", {}).get("appendMustRevalidateCanonicalRegistryAndRollbackOnFailure") is True,
+            "recovery objective transactional append authority drift",
+        )
     if REGISTRY == CANONICAL_REGISTRY:
         canonical_repo_file(REGISTRY, "recovery objective registry")
     if APPROVAL_DIR == CANONICAL_APPROVAL_DIR:
@@ -282,6 +287,34 @@ def atomic_write(value: dict[str, Any]) -> None:
             pass
 
 
+def atomic_restore(payload: bytes) -> None:
+    descriptor, temp_name = tempfile.mkstemp(prefix=".recovery-objectives-rollback.", suffix=".tmp", dir=REGISTRY.parent)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, REGISTRY)
+    finally:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
+
+
+def write_registry_transactionally(value: dict[str, Any]) -> None:
+    try:
+        original = REGISTRY.read_bytes()
+    except OSError as exc:
+        raise Fail("cannot snapshot recovery objectives registry before append") from exc
+    atomic_write(value)
+    try:
+        validate_registry_for_append(load(REGISTRY))
+    except Exception:
+        atomic_restore(original)
+        raise
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--record", required=True)
@@ -326,7 +359,7 @@ def main() -> int:
             "measured recovery evidence must reference the exact current objectiveId",
             "objective approval does not establish production readiness"
         ]
-        atomic_write(registry)
+        write_registry_transactionally(registry)
     finally:
         os.close(lock_fd)
         try:
