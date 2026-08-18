@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reject boolean/negative rollback admission-state counts without mutating authority."""
+"""Reject rollback derived-state type and field-shape drift without mutating authority."""
 
 from __future__ import annotations
 
@@ -20,6 +20,23 @@ COUNT_FIELDS = (
 )
 
 
+def rejected(candidate: dict, label: str) -> None:
+    CONTRACT.write_text(
+        json.dumps(candidate, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    completed = subprocess.run(
+        [sys.executable, str(VALIDATOR)],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if completed.returncode == 0:
+        raise RuntimeError(f"standalone rollback validator accepted {label}")
+
+
 def main() -> int:
     original = CONTRACT.read_bytes()
     base = json.loads(original.decode("utf-8"))
@@ -28,28 +45,29 @@ def main() -> int:
             for bad in (False, -1):
                 candidate = copy.deepcopy(base)
                 candidate["currentAdmissionState"][field] = bad
-                CONTRACT.write_text(
-                    json.dumps(candidate, indent=2, ensure_ascii=False) + "\n",
-                    encoding="utf-8",
-                )
-                completed = subprocess.run(
-                    [sys.executable, str(VALIDATOR)],
-                    cwd=ROOT,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    check=False,
-                )
-                if completed.returncode == 0:
-                    raise RuntimeError(
-                        f"standalone rollback validator accepted invalid {field}={bad!r}"
-                    )
+                rejected(candidate, f"invalid {field}={bad!r}")
+
+        candidate = copy.deepcopy(base)
+        candidate["currentAdmissionState"]["automaticPromotionAuthorized"] = True
+        rejected(candidate, "unknown currentAdmissionState field")
+
+        candidate = copy.deepcopy(base)
+        candidate["currentAdmissionState"].pop("admissionDecision")
+        rejected(candidate, "missing currentAdmissionState field")
+
+        candidate = copy.deepcopy(base)
+        candidate["readiness"]["productionAuthorization"] = True
+        rejected(candidate, "unknown readiness field")
+
+        candidate = copy.deepcopy(base)
+        candidate["readiness"].pop("productionReady")
+        rejected(candidate, "missing readiness field")
     finally:
         CONTRACT.write_bytes(original)
 
     if CONTRACT.read_bytes() != original:
-        raise RuntimeError("rollback contract bytes changed after state-count negative suite")
-    print("PASS: rollback admission-state counts reject booleans and negative integers")
+        raise RuntimeError("rollback contract bytes changed after derived-state negative suite")
+    print("PASS: rollback derived-state counts and field shapes are fail-closed")
     return 0
 
 
