@@ -16,6 +16,7 @@ on:
       - "scripts/request-memory-os-rollback-rehearsal.py"
       - "scripts/validate-memory-os-rollback-rehearsal-gate.py"
       - "scripts/validate-memory-os-rollback-rehearsal-registry-negative.py"
+      - "scripts/validate-memory-os-rollback-rehearsal-append-rollback-negative.py"
       - "scripts/validate-memory-os-rollback-rehearsal-derived-state-negative.py"
       - "scripts/reconcile-memory-os-rollback-rehearsal-gate.py"
       - "scripts/validate-memory-os-version-compatibility.py"
@@ -37,6 +38,7 @@ on:
       - "scripts/request-memory-os-rollback-rehearsal.py"
       - "scripts/validate-memory-os-rollback-rehearsal-gate.py"
       - "scripts/validate-memory-os-rollback-rehearsal-registry-negative.py"
+      - "scripts/validate-memory-os-rollback-rehearsal-append-rollback-negative.py"
       - "scripts/validate-memory-os-rollback-rehearsal-derived-state-negative.py"
       - "scripts/reconcile-memory-os-rollback-rehearsal-gate.py"
       - "scripts/validate-memory-os-version-compatibility.py"
@@ -91,6 +93,7 @@ jobs:
             scripts/request-memory-os-rollback-rehearsal.py \
             scripts/validate-memory-os-rollback-rehearsal-gate.py \
             scripts/validate-memory-os-rollback-rehearsal-registry-negative.py \
+            scripts/validate-memory-os-rollback-rehearsal-append-rollback-negative.py \
             scripts/validate-memory-os-rollback-rehearsal-derived-state-negative.py \
             scripts/reconcile-memory-os-rollback-rehearsal-gate.py \
             scripts/validate-memory-os-version-compatibility.py \
@@ -99,6 +102,7 @@ jobs:
       - name: Reject rollback registry corruption and unsafe progression
         run: |
           python scripts/validate-memory-os-rollback-rehearsal-registry-negative.py
+          python scripts/validate-memory-os-rollback-rehearsal-append-rollback-negative.py
           python scripts/validate-memory-os-rollback-rehearsal-derived-state-negative.py
 
       - name: Prove invalid and unapproved requests cannot mutate authority
