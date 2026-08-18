@@ -11,6 +11,7 @@
   "workflow": ".github/workflows/parser-artifact-registry.yml",
   "recordSchemaVersion": "memory-os-parser-artifact-record.v1",
   "appendOnly": true,
+  "appendMustRevalidateCanonicalRegistryAndRollbackOnFailure": true,
   "requiredRecordFields": [
     "schemaVersion",
     "artifactId",
@@ -62,7 +63,8 @@
     "every compatible release ID already exists in the approved release registry",
     "rollback retention is RETAINED only when immutable retention evidence exists",
     "record contains no credential, infrastructure URL or user content",
-    "registry update uses the canonical exclusive append lock and atomic replacement"
+    "registry update uses the canonical exclusive append lock and atomic replacement",
+    "registry is revalidated after append and restored byte-for-byte if post-append validation fails"
   ],
   "forbiddenArtifactSources": [
     "services/import-api/internal/parsersup/worker.go test harness",
