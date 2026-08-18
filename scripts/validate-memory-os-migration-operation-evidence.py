@@ -66,11 +66,13 @@ def main() -> int:
     require(set(contract.get("requiredFields", [])) >=
             set(lifecycle["evidenceRecord"]["requiredFields"]),
             "migration operation contract omits lifecycle evidence fields")
-    require(contract.get("appendOnlyGuards", {}).get("exclusiveCreateRequired") is True,
+    guards = contract.get("appendOnlyGuards", {})
+    require(guards.get("exclusiveCreateRequired") is True,
             "exclusive create guard missing")
-    require(contract.get("appendOnlyGuards", {}).get(
-            "existingMigrationRunIdCannotBeOverwritten") is True,
+    require(guards.get("existingMigrationRunIdCannotBeOverwritten") is True,
             "overwrite guard missing")
+    require(guards.get("canonicalLedgerMustValidateBeforeAppend") is True,
+            "canonical ledger pre-append validation guard missing")
     require(contract.get("privacy", {}).get("containsSecretsMustBeFalse") is True,
             "containsSecrets privacy guard missing")
     require(contract.get("resultPolicy", {}).get(
