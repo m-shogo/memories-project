@@ -282,6 +282,15 @@ def atomic_write(value: dict[str, Any]) -> None:
             pass
 
 
+def write_registry_transactionally(updated: dict[str, Any], previous: dict[str, Any], registry_contract: dict[str, Any]) -> None:
+    atomic_write(updated)
+    try:
+        validate_registry_for_append(load(REGISTRY), registry_contract)
+    except Exception:
+        atomic_write(previous)
+        raise
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--record", required=True)
@@ -310,6 +319,7 @@ def main() -> int:
         os.fsync(lock_fd)
         registry = load(REGISTRY)
         validate_registry_for_append(registry, contract)
+        previous = json.loads(json.dumps(registry))
         records = registry["records"]
         require(all(item.get("migrationRunId") != record["migrationRunId"] for item in records), "migrationRunId already registered")
         records.append(record)
@@ -320,7 +330,7 @@ def main() -> int:
         )
         registry["productionEquivalentRehearsalCount"] = sum(1 for item in records if item.get("environmentClass") == "PRODUCTION_EQUIVALENT_REHEARSAL")
         registry["latestRehearsalRunId"] = record["migrationRunId"]
-        atomic_write(registry)
+        write_registry_transactionally(registry, previous, contract)
     finally:
         os.close(lock_fd)
         try:
