@@ -111,19 +111,34 @@ def synthetic_bound_registry(base: dict[str, Any]) -> dict[str, Any]:
         "docs/fixtures/memory-os-operability/parser-restart-matrix-results.sample.v1.json",
     ]
     record = {
+        "schemaVersion": "memory-os-parser-artifact-record.v1",
         "artifactId": artifact_id,
-        "artifactSha256": "0" * 64,
         "adapterId": "generic-csv",
         "adapterVersion": "1.0.0",
+        "artifactSha256": "0" * 64,
+        "artifactSizeBytes": 1,
+        "artifactFormat": "ELF_EXECUTABLE",
+        "targetOs": "linux",
+        "targetArch": "amd64",
+        "protocolVersion": "memory-os-parser-frame-v1",
+        "registeredAt": "2026-08-17T00:00:00Z",
+        "reviewClass": "REVIEWED_PARSER_ARTIFACT",
+        "approvers": [
+            {"role": "SECURITY_REVIEWER", "approverRef": "apr_security01"},
+            {"role": "RUNTIME_REVIEWER", "approverRef": "apr_runtime002"},
+            {"role": "RELEASE_OWNER", "approverRef": "apr_release003"},
+        ],
         "buildProvenanceRef": refs[0],
         "securityReviewRef": refs[1],
         "retentionEvidenceRef": refs[2],
         "replayEvidenceRefs": [refs[3]],
+        "compatibleReleaseIds": ["rel_fake0000"],
         "rollbackRetentionState": {
             "state": "RETENTION_PENDING",
             "immutableLocationVerified": False,
             "verificationEvidenceRef": None,
         },
+        "openRisks": [],
     }
     candidate["artifacts"] = [record]
     candidate["reviewedArtifactCount"] = 1
@@ -181,26 +196,55 @@ def main() -> int:
         expect_reconcile_rejection(reconciler, base, label, mutate)
 
     bound = synthetic_bound_registry(base)
-    writer.validate_registry_for_append(copy.deepcopy(bound))
-    artifact_id = bound["latestReviewedArtifactId"]
-    first_ref = next(iter(bound["evidenceDigestsByArtifactId"][artifact_id]))
-    expect_rejection(
-        writer,
-        bound,
-        "stale evidence digest",
-        lambda value: value["evidenceDigestsByArtifactId"][artifact_id].__setitem__(first_ref, "f" * 64),
-    )
-    expect_rejection(
-        writer,
-        bound,
-        "missing evidence ref digest",
-        lambda value: value["evidenceDigestsByArtifactId"][artifact_id].pop(first_ref),
-    )
+    original_release_ids = writer.approved_release_ids
+    try:
+        writer.approved_release_ids = lambda: {"rel_fake0000"}
+        writer.validate_registry_for_append(copy.deepcopy(bound))
+        artifact_id = bound["latestReviewedArtifactId"]
+        first_ref = next(iter(bound["evidenceDigestsByArtifactId"][artifact_id]))
+        expect_rejection(
+            writer,
+            bound,
+            "stale evidence digest",
+            lambda value: value["evidenceDigestsByArtifactId"][artifact_id].__setitem__(first_ref, "f" * 64),
+        )
+        expect_rejection(
+            writer,
+            bound,
+            "missing evidence ref digest",
+            lambda value: value["evidenceDigestsByArtifactId"][artifact_id].pop(first_ref),
+        )
+        expect_rejection(
+            writer,
+            bound,
+            "historical duplicate approver",
+            lambda value: value["artifacts"][0]["approvers"].__setitem__(1, copy.deepcopy(value["artifacts"][0]["approvers"][0])),
+        )
+        expect_rejection(
+            writer,
+            bound,
+            "historical unapproved release",
+            lambda value: value["artifacts"][0].__setitem__("compatibleReleaseIds", ["rel_not_approved"]),
+        )
+        expect_rejection(
+            writer,
+            bound,
+            "historical retention state drift",
+            lambda value: value["artifacts"][0]["rollbackRetentionState"].__setitem__("state", "INVALID"),
+        )
+        expect_rejection(
+            writer,
+            bound,
+            "historical test-harness source marker",
+            lambda value: value["artifacts"][0].__setitem__("artifactFormat", "go test harness"),
+        )
+    finally:
+        writer.approved_release_ids = original_release_ids
 
     require(REGISTRY_PATH.read_bytes() == json.dumps(base, indent=2, ensure_ascii=False).encode("utf-8") + b"\n" or
             json.loads(REGISTRY_PATH.read_text(encoding="utf-8")) == base,
             "parser registry was not restored after reconcile negatives")
-    print("Parser artifact registry and append lock authority negative PASS")
+    print("Parser artifact registry rejects aggregate corruption, evidence digest drift, and historical artifact semantic drift")
     return 0
 
 
