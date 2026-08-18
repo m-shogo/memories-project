@@ -299,20 +299,20 @@ def validate_nested_request_field_authority(writer: Any) -> None:
         "databasePolicy": {
             "destructiveDownMigrationAllowed": False,
             "automaticRecoveryDecisionAllowed": False,
-            "recoveryPointEvidenceRef": "contracts/operations/backup-restore-contract.v1.json",
-            "forwardFixDecisionRef": "contracts/operations/migration-lifecycle-contract.v1.json",
+            "recoveryPointEvidenceRef": "contracts/operations/rollback-rehearsal-gate-contract.v1.json",
+            "forwardFixDecisionRef": "contracts/operations/release-baseline-registry-contract.v1.json",
         },
         "artifactPolicy": {
             "exactRetainedArtifactsRequired": True,
-            "parserArtifactEvidenceRef": "contracts/operations/parser-sandbox-contract.v1.json",
-            "objectVersionEvidenceRef": "contracts/operations/local-object-version-restore-contract.v1.json",
+            "parserArtifactEvidenceRef": "contracts/operations/release-baseline-registry.v1.json",
+            "objectVersionEvidenceRef": "contracts/operations/production-operability-status.json",
         },
         "entryCriteriaRefs": [
+            "contracts/operations/rollback-rehearsal-gate-contract.v1.json",
+            "contracts/operations/rollback-rehearsal-registry.v1.json",
             "contracts/operations/release-baseline-registry.v1.json",
-            "contracts/operations/mixed-version-apply-contract.v1.json",
-            "contracts/operations/backup-restore-contract.v1.json",
-            "contracts/operations/migration-lifecycle-contract.v1.json",
-            "contracts/operations/version-compatibility-contract.v1.json",
+            "contracts/operations/production-operability-status.json",
+            "contracts/operations/release-baseline-registry-contract.v1.json",
         ],
         "stopConditions": [
             "release identity differs from approved authority",
