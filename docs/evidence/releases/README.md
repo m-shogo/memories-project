@@ -89,8 +89,11 @@ release count, approved predecessor availability and rollback-eligible release
 availability. Those values may progress only through a valid reviewed registry
 append; this document never supplies or overrides them.
 
-A nonzero approved-release inventory is still only release-baseline authority.
-It does not complete the separate integrated independent review, authorize
-application production readiness, change credentials, or route production
-traffic. Production remains **NO_GO** until the separate production-promotion
-authority is satisfied.
+A static statement such as `No release is approved` is not an authority rule;
+it is only true when the canonical registry count is actually zero. A nonzero
+approved-release inventory is still only release-baseline authority. It does not
+complete the separate integrated independent review, authorize application
+production readiness, change credentials, or route production traffic.
+
+Production remains
+**NO_GO** until the separate production-promotion authority is satisfied.
