@@ -10,9 +10,13 @@ on:
       - "contracts/operations/client-server-skew-registry.v1.json"
       - "contracts/operations/release-baseline-registry-contract.v1.json"
       - "contracts/operations/release-baseline-registry.v1.json"
+      - "contracts/operations/release-compatibility-pair-contract.v1.json"
+      - "contracts/operations/release-compatibility-pair-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
       - "scripts/register-memory-os-client-baseline.py"
       - "scripts/register-memory-os-release-baseline.py"
+      - "scripts/register-memory-os-release-compatibility-pair.py"
+      - "scripts/validate-memory-os-release-compatibility-pair-independent-review.py"
       - "scripts/reconcile-memory-os-client-baseline-registry.py"
       - "scripts/validate-memory-os-client-server-support-window.py"
       - "scripts/validate-memory-os-client-server-support-window-negative.py"
@@ -29,9 +33,13 @@ on:
       - "contracts/operations/client-server-skew-registry.v1.json"
       - "contracts/operations/release-baseline-registry-contract.v1.json"
       - "contracts/operations/release-baseline-registry.v1.json"
+      - "contracts/operations/release-compatibility-pair-contract.v1.json"
+      - "contracts/operations/release-compatibility-pair-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
       - "scripts/register-memory-os-client-baseline.py"
       - "scripts/register-memory-os-release-baseline.py"
+      - "scripts/register-memory-os-release-compatibility-pair.py"
+      - "scripts/validate-memory-os-release-compatibility-pair-independent-review.py"
       - "scripts/reconcile-memory-os-client-baseline-registry.py"
       - "scripts/validate-memory-os-client-server-support-window.py"
       - "scripts/validate-memory-os-client-server-support-window-negative.py"
@@ -77,6 +85,8 @@ jobs:
           python -m py_compile \
             scripts/register-memory-os-client-baseline.py \
             scripts/register-memory-os-release-baseline.py \
+            scripts/register-memory-os-release-compatibility-pair.py \
+            scripts/validate-memory-os-release-compatibility-pair-independent-review.py \
             scripts/reconcile-memory-os-client-baseline-registry.py \
             scripts/validate-memory-os-client-server-support-window.py \
             scripts/validate-memory-os-client-server-support-window-negative.py \
