@@ -95,6 +95,12 @@ def validate_contract_authority(registry_contract: dict[str, Any]) -> None:
     require(registry_contract.get("appendOnly") is True, "migration evidence contract must remain append-only")
     require(registry_contract.get("productionEnvironmentRegistrationImplemented") is False, "migration evidence contract production boundary drift")
     require(set(registry_contract.get("allowedEnvironmentClasses", [])) == ENV_CLASSES, "migration evidence environment class authority drift")
+    registration_rules = registry_contract.get("registrationRules")
+    require(isinstance(registration_rules, dict), "migration evidence registration rules invalid")
+    require(
+        registration_rules.get("appendMustRevalidateCanonicalRegistryAndRollbackOnFailure") is True,
+        "migration evidence append rollback authority drift",
+    )
 
 
 def validated_generation_rows() -> list[dict[str, Any]]:
