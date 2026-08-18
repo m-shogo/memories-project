@@ -5,11 +5,14 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CREATOR = ROOT / "scripts/create-memory-os-migration-operation-evidence.py"
+VALIDATOR = ROOT / "scripts/validate-memory-os-migration-operation-evidence.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-migration-operation-evidence.py"
 CONTRACT = ROOT / "contracts/operations/migration-operation-evidence-contract.v1.json"
 LIFECYCLE = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
@@ -64,6 +67,25 @@ def prove_canonical_ledger_preappend_guard(tmp_path: Path) -> None:
     creator.validate_canonical_ledger_before_append(custom_ledger)
 
 
+def prove_contract_guard_is_required(contract_payload: bytes) -> None:
+    candidate = json.loads(contract_payload.decode("utf-8"))
+    candidate["appendOnlyGuards"]["canonicalLedgerMustValidateBeforeAppend"] = False
+    CONTRACT.write_text(json.dumps(candidate, indent=2) + "\n", encoding="utf-8")
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(VALIDATOR)],
+            cwd=ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+        require(completed.returncode != 0,
+                "standalone validator accepted disabled canonical pre-append guard")
+    finally:
+        CONTRACT.write_bytes(contract_payload)
+
+
 def main() -> int:
     originals = {
         CONTRACT: CONTRACT.read_bytes(),
@@ -72,6 +94,7 @@ def main() -> int:
     }
     module = load_module(RECONCILER, "migration_operation_reconciler")
     prove_stronger_authority_is_preserved(module, originals[LIFECYCLE])
+    prove_contract_guard_is_required(originals[CONTRACT])
 
     candidates = [json.loads(payload.decode("utf-8")) for payload in originals.values()]
     for candidate in candidates:
