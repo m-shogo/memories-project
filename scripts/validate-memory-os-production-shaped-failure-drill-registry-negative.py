@@ -141,6 +141,25 @@ def expect_contract_lock_rejected(validator: Any) -> None:
         CONTRACT.write_bytes(original)
 
 
+def expect_transactional_contract_rejected(validator: Any) -> None:
+    original = CONTRACT.read_bytes()
+    contract = json.loads(original.decode("utf-8"))
+    contract["recordRequirements"]["appendMustRevalidateCanonicalRegistryAndRollbackOnFailure"] = False
+    write_json(CONTRACT, contract)
+    corrupted = CONTRACT.read_bytes()
+    try:
+        try:
+            validator.main()
+        except validator.Fail:
+            pass
+        else:
+            raise RuntimeError("disabled failure-drill append rollback authority accepted")
+        if CONTRACT.read_bytes() != corrupted:
+            raise RuntimeError("rejected failure-drill append rollback validation mutated contract")
+    finally:
+        CONTRACT.write_bytes(original)
+
+
 def expect_writer_lock_rejected(validator: Any, writer: Any) -> None:
     original = writer.LOCK
     try:
@@ -152,6 +171,42 @@ def expect_writer_lock_rejected(validator: Any, writer: Any) -> None:
         raise RuntimeError("substituted failure-drill writer lock accepted")
     finally:
         writer.LOCK = original
+
+
+def expect_writer_transactional_authority_rejected(validator: Any, writer: Any) -> None:
+    original = writer.append_registry_transactionally
+    try:
+        writer.append_registry_transactionally = None
+        try:
+            validator.validate_writer_authority(writer)
+        except validator.Fail:
+            return
+        raise RuntimeError("missing failure-drill transactional append helper accepted")
+    finally:
+        writer.append_registry_transactionally = original
+
+
+def expect_append_rollback(writer: Any, original: bytes) -> None:
+    candidate = json.loads(original.decode("utf-8"))
+    candidate["productionReady"] = True
+    original_validator = writer.validate_registry_before_append
+
+    def fail_after_write(_: dict[str, Any]) -> list[dict[str, Any]]:
+        raise writer.Fail("synthetic post-append validation failure")
+
+    try:
+        writer.validate_registry_before_append = fail_after_write
+        try:
+            writer.append_registry_transactionally(candidate, original)
+        except writer.Fail:
+            pass
+        else:
+            raise RuntimeError("synthetic post-append validation failure was accepted")
+        if REGISTRY.read_bytes() != original:
+            raise RuntimeError("failure-drill registry did not roll back after post-append validation failure")
+    finally:
+        writer.validate_registry_before_append = original_validator
+        REGISTRY.write_bytes(original)
 
 
 def expect_side_commit_rejected(writer: Any) -> None:
@@ -274,7 +329,10 @@ def main() -> int:
         for name, mutate in generation_cases:
             expect_generation_authority_rejected(writer, reconciler, name, mutate, original, generation_original)
         expect_contract_lock_rejected(validator)
+        expect_transactional_contract_rejected(validator)
         expect_writer_lock_rejected(validator, writer)
+        expect_writer_transactional_authority_rejected(validator, writer)
+        expect_append_rollback(writer, original)
         expect_side_commit_rejected(writer)
         expect_review_namespace_rejected(writer)
         review_case_count = validate_review_payload_negatives(writer)
@@ -288,6 +346,8 @@ def main() -> int:
     print(f"typed independent review negative cases: {review_case_count}")
     print("contract append lock substitution accepted: false")
     print("writer append lock substitution accepted: false")
+    print("transactional append authority disabled: false")
+    print("post-append validation failure persisted registry mutation: false")
     print("generic repository review authority accepted: false")
     print("detached source commit accepted: false")
     print("reconciler auto-heal: false")
