@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reject rollback derived-state type and field-shape drift without mutating authority."""
+"""Reject rollback derived-state type, shape and source-count drift without mutating authority."""
 
 from __future__ import annotations
 
@@ -12,6 +12,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/rollback-rehearsal-gate-contract.v1.json"
+RELEASE_REGISTRY = ROOT / "contracts/operations/release-baseline-registry.v1.json"
+REHEARSAL_REGISTRY = ROOT / "contracts/operations/rollback-rehearsal-registry.v1.json"
 VALIDATOR = ROOT / "scripts/validate-memory-os-rollback-rehearsal-gate.py"
 WRITER = ROOT / "scripts/request-memory-os-rollback-rehearsal.py"
 COUNT_FIELDS = (
@@ -56,6 +58,16 @@ def writer_rejected(writer, candidate: dict, label: str) -> None:
     raise RuntimeError(f"rollback writer accepted {label}")
 
 
+def writer_registry_rejected(writer, candidate: dict, label: str) -> None:
+    release_registry = json.loads(RELEASE_REGISTRY.read_text(encoding="utf-8"))
+    rehearsal_registry = json.loads(REHEARSAL_REGISTRY.read_text(encoding="utf-8"))
+    try:
+        writer.validate_registry_for_append(rehearsal_registry, candidate, release_registry)
+    except writer.RequestFailure:
+        return
+    raise RuntimeError(f"rollback writer registry guard accepted {label}")
+
+
 def main() -> int:
     original = CONTRACT.read_bytes()
     base = json.loads(original.decode("utf-8"))
@@ -87,12 +99,21 @@ def main() -> int:
         candidate["readiness"].pop("productionReady")
         rejected(candidate, "missing readiness field")
         writer_rejected(writer, candidate, "missing readiness field")
+
+        candidate = copy.deepcopy(base)
+        candidate["currentAdmissionState"]["approvedReleaseCount"] = 1
+        writer_registry_rejected(writer, candidate, "approved release source-count drift")
+
+        candidate = copy.deepcopy(base)
+        candidate["currentAdmissionState"]["rehearsalRequestCount"] = 1
+        candidate["readiness"]["rehearsalRequested"] = True
+        writer_registry_rejected(writer, candidate, "rehearsal request source-count drift")
     finally:
         CONTRACT.write_bytes(original)
 
     if CONTRACT.read_bytes() != original:
         raise RuntimeError("rollback contract bytes changed after derived-state negative suite")
-    print("PASS: rollback derived-state counts and field shapes are fail-closed in writer and validator")
+    print("PASS: rollback derived-state shape and source counts are fail-closed in writer and validator")
     return 0
 
 
