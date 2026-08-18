@@ -18,6 +18,26 @@ REHEARSAL_REGISTRY_PATH = ROOT / "contracts/operations/rollback-rehearsal-regist
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 WRITER_PATH = ROOT / "scripts/request-memory-os-rollback-rehearsal.py"
 LOCK_PATH = ROOT / "contracts/operations/.rollback-rehearsal-registry.lock"
+CURRENT_ADMISSION_STATE_FIELDS = {
+    "approvedReleaseCount",
+    "rollbackEligibleReleaseCount",
+    "admissibleReleasePairCount",
+    "rehearsalRequestCount",
+    "admissionDecision",
+}
+READINESS_FIELDS = {
+    "contractDefined",
+    "registryImplemented",
+    "writerImplemented",
+    "validatorImplemented",
+    "automaticWorkflowImplemented",
+    "approvedReleasePairAvailable",
+    "rollbackTargetAvailable",
+    "rehearsalRequested",
+    "rehearsalExecuted",
+    "independentReviewCompleted",
+    "productionReady",
+}
 
 
 class ValidationFailure(RuntimeError):
@@ -161,6 +181,8 @@ def main() -> int:
 
     state = contract.get("currentAdmissionState")
     require(isinstance(state, dict), "currentAdmissionState missing")
+    require(set(state) == CURRENT_ADMISSION_STATE_FIELDS,
+            "currentAdmissionState field set drift")
     for field in (
         "approvedReleaseCount", "rollbackEligibleReleaseCount",
         "admissibleReleasePairCount", "rehearsalRequestCount",
@@ -180,6 +202,8 @@ def main() -> int:
 
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "rollback rehearsal readiness missing")
+    require(set(readiness) == READINESS_FIELDS,
+            "rollback rehearsal readiness field set drift")
     for field in (
         "contractDefined", "registryImplemented", "writerImplemented",
         "validatorImplemented", "automaticWorkflowImplemented",
