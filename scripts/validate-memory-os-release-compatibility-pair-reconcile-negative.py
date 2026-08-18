@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pin transactional rollback for release compatibility pair reconciliation."""
+"""Pin transactional rollback and deterministic gap projection for release compatibility pair reconciliation."""
 
 from __future__ import annotations
 
@@ -47,8 +47,53 @@ def fail_post_write() -> None:
     raise RuntimeError("synthetic post-write validator failure")
 
 
+def validate_gap_projection(reconciler: ModuleType) -> None:
+    gaps = [
+        {
+            "id": "COMPAT-GAP-APPROVED-RELEASE-PAIR",
+            "blocking": True,
+            "current": 2,
+            "requiredMinimum": 2,
+        },
+        {
+            "id": "COMPAT-GAP-ROLLBACK-PAIR",
+            "blocking": True,
+            "current": 1,
+            "requiredMinimum": 1,
+        },
+        {
+            "id": "COMPAT-GAP-ROLLING-DEPLOYMENT",
+            "blocking": True,
+            "current": False,
+            "required": True,
+        },
+    ]
+    reconciler.remove_satisfied_pair_count_gaps(gaps)
+    require([gap.get("id") for gap in gaps] == ["COMPAT-GAP-ROLLING-DEPLOYMENT"],
+            "satisfied release/pair count gaps were not removed deterministically")
+
+    unsatisfied = [
+        {
+            "id": "COMPAT-GAP-APPROVED-RELEASE-PAIR",
+            "blocking": True,
+            "current": 1,
+            "requiredMinimum": 2,
+        },
+        {
+            "id": "COMPAT-GAP-ROLLBACK-PAIR",
+            "blocking": True,
+            "current": 0,
+            "requiredMinimum": 1,
+        },
+    ]
+    reconciler.remove_satisfied_pair_count_gaps(unsatisfied)
+    require(len(unsatisfied) == 2,
+            "unsatisfied release/pair count gaps were removed")
+
+
 def main() -> int:
     reconciler = load_module()
+    validate_gap_projection(reconciler)
     originals = {path: path.read_bytes() for path in (CONTRACT, GAPS, STATUS)}
 
     contract = copy.deepcopy(load(CONTRACT))
@@ -83,7 +128,7 @@ def main() -> int:
     for path, payload in originals.items():
         require(path.read_bytes() == payload, f"partial release-pair authority write survived rollback: {path.relative_to(ROOT)}")
 
-    print("PASS: release compatibility pair reconcile rolls back all derived authorities after post-write validation failure")
+    print("PASS: release compatibility pair gap projection is monotonic and reconcile rollback is transactional")
     return 0
 
 
