@@ -148,6 +148,14 @@ def validated_release_registry() -> dict[str, Any]:
     return release_registry
 
 
+def validate_typed_independent_reviews(record: dict[str, Any]) -> None:
+    review_validator = load_module(INDEPENDENT_REVIEW_VALIDATOR, "memory_os_release_pair_review_validator_for_writer")
+    try:
+        review_validator.validate_pair_reviews(record)
+    except Exception as exc:
+        raise Fail(f"typed independent review authority invalid: {exc}") from exc
+
+
 def approved_release(releases: list[Any], release_id: Any, field: str) -> dict[str, Any]:
     require(isinstance(release_id, str) and release_id, f"{field} required")
     matches = [row for row in releases if isinstance(row, dict) and row.get("releaseId") == release_id]
@@ -238,6 +246,7 @@ def validate_registry_for_append(registry: dict[str, Any]) -> None:
     relations: set[tuple[Any, Any]] = set()
     for row in pairs:
         validate_record(row)
+        validate_typed_independent_reviews(row)
         pair_id = row.get("pairId")
         relation = (row.get("predecessorReleaseId"), row.get("successorReleaseId"))
         require(pair_id not in ids, f"duplicate pairId: {pair_id}")
@@ -285,11 +294,7 @@ def main() -> int:
     record = load(input_path)
     bind_evidence_digests(record)
     validate_record(record)
-    review_validator = load_module(INDEPENDENT_REVIEW_VALIDATOR, "memory_os_release_pair_review_validator_for_writer")
-    try:
-        review_validator.validate_pair_reviews(record)
-    except Exception as exc:
-        raise Fail(f"typed independent review authority invalid: {exc}") from exc
+    validate_typed_independent_reviews(record)
 
     try:
         lock_fd = os.open(LOCK, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
