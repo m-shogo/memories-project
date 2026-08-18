@@ -179,7 +179,10 @@ jobs:
 
       - name: Require reconciled authority in pull requests
         if: github.event_name == 'pull_request'
-        run: git diff --exit-code -- contracts/operations/production-operability-status.json
+        run: |
+          git diff --exit-code -- \
+            contracts/operations/release-baseline-registry-contract.v1.json \
+            contracts/operations/production-operability-status.json
 
       - name: Commit release-specific authority
         if: github.event_name != 'pull_request'
@@ -190,7 +193,9 @@ jobs:
             echo "Release baseline authority source changed during reconciliation; refusing stale derived authority."
             exit 75
           fi
-          git add contracts/operations/production-operability-status.json
+          git add \
+            contracts/operations/release-baseline-registry-contract.v1.json \
+            contracts/operations/production-operability-status.json
           if git diff --cached --quiet; then
             echo "Release baseline registry authority is already current."
           else
