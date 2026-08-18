@@ -73,6 +73,10 @@ def main() -> int:
             "overwrite guard missing")
     require(guards.get("canonicalLedgerMustValidateBeforeAppend") is True,
             "canonical ledger pre-append validation guard missing")
+    require(guards.get("canonicalLedgerMustValidateAfterAppend") is True,
+            "canonical ledger post-append validation guard missing")
+    require(guards.get("postAppendValidationFailureMustRemoveNewRecord") is True,
+            "post-append rollback guard missing")
     require(contract.get("privacy", {}).get("containsSecretsMustBeFalse") is True,
             "containsSecrets privacy guard missing")
     require(contract.get("resultPolicy", {}).get(
