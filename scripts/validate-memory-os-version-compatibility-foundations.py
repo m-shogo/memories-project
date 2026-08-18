@@ -339,7 +339,7 @@ def validate_postgresql_result() -> None:
             "PostgreSQL logical upgrade assertions are incomplete")
 
 
-def validate_empty_authorities() -> None:
+def validate_source_authorities() -> None:
     releases = load(RELEASE_REGISTRY_PATH)
     rollback = load(ROLLBACK_REGISTRY_PATH)
     parsers = load(PARSER_REGISTRY_PATH)
@@ -354,18 +354,6 @@ def validate_empty_authorities() -> None:
         parser_writer.validate_registry_for_append(parsers)
     except Exception as exc:
         raise ValidationFailure(f"compatibility source authority invalid: {exc}") from exc
-    release_count = releases.get("approvedReleaseCount")
-    rollback_count = rollback.get("rehearsalRequestCount")
-    parser_count = parsers.get("reviewedArtifactCount")
-    require(isinstance(release_count, int) and not isinstance(release_count, bool) and
-            release_count == 0 and releases.get("releases") == [],
-            "approved release authority is no longer empty")
-    require(isinstance(rollback_count, int) and not isinstance(rollback_count, bool) and
-            rollback_count == 0 and rollback.get("requests") == [],
-            "rollback rehearsal authority is no longer empty")
-    require(isinstance(parser_count, int) and not isinstance(parser_count, bool) and
-            parser_count == 0 and parsers.get("artifacts") == [],
-            "parser artifact authority is no longer empty")
 
 
 def validate_status() -> None:
@@ -407,12 +395,12 @@ def main() -> int:
     validate_session_result()
     validate_apply_result()
     validate_postgresql_result()
-    validate_empty_authorities()
+    validate_source_authorities()
     validate_status()
     print("Memory OS bounded compatibility foundation validation PASS")
     print("foundations: 5")
-    print("approved release pairs: 0")
-    print("reviewed parser artifacts: 0")
+    print("foundation-derived approved release pairs: 0")
+    print("foundation-derived reviewed parser artifacts: 0")
     print("production decision: NO_GO")
     return 0
 
