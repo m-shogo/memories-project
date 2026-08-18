@@ -12,6 +12,7 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-client-server-support-window.py"
+CLIENT_RECONCILER_PATH = ROOT / "scripts/reconcile-memory-os-client-baseline-registry.py"
 CONTRACT = ROOT / "contracts/operations/client-server-support-window-contract.v1.json"
 RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
 CLIENTS = ROOT / "contracts/operations/client-baseline-registry.v1.json"
@@ -27,14 +28,16 @@ def require(condition: bool, message: str) -> None:
         raise NegativeFailure(message)
 
 
-def load_validator() -> Any:
-    spec = importlib.util.spec_from_file_location(
-        "memory_os_support_window_negative_validator", VALIDATOR_PATH
-    )
-    require(spec is not None and spec.loader is not None, "cannot load support-window validator")
+def load_module(path: Path, name: str) -> Any:
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load {path.relative_to(ROOT)}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def load_validator() -> Any:
+    return load_module(VALIDATOR_PATH, "memory_os_support_window_negative_validator")
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -103,6 +106,35 @@ def verify_inventory_only_intermediate_state(validator: Any) -> None:
         raise NegativeFailure("inventory-only intermediate state admitted a skew pair without pair authority")
 
 
+def verify_client_reconcile_preserves_admitted_skew() -> None:
+    reconciler = load_module(CLIENT_RECONCILER_PATH, "memory_os_client_reconcile_skew_negative")
+    protected = (reconciler.CONTRACT, reconciler.SUPPORT, reconciler.STATUS)
+    originals = {path: path.read_bytes() for path in (*protected, SKEW)}
+    skew = load(SKEW)
+    skew["admissibleSkewPairCount"] = 1
+    skew["pairs"] = [{"syntheticPairAuthority": True}]
+    try:
+        SKEW.write_text(json.dumps(skew, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        try:
+            reconciler.main()
+        except reconciler.Fail as exc:
+            require(
+                "cannot overwrite admitted client/server skew authority" in str(exc),
+                f"unexpected client reconcile rejection: {exc}",
+            )
+        else:
+            raise NegativeFailure("client baseline reconcile overwrote admitted skew authority")
+        for path in protected:
+            require(
+                path.read_bytes() == originals[path],
+                f"client baseline reconcile mutated stronger authority: {path.relative_to(ROOT)}",
+            )
+    finally:
+        for path, data in originals.items():
+            if path.read_bytes() != data:
+                path.write_bytes(data)
+
+
 def main() -> int:
     validator = load_validator()
     release_base = load(RELEASES)
@@ -110,6 +142,7 @@ def main() -> int:
     skew_base = load(SKEW)
     validator.main()
     verify_inventory_only_intermediate_state(validator)
+    verify_client_reconcile_preserves_admitted_skew()
 
     for label, path, base, mutate in (
         ("boolean release count", RELEASES, release_base,
