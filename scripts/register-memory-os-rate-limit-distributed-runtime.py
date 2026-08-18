@@ -84,6 +84,15 @@ def validate_registry_before_append(registry: dict[str, Any]) -> list[dict[str, 
         raise Fail(f"existing distributed runtime registry rejected before append: {exc}") from exc
 
 
+def validate_registry_after_append(registry: dict[str, Any]) -> list[dict[str, Any]]:
+    validator = load_validator()
+    require(validator.REGISTRY.resolve() == REGISTRY.resolve(), "distributed runtime registry validator authority drift")
+    try:
+        return validator.validate_registry_for_append(registry)
+    except validator.Fail as exc:
+        raise Fail(f"distributed runtime registry rejected after append: {exc}") from exc
+
+
 def validated_generation_rows() -> list[dict[str, Any]]:
     generation_writer = load_module(GEN_WRITER, "memory_os_generation_writer_for_rate_limit_runtime")
     require(generation_writer.REGISTRY.resolve() == GEN_REGISTRY.resolve(), "environment generation writer registry authority drift")
@@ -272,6 +281,30 @@ def atomic_write(value: dict[str, Any]) -> None:
             pass
 
 
+def atomic_restore(original: bytes) -> None:
+    descriptor, temp_name = tempfile.mkstemp(prefix=".rate-limit-runtime-rollback.", suffix=".tmp", dir=REGISTRY.parent)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(original)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, REGISTRY)
+    finally:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
+
+
+def commit_registry_update(registry: dict[str, Any], original: bytes) -> None:
+    atomic_write(registry)
+    try:
+        validate_registry_after_append(load(REGISTRY))
+    except Exception:
+        atomic_restore(original)
+        raise
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--record", required=True)
@@ -295,7 +328,9 @@ def main() -> int:
     try:
         os.write(lock_fd, (record["runtimeId"] + "\n").encode("ascii"))
         os.fsync(lock_fd)
-        registry = load(REGISTRY)
+        original_registry = REGISTRY.read_bytes()
+        registry = json.loads(original_registry.decode("utf-8"))
+        require(isinstance(registry, dict), "distributed runtime registry root must be object")
         runtimes = validate_registry_before_append(registry)
         require(all(item.get("runtimeId") != record["runtimeId"] for item in runtimes), "runtimeId already registered")
         require(all(item.get("environmentIdentityDigest") != record["environmentIdentityDigest"] for item in runtimes), "environment identity already registered")
@@ -304,7 +339,7 @@ def main() -> int:
         registry["productionEquivalentRuntimeCount"] = sum(1 for item in runtimes if item.get("environmentClass") == "PRODUCTION_EQUIVALENT")
         registry["productionRuntimeCount"] = sum(1 for item in runtimes if item.get("environmentClass") == "PRODUCTION")
         registry["productionReady"] = False
-        atomic_write(registry)
+        commit_registry_update(registry, original_registry)
     finally:
         os.close(lock_fd)
         try:
