@@ -6,9 +6,10 @@ from __future__ import annotations
 import datetime as dt
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 FOUNDATION_PATH = ROOT / "contracts/operations/version-compatibility-foundations.v1.json"
@@ -23,6 +24,8 @@ PARSER_REGISTRY_PATH = ROOT / "contracts/operations/parser-artifact-registry.v1.
 PARSER_WRITER_PATH = ROOT / "scripts/register-memory-os-parser-artifact.py"
 PAIR_REGISTRY_PATH = ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"
 PAIR_WRITER_PATH = ROOT / "scripts/register-memory-os-release-compatibility-pair.py"
+FOUNDATION_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-version-compatibility-foundations.py"
+OPERABILITY_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-operability.py"
 
 EXISTING = (
     "supplemental compatibility foundation authority records candidate-only, local-CI-only and empty-registry evidence without changing the canonical approved-release matrix",
@@ -99,6 +102,42 @@ def require_zero_count(boundaries: dict[str, Any], field: str) -> None:
     value = boundaries.get(field)
     require(isinstance(value, int) and not isinstance(value, bool) and value == 0,
             f"compatibility foundation {field} must be integer zero")
+
+
+def run_validator(path: Path, label: str) -> None:
+    completed = subprocess.run(
+        [sys.executable, str(path)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    require(
+        completed.returncode == 0,
+        f"{label} failed:\n{completed.stdout[-4000:]}{completed.stderr[-4000:]}",
+    )
+
+
+def run_canonical_validators() -> None:
+    run_validator(FOUNDATION_VALIDATOR_PATH, "post-write compatibility foundation validator")
+    run_validator(OPERABILITY_VALIDATOR_PATH, "post-write operability validator")
+
+
+def commit_status_transaction(
+    status: dict[str, Any],
+    *,
+    validator_runner: Callable[[], None] = run_canonical_validators,
+) -> None:
+    original = STATUS_PATH.read_bytes()
+    try:
+        STATUS_PATH.write_text(
+            json.dumps(status, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        validator_runner()
+    except Exception:
+        STATUS_PATH.write_bytes(original)
+        raise
 
 
 def validate_source_registries() -> dict[str, int]:
@@ -199,8 +238,7 @@ def main() -> int:
         print("Compatibility foundation status already reconciled")
         return 0
     status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
-    STATUS_PATH.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n",
-                           encoding="utf-8")
+    commit_status_transaction(status)
     print("Registered bounded compatibility foundations; OPS-P0-008 remains PARTIAL")
     return 0
 
