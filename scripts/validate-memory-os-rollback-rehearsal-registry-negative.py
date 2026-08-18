@@ -28,10 +28,10 @@ def load_json(path: Path) -> dict[str, Any]:
     return value
 
 
-def load_writer() -> Any:
-    spec = importlib.util.spec_from_file_location("rollback_rehearsal_writer_negative", WRITER_PATH)
+def load_module(path: Path, name: str) -> Any:
+    spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
-        raise RuntimeError("cannot load rollback rehearsal writer")
+        raise RuntimeError(f"cannot load module: {path.name}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -45,8 +45,9 @@ def expect_rejected(label: str, action: Callable[[], None]) -> None:
     raise RuntimeError(f"corruption was accepted: {label}")
 
 
-def reconcile_rejects_without_status_write(
-    registry: dict[str, Any], registry_bytes: bytes, status_bytes: bytes, label: str
+def reconcile_rejects_without_authority_write(
+    registry: dict[str, Any], registry_bytes: bytes, contract_bytes: bytes,
+    status_bytes: bytes, label: str
 ) -> None:
     try:
         REGISTRY_PATH.write_text(
@@ -62,10 +63,13 @@ def reconcile_rejects_without_status_write(
         )
         if completed.returncode == 0:
             raise RuntimeError(f"reconciler accepted corrupt registry: {label}")
+        if CONTRACT_PATH.read_bytes() != contract_bytes:
+            raise RuntimeError(f"reconciler mutated rollback contract on rejection: {label}")
         if STATUS_PATH.read_bytes() != status_bytes:
             raise RuntimeError(f"reconciler mutated production status on rejection: {label}")
     finally:
         REGISTRY_PATH.write_bytes(registry_bytes)
+        CONTRACT_PATH.write_bytes(contract_bytes)
         STATUS_PATH.write_bytes(status_bytes)
 
 
@@ -90,8 +94,103 @@ def validator_rejects_lock_drift(contract: dict[str, Any], contract_bytes: bytes
         CONTRACT_PATH.write_bytes(contract_bytes)
 
 
+def validate_planning_progression(reconciler: Any) -> None:
+    contract = copy.deepcopy(load_json(CONTRACT_PATH))
+    changed = reconciler.reconcile_contract(contract, 2, 1, 1, 1)
+    if not changed:
+        raise RuntimeError("rollback planning progression did not update contract authority")
+    state = contract.get("currentAdmissionState")
+    readiness = contract.get("readiness")
+    if not isinstance(state, dict) or not isinstance(readiness, dict):
+        raise RuntimeError("rollback planning progression lost contract authority")
+    expected_state = {
+        "approvedReleaseCount": 2,
+        "rollbackEligibleReleaseCount": 1,
+        "admissibleReleasePairCount": 1,
+        "rehearsalRequestCount": 1,
+        "admissionDecision": "ADMISSION_AVAILABLE",
+    }
+    for field, expected in expected_state.items():
+        if state.get(field) != expected:
+            raise RuntimeError(f"rollback planning state did not progress: {field}")
+    if readiness.get("approvedReleasePairAvailable") is not True:
+        raise RuntimeError("approved release pair was not reflected")
+    if readiness.get("rollbackTargetAvailable") is not True:
+        raise RuntimeError("rollback target was not reflected")
+    if readiness.get("rehearsalRequested") is not True:
+        raise RuntimeError("reviewed rehearsal request was not reflected")
+    if readiness.get("rehearsalExecuted") is not False:
+        raise RuntimeError("planning authority manufactured rehearsal execution")
+    if readiness.get("independentReviewCompleted") is not False:
+        raise RuntimeError("planning authority manufactured independent review")
+    if readiness.get("productionReady") is not False:
+        raise RuntimeError("planning authority manufactured production readiness")
+
+    status = copy.deepcopy(load_json(STATUS_PATH))
+    gate = next(
+        (item for item in status.get("areas", []) if isinstance(item, dict) and item.get("id") == "OPS-P0-008"),
+        None,
+    )
+    if not isinstance(gate, dict):
+        raise RuntimeError("OPS-P0-008 missing for rollback progression probe")
+    existing = gate.get("existingEvidence")
+    missing = gate.get("missingEvidence")
+    if not isinstance(existing, list) or not isinstance(missing, list):
+        raise RuntimeError("OPS-P0-008 rollback progression lists missing")
+    if reconciler.EMPTY_RELEASE_EVIDENCE not in existing:
+        existing.append(reconciler.EMPTY_RELEASE_EVIDENCE)
+    for gap in (
+        reconciler.APPROVED_PAIR_GAP,
+        reconciler.ADMITTED_REQUEST_GAP,
+        reconciler.EXECUTED_REHEARSAL_GAP,
+        reconciler.INDEPENDENT_REVIEW_GAP,
+    ):
+        if gap not in missing:
+            missing.append(gap)
+    reconciler.reconcile_status(status, 2, 1, 1)
+    if reconciler.EMPTY_RELEASE_EVIDENCE in existing:
+        raise RuntimeError("empty release evidence survived approved release progression")
+    if reconciler.APPROVED_PAIR_GAP in missing:
+        raise RuntimeError("approved rollback pair gap survived valid pair authority")
+    if reconciler.ADMITTED_REQUEST_GAP in missing:
+        raise RuntimeError("admitted request gap survived planning authority")
+    if reconciler.EXECUTED_REHEARSAL_GAP not in missing:
+        raise RuntimeError("planning authority removed executed rehearsal blocker")
+    if reconciler.INDEPENDENT_REVIEW_GAP not in missing:
+        raise RuntimeError("planning authority removed independent review blocker")
+    if status.get("productionDecision") != "NO_GO":
+        raise RuntimeError("planning authority changed production decision")
+
+
+def validate_transaction_rollback(reconciler: Any) -> None:
+    contract_original = CONTRACT_PATH.read_bytes()
+    status_original = STATUS_PATH.read_bytes()
+    contract = copy.deepcopy(load_json(CONTRACT_PATH))
+    status = copy.deepcopy(load_json(STATUS_PATH))
+    state = contract.get("currentAdmissionState")
+    if not isinstance(state, dict):
+        raise RuntimeError("rollback state missing for transaction probe")
+    state["rehearsalRequestCount"] = 99
+
+    def fail_post_write() -> None:
+        raise RuntimeError("synthetic rollback aggregate validator failure")
+
+    try:
+        reconciler.commit_authority_transaction(contract, status, validator_runner=fail_post_write)
+    except RuntimeError as exc:
+        if "synthetic rollback aggregate validator failure" not in str(exc):
+            raise
+    else:
+        raise RuntimeError("rollback reconcile accepted synthetic post-write validator failure")
+    if CONTRACT_PATH.read_bytes() != contract_original:
+        raise RuntimeError("rollback reconcile left partial contract after validator failure")
+    if STATUS_PATH.read_bytes() != status_original:
+        raise RuntimeError("rollback reconcile left partial status after validator failure")
+
+
 def main() -> int:
-    writer = load_writer()
+    writer = load_module(WRITER_PATH, "rollback_rehearsal_writer_negative")
+    reconciler = load_module(RECONCILER_PATH, "rollback_rehearsal_reconciler_negative")
     contract = load_json(CONTRACT_PATH)
     release_registry = load_json(RELEASE_REGISTRY_PATH)
     registry = load_json(REGISTRY_PATH)
@@ -102,6 +201,8 @@ def main() -> int:
     writer.validate_registry_for_append(
         copy.deepcopy(registry), copy.deepcopy(contract), copy.deepcopy(release_registry)
     )
+    validate_planning_progression(reconciler)
+    validate_transaction_rollback(reconciler)
 
     registry_cases: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
         ("registryClass", lambda value: value.__setitem__("registryClass", "OTHER")),
@@ -123,8 +224,8 @@ def main() -> int:
             ),
         )
         if label in {"registryClass", "appendOnly", "productionEvidence", "boolean count"}:
-            reconcile_rejects_without_status_write(
-                copy.deepcopy(candidate), registry_bytes, status_bytes, label
+            reconcile_rejects_without_authority_write(
+                copy.deepcopy(candidate), registry_bytes, contract_bytes, status_bytes, label
             )
 
     release_cases: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
@@ -150,7 +251,7 @@ def main() -> int:
     if STATUS_PATH.read_bytes() != status_bytes:
         raise RuntimeError("production status bytes changed after negative suite")
 
-    print("PASS: rollback rehearsal registry and append lock corruption are rejected")
+    print("PASS: rollback rehearsal authority accepts planning progression while rejecting corruption and aggregate partial writes")
     return 0
 
 
