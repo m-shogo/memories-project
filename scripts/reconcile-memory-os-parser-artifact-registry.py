@@ -16,6 +16,8 @@ CONTRACT_PATH = ROOT / "contracts/operations/parser-artifact-registry-contract.v
 REGISTRY_PATH = ROOT / "contracts/operations/parser-artifact-registry.v1.json"
 WRITER_PATH = ROOT / "scripts/register-memory-os-parser-artifact.py"
 VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-parser-artifact-registry.py"
+VERSION_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-version-compatibility.py"
+OPERABILITY_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-operability.py"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 
 EXISTING = (
@@ -103,6 +105,15 @@ def write(path: Path, value: dict[str, Any]) -> None:
     path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
+def run_canonical_validators() -> None:
+    for validator in (
+        VALIDATOR_PATH,
+        VERSION_VALIDATOR_PATH,
+        OPERABILITY_VALIDATOR_PATH,
+    ):
+        subprocess.run([sys.executable, str(validator)], cwd=ROOT, check=True)
+
+
 def commit_authority_transaction(
     contract: dict[str, Any],
     status: dict[str, Any],
@@ -117,7 +128,7 @@ def commit_authority_transaction(
         write(CONTRACT_PATH, contract)
         write(STATUS_PATH, status)
         if validator_runner is None:
-            subprocess.run([sys.executable, str(VALIDATOR_PATH)], cwd=ROOT, check=True)
+            run_canonical_validators()
         else:
             validator_runner()
     except BaseException:
