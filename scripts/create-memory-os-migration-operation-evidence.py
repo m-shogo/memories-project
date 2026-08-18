@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -17,6 +18,26 @@ from migration_operation_evidence_lib import (
 )
 
 DEFAULT_LEDGER = ROOT / "docs/evidence/migration-operations"
+VALIDATOR = ROOT / "scripts/validate-memory-os-migration-operation-evidence.py"
+
+
+def validate_canonical_ledger_before_append(ledger: Path) -> None:
+    if ledger.resolve() != DEFAULT_LEDGER.resolve():
+        return
+    completed = subprocess.run(
+        [sys.executable, str(VALIDATOR)],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        detail = completed.stderr.strip() or completed.stdout.strip()
+        raise EvidenceValidationError(
+            "canonical migration operation ledger failed validation before append"
+            + (f": {detail}" if detail else "")
+        )
 
 
 def main() -> int:
@@ -34,6 +55,7 @@ def main() -> int:
     ledger = Path(args.ledger_dir)
     if not ledger.is_absolute():
         ledger = Path.cwd() / ledger
+    validate_canonical_ledger_before_append(ledger)
     ledger.mkdir(parents=True, exist_ok=True)
     target = ledger / expected_filename(record)
     payload = json.dumps(record, indent=2, ensure_ascii=False) + "\n"
