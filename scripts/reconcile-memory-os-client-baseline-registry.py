@@ -197,8 +197,11 @@ def main() -> int:
         append_once(refs, ref)
     joined = "\n".join(str(item).lower() for item in missing)
     require("client/server" in joined and "skew" in joined, "runtime client/server skew blocker must remain")
+    pair_blocker_present = "approved predecessor" in joined and "successor" in joined
     if approved_pair_count == 0:
-        require("approved predecessor" in joined and "successor" in joined, "approved release-pair blocker must remain")
+        require(pair_blocker_present, "approved release-pair blocker must remain")
+    else:
+        require(not pair_blocker_present, "approved release-pair blocker must stay cleared after pair admission")
 
     write_and_validate_transactionally(contract, support, status)
 
