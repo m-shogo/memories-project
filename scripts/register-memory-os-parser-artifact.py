@@ -287,6 +287,8 @@ def validate_historical_record(
 
 def validate_registry_for_append(registry: dict[str, Any]) -> None:
     contract = load(CONTRACT_PATH)
+    require(contract.get("appendMustRevalidateCanonicalRegistryAndRollbackOnFailure") is True,
+            "parser artifact contract must require post-append revalidation and rollback")
     required_fields = set(strings(contract.get("requiredRecordFields"),
                                   "requiredRecordFields", 20))
     release_ids = approved_release_ids()
@@ -390,6 +392,33 @@ def atomic_write(value: dict[str, Any]) -> None:
             pass
 
 
+def atomic_write_bytes(value: bytes) -> None:
+    descriptor, temp_name = tempfile.mkstemp(
+        prefix=".parser-artifact-registry.", suffix=".tmp",
+        dir=REGISTRY_PATH.parent,
+    )
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(value)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, REGISTRY_PATH)
+    finally:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
+
+
+def append_registry_transactionally(registry: dict[str, Any], original_bytes: bytes) -> None:
+    atomic_write(registry)
+    try:
+        validate_registry_for_append(load(REGISTRY_PATH))
+    except Exception:
+        atomic_write_bytes(original_bytes)
+        raise
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--record", required=True,
@@ -416,6 +445,8 @@ def main() -> int:
             "working tree must be clean before artifact registration")
 
     contract = load(CONTRACT_PATH)
+    require(contract.get("appendMustRevalidateCanonicalRegistryAndRollbackOnFailure") is True,
+            "parser artifact contract must require post-append revalidation and rollback")
     required_fields = set(strings(contract.get("requiredRecordFields"),
                                   "requiredRecordFields", 20))
     releases = approved_release_ids()
@@ -427,6 +458,7 @@ def main() -> int:
     try:
         os.write(lock_fd, f"{record['artifactId']}\n".encode("ascii"))
         os.fsync(lock_fd)
+        original_registry_bytes = REGISTRY_PATH.read_bytes()
         registry = load(REGISTRY_PATH)
         validate_registry_for_append(registry)
         artifacts = registry["artifacts"]
@@ -452,7 +484,7 @@ def main() -> int:
             1 for item in artifacts if item.get("replayEvidenceRefs")
         )
         registry["latestReviewedArtifactId"] = record["artifactId"]
-        atomic_write(registry)
+        append_registry_transactionally(registry, original_registry_bytes)
     finally:
         os.close(lock_fd)
         try:
