@@ -7,20 +7,29 @@ on:
       - "contracts/operations/version-compatibility-foundations.v1.json"
       - "contracts/operations/version-compatibility-contract.v1.json"
       - "contracts/operations/production-operability-status.json"
+      - "contracts/operations/release-baseline-registry-contract.v1.json"
+      - "contracts/operations/release-baseline-registry.v1.json"
+      - "contracts/operations/rollback-rehearsal-gate-contract.v1.json"
+      - "contracts/operations/rollback-rehearsal-registry.v1.json"
+      - "contracts/operations/parser-artifact-registry-contract.v1.json"
+      - "contracts/operations/parser-artifact-registry.v1.json"
       - "docs/runbooks/memory-os-version-compatibility-foundations.md"
       - "scripts/reconcile-memory-os-version-compatibility-canonical.py"
       - "scripts/validate-memory-os-version-compatibility.py"
       - "scripts/validate-memory-os-version-compatibility-foundations.py"
       - "scripts/validate-memory-os-version-compatibility-foundation-status-negative.py"
       - "scripts/reconcile-memory-os-version-compatibility-foundation-status.py"
+      - "scripts/register-memory-os-release-baseline.py"
+      - "scripts/validate-memory-os-release-baseline-registry.py"
+      - "scripts/request-memory-os-rollback-rehearsal.py"
+      - "scripts/validate-memory-os-rollback-rehearsal-gate.py"
+      - "scripts/register-memory-os-parser-artifact.py"
+      - "scripts/validate-memory-os-parser-artifact-registry.py"
       - "scripts/validate-memory-os-operability.py"
       - "docs/fixtures/memory-os-operability/mixed-version-session-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/postgresql-major-upgrade-results.sample.v1.json"
-      - "contracts/operations/release-baseline-registry.v1.json"
-      - "contracts/operations/rollback-rehearsal-registry.v1.json"
-      - "contracts/operations/parser-artifact-registry.v1.json"
   push:
     branches:
       - so
@@ -29,20 +38,29 @@ on:
       - "contracts/operations/version-compatibility-foundations.v1.json"
       - "contracts/operations/version-compatibility-contract.v1.json"
       - "contracts/operations/production-operability-status.json"
+      - "contracts/operations/release-baseline-registry-contract.v1.json"
+      - "contracts/operations/release-baseline-registry.v1.json"
+      - "contracts/operations/rollback-rehearsal-gate-contract.v1.json"
+      - "contracts/operations/rollback-rehearsal-registry.v1.json"
+      - "contracts/operations/parser-artifact-registry-contract.v1.json"
+      - "contracts/operations/parser-artifact-registry.v1.json"
       - "docs/runbooks/memory-os-version-compatibility-foundations.md"
       - "scripts/reconcile-memory-os-version-compatibility-canonical.py"
       - "scripts/validate-memory-os-version-compatibility.py"
       - "scripts/validate-memory-os-version-compatibility-foundations.py"
       - "scripts/validate-memory-os-version-compatibility-foundation-status-negative.py"
       - "scripts/reconcile-memory-os-version-compatibility-foundation-status.py"
+      - "scripts/register-memory-os-release-baseline.py"
+      - "scripts/validate-memory-os-release-baseline-registry.py"
+      - "scripts/request-memory-os-rollback-rehearsal.py"
+      - "scripts/validate-memory-os-rollback-rehearsal-gate.py"
+      - "scripts/register-memory-os-parser-artifact.py"
+      - "scripts/validate-memory-os-parser-artifact-registry.py"
       - "scripts/validate-memory-os-operability.py"
       - "docs/fixtures/memory-os-operability/mixed-version-session-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/postgresql-major-upgrade-results.sample.v1.json"
-      - "contracts/operations/release-baseline-registry.v1.json"
-      - "contracts/operations/rollback-rehearsal-registry.v1.json"
-      - "contracts/operations/parser-artifact-registry.v1.json"
   schedule:
     - cron: "59 5 * * *"
   workflow_dispatch:
@@ -93,8 +111,21 @@ jobs:
             scripts/validate-memory-os-version-compatibility-foundations.py \
             scripts/validate-memory-os-version-compatibility-foundation-status-negative.py \
             scripts/reconcile-memory-os-version-compatibility-foundation-status.py \
+            scripts/register-memory-os-release-baseline.py \
+            scripts/validate-memory-os-release-baseline-registry.py \
+            scripts/request-memory-os-rollback-rehearsal.py \
+            scripts/validate-memory-os-rollback-rehearsal-gate.py \
+            scripts/register-memory-os-parser-artifact.py \
+            scripts/validate-memory-os-parser-artifact-registry.py \
             scripts/validate-memory-os-operability.py
           python scripts/validate-memory-os-version-compatibility-foundation-status-negative.py
+
+      - name: Validate empty upstream admission authorities
+        run: |
+          set -euo pipefail
+          python scripts/validate-memory-os-release-baseline-registry.py
+          python scripts/validate-memory-os-rollback-rehearsal-gate.py
+          python scripts/validate-memory-os-parser-artifact-registry.py
 
       - name: Restore conservative canonical authority
         run: python scripts/reconcile-memory-os-version-compatibility-canonical.py
@@ -151,8 +182,11 @@ jobs:
           git fetch origin so
           git reset --hard origin/so
 
-      - name: Validate canonical, foundation and aggregate authority
+      - name: Validate canonical, upstream, foundation and aggregate authority
         run: |
+          python scripts/validate-memory-os-release-baseline-registry.py
+          python scripts/validate-memory-os-rollback-rehearsal-gate.py
+          python scripts/validate-memory-os-parser-artifact-registry.py
           python scripts/validate-memory-os-version-compatibility.py
           python scripts/validate-memory-os-version-compatibility-foundations.py
           python scripts/validate-memory-os-operability.py
