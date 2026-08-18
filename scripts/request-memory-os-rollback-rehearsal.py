@@ -32,6 +32,7 @@ SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 REHEARSAL_ID_RE = re.compile(r"^rrh_[0-9]{8}_[a-z0-9][a-z0-9._-]{2,63}$")
 APPROVER_RE = re.compile(r"^apr_[a-z0-9][a-z0-9_-]{7,63}$")
+APPROVER_FIELDS = {"role", "approverRef"}
 REQUIRED_ROLES = {"RELEASE_OWNER", "DATABASE_RECOVERY_OWNER"}
 EVIDENCE_DIGEST_FIELD = "evidenceDigests"
 REQUIRED_REQUEST_FIELDS = {
@@ -273,6 +274,27 @@ def validate_release_registry_for_append(release_registry: dict[str, Any]) -> No
         raise RequestFailure(f"approved release registry authority invalid: {exc}") from exc
 
 
+def validate_approvers(value: Any) -> None:
+    require(isinstance(value, list) and len(value) == 2,
+            "exactly two rehearsal approvers are required")
+    roles: set[str] = set()
+    identities: set[str] = set()
+    for approver in value:
+        require(isinstance(approver, dict), "approver entry must be an object")
+        require(set(approver) == APPROVER_FIELDS,
+                "approver entry field set drift")
+        role = approver.get("role")
+        identity = approver.get("approverRef")
+        require(role in REQUIRED_ROLES and role not in roles,
+                f"approval role invalid or duplicated: {role}")
+        require(isinstance(identity, str) and APPROVER_RE.fullmatch(identity) is not None,
+                "approverRef must be an operational pseudonym")
+        require(identity not in identities, "duplicate rehearsal approver detected")
+        roles.add(role)
+        identities.add(identity)
+    require(roles == REQUIRED_ROLES, "required rehearsal approval roles incomplete")
+
+
 def validate_request(
     request: dict[str, Any], required_fields: set[str], release_registry: dict[str, Any],
     *, require_evidence_digests: bool = False,
@@ -364,23 +386,7 @@ def validate_request(
         require(condition in stop_conditions,
                 "rollback target condition is missing from stopConditions")
 
-    approvers = request.get("approvers")
-    require(isinstance(approvers, list) and len(approvers) == 2,
-            "exactly two rehearsal approvers are required")
-    roles: set[str] = set()
-    identities: set[str] = set()
-    for approver in approvers:
-        require(isinstance(approver, dict), "approver entry must be an object")
-        role = approver.get("role")
-        identity = approver.get("approverRef")
-        require(role in REQUIRED_ROLES and role not in roles,
-                f"approval role invalid or duplicated: {role}")
-        require(isinstance(identity, str) and APPROVER_RE.fullmatch(identity) is not None,
-                "approverRef must be an operational pseudonym")
-        require(identity not in identities, "duplicate rehearsal approver detected")
-        roles.add(role)
-        identities.add(identity)
-    require(roles == REQUIRED_ROLES, "required rehearsal approval roles incomplete")
+    validate_approvers(request.get("approvers"))
 
     risks = request.get("openRisks")
     require(isinstance(risks, list), "openRisks must be a list")
