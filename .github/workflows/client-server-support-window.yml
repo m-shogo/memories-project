@@ -65,7 +65,7 @@ jobs:
           test -z "$(git status --porcelain)"
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-      - name: Validate fail-closed skew admission
+      - name: Reconcile and validate fail-closed skew admission
         id: validate
         run: |
           set +e
@@ -81,13 +81,13 @@ jobs:
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then
+            python scripts/reconcile-memory-os-client-server-support-window-status.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-client-server-support-window.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-client-server-support-window-negative.py >> "$log" 2>&1 || code=$?
-          fi
-          if [[ "$code" == "0" ]]; then
-            python scripts/reconcile-memory-os-client-server-support-window-status.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?
@@ -100,7 +100,9 @@ jobs:
         run: |
           set -euo pipefail
           git diff --check
-          git diff --exit-code -- contracts/operations/production-operability-status.json
+          git diff --exit-code -- \
+            contracts/operations/client-server-support-window-contract.v1.json \
+            contracts/operations/production-operability-status.json
       - name: Commit bounded foundation authority
         if: steps.validate.outputs.exit_code == '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         run: |
@@ -111,7 +113,9 @@ jobs:
             exit 75
           fi
           git rm -f docs/fixtures/memory-os-operability/client-server-support-window-diagnostic.last.json 2>/dev/null || true
-          git add contracts/operations/production-operability-status.json
+          git add \
+            contracts/operations/client-server-support-window-contract.v1.json \
+            contracts/operations/production-operability-status.json
           git add -u docs/fixtures/memory-os-operability/client-server-support-window-diagnostic.last.json 2>/dev/null || true
           if ! git diff --cached --quiet; then
             git diff --cached --check
@@ -145,12 +149,10 @@ jobs:
               'schemaVersion': 'memory-os-validator-diagnostic.v1',
               'workflow': 'client-server-support-window',
               'result': 'FAIL',
+              'sourceCommitSha': os.environ.get('SOURCE_SHA'),
               'exitCode': int(os.environ['VALIDATE_EXIT_CODE']),
               'output': text[-12000:],
               'containsSecrets': False,
-              'approvedBackendReleaseCount': 0,
-              'approvedClientBaselineCount': 0,
-              'admissibleSkewPairCount': 0,
               'clientServerSkewEvidence': False,
               'productionEvidence': False,
               'productionReady': False,
