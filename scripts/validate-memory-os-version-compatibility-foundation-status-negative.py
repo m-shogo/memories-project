@@ -93,12 +93,14 @@ def expect_nonempty_source_inventory_allowed(module, validator_mode: bool) -> No
     releases = {"approvedReleaseCount": 2, "releases": [{"id": "rel_a"}, {"id": "rel_b"}]}
     rollback = {"rehearsalRequestCount": 1, "requests": [{"id": "rr_a"}]}
     parsers = {"reviewedArtifactCount": 1, "artifacts": [{"id": "pa_a"}]}
+    pairs = {"approvedPairCount": 1, "pairs": [{"id": "pair_a"}]}
     release_contract = {"contract": "release"}
     rollback_contract = {"contract": "rollback"}
     values = {
         module.RELEASE_REGISTRY_PATH: releases,
         module.ROLLBACK_REGISTRY_PATH: rollback,
         module.PARSER_REGISTRY_PATH: parsers,
+        module.PAIR_REGISTRY_PATH: pairs,
         module.RELEASE_CONTRACT_PATH: release_contract,
         module.ROLLBACK_CONTRACT_PATH: rollback_contract,
     }
@@ -121,10 +123,17 @@ def expect_nonempty_source_inventory_allowed(module, validator_mode: bool) -> No
             require(registry is parsers,
                     "parser shared validator did not receive synthetic authority")
 
+    class PairWriter:
+        @staticmethod
+        def validate_registry_for_append(registry):
+            require(registry is pairs,
+                    "pair shared validator did not receive synthetic authority")
+
     writers = {
         module.RELEASE_WRITER_PATH: ReleaseWriter,
         module.ROLLBACK_WRITER_PATH: RollbackWriter,
         module.PARSER_WRITER_PATH: ParserWriter,
+        module.PAIR_WRITER_PATH: PairWriter,
     }
     original_load = module.load
     original_load_module = module.load_module
@@ -132,12 +141,16 @@ def expect_nonempty_source_inventory_allowed(module, validator_mode: bool) -> No
         module.load = lambda path: values[path]
         module.load_module = lambda path, _name: writers[path]
         if validator_mode:
-            module.validate_source_authorities()
+            counts = module.validate_source_authorities()
         else:
-            module.validate_source_registries()
+            counts = module.validate_source_registries()
     finally:
         module.load = original_load
         module.load_module = original_load_module
+    require(counts["approvedReleases"] == 2, "approved release source inventory was not preserved")
+    require(counts["rollbackRequests"] == 1, "rollback request source inventory was not preserved")
+    require(counts["reviewedParserArtifacts"] == 1, "parser source inventory was not preserved")
+    require(counts["approvedReleasePairs"] == 1, "release pair source inventory was not preserved")
 
 
 def main() -> int:
@@ -164,6 +177,10 @@ def main() -> int:
     expect_source_authority_rejection(
         reconciler, validator, reconciler.PARSER_REGISTRY_PATH, "productionEvidence",
         True, "parser artifact",
+    )
+    expect_source_authority_rejection(
+        reconciler, validator, reconciler.PAIR_REGISTRY_PATH, "appendOnly",
+        False, "release compatibility pair",
     )
 
     print("PASS: compatibility foundations accept canonical non-empty source inventory while rejecting authority drift")
