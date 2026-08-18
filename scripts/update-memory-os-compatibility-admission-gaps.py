@@ -11,12 +11,14 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
+PAIRS = ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"
 CLIENTS = ROOT / "contracts/operations/client-baseline-registry.v1.json"
 PARSERS = ROOT / "contracts/operations/parser-artifact-registry.v1.json"
 FOUNDATIONS = ROOT / "contracts/operations/version-compatibility-foundations.v1.json"
 EXECUTION = ROOT / "contracts/operations/version-compatibility-execution-evidence.v1.json"
 OUTPUT = ROOT / "contracts/operations/compatibility-admission-gaps.v1.json"
 RELEASE_WRITER = ROOT / "scripts/register-memory-os-release-baseline.py"
+PAIR_WRITER = ROOT / "scripts/register-memory-os-release-compatibility-pair.py"
 CLIENT_WRITER = ROOT / "scripts/register-memory-os-client-baseline.py"
 PARSER_WRITER = ROOT / "scripts/register-memory-os-parser-artifact.py"
 FOUNDATIONS_VALIDATOR = ROOT / "scripts/validate-memory-os-version-compatibility-foundations.py"
@@ -60,15 +62,19 @@ def non_negative_count(value: Any, field: str) -> int:
 
 def validate_registry_authorities(
     releases: dict[str, Any],
+    pairs: dict[str, Any],
     clients: dict[str, Any],
     parsers: dict[str, Any],
 ) -> None:
     release_writer = load_module(RELEASE_WRITER, "compat_release_writer")
+    pair_writer = load_module(PAIR_WRITER, "compat_pair_writer")
     client_writer = load_module(CLIENT_WRITER, "compat_client_writer")
     parser_writer = load_module(PARSER_WRITER, "compat_parser_writer")
 
     if Path(getattr(release_writer, "REGISTRY_PATH", "")).resolve() != RELEASES.resolve():
         raise SystemExit("release registry authority drift")
+    if Path(getattr(pair_writer, "REGISTRY", "")).resolve() != PAIRS.resolve():
+        raise SystemExit("release pair registry authority drift")
     if Path(getattr(client_writer, "REGISTRY", "")).resolve() != CLIENTS.resolve():
         raise SystemExit("client registry authority drift")
     if Path(getattr(parser_writer, "REGISTRY_PATH", "")).resolve() != PARSERS.resolve():
@@ -77,6 +83,7 @@ def validate_registry_authorities(
     try:
         release_contract = load(Path(release_writer.CONTRACT_PATH))
         release_writer.validate_registry_for_append(releases, release_contract)
+        pair_writer.validate_registry_for_append(pairs)
         client_writer.validate_registry_for_append(clients)
         parser_writer.validate_registry_for_append(parsers)
     except Exception as exc:
@@ -85,23 +92,21 @@ def validate_registry_authorities(
 
 def main() -> int:
     releases = load(RELEASES)
+    pairs = load(PAIRS)
     clients = load(CLIENTS)
     parsers = load(PARSERS)
     foundations = load(FOUNDATIONS)
     execution = load(EXECUTION)
 
     # Validate complete append-only registry semantics before deriving any report.
-    validate_registry_authorities(releases, clients, parsers)
+    validate_registry_authorities(releases, pairs, clients, parsers)
     run_validator(FOUNDATIONS_VALIDATOR)
     run_validator(EXECUTION_VALIDATOR)
 
     release_count = non_negative_count(releases.get("approvedReleaseCount"), "approvedReleaseCount")
+    pair_count = non_negative_count(pairs.get("rollbackEligiblePairCount"), "rollbackEligiblePairCount")
     client_count = non_negative_count(clients.get("approvedClientBaselineCount"), "approvedClientBaselineCount")
     parser_count = non_negative_count(parsers.get("reviewedArtifactCount"), "reviewedArtifactCount")
-    rollback_count = non_negative_count(
-        foundations.get("aggregateBoundaries", {}).get("approvedRollbackPairCount"),
-        "approvedRollbackPairCount",
-    )
 
     execution_readiness = execution.get("readiness", {})
     proven_candidate = {
@@ -121,11 +126,11 @@ def main() -> int:
             "requiredMinimum": 2,
             "reason": "an approved predecessor and approved successor are required before release compatibility can be executed",
         })
-    if rollback_count < 1:
+    if pair_count < 1:
         blockers.append({
             "id": "COMPAT-GAP-ROLLBACK-PAIR",
             "blocking": True,
-            "current": rollback_count,
+            "current": pair_count,
             "requiredMinimum": 1,
             "reason": "at least one rollback-eligible approved release pair with retained exact artifacts and admitted rehearsal is required",
         })
@@ -181,6 +186,7 @@ def main() -> int:
         "schemaVersion": "memory-os-compatibility-admission-gaps.v1",
         "sourceAuthorities": [
             str(RELEASES.relative_to(ROOT)),
+            str(PAIRS.relative_to(ROOT)),
             str(CLIENTS.relative_to(ROOT)),
             str(PARSERS.relative_to(ROOT)),
             str(FOUNDATIONS.relative_to(ROOT)),
@@ -190,7 +196,7 @@ def main() -> int:
             "approvedBackendReleases": release_count,
             "approvedClientBaselines": client_count,
             "reviewedProductionParserArtifacts": parser_count,
-            "approvedRollbackPairs": rollback_count,
+            "approvedRollbackPairs": pair_count,
         },
         "alreadyProvenCandidateLocalOnly": proven_candidate,
         "blockingGaps": blockers,
@@ -214,7 +220,7 @@ def main() -> int:
     print(f"approved backend releases: {release_count}")
     print(f"approved client baselines: {client_count}")
     print(f"reviewed parser artifacts: {parser_count}")
-    print(f"approved rollback pairs: {rollback_count}")
+    print(f"approved rollback pairs: {pair_count}")
     print("productionDecision: NO_GO")
     return 0
 
