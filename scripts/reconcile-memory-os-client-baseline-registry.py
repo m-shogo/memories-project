@@ -15,9 +15,11 @@ CONTRACT = ROOT / "contracts/operations/client-baseline-registry-contract.v1.jso
 REGISTRY = ROOT / "contracts/operations/client-baseline-registry.v1.json"
 SUPPORT = ROOT / "contracts/operations/client-server-support-window-contract.v1.json"
 RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
+RELEASE_PAIRS = ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"
 SKEW = ROOT / "contracts/operations/client-server-skew-registry.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 WRITER = ROOT / "scripts/register-memory-os-client-baseline.py"
+PAIR_WRITER = ROOT / "scripts/register-memory-os-release-compatibility-pair.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-client-baseline-registry.py"
 SUPPORT_VALIDATOR = ROOT / "scripts/validate-memory-os-client-server-support-window.py"
 OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
@@ -104,21 +106,29 @@ def write_and_validate_transactionally(
 
 
 def main() -> int:
-    for path in (WRITER, VALIDATOR, SUPPORT_VALIDATOR, OPERABILITY_VALIDATOR, WORKFLOW, RUNBOOK):
+    for path in (WRITER, PAIR_WRITER, VALIDATOR, SUPPORT_VALIDATOR, OPERABILITY_VALIDATOR, WORKFLOW, RUNBOOK):
         require(path.is_file(), f"client baseline foundation missing: {path.relative_to(ROOT)}")
 
     registry = load(REGISTRY)
     releases = load(RELEASES)
+    release_pairs = load(RELEASE_PAIRS)
     skew = load(SKEW)
     support_validator = load_module(SUPPORT_VALIDATOR, "memory_os_support_window_for_client_reconcile")
+    pair_writer = load_module(PAIR_WRITER, "memory_os_release_pair_for_client_reconcile")
     try:
         support_validator.validate_upstream_registries(releases, registry)
-        pair_count = support_validator.validate_skew_registry(skew)
+        skew_pair_count = support_validator.validate_skew_registry(skew)
+        pair_writer.validate_registry_for_append(release_pairs)
     except Exception as exc:
         raise Fail(f"client baseline upstream authority invalid: {exc}") from exc
     require(
-        pair_count == 0,
+        skew_pair_count == 0,
         "client baseline foundation cannot overwrite admitted client/server skew authority",
+    )
+    approved_pair_count = release_pairs.get("approvedPairCount")
+    require(
+        isinstance(approved_pair_count, int) and not isinstance(approved_pair_count, bool) and approved_pair_count >= 0,
+        "approved release pair count invalid",
     )
 
     clients = registry.get("clients")
@@ -187,12 +197,14 @@ def main() -> int:
         append_once(refs, ref)
     joined = "\n".join(str(item).lower() for item in missing)
     require("client/server" in joined and "skew" in joined, "runtime client/server skew blocker must remain")
-    require("approved predecessor" in joined and "successor" in joined, "approved release-pair blocker must remain")
+    if approved_pair_count == 0:
+        require("approved predecessor" in joined and "successor" in joined, "approved release-pair blocker must remain")
 
     write_and_validate_transactionally(contract, support, status)
 
     print("Memory OS client baseline authority reconciliation PASS")
     print(f"approved client baselines: {count}")
+    print(f"approved release pairs: {approved_pair_count}")
     print("external artifact writer: implemented")
     print("client/server skew evidence: false")
     print("OPS-P0-008: PARTIAL")
