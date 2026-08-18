@@ -69,6 +69,22 @@ def expect_contract_authority_rejected(writer: ModuleType, name: str, mutate: Ca
     raise Fail(f"writer accepted corrupt migration contract authority: {name}")
 
 
+def expect_transactional_append_rollback(writer: ModuleType, contract: dict[str, Any]) -> None:
+    original = REGISTRY.read_bytes()
+    previous = load_json(REGISTRY)
+    corrupt = copy.deepcopy(previous)
+    corrupt["unexpected"] = True
+    try:
+        try:
+            writer.write_registry_transactionally(corrupt, previous, contract)
+        except Exception:
+            require(REGISTRY.read_bytes() == original, "migration registry bytes changed after rejected post-append validation")
+            return
+        raise Fail("transactional migration append accepted a registry that fails canonical validation")
+    finally:
+        REGISTRY.write_bytes(original)
+
+
 def expect_reconcile_rejected_without_mutation(name: str, mutate: Callable[[dict[str, Any]], None]) -> None:
     originals = {path: path.read_bytes() for path in (REGISTRY, CONTRACT, LIFECYCLE, STATUS)}
     corrupt = load_json(REGISTRY)
@@ -290,17 +306,22 @@ def main() -> int:
         ("contract append-only disabled", lambda value: value.__setitem__("appendOnly", False)),
         ("production registration enabled", lambda value: value.__setitem__("productionEnvironmentRegistrationImplemented", True)),
         ("environment class authority drift", lambda value: value.__setitem__("allowedEnvironmentClasses", ["LOCAL_POSTGRES_REHEARSAL"])),
+        (
+            "append rollback authority disabled",
+            lambda value: value["registrationRules"].__setitem__("appendMustRevalidateCanonicalRegistryAndRollbackOnFailure", False),
+        ),
     ]
     for name, mutate in contract_cases:
         expect_contract_authority_rejected(writer, name, mutate)
 
+    expect_transactional_append_rollback(writer, contract)
     expect_status_rejected_without_partial_writes()
     expect_append_lock_contract_rejected(writer)
     expect_record_lineage_rejected(writer, contract)
     expect_local_artifact_lineage_rejected()
     expect_local_artifact_reconcile_rejected_on_corrupt_registry()
     expect_recovery_evidence_mutation_rejected(writer, contract)
-    print("PASS: migration rehearsal ledger/contract corruption, reconcile partial writes, local reconcile corruption rejection, append-lock drift, registry/local-artifact source-lineage drift and recovery-evidence mutation are rejected")
+    print("PASS: migration rehearsal ledger/contract corruption, transactional append rollback, reconcile partial writes, local reconcile corruption rejection, append-lock drift, registry/local-artifact source-lineage drift and recovery-evidence mutation are rejected")
     return 0
 
 
