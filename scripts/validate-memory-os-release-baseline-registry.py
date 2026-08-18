@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import importlib.util
 import json
 import re
 import sys
@@ -14,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/release-baseline-registry-contract.v1.json"
 REGISTRY_PATH = ROOT / "contracts/operations/release-baseline-registry.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+WRITER_PATH = ROOT / "scripts/register-memory-os-release-baseline.py"
 CANDIDATE_CONTRACT_PATH = ROOT / "contracts/operations/mixed-version-candidate-contract.v1.json"
 REJECTION_PATH = ROOT / "docs/fixtures/memory-os-operability/mixed-version-candidate-rejections.v1.json"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -43,6 +45,19 @@ def load(path: Path) -> dict[str, Any]:
         raise ValidationFailure(f"invalid JSON: {path.relative_to(ROOT)}: {exc}") from exc
     require(isinstance(value, dict), f"root must be an object: {path.relative_to(ROOT)}")
     return value
+
+
+def load_writer() -> Any:
+    spec = importlib.util.spec_from_file_location("memory_os_release_baseline_writer_validator", WRITER_PATH)
+    require(spec is not None and spec.loader is not None,
+            "cannot load canonical release baseline writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    require(getattr(module, "CONTRACT_PATH", None) == CONTRACT_PATH,
+            "release writer contract authority drift")
+    require(getattr(module, "REGISTRY_PATH", None) == REGISTRY_PATH,
+            "release writer registry authority drift")
+    return module
 
 
 def strings(value: Any, field: str, minimum: int = 1) -> list[str]:
@@ -186,6 +201,13 @@ def validate_writer(path: Path) -> None:
 
 def main() -> int:
     contract = load(CONTRACT_PATH)
+    registry = load(REGISTRY_PATH)
+    writer = load_writer()
+    try:
+        writer.validate_registry_for_append(registry, contract)
+    except Exception as exc:
+        raise ValidationFailure(f"canonical release writer authority rejected registry: {exc}") from exc
+
     require(contract.get("schemaVersion") ==
             "memory-os-release-baseline-registry-contract.v1",
             "release registry contract schemaVersion drift")
@@ -223,7 +245,6 @@ def main() -> int:
     writer_path = ROOT / contract["writer"]
     validate_writer(writer_path)
 
-    registry = load(REGISTRY_PATH)
     require(registry.get("schemaVersion") == "memory-os-release-baseline-registry.v1",
             "release registry schemaVersion drift")
     require(registry.get("registryClass") == "APPROVED_PRODUCTION_RELEASE_BASELINES" and
