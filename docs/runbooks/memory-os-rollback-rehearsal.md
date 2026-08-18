@@ -38,7 +38,7 @@ Entry criteria must reference repository evidence for:
 - migration operation and forward-fix decision procedure
 - monitoring, stop conditions and evidence preservation
 
-The request must retain the exact release IDs, tags and commit SHAs from the approved registry.
+The request must retain the exact release IDs, tags and commit SHAs from the approved registry. All entry-criteria, recovery-point, forward-fix, artifact and approval evidence files are bound to exact committed `HEAD` bytes and stored in the request's append-time SHA-256 evidence map. Later byte drift invalidates the historical request authority.
 
 ## Required approvals
 
@@ -47,7 +47,11 @@ Two distinct operational pseudonyms are required:
 - `RELEASE_OWNER`
 - `DATABASE_RECOVERY_OWNER`
 
-These approvals authorize an isolated rehearsal request only. They do not authorize production traffic, release promotion or incident closure.
+Each `approvers` entry contains exactly `role`, `approverRef` and `approvalEvidenceRef`. `approvalEvidenceRef` must point to a tracked JSON file under `docs/evidence/rollback-rehearsal/approvals/` using schema `memory-os-rollback-rehearsal-approval.v1`.
+
+Each approval document must bind exactly to the request's `rehearsalId`, `sourceReleaseId`, `rollbackTargetReleaseId`, review role and reviewer pseudonym. Its decision must be `APPROVED`, its approval timestamp must not predate the request, and `productionTraffic`, `productionCredentials` and `automaticPromotion` must all remain `false`.
+
+These approvals authorize an isolated rehearsal request only. They do not authorize production traffic, release promotion, rollback execution or incident closure. The system never creates these human approval documents automatically.
 
 ## Stop conditions
 
