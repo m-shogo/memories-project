@@ -44,17 +44,25 @@ def load_input(path: Path) -> dict[str, Any]:
     return value
 
 
-def validate_existing_canonical_authority(validator: ModuleType, ledger: Path) -> None:
+def validate_canonical_authority(
+    validator: ModuleType, ledger: Path, *, phase: str
+) -> None:
     if ledger != DEFAULT_LEDGER.resolve():
         return
     try:
         result = validator.main()
     except validator.ValidationFailure as exc:
-        raise WriterFailure(f"existing canonical ledger authority is invalid: {exc}") from exc
+        raise WriterFailure(
+            f"canonical ledger authority failed validation {phase}: {exc}"
+        ) from exc
     if result != 0:
         raise WriterFailure(
-            f"existing canonical ledger authority validation returned non-zero: {result}"
+            f"canonical ledger authority validation returned non-zero {phase}: {result}"
         )
+
+
+def validate_existing_canonical_authority(validator: ModuleType, ledger: Path) -> None:
+    validate_canonical_authority(validator, ledger, phase="before append")
 
 
 def main() -> int:
@@ -97,6 +105,7 @@ def main() -> int:
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
+        validate_canonical_authority(validator, ledger, phase="after append")
     except Exception:
         try:
             target.unlink()
