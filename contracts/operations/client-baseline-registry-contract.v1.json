@@ -8,6 +8,7 @@
   "validator": "scripts/validate-memory-os-client-baseline-registry.py",
   "recordSchemaVersion": "memory-os-client-baseline-record.v1",
   "appendOnly": true,
+  "appendMustRevalidateCanonicalRegistryAndRollbackOnFailure": true,
   "allowedClientClasses": [
     "IOS_APP",
     "PORTAL"
@@ -75,6 +76,7 @@
     "evidenceComplete and approvedForPairing are true",
     "productionEvidence and productionReady remain false",
     "registry update uses the canonical exclusive append lock and atomic replacement",
+    "registry is revalidated after append and original bytes are restored if canonical validation fails",
     "registry validator and Git review remain mandatory after mutation"
   ],
   "forbiddenRecordContent": [
