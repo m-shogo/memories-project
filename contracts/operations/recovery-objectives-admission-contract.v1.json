@@ -48,6 +48,7 @@
     "ownerRefMustBeDistinctFromApprovalEvidenceRefs": true,
     "approvedAtMustBeUtcRfc3339Z": true,
     "appendOnlySupersessionRequired": true,
+    "appendMustRevalidateCanonicalRegistryAndRollbackOnFailure": true,
     "implicitDefaultsForbidden": true,
     "mutableLatestAliasForbidden": true,
     "restoreEvidenceCannotOverrideObjectives": true,
