@@ -350,7 +350,7 @@ def approval_document(approver: dict[str, Any], request: dict[str, Any]) -> None
             "rollback rehearsal approval reviewer binding mismatch")
     require(document.get("decision") == "APPROVED",
             "rollback rehearsal approval decision must be APPROVED")
-    approved_at = parse_utc(document.get("approvedAt"), "approvalEvidence.approvedAt")
+    approved_at = parse_utc(document.get("approvedAt"), "approvalEvidence.aprovedAt")
     requested_at = parse_utc(request.get("requestedAt"), "requestedAt")
     require(approved_at >= requested_at,
             "rollback rehearsal approval predates request")
@@ -666,6 +666,39 @@ def atomic_write(value: dict[str, Any]) -> None:
             pass
 
 
+def atomic_restore(payload: bytes) -> None:
+    descriptor, temp_name = tempfile.mkstemp(
+        prefix=".rollback-rehearsal-registry-rollback.", suffix=".tmp",
+        dir=REHEARSAL_REGISTRY_PATH.parent,
+    )
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, REHEARSAL_REGISTRY_PATH)
+    finally:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
+
+
+def write_registry_transactionally(
+    value: dict[str, Any], contract: dict[str, Any], release_registry: dict[str, Any]
+) -> None:
+    try:
+        original = REHEARSAL_REGISTRY_PATH.read_bytes()
+    except OSError as exc:
+        raise RequestFailure("cannot snapshot rollback rehearsal registry before append") from exc
+    atomic_write(value)
+    try:
+        validate_registry_for_append(load(REHEARSAL_REGISTRY_PATH), contract, release_registry)
+    except Exception:
+        atomic_restore(original)
+        raise
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--request", required=True,
@@ -716,7 +749,7 @@ def main() -> int:
         requests.append(request)
         registry["rehearsalRequestCount"] = len(requests)
         registry["latestRehearsalId"] = request["rehearsalId"]
-        atomic_write(registry)
+        write_registry_transactionally(registry, contract, release_registry)
     finally:
         os.close(lock_fd)
         try:
