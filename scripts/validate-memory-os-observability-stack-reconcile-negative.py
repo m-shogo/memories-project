@@ -39,6 +39,34 @@ def expect_writer_rejected(writer, registry, label: str) -> None:
     raise RuntimeError(f"writer accepted corrupt observability stack registry: {label}")
 
 
+def expect_writer_append_rollback(writer, registry, registry_bytes: bytes) -> None:
+    original_validator = writer.validate_registry_for_append
+    calls = 0
+
+    def injected_validator(value, *, validate_rows=True):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return None
+        raise writer.Fail("injected post-append registry validation failure")
+
+    candidate = copy.deepcopy(registry)
+    candidate["appendOnly"] = False
+    try:
+        writer.validate_registry_for_append = injected_validator
+        try:
+            writer.commit_registry_candidate(registry, candidate)
+        except writer.Fail:
+            pass
+        else:
+            raise RuntimeError("writer accepted injected post-append registry validation failure")
+        if REGISTRY.read_bytes() != registry_bytes:
+            raise RuntimeError("post-append validation failure left observability stack registry mutated")
+    finally:
+        writer.validate_registry_for_append = original_validator
+        REGISTRY.write_bytes(registry_bytes)
+
+
 def expect_ref_rejected(writer, ref: str, source: str, label: str) -> None:
     try:
         writer.source_bound_ref(ref, source, "negativeEvidenceRef")
@@ -150,6 +178,8 @@ def main() -> int:
     for label, candidate in cases:
         expect_writer_rejected(writer, candidate, label)
 
+    expect_writer_append_rollback(writer, registry, registry_bytes)
+
     source = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     if not writer.source_is_ancestor(source):
         raise RuntimeError("current HEAD must be accepted as source ancestor")
@@ -215,6 +245,7 @@ def main() -> int:
     expect_post_write_rollback(contract_bytes, status_bytes)
 
     print("PASS: observability stack registry/source-binding/review/lock corruption is rejected without mutation")
+    print("PASS: observability stack direct append rolls back on post-append validation failure")
     print("PASS: observability stack post-write validation failure rolls back contract and status")
     print("generic repository JSON accepted as independent review: false")
     print("automatic production promotion authorized: false")
