@@ -8,6 +8,7 @@ import importlib.util
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,6 +16,7 @@ VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-client-server-support-window
 CLIENT_RECONCILER_PATH = ROOT / "scripts/reconcile-memory-os-client-baseline-registry.py"
 CONTRACT = ROOT / "contracts/operations/client-server-support-window-contract.v1.json"
 RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
+RELEASE_PAIRS = ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"
 CLIENTS = ROOT / "contracts/operations/client-baseline-registry.v1.json"
 SKEW = ROOT / "contracts/operations/client-server-skew-registry.v1.json"
 
@@ -135,6 +137,62 @@ def verify_client_reconcile_preserves_admitted_skew() -> None:
                 path.write_bytes(data)
 
 
+def verify_client_reconcile_allows_approved_pair_progression() -> None:
+    reconciler = load_module(CLIENT_RECONCILER_PATH, "memory_os_client_reconcile_pair_progression_negative")
+    originals = {
+        RELEASE_PAIRS: RELEASE_PAIRS.read_bytes(),
+        reconciler.STATUS: reconciler.STATUS.read_bytes(),
+    }
+    pair_registry = load(RELEASE_PAIRS)
+    pair_registry["approvedPairCount"] = 1
+    pair_registry["rollbackEligiblePairCount"] = 1
+    pair_registry["latestPairId"] = "rcp_synthetic_progression"
+    pair_registry["pairs"] = [{"syntheticPairAuthority": True}]
+    status = load(reconciler.STATUS)
+    gate = next((row for row in status.get("areas", []) if isinstance(row, dict) and row.get("id") == "OPS-P0-008"), None)
+    require(isinstance(gate, dict), "OPS-P0-008 missing in synthetic pair progression")
+    missing = gate.get("missingEvidence")
+    require(isinstance(missing, list), "OPS-P0-008 missingEvidence absent in synthetic pair progression")
+    gate["missingEvidence"] = [
+        item for item in missing
+        if not (
+            isinstance(item, str)
+            and "approved predecessor" in item.lower()
+            and "successor" in item.lower()
+        )
+    ]
+
+    captured: dict[str, Any] = {}
+    original_loader = reconciler.load_module
+
+    def controlled_loader(path: Path, name: str) -> Any:
+        if path.resolve() == reconciler.PAIR_WRITER.resolve():
+            return SimpleNamespace(validate_registry_for_append=lambda value: None)
+        return original_loader(path, name)
+
+    def capture_write(contract: dict[str, Any], support: dict[str, Any], candidate_status: dict[str, Any]) -> None:
+        captured["contract"] = copy.deepcopy(contract)
+        captured["support"] = copy.deepcopy(support)
+        captured["status"] = copy.deepcopy(candidate_status)
+
+    reconciler.load_module = controlled_loader
+    reconciler.write_and_validate_transactionally = capture_write
+    try:
+        RELEASE_PAIRS.write_text(json.dumps(pair_registry, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        reconciler.STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        reconciler.main()
+        require(captured, "client reconcile did not reach synthetic approved-pair progression write boundary")
+        support = captured["support"].get("currentBoundary")
+        require(isinstance(support, dict), "captured support boundary missing")
+        require(support.get("clientServerSkewEvidence") is False, "approved pair progression manufactured skew evidence")
+        require(support.get("productionReady") is False, "approved pair progression manufactured production readiness")
+        require(captured["status"].get("productionDecision") == "NO_GO", "approved pair progression changed production decision")
+    finally:
+        for path, data in originals.items():
+            if path.read_bytes() != data:
+                path.write_bytes(data)
+
+
 def main() -> int:
     validator = load_validator()
     release_base = load(RELEASES)
@@ -143,6 +201,7 @@ def main() -> int:
     validator.main()
     verify_inventory_only_intermediate_state(validator)
     verify_client_reconcile_preserves_admitted_skew()
+    verify_client_reconcile_allows_approved_pair_progression()
 
     for label, path, base, mutate in (
         ("boolean release count", RELEASES, release_base,
