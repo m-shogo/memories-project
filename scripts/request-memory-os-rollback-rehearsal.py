@@ -34,6 +34,30 @@ REHEARSAL_ID_RE = re.compile(r"^rrh_[0-9]{8}_[a-z0-9][a-z0-9._-]{2,63}$")
 APPROVER_RE = re.compile(r"^apr_[a-z0-9][a-z0-9_-]{7,63}$")
 REQUIRED_ROLES = {"RELEASE_OWNER", "DATABASE_RECOVERY_OWNER"}
 EVIDENCE_DIGEST_FIELD = "evidenceDigests"
+REQUIRED_REQUEST_FIELDS = {
+    "schemaVersion",
+    "rehearsalId",
+    "requestedAt",
+    "sourceReleaseId",
+    "rollbackTargetReleaseId",
+    "sourceCommitSha",
+    "rollbackTargetCommitSha",
+    "sourceReleaseTag",
+    "rollbackTargetReleaseTag",
+    "environmentClass",
+    "trafficPolicy",
+    "databasePolicy",
+    "artifactPolicy",
+    "entryCriteriaRefs",
+    "stopConditions",
+    "approvers",
+    "openRisks",
+}
+EVIDENCE_DIGEST_GUARD = (
+    "every admitted request stores append-time SHA-256 digests for all entry-criteria, "
+    "recovery-point, forward-fix and artifact evidence references and historical validation "
+    "rejects later byte drift"
+)
 REGISTRY_FIELDS = {
     "schemaVersion",
     "registryClass",
@@ -133,6 +157,49 @@ def safe_ref(value: Any, field: str) -> str:
     require(bool(git("ls-files", "--error-unmatch", "--", value)),
             f"{field} is not tracked by the repository: {value}")
     return value
+
+
+def validate_contract_for_append(contract: dict[str, Any]) -> set[str]:
+    require(contract.get("schemaVersion") == "memory-os-rollback-rehearsal-gate-contract.v1",
+            "rollback rehearsal contract schemaVersion drift")
+    require(contract.get("appendOnly") is True,
+            "rollback rehearsal contract must remain append-only")
+    expected_paths = {
+        "approvedReleaseRegistry": str(RELEASE_REGISTRY_PATH.relative_to(ROOT)),
+        "rehearsalRegistry": str(REHEARSAL_REGISTRY_PATH.relative_to(ROOT)),
+        "appendLockPath": str(LOCK_PATH.relative_to(ROOT)),
+        "writer": str(Path(__file__).resolve().relative_to(ROOT)),
+        "validator": "scripts/validate-memory-os-rollback-rehearsal-gate.py",
+        "reconcile": "scripts/reconcile-memory-os-rollback-rehearsal-gate.py",
+        "workflow": ".github/workflows/rollback-rehearsal-gate.yml",
+    }
+    for field, expected in expected_paths.items():
+        require(contract.get(field) == expected, f"rollback rehearsal contract path drift: {field}")
+    required_fields = set(strings(contract.get("requiredRequestFields"),
+                                  "requiredRequestFields", len(REQUIRED_REQUEST_FIELDS)))
+    require(required_fields == REQUIRED_REQUEST_FIELDS,
+            "rollback rehearsal required request fields drift")
+    guards = strings(contract.get("admissionGuards"), "admissionGuards", 13)
+    require(EVIDENCE_DIGEST_GUARD in guards,
+            "rollback rehearsal immutable evidence digest guard missing")
+    environment = contract.get("environmentPolicy")
+    require(isinstance(environment, dict) and
+            environment.get("allowedEnvironmentClass") == "ISOLATED_NON_PRODUCTION_REHEARSAL" and
+            environment.get("productionTrafficAllowed") is False and
+            environment.get("productionCredentialsAllowed") is False and
+            environment.get("syntheticOrApprovedSanitizedDataOnly") is True and
+            environment.get("automaticTrafficPromotionAllowed") is False and
+            environment.get("destructiveDownMigrationAllowed") is False,
+            "rollback rehearsal environment policy drift")
+    boundary = contract.get("evidenceBoundary")
+    require(isinstance(boundary, dict) and boundary.get("planningAuthorityOnly") is True and
+            boundary.get("rehearsalExecuted") is False and
+            boundary.get("rollbackExecuted") is False and
+            boundary.get("productionEvidence") is False and
+            boundary.get("releaseCompatibilityEvidence") is False and
+            boundary.get("productionReady") is False,
+            "rollback rehearsal evidence boundary drift")
+    return required_fields
 
 
 def evidence_refs(request: dict[str, Any]) -> list[str]:
@@ -319,6 +386,7 @@ def validate_request(
 def validate_registry_for_append(
     registry: dict[str, Any], contract: dict[str, Any], release_registry: dict[str, Any]
 ) -> None:
+    required_fields = validate_contract_for_append(contract)
     validate_release_registry_for_append(release_registry)
     require(set(registry) == REGISTRY_FIELDS,
             "rollback rehearsal registry field set drift")
@@ -342,8 +410,6 @@ def validate_registry_for_append(
     require(isinstance(count, int) and not isinstance(count, bool),
             "rehearsalRequestCount must be an integer")
     require(count == len(requests), "rehearsalRequestCount drift")
-    required_fields = set(strings(contract.get("requiredRequestFields"),
-                                  "requiredRequestFields", 17))
     ids: set[str] = set()
     pairs: set[tuple[str, str]] = set()
     for record in requests:
@@ -407,8 +473,7 @@ def main() -> int:
             "working tree must be clean before rehearsal admission")
 
     contract = load(CONTRACT_PATH)
-    required_fields = set(strings(contract.get("requiredRequestFields"),
-                                  "requiredRequestFields", 17))
+    required_fields = validate_contract_for_append(contract)
     release_registry = load(RELEASE_REGISTRY_PATH)
     validate_release_registry_for_append(release_registry)
     request = load(request_path)
