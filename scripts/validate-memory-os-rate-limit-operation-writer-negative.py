@@ -12,17 +12,24 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WRITER_PATH = ROOT / "scripts/create-memory-os-rate-limit-operation-evidence.py"
+RECONCILER_PATH = ROOT / "scripts/reconcile-memory-os-rate-limit-operation-evidence.py"
 
 
-def load_writer():
-    spec = importlib.util.spec_from_file_location(
-        "memory_os_rate_limit_operation_writer", WRITER_PATH
-    )
+def load_module(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
-        raise RuntimeError("unable to load rate-limit operation evidence writer")
+        raise RuntimeError(f"unable to load rate-limit operation module: {path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def load_writer():
+    return load_module(WRITER_PATH, "memory_os_rate_limit_operation_writer")
+
+
+def load_reconciler():
+    return load_module(RECONCILER_PATH, "memory_os_rate_limit_operation_reconciler")
 
 
 def git(*args: str, env: dict[str, str] | None = None) -> str:
@@ -95,6 +102,22 @@ def contract_guard_negative(writer, validator) -> None:
             raise AssertionError(f"unexpected append guard field-set rejection: {exc}") from exc
     else:
         raise AssertionError("unknown append guard field was incorrectly accepted")
+
+
+def reconcile_contract_guard_negative(writer, validator) -> None:
+    reconciler = load_reconciler()
+    contract, _ = validator.load_contract_context()
+    mutated = dict(contract)
+    mutated_guards = dict(contract["appendOnlyGuards"])
+    mutated_guards["postAppendValidationFailureMustRemoveNewRecord"] = False
+    mutated["appendOnlyGuards"] = mutated_guards
+    try:
+        reconciler.validate_evidence_authority(mutated)
+    except reconciler.ReconcileFailure as exc:
+        if "append authority invalid" not in str(exc):
+            raise AssertionError(f"unexpected reconcile append guard rejection: {exc}") from exc
+    else:
+        raise AssertionError("reconciler accepted weakened append rollback authority")
 
 
 def digest_binding_negative(writer, validator, current_head: str) -> None:
@@ -284,6 +307,7 @@ def main() -> int:
 
     validator = writer.load_validator()
     contract_guard_negative(writer, validator)
+    reconcile_contract_guard_negative(writer, validator)
     post_append_rollback_negative(writer)
 
     current_head = git("rev-parse", "HEAD")
@@ -326,6 +350,7 @@ def main() -> int:
 
     print("PASS: canonical rate-limit operation ledger is validated before append")
     print("PASS: rate-limit operation append rollback contract is fail-closed")
+    print("PASS: rate-limit operation reconcile delegates to append authority")
     print("PASS: invalid canonical operation append is rolled back after validation")
     print("PASS: detached rate-limit operation source commits are rejected")
     print("PASS: untracked and symlinked operation evidence refs are rejected")
