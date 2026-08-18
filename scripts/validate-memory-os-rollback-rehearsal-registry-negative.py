@@ -95,6 +95,50 @@ def validator_rejects_lock_drift(contract: dict[str, Any], contract_bytes: bytes
         CONTRACT_PATH.write_bytes(contract_bytes)
 
 
+def validate_contract_append_authority(
+    writer: Any, contract: dict[str, Any], registry: dict[str, Any],
+    release_registry: dict[str, Any]
+) -> None:
+    cases: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
+        ("contract appendOnly", lambda value: value.__setitem__("appendOnly", False)),
+        (
+            "contract writer path",
+            lambda value: value.__setitem__("writer", "scripts/validate-memory-os-rollback-rehearsal-gate.py"),
+        ),
+        (
+            "contract required fields",
+            lambda value: value.__setitem__(
+                "requiredRequestFields",
+                [item for item in value["requiredRequestFields"] if item != "openRisks"],
+            ),
+        ),
+        (
+            "contract digest guard",
+            lambda value: value.__setitem__(
+                "admissionGuards",
+                [item for item in value["admissionGuards"] if item != writer.EVIDENCE_DIGEST_GUARD],
+            ),
+        ),
+        (
+            "contract production evidence boundary",
+            lambda value: value["evidenceBoundary"].__setitem__("productionEvidence", True),
+        ),
+        (
+            "contract production traffic boundary",
+            lambda value: value["environmentPolicy"].__setitem__("productionTrafficAllowed", True),
+        ),
+    ]
+    for label, mutate in cases:
+        candidate = copy.deepcopy(contract)
+        mutate(candidate)
+        expect_rejected(
+            label,
+            lambda candidate=candidate: writer.validate_registry_for_append(
+                copy.deepcopy(registry), candidate, copy.deepcopy(release_registry)
+            ),
+        )
+
+
 def validate_evidence_ref_containment(writer: Any) -> None:
     fixture_root = ROOT / "docs/fixtures/memory-os-operability"
     leaf_link = fixture_root / ".rollback-rehearsal-ref-link"
@@ -288,6 +332,7 @@ def main() -> int:
     writer.validate_registry_for_append(
         copy.deepcopy(registry), copy.deepcopy(contract), copy.deepcopy(release_registry)
     )
+    validate_contract_append_authority(writer, contract, registry, release_registry)
     validate_evidence_ref_containment(writer)
     validate_evidence_digest_authority(writer)
     validate_planning_progression(reconciler)
@@ -341,7 +386,7 @@ def main() -> int:
     if STATUS_PATH.read_bytes() != status_bytes:
         raise RuntimeError("production status bytes changed after negative suite")
 
-    print("PASS: rollback rehearsal authority accepts planning progression while rejecting corruption, unsafe refs, evidence byte drift and aggregate partial writes")
+    print("PASS: rollback rehearsal authority accepts planning progression while rejecting corrupt contract/registry authority, unsafe refs, evidence byte drift and aggregate partial writes")
     return 0
 
 
