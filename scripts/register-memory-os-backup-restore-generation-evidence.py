@@ -487,6 +487,10 @@ def validate_record(record: dict[str, Any], *, require_current_drill_request: bo
     require(contract.get("typedNonResurrectionAdmissionContract") == str(CANONICAL_NON_RESURRECTION_CONTRACT.relative_to(ROOT)), "typed non-resurrection contract ref drift")
     require(contract.get("typedNonResurrectionAdmissionRegistry") == str(CANONICAL_NON_RESURRECTION_REGISTRY.relative_to(ROOT)), "typed non-resurrection registry ref drift")
     require(contract.get("independentReviewValidator") == str(INDEPENDENT_REVIEW_VALIDATOR.relative_to(ROOT)), "independent review validator ref drift")
+    require(
+        contract.get("recordRules", {}).get("registryMustRevalidateAfterAppendAndRollbackOnFailure") is True,
+        "generation evidence transactional append authority drift",
+    )
     require_canonical_runtime_authority(OBJECTIVES_REGISTRY, CANONICAL_OBJECTIVES_REGISTRY, "recovery objectives registry")
     require_canonical_runtime_authority(DRILL_REQUEST_CONTRACT, CANONICAL_DRILL_REQUEST_CONTRACT, "restore drill request contract")
     require_canonical_runtime_authority(DRILL_REQUEST_REGISTRY, CANONICAL_DRILL_REQUEST_REGISTRY, "restore drill request registry")
@@ -611,6 +615,34 @@ def atomic_write(value: dict[str, Any]) -> None:
             pass
 
 
+def atomic_restore(payload: bytes) -> None:
+    descriptor, temp_name = tempfile.mkstemp(prefix=".backup-restore-generation-rollback.", suffix=".tmp", dir=REGISTRY.parent)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, REGISTRY)
+    finally:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
+
+
+def write_registry_transactionally(value: dict[str, Any]) -> None:
+    try:
+        original = REGISTRY.read_bytes()
+    except OSError as exc:
+        raise Fail("cannot snapshot generation evidence registry before append") from exc
+    atomic_write(value)
+    try:
+        validate_registry_for_append(load(REGISTRY))
+    except Exception:
+        atomic_restore(original)
+        raise
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--record", required=True)
@@ -654,7 +686,7 @@ def main() -> int:
             "production-equivalent recovery candidates require current approved recovery objectives, a current drill request, all fail-closed controls, complete typed non-resurrection coverage and typed append-only independent Security/Operability reviews",
             "this registry never establishes application production readiness"
         ]
-        atomic_write(registry)
+        write_registry_transactionally(registry)
     finally:
         os.close(lock_fd)
         try:
