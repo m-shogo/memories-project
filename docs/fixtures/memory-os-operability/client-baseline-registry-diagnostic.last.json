@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "client-baseline-registry",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "STAGE: py_compile\nSTAGE: source-lineage-negative\nTraceback (most recent call last):\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-client-baseline-lineage-negative.py\", line 143, in <module>\n    raise SystemExit(main())\n                     ^^^^^^\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-client-baseline-lineage-negative.py\", line 131, in main\n    require(validator.commit_is_ancestor(side_commit) is False,\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAttributeError: module 'client_baseline_validator_lineage_negative' has no attribute 'commit_is_ancestor'\n",
+  "containsSecrets": false,
+  "approvedClientBaselineCount": 0,
+  "clientServerSkewEvidence": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
