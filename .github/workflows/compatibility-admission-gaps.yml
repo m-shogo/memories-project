@@ -8,6 +8,7 @@ on:
       - "scripts/validate-memory-os-compatibility-admission-gaps-negative.py"
       - "scripts/register-memory-os-release-baseline.py"
       - "scripts/register-memory-os-release-compatibility-pair.py"
+      - "scripts/validate-memory-os-release-compatibility-pair-independent-review.py"
       - "scripts/register-memory-os-client-baseline.py"
       - "scripts/register-memory-os-parser-artifact.py"
       - "scripts/validate-memory-os-version-compatibility-foundations.py"
@@ -24,6 +25,7 @@ on:
       - "contracts/operations/parser-artifact-registry.v1.json"
       - "contracts/operations/version-compatibility-foundations.v1.json"
       - "contracts/operations/version-compatibility-execution-evidence.v1.json"
+      - "docs/evidence/release-compatibility-pairs/reviews/**"
   push:
     branches:
       - so
@@ -33,6 +35,7 @@ on:
       - "scripts/validate-memory-os-compatibility-admission-gaps-negative.py"
       - "scripts/register-memory-os-release-baseline.py"
       - "scripts/register-memory-os-release-compatibility-pair.py"
+      - "scripts/validate-memory-os-release-compatibility-pair-independent-review.py"
       - "scripts/register-memory-os-client-baseline.py"
       - "scripts/register-memory-os-parser-artifact.py"
       - "scripts/validate-memory-os-version-compatibility-foundations.py"
@@ -49,6 +52,7 @@ on:
       - "contracts/operations/parser-artifact-registry.v1.json"
       - "contracts/operations/version-compatibility-foundations.v1.json"
       - "contracts/operations/version-compatibility-execution-evidence.v1.json"
+      - "docs/evidence/release-compatibility-pairs/reviews/**"
   workflow_dispatch:
 
 permissions:
@@ -90,6 +94,7 @@ jobs:
             scripts/validate-memory-os-compatibility-admission-gaps-negative.py \
             scripts/register-memory-os-release-baseline.py \
             scripts/register-memory-os-release-compatibility-pair.py \
+            scripts/validate-memory-os-release-compatibility-pair-independent-review.py \
             scripts/register-memory-os-client-baseline.py \
             scripts/register-memory-os-parser-artifact.py \
             scripts/validate-memory-os-version-compatibility-foundations.py \
