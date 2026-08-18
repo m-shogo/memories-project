@@ -43,6 +43,24 @@ REGISTRY_FIELDS = {
     "artifacts",
     "limitations",
 }
+FORBIDDEN_RECORD_CONTENT = (
+    "services/import-api/internal/parsersup/worker.go",
+    "memory_os_parser_worker_mode",
+    "go test",
+    "postgres://",
+    "postgresql://",
+    "password=",
+    "authorization: bearer",
+    "minioadmin",
+    "secretaccesskey",
+    "account_id",
+    "session_id",
+    "job_id",
+    "preview_id",
+    "object_key",
+    "apple_subject",
+    "@",
+)
 
 
 class RegistrationFailure(RuntimeError):
@@ -186,7 +204,92 @@ def approved_release_ids() -> set[str]:
     return {item["releaseId"] for item in release_registry["releases"]}
 
 
+def validate_historical_record(
+    record: dict[str, Any], required_fields: set[str], approved_release_ids_value: set[str]
+) -> None:
+    require(set(record) >= required_fields,
+            f"record missing fields: {sorted(required_fields - set(record))}")
+    require(record.get("schemaVersion") == "memory-os-parser-artifact-record.v1",
+            "record schemaVersion drift")
+    require(isinstance(record.get("artifactId"), str) and
+            ARTIFACT_ID_RE.fullmatch(record["artifactId"]) is not None,
+            "artifactId format invalid")
+    require(isinstance(record.get("adapterId"), str) and
+            ADAPTER_RE.fullmatch(record["adapterId"]) is not None,
+            "adapterId format invalid")
+    require(isinstance(record.get("adapterVersion"), str) and
+            VERSION_RE.fullmatch(record["adapterVersion"]) is not None,
+            "adapterVersion format invalid")
+    require(isinstance(record.get("artifactSha256"), str) and
+            DIGEST_RE.fullmatch(record["artifactSha256"]) is not None,
+            "artifact SHA-256 invalid")
+    require(isinstance(record.get("artifactSizeBytes"), int) and
+            not isinstance(record.get("artifactSizeBytes"), bool) and
+            record["artifactSizeBytes"] > 0,
+            "artifactSizeBytes invalid")
+    require(record.get("reviewClass") == "REVIEWED_PARSER_ARTIFACT",
+            "reviewClass must be REVIEWED_PARSER_ARTIFACT")
+    parse_utc(record.get("registeredAt"))
+    for field in ("artifactFormat", "targetOs", "targetArch", "protocolVersion"):
+        require(isinstance(record.get(field), str) and record[field].strip(),
+                f"{field} is required")
+
+    approvers = record.get("approvers")
+    require(isinstance(approvers, list) and len(approvers) == 3,
+            "exactly three artifact approvers are required")
+    roles: set[str] = set()
+    identities: set[str] = set()
+    for approver in approvers:
+        require(isinstance(approver, dict), "approver entry must be an object")
+        role = approver.get("role")
+        identity = approver.get("approverRef")
+        require(role in REQUIRED_ROLES and role not in roles,
+                f"approval role invalid or duplicated: {role}")
+        require(isinstance(identity, str) and APPROVER_RE.fullmatch(identity) is not None,
+                "approverRef must be an operational pseudonym")
+        require(identity not in identities, "duplicate or self-approval detected")
+        roles.add(role)
+        identities.add(identity)
+    require(roles == REQUIRED_ROLES, "required artifact approval roles incomplete")
+
+    for field in ("buildProvenanceRef", "securityReviewRef", "retentionEvidenceRef"):
+        safe_ref(record.get(field), field)
+    for ref in strings(record.get("replayEvidenceRefs"), "replayEvidenceRefs", 1):
+        safe_ref(ref, "replayEvidenceRefs")
+    compatible = strings(record.get("compatibleReleaseIds"), "compatibleReleaseIds", 1)
+    require(set(compatible) <= approved_release_ids_value,
+            "compatibleReleaseIds contains an unapproved release")
+
+    retention = record.get("rollbackRetentionState")
+    require(isinstance(retention, dict) and retention.get("state") in RETENTION_STATES,
+            "rollbackRetentionState invalid")
+    if retention.get("state") == "RETAINED":
+        require(retention.get("immutableLocationVerified") is True,
+                "RETAINED artifact requires immutableLocationVerified=true")
+        safe_ref(retention.get("verificationEvidenceRef"),
+                 "rollbackRetentionState.verificationEvidenceRef")
+    else:
+        require(retention.get("immutableLocationVerified") is False,
+                "non-retained artifact cannot claim immutable location verification")
+
+    risks = record.get("openRisks")
+    require(isinstance(risks, list), "openRisks must be a list")
+    for risk in risks:
+        require(isinstance(risk, dict) and risk.get("riskId") and
+                risk.get("ownerRef") and risk.get("deadline") and risk.get("status"),
+                "open risk entry is incomplete")
+
+    serialized = json.dumps(record, ensure_ascii=False).lower()
+    for forbidden in FORBIDDEN_RECORD_CONTENT:
+        require(forbidden not in serialized,
+                f"record contains forbidden content: {forbidden}")
+
+
 def validate_registry_for_append(registry: dict[str, Any]) -> None:
+    contract = load(CONTRACT_PATH)
+    required_fields = set(strings(contract.get("requiredRecordFields"),
+                                  "requiredRecordFields", 20))
+    release_ids = approved_release_ids()
     require(set(registry) == REGISTRY_FIELDS, "parser artifact registry field set drift")
     require(registry.get("schemaVersion") == "memory-os-parser-artifact-registry.v1",
             "parser artifact registry schema drift")
@@ -221,18 +324,11 @@ def validate_registry_for_append(registry: dict[str, Any]) -> None:
     digests: set[str] = set()
     adapter_versions: set[tuple[str, str]] = set()
     for item in artifacts:
+        validate_historical_record(item, required_fields, release_ids)
         artifact_id = item.get("artifactId")
         digest = item.get("artifactSha256")
         adapter_id = item.get("adapterId")
         adapter_version = item.get("adapterVersion")
-        require(isinstance(artifact_id, str) and ARTIFACT_ID_RE.fullmatch(artifact_id) is not None,
-                "registered artifactId invalid")
-        require(isinstance(digest, str) and DIGEST_RE.fullmatch(digest) is not None,
-                "registered artifactSha256 invalid")
-        require(isinstance(adapter_id, str) and ADAPTER_RE.fullmatch(adapter_id) is not None,
-                "registered adapterId invalid")
-        require(isinstance(adapter_version, str) and VERSION_RE.fullmatch(adapter_version) is not None,
-                "registered adapterVersion invalid")
         pair = (adapter_id, adapter_version)
         require(artifact_id not in ids, f"duplicate registered artifactId: {artifact_id}")
         require(digest not in digests, f"duplicate registered artifact digest: {digest}")
@@ -259,91 +355,13 @@ def validate_registry_for_append(registry: dict[str, Any]) -> None:
 
 
 def validate_record(record: dict[str, Any], required_fields: set[str],
-                    artifact_path: Path, approved_release_ids: set[str]) -> None:
-    require(set(record) >= required_fields,
-            f"record missing fields: {sorted(required_fields - set(record))}")
-    require(record.get("schemaVersion") == "memory-os-parser-artifact-record.v1",
-            "record schemaVersion drift")
-    require(isinstance(record.get("artifactId"), str) and
-            ARTIFACT_ID_RE.fullmatch(record["artifactId"]) is not None,
-            "artifactId format invalid")
-    require(isinstance(record.get("adapterId"), str) and
-            ADAPTER_RE.fullmatch(record["adapterId"]) is not None,
-            "adapterId format invalid")
-    require(isinstance(record.get("adapterVersion"), str) and
-            VERSION_RE.fullmatch(record["adapterVersion"]) is not None,
-            "adapterVersion format invalid")
-    require(record.get("reviewClass") == "REVIEWED_PARSER_ARTIFACT",
-            "reviewClass must be REVIEWED_PARSER_ARTIFACT")
-    parse_utc(record.get("registeredAt"))
-
+                    artifact_path: Path, approved_release_ids_value: set[str]) -> None:
+    validate_historical_record(record, required_fields, approved_release_ids_value)
     actual_digest, actual_size = sha256_file(artifact_path)
-    require(isinstance(record.get("artifactSha256"), str) and
-            DIGEST_RE.fullmatch(record["artifactSha256"]) is not None and
-            record["artifactSha256"] == actual_digest,
+    require(record["artifactSha256"] == actual_digest,
             "artifact SHA-256 does not match exact bytes")
-    require(isinstance(record.get("artifactSizeBytes"), int) and
-            not isinstance(record.get("artifactSizeBytes"), bool) and
-            record["artifactSizeBytes"] > 0 and
-            record["artifactSizeBytes"] == actual_size,
+    require(record["artifactSizeBytes"] == actual_size,
             "artifactSizeBytes does not match exact bytes")
-    for field in ("artifactFormat", "targetOs", "targetArch", "protocolVersion"):
-        require(isinstance(record.get(field), str) and record[field].strip(),
-                f"{field} is required")
-
-    approvers = record.get("approvers")
-    require(isinstance(approvers, list) and len(approvers) == 3,
-            "exactly three artifact approvers are required")
-    roles: set[str] = set()
-    identities: set[str] = set()
-    for approver in approvers:
-        require(isinstance(approver, dict), "approver entry must be an object")
-        role = approver.get("role")
-        identity = approver.get("approverRef")
-        require(role in REQUIRED_ROLES and role not in roles,
-                f"approval role invalid or duplicated: {role}")
-        require(isinstance(identity, str) and APPROVER_RE.fullmatch(identity) is not None,
-                "approverRef must be an operational pseudonym")
-        require(identity not in identities, "duplicate or self-approval detected")
-        roles.add(role)
-        identities.add(identity)
-    require(roles == REQUIRED_ROLES, "required artifact approval roles incomplete")
-
-    for field in ("buildProvenanceRef", "securityReviewRef", "retentionEvidenceRef"):
-        safe_ref(record.get(field), field)
-    for ref in strings(record.get("replayEvidenceRefs"), "replayEvidenceRefs", 1):
-        safe_ref(ref, "replayEvidenceRefs")
-    compatible = strings(record.get("compatibleReleaseIds"), "compatibleReleaseIds", 1)
-    require(set(compatible) <= approved_release_ids,
-            "compatibleReleaseIds contains an unapproved release")
-
-    retention = record.get("rollbackRetentionState")
-    require(isinstance(retention, dict) and retention.get("state") in RETENTION_STATES,
-            "rollbackRetentionState invalid")
-    if retention.get("state") == "RETAINED":
-        require(retention.get("immutableLocationVerified") is True,
-                "RETAINED artifact requires immutableLocationVerified=true")
-        safe_ref(retention.get("verificationEvidenceRef"),
-                 "rollbackRetentionState.verificationEvidenceRef")
-    else:
-        require(retention.get("immutableLocationVerified") is False,
-                "non-retained artifact cannot claim immutable location verification")
-
-    risks = record.get("openRisks")
-    require(isinstance(risks, list), "openRisks must be a list")
-    for risk in risks:
-        require(isinstance(risk, dict) and risk.get("riskId") and
-                risk.get("ownerRef") and risk.get("deadline") and risk.get("status"),
-                "open risk entry is incomplete")
-
-    serialized = json.dumps(record, ensure_ascii=False).lower()
-    for forbidden in (
-        "postgres://", "postgresql://", "password=", "authorization: bearer",
-        "minioadmin", "secretaccesskey", "account_id", "session_id", "job_id",
-        "preview_id", "object_key", "apple_subject", "@",
-    ):
-        require(forbidden not in serialized,
-                f"record contains forbidden content: {forbidden}")
 
 
 def acquire_lock() -> int:
