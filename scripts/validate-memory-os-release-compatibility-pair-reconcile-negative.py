@@ -91,9 +91,37 @@ def validate_gap_projection(reconciler: ModuleType) -> None:
             "unsatisfied release/pair count gaps were removed")
 
 
+def validate_canonical_validator_chain(reconciler: ModuleType) -> None:
+    expected = [
+        reconciler.VALIDATOR,
+        reconciler.INDEPENDENT_REVIEW_VALIDATOR,
+        reconciler.VERSION_EXECUTION_VALIDATOR,
+        reconciler.OPERABILITY_VALIDATOR,
+    ]
+    observed: list[Path] = []
+    original_run = reconciler.subprocess.run
+
+    def fake_run(command: list[str], *, cwd: Path, check: bool) -> None:
+        require(cwd == ROOT, "canonical validator cwd drift")
+        require(check is True, "canonical validators must fail closed")
+        require(len(command) == 2 and command[0] == sys.executable,
+                "canonical validator command drift")
+        observed.append(Path(command[1]))
+
+    reconciler.subprocess.run = fake_run
+    try:
+        reconciler.run_canonical_validators()
+    finally:
+        reconciler.subprocess.run = original_run
+
+    require(observed == expected,
+            "release pair transaction does not enforce pair/review/version/operability validators in order")
+
+
 def main() -> int:
     reconciler = load_module()
     validate_gap_projection(reconciler)
+    validate_canonical_validator_chain(reconciler)
     originals = {path: path.read_bytes() for path in (CONTRACT, GAPS, STATUS)}
 
     contract = copy.deepcopy(load(CONTRACT))
@@ -128,7 +156,7 @@ def main() -> int:
     for path, payload in originals.items():
         require(path.read_bytes() == payload, f"partial release-pair authority write survived rollback: {path.relative_to(ROOT)}")
 
-    print("PASS: release compatibility pair gap projection is monotonic and reconcile rollback is transactional")
+    print("PASS: release compatibility pair gap projection is monotonic and aggregate reconcile rollback is transactional")
     return 0
 
 
