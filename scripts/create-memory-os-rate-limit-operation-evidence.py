@@ -15,6 +15,11 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-rate-limit-operation-evidence.py"
 DEFAULT_LEDGER = ROOT / "docs/evidence/rate-limit-operations"
+REQUIRED_APPEND_GUARDS = {
+    "canonicalLedgerMustValidateBeforeAppend",
+    "canonicalLedgerMustValidateAfterAppend",
+    "postAppendValidationFailureMustRemoveNewRecord",
+}
 
 
 class WriterFailure(RuntimeError):
@@ -42,6 +47,15 @@ def load_input(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise WriterFailure("input JSON root must be an object")
     return value
+
+
+def validate_contract_append_guards(contract: dict[str, Any]) -> None:
+    guards = contract.get("appendOnlyGuards")
+    if not isinstance(guards, dict) or set(guards) != REQUIRED_APPEND_GUARDS:
+        raise WriterFailure("appendOnlyGuards authority field set drift")
+    for guard in sorted(REQUIRED_APPEND_GUARDS):
+        if guards.get(guard) is not True:
+            raise WriterFailure(f"appendOnlyGuards.{guard} must be true")
 
 
 def validate_canonical_authority(
@@ -76,6 +90,7 @@ def main() -> int:
     validator = load_validator()
     record = load_input(args.input)
     contract, policy_ids = validator.load_contract_context()
+    validate_contract_append_guards(contract)
     try:
         validator.validate_record(record, contract, policy_ids, writer_input=True)
         record["evidenceDigestsByRef"] = validator.expected_evidence_digests(record)
