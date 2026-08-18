@@ -9,6 +9,7 @@ on:
       - "contracts/operations/release-baseline-registry-contract.v1.json"
       - "contracts/operations/release-baseline-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
+      - "docs/evidence/rollback-rehearsal/approvals/**"
       - "docs/runbooks/memory-os-rollback-rehearsal.md"
       - "scripts/register-memory-os-release-baseline.py"
       - "scripts/validate-memory-os-release-baseline-registry.py"
@@ -28,6 +29,7 @@ on:
       - "contracts/operations/release-baseline-registry-contract.v1.json"
       - "contracts/operations/release-baseline-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
+      - "docs/evidence/rollback-rehearsal/approvals/**"
       - "docs/runbooks/memory-os-rollback-rehearsal.md"
       - "scripts/register-memory-os-release-baseline.py"
       - "scripts/validate-memory-os-release-baseline-registry.py"
@@ -168,8 +170,8 @@ jobs:
                   "tenant or deletion authority is ambiguous",
               ],
               "approvers": [
-                  {"role": "RELEASE_OWNER", "approverRef": "apr_release_ci11"},
-                  {"role": "DATABASE_RECOVERY_OWNER", "approverRef": "apr_database_ci22"},
+                  {"role": "RELEASE_OWNER", "approverRef": "apr_release_ci11", "approvalEvidenceRef": "docs/evidence/rollback-rehearsal/approvals/unapproved-release.json"},
+                  {"role": "DATABASE_RECOVERY_OWNER", "approverRef": "apr_database_ci22", "approvalEvidenceRef": "docs/evidence/rollback-rehearsal/approvals/unapproved-database.json"},
               ],
               "openRisks": [],
           }
