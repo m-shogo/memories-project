@@ -120,6 +120,29 @@ def prove_contract_lock_binding_rejection(validator: Any) -> None:
         CONTRACT.write_bytes(original)
 
 
+def prove_writer_post_append_rollback(writer: Any, original: bytes) -> None:
+    candidate = json.loads(original.decode("utf-8"))
+    candidate["admittedRuntimeCount"] = 1
+    original_post_validator = writer.validate_registry_after_append
+
+    def reject_after_append(_registry: dict[str, Any]) -> list[dict[str, Any]]:
+        raise writer.Fail("synthetic post-append validation failure")
+
+    writer.validate_registry_after_append = reject_after_append
+    try:
+        try:
+            writer.commit_registry_update(candidate, original)
+        except writer.Fail:
+            pass
+        else:
+            raise RuntimeError("writer accepted synthetic post-append validation failure")
+        if REGISTRY.read_bytes() != original:
+            raise RuntimeError("writer failed to rollback registry after post-append validation failure")
+    finally:
+        writer.validate_registry_after_append = original_post_validator
+        REGISTRY.write_bytes(original)
+
+
 def prove_reconciler_no_autoheal(reconciler: Any, original: bytes) -> None:
     contract_before = CONTRACT.read_bytes()
     status_before = STATUS.read_bytes()
@@ -189,15 +212,17 @@ def main() -> int:
             expect_rejected(writer, name, mutate, original)
         prove_executable_authority_rejection(validator, writer, reconciler)
         prove_contract_lock_binding_rejection(validator)
+        prove_writer_post_append_rollback(writer, original)
         prove_reconciler_no_autoheal(reconciler, original)
         prove_reconciler_status_rollback(reconciler)
     finally:
         REGISTRY.write_bytes(original)
 
-    print("PASS: distributed rate-limit runtime registry corruption, authority substitution and reconcile partial writes are rejected")
+    print("PASS: distributed rate-limit runtime registry corruption, authority substitution, append rollback and reconcile partial writes are rejected")
     print(f"corruption cases: {len(cases)}")
     print("executable authority substitution: rejected")
     print("contract append lock substitution: rejected")
+    print("writer post-append rollback: true")
     print("reconciler auto-heal: false")
     print("reconciler partial writes: false")
     print("production readiness: false")
