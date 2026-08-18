@@ -33,6 +33,9 @@ EXISTING = (
     "isolated PostgreSQL 16 to 17 logical forward restore preserves schema authority, RLS, active session resolution, deletion non-resurrection and the complete canonical SQL integration suite",
     "release, rollback-admission, release-pair and parser-artifact authorities are independently append-only and cannot be replaced by candidate, CI, tag, digest or test-harness evidence",
 )
+LEGACY_EMPTY_SOURCE_EVIDENCE = (
+    "release, rollback-admission and parser-artifact authorities remain deliberately empty so candidate, CI, tag, digest and test-harness evidence cannot manufacture approval"
+)
 PAIR_MISSING = "approved predecessor and successor release pair despite candidate-only mixed-version evidence"
 PARSER_MISSING = "reviewed production parser artifact with exact-byte replay and immutable rollback retention evidence"
 MISSING_ALWAYS = (
@@ -98,6 +101,15 @@ def remove_value(items: list[Any], value: str) -> bool:
     return len(items) != original_len
 
 
+def reconcile_existing_evidence(items: list[Any], source_counts: dict[str, int]) -> bool:
+    changed = False
+    for item in EXISTING:
+        changed = append_once(items, item) or changed
+    if any(source_counts[field] > 0 for field in ("approvedReleases", "rollbackRequests", "reviewedParserArtifacts")):
+        changed = remove_value(items, LEGACY_EMPTY_SOURCE_EVIDENCE) or changed
+    return changed
+
+
 def require_zero_count(boundaries: dict[str, Any], field: str) -> None:
     value = boundaries.get(field)
     require(isinstance(value, int) and not isinstance(value, bool) and value == 0,
@@ -155,8 +167,6 @@ def validate_source_registries() -> dict[str, int]:
         release_writer.validate_registry_for_append(releases, release_contract)
         rollback_writer.validate_registry_for_append(rollback, rollback_contract, releases)
         parser_writer.validate_registry_for_append(parsers)
-        # The pair writer's shared registry guard revalidates every historical row,
-        # including typed Security/Operability independent-review semantics.
         pair_writer.validate_registry_for_append(pairs)
     except Exception as exc:
         raise ReconcileFailure(f"compatibility source authority invalid: {exc}") from exc
@@ -201,9 +211,7 @@ def main() -> int:
     require(isinstance(missing, list), "OPS-P0-008 missingEvidence must be a list")
     require(isinstance(refs, list), "OPS-P0-008 evidenceRefs must be a list")
 
-    changed = False
-    for item in EXISTING:
-        changed = append_once(existing, item) or changed
+    changed = reconcile_existing_evidence(existing, source_counts)
     for item in MISSING_ALWAYS:
         changed = append_once(missing, item) or changed
     if source_counts["approvedReleasePairs"] == 0:
