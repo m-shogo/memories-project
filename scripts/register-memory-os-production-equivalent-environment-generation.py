@@ -92,6 +92,12 @@ def require_canonical_runtime_authorities() -> None:
     require_canonical_runtime_authority(ENV_SCHEMA, CANONICAL_ENV_SCHEMA, "environment record schema")
     require_canonical_runtime_authority(GEN_SCHEMA, CANONICAL_GEN_SCHEMA, "generation record schema")
     require_canonical_runtime_authority(ENV_VALIDATOR, CANONICAL_ENV_VALIDATOR, "environment record semantic validator")
+    if ROOT == CANONICAL_ROOT and CONTRACT == CANONICAL_CONTRACT:
+        contract = load(CONTRACT)
+        require(
+            contract.get("bindingRules", {}).get("appendMustRevalidateCanonicalRegistryAndRollbackOnFailure") is True,
+            "environment generation transactional append authority drift",
+        )
 
 
 def load_environment_validator():
@@ -308,6 +314,34 @@ def atomic_write(value: dict[str, Any]) -> None:
             pass
 
 
+def atomic_restore(payload: bytes) -> None:
+    descriptor, temp_name = tempfile.mkstemp(prefix=".environment-generation-rollback.", suffix=".tmp", dir=REGISTRY.parent)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, REGISTRY)
+    finally:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
+
+
+def write_registry_transactionally(value: dict[str, Any]) -> None:
+    try:
+        original = REGISTRY.read_bytes()
+    except OSError as exc:
+        raise Fail("cannot snapshot environment generation registry before append") from exc
+    atomic_write(value)
+    try:
+        validate_registry_for_append(load(REGISTRY))
+    except Exception:
+        atomic_restore(original)
+        raise
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--record", required=True)
@@ -348,7 +382,7 @@ def main() -> int:
             "environmentId alone is never an evidence key",
             "generation registration does not by itself prove production-equivalent dependencies or application readiness"
         ]
-        atomic_write(registry)
+        write_registry_transactionally(registry)
     finally:
         os.close(lock_fd)
         try:
