@@ -258,6 +258,112 @@ def validate_approver_field_authority(writer: Any) -> None:
     )
 
 
+def validate_nested_request_field_authority(writer: Any) -> None:
+    source_id = "rel_20991231_source"
+    target_id = "rel_20991230_target"
+    source_sha = "1" * 40
+    target_sha = "2" * 40
+    release_registry = {
+        "releases": [
+            {
+                "releaseId": source_id,
+                "commitSha": source_sha,
+                "releaseTag": "v9999.1.0",
+                "rollbackEligibility": {"status": "NOT_ELIGIBLE", "verified": False, "conditions": []},
+            },
+            {
+                "releaseId": target_id,
+                "commitSha": target_sha,
+                "releaseTag": "v9999.0.0",
+                "rollbackEligibility": {"status": "ELIGIBLE", "verified": True, "conditions": []},
+            },
+        ]
+    }
+    request = {
+        "schemaVersion": "memory-os-rollback-rehearsal-request.v1",
+        "rehearsalId": "rrh_20991231_nested-shape",
+        "requestedAt": "2099-12-31T00:00:00Z",
+        "sourceReleaseId": source_id,
+        "rollbackTargetReleaseId": target_id,
+        "sourceCommitSha": source_sha,
+        "rollbackTargetCommitSha": target_sha,
+        "sourceReleaseTag": "v9999.1.0",
+        "rollbackTargetReleaseTag": "v9999.0.0",
+        "environmentClass": "ISOLATED_NON_PRODUCTION_REHEARSAL",
+        "trafficPolicy": {
+            "productionTrafficAllowed": False,
+            "productionCredentialsAllowed": False,
+            "automaticPromotionAllowed": False,
+            "syntheticOrApprovedSanitizedDataOnly": True,
+        },
+        "databasePolicy": {
+            "destructiveDownMigrationAllowed": False,
+            "automaticRecoveryDecisionAllowed": False,
+            "recoveryPointEvidenceRef": "contracts/operations/backup-restore-contract.v1.json",
+            "forwardFixDecisionRef": "contracts/operations/migration-lifecycle-contract.v1.json",
+        },
+        "artifactPolicy": {
+            "exactRetainedArtifactsRequired": True,
+            "parserArtifactEvidenceRef": "contracts/operations/parser-sandbox-contract.v1.json",
+            "objectVersionEvidenceRef": "contracts/operations/local-object-version-restore-contract.v1.json",
+        },
+        "entryCriteriaRefs": [
+            "contracts/operations/release-baseline-registry.v1.json",
+            "contracts/operations/mixed-version-apply-contract.v1.json",
+            "contracts/operations/backup-restore-contract.v1.json",
+            "contracts/operations/migration-lifecycle-contract.v1.json",
+            "contracts/operations/version-compatibility-contract.v1.json",
+        ],
+        "stopConditions": [
+            "release identity differs from approved authority",
+            "rollback eligibility is absent",
+            "exact retained artifact is unavailable",
+            "database recovery point is incoherent",
+            "destructive schema contraction is required",
+            "tenant or deletion authority is ambiguous",
+        ],
+        "approvers": [
+            {"role": "RELEASE_OWNER", "approverRef": "apr_release_ci11"},
+            {"role": "DATABASE_RECOVERY_OWNER", "approverRef": "apr_database_ci22"},
+        ],
+        "openRisks": [],
+    }
+    writer.validate_request(
+        copy.deepcopy(request), writer.REQUIRED_REQUEST_FIELDS, release_registry
+    )
+
+    mutations: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
+        (
+            "trafficPolicy unknown field",
+            lambda value: value["trafficPolicy"].__setitem__("productionEndpoint", True),
+        ),
+        (
+            "databasePolicy unknown field",
+            lambda value: value["databasePolicy"].__setitem__("rollbackExecuted", True),
+        ),
+        (
+            "artifactPolicy unknown field",
+            lambda value: value["artifactPolicy"].__setitem__("productionArtifact", True),
+        ),
+        (
+            "openRisks unknown field",
+            lambda value: value.__setitem__(
+                "openRisks",
+                [{"riskId": "risk_ci", "ownerRef": "apr_release_ci11", "deadline": "2099-12-31", "status": "OPEN", "approved": True}],
+            ),
+        ),
+    ]
+    for label, mutate in mutations:
+        candidate = copy.deepcopy(request)
+        mutate(candidate)
+        expect_rejected(
+            label,
+            lambda candidate=candidate: writer.validate_request(
+                candidate, writer.REQUIRED_REQUEST_FIELDS, release_registry
+            ),
+        )
+
+
 def validate_planning_progression(reconciler: Any) -> None:
     contract = copy.deepcopy(load_json(CONTRACT_PATH))
     changed = reconciler.reconcile_contract(contract, 2, 1, 1, 1)
@@ -369,6 +475,7 @@ def main() -> int:
     validate_evidence_ref_containment(writer)
     validate_evidence_digest_authority(writer)
     validate_approver_field_authority(writer)
+    validate_nested_request_field_authority(writer)
     validate_planning_progression(reconciler)
     validate_transaction_rollback(reconciler)
 
@@ -420,7 +527,7 @@ def main() -> int:
     if STATUS_PATH.read_bytes() != status_bytes:
         raise RuntimeError("production status bytes changed after negative suite")
 
-    print("PASS: rollback rehearsal authority accepts planning progression while rejecting corrupt contract/registry authority, unsafe refs, uncommitted or stale evidence bytes, approver shape drift and aggregate partial writes")
+    print("PASS: rollback rehearsal authority accepts planning progression while rejecting corrupt contract/registry authority, unsafe refs, uncommitted or stale evidence bytes, closed-shape request drift and aggregate partial writes")
     return 0
 
 
