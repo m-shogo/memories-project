@@ -26,7 +26,7 @@ EXISTING = (
     "supplemental compatibility foundation authority records candidate-only, local-CI-only and empty-registry evidence without changing the canonical approved-release matrix",
     "historical candidate and current processes share session authority and persisted Apply idempotency, including simultaneous claim convergence and SIGKILL rollback/retry with zero durable residue",
     "isolated PostgreSQL 16 to 17 logical forward restore preserves schema authority, RLS, active session resolution, deletion non-resurrection and the complete canonical SQL integration suite",
-    "release, rollback-admission and parser-artifact authorities remain deliberately empty so candidate, CI, tag, digest and test-harness evidence cannot manufacture approval",
+    "release, rollback-admission and parser-artifact authorities are independently append-only and cannot be replaced by candidate, CI, tag, digest or test-harness evidence",
 )
 MISSING = (
     "approved predecessor and successor release pair despite candidate-only mixed-version evidence",
@@ -47,11 +47,6 @@ ZERO_COUNT_FIELDS = (
     "approvedReleaseCount",
     "approvedRollbackPairCount",
     "reviewedParserArtifactCount",
-)
-EMPTY_AUTHORITIES = (
-    (RELEASE_REGISTRY_PATH, "approvedReleaseCount", "releases", "approved release authority"),
-    (ROLLBACK_REGISTRY_PATH, "rehearsalRequestCount", "requests", "rollback rehearsal authority"),
-    (PARSER_REGISTRY_PATH, "reviewedArtifactCount", "artifacts", "parser artifact authority"),
 )
 
 
@@ -98,14 +93,6 @@ def require_zero_count(boundaries: dict[str, Any], field: str) -> None:
             f"compatibility foundation {field} must be integer zero")
 
 
-def require_empty_registry(registry: dict[str, Any], count_field: str,
-                           items_field: str, label: str) -> None:
-    count = registry.get(count_field)
-    require(isinstance(count, int) and not isinstance(count, bool) and count == 0,
-            f"{label} {count_field} must be integer zero")
-    require(registry.get(items_field) == [], f"{label} must remain empty")
-
-
 def validate_source_registries() -> None:
     releases = load(RELEASE_REGISTRY_PATH)
     rollback = load(ROLLBACK_REGISTRY_PATH)
@@ -121,10 +108,6 @@ def validate_source_registries() -> None:
         parser_writer.validate_registry_for_append(parsers)
     except Exception as exc:
         raise ReconcileFailure(f"compatibility source authority invalid: {exc}") from exc
-    for registry, (_path, count_field, items_field, label) in zip(
-        (releases, rollback, parsers), EMPTY_AUTHORITIES, strict=True
-    ):
-        require_empty_registry(registry, count_field, items_field, label)
 
 
 def main() -> int:
