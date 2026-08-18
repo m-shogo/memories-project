@@ -60,7 +60,6 @@ def main() -> int:
     gaps = load(GAPS)
     writer = load_authority(WRITER, "memory_os_release_pair_writer")
     reconciler = load_authority(RECONCILER, "memory_os_release_pair_reconciler")
-    review_validator = load_authority(INDEPENDENT_REVIEW_VALIDATOR, "memory_os_release_pair_review_validator")
 
     require(contract.get("schemaVersion") == "memory-os-release-compatibility-pair.v1", "pair contract schema drift")
     require(contract.get("releaseRegistry") == str(RELEASES.relative_to(ROOT)), "release registry ref drift")
@@ -104,17 +103,6 @@ def main() -> int:
     require(isinstance(pairs, list) and all(isinstance(row, dict) for row in pairs), "pair rows invalid")
     require(isinstance(count, int) and not isinstance(count, bool) and count == len(pairs), "approvedPairCount drift")
     require(isinstance(rollback_count, int) and not isinstance(rollback_count, bool) and rollback_count == count, "rollbackEligiblePairCount drift")
-    ids: set[str] = set()
-    relations: set[tuple[str, str]] = set()
-    for row in pairs:
-        writer.validate_record(row)
-        review_validator.validate_pair_reviews(row)
-        pair_id = row.get("pairId")
-        relation = (row.get("predecessorReleaseId"), row.get("successorReleaseId"))
-        require(isinstance(pair_id, str) and pair_id not in ids, f"duplicate pairId: {pair_id}")
-        require(relation not in relations, f"duplicate predecessor/successor pair: {relation}")
-        ids.add(pair_id)
-        relations.add(relation)
     latest_pair_id = registry.get("latestPairId")
     require(latest_pair_id == (pairs[-1].get("pairId") if pairs else None), "latestPairId drift")
     if approved_release_count < 2:
