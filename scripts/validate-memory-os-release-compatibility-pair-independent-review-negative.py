@@ -12,6 +12,7 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-release-compatibility-pair-independent-review.py"
+WRITER = ROOT / "scripts/register-memory-os-release-compatibility-pair.py"
 
 
 class Fail(RuntimeError):
@@ -35,6 +36,15 @@ def expect_rejected(name: str, action: Callable[[], None]) -> None:
     try:
         action()
     except Exception:
+        return
+    raise Fail(f"typed independent review accepted invalid case: {name}")
+
+
+def expect_rejected_with(name: str, expected: str, action: Callable[[], None]) -> None:
+    try:
+        action()
+    except Exception as exc:
+        require(expected in str(exc), f"{name} rejected for wrong reason: {exc}")
         return
     raise Fail(f"typed independent review accepted invalid case: {name}")
 
@@ -123,7 +133,48 @@ def main() -> int:
     for name, action in cases:
         expect_rejected(name, action)
 
-    print(f"PASS: typed release-pair independent review rejects {len(cases)} semantic bypass cases")
+    writer = load_module(WRITER, "memory_os_release_pair_writer_review_delegation_negative")
+    original_validate_record = writer.validate_record
+    original_validated_release_registry = writer.validated_release_registry
+    original_load_module = writer.load_module
+
+    class RejectingReviewValidator:
+        @staticmethod
+        def validate_pair_reviews(_pair: dict[str, Any]) -> None:
+            raise RuntimeError("controlled typed review rejection")
+
+    try:
+        writer.validate_record = lambda _row: None
+        writer.validated_release_registry = lambda: {"approvedReleaseCount": 2}
+        writer.load_module = lambda _path, _name: RejectingReviewValidator
+        historical_registry = {
+            "schemaVersion": "memory-os-release-compatibility-pair-registry.v1",
+            "appendOnly": True,
+            "approvedPairCount": 1,
+            "rollbackEligiblePairCount": 1,
+            "latestPairId": "rcp_release_pair_test1",
+            "pairs": [
+                {
+                    "pairId": "rcp_release_pair_test1",
+                    "predecessorReleaseId": "rel_20260815_pairpred",
+                    "successorReleaseId": "rel_20260816_pairsucc",
+                }
+            ],
+            "productionEvidence": False,
+            "productionReady": False,
+            "limitations": ["synthetic registry used only to prove historical review delegation"],
+        }
+        expect_rejected_with(
+            "historical registry typed review delegation",
+            "typed independent review authority invalid",
+            lambda: writer.validate_registry_for_append(historical_registry),
+        )
+    finally:
+        writer.validate_record = original_validate_record
+        writer.validated_release_registry = original_validated_release_registry
+        writer.load_module = original_load_module
+
+    print(f"PASS: typed release-pair independent review rejects {len(cases)} semantic bypass cases and historical registry bypass")
     return 0
 
 
