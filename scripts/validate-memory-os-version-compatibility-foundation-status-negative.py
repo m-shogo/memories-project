@@ -39,18 +39,6 @@ def expect_rejection(module, value, field: str) -> None:
     require(rejected, f"invalid zero-count authority accepted for {field}: {value!r}")
 
 
-def expect_registry_rejection(module, count, count_field: str,
-                              items_field: str, label: str, items=None) -> None:
-    registry = {count_field: count, items_field: [] if items is None else items}
-    rejected = False
-    try:
-        module.require_empty_registry(registry, count_field, items_field, label)
-    except module.ReconcileFailure as exc:
-        require(label in str(exc), f"unexpected registry rejection for {label}: {exc}")
-        rejected = True
-    require(rejected, f"invalid empty authority accepted for {label}: {registry!r}")
-
-
 def expect_source_authority_rejection(reconciler, validator, path: Path, field: str,
                                       replacement, label: str) -> None:
     original = path.read_bytes()
@@ -69,7 +57,7 @@ def expect_source_authority_rejection(reconciler, validator, path: Path, field: 
 
         rejected = False
         try:
-            validator.validate_empty_authorities()
+            validator.validate_source_authorities()
         except validator.ValidationFailure as exc:
             require("compatibility source authority invalid" in str(exc),
                     f"unexpected standalone validator rejection for {label}: {exc}")
@@ -101,6 +89,57 @@ def expect_foundation_boolean_count_rejection(validator, field: str) -> None:
             f"foundation contract changed after boolean-count rejection for {field}")
 
 
+def expect_nonempty_source_inventory_allowed(module, validator_mode: bool) -> None:
+    releases = {"approvedReleaseCount": 2, "releases": [{"id": "rel_a"}, {"id": "rel_b"}]}
+    rollback = {"rehearsalRequestCount": 1, "requests": [{"id": "rr_a"}]}
+    parsers = {"reviewedArtifactCount": 1, "artifacts": [{"id": "pa_a"}]}
+    release_contract = {"contract": "release"}
+    rollback_contract = {"contract": "rollback"}
+    values = {
+        module.RELEASE_REGISTRY_PATH: releases,
+        module.ROLLBACK_REGISTRY_PATH: rollback,
+        module.PARSER_REGISTRY_PATH: parsers,
+        module.RELEASE_CONTRACT_PATH: release_contract,
+        module.ROLLBACK_CONTRACT_PATH: rollback_contract,
+    }
+
+    class ReleaseWriter:
+        @staticmethod
+        def validate_registry_for_append(registry, contract):
+            require(registry is releases and contract is release_contract,
+                    "release shared validator did not receive synthetic authority")
+
+    class RollbackWriter:
+        @staticmethod
+        def validate_registry_for_append(registry, contract, release_registry):
+            require(registry is rollback and contract is rollback_contract and release_registry is releases,
+                    "rollback shared validator did not receive synthetic authority")
+
+    class ParserWriter:
+        @staticmethod
+        def validate_registry_for_append(registry):
+            require(registry is parsers,
+                    "parser shared validator did not receive synthetic authority")
+
+    writers = {
+        module.RELEASE_WRITER_PATH: ReleaseWriter,
+        module.ROLLBACK_WRITER_PATH: RollbackWriter,
+        module.PARSER_WRITER_PATH: ParserWriter,
+    }
+    original_load = module.load
+    original_load_module = module.load_module
+    try:
+        module.load = lambda path: values[path]
+        module.load_module = lambda path, _name: writers[path]
+        if validator_mode:
+            module.validate_source_authorities()
+        else:
+            module.validate_source_registries()
+    finally:
+        module.load = original_load
+        module.load_module = original_load_module
+
+
 def main() -> int:
     reconciler = load_module(RECONCILER, "compatibility_foundation_status_reconciler")
     validator = load_module(FOUNDATION_VALIDATOR, "compatibility_foundation_validator")
@@ -111,14 +150,8 @@ def main() -> int:
         reconciler.require_zero_count({field: 0}, field)
         expect_foundation_boolean_count_rejection(validator, field)
 
-    for _path, count_field, items_field, label in reconciler.EMPTY_AUTHORITIES:
-        expect_registry_rejection(reconciler, False, count_field, items_field, label)
-        expect_registry_rejection(reconciler, True, count_field, items_field, label)
-        expect_registry_rejection(reconciler, -1, count_field, items_field, label)
-        expect_registry_rejection(reconciler, 1, count_field, items_field, label)
-        expect_registry_rejection(reconciler, 0, count_field, items_field, label, items=[{"forged": True}])
-        reconciler.require_empty_registry({count_field: 0, items_field: []},
-                                          count_field, items_field, label)
+    expect_nonempty_source_inventory_allowed(reconciler, validator_mode=False)
+    expect_nonempty_source_inventory_allowed(validator, validator_mode=True)
 
     expect_source_authority_rejection(
         reconciler, validator, reconciler.RELEASE_REGISTRY_PATH, "registryClass",
@@ -133,7 +166,7 @@ def main() -> int:
         True, "parser artifact",
     )
 
-    print("PASS: compatibility foundation reconciler and validator fail closed on source authority drift")
+    print("PASS: compatibility foundations accept canonical non-empty source inventory while rejecting authority drift")
     return 0
 
 
