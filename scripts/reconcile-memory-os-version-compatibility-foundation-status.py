@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -12,9 +13,14 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 FOUNDATION_PATH = ROOT / "contracts/operations/version-compatibility-foundations.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+RELEASE_CONTRACT_PATH = ROOT / "contracts/operations/release-baseline-registry-contract.v1.json"
 RELEASE_REGISTRY_PATH = ROOT / "contracts/operations/release-baseline-registry.v1.json"
+RELEASE_WRITER_PATH = ROOT / "scripts/register-memory-os-release-baseline.py"
+ROLLBACK_CONTRACT_PATH = ROOT / "contracts/operations/rollback-rehearsal-gate-contract.v1.json"
 ROLLBACK_REGISTRY_PATH = ROOT / "contracts/operations/rollback-rehearsal-registry.v1.json"
+ROLLBACK_WRITER_PATH = ROOT / "scripts/request-memory-os-rollback-rehearsal.py"
 PARSER_REGISTRY_PATH = ROOT / "contracts/operations/parser-artifact-registry.v1.json"
+PARSER_WRITER_PATH = ROOT / "scripts/register-memory-os-parser-artifact.py"
 
 EXISTING = (
     "supplemental compatibility foundation authority records candidate-only, local-CI-only and empty-registry evidence without changing the canonical approved-release matrix",
@@ -69,6 +75,16 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def load_module(path: Path, name: str) -> Any:
+    require(path.is_file(), f"missing authority module: {path.relative_to(ROOT)}")
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None,
+            f"cannot load authority module: {path.relative_to(ROOT)}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def append_once(items: list[Any], value: str) -> bool:
     if value in items:
         return False
@@ -90,6 +106,27 @@ def require_empty_registry(registry: dict[str, Any], count_field: str,
     require(registry.get(items_field) == [], f"{label} must remain empty")
 
 
+def validate_source_registries() -> None:
+    releases = load(RELEASE_REGISTRY_PATH)
+    rollback = load(ROLLBACK_REGISTRY_PATH)
+    parsers = load(PARSER_REGISTRY_PATH)
+    release_contract = load(RELEASE_CONTRACT_PATH)
+    rollback_contract = load(ROLLBACK_CONTRACT_PATH)
+    release_writer = load_module(RELEASE_WRITER_PATH, "memory_os_release_baseline_writer_for_foundation")
+    rollback_writer = load_module(ROLLBACK_WRITER_PATH, "memory_os_rollback_rehearsal_writer_for_foundation")
+    parser_writer = load_module(PARSER_WRITER_PATH, "memory_os_parser_artifact_writer_for_foundation")
+    try:
+        release_writer.validate_registry_for_append(releases, release_contract)
+        rollback_writer.validate_registry_for_append(rollback, rollback_contract, releases)
+        parser_writer.validate_registry_for_append(parsers)
+    except Exception as exc:
+        raise ReconcileFailure(f"compatibility source authority invalid: {exc}") from exc
+    for registry, (_path, count_field, items_field, label) in zip(
+        (releases, rollback, parsers), EMPTY_AUTHORITIES, strict=True
+    ):
+        require_empty_registry(registry, count_field, items_field, label)
+
+
 def main() -> int:
     foundation = load(FOUNDATION_PATH)
     boundaries = foundation.get("aggregateBoundaries")
@@ -103,8 +140,7 @@ def main() -> int:
             boundaries.get("productionDecision") == "NO_GO",
             "compatibility foundation boundary drift")
 
-    for path, count_field, items_field, label in EMPTY_AUTHORITIES:
-        require_empty_registry(load(path), count_field, items_field, label)
+    validate_source_registries()
 
     status = load(STATUS_PATH)
     require(status.get("productionDecision") == "NO_GO",
