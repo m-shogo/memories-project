@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "migration-production-shaped-admission",
+  "result": "FAIL",
+  "exitCode": 1,
+  "sourceCommitSha": "8caaf8b5770ad7c3cd9a54b85c70aa307f4552ac",
+  "output": "PASS: migration production-shaped admission registry, digest authority, append-lock authority, upstream release-pair, ledger, release, external evidence containment, and independent-review authority drift are rejected\nTraceback (most recent call last):\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-migration-production-shaped-admission-reconcile-rollback.py\", line 61, in <module>\n    raise SystemExit(main())\n                     ^^^^^^\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-migration-production-shaped-admission-reconcile-rollback.py\", line 46, in main\n    module.main()\n  File \"/home/runner/work/memories-project/memories-project/scripts/reconcile-memory-os-migration-production-shaped-admission.py\", line 93, in main\n    require(path.is_file(), f\"migration production admission authority missing: {path.relative_to(ROOT)}\")\n                                                                                 ^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.13/x64/lib/python3.12/pathlib.py\", line 682, in relative_to\n    raise ValueError(f\"{str(self)!r} is not in the subpath of {str(other)!r}\")\nValueError: '/tmp/memory-os-migration-post-validator-z9norwhc/fail_validator.py' is not in the subpath of '/home/runner/work/memories-project/memories-project'\n",
+  "containsSecrets": false,
+  "admittedRehearsalCount": 0,
+  "productionEvidence": false,
+  "productionReady": false
+}
