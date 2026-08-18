@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "migration-evidence-registry",
+  "result": "FAIL",
+  "exitCode": 1,
+  "sourceCommitSha": "eff1000d8ab78c3fa702d73fd61c9497ba9e03ba",
+  "output": "STAGE: typed-recovery-self-test\ntyped recovery evidence negative self-tests PASS\nSTAGE: ledger-corruption-negatives\nPASS: migration rehearsal ledger/contract corruption, reconcile partial writes, local reconcile corruption rejection, append-lock drift, registry/local-artifact source-lineage drift and recovery-evidence mutation are rejected\nSTAGE: local-artifact-static-validation\nMemory OS local migration recovery-artifact validation PASS\nresult: NOT_REQUESTED\nproduction evidence: false\nSTAGE: committed-result-ledger-consistency\nMIGRATION RECOVERY RESULT ORPHAN RECONCILE FAILED: local recovery authority reconcile failed for mig_20260818_ead7e37fac9b: Memory OS local migration recovery-artifact validation PASS\nresult: VALIDATED\nproduction evidence: false\nMIGRATION EVIDENCE REGISTRY VALIDATION FAILED: contract rehearsal count drift\nLOCAL MIGRATION RECOVERY ARTIFACT RECONCILE FAILED: canonical migration evidence registry validation failed\n",
+  "containsSecrets": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
