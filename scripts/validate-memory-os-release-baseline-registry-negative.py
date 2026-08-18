@@ -101,6 +101,7 @@ def expect_reconcile_rejected_without_mutation(
     mutate: Callable[[dict[str, Any]], None],
 ) -> None:
     registry_before = REGISTRY.read_bytes()
+    contract_before = CONTRACT.read_bytes()
     status_before = STATUS.read_bytes()
     corrupt = load(REGISTRY)
     mutate(corrupt)
@@ -115,9 +116,13 @@ def expect_reconcile_rejected_without_mutation(
             check=False,
         )
         require(completed.returncode != 0, f"release reconciler auto-healed corrupt registry: {name}")
-        require(STATUS.read_bytes() == status_before, f"release reconciler mutated status after rejecting: {name}")
+        require(CONTRACT.read_bytes() == contract_before,
+                f"release reconciler mutated contract after rejecting: {name}")
+        require(STATUS.read_bytes() == status_before,
+                f"release reconciler mutated status after rejecting: {name}")
     finally:
         REGISTRY.write_bytes(registry_before)
+        CONTRACT.write_bytes(contract_before)
         STATUS.write_bytes(status_before)
 
 
@@ -148,9 +153,58 @@ def validate_reconcile_validator_chain(reconciler: ModuleType) -> None:
             "release reconcile does not enforce registry/evidence/version/operability validators in order")
 
 
-def validate_reconcile_rollback(reconciler: ModuleType) -> None:
-    original = STATUS.read_bytes()
+def validate_nonempty_progression(reconciler: ModuleType) -> None:
+    contract = copy.deepcopy(load(CONTRACT))
+    changed = reconciler.reconcile_contract_readiness(contract, 2, True)
+    require(changed, "approved release inventory did not update contract readiness")
+    readiness = contract.get("readiness")
+    require(isinstance(readiness, dict), "release readiness missing after progression")
+    require(readiness.get("approvedReleaseCount") == 2,
+            "approved release count did not progress")
+    require(readiness.get("approvedPredecessorAvailable") is True,
+            "approved predecessor did not progress")
+    require(readiness.get("rollbackEligibleReleaseAvailable") is True,
+            "rollback-eligible release did not progress")
+    require(readiness.get("independentReviewCompleted") is False and
+            readiness.get("productionReady") is False,
+            "release inventory progression promoted production readiness")
+
     status = copy.deepcopy(load(STATUS))
+    gate = next(
+        (item for item in status.get("areas", []) if isinstance(item, dict) and item.get("id") == "OPS-P0-008"),
+        None,
+    )
+    require(isinstance(gate, dict), "OPS-P0-008 missing for release progression probe")
+    existing = gate.get("existingEvidence")
+    missing = gate.get("missingEvidence")
+    require(isinstance(existing, list) and isinstance(missing, list),
+            "OPS-P0-008 release progression lists missing")
+    if reconciler.EMPTY_REGISTRY_EVIDENCE not in existing:
+        existing.append(reconciler.EMPTY_REGISTRY_EVIDENCE)
+    for gap in (reconciler.PREDECESSOR_GAP, reconciler.ROLLBACK_GAP):
+        if gap not in missing:
+            missing.append(gap)
+    reconciler.reconcile_status(status, 2, True)
+    require(reconciler.EMPTY_REGISTRY_EVIDENCE not in existing,
+            "empty release evidence survived approved release inventory")
+    require(reconciler.PREDECESSOR_GAP not in missing,
+            "approved predecessor gap survived approved release inventory")
+    require(reconciler.ROLLBACK_GAP not in missing,
+            "rollback-eligible gap survived verified rollback authority")
+    require(reconciler.INDEPENDENT_REVIEW_GAP in missing,
+            "independent release review blocker disappeared")
+    require(status.get("productionDecision") == "NO_GO",
+            "release inventory progression changed production decision")
+
+
+def validate_reconcile_rollback(reconciler: ModuleType) -> None:
+    contract_original = CONTRACT.read_bytes()
+    status_original = STATUS.read_bytes()
+    contract = copy.deepcopy(load(CONTRACT))
+    status = copy.deepcopy(load(STATUS))
+    readiness = contract.get("readiness")
+    require(isinstance(readiness, dict), "release readiness missing for rollback probe")
+    readiness["note"] = "synthetic release baseline rollback probe"
     gate = next(
         (item for item in status.get("areas", []) if isinstance(item, dict) and item.get("id") == "OPS-P0-008"),
         None,
@@ -164,14 +218,16 @@ def validate_reconcile_rollback(reconciler: ModuleType) -> None:
         raise RuntimeError("synthetic release aggregate validator failure")
 
     try:
-        reconciler.commit_status_transaction(status, validator_runner=fail_post_write)
+        reconciler.commit_authority_transaction(contract, status, validator_runner=fail_post_write)
     except RuntimeError as exc:
         require("synthetic release aggregate validator failure" in str(exc),
                 "unexpected release rollback failure reason")
     else:
         raise Fail("release reconcile accepted synthetic post-write aggregate failure")
 
-    require(STATUS.read_bytes() == original,
+    require(CONTRACT.read_bytes() == contract_original,
+            "release reconcile left partial contract after post-write aggregate failure")
+    require(STATUS.read_bytes() == status_original,
             "release reconcile left partial status after post-write aggregate failure")
 
 
@@ -182,6 +238,7 @@ def main() -> int:
     validate_lock_binding(writer, contract)
     expect_lock_binding_rejected(writer, contract)
     validate_reconcile_validator_chain(reconciler)
+    validate_nonempty_progression(reconciler)
     validate_reconcile_rollback(reconciler)
     cases: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
         ("schema drift", lambda value: value.__setitem__("schemaVersion", "invalid")),
@@ -197,7 +254,7 @@ def main() -> int:
     for name, mutate in cases:
         expect_writer_rejected(writer, contract, name, mutate)
         expect_reconcile_rejected_without_mutation(name, mutate)
-    print("PASS: release baseline registry/append-lock corruption and aggregate reconcile failures are fail-closed")
+    print("PASS: release baseline registry corruption, approved-inventory progression and aggregate rollback are fail-closed")
     return 0
 
 
