@@ -258,6 +258,30 @@ def prove_transaction_rollback(reconciler: Any) -> None:
             "parser production status was not rolled back byte-for-byte")
 
 
+def prove_default_validator_chain(reconciler: Any) -> None:
+    expected = [
+        reconciler.VALIDATOR_PATH.resolve(),
+        reconciler.VERSION_VALIDATOR_PATH.resolve(),
+        reconciler.OPERABILITY_VALIDATOR_PATH.resolve(),
+    ]
+    observed: list[Path] = []
+    original_run = reconciler.subprocess.run
+
+    def capture_run(args: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        require(len(args) >= 2, "parser validator invocation missing executable path")
+        observed.append(Path(args[1]).resolve())
+        return subprocess.CompletedProcess(args, 0)
+
+    try:
+        reconciler.subprocess.run = capture_run
+        reconciler.run_canonical_validators()
+    finally:
+        reconciler.subprocess.run = original_run
+
+    require(observed == expected,
+            f"parser transaction validator chain drift: {observed!r} != {expected!r}")
+
+
 def main() -> int:
     writer = load_writer()
     reconciler = load_reconciler()
@@ -347,11 +371,12 @@ def main() -> int:
 
     prove_nonempty_progression(reconciler, base)
     prove_transaction_rollback(reconciler)
+    prove_default_validator_chain(reconciler)
 
     require(REGISTRY_PATH.read_bytes() == json.dumps(base, indent=2, ensure_ascii=False).encode("utf-8") + b"\n" or
             json.loads(REGISTRY_PATH.read_text(encoding="utf-8")) == base,
             "parser registry was not restored after reconcile negatives")
-    print("Parser artifact authority rejects corruption/historical drift, preserves canonical blocker monotonicity, permits nonempty non-promoting progression, and rolls back post-write failure")
+    print("Parser artifact authority rejects corruption/historical drift, preserves canonical blocker monotonicity, permits nonempty non-promoting progression, validates aggregate authority transactionally, and rolls back post-write failure")
     return 0
 
 
