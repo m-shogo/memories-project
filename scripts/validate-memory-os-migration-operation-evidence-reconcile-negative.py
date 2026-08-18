@@ -110,23 +110,28 @@ def prove_postappend_failure_removes_new_record(tmp_path: Path) -> None:
             "controlled validator did not run once before and once after append")
 
 
-def prove_contract_guard_is_required(contract_payload: bytes) -> None:
-    candidate = json.loads(contract_payload.decode("utf-8"))
-    candidate["appendOnlyGuards"]["canonicalLedgerMustValidateBeforeAppend"] = False
-    CONTRACT.write_text(json.dumps(candidate, indent=2) + "\n", encoding="utf-8")
-    try:
-        completed = subprocess.run(
-            [sys.executable, str(VALIDATOR)],
-            cwd=ROOT,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            check=False,
-        )
-        require(completed.returncode != 0,
-                "standalone validator accepted disabled canonical pre-append guard")
-    finally:
-        CONTRACT.write_bytes(contract_payload)
+def prove_contract_guards_are_required(contract_payload: bytes) -> None:
+    for guard, message in (
+        ("canonicalLedgerMustValidateBeforeAppend", "canonical pre-append guard"),
+        ("canonicalLedgerMustValidateAfterAppend", "canonical post-append guard"),
+        ("postAppendValidationFailureMustRemoveNewRecord", "post-append rollback guard"),
+    ):
+        candidate = json.loads(contract_payload.decode("utf-8"))
+        candidate["appendOnlyGuards"][guard] = False
+        CONTRACT.write_text(json.dumps(candidate, indent=2) + "\n", encoding="utf-8")
+        try:
+            completed = subprocess.run(
+                [sys.executable, str(VALIDATOR)],
+                cwd=ROOT,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False,
+            )
+            require(completed.returncode != 0,
+                    f"standalone validator accepted disabled {message}")
+        finally:
+            CONTRACT.write_bytes(contract_payload)
 
 
 def main() -> int:
@@ -137,7 +142,7 @@ def main() -> int:
     }
     module = load_module(RECONCILER, "migration_operation_reconciler")
     prove_stronger_authority_is_preserved(module, originals[LIFECYCLE])
-    prove_contract_guard_is_required(originals[CONTRACT])
+    prove_contract_guards_are_required(originals[CONTRACT])
 
     candidates = [json.loads(payload.decode("utf-8")) for payload in originals.values()]
     for candidate in candidates:
