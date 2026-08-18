@@ -12,6 +12,7 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-client-server-support-window.py"
+CONTRACT = ROOT / "contracts/operations/client-server-support-window-contract.v1.json"
 RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
 CLIENTS = ROOT / "contracts/operations/client-baseline-registry.v1.json"
 SKEW = ROOT / "contracts/operations/client-server-skew-registry.v1.json"
@@ -62,12 +63,53 @@ def expect_rejection(validator: Any, path: Path, base: dict[str, Any], label: st
             f"canonical authority was not restored after negative case: {label}")
 
 
+def verify_inventory_only_intermediate_state(validator: Any) -> None:
+    contract = copy.deepcopy(load(CONTRACT))
+    boundary = contract.get("currentBoundary")
+    readiness = contract.get("readiness")
+    require(isinstance(boundary, dict) and isinstance(readiness, dict), "support boundary/readiness missing")
+    boundary["approvedBackendReleaseCount"] = 2
+    boundary["approvedClientBaselineCount"] = 1
+    boundary["admissibleSkewPairCount"] = 0
+    boundary["implementedClientSupportWindow"] = False
+    boundary["clientServerSkewEvidence"] = False
+    boundary["releaseCompatibilityEvidence"] = False
+    boundary["productionEvidence"] = False
+    boundary["productionReady"] = False
+    boundary["productionDecision"] = "NO_GO"
+    readiness["approvedBackendReleaseAvailable"] = True
+    readiness["approvedClientBaselineAvailable"] = True
+    readiness["supportWindowImplemented"] = False
+    readiness["skewPairExecuted"] = False
+    readiness["independentReviewCompleted"] = False
+    readiness["productionReady"] = False
+
+    validator.validate_intermediate_boundary(contract, 2, 1, 0)
+
+    promoted = copy.deepcopy(contract)
+    promoted["currentBoundary"]["clientServerSkewEvidence"] = True
+    try:
+        validator.validate_intermediate_boundary(promoted, 2, 1, 0)
+    except validator.Fail:
+        pass
+    else:
+        raise NegativeFailure("inventory-only intermediate state promoted client/server skew evidence")
+
+    try:
+        validator.validate_intermediate_boundary(contract, 2, 1, 1)
+    except validator.Fail:
+        pass
+    else:
+        raise NegativeFailure("inventory-only intermediate state admitted a skew pair without pair authority")
+
+
 def main() -> int:
     validator = load_validator()
     release_base = load(RELEASES)
     client_base = load(CLIENTS)
     skew_base = load(SKEW)
     validator.main()
+    verify_inventory_only_intermediate_state(validator)
 
     for label, path, base, mutate in (
         ("boolean release count", RELEASES, release_base,
