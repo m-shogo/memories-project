@@ -16,6 +16,7 @@ on:
       - "scripts/validate-memory-os-version-compatibility-foundations.py"
       - "scripts/validate-memory-os-version-compatibility-execution-evidence.py"
       - "scripts/validate-memory-os-client-server-support-window.py"
+      - "scripts/validate-memory-os-operability.py"
       - "contracts/operations/compatibility-admission-gaps.v1.json"
       - "contracts/operations/release-baseline-registry-contract.v1.json"
       - "contracts/operations/release-baseline-registry.v1.json"
@@ -45,6 +46,7 @@ on:
       - "scripts/validate-memory-os-version-compatibility-foundations.py"
       - "scripts/validate-memory-os-version-compatibility-execution-evidence.py"
       - "scripts/validate-memory-os-client-server-support-window.py"
+      - "scripts/validate-memory-os-operability.py"
       - "contracts/operations/compatibility-admission-gaps.v1.json"
       - "contracts/operations/release-baseline-registry-contract.v1.json"
       - "contracts/operations/release-baseline-registry.v1.json"
@@ -105,12 +107,14 @@ jobs:
             scripts/register-memory-os-parser-artifact.py \
             scripts/validate-memory-os-version-compatibility-foundations.py \
             scripts/validate-memory-os-version-compatibility-execution-evidence.py \
-            scripts/validate-memory-os-client-server-support-window.py
+            scripts/validate-memory-os-client-server-support-window.py \
+            scripts/validate-memory-os-operability.py
           python scripts/validate-memory-os-compatibility-admission-gaps-negative.py
           python scripts/update-memory-os-compatibility-admission-gaps.py
           python scripts/validate-memory-os-release-compatibility-pair.py
           python scripts/validate-memory-os-version-compatibility-execution-evidence.py
           python scripts/validate-memory-os-client-server-support-window.py
+          python scripts/validate-memory-os-operability.py
       - name: Require deterministic authority on pull requests
         if: github.event_name == 'pull_request'
         run: |
