@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,19 +38,46 @@ def expect_count_rejection(module, value, field: str) -> None:
     require(rejected, f"invalid compatibility count accepted for {field}: {value!r}")
 
 
+def expect_pair_authority_rejection(module) -> None:
+    path = module.PAIRS
+    original = path.read_bytes()
+    try:
+        pair_registry = json.loads(original.decode("utf-8"))
+        pair_registry["appendOnly"] = False
+        path.write_text(json.dumps(pair_registry, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        rejected = False
+        try:
+            module.validate_registry_authorities(
+                module.load(module.RELEASES),
+                module.load(module.PAIRS),
+                module.load(module.CLIENTS),
+                module.load(module.PARSERS),
+            )
+        except SystemExit as exc:
+            require("compatibility registry authority invalid" in str(exc),
+                    f"unexpected rollback-pair authority rejection: {exc}")
+            rejected = True
+        require(rejected, "corrupt canonical rollback-pair authority was accepted")
+    finally:
+        path.write_bytes(original)
+    require(path.read_bytes() == original,
+            "canonical rollback-pair registry changed after negative validation")
+
+
 def main() -> int:
     module = load_generator()
     for field in (
         "approvedReleaseCount",
         "approvedClientBaselineCount",
         "reviewedArtifactCount",
-        "approvedRollbackPairCount",
+        "rollbackEligiblePairCount",
     ):
         expect_count_rejection(module, True, field)
         expect_count_rejection(module, False, field)
         expect_count_rejection(module, -1, field)
     require(module.non_negative_count(0, "validZero") == 0, "zero count should remain valid")
-    print("PASS: compatibility admission counts reject booleans and negative values")
+    expect_pair_authority_rejection(module)
+    print("PASS: compatibility admission counts and canonical rollback-pair authority fail closed")
     return 0
 
 
