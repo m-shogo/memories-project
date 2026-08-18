@@ -14,6 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/migration-production-shaped-admission-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/migration-production-shaped-admission-registry.v1.json"
 VALIDATOR = ROOT / "scripts/validate-memory-os-migration-production-shaped-admission.py"
+LIFECYCLE_VALIDATOR = ROOT / "scripts/validate-memory-os-migration-lifecycle.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 WRITER = ROOT / "scripts/register-memory-os-migration-production-shaped-admission.py"
 WORKFLOW = ROOT / ".github/workflows/migration-production-shaped-admission.yml"
 RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
@@ -80,6 +82,8 @@ def main() -> int:
     for path in (
         REGISTRY,
         VALIDATOR,
+        LIFECYCLE_VALIDATOR,
+        OPERABILITY_VALIDATOR,
         WRITER,
         WORKFLOW,
         RELEASES,
@@ -187,6 +191,8 @@ def main() -> int:
         write(STATUS, status)
 
         subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=True)
+        subprocess.run(["python", str(LIFECYCLE_VALIDATOR)], cwd=ROOT, check=True)
+        subprocess.run(["python", str(OPERABILITY_VALIDATOR)], cwd=ROOT, check=True)
     except Exception:
         for path, content in originals.items():
             path.write_bytes(content)
