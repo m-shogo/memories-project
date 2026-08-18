@@ -96,7 +96,8 @@
         "docs/evidence/migration-operations/README.md",
         "docs/fixtures/memory-os-operability/migration-operation-record.template.v1.json",
         ".github/workflows/migration-operation-evidence.yml",
-        "docs/evidence/migrations/recovery/mig_20260818_45f3214d1873.json"
+        "docs/evidence/migrations/recovery/mig_20260818_45f3214d1873.json",
+        "docs/evidence/migrations/recovery/mig_20260818_ead7e37fac9b.json"
       ]
     },
     {
