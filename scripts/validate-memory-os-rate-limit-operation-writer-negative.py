@@ -67,6 +67,36 @@ def expect_evidence_ref_rejection(validator, ref: str, expected: str) -> None:
         raise AssertionError(f"unsafe evidence ref was incorrectly accepted: {ref}")
 
 
+def contract_guard_negative(writer, validator) -> None:
+    contract, _ = validator.load_contract_context()
+    writer.validate_contract_append_guards(contract)
+
+    for guard in sorted(writer.REQUIRED_APPEND_GUARDS):
+        mutated = dict(contract)
+        mutated_guards = dict(contract["appendOnlyGuards"])
+        mutated_guards[guard] = False
+        mutated["appendOnlyGuards"] = mutated_guards
+        try:
+            writer.validate_contract_append_guards(mutated)
+        except writer.WriterFailure as exc:
+            if f"appendOnlyGuards.{guard} must be true" not in str(exc):
+                raise AssertionError(f"unexpected append guard rejection: {exc}") from exc
+        else:
+            raise AssertionError(f"disabled append guard was incorrectly accepted: {guard}")
+
+    mutated = dict(contract)
+    mutated_guards = dict(contract["appendOnlyGuards"])
+    mutated_guards["unexpectedGuard"] = True
+    mutated["appendOnlyGuards"] = mutated_guards
+    try:
+        writer.validate_contract_append_guards(mutated)
+    except writer.WriterFailure as exc:
+        if "appendOnlyGuards authority field set drift" not in str(exc):
+            raise AssertionError(f"unexpected append guard field-set rejection: {exc}") from exc
+    else:
+        raise AssertionError("unknown append guard field was incorrectly accepted")
+
+
 def digest_binding_negative(writer, validator, current_head: str) -> None:
     contract, policy_ids = validator.load_contract_context()
     required_checks = contract["record"]["requiredVerificationChecks"]
@@ -135,13 +165,15 @@ def post_append_rollback_negative(writer) -> None:
     class FakeValidationFailure(RuntimeError):
         pass
 
+    valid_guards = {guard: True for guard in writer.REQUIRED_APPEND_GUARDS}
+
     class PostAppendRejectingValidator:
         ValidationFailure = FakeValidationFailure
         calls = 0
 
         @staticmethod
         def load_contract_context():
-            return {}, set()
+            return {"appendOnlyGuards": dict(valid_guards)}, set()
 
         @staticmethod
         def validate_record(record, contract, policy_ids, writer_input=False) -> None:
@@ -172,11 +204,7 @@ def post_append_rollback_negative(writer) -> None:
         try:
             writer.DEFAULT_LEDGER = ledger
             writer.load_validator = lambda: PostAppendRejectingValidator
-            sys.argv = [
-                str(writer.WRITER_PATH) if hasattr(writer, "WRITER_PATH") else "writer",
-                "--input",
-                str(input_path),
-            ]
+            sys.argv = ["writer", "--input", str(input_path)]
             try:
                 writer.main()
             except writer.WriterFailure as exc:
@@ -254,9 +282,10 @@ def main() -> int:
     if AlternateLedgerValidator.calls != 0:
         raise AssertionError("alternate ledger unexpectedly invoked canonical validation")
 
+    validator = writer.load_validator()
+    contract_guard_negative(writer, validator)
     post_append_rollback_negative(writer)
 
-    validator = writer.load_validator()
     current_head = git("rev-parse", "HEAD")
     validator.require_source_ancestor(current_head)
     side_commit = detached_side_commit()
@@ -296,6 +325,7 @@ def main() -> int:
         raise AssertionError("rate-limit operation negatives left the checkout dirty")
 
     print("PASS: canonical rate-limit operation ledger is validated before append")
+    print("PASS: rate-limit operation append rollback contract is fail-closed")
     print("PASS: invalid canonical operation append is rolled back after validation")
     print("PASS: detached rate-limit operation source commits are rejected")
     print("PASS: untracked and symlinked operation evidence refs are rejected")
