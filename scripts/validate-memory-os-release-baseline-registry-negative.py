@@ -96,6 +96,21 @@ def expect_writer_rejected(
     raise Fail(f"release writer accepted corrupt registry: {name}")
 
 
+def expect_contract_rejected(
+    writer: ModuleType,
+    contract: dict[str, Any],
+    name: str,
+    mutate: Callable[[dict[str, Any]], None],
+) -> None:
+    corrupt = copy.deepcopy(contract)
+    mutate(corrupt)
+    try:
+        writer.validate_registry_for_append(copy.deepcopy(load(REGISTRY)), corrupt)
+    except Exception:
+        return
+    raise Fail(f"release writer accepted corrupt contract: {name}")
+
+
 def expect_reconcile_rejected_without_mutation(
     name: str,
     mutate: Callable[[dict[str, Any]], None],
@@ -151,6 +166,63 @@ def validate_reconcile_validator_chain(reconciler: ModuleType) -> None:
 
     require(observed == expected,
             "release reconcile does not enforce registry/evidence/version/operability validators in order")
+
+
+def validate_record_shape_authority(writer: ModuleType, contract: dict[str, Any]) -> None:
+    required_fields = writer.validate_contract_for_append(copy.deepcopy(contract))
+    record = {
+        "schemaVersion": "memory-os-release-baseline-record.v1",
+        "releaseId": "rel_20991231_shape",
+        "releaseTag": "v9999.1.0",
+        "commitSha": "1" * 40,
+        "approvedAt": "2099-12-31T00:00:00Z",
+        "approvalClass": "PRODUCTION_RELEASE_BASELINE",
+        "approvers": [
+            {"role": "SECURITY_REVIEWER", "approverRef": "apr_security_ci11"},
+            {"role": "OPERABILITY_REVIEWER", "approverRef": "apr_operability_ci22"},
+            {"role": "RELEASE_OWNER", "approverRef": "apr_release_ci33"},
+        ],
+        "apiContractSha256": "0" * 64,
+        "migrationSequenceSha256": "1" * 64,
+        "parserArtifactSetSha256": "2" * 64,
+        "runtimeConfigurationSchemaSha256": "3" * 64,
+        "compatibilityEvidenceRefs": ["README.md"],
+        "restoreEvidenceRefs": ["SECURITY.md"],
+        "securityEvidenceRefs": ["README.md"],
+        "rollbackEligibility": {"status": "ELIGIBLE", "verified": True, "conditions": []},
+        "openRisks": [],
+        "evidenceComplete": True,
+        "productionReady": True,
+    }
+    original_lineage = writer.validate_release_commit_lineage
+    original_evidence = writer.validate_evidence_ref_binding
+    writer.validate_release_commit_lineage = lambda commit_sha: None
+    writer.validate_evidence_ref_binding = lambda commit_sha, ref: None
+    try:
+        writer.validate_record(copy.deepcopy(record), required_fields)
+        mutations: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
+            ("unknown record field", lambda value: value.__setitem__("automaticPromotion", True)),
+            ("approver field drift", lambda value: value["approvers"][0].__setitem__("decision", "APPROVED")),
+            ("rollback field drift", lambda value: value["rollbackEligibility"].__setitem__("automaticRollback", True)),
+            (
+                "risk field drift",
+                lambda value: value.__setitem__(
+                    "openRisks",
+                    [{"riskId": "risk_ci", "ownerRef": "apr_release_ci33", "deadline": "2099-12-31", "status": "OPEN", "approved": True}],
+                ),
+            ),
+        ]
+        for name, mutate in mutations:
+            candidate = copy.deepcopy(record)
+            mutate(candidate)
+            try:
+                writer.validate_record(candidate, required_fields)
+            except Exception:
+                continue
+            raise Fail(f"release writer accepted record shape drift: {name}")
+    finally:
+        writer.validate_release_commit_lineage = original_lineage
+        writer.validate_evidence_ref_binding = original_evidence
 
 
 def validate_nonempty_progression(reconciler: ModuleType) -> None:
@@ -238,8 +310,21 @@ def main() -> int:
     validate_lock_binding(writer, contract)
     expect_lock_binding_rejected(writer, contract)
     validate_reconcile_validator_chain(reconciler)
+    validate_record_shape_authority(writer, contract)
     validate_nonempty_progression(reconciler)
     validate_reconcile_rollback(reconciler)
+
+    contract_cases: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
+        ("append lock path drift", lambda value: value.__setitem__("appendLockPath", "contracts/operations/.alternate-release.lock")),
+        ("required fields drift", lambda value: value.__setitem__("requiredFields", value["requiredFields"][:-1])),
+        ("boolean minimum approvers", lambda value: value["approvalPolicy"].__setitem__("minimumDistinctApprovers", True)),
+        ("approval role drift", lambda value: value["approvalPolicy"].__setitem__("requiredRoles", ["RELEASE_OWNER"])),
+        ("evidence binding drift", lambda value: value["evidenceBinding"].__setitem__("currentBytesMustMatchSourceCommit", False)),
+        ("production decision promotion", lambda value: value.__setitem__("productionDecision", "GO")),
+    ]
+    for name, mutate in contract_cases:
+        expect_contract_rejected(writer, contract, name, mutate)
+
     cases: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
         ("schema drift", lambda value: value.__setitem__("schemaVersion", "invalid")),
         ("registry class drift", lambda value: value.__setitem__("registryClass", "CANDIDATE_RELEASES")),
@@ -254,7 +339,7 @@ def main() -> int:
     for name, mutate in cases:
         expect_writer_rejected(writer, contract, name, mutate)
         expect_reconcile_rejected_without_mutation(name, mutate)
-    print("PASS: release baseline registry corruption, approved-inventory progression and aggregate rollback are fail-closed")
+    print("PASS: release baseline contract/record/registry corruption, approved-inventory progression and aggregate rollback are fail-closed")
     return 0
 
 
