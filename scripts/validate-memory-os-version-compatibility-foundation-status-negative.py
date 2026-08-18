@@ -124,20 +124,14 @@ def expect_nonempty_source_inventory_allowed(module, validator_mode: bool) -> No
             require(registry is parsers,
                     "parser shared validator did not receive synthetic authority")
 
+    pair_guard_calls: list[dict] = []
+
     class PairWriter:
         @staticmethod
         def validate_registry_for_append(registry):
             require(registry is pairs,
                     "pair shared validator did not receive synthetic authority")
-
-    reviewed_pairs: list[dict] = []
-
-    class PairReviewValidator:
-        @staticmethod
-        def validate_pair_reviews(pair):
-            require(pair is pair_row,
-                    "pair review validator did not receive synthetic pair authority")
-            reviewed_pairs.append(pair)
+            pair_guard_calls.append(registry)
 
     writers = {
         module.RELEASE_WRITER_PATH: ReleaseWriter,
@@ -145,8 +139,6 @@ def expect_nonempty_source_inventory_allowed(module, validator_mode: bool) -> No
         module.PARSER_WRITER_PATH: ParserWriter,
         module.PAIR_WRITER_PATH: PairWriter,
     }
-    if not validator_mode:
-        writers[module.PAIR_REVIEW_VALIDATOR_PATH] = PairReviewValidator
     original_load = module.load
     original_load_module = module.load_module
     try:
@@ -163,9 +155,8 @@ def expect_nonempty_source_inventory_allowed(module, validator_mode: bool) -> No
     require(counts["rollbackRequests"] == 1, "rollback request source inventory was not preserved")
     require(counts["reviewedParserArtifacts"] == 1, "parser source inventory was not preserved")
     require(counts["approvedReleasePairs"] == 1, "release pair source inventory was not preserved")
-    if not validator_mode:
-        require(reviewed_pairs == [pair_row],
-                "foundation reconciler did not revalidate typed release-pair reviews")
+    require(pair_guard_calls == [pairs],
+            "compatibility foundation did not delegate pair authority to the shared pair writer guard")
 
 
 def expect_aggregate_validator_chain(reconciler) -> None:
@@ -244,7 +235,7 @@ def main() -> int:
         False, "release compatibility pair",
     )
 
-    print("PASS: compatibility foundations accept canonical source progression while rejecting authority drift and rolling back aggregate failures")
+    print("PASS: compatibility foundations reuse shared source authority and roll back aggregate failures")
     return 0
 
 
