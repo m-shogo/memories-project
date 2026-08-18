@@ -186,6 +186,21 @@ def verify_client_reconcile_allows_approved_pair_progression() -> None:
         require(isinstance(support, dict), "captured support boundary missing")
         require(support.get("clientServerSkewEvidence") is False, "approved pair progression manufactured skew evidence")
         require(support.get("productionReady") is False, "approved pair progression manufactured production readiness")
+        captured_gate = next(
+            (
+                row for row in captured["status"].get("areas", [])
+                if isinstance(row, dict) and row.get("id") == "OPS-P0-008"
+            ),
+            None,
+        )
+        require(isinstance(captured_gate, dict), "captured OPS-P0-008 missing")
+        captured_missing = captured_gate.get("missingEvidence")
+        require(isinstance(captured_missing, list), "captured OPS-P0-008 missingEvidence absent")
+        captured_joined = "\n".join(str(item).lower() for item in captured_missing)
+        require(
+            not ("approved predecessor" in captured_joined and "successor" in captured_joined),
+            "approved pair progression reintroduced the satisfied release-pair blocker",
+        )
         require(captured["status"].get("productionDecision") == "NO_GO", "approved pair progression changed production decision")
     finally:
         for path, data in originals.items():
