@@ -110,6 +110,26 @@ EXPECTED_LIMITATIONS = (
     "production traffic, production credentials, destructive down migration and automatic promotion remain forbidden",
     "historical candidate, branch, tag and CI evidence cannot substitute for approved release or reviewed rehearsal authority",
 )
+CURRENT_ADMISSION_STATE_FIELDS = {
+    "approvedReleaseCount",
+    "rollbackEligibleReleaseCount",
+    "admissibleReleasePairCount",
+    "rehearsalRequestCount",
+    "admissionDecision",
+}
+READINESS_FIELDS = {
+    "contractDefined",
+    "registryImplemented",
+    "writerImplemented",
+    "validatorImplemented",
+    "automaticWorkflowImplemented",
+    "approvedReleasePairAvailable",
+    "rollbackTargetAvailable",
+    "rehearsalRequested",
+    "rehearsalExecuted",
+    "independentReviewCompleted",
+    "productionReady",
+}
 
 
 class RequestFailure(RuntimeError):
@@ -119,6 +139,10 @@ class RequestFailure(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise RequestFailure(message)
+
+
+def valid_count(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -164,6 +188,50 @@ def exact_object(value: Any, fields: set[str], field: str) -> dict[str, Any]:
     require(isinstance(value, dict), f"{field} must be an object")
     require(set(value) == fields, f"{field} field set drift")
     return value
+
+
+def validate_derived_contract_state(contract: dict[str, Any]) -> None:
+    state = exact_object(
+        contract.get("currentAdmissionState"),
+        CURRENT_ADMISSION_STATE_FIELDS,
+        "currentAdmissionState",
+    )
+    for field in (
+        "approvedReleaseCount",
+        "rollbackEligibleReleaseCount",
+        "admissibleReleasePairCount",
+        "rehearsalRequestCount",
+    ):
+        require(valid_count(state.get(field)),
+                f"current admission state count invalid: {field}")
+    expected_decision = (
+        "ADMISSION_AVAILABLE"
+        if state["admissibleReleasePairCount"] > 0
+        else "BLOCKED_NO_APPROVED_ROLLBACK_PAIR"
+    )
+    require(state.get("admissionDecision") == expected_decision,
+            "rollback rehearsal admission decision drift")
+
+    readiness = exact_object(contract.get("readiness"), READINESS_FIELDS, "readiness")
+    for field in (
+        "contractDefined", "registryImplemented", "writerImplemented",
+        "validatorImplemented", "automaticWorkflowImplemented",
+    ):
+        require(readiness.get(field) is True,
+                f"rollback rehearsal implementation readiness drift: {field}")
+    require(
+        readiness.get("approvedReleasePairAvailable") is
+        (state["admissibleReleasePairCount"] > 0) and
+        readiness.get("rollbackTargetAvailable") is
+        (state["rollbackEligibleReleaseCount"] > 0) and
+        readiness.get("rehearsalRequested") is
+        (state["rehearsalRequestCount"] > 0),
+        "rollback rehearsal readiness count drift",
+    )
+    require(readiness.get("rehearsalExecuted") is False and
+            readiness.get("independentReviewCompleted") is False and
+            readiness.get("productionReady") is False,
+            "rollback rehearsal readiness cannot claim execution or production readiness")
 
 
 def parse_utc(value: Any, field: str) -> dt.datetime:
@@ -248,6 +316,7 @@ def validate_contract_for_append(contract: dict[str, Any]) -> set[str]:
             boundary.get("releaseCompatibilityEvidence") is False and
             boundary.get("productionReady") is False,
             "rollback rehearsal evidence boundary drift")
+    validate_derived_contract_state(contract)
     return required_fields
 
 
