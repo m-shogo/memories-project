@@ -74,6 +74,51 @@ def validate_upstream_registries(releases: dict[str, Any], clients: dict[str, An
         raise Fail(f"approved client authority invalid: {exc}") from exc
 
 
+def validate_skew_registry(skew: dict[str, Any]) -> int:
+    require(set(skew) == SKEW_FIELDS, "skew registry field set drift")
+    require(skew.get("schemaVersion") == "memory-os-client-server-skew-registry.v1", "skew registry schema drift")
+    require(skew.get("registryClass") == "ADMITTED_CLIENT_SERVER_SKEW_PAIRS", "skew registry class drift")
+    require(skew.get("appendOnly") is True and skew.get("productionEvidence") is False, "skew registry boundary drift")
+    pair_count = skew.get("admissibleSkewPairCount")
+    pairs = skew.get("pairs")
+    require(isinstance(pair_count, int) and not isinstance(pair_count, bool) and pair_count >= 0,
+            "admissibleSkewPairCount invalid")
+    require(isinstance(pairs, list) and len(pairs) == pair_count, "skew registry count mismatch")
+    limitations = skew.get("limitations")
+    require(isinstance(limitations, list) and limitations and
+            all(isinstance(item, str) and item.strip() for item in limitations),
+            "skew registry limitations invalid")
+    return pair_count
+
+
+def validate_intermediate_boundary(
+    contract: dict[str, Any], approved_release_count: int, approved_client_count: int, pair_count: int
+) -> None:
+    """Allow approved inventory to accumulate without manufacturing skew/support authority."""
+    require(pair_count == 0, "no client/server skew pair admission authority is implemented yet")
+
+    boundary = contract.get("currentBoundary")
+    require(isinstance(boundary, dict), "currentBoundary required")
+    require(boundary.get("approvedBackendReleaseCount") == approved_release_count, "backend release boundary drift")
+    require(boundary.get("approvedClientBaselineCount") == approved_client_count, "client baseline boundary drift")
+    require(boundary.get("admissibleSkewPairCount") == 0, "skew pair boundary drift")
+    for key in ("implementedClientSupportWindow", "clientServerSkewEvidence", "releaseCompatibilityEvidence", "productionEvidence", "productionReady"):
+        require(boundary.get(key) is False, f"inventory-only state cannot enable {key}")
+    require(boundary.get("productionDecision") == "NO_GO", "production decision must remain NO_GO")
+
+    readiness = contract.get("readiness")
+    require(isinstance(readiness, dict), "readiness required")
+    require(readiness.get("contractDefined") is True and readiness.get("registriesDefined") is True, "foundation definition drift")
+    for key in ("validatorImplemented", "automaticWorkflowImplemented"):
+        require(isinstance(readiness.get(key), bool), f"readiness.{key} must be boolean")
+    require(readiness.get("approvedBackendReleaseAvailable") is (approved_release_count > 0),
+            "approved backend release availability drift")
+    require(readiness.get("approvedClientBaselineAvailable") is (approved_client_count > 0),
+            "approved client baseline availability drift")
+    for key in ("supportWindowImplemented", "skewPairExecuted", "independentReviewCompleted", "productionReady"):
+        require(readiness.get(key) is False, f"inventory-only state cannot enable readiness.{key}")
+
+
 def main() -> int:
     contract = load(CONTRACT)
     releases = load(RELEASES)
@@ -155,55 +200,12 @@ def main() -> int:
     client_rows = clients.get("clients")
     require(isinstance(client_rows, list) and len(client_rows) == approved_client_count, "client registry count mismatch")
 
-    require(set(skew) == SKEW_FIELDS, "skew registry field set drift")
-    require(skew.get("schemaVersion") == "memory-os-client-server-skew-registry.v1", "skew registry schema drift")
-    require(skew.get("registryClass") == "ADMITTED_CLIENT_SERVER_SKEW_PAIRS", "skew registry class drift")
-    require(skew.get("appendOnly") is True and skew.get("productionEvidence") is False, "skew registry boundary drift")
-    pair_count = skew.get("admissibleSkewPairCount")
-    pairs = skew.get("pairs")
-    require(isinstance(pair_count, int) and not isinstance(pair_count, bool) and pair_count >= 0,
-            "admissibleSkewPairCount invalid")
-    require(isinstance(pairs, list) and len(pairs) == pair_count, "skew registry count mismatch")
-    limitations = skew.get("limitations")
-    require(isinstance(limitations, list) and limitations and
-            all(isinstance(item, str) and item.strip() for item in limitations),
-            "skew registry limitations invalid")
-
-    require(approved_release_count == 0, "current foundation expects zero approved backend releases")
-    require(approved_client_count == 0, "current foundation expects zero approved client baselines")
-    require(pair_count == 0, "no skew pair may be admitted while either approved registry is empty")
-    require(releases.get("latestApprovedReleaseId") is None, "latest approved release must remain null")
-    latest_clients = clients.get("latestApprovedClientByClass")
-    require(isinstance(latest_clients, dict), "latestApprovedClientByClass required")
-    require(latest_clients.get("IOS_APP") is None and latest_clients.get("PORTAL") is None, "latest approved clients must remain null")
-
-    boundary = contract.get("currentBoundary")
-    require(isinstance(boundary, dict), "currentBoundary required")
-    require(boundary.get("approvedBackendReleaseCount") == approved_release_count == 0, "backend release boundary drift")
-    require(boundary.get("approvedClientBaselineCount") == approved_client_count == 0, "client baseline boundary drift")
-    require(boundary.get("admissibleSkewPairCount") == pair_count == 0, "skew pair boundary drift")
-    for key in ("implementedClientSupportWindow", "clientServerSkewEvidence", "releaseCompatibilityEvidence", "productionEvidence", "productionReady"):
-        require(boundary.get(key) is False, f"foundation cannot enable {key}")
-    require(boundary.get("productionDecision") == "NO_GO", "production decision must remain NO_GO")
-
-    readiness = contract.get("readiness")
-    require(isinstance(readiness, dict), "readiness required")
-    require(readiness.get("contractDefined") is True and readiness.get("registriesDefined") is True, "foundation definition drift")
-    for key in ("validatorImplemented", "automaticWorkflowImplemented"):
-        require(isinstance(readiness.get(key), bool), f"readiness.{key} must be boolean")
-    for key in (
-        "approvedBackendReleaseAvailable",
-        "approvedClientBaselineAvailable",
-        "supportWindowImplemented",
-        "skewPairExecuted",
-        "independentReviewCompleted",
-        "productionReady",
-    ):
-        require(readiness.get(key) is False, f"foundation cannot enable readiness.{key}")
+    pair_count = validate_skew_registry(skew)
+    validate_intermediate_boundary(contract, approved_release_count, approved_client_count, pair_count)
 
     print("Memory OS client/server support-window validation PASS")
-    print("approved backend releases: 0")
-    print("approved client baselines: 0")
+    print(f"approved backend releases: {approved_release_count}")
+    print(f"approved client baselines: {approved_client_count}")
     print("admissible skew pairs: 0")
     print("client/server skew evidence: false")
     print("production evidence: false")
