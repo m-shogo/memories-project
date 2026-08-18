@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Pin fail-closed numeric boundaries for compatibility foundation status reconcile."""
+"""Pin fail-closed numeric and source-authority boundaries for compatibility foundation status reconcile."""
 
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -49,6 +50,27 @@ def expect_registry_rejection(module, count, count_field: str,
     require(rejected, f"invalid empty authority accepted for {label}: {registry!r}")
 
 
+def expect_source_authority_rejection(module) -> None:
+    path = module.RELEASE_REGISTRY_PATH
+    original = path.read_bytes()
+    try:
+        registry = json.loads(original.decode("utf-8"))
+        registry["registryClass"] = "CORRUPTED_RELEASE_AUTHORITY"
+        path.write_text(json.dumps(registry, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        rejected = False
+        try:
+            module.validate_source_registries()
+        except module.ReconcileFailure as exc:
+            require("compatibility source authority invalid" in str(exc),
+                    f"unexpected source-authority rejection: {exc}")
+            rejected = True
+        require(rejected, "corrupt canonical release authority was accepted before reconcile")
+    finally:
+        path.write_bytes(original)
+    require(path.read_bytes() == original,
+            "canonical release authority changed after source-authority rejection")
+
+
 def main() -> int:
     module = load_reconciler()
     for field in module.ZERO_COUNT_FIELDS:
@@ -66,7 +88,9 @@ def main() -> int:
         module.require_empty_registry({count_field: 0, items_field: []},
                                       count_field, items_field, label)
 
-    print("PASS: compatibility foundation and dependent authority counts reject booleans and drift")
+    expect_source_authority_rejection(module)
+
+    print("PASS: compatibility foundation counts and canonical source authorities fail closed")
     return 0
 
 
