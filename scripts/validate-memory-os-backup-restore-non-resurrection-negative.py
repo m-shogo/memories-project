@@ -73,6 +73,11 @@ def main() -> int:
     contract = load(CONTRACT)
     writer = load_writer()
     EXPECTED_FAILURE = writer.Fail
+    require(
+        contract.get("recordRules", {}).get("typedRegistryMustRevalidateAfterAppendAndRollbackOnFailure") is True,
+        "typed registry transactional append contract guard missing",
+    )
+    print("PASS accept: typed registry transactional append contract guard")
     with tempfile.TemporaryDirectory(prefix="memory-os-non-resurrection-negative-") as tmp:
         generation_registry = Path(tmp) / "generation-evidence.json"
         generation_registry.write_text(json.dumps({
@@ -178,6 +183,23 @@ def main() -> int:
         drift = copy.deepcopy(empty_registry); drift["productionReady"] = True
         expect_rejected("typed writer production boundary drift before append", lambda: writer.validate_registry_for_append(drift))
 
+        original_registry = writer.REGISTRY
+        original_validate_registry = writer.validate_registry_for_append
+        transaction_registry = Path(tmp) / "typed-registry-transaction.json"
+        transaction_registry.write_text(json.dumps(empty_registry, indent=2) + "\n", encoding="utf-8")
+        before = transaction_registry.read_bytes()
+        writer.REGISTRY = transaction_registry
+        writer.validate_registry_for_append = lambda value: (_ for _ in ()).throw(writer.Fail("synthetic typed post-append validation failure"))
+        try:
+            candidate = copy.deepcopy(empty_registry)
+            candidate["productionReady"] = True
+            expect_rejected("typed writer post-append validation failure rollback", lambda: writer.write_registry_transactionally(candidate))
+            require(transaction_registry.read_bytes() == before, "typed registry bytes changed after rejected transactional append")
+            print("PASS preserve: typed registry append failure rolled back byte-for-byte")
+        finally:
+            writer.REGISTRY = original_registry
+            writer.validate_registry_for_append = original_validate_registry
+
         writer.repo_ref, writer.load = real_repo_ref, real_load
         expect_rejected("writer evidence ref absolute path", lambda: writer.repo_ref(str((ROOT / "SECURITY.md").resolve()), "securityReviewRef"))
         expect_rejected("writer evidence ref parent traversal alias", lambda: writer.repo_ref("docs/../SECURITY.md", "securityReviewRef"))
@@ -201,6 +223,7 @@ def main() -> int:
     print("typed domain and independent review evidence are generation/commit/bundle/digest bound: true")
     print("typed record immutably binds review payload digests: true")
     print("typed writer rejects aggregate/current authority drift before append: true")
+    print("typed writer rolls back post-append validation failure: true")
     print("writer evidence refs canonical and repository-contained: true")
     print("unexpected exception accepted as a valid rejection: false")
     print("canonical registries mutated: false")
