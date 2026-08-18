@@ -82,7 +82,7 @@ jobs:
             scripts/validate-memory-os-parser-artifact-registry-authority-negative.py \
             scripts/reconcile-memory-os-parser-artifact-registry.py
 
-      - name: Validate empty reviewed artifact authority
+      - name: Validate reviewed artifact authority
         run: python scripts/validate-memory-os-parser-artifact-registry.py
 
       - name: Validate parser registry corruption negatives
@@ -171,7 +171,7 @@ jobs:
           test ! -e "$lock"
           test -z "$(git status --porcelain)"
 
-      - name: Reconcile empty registry into operability status
+      - name: Reconcile parser registry into operability status
         run: |
           python scripts/reconcile-memory-os-parser-artifact-registry.py
           python scripts/validate-memory-os-parser-artifact-registry.py
@@ -183,7 +183,9 @@ jobs:
         run: |
           set -euo pipefail
           git diff --check
-          git diff --exit-code -- contracts/operations/production-operability-status.json
+          git diff --exit-code -- \
+            contracts/operations/parser-artifact-registry-contract.v1.json \
+            contracts/operations/production-operability-status.json
 
       - name: Commit parser artifact authority
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
@@ -194,7 +196,9 @@ jobs:
             echo "Parser authority source changed during reconciliation; refusing stale derived authority."
             exit 75
           fi
-          git add contracts/operations/production-operability-status.json
+          git add \
+            contracts/operations/parser-artifact-registry-contract.v1.json \
+            contracts/operations/production-operability-status.json
           if git diff --cached --quiet; then
             echo "Parser artifact registry authority is already current."
           else
