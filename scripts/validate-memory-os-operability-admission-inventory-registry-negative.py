@@ -12,6 +12,8 @@ from typing import Any, Callable
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-operability-admission-inventory-source-authorities.py"
 GENERATOR = ROOT / "scripts/generate-memory-os-operability-admission-inventory.py"
+TABLETOP_LEDGER = ROOT / "docs/evidence/incident-tabletops"
+ROGUE_TABLETOP = TABLETOP_LEDGER / "IR-DRILL-ROGUE.json"
 AUTHORITIES = {
     "migration production-shaped admission": ROOT / "contracts/operations/migration-production-shaped-admission-registry.v1.json",
     "incident contact routing": ROOT / "contracts/operations/incident-contact-routing-admission-registry.v1.json",
@@ -115,6 +117,41 @@ def expect_generator_rejected(
     print(f"PASS generator reject: {name}")
 
 
+def expect_untracked_tabletop_rejected(validator: Any) -> None:
+    require(not ROGUE_TABLETOP.exists(), "rogue tabletop fixture path already exists")
+    inventory_before = (ROOT / "contracts/operations/operability-admission-inventory.v1.json").read_bytes()
+    TABLETOP_LEDGER.mkdir(parents=True, exist_ok=True)
+    ROGUE_TABLETOP.write_text(
+        json.dumps(
+            {
+                "schemaVersion": "memory-os-incident-human-tabletop-record.v1",
+                "scenarioId": "IR-DRILL-ROGUE",
+                "productionEvidence": False,
+                "productionReady": False,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    try:
+        validator.main()
+    except validator.Fail as exc:
+        require(
+            "must be committed" in str(exc) or "human incident tabletop ledger invalid" in str(exc),
+            f"unexpected human tabletop rejection reason: {exc}",
+        )
+        print("PASS validator reject: untracked human tabletop filename cannot inflate inventory source authority")
+    else:
+        raise Fail("untracked human tabletop filename unexpectedly accepted by inventory source authority")
+    finally:
+        ROGUE_TABLETOP.unlink(missing_ok=True)
+    require(
+        (ROOT / "contracts/operations/operability-admission-inventory.v1.json").read_bytes() == inventory_before,
+        "human tabletop source rejection mutated canonical inventory",
+    )
+
+
 def main() -> int:
     require(VALIDATOR.is_file(), "inventory source-authority validator missing")
     require(GENERATOR.is_file(), "inventory generator missing")
@@ -128,6 +165,7 @@ def main() -> int:
     generator.main()
     require(generator.OUTPUT.read_bytes() == inventory_before, "canonical inventory generator is not byte-deterministic")
     print("PASS baseline: canonical append-only authorities accepted without inventory drift")
+    expect_untracked_tabletop_rejected(validator)
 
     cases: list[tuple[Path, str, Callable[[dict[str, Any]], None]]] = [
         (
@@ -278,9 +316,11 @@ def main() -> int:
     after = {path: path.read_bytes() for path in AUTHORITIES.values()}
     require(after == before, "negative suite mutated canonical append-only authority")
     require(generator.OUTPUT.read_bytes() == inventory_before, "negative suite mutated canonical inventory")
+    require(not ROGUE_TABLETOP.exists(), "negative suite left rogue tabletop fixture behind")
     print("Memory OS operability inventory append-only authority negative suite PASS")
     print("canonical registry corruption accepted by source-authority validator: false")
     print("canonical registry corruption accepted by inventory generator: false")
+    print("untracked human tabletop filename accepted as inventory source authority: false")
     print("unexpected implementation RuntimeError normalized as domain rejection: false")
     print("rejected generator run mutated inventory: false")
     print("canonical append-only authority mutated: false")
