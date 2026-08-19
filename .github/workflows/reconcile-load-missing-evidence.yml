@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/reconcile-load-missing-evidence.yml"
       - "scripts/reconcile-memory-os-load-missing-evidence.py"
+      - "scripts/validate-memory-os-load-missing-evidence-reconcile-negative.py"
       - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-operability.py"
       - "contracts/operations/load-test-scenario-contract.v1.json"
@@ -15,6 +16,7 @@ on:
     paths:
       - ".github/workflows/reconcile-load-missing-evidence.yml"
       - "scripts/reconcile-memory-os-load-missing-evidence.py"
+      - "scripts/validate-memory-os-load-missing-evidence-reconcile-negative.py"
       - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-operability.py"
       - "contracts/operations/load-test-scenario-contract.v1.json"
@@ -61,8 +63,10 @@ jobs:
           set -euo pipefail
           python -m py_compile \
             scripts/reconcile-memory-os-load-missing-evidence.py \
+            scripts/validate-memory-os-load-missing-evidence-reconcile-negative.py \
             scripts/validate-memory-os-load.py \
             scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-load-missing-evidence-reconcile-negative.py
           python scripts/reconcile-memory-os-load-missing-evidence.py
           python scripts/validate-memory-os-load.py
           python scripts/validate-memory-os-operability.py
