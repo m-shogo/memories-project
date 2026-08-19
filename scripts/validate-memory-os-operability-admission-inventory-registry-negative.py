@@ -163,6 +163,27 @@ def expect_untracked_tabletop_rejected(validator: Any, generator: Any) -> None:
     require(generator.OUTPUT.read_bytes() == inventory_before, "human tabletop source rejection mutated canonical inventory")
 
 
+def expect_generator_load_authority_rejected(generator: Any) -> None:
+    inventory_before = generator.OUTPUT.read_bytes()
+    original = generator.require_canonical_load_authority
+
+    def reject_load_authority() -> None:
+        raise SystemExit("synthetic canonical load authority rejection")
+
+    generator.require_canonical_load_authority = reject_load_authority
+    rejected = False
+    try:
+        generator.main()
+    except SystemExit as exc:
+        require(exc.code not in (None, 0), "inventory generator exited successfully after canonical load authority rejection")
+        rejected = True
+    finally:
+        generator.require_canonical_load_authority = original
+    require(rejected, "inventory generator bypassed canonical load authority validation")
+    require(generator.OUTPUT.read_bytes() == inventory_before, "load authority rejection mutated canonical inventory")
+    print("PASS generator reject: canonical load authority validation cannot be bypassed")
+
+
 def main() -> int:
     require(VALIDATOR.is_file(), "inventory source-authority validator missing")
     require(GENERATOR.is_file(), "inventory generator missing")
@@ -177,6 +198,7 @@ def main() -> int:
     require(generator.OUTPUT.read_bytes() == inventory_before, "canonical inventory generator is not byte-deterministic")
     print("PASS baseline: canonical append-only authorities accepted without inventory drift")
     expect_untracked_tabletop_rejected(validator, generator)
+    expect_generator_load_authority_rejected(generator)
 
     cases: list[tuple[Path, str, Callable[[dict[str, Any]], None]]] = [
         (AUTHORITIES["migration production-shaped admission"], "migration production-shaped admission append-only disabled", lambda value: value.__setitem__("appendOnly", False)),
@@ -221,6 +243,7 @@ def main() -> int:
     print("canonical registry corruption accepted by inventory generator: false")
     print("untracked human tabletop filename accepted as inventory source authority: false")
     print("untracked human tabletop filename accepted by inventory generator: false")
+    print("canonical load authority rejection bypassed by inventory generator: false")
     print("unexpected implementation RuntimeError normalized as domain rejection: false")
     print("rejected generator run mutated inventory: false")
     print("canonical append-only authority mutated: false")
