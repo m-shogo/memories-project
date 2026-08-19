@@ -40,13 +40,16 @@ def expect_rejected(generator: Any, value: Any, label: str) -> None:
     raise Fail(f"non-exact validator success unexpectedly accepted: {label}={value!r}")
 
 
-def expect_boolean_registry_result_rejected(source_validator: Any, value: bool) -> None:
+def expect_registry_result_rejected(source_validator: Any, value: Any) -> None:
     try:
-        source_validator.reject_boolean_registry_result(value, f"boolean registry result {value!r}")
+        source_validator.validate_registry_result(value, f"registry result {value!r}")
     except source_validator.Fail as exc:
-        require("registry validator returned boolean" in str(exc), f"unexpected registry result rejection: {exc}")
+        if isinstance(value, bool):
+            require("registry validator returned boolean" in str(exc), f"unexpected boolean registry result rejection: {exc}")
+        else:
+            require("unsupported registry validator result" in str(exc), f"unexpected scalar registry result rejection: {exc}")
         return
-    raise Fail(f"boolean registry validator result unexpectedly accepted: {value!r}")
+    raise Fail(f"scalar registry validator result unexpectedly accepted: {value!r}")
 
 
 def expect_validate_source_result_semantics(source_validator: Any) -> None:
@@ -72,18 +75,19 @@ def expect_validate_source_result_semantics(source_validator: Any) -> None:
         )
 
     try:
-        run_with(None)
-        run_with([])
-        for result in (False, True):
+        for result in (None, [], {}, (), set()):
+            run_with(result)
+        for result in (False, True, 1, -1, 0, "FAIL", b"FAIL", 1.5):
             try:
                 run_with(result)
             except source_validator.Fail as exc:
-                require("registry validator returned boolean" in str(exc), f"unexpected validate_source rejection: {exc}")
+                expected = "registry validator returned boolean" if isinstance(result, bool) else "unsupported registry validator result"
+                require(expected in str(exc), f"unexpected validate_source rejection for {result!r}: {exc}")
             else:
-                raise Fail(f"validate_source accepted boolean registry validator result: {result!r}")
+                raise Fail(f"validate_source accepted scalar registry validator result: {result!r}")
     finally:
         source_validator.load_validator = original
-    print("PASS source validator: validate_source rejects boolean registry results while preserving legitimate return contracts")
+    print("PASS source validator: validate_source rejects scalar registry results while preserving legitimate return contracts")
 
 
 def main() -> int:
@@ -103,10 +107,16 @@ def main() -> int:
     ):
         expect_rejected(generator, value, label)
 
-    source_validator.reject_boolean_registry_result(None, "none-return registry validator")
-    source_validator.reject_boolean_registry_result([], "normalized-list registry validator")
-    for value in (False, True):
-        expect_boolean_registry_result_rejected(source_validator, value)
+    for value, label in (
+        (None, "none-return registry validator"),
+        ([], "normalized-list registry validator"),
+        ({}, "normalized-object registry validator"),
+        ((), "normalized-tuple registry validator"),
+        (set(), "normalized-set registry validator"),
+    ):
+        source_validator.validate_registry_result(value, label)
+    for value in (False, True, 0, 1, -1, "FAIL", b"FAIL", 1.5):
+        expect_registry_result_rejected(source_validator, value)
     expect_validate_source_result_semantics(source_validator)
 
     print("Memory OS operability inventory validator result negative PASS")
@@ -114,9 +124,10 @@ def main() -> int:
     print("boolean command-validator result accepted as success: false")
     print("nonzero/noninteger command-validator exits accepted: false")
     print("none-return registry validator accepted: true")
-    print("normalized-list registry validator accepted: true")
+    print("normalized-collection registry validator accepted: true")
     print("boolean registry validator result accepted: false")
-    print("validate_source boolean-result bypass: false")
+    print("scalar registry validator result accepted: false")
+    print("validate_source scalar-result bypass: false")
     print("production evidence created: false")
     print("production decision: NO_GO")
     return 0
