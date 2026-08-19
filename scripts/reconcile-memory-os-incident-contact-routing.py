@@ -13,6 +13,13 @@ CONTRACT = ROOT / "contracts/operations/incident-contact-routing-admission-contr
 REGISTRY = ROOT / "contracts/operations/incident-contact-routing-admission-registry.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-incident-contact-routing.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-incident-contact-routing.py"
+INCIDENT_RESPONSE_VALIDATOR = ROOT / "scripts/validate-memory-os-incident-response.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+POST_WRITE_VALIDATORS = (
+    VALIDATOR,
+    INCIDENT_RESPONSE_VALIDATOR,
+    OPERABILITY_VALIDATOR,
+)
 WORKFLOW = ROOT / ".github/workflows/incident-contact-routing-admission.yml"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 
@@ -65,8 +72,10 @@ def commit_validated_pair(contract: dict[str, Any], status: dict[str, Any]) -> N
     try:
         CONTRACT.write_bytes(render(contract))
         STATUS.write_bytes(render(status))
-        completed = subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=False)
-        require(completed.returncode == 0, "reconciled contact routing authority failed validation")
+        for validator in POST_WRITE_VALIDATORS:
+            completed = subprocess.run(["python", str(validator)], cwd=ROOT, check=False)
+            require(completed.returncode == 0,
+                    f"reconciled contact routing authority failed validation: {validator.name}")
     except BaseException:
         CONTRACT.write_bytes(original_contract)
         STATUS.write_bytes(original_status)
@@ -74,11 +83,9 @@ def commit_validated_pair(contract: dict[str, Any], status: dict[str, Any]) -> N
 
 
 def main() -> int:
-    for path in (REGISTRY, WRITER, VALIDATOR, WORKFLOW):
+    for path in (REGISTRY, WRITER, *POST_WRITE_VALIDATORS, WORKFLOW):
         require(path.is_file(), f"contact routing admission missing: {path.relative_to(ROOT)}")
 
-    # Fail closed before any derived contract/status mutation. The standalone
-    # validator owns registry row semantics and aggregate count authority.
     validate_current_authority()
 
     registry = load(REGISTRY)
