@@ -67,6 +67,7 @@ def validate_writer_authority(writer: ModuleType) -> None:
     require(writer.CONTRACT.resolve() == CONTRACT.resolve(), "failure-drill writer contract authority drift")
     require(writer.REGISTRY.resolve() == REGISTRY.resolve(), "failure-drill writer registry authority drift")
     require(writer.GEN_REGISTRY.resolve() == GEN_REGISTRY.resolve(), "failure-drill writer generation registry authority drift")
+    require(writer.GEN_WRITER.resolve() == GEN_WRITER.resolve(), "failure-drill writer generation executable authority drift")
     require(writer.VALIDATOR.resolve() == Path(__file__).resolve(), "failure-drill writer validator authority drift")
     require(writer.LOCK.resolve() == LOCK.resolve(), "failure-drill writer lock authority drift")
     require(callable(getattr(writer, "append_registry_transactionally", None)), "failure-drill writer transactional append authority missing")
