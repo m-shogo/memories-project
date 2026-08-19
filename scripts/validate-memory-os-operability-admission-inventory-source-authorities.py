@@ -168,8 +168,12 @@ def exact_success(result: Any, label: str) -> None:
     )
 
 
-def reject_boolean_registry_result(result: Any, label: str) -> None:
+def validate_registry_result(result: Any, label: str) -> None:
     require(not isinstance(result, bool), f"{label} invalid: registry validator returned boolean {result!r}")
+    require(
+        result is None or isinstance(result, (list, dict, tuple, set)),
+        f"{label} invalid: unsupported registry validator result {result!r}",
+    )
 
 
 def load(relative: str) -> dict[str, Any]:
@@ -218,7 +222,7 @@ def validate_source(
         if exc.__class__.__name__ in DOMAIN_REJECTIONS:
             raise Fail(f"{label} invalid: {exc}") from exc
         raise
-    reject_boolean_registry_result(result, label)
+    validate_registry_result(result, label)
 
 
 def validate_human_tabletop_source() -> int:
@@ -277,7 +281,7 @@ def main() -> int:
     print(f"validated human tabletop scenarios: {human_tabletop_count}")
     print("canonical load contract/results/status validation: PASS")
     print("boolean validator exit codes accepted as success: false")
-    print("boolean registry validator returns accepted as success: false")
+    print("scalar registry validator returns accepted as success: false")
     print("raw human tabletop filename counts accepted without canonical ledger validation: false")
     print("raw load readiness/counts accepted without canonical load validation: false")
     print("raw backup/restore derived counts accepted without canonical validators: false")
