@@ -10,6 +10,7 @@ on:
       - "services/import-api/internal/parsersup/**"
       - "scripts/validate-memory-os-parser-restart-matrix.py"
       - "scripts/reconcile-memory-os-parser-restart-matrix.py"
+      - "scripts/reconcile-memory-os-chaos-authority.py"
   schedule:
     - cron: "43 19 * * *"
   workflow_dispatch:
@@ -53,7 +54,8 @@ jobs:
         run: |
           python -m py_compile \
             scripts/validate-memory-os-parser-restart-matrix.py \
-            scripts/reconcile-memory-os-parser-restart-matrix.py
+            scripts/reconcile-memory-os-parser-restart-matrix.py \
+            scripts/reconcile-memory-os-chaos-authority.py
           test -z "$(gofmt -l services/import-api/internal/parsersup/restart_matrix_drill_linux_test.go)"
           python scripts/validate-memory-os-parser-restart-matrix.py
 
