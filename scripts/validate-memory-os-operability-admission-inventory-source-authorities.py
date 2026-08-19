@@ -239,7 +239,13 @@ def validate_load_source() -> None:
         "memory_os_inventory_source_load",
         "main",
     )
-    exact_success(validator(), "load-test source authority")
+    try:
+        result = validator()
+    except RuntimeError as exc:
+        if exc.__class__.__name__ in DOMAIN_REJECTIONS:
+            raise Fail(f"load-test source authority invalid: {exc}") from exc
+        raise
+    exact_success(result, "load-test source authority")
 
 
 def validate_command_source(relative: str, module_name: str, label: str) -> None:
