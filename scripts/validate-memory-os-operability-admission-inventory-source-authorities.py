@@ -147,6 +147,11 @@ COMMAND_SOURCES: tuple[tuple[str, str, str], ...] = (
         "memory_os_inventory_source_backup_non_resurrection_contract",
         "backup/restore typed non-resurrection authority",
     ),
+    (
+        "scripts/validate-memory-os-operability-status-hygiene.py",
+        "memory_os_inventory_source_operability_status_hygiene",
+        "production operability status hygiene authority",
+    ),
 )
 
 
@@ -248,12 +253,12 @@ def main() -> int:
         validate_source(relative, validator_path, module_name, function_name, label)
     print("Memory OS operability inventory source authority validation PASS")
     print(f"canonical append-only source registries: {len(SOURCES)}")
-    print(f"validated backup/restore derived authorities: {len(COMMAND_SOURCES)}")
+    print(f"validated command-derived authorities: {len(COMMAND_SOURCES)}")
     print(f"validated human tabletop scenarios: {human_tabletop_count}")
     print("canonical load contract/results/status validation: PASS")
     print("raw human tabletop filename counts accepted without canonical ledger validation: false")
     print("raw load readiness/counts accepted without canonical load validation: false")
-    print("raw backup/restore derived counts accepted without canonical validators: false")
+    print("raw command-derived counts accepted without canonical validators: false")
     print("raw registry counts accepted without owning authority validation: false")
     print("production evidence created: false")
     print("production decision: NO_GO")
