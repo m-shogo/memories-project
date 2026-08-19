@@ -8,9 +8,13 @@ on:
       - "contracts/operations/rate-limit-distributed-runtime-admission-contract.v1.json"
       - "contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json"
       - "contracts/operations/rate-limit-policy-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
+      - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
       - "docs/evidence/rate-limit-distributed-runtime/independent-reviews/**"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/register-memory-os-rate-limit-distributed-runtime.py"
       - "scripts/validate-memory-os-rate-limit-distributed-runtime.py"
       - "scripts/validate-memory-os-rate-limit-distributed-runtime-registry-negative.py"
@@ -28,9 +32,13 @@ on:
       - "contracts/operations/rate-limit-distributed-runtime-admission-contract.v1.json"
       - "contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json"
       - "contracts/operations/rate-limit-policy-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
+      - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
       - "docs/evidence/rate-limit-distributed-runtime/independent-reviews/**"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/register-memory-os-rate-limit-distributed-runtime.py"
       - "scripts/validate-memory-os-rate-limit-distributed-runtime.py"
       - "scripts/validate-memory-os-rate-limit-distributed-runtime-registry-negative.py"
@@ -72,6 +80,7 @@ jobs:
           code=0
           python -m py_compile \
             scripts/register-memory-os-production-equivalent-environment-generation.py \
+            scripts/validate-memory-os-production-equivalent-environment-record.py \
             scripts/register-memory-os-rate-limit-distributed-runtime.py \
             scripts/validate-memory-os-rate-limit-distributed-runtime.py \
             scripts/validate-memory-os-rate-limit-distributed-runtime-registry-negative.py \
