@@ -12,8 +12,6 @@ import copy
 import datetime as dt
 import importlib.util
 import json
-import re
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -22,8 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/parser-inflight-cancellation-results.sample.v1.json"
 PROCESS_GROUP_RESULT = ROOT / "docs/fixtures/memory-os-operability/parser-process-group-reaping-results.sample.v1.json"
+INFLIGHT_VALIDATOR = ROOT / "scripts/validate-memory-os-parser-inflight-cancellation.py"
 PROCESS_GROUP_VALIDATOR = ROOT / "scripts/validate-memory-os-parser-process-group-reaping.py"
-SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 GAP = "in-flight parser cancellation latency and process-group termination proof while the worker is blocked"
 CHILD_REAPING_GAP = "independent child-process orphan/reaping scan after parser process-group termination"
 HOST_RESTART_GAP = "parser host or container restart recovery using a reviewed production artifact"
@@ -61,30 +59,48 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def load_process_group_validator():
-    require(PROCESS_GROUP_VALIDATOR.is_file(), "process-group reaping validator missing")
-    spec = importlib.util.spec_from_file_location("memory_os_process_group_reaping_for_inflight", PROCESS_GROUP_VALIDATOR)
-    require(spec is not None and spec.loader is not None, "cannot load process-group reaping validator")
+def load_result_validator(path: Path, module_name: str):
+    try:
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise ReconcileFailure(f"canonical result validator missing or escapes repository: {path.name}") from exc
+    require(resolved == Path("scripts") / path.name and path.is_file(),
+            f"canonical result validator path drift: {path.name}")
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    require(spec is not None and spec.loader is not None,
+            f"cannot load canonical result validator: {path.name}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     validator = getattr(module, "validate_result", None)
-    require(callable(validator), "process-group reaping validator missing validate_result")
+    require(callable(validator), f"canonical result validator missing validate_result: {path.name}")
     return validator
 
 
-def source_is_ancestor(source_sha: Any) -> bool:
-    if not isinstance(source_sha, str) or SHA_RE.fullmatch(source_sha) is None:
+def validate_inflight_result(result: dict[str, Any]) -> None:
+    try:
+        load_result_validator(
+            INFLIGHT_VALIDATOR,
+            "memory_os_inflight_cancellation_for_chaos_overlay",
+        )(result, None)
+    except Exception as exc:
+        if exc.__class__.__name__ in {"ValidationFailure", "ReconcileFailure"}:
+            raise ReconcileFailure(f"in-flight cancellation authority invalid: {exc}") from exc
+        raise
+
+
+def process_group_reaping_complete() -> bool:
+    if not PROCESS_GROUP_RESULT.is_file():
         return False
     try:
-        return subprocess.run(
-            ["git", "merge-base", "--is-ancestor", source_sha, "HEAD"],
-            cwd=ROOT,
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        ).returncode == 0
-    except OSError:
-        return False
+        load_result_validator(
+            PROCESS_GROUP_VALIDATOR,
+            "memory_os_process_group_reaping_for_inflight",
+        )(load(PROCESS_GROUP_RESULT), None)
+    except Exception as exc:
+        if exc.__class__.__name__ in {"ValidationFailure", "ReconcileFailure"}:
+            raise ReconcileFailure(f"process-group reaping authority invalid: {exc}") from exc
+        raise
+    return True
 
 
 def unique(values: list[Any]) -> list[Any]:
@@ -93,45 +109,6 @@ def unique(values: list[Any]) -> list[Any]:
         if value not in result:
             result.append(value)
     return result
-
-
-def validate_result(result: dict[str, Any]) -> None:
-    require(result.get("schemaVersion") ==
-            "memory-os-parser-inflight-cancellation-results.v1",
-            "in-flight result schemaVersion drift")
-    require(source_is_ancestor(result.get("commitSha")),
-            "in-flight result source SHA is not an ancestor")
-    require(result.get("result") == "PASS" and result.get("integrityResult") == "PASS" and
-            result.get("exitCode") == 0,
-            "in-flight result is not PASS")
-    environment = result.get("environment")
-    require(isinstance(environment, dict) and
-            environment.get("productionEvidence") is False and
-            environment.get("containsSecrets") is False,
-            "in-flight result evidence boundary drift")
-    assertions = result.get("assertions")
-    require(isinstance(assertions, dict), "in-flight result assertions missing")
-    for flag in (
-        "workerFrameObservedBeforeCancel", "spoolDataObservedBeforeCancel",
-        "returnedContextCanceled", "spoolResidueAbsent", "sameSpoolReusable",
-        "replacementSealValid", "independentVerificationMatched",
-    ):
-        require(assertions.get(flag) is True, f"in-flight assertion failed: {flag}")
-    latency = assertions.get("cancellationLatencyMilliseconds")
-    require(isinstance(latency, (int, float)) and 0 <= latency < 1000,
-            "in-flight cancellation latency is not below one second")
-
-
-def process_group_reaping_complete() -> bool:
-    if not PROCESS_GROUP_RESULT.is_file():
-        return False
-    try:
-        load_process_group_validator()(load(PROCESS_GROUP_RESULT), None)
-    except Exception as exc:
-        if exc.__class__.__name__ in {"ValidationFailure", "ReconcileFailure"}:
-            raise ReconcileFailure(f"process-group reaping authority invalid: {exc}") from exc
-        raise
-    return True
 
 
 def normalize(status: dict[str, Any]) -> dict[str, Any]:
@@ -149,7 +126,7 @@ def normalize(status: dict[str, Any]) -> dict[str, Any]:
     require(isinstance(refs, list), "OPS-P0-009 evidenceRefs must be a list")
 
     if RESULT_PATH.is_file():
-        validate_result(load(RESULT_PATH))
+        validate_inflight_result(load(RESULT_PATH))
         while GAP in missing:
             missing.remove(GAP)
         if EVIDENCE not in existing:
