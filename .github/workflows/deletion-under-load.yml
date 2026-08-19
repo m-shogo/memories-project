@@ -9,8 +9,6 @@ on:
       - "services/import-api/internal/**"
       - "infra/postgresql/security/**"
       - "contracts/operations/deletion-under-load-contract.v1.json"
-      - "contracts/operations/load-test-scenario-contract.v1.json"
-      - "contracts/operations/production-operability-status.json"
       - "scripts/validate-memory-os-deletion-under-load.py"
       - "scripts/reconcile-memory-os-deletion-under-load-status.py"
       - "scripts/validate-memory-os-load.py"
