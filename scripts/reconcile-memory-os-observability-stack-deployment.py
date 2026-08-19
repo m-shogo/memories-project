@@ -13,6 +13,21 @@ CONTRACT = ROOT / "contracts/operations/observability-stack-deployment-contract.
 REGISTRY = ROOT / "contracts/operations/observability-stack-deployment-registry.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-observability-stack-deployment.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-observability-stack-deployment.py"
+OBSERVABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-observability.py"
+ACCESS_VALIDATOR = ROOT / "scripts/validate-memory-os-observability-access.py"
+METRICS_VALIDATOR = ROOT / "scripts/validate-memory-os-metrics.py"
+METRICS_OPERATIONS_VALIDATOR = ROOT / "scripts/validate-memory-os-metrics-operations.py"
+METRICS_ALERTING_VALIDATOR = ROOT / "scripts/validate-memory-os-metrics-alerting.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+POST_WRITE_VALIDATORS = (
+    VALIDATOR,
+    OBSERVABILITY_VALIDATOR,
+    ACCESS_VALIDATOR,
+    METRICS_VALIDATOR,
+    METRICS_OPERATIONS_VALIDATOR,
+    METRICS_ALERTING_VALIDATOR,
+    OPERABILITY_VALIDATOR,
+)
 WORKFLOW = ROOT / ".github/workflows/observability-stack-deployment.yml"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 
@@ -65,8 +80,10 @@ def commit_validated_pair(contract: dict[str, Any], status: dict[str, Any]) -> N
     try:
         CONTRACT.write_bytes(render(contract))
         STATUS.write_bytes(render(status))
-        completed = subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=False)
-        require(completed.returncode == 0, "reconciled observability stack authority failed validation")
+        for validator in POST_WRITE_VALIDATORS:
+            completed = subprocess.run(["python", str(validator)], cwd=ROOT, check=False)
+            require(completed.returncode == 0,
+                    f"reconciled observability stack authority failed validation: {validator.name}")
     except BaseException:
         CONTRACT.write_bytes(original_contract)
         STATUS.write_bytes(original_status)
@@ -74,7 +91,7 @@ def commit_validated_pair(contract: dict[str, Any], status: dict[str, Any]) -> N
 
 
 def main() -> int:
-    for path in (REGISTRY, WRITER, VALIDATOR, WORKFLOW):
+    for path in (REGISTRY, WRITER, *POST_WRITE_VALIDATORS, WORKFLOW):
         require(path.is_file(), f"observability stack foundation missing: {path.relative_to(ROOT)}")
     validate_current_authority()
     registry = load(REGISTRY)
