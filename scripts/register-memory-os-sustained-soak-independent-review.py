@@ -69,13 +69,7 @@ def validate_existing_registry() -> None:
     """Fail closed on the canonical append-only authority before any mutation."""
     validate_lock_authority()
     registry = load(REGISTRY)
-    validator = load_validator()
-    require(validator.REGISTRY.resolve() == REGISTRY.resolve(), "sustained-soak registry validator authority drift")
-    try:
-        validator.validate_registry_aggregates(registry)
-        validator.main()
-    except validator.Fail as exc:
-        raise Fail(f"existing registry rejected before append: {exc}") from exc
+    validate_registry_for_append(registry)
 
 
 def recompute_counts(registry: dict[str, Any]) -> None:
@@ -165,6 +159,13 @@ def validate_candidate(candidate: dict[str, Any]) -> Path:
         raise
 
 
+def validate_registry_for_append(registry: dict[str, Any]) -> None:
+    """Validate an arbitrary registry with the canonical full review authority."""
+    validate_lock_authority()
+    candidate_path = validate_candidate(registry)
+    candidate_path.unlink(missing_ok=True)
+
+
 def atomic_restore(payload: bytes) -> None:
     descriptor, temp_name = tempfile.mkstemp(
         prefix=".sustained-soak-independent-review-rollback-",
@@ -195,11 +196,10 @@ def replace_registry_transactionally(candidate_path: Path) -> None:
     require(validator.REGISTRY.resolve() == REGISTRY.resolve(), "sustained-soak registry validator authority drift")
     try:
         os.replace(candidate_path, REGISTRY)
-        validator.validate_registry_aggregates(load(REGISTRY))
-        validator.main()
+        validate_registry_for_append(load(REGISTRY))
     except Exception as exc:
         atomic_restore(original)
-        if isinstance(exc, validator.Fail):
+        if isinstance(exc, (Fail, validator.Fail)):
             raise Fail(f"post-append canonical registry validation failed: {exc}") from exc
         raise
 
