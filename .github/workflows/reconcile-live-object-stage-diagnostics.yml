@@ -25,10 +25,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Checkout latest so
+      - name: Checkout exact source commit
         uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -45,6 +45,8 @@ jobs:
       - name: Reconcile stage diagnostics
         run: |
           set -euo pipefail
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           python -m py_compile scripts/reconcile-memory-os-live-object-stage-diagnostics.py
           python scripts/reconcile-memory-os-live-object-stage-diagnostics.py
           gofmt -w services/import-api/internal/httpserver/live_object_load_test.go
@@ -53,13 +55,20 @@ jobs:
       - name: Commit diagnostic authority
         run: |
           set -euo pipefail
+          source_sha="$(git rev-parse HEAD)"
+          test "$source_sha" = "${{ github.sha }}"
           git add services/import-api/internal/httpserver/live_object_load_test.go
           if git diff --cached --quiet; then
             echo "Live object stage diagnostics are already current."
             exit 0
           fi
+          git diff --cached --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "test(load): classify MinIO lifecycle failures"
-          git pull --rebase origin so
+          remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
+          if [[ "$remote_sha" != "$source_sha" ]]; then
+            echo "Live object stage diagnostic source is stale: validated $source_sha but so is $remote_sha" >&2
+            exit 75
+          fi
           git push origin HEAD:so
