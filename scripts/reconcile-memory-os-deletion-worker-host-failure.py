@@ -11,6 +11,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/deletion-worker-host-failure-contract.v1.json"
 VALIDATOR = ROOT / "scripts/validate-memory-os-deletion-worker-host-failure.py"
+LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
 OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 WORKFLOW = ROOT / ".github/workflows/deletion-worker-host-failure-admission.yml"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
@@ -49,6 +50,13 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
+def validate_load_authority() -> None:
+    try:
+        subprocess.run(["python", str(LOAD_VALIDATOR)], cwd=ROOT, check=True)
+    except subprocess.CalledProcessError as exc:
+        raise Fail(f"canonical load authority validation failed: {exc}") from exc
+
+
 def write_transactionally(contract: dict[str, Any], status: dict[str, Any]) -> None:
     contract_bytes = CONTRACT.read_bytes()
     status_bytes = STATUS.read_bytes()
@@ -56,6 +64,7 @@ def write_transactionally(contract: dict[str, Any], status: dict[str, Any]) -> N
         CONTRACT.write_text(json.dumps(contract, indent=2) + "\n", encoding="utf-8")
         STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=True)
+        subprocess.run(["python", str(LOAD_VALIDATOR)], cwd=ROOT, check=True)
         subprocess.run(["python", str(OPERABILITY_VALIDATOR)], cwd=ROOT, check=True)
     except Exception as exc:
         CONTRACT.write_bytes(contract_bytes)
@@ -66,6 +75,8 @@ def write_transactionally(contract: dict[str, Any], status: dict[str, Any]) -> N
 
 
 def main() -> int:
+    validate_load_authority()
+
     contract = load(CONTRACT)
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "host-failure readiness missing")
