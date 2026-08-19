@@ -28,9 +28,45 @@ def load_module(path: Path, name: str):
     return module
 
 
+def validate_canonical_source_delegation(canonical, current: dict) -> None:
+    original_runner = canonical.run_canonical_validator
+    calls: list[str] = []
+    try:
+        canonical.run_canonical_validator = lambda script_name: calls.append(script_name)
+        canonical.validate_canonical_source_authorities()
+    finally:
+        canonical.run_canonical_validator = original_runner
+
+    database_result = json.loads(canonical.DATABASE_RESULT.read_text(encoding="utf-8"))
+    assertions = database_result.get("assertions", {})
+    expected = [canonical.OBJECT_VALIDATOR, canonical.PARSER_VALIDATOR]
+    if isinstance(assertions, dict) and assertions.get("sameSpoolIdReused") is True:
+        expected.append(canonical.DATABASE_VALIDATOR)
+    if calls != expected:
+        raise RuntimeError(f"canonical chaos source-validator delegation drift: {calls} != {expected}")
+
+    original_runner = canonical.run_canonical_validator
+    try:
+        def reject_source(_script_name: str) -> None:
+            raise canonical.ReconcileFailure("synthetic canonical source rejection")
+
+        canonical.run_canonical_validator = reject_source
+        try:
+            canonical.normalized_status(copy.deepcopy(current))
+        except canonical.ReconcileFailure as exc:
+            if "synthetic canonical source rejection" not in str(exc):
+                raise RuntimeError(f"unexpected canonical source rejection: {exc}") from exc
+        else:
+            raise RuntimeError("canonical chaos reconcile accepted rejected source authority")
+    finally:
+        canonical.run_canonical_validator = original_runner
+
+
 def main() -> int:
     canonical = load_module(CANONICAL, "memory_os_chaos_monotonicity_canonical")
     current = json.loads(STATUS.read_text(encoding="utf-8"))
+    validate_canonical_source_delegation(canonical, current)
+
     gate = next(
         item for item in current["areas"]
         if isinstance(item, dict) and item.get("id") == "OPS-P0-009"
@@ -72,7 +108,7 @@ def main() -> int:
             if reconciled.get("productionDecision") != "NO_GO":
                 raise RuntimeError(f"scenario reconcile changed production decision: {path.name}")
 
-    print("PASS: scenario-specific chaos reconcilers preserve canonical stronger missing-evidence authority")
+    print("PASS: chaos reconcile delegates canonical source validation and preserves stronger missing-evidence authority")
     return 0
 
 
