@@ -14,6 +14,7 @@ on:
       - "services/import-api/internal/objectstore/client.go"
       - "scripts/validate-memory-os-chaos-failure-drills-v2.py"
       - "scripts/reconcile-memory-os-chaos-failure-drills-v2.py"
+      - "scripts/reconcile-memory-os-chaos-authority.py"
   schedule:
     - cron: "19 19 * * *"
   workflow_dispatch:
@@ -85,7 +86,8 @@ jobs:
         run: |
           python -m py_compile \
             scripts/validate-memory-os-chaos-failure-drills-v2.py \
-            scripts/reconcile-memory-os-chaos-failure-drills-v2.py
+            scripts/reconcile-memory-os-chaos-failure-drills-v2.py \
+            scripts/reconcile-memory-os-chaos-authority.py
           test -z "$(gofmt -l \
             services/import-api/internal/httpserver/interruption_drill_test.go \
             services/import-api/internal/parsersup/restart_drill_linux_test.go \
