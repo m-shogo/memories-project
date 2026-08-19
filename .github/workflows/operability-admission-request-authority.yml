@@ -21,6 +21,7 @@ on:
       - "scripts/generate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-operability-admission-inventory-source-authorities.py"
+      - "scripts/validate-memory-os-operability-admission-inventory-registry-negative.py"
       - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/request-memory-os-backup-restore-drill.py"
@@ -63,6 +64,7 @@ on:
       - "scripts/generate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-operability-admission-inventory-source-authorities.py"
+      - "scripts/validate-memory-os-operability-admission-inventory-registry-negative.py"
       - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/request-memory-os-backup-restore-drill.py"
@@ -103,6 +105,7 @@ jobs:
           python-version: "3.12"
       - name: Regenerate deterministic inventory
         run: |
+          python scripts/validate-memory-os-operability-admission-inventory-registry-negative.py
           python scripts/generate-memory-os-operability-admission-inventory.py
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             git diff --exit-code -- contracts/operations/operability-admission-inventory.v1.json
