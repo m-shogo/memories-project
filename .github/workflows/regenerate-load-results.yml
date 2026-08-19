@@ -28,7 +28,7 @@ jobs:
       - name: Checkout exact source commit
         uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Go
@@ -44,9 +44,8 @@ jobs:
 
       - name: Verify clean source state
         run: |
-          test "$(git branch --show-current)" = "so"
           test -z "$(git status --porcelain)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           test -d "$GITHUB_WORKSPACE/docs/fixtures/memory-os-operability"
           bash -n scripts/regenerate-memory-os-load-results.sh
 
@@ -74,12 +73,21 @@ jobs:
 
       - name: Commit regenerated evidence
         run: |
+          set -euo pipefail
+          source_sha="$(git rev-parse HEAD)"
+          test "$source_sha" = "${{ github.sha }}"
           git add docs/fixtures/memory-os-operability/load-results.sample.v1.json
           if git diff --cached --quiet; then
             echo "Load evidence is already current."
             exit 0
           fi
+          git diff --cached --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "test(load): regenerate results after contract hardening"
+          remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
+          if [[ "$remote_sha" != "$source_sha" ]]; then
+            echo "Load evidence source is stale: validated $source_sha but so is $remote_sha" >&2
+            exit 75
+          fi
           git push origin HEAD:so
