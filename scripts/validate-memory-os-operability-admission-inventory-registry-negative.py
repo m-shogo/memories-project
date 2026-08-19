@@ -29,6 +29,7 @@ AUTHORITIES = {
     "parser artifact": ROOT / "contracts/operations/parser-artifact-registry.v1.json",
     "production-shaped failure drill": ROOT / "contracts/operations/production-shaped-failure-drill-registry.v1.json",
 }
+DOMAIN_REJECTIONS = {"Fail", "RegistrationFailure"}
 
 
 class Fail(RuntimeError):
@@ -104,11 +105,14 @@ def expect_generator_rejected(
         generator.main()
     except SystemExit:
         rejected = True
-        print(f"PASS generator reject: {name}")
+    except RuntimeError as exc:
+        require(exc.__class__.__name__ in DOMAIN_REJECTIONS, f"unexpected generator RuntimeError for {name}: {exc}")
+        rejected = True
     finally:
         generator.load = original_load
     require(rejected, f"corrupt append-only authority unexpectedly accepted by generator: {name}")
     require(generator.OUTPUT.read_bytes() == output_before, f"generator mutated inventory after rejecting corrupt authority: {name}")
+    print(f"PASS generator reject: {name}")
 
 
 def main() -> int:
@@ -277,6 +281,7 @@ def main() -> int:
     print("Memory OS operability inventory append-only authority negative suite PASS")
     print("canonical registry corruption accepted by source-authority validator: false")
     print("canonical registry corruption accepted by inventory generator: false")
+    print("unexpected implementation RuntimeError normalized as domain rejection: false")
     print("rejected generator run mutated inventory: false")
     print("canonical append-only authority mutated: false")
     print("production evidence: false")
