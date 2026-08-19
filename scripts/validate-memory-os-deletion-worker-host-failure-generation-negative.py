@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reject corrupted environment-generation authority before host-failure admission."""
+"""Reject corrupted generation/load authority before host-failure admission."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+LOAD = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
 CONTRACT = ROOT / "contracts/operations/deletion-worker-host-failure-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 VALIDATOR = ROOT / "scripts/validate-memory-os-deletion-worker-host-failure.py"
@@ -45,6 +46,31 @@ def rejected(label: str, mutate: Callable[[dict[str, Any]], None], baseline: dic
     require(completed.returncode != 0, f"{label}: corrupt generation authority was accepted")
     REGISTRY.write_bytes(baseline_bytes)
     require(REGISTRY.read_bytes() == baseline_bytes, f"{label}: canonical generation registry was not restored")
+
+
+def load_authority_rejected() -> None:
+    load_bytes = LOAD.read_bytes()
+    contract_bytes = CONTRACT.read_bytes()
+    status_bytes = STATUS.read_bytes()
+    candidate = json.loads(load_bytes.decode("utf-8"))
+    require(isinstance(candidate, dict), "load contract root must be object")
+    candidate["resultsSchemaVersion"] = "forged-load-results-schema"
+    corrupted_bytes = (json.dumps(candidate, indent=2) + "\n").encode("utf-8")
+    try:
+        LOAD.write_bytes(corrupted_bytes)
+        completed = subprocess.run(
+            [sys.executable, str(RECONCILER)],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        require(completed.returncode != 0, "corrupt canonical load authority was accepted by host-failure reconciler")
+        require(CONTRACT.read_bytes() == contract_bytes, "host-failure contract changed after rejected load authority")
+        require(STATUS.read_bytes() == status_bytes, "production status changed after rejected load authority")
+        require(LOAD.read_bytes() == corrupted_bytes, "host-failure reconciler mutated corrupt load authority")
+    finally:
+        LOAD.write_bytes(load_bytes)
 
 
 def rollback_rejected() -> None:
@@ -87,10 +113,11 @@ def main() -> int:
         ]
         for label, mutate in cases:
             rejected(label, mutate, baseline, baseline_bytes)
+        load_authority_rejected()
         rollback_rejected()
     finally:
         REGISTRY.write_bytes(baseline_bytes)
-    print("PASS: deletion host-failure admission rejects corrupted generation authority and rolls back post-write failures")
+    print("PASS: deletion host-failure admission rejects corrupted generation/load authority and rolls back post-write failures")
     return 0
 
 
