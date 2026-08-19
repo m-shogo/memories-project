@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "operability-admission-inventory",
+  "result": "FAIL",
+  "sourceCommitSha": "8c5b6d80332e5ee3e54eabbb2c71fea2e2c44abc",
+  "exitCode": 1,
+  "output": "Memory OS sustained-soak independent review authority PASS\napproved leak/stability criteria: 0\nindependent reviews: 0\ncurrent passing independent reviews: 0\nsuperseded criteria review remains current authority: false\ntyped human criteria/review records accepted without dedicated evidence: false\nuntracked or modified human evidence accepted: false\nsymlinked human evidence accepted: false\nuntracked or modified run evidence accepted: false\nsymlinked run evidence accepted: false\nhuman approval evidence without exact record digest binding accepted: false\nreview run-binding drift accepted: false\ndescriptive trend review implies independent review: false\nleak proof: false\nproduction evidence: false\nproduction decision: NO_GO\nPASS current-criteria review count: historical PASS excluded; current PASS counted\nPASS append-lock reject: contract lock substitution\nPASS pre-append reject: registry class drift\nPASS pre-append reject: unknown registry field\nPASS pre-append reject: boolean criteria count\nPASS pre-append reject: boolean review count\nPASS pre-append reject: criteria count drift\nPASS pre-append reject: review count drift\nPASS pre-append reject: production readiness promotion\nPASS pre-append reject: production evidence promotion\nPASS post-append rollback: invalid registry replacement restored original authority\nPASS reconcile reject: corrupt review authority leaves derived contracts/status unchanged\nPASS reject: append lock authority substituted\nMemory OS sustained-soak independent review authority PASS\napproved leak/stability criteria: 0\nindependent reviews: 0\ncurrent passing independent reviews: 0\nsuperseded criteria review remains current authority: false\ntyped human criteria/review records accepted without dedicated evidence: false\nuntracked or modified human evidence accepted: false\nsymlinked human evidence accepted: false\nuntracked or modified run evidence accepted: false\nsymlinked run evidence accepted: false\nhuman approval evidence without exact record digest binding accepted: false\nreview run-binding drift accepted: false\ndescriptive trend review implies independent review: false\nleak proof: false\nproduction evidence: false\nproduction decision: NO_GO\nTraceback (most recent call last):\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-sustained-soak-independent-review-negative.py\", line 342, in <module>\n    raise SystemExit(main())\n                     ^^^^^^\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-sustained-soak-independent-review-negative.py\", line 317, in main\n    raise RuntimeError(f\"mutation unexpectedly accepted: {name}\")\nRuntimeError: mutation unexpectedly accepted: transactional append guard disabled\n",
+  "containsSecrets": false,
+  "preflightCreatedPrerequisite": false,
+  "drillRequestCreated": false,
+  "generationEvidenceCreated": false,
+  "typedEvidenceCreated": false,
+  "restoreExecuted": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
