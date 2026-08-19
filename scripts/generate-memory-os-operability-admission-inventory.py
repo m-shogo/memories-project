@@ -58,6 +58,34 @@ def require_canonical_registry(script_name: str, module_name: str, registry: dic
         raise
 
 
+def canonical_human_tabletop_count() -> int:
+    script_name = "validate-memory-os-incident-human-tabletops.py"
+    path = ROOT / "scripts" / script_name
+    try:
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise SystemExit(f"canonical human tabletop validator missing or escapes repository: {script_name}") from exc
+    if resolved != Path("scripts") / script_name or not path.is_file():
+        raise SystemExit(f"canonical human tabletop validator path drift: {script_name}")
+    spec = importlib.util.spec_from_file_location("memory_os_human_tabletop_inventory_generator_authority", path)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"cannot load canonical human tabletop validator: {script_name}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    validator = getattr(module, "validate_ledger", None)
+    if not callable(validator):
+        raise SystemExit(f"canonical human tabletop validator missing validate_ledger: {script_name}")
+    try:
+        scenarios = validator()
+    except RuntimeError as exc:
+        if exc.__class__.__name__ == "Fail":
+            raise SystemExit(f"human incident tabletop ledger invalid: {exc}") from exc
+        raise
+    if not isinstance(scenarios, set) or not all(isinstance(scenario, str) for scenario in scenarios):
+        raise SystemExit("canonical human tabletop validator result invalid")
+    return len(scenarios)
+
+
 def p0_status(status: dict[str, Any], area_id: str) -> dict[str, Any]:
     rows = status.get("areas")
     if not isinstance(rows, list):
@@ -186,7 +214,7 @@ def main() -> int:
         "production-shaped failure drill registry",
     )
 
-    human_tabletop_count = len(list((ROOT / "docs/evidence/incident-tabletops").glob("IR-DRILL-*.json")))
+    human_tabletop_count = canonical_human_tabletop_count()
     load_ready = load_contract.get("readiness")
     if not isinstance(load_ready, dict):
         raise SystemExit("load readiness missing")
