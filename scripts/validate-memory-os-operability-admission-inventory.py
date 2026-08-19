@@ -120,6 +120,12 @@ def main() -> int:
         "environment generation registry",
     )
     require_canonical_registry(
+        "register-memory-os-sustained-soak-independent-review.py",
+        "memory_os_sustained_soak_inventory_authority",
+        soak_review,
+        "sustained-soak independent review registry",
+    )
+    require_canonical_registry(
         "register-memory-os-recovery-objectives.py",
         "memory_os_recovery_objective_inventory_authority",
         recovery_objectives,
