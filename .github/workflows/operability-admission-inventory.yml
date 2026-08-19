@@ -54,6 +54,7 @@ on:
       - "scripts/register-memory-os-incident-contact-routing.py"
       - "scripts/register-memory-os-observability-stack-deployment.py"
       - "scripts/register-memory-os-rate-limit-distributed-runtime.py"
+      - "scripts/validate-memory-os-rate-limit-distributed-runtime.py"
       - "scripts/register-memory-os-release-baseline.py"
       - "scripts/register-memory-os-release-compatibility-pair.py"
       - "scripts/register-memory-os-client-baseline.py"
@@ -156,6 +157,7 @@ jobs:
             scripts/register-memory-os-incident-contact-routing.py \
             scripts/register-memory-os-observability-stack-deployment.py \
             scripts/register-memory-os-rate-limit-distributed-runtime.py \
+            scripts/validate-memory-os-rate-limit-distributed-runtime.py \
             scripts/register-memory-os-release-baseline.py \
             scripts/register-memory-os-release-compatibility-pair.py \
             scripts/register-memory-os-client-baseline.py \
