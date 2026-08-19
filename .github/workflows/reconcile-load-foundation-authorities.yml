@@ -140,6 +140,18 @@ jobs:
             fi
           fi
 
+          if [[ "$code" == "0" && -f docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json ]]; then
+            echo "STAGE: deletion-under-load" >> "$log"
+            deletion_sha="$(python -c 'import json; print(json.load(open("docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json"))["commitSha"])')"
+            EXPECTED_COMMIT_SHA="$deletion_sha" python scripts/validate-memory-os-deletion-under-load.py >> "$log" 2>&1 || code=$?
+            if [[ "$code" == "0" ]]; then
+              EXPECTED_COMMIT_SHA="$deletion_sha" python scripts/reconcile-memory-os-deletion-under-load-status.py >> "$log" 2>&1 || code=$?
+            fi
+            if [[ "$code" == "0" ]]; then
+              python scripts/validate-memory-os-deletion-under-load.py --require-reconciled >> "$log" 2>&1 || code=$?
+            fi
+          fi
+
           if [[ "$code" == "0" ]]; then
             echo "STAGE: aggregate" >> "$log"
             python scripts/validate-memory-os-load.py >> "$log" 2>&1 || code=$?
@@ -158,6 +170,7 @@ jobs:
           git diff --exit-code -- \
             contracts/operations/capacity-ramp-contract.v1.json \
             contracts/operations/short-stability-sample-contract.v1.json \
+            contracts/operations/deletion-under-load-contract.v1.json \
             contracts/operations/load-test-scenario-contract.v1.json \
             contracts/operations/production-operability-status.json
 
@@ -168,6 +181,7 @@ jobs:
           git add \
             contracts/operations/capacity-ramp-contract.v1.json \
             contracts/operations/short-stability-sample-contract.v1.json \
+            contracts/operations/deletion-under-load-contract.v1.json \
             contracts/operations/load-test-scenario-contract.v1.json \
             contracts/operations/production-operability-status.json
           if git ls-files --error-unmatch docs/fixtures/memory-os-operability/load-foundation-authority-diagnostic.last.json >/dev/null 2>&1; then
