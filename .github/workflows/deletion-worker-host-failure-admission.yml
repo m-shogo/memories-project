@@ -8,8 +8,11 @@ on:
       - "contracts/operations/load-test-scenario-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
+      - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
       - "contracts/operations/production-operability-status.json"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/validate-memory-os-deletion-worker-host-failure.py"
       - "scripts/validate-memory-os-deletion-worker-host-failure-generation-negative.py"
       - "scripts/reconcile-memory-os-deletion-worker-host-failure.py"
@@ -24,8 +27,11 @@ on:
       - "contracts/operations/load-test-scenario-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
+      - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
       - "contracts/operations/production-operability-status.json"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/validate-memory-os-deletion-worker-host-failure.py"
       - "scripts/validate-memory-os-deletion-worker-host-failure-generation-negative.py"
       - "scripts/reconcile-memory-os-deletion-worker-host-failure.py"
@@ -72,6 +78,7 @@ jobs:
           code=0
           python -m py_compile \
             scripts/register-memory-os-production-equivalent-environment-generation.py \
+            scripts/validate-memory-os-production-equivalent-environment-record.py \
             scripts/validate-memory-os-deletion-worker-host-failure.py \
             scripts/validate-memory-os-deletion-worker-host-failure-generation-negative.py \
             scripts/reconcile-memory-os-deletion-worker-host-failure.py \
