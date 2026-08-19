@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -11,6 +12,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 METRICS_PATH = ROOT / "contracts/operations/metrics-contract.v1.json"
 SCRAPE_PATH = ROOT / "contracts/operations/metrics-scrape-contract.v1.json"
+SCRAPE_VALIDATOR = ROOT / "scripts/validate-memory-os-metrics-scrape.py"
+METRICS_VALIDATOR = ROOT / "scripts/validate-memory-os-metrics.py"
 
 NEW_DESCRIPTION = (
     "Machine-readable runtime metrics contract for the import-api boundary. "
@@ -63,7 +66,47 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def load_validator(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load validator: {path.relative_to(ROOT)}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def require_validator_success(path: Path, name: str) -> None:
+    result = load_validator(path, name).main()
+    require(
+        not isinstance(result, bool) and isinstance(result, int) and result == 0,
+        f"validator rejected authority: {path.relative_to(ROOT)} returned {result!r}",
+    )
+
+
+def validate_source_authority() -> None:
+    require_validator_success(SCRAPE_VALIDATOR, "memory_os_metrics_scrape_validator")
+
+
+def validate_written_authority() -> None:
+    require_validator_success(METRICS_VALIDATOR, "memory_os_metrics_validator")
+    require_validator_success(SCRAPE_VALIDATOR, "memory_os_metrics_scrape_validator_postwrite")
+
+
+def write_transactionally(metrics: dict[str, Any]) -> None:
+    original = METRICS_PATH.read_bytes()
+    METRICS_PATH.write_text(
+        json.dumps(metrics, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    try:
+        validate_written_authority()
+    except BaseException:
+        METRICS_PATH.write_bytes(original)
+        raise
+
+
 def main() -> int:
+    validate_source_authority()
+
     metrics = load(METRICS_PATH)
     scrape = load(SCRAPE_PATH)
     require(metrics.get("schemaVersion") == "memory-os-metrics.v1",
@@ -125,10 +168,7 @@ def main() -> int:
         print("Primary metrics contract already reconciled")
         return 0
 
-    METRICS_PATH.write_text(
-        json.dumps(metrics, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    write_transactionally(metrics)
     print("Registered exporter foundation in primary metrics contract")
     return 0
 
