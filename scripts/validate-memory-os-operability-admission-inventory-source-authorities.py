@@ -149,6 +149,8 @@ COMMAND_SOURCES: tuple[tuple[str, str, str], ...] = (
     ),
 )
 
+DOMAIN_REJECTIONS = {"Fail", "Failure", "RegistrationFailure"}
+
 
 class Fail(RuntimeError):
     pass
@@ -202,7 +204,9 @@ def validate_source(
     try:
         validator(registry)
     except RuntimeError as exc:
-        raise Fail(f"{label} invalid: {exc}") from exc
+        if exc.__class__.__name__ in DOMAIN_REJECTIONS:
+            raise Fail(f"{label} invalid: {exc}") from exc
+        raise
 
 
 def validate_human_tabletop_source() -> int:
@@ -214,7 +218,9 @@ def validate_human_tabletop_source() -> int:
     try:
         scenarios = validator()
     except RuntimeError as exc:
-        raise Fail(f"human incident tabletop ledger invalid: {exc}") from exc
+        if exc.__class__.__name__ in DOMAIN_REJECTIONS:
+            raise Fail(f"human incident tabletop ledger invalid: {exc}") from exc
+        raise
     require(isinstance(scenarios, set), "human incident tabletop validator result invalid")
     require(all(isinstance(scenario, str) for scenario in scenarios), "human incident tabletop scenario authority invalid")
     return len(scenarios)
@@ -235,7 +241,9 @@ def validate_command_source(relative: str, module_name: str, label: str) -> None
     try:
         result = validator()
     except RuntimeError as exc:
-        raise Fail(f"{label} invalid: {exc}") from exc
+        if exc.__class__.__name__ in DOMAIN_REJECTIONS:
+            raise Fail(f"{label} invalid: {exc}") from exc
+        raise
     require(result == 0, f"{label} invalid: validator exit {result}")
 
 
