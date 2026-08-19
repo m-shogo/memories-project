@@ -1,6 +1,18 @@
 name: Reconcile Upload Route Authority
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/reconcile-upload-route-authority.yml"
+      - "scripts/reconcile-memory-os-upload-route-authority.py"
+      - "services/import-api/internal/httpserver/**"
+      - "services/import-api/internal/httpapi/upload_handler.go"
+      - "contracts/operations/metrics-contract.v1.json"
+      - "contracts/operations/rate-limit*.json"
+      - "scripts/validate-memory-os-metrics.py"
+      - "scripts/validate-memory-os-rate-limit*.py"
+      - "scripts/validate-memory-os-observability.py"
+      - "scripts/validate-memory-os-operability.py"
   push:
     branches:
       - so
@@ -21,7 +33,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: reconcile-upload-route-authority-so
+  group: reconcile-upload-route-authority-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: true
 
 jobs:
@@ -52,10 +64,10 @@ jobs:
       MEMORY_OS_TEST_S3_SECRET_KEY: minioadmin
 
     steps:
-      - name: Checkout latest so
+      - name: Checkout exact authority source
         uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
           fetch-depth: 0
 
       - name: Capture validation source
@@ -95,10 +107,17 @@ jobs:
           exit 1
 
       - name: Confirm exact clean source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          test "$(git branch --show-current)" = "so"
+          set -euo pipefail
           test -z "$(git status --porcelain)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+          else
+            test "$(git branch --show-current)" = "so"
+            test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          fi
           python -m py_compile \
             scripts/reconcile-memory-os-upload-route-authority.py \
             scripts/validate-memory-os-metrics.py \
@@ -135,7 +154,15 @@ jobs:
           python scripts/reconcile-memory-os-upload-route-authority.py
           test -z "$(gofmt -l services/import-api/internal/httpserver/observability.go services/import-api/internal/httpserver/server.go services/import-api/internal/httpserver/server_live_test.go services/import-api/internal/httpserver/route_authority_test.go)"
 
+      - name: Require deterministic authority on pull requests
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code
+
       - name: Commit reconciled route authority
+        if: github.event_name != 'pull_request'
         env:
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
         run: |
