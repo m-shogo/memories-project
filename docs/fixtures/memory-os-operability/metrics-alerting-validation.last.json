@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v2",
   "workflow": "reconcile-metrics-authority",
-  "sourceCommitSha": "b87b0d1a160002b440c18f2d0bb8b84a4199fc8b",
+  "sourceCommitSha": "6f495db04e1752756ed79daff65f383643ff5f05",
   "result": "PASS",
   "exitCode": 0,
   "steps": [
@@ -33,7 +33,7 @@
     {
       "command": "python scripts/reconcile-memory-os-metrics-alerting.py",
       "exitCode": 0,
-      "output": "Memory OS metrics contract validation PASS\nmetrics: 28  slis: 17  slos: 3  alerts: 7\nnegative cases rejected: 14\nOPS-P0-004 status: PARTIAL\nMemory OS metrics alerting validation PASS\nalert rules: 7\nrouting: NOT_CONFIGURED\nproduction decision: NO_GO\nMemory OS production-operability validation PASS\nready gates: 0/10\nproduction decision: NO_GO\nRegistered alert rules and runbooks; routing remains NOT_CONFIGURED and OPS-P0-004 remains PARTIAL\n"
+      "output": "Memory OS metrics alerting validation PASS\nalert rules: 7\nrouting: NOT_CONFIGURED\nproduction decision: NO_GO\nMemory OS metrics contract validation PASS\nmetrics: 28  slis: 17  slos: 3  alerts: 7\nnegative cases rejected: 14\nOPS-P0-004 status: PARTIAL\nMemory OS metrics alerting validation PASS\nalert rules: 7\nrouting: NOT_CONFIGURED\nproduction decision: NO_GO\nMemory OS production-operability validation PASS\nready gates: 0/10\nproduction decision: NO_GO\nRegistered alert rules and runbooks; routing remains NOT_CONFIGURED and OPS-P0-004 remains PARTIAL\n"
     },
     {
       "command": "python scripts/validate-memory-os-metrics.py",
