@@ -10,6 +10,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 GENERATOR = ROOT / "scripts/generate-memory-os-operability-admission-inventory.py"
 SOURCE_VALIDATOR = ROOT / "scripts/validate-memory-os-operability-admission-inventory-source-authorities.py"
+SOURCE_REGISTRY = "contracts/operations/migration-production-shaped-admission-registry.v1.json"
+SOURCE_WRITER = "scripts/register-memory-os-migration-production-shaped-admission.py"
 
 
 class Fail(RuntimeError):
@@ -47,6 +49,43 @@ def expect_boolean_registry_result_rejected(source_validator: Any, value: bool) 
     raise Fail(f"boolean registry validator result unexpectedly accepted: {value!r}")
 
 
+def expect_validate_source_result_semantics(source_validator: Any) -> None:
+    original = source_validator.load_validator
+
+    def run_with(result: Any) -> None:
+        def patched_load_validator(relative: str, module_name: str, function_name: str):
+            require(relative == SOURCE_WRITER, f"unexpected source writer under result test: {relative}")
+            require(function_name == "validate_registry_for_append", f"unexpected source function under result test: {function_name}")
+
+            def synthetic_registry_validator(registry: dict[str, Any]) -> Any:
+                return result
+
+            return synthetic_registry_validator
+
+        source_validator.load_validator = patched_load_validator
+        source_validator.validate_source(
+            SOURCE_REGISTRY,
+            SOURCE_WRITER,
+            "memory_os_inventory_source_result_negative_runtime",
+            "validate_registry_for_append",
+            f"synthetic registry result {result!r}",
+        )
+
+    try:
+        run_with(None)
+        run_with([])
+        for result in (False, True):
+            try:
+                run_with(result)
+            except source_validator.Fail as exc:
+                require("registry validator returned boolean" in str(exc), f"unexpected validate_source rejection: {exc}")
+            else:
+                raise Fail(f"validate_source accepted boolean registry validator result: {result!r}")
+    finally:
+        source_validator.load_validator = original
+    print("PASS source validator: validate_source rejects boolean registry results while preserving legitimate return contracts")
+
+
 def main() -> int:
     require(GENERATOR.is_file(), "operability inventory generator missing")
     require(SOURCE_VALIDATOR.is_file(), "operability inventory source-authority validator missing")
@@ -68,6 +107,7 @@ def main() -> int:
     source_validator.reject_boolean_registry_result([], "normalized-list registry validator")
     for value in (False, True):
         expect_boolean_registry_result_rejected(source_validator, value)
+    expect_validate_source_result_semantics(source_validator)
 
     print("Memory OS operability inventory validator result negative PASS")
     print("exact integer zero command-validator success accepted: true")
@@ -76,6 +116,7 @@ def main() -> int:
     print("none-return registry validator accepted: true")
     print("normalized-list registry validator accepted: true")
     print("boolean registry validator result accepted: false")
+    print("validate_source boolean-result bypass: false")
     print("production evidence created: false")
     print("production decision: NO_GO")
     return 0
