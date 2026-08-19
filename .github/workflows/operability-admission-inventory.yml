@@ -48,6 +48,7 @@ on:
       - "docs/runbooks/memory-os-production-equivalent-backup-restore-drill.md"
       - "scripts/generate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-operability-admission-inventory.py"
+      - "scripts/validate-memory-os-operability-admission-inventory-source-authorities.py"
       - "scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py"
       - "scripts/validate-memory-os-operability-admission-inventory-registry-negative.py"
       - "scripts/register-memory-os-migration-production-shaped-admission.py"
@@ -151,6 +152,7 @@ jobs:
           python -m py_compile \
             scripts/generate-memory-os-operability-admission-inventory.py \
             scripts/validate-memory-os-operability-admission-inventory.py \
+            scripts/validate-memory-os-operability-admission-inventory-source-authorities.py \
             scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py \
             scripts/validate-memory-os-operability-admission-inventory-registry-negative.py \
             scripts/register-memory-os-migration-production-shaped-admission.py \
@@ -257,6 +259,9 @@ jobs:
             python scripts/validate-memory-os-backup-restore-promotion-review-negative.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-operability-admission-inventory-source-authorities.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
             python scripts/generate-memory-os-operability-admission-inventory.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
@@ -305,6 +310,7 @@ jobs:
             python scripts/validate-memory-os-backup-restore-generation-binding.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-promotion-review.py >> "$log" 2>&1
+            python scripts/validate-memory-os-operability-admission-inventory-source-authorities.py >> "$log" 2>&1
             python scripts/generate-memory-os-operability-admission-inventory.py >> "$log" 2>&1
             python scripts/validate-memory-os-operability-admission-inventory.py >> "$log" 2>&1
             python scripts/validate-memory-os-operability-admission-inventory-registry-negative.py >> "$log" 2>&1
