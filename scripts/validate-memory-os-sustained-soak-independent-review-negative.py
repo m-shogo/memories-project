@@ -112,21 +112,39 @@ def prove_current_criteria_counting(register) -> None:
 
 
 def prove_append_lock_authority(register) -> None:
-    """Canonical writer must reject contract lock substitution before taking any lock."""
+    """Canonical writer must reject lock or transactional-guard substitution before any append."""
     original = CANONICAL_CONTRACT.read_bytes()
-    contract = json.loads(original.decode("utf-8"))
-    contract["appendLockPath"] = "contracts/operations/.sustained-soak-independent-review.alternate.lock"
-    write(CANONICAL_CONTRACT, contract)
-    corrupted = CANONICAL_CONTRACT.read_bytes()
+    cases: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
+        (
+            "contract lock substitution",
+            lambda contract: contract.__setitem__(
+                "appendLockPath",
+                "contracts/operations/.sustained-soak-independent-review.alternate.lock",
+            ),
+        ),
+        (
+            "transactional append guard disabled",
+            lambda contract: contract.__setitem__(
+                "appendMustRevalidateCanonicalRegistryAndRollbackOnFailure",
+                False,
+            ),
+        ),
+    ]
     try:
-        try:
-            register.validate_lock_authority()
-        except register.Fail:
-            print("PASS append-lock reject: contract lock substitution")
-        else:
-            raise RuntimeError("sustained-soak writer accepted alternate append lock authority")
-        if CANONICAL_CONTRACT.read_bytes() != corrupted:
-            raise RuntimeError("append-lock guard mutated rejected contract authority")
+        for name, mutate in cases:
+            contract = json.loads(original.decode("utf-8"))
+            mutate(contract)
+            write(CANONICAL_CONTRACT, contract)
+            corrupted = CANONICAL_CONTRACT.read_bytes()
+            try:
+                register.validate_lock_authority()
+            except register.Fail:
+                print(f"PASS append authority reject: {name}")
+            else:
+                raise RuntimeError(f"sustained-soak writer accepted invalid append authority: {name}")
+            if CANONICAL_CONTRACT.read_bytes() != corrupted:
+                raise RuntimeError(f"append authority guard mutated rejected contract: {name}")
+            CANONICAL_CONTRACT.write_bytes(original)
     finally:
         CANONICAL_CONTRACT.write_bytes(original)
 
@@ -243,7 +261,6 @@ def main() -> int:
 
     cases: list[tuple[str, Callable[[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]], None]]] = [
         ("append lock authority substituted", lambda c, r, l, v: c.__setitem__("appendLockPath", "contracts/operations/.sustained-soak-independent-review.alternate.lock")),
-        ("transactional append guard disabled", lambda c, r, l, v: c.__setitem__("appendMustRevalidateCanonicalRegistryAndRollbackOnFailure", False)),
         ("registry criteria count manufactured", lambda c, r, l, v: r.__setitem__("registeredCriteriaCount", 1)),
         ("registry review count manufactured", lambda c, r, l, v: r.__setitem__("registeredReviewCount", 1)),
         ("registry approved criteria count manufactured", lambda c, r, l, v: r.__setitem__("approvedLeakStabilityCriteriaCount", 1)),
@@ -319,6 +336,7 @@ def main() -> int:
     print("Memory OS sustained-soak independent review negative suite PASS")
     print("historical PASS review counted as current authority: false")
     print("alternate append lock authority accepted: false")
+    print("transactional append guard weakened silently: false")
     print("standalone validator alternate append lock authority accepted: false")
     print("corrupt append-only registry normalized by append: false")
     print("invalid post-append registry retained after validation failure: false")
