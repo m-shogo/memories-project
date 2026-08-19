@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove metrics multi-authority reconciles roll back on post-write failure."""
+"""Prove metrics authority reconciles roll back on post-write failure."""
 
 from __future__ import annotations
 
@@ -69,7 +69,37 @@ def run_case(name: str, module: ModuleType) -> None:
     require(STATUS.read_bytes() == original_status, f"{name}: operability status was not rolled back")
 
 
+def run_status_case(name: str, module: ModuleType) -> None:
+    original_status = STATUS.read_bytes()
+    status = copy.deepcopy(load_json(STATUS))
+    status["asOf"] = "2099-01-01"
+
+    def fail_after_write() -> None:
+        raise module.ReconcileFailure("controlled post-write validator failure")
+
+    original_validator = module.validate_written_authority
+    module.validate_written_authority = fail_after_write
+    try:
+        try:
+            module.write_transactionally(status)
+        except module.ReconcileFailure as exc:
+            require(
+                "controlled post-write validator failure" in str(exc),
+                f"{name}: unexpected failure: {exc}",
+            )
+        else:
+            raise NegativeFailure(f"{name}: controlled validator failure was accepted")
+    finally:
+        module.validate_written_authority = original_validator
+
+    require(STATUS.read_bytes() == original_status, f"{name}: operability status was not rolled back")
+
+
 def main() -> int:
+    scrape = load_module(
+        "metrics_scrape_status_reconcile",
+        "scripts/reconcile-memory-os-metrics-scrape-status.py",
+    )
     operations = load_module(
         "metrics_operations_reconcile",
         "scripts/reconcile-memory-os-metrics-operations.py",
@@ -78,9 +108,10 @@ def main() -> int:
         "metrics_alerting_reconcile",
         "scripts/reconcile-memory-os-metrics-alerting.py",
     )
+    run_status_case("scrape", scrape)
     run_case("operations", operations)
     run_case("alerting", alerting)
-    print("PASS: metrics operations and alerting reconciles roll back after post-write validation failure")
+    print("PASS: metrics scrape, operations and alerting reconciles roll back after post-write validation failure")
     return 0
 
 
