@@ -12,6 +12,7 @@ import copy
 import datetime as dt
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -59,13 +60,33 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def load_result_validator(path: Path, module_name: str):
+def canonical_validator_path(path: Path) -> Path:
     try:
         resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise ReconcileFailure(f"canonical result validator missing or escapes repository: {path.name}") from exc
     require(resolved == Path("scripts") / path.name and path.is_file(),
             f"canonical result validator path drift: {path.name}")
+    return path
+
+
+def run_full_validator(path: Path) -> None:
+    script = canonical_validator_path(path)
+    try:
+        result = subprocess.run(
+            [sys.executable, str(script)],
+            cwd=ROOT,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError as exc:
+        raise ReconcileFailure(f"cannot execute canonical source validator: {path.name}") from exc
+    require(result.returncode == 0, f"canonical source validator rejected authority: {path.name}")
+
+
+def load_result_validator(path: Path, module_name: str):
+    canonical_validator_path(path)
     spec = importlib.util.spec_from_file_location(module_name, path)
     require(spec is not None and spec.loader is not None,
             f"cannot load canonical result validator: {path.name}")
@@ -91,6 +112,7 @@ def validate_inflight_result(result: dict[str, Any]) -> None:
 def process_group_reaping_complete() -> bool:
     if not PROCESS_GROUP_RESULT.is_file():
         return False
+    run_full_validator(PROCESS_GROUP_VALIDATOR)
     try:
         load_result_validator(
             PROCESS_GROUP_VALIDATOR,
@@ -126,6 +148,7 @@ def normalize(status: dict[str, Any]) -> dict[str, Any]:
     require(isinstance(refs, list), "OPS-P0-009 evidenceRefs must be a list")
 
     if RESULT_PATH.is_file():
+        run_full_validator(INFLIGHT_VALIDATOR)
         validate_inflight_result(load(RESULT_PATH))
         while GAP in missing:
             missing.remove(GAP)
