@@ -212,6 +212,38 @@ def expect_generator_backup_derived_authority_rejected(generator: Any) -> None:
     print("PASS generator reject: canonical backup derived authority validation cannot be bypassed")
 
 
+def expect_source_validator_implementation_error_propagates(validator: Any) -> None:
+    original = validator.load_validator
+
+    def patched_load_validator(relative: str, module_name: str, function_name: str):
+        def synthetic_bug(*args: Any, **kwargs: Any) -> None:
+            raise RuntimeError("synthetic source validator implementation bug")
+
+        return synthetic_bug
+
+    validator.load_validator = patched_load_validator
+    propagated = False
+    try:
+        try:
+            validator.validate_source(
+                "contracts/operations/migration-production-shaped-admission-registry.v1.json",
+                "scripts/register-memory-os-migration-production-shaped-admission.py",
+                "memory_os_inventory_source_runtime_error_negative",
+                "validate_registry_for_append",
+                "synthetic source authority",
+            )
+        except validator.Fail as exc:
+            raise Fail(f"implementation RuntimeError was normalized as authority rejection: {exc}") from exc
+        except RuntimeError as exc:
+            require(exc.__class__ is RuntimeError, f"unexpected implementation error type: {exc.__class__.__name__}")
+            require("synthetic source validator implementation bug" in str(exc), "implementation RuntimeError detail lost")
+            propagated = True
+    finally:
+        validator.load_validator = original
+    require(propagated, "source validator implementation RuntimeError did not propagate")
+    print("PASS source validator: implementation RuntimeError propagates unchanged")
+
+
 def main() -> int:
     require(VALIDATOR.is_file(), "inventory source-authority validator missing")
     require(GENERATOR.is_file(), "inventory generator missing")
@@ -228,6 +260,7 @@ def main() -> int:
     expect_untracked_tabletop_rejected(validator, generator)
     expect_generator_load_authority_rejected(generator)
     expect_generator_backup_derived_authority_rejected(generator)
+    expect_source_validator_implementation_error_propagates(validator)
 
     source_only_cases: list[tuple[Path, str, Callable[[dict[str, Any]], None]]] = [
         (
