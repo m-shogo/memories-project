@@ -20,6 +20,7 @@ WRITER_PATH = ROOT / "scripts/register-memory-os-production-shaped-failure-drill
 VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-production-shaped-failure-drills.py"
 RECONCILER_PATH = ROOT / "scripts/reconcile-memory-os-production-shaped-failure-drills.py"
 ALTERNATE_LOCK = ROOT / "contracts/operations/.production-shaped-failure-drill-substitute.lock"
+ALTERNATE_GENERATION_WRITER = ROOT / "scripts/register-memory-os-rate-limit-distributed-runtime.py"
 
 
 def load_module(path: Path, name: str) -> Any:
@@ -96,6 +97,12 @@ def expect_generation_authority_rejected(
     failure_registry = json.loads(failure_registry_original.decode("utf-8"))
     try:
         try:
+            writer.validated_generation_rows()
+        except writer.Fail:
+            pass
+        else:
+            raise RuntimeError(f"{name}: direct record generation helper accepted corrupt environment generation authority")
+        try:
             writer.validate_registry_before_append(failure_registry)
         except writer.Fail:
             pass
@@ -171,6 +178,19 @@ def expect_writer_lock_rejected(validator: Any, writer: Any) -> None:
         raise RuntimeError("substituted failure-drill writer lock accepted")
     finally:
         writer.LOCK = original
+
+
+def expect_writer_generation_writer_rejected(validator: Any, writer: Any) -> None:
+    original = writer.GEN_WRITER
+    try:
+        writer.GEN_WRITER = ALTERNATE_GENERATION_WRITER
+        try:
+            validator.validate_writer_authority(writer)
+        except validator.Fail:
+            return
+        raise RuntimeError("substituted failure-drill generation writer accepted")
+    finally:
+        writer.GEN_WRITER = original
 
 
 def expect_writer_transactional_authority_rejected(validator: Any, writer: Any) -> None:
@@ -331,6 +351,7 @@ def main() -> int:
         expect_contract_lock_rejected(validator)
         expect_transactional_contract_rejected(validator)
         expect_writer_lock_rejected(validator, writer)
+        expect_writer_generation_writer_rejected(validator, writer)
         expect_writer_transactional_authority_rejected(validator, writer)
         expect_append_rollback(writer, original)
         expect_side_commit_rejected(writer)
@@ -346,6 +367,7 @@ def main() -> int:
     print(f"typed independent review negative cases: {review_case_count}")
     print("contract append lock substitution accepted: false")
     print("writer append lock substitution accepted: false")
+    print("generation writer substitution accepted: false")
     print("transactional append authority disabled: false")
     print("post-append validation failure persisted registry mutation: false")
     print("generic repository review authority accepted: false")
