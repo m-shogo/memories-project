@@ -21,14 +21,58 @@ def load_module(path: Path, name: str):
     return module
 
 
+def synthetic_result(contract: dict, expected: str) -> dict:
+    criteria = contract.get("successCriteria")
+    if not isinstance(criteria, dict):
+        raise AssertionError("canonical saturation contract successCriteria missing")
+    scenario = dict(criteria)
+    scenario.update(
+        {
+            "scenarioId": contract["scenarioId"],
+            "deletingAccounts": contract["deletingAccounts"],
+            "workerCount": contract["workerCount"],
+            "maxAccountsPerWorker": contract["maxAccountsPerWorker"],
+            "controlPreviewRequests": contract["controlPreviewRequests"],
+            "controlPreviewConcurrency": contract["controlPreviewConcurrency"],
+            "result": "PASS",
+            "integrityResult": "PASS",
+            "assertions": {
+                "allDeletionRequestsAccepted": True,
+                "workerReceiptsUnique": True,
+                "controlPreviewAll2xx": True,
+                "deletionBacklogConverged": True,
+                "finalOwnedRowsZero": True,
+                "allDeletionTombstonesEpoch2": True,
+                "capacityBoundaryEstablished": False,
+                "operationalThresholdApproved": False,
+                "productionEvidence": False,
+            },
+        }
+    )
+    return {
+        "schemaVersion": contract["resultsSchemaVersion"],
+        "commitSha": expected,
+        "environment": {
+            "dependencyMode": "LOCAL_POSTGRES_MINIO",
+            "syntheticDataOnly": True,
+            "productionTraffic": False,
+            "productionCredentials": False,
+            "productionEvidence": False,
+            "productionEquivalentDependencies": False,
+            "containsSecrets": False,
+        },
+        "scenario": scenario,
+    }
+
+
 def main() -> int:
     reconciler = load_module(RECONCILER_PATH, "memory_os_deletion_worker_saturation_reconciler_negative")
     real_validator = reconciler.load_validator()
     original_contract = reconciler.CONTRACT_PATH.read_bytes()
-    result = json.loads(reconciler.RESULT_PATH.read_text(encoding="utf-8"))
-    expected = result.get("commitSha")
-    if not isinstance(expected, str) or len(expected) != 40:
-        raise AssertionError("canonical saturation result must expose a full commitSha")
+    original_result = reconciler.RESULT_PATH.read_bytes() if reconciler.RESULT_PATH.exists() else None
+    contract = json.loads(original_contract.decode("utf-8"))
+    expected = "0" * 40
+    reconciler.RESULT_PATH.write_text(json.dumps(synthetic_result(contract, expected), indent=2) + "\n", encoding="utf-8")
 
     class Fail(RuntimeError):
         pass
@@ -37,14 +81,14 @@ def main() -> int:
         def __init__(self) -> None:
             self.contract_calls = 0
 
-        def validate_contract(self, contract) -> None:
+        def validate_contract(self, candidate) -> None:
             self.contract_calls += 1
-            real_validator.validate_contract(contract)
+            real_validator.validate_contract(candidate)
             if self.contract_calls == 2:
                 raise Fail("synthetic post-write validation failure")
 
-        def validate_result(self, contract, expected_sha) -> None:
-            real_validator.validate_result(contract, expected_sha)
+        def validate_result(self, candidate, expected_sha) -> None:
+            real_validator.validate_result(candidate, expected_sha)
 
     old_expected = os.environ.get("EXPECTED_COMMIT_SHA")
     reconciler.load_validator = lambda: FailingValidator()
@@ -62,6 +106,10 @@ def main() -> int:
             raise AssertionError("reconciler failed to restore contract bytes after post-write validation failure")
     finally:
         reconciler.CONTRACT_PATH.write_bytes(original_contract)
+        if original_result is None:
+            reconciler.RESULT_PATH.unlink(missing_ok=True)
+        else:
+            reconciler.RESULT_PATH.write_bytes(original_result)
         if old_expected is None:
             os.environ.pop("EXPECTED_COMMIT_SHA", None)
         else:
