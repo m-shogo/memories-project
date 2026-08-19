@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v2",
   "workflow": "reconcile-metrics-authority",
-  "sourceCommitSha": "91a2e06eddd14d89b244b016a967b589bbb53837",
+  "sourceCommitSha": "3fad03bc8748b372caa23995c715bba73f25c44b",
   "result": "PASS",
   "exitCode": 0,
   "steps": [
@@ -13,7 +13,7 @@
     {
       "command": "python scripts/validate-memory-os-metrics-reconcile-rollback-negative.py",
       "exitCode": 0,
-      "output": "PASS: metrics operations and alerting reconciles roll back after post-write validation failure\n"
+      "output": "PASS: metrics scrape, operations and alerting reconciles roll back after post-write validation failure\n"
     },
     {
       "command": "python scripts/reconcile-memory-os-metrics-contract.py",
