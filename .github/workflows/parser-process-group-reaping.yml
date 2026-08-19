@@ -12,6 +12,7 @@ on:
       - "services/import-api/internal/parsersup/process_group_reaping_drill_linux_test.go"
       - "scripts/validate-memory-os-parser-process-group-reaping.py"
       - "scripts/reconcile-memory-os-parser-process-group-reaping.py"
+      - "scripts/validate-memory-os-parser-process-group-reaping-reconcile-negative.py"
   workflow_dispatch:
 
 permissions:
@@ -53,7 +54,9 @@ jobs:
         run: |
           python -m py_compile \
             scripts/validate-memory-os-parser-process-group-reaping.py \
-            scripts/reconcile-memory-os-parser-process-group-reaping.py
+            scripts/reconcile-memory-os-parser-process-group-reaping.py \
+            scripts/validate-memory-os-parser-process-group-reaping-reconcile-negative.py
+          python scripts/validate-memory-os-parser-process-group-reaping-reconcile-negative.py
           test -z "$(gofmt -l \
             services/import-api/internal/parsersup/worker.go \
             services/import-api/internal/parsersup/process_group_reaping_drill_linux_test.go)"
