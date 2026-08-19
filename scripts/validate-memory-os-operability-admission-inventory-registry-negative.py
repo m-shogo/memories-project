@@ -184,6 +184,33 @@ def expect_generator_load_authority_rejected(generator: Any) -> None:
     print("PASS generator reject: canonical load authority validation cannot be bypassed")
 
 
+def expect_generator_backup_derived_authority_rejected(generator: Any) -> None:
+    inventory_before = generator.OUTPUT.read_bytes()
+    original = generator.require_canonical_command_authority
+    calls: list[str] = []
+
+    def reject_backup_authority(script_name: str, module_name: str, label: str) -> None:
+        calls.append(script_name)
+        raise SystemExit(f"synthetic canonical backup derived authority rejection: {label}")
+
+    generator.require_canonical_command_authority = reject_backup_authority
+    rejected = False
+    try:
+        generator.main()
+    except SystemExit as exc:
+        require(exc.code not in (None, 0), "inventory generator exited successfully after backup derived authority rejection")
+        rejected = True
+    finally:
+        generator.require_canonical_command_authority = original
+    require(rejected, "inventory generator bypassed canonical backup derived authority validation")
+    require(
+        calls == ["validate-memory-os-backup-restore-generation-binding.py"],
+        "inventory generator did not enter backup derived authority validation at the first canonical boundary",
+    )
+    require(generator.OUTPUT.read_bytes() == inventory_before, "backup derived authority rejection mutated canonical inventory")
+    print("PASS generator reject: canonical backup derived authority validation cannot be bypassed")
+
+
 def main() -> int:
     require(VALIDATOR.is_file(), "inventory source-authority validator missing")
     require(GENERATOR.is_file(), "inventory generator missing")
@@ -199,6 +226,7 @@ def main() -> int:
     print("PASS baseline: canonical append-only authorities accepted without inventory drift")
     expect_untracked_tabletop_rejected(validator, generator)
     expect_generator_load_authority_rejected(generator)
+    expect_generator_backup_derived_authority_rejected(generator)
 
     cases: list[tuple[Path, str, Callable[[dict[str, Any]], None]]] = [
         (AUTHORITIES["migration production-shaped admission"], "migration production-shaped admission append-only disabled", lambda value: value.__setitem__("appendOnly", False)),
@@ -244,6 +272,7 @@ def main() -> int:
     print("untracked human tabletop filename accepted as inventory source authority: false")
     print("untracked human tabletop filename accepted by inventory generator: false")
     print("canonical load authority rejection bypassed by inventory generator: false")
+    print("canonical backup derived authority rejection bypassed by inventory generator: false")
     print("unexpected implementation RuntimeError normalized as domain rejection: false")
     print("rejected generator run mutated inventory: false")
     print("canonical append-only authority mutated: false")
