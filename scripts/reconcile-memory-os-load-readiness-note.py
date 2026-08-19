@@ -3,12 +3,14 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 LOAD_PATH = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
+LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
 
 REQUIRED_TRUE = (
     "previewPreFenceInFlightLinearizationProven",
@@ -29,7 +31,25 @@ def load(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def load_validator_module():
+    spec = importlib.util.spec_from_file_location("memory_os_load_validator", LOAD_VALIDATOR)
+    if spec is None or spec.loader is None:
+        raise SystemExit("cannot load canonical load validator")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def validate_canonical_load() -> None:
+    result = load_validator_module().main()
+    if isinstance(result, bool) or not isinstance(result, int) or result != 0:
+        raise SystemExit(f"canonical load validator rejected authority: {result!r}")
+
+
 def main() -> int:
+    original_bytes = LOAD_PATH.read_bytes()
+    validate_canonical_load()
+
     document = load(LOAD_PATH)
     readiness = document.get("readiness")
     if not isinstance(readiness, dict):
@@ -79,6 +99,12 @@ def main() -> int:
         raise SystemExit("deletion-under-load deferred dependency boundary drift")
 
     LOAD_PATH.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    try:
+        validate_canonical_load()
+    except BaseException:
+        LOAD_PATH.write_bytes(original_bytes)
+        raise
+
     print("Memory OS load readiness summary reconciliation PASS")
     print("primary account-bound pre-fence aggregate: proven")
     print("multi-account deletion-worker saturation: proven")
