@@ -12,6 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 CANONICAL = ROOT / "scripts/reconcile-memory-os-chaos-authority.py"
+INFLIGHT_OVERLAY = ROOT / "scripts/reconcile-memory-os-chaos-inflight-overlay.py"
 SCENARIOS = (
     ROOT / "scripts/reconcile-memory-os-chaos-failure-drills.py",
     ROOT / "scripts/reconcile-memory-os-chaos-failure-drills-v2.py",
@@ -62,10 +63,48 @@ def validate_canonical_source_delegation(canonical, current: dict) -> None:
         canonical.run_canonical_validator = original_runner
 
 
+def validate_inflight_source_delegation() -> None:
+    overlay = load_module(INFLIGHT_OVERLAY, "memory_os_chaos_inflight_delegation")
+    if not overlay.RESULT_PATH.is_file():
+        return
+    result = overlay.load(overlay.RESULT_PATH)
+    original_loader = overlay.load_result_validator
+    calls: list[Path] = []
+    try:
+        def accept_loader(path: Path, _module_name: str):
+            calls.append(path)
+            return lambda _result, _expected_sha: None
+
+        overlay.load_result_validator = accept_loader
+        overlay.validate_inflight_result(result)
+    finally:
+        overlay.load_result_validator = original_loader
+    if calls != [overlay.INFLIGHT_VALIDATOR]:
+        raise RuntimeError(f"in-flight overlay validator delegation drift: {calls}")
+
+    try:
+        def reject_loader(_path: Path, _module_name: str):
+            def reject(_result, _expected_sha) -> None:
+                raise overlay.ReconcileFailure("synthetic in-flight source rejection")
+            return reject
+
+        overlay.load_result_validator = reject_loader
+        try:
+            overlay.validate_inflight_result(result)
+        except overlay.ReconcileFailure as exc:
+            if "synthetic in-flight source rejection" not in str(exc):
+                raise RuntimeError(f"unexpected in-flight source rejection: {exc}") from exc
+        else:
+            raise RuntimeError("in-flight overlay accepted rejected canonical source authority")
+    finally:
+        overlay.load_result_validator = original_loader
+
+
 def main() -> int:
     canonical = load_module(CANONICAL, "memory_os_chaos_monotonicity_canonical")
     current = json.loads(STATUS.read_text(encoding="utf-8"))
     validate_canonical_source_delegation(canonical, current)
+    validate_inflight_source_delegation()
 
     gate = next(
         item for item in current["areas"]
