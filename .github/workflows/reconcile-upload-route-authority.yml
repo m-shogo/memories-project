@@ -13,6 +13,8 @@ on:
       - "contracts/operations/rate-limit*.json"
       - "scripts/validate-memory-os-metrics.py"
       - "scripts/validate-memory-os-rate-limit*.py"
+      - "scripts/validate-memory-os-observability.py"
+      - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
 
 permissions:
@@ -97,7 +99,12 @@ jobs:
           test "$(git branch --show-current)" = "so"
           test -z "$(git status --porcelain)"
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
-          python -m py_compile scripts/reconcile-memory-os-upload-route-authority.py
+          python -m py_compile \
+            scripts/reconcile-memory-os-upload-route-authority.py \
+            scripts/validate-memory-os-metrics.py \
+            scripts/validate-memory-os-rate-limit.py \
+            scripts/validate-memory-os-observability.py \
+            scripts/validate-memory-os-operability.py
 
       - name: Reconcile registered routes and authority contracts
         run: python scripts/reconcile-memory-os-upload-route-authority.py
