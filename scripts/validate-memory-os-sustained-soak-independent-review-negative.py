@@ -163,6 +163,42 @@ def prove_preappend_registry_guard(register) -> None:
         CANONICAL_REGISTRY.write_bytes(original)
 
 
+def prove_postappend_registry_rollback(register) -> None:
+    """A post-replace canonical validation failure must restore original registry bytes."""
+    original = CANONICAL_REGISTRY.read_bytes()
+    candidate = json.loads(original.decode("utf-8"))
+    candidate["unexpectedAuthority"] = True
+    handle = tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        suffix=".json",
+        prefix=".sustained-soak-postappend-negative-",
+        dir=CANONICAL_REGISTRY.parent,
+        delete=False,
+    )
+    candidate_path = Path(handle.name)
+    try:
+        json.dump(candidate, handle, indent=2)
+        handle.write("\n")
+        handle.close()
+        try:
+            register.replace_registry_transactionally(candidate_path)
+        except register.Fail:
+            pass
+        else:
+            raise RuntimeError("post-append registry corruption unexpectedly committed")
+        if CANONICAL_REGISTRY.read_bytes() != original:
+            raise RuntimeError("post-append validation failure did not restore original registry bytes")
+        print("PASS post-append rollback: invalid registry replacement restored original authority")
+    finally:
+        try:
+            handle.close()
+        except Exception:
+            pass
+        candidate_path.unlink(missing_ok=True)
+        CANONICAL_REGISTRY.write_bytes(original)
+
+
 def prove_reconcile_rejects_corrupt_registry(reconciler) -> None:
     """Status reconcile must stop before writing when review authority is corrupt."""
     original_registry = CANONICAL_REGISTRY.read_bytes()
@@ -197,6 +233,7 @@ def main() -> int:
     prove_current_criteria_counting(register)
     prove_append_lock_authority(register)
     prove_preappend_registry_guard(register)
+    prove_postappend_registry_rollback(register)
     prove_reconcile_rejects_corrupt_registry(reconciler)
 
     canonical_contract = load(CANONICAL_CONTRACT)
@@ -206,6 +243,7 @@ def main() -> int:
 
     cases: list[tuple[str, Callable[[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]], None]]] = [
         ("append lock authority substituted", lambda c, r, l, v: c.__setitem__("appendLockPath", "contracts/operations/.sustained-soak-independent-review.alternate.lock")),
+        ("transactional append guard disabled", lambda c, r, l, v: c.__setitem__("appendMustRevalidateCanonicalRegistryAndRollbackOnFailure", False)),
         ("registry criteria count manufactured", lambda c, r, l, v: r.__setitem__("registeredCriteriaCount", 1)),
         ("registry review count manufactured", lambda c, r, l, v: r.__setitem__("registeredReviewCount", 1)),
         ("registry approved criteria count manufactured", lambda c, r, l, v: r.__setitem__("approvedLeakStabilityCriteriaCount", 1)),
@@ -283,6 +321,7 @@ def main() -> int:
     print("alternate append lock authority accepted: false")
     print("standalone validator alternate append lock authority accepted: false")
     print("corrupt append-only registry normalized by append: false")
+    print("invalid post-append registry retained after validation failure: false")
     print("corrupt append-only registry projected by reconcile: false")
     print("boolean registry counts accepted before append: false")
     print("automatic leak proof accepted: false")
