@@ -1,10 +1,10 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "parser-process-group-reaping",
-  "sourceCommitSha": "6752dc28355c0e47a0d4dffce7d7ffc7ba82ec0b",
+  "sourceCommitSha": "fac169f48d6a609e0f62c5ef6caf857f688bb966",
   "result": "PASS",
   "exitCode": 0,
-  "durationSeconds": 0.504026,
+  "durationSeconds": 0.545454,
   "trackedProcessCountBeforeCancel": 2,
   "cancellationLatencyMilliseconds": 0,
   "trackedProcessCountAfterCancel": 0,
