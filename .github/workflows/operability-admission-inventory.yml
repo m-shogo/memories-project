@@ -50,6 +50,15 @@ on:
       - "scripts/validate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py"
       - "scripts/validate-memory-os-operability-admission-inventory-registry-negative.py"
+      - "scripts/register-memory-os-migration-production-shaped-admission.py"
+      - "scripts/register-memory-os-incident-contact-routing.py"
+      - "scripts/register-memory-os-observability-stack-deployment.py"
+      - "scripts/register-memory-os-rate-limit-distributed-runtime.py"
+      - "scripts/register-memory-os-release-baseline.py"
+      - "scripts/register-memory-os-release-compatibility-pair.py"
+      - "scripts/register-memory-os-client-baseline.py"
+      - "scripts/register-memory-os-parser-artifact.py"
+      - "scripts/register-memory-os-production-shaped-failure-drill.py"
       - "scripts/validate-memory-os-sustained-soak-independent-review.py"
       - "scripts/validate-memory-os-sustained-soak-independent-review-negative.py"
       - "scripts/validate-memory-os-sustained-soak-human-evidence-path-negative.py"
@@ -143,6 +152,15 @@ jobs:
             scripts/validate-memory-os-operability-admission-inventory.py \
             scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py \
             scripts/validate-memory-os-operability-admission-inventory-registry-negative.py \
+            scripts/register-memory-os-migration-production-shaped-admission.py \
+            scripts/register-memory-os-incident-contact-routing.py \
+            scripts/register-memory-os-observability-stack-deployment.py \
+            scripts/register-memory-os-rate-limit-distributed-runtime.py \
+            scripts/register-memory-os-release-baseline.py \
+            scripts/register-memory-os-release-compatibility-pair.py \
+            scripts/register-memory-os-client-baseline.py \
+            scripts/register-memory-os-parser-artifact.py \
+            scripts/register-memory-os-production-shaped-failure-drill.py \
             scripts/validate-memory-os-sustained-soak-independent-review.py \
             scripts/validate-memory-os-sustained-soak-independent-review-negative.py \
             scripts/validate-memory-os-sustained-soak-human-evidence-path-negative.py \
