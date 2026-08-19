@@ -150,7 +150,7 @@ def main() -> int:
         "observability stack deployment registry",
     )
     require_canonical_registry(
-        "register-memory-os-rate-limit-distributed-runtime.py",
+        "validate-memory-os-rate-limit-distributed-runtime.py",
         "memory_os_rate_runtime_inventory_generator_authority",
         rate_runtime,
         "rate-limit distributed runtime registry",
