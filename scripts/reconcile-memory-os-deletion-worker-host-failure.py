@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 from pathlib import Path
@@ -50,6 +51,55 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
+def load_host_validator():
+    try:
+        resolved = VALIDATOR.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail("canonical host-failure validator missing or escapes repository") from exc
+    require(resolved == VALIDATOR.relative_to(ROOT), "host-failure validator authority drift")
+    spec = importlib.util.spec_from_file_location("memory_os_host_failure_validator_for_reconcile", VALIDATOR)
+    require(spec is not None and spec.loader is not None, "cannot load canonical host-failure validator")
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except Exception as exc:  # noqa: BLE001 - convert dependency failures into domain failure
+        raise Fail(f"cannot load canonical host-failure validator: {exc}") from exc
+    require(callable(getattr(module, "canonical_generation_count", None)), "host-failure generation authority helper missing")
+    require(callable(getattr(module, "validate_generation_projection", None)), "host-failure generation projection validator missing")
+    require(isinstance(getattr(module, "NO_GENERATION_LIMITATION", None), str), "host-failure generation limitation authority missing")
+    return module
+
+
+def reconcile_generation_projection(contract: dict[str, Any]) -> int:
+    host_validator = load_host_validator()
+    try:
+        registered = host_validator.canonical_generation_count()
+    except Exception as exc:  # noqa: BLE001 - shared authority must fail closed
+        raise Fail(f"canonical generation authority validation failed: {exc}") from exc
+
+    generation_available = registered > 0
+    boundary = contract.get("currentBoundary")
+    readiness = contract.get("readiness")
+    limitations = contract.get("limitations")
+    require(isinstance(boundary, dict), "host-failure currentBoundary missing")
+    require(isinstance(readiness, dict), "host-failure readiness missing")
+    require(isinstance(limitations, list) and all(isinstance(item, str) for item in limitations), "host-failure limitations missing")
+
+    boundary["environmentGenerationAvailable"] = generation_available
+    readiness["environmentGenerationAvailable"] = generation_available
+    no_generation_limitation = host_validator.NO_GENERATION_LIMITATION
+    if generation_available:
+        contract["limitations"] = [item for item in limitations if item != no_generation_limitation]
+    elif no_generation_limitation not in limitations:
+        limitations.insert(0, no_generation_limitation)
+
+    try:
+        host_validator.validate_generation_projection(contract, registered)
+    except Exception as exc:  # noqa: BLE001 - projection must match shared validator
+        raise Fail(f"host-failure generation projection invalid: {exc}") from exc
+    return registered
+
+
 def validate_load_authority() -> None:
     try:
         subprocess.run(["python", str(LOAD_VALIDATOR)], cwd=ROOT, check=True)
@@ -83,6 +133,7 @@ def main() -> int:
     require(readiness.get("contractDefined") is True and readiness.get("validatorImplemented") is True, "host-failure foundation incomplete")
     if WORKFLOW.is_file():
         readiness["automaticWorkflowImplemented"] = True
+    registered = reconcile_generation_projection(contract)
 
     status = load(STATUS)
     require(status.get("productionDecision") == "NO_GO", "production decision must remain NO_GO")
@@ -110,6 +161,7 @@ def main() -> int:
     write_transactionally(contract, status)
     print("Memory OS deletion-worker host-failure admission reconciliation PASS")
     print("container recovery: proven locally")
+    print(f"registered production-equivalent generations: {registered}")
     print("physical host/node recovery: unexecuted")
     print("OPS-P0-006/009: PARTIAL")
     print("productionDecision: NO_GO")
