@@ -170,7 +170,7 @@
       "nextGate": "generation-bound multi-instance, object-store, PostgreSQL failover and parser durable-spool restart drills; mixed-version failure evidence additionally requires an approved release pair",
       "status": "PARTIAL",
       "blocking": true,
-      "missingEvidenceCount": 12,
+      "missingEvidenceCount": 7,
       "productionEvidence": false,
       "productionReady": false
     }
