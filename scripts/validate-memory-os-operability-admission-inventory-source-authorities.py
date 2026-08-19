@@ -42,9 +42,9 @@ SOURCES: tuple[tuple[str, str, str, str, str], ...] = (
     ),
     (
         "contracts/operations/sustained-soak-independent-review-registry.v1.json",
-        "scripts/validate-memory-os-sustained-soak-independent-review.py",
+        "scripts/register-memory-os-sustained-soak-independent-review.py",
         "memory_os_inventory_source_sustained_soak_review",
-        "validate_registry_aggregates",
+        "validate_registry_for_append",
         "sustained-soak independent review registry",
     ),
     (
