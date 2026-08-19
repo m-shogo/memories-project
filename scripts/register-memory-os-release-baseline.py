@@ -284,7 +284,11 @@ def validate_record(record: dict[str, Any], required_fields: set[str]) -> None:
                 f"record contains forbidden content: {forbidden}")
 
 
-def validate_registry_for_append(registry: dict[str, Any], contract: dict[str, Any]) -> None:
+def validate_registry_for_append(
+    registry: dict[str, Any], contract: dict[str, Any] | None = None
+) -> None:
+    if contract is None:
+        contract = load(CONTRACT_PATH)
     required_fields = validate_contract_for_append(contract)
     require(set(registry) == REGISTRY_FIELDS, "release registry field set drift")
     require(registry.get("schemaVersion") == "memory-os-release-baseline-registry.v1",
