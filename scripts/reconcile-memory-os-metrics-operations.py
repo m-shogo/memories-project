@@ -76,6 +76,18 @@ def append_once(items: list[Any], value: str) -> bool:
     return True
 
 
+def validate_source_authority() -> None:
+    result = subprocess.run(
+        [sys.executable, "scripts/validate-memory-os-metrics-operations.py"],
+        cwd=ROOT,
+        check=False,
+    )
+    require(
+        result.returncode == 0,
+        "source validator failed: scripts/validate-memory-os-metrics-operations.py",
+    )
+
+
 def validate_written_authority() -> None:
     for script in (
         "scripts/validate-memory-os-metrics.py",
@@ -110,6 +122,7 @@ def write_transactionally(metrics: dict[str, Any], status: dict[str, Any]) -> No
 
 
 def main() -> int:
+    validate_source_authority()
     metrics = load(METRICS_PATH)
     dashboards = load(DASHBOARD_PATH)
     retention = load(RETENTION_PATH)
