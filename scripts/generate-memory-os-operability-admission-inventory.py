@@ -232,6 +232,12 @@ def main() -> int:
         "rate-limit distributed runtime registry",
     )
     require_canonical_registry(
+        "register-memory-os-sustained-soak-independent-review.py",
+        "memory_os_sustained_soak_inventory_generator_authority",
+        soak_review,
+        "sustained-soak independent review registry",
+    )
+    require_canonical_registry(
         "register-memory-os-release-baseline.py",
         "memory_os_release_baseline_inventory_generator_authority",
         releases,
