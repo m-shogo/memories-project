@@ -9,6 +9,7 @@ on:
       - "contracts/operations/operability-admission-inventory.v1.json"
       - "contracts/operations/migration-production-shaped-admission-registry.v1.json"
       - "docs/evidence/incident-tabletops/*.json"
+      - "scripts/validate-memory-os-incident-human-tabletops.py"
       - "contracts/operations/incident-contact-routing-admission-registry.v1.json"
       - "contracts/operations/observability-stack-deployment-registry.v1.json"
       - "contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json"
@@ -154,6 +155,7 @@ jobs:
             scripts/generate-memory-os-operability-admission-inventory.py \
             scripts/validate-memory-os-operability-admission-inventory.py \
             scripts/validate-memory-os-operability-admission-inventory-source-authorities.py \
+            scripts/validate-memory-os-incident-human-tabletops.py \
             scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py \
             scripts/validate-memory-os-operability-admission-inventory-registry-negative.py \
             scripts/register-memory-os-migration-production-shaped-admission.py \
