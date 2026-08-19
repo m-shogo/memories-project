@@ -7,10 +7,12 @@ on:
       - "contracts/operations/deletion-worker-host-failure-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-deletion-worker-host-failure.py"
       - "scripts/validate-memory-os-deletion-worker-host-failure-generation-negative.py"
       - "scripts/reconcile-memory-os-deletion-worker-host-failure.py"
+      - "scripts/validate-memory-os-operability.py"
   push:
     branches:
       - so
@@ -19,10 +21,12 @@ on:
       - "contracts/operations/deletion-worker-host-failure-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-deletion-worker-host-failure.py"
       - "scripts/validate-memory-os-deletion-worker-host-failure-generation-negative.py"
       - "scripts/reconcile-memory-os-deletion-worker-host-failure.py"
+      - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
 
 permissions:
@@ -67,6 +71,7 @@ jobs:
             scripts/validate-memory-os-deletion-worker-host-failure.py \
             scripts/validate-memory-os-deletion-worker-host-failure-generation-negative.py \
             scripts/reconcile-memory-os-deletion-worker-host-failure.py \
+            scripts/validate-memory-os-operability.py \
             >"$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-deletion-worker-host-failure-generation-negative.py >>"$log" 2>&1 || code=$?
