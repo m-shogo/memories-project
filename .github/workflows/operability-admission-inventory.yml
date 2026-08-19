@@ -14,6 +14,7 @@ on:
       - "contracts/operations/observability-stack-deployment-registry.v1.json"
       - "contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json"
       - "contracts/operations/load-test-scenario-contract.v1.json"
+      - "scripts/validate-memory-os-load.py"
       - "contracts/operations/sustained-soak-independent-review-contract.v1.json"
       - "contracts/operations/sustained-soak-independent-review-registry.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
@@ -156,6 +157,7 @@ jobs:
             scripts/validate-memory-os-operability-admission-inventory.py \
             scripts/validate-memory-os-operability-admission-inventory-source-authorities.py \
             scripts/validate-memory-os-incident-human-tabletops.py \
+            scripts/validate-memory-os-load.py \
             scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py \
             scripts/validate-memory-os-operability-admission-inventory-registry-negative.py \
             scripts/register-memory-os-migration-production-shaped-admission.py \
