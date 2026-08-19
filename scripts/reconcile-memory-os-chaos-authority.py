@@ -28,6 +28,10 @@ PARSER_RESULT = ROOT / "docs/fixtures/memory-os-operability/parser-restart-matri
 DATABASE_RESULT = ROOT / "docs/fixtures/memory-os-operability/database-commit-outage-results.sample.v1.json"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
+OBJECT_VALIDATOR = "validate-memory-os-chaos-failure-drills-v2.py"
+PARSER_VALIDATOR = "validate-memory-os-parser-restart-matrix.py"
+DATABASE_VALIDATOR = "validate-memory-os-database-commit-outage.py"
+
 OBJECT_EVIDENCE = (
     "local PostgreSQL 16 plus MinIO import-flow outage drill proving an unreachable object-store endpoint fails before parse/commit, leaves no Preview or spool residue and the exact same request succeeds once connectivity returns",
     "v2 machine-readable failure-drill authority superseding the two-scenario v1 inventory while preserving CI-vs-production evidence separation",
@@ -112,6 +116,37 @@ def load(path: Path) -> dict[str, Any]:
         raise ReconcileFailure(f"invalid JSON in {path.relative_to(ROOT)}: {exc}") from exc
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
     return value
+
+
+def run_canonical_validator(script_name: str) -> None:
+    script = ROOT / "scripts" / script_name
+    try:
+        resolved = script.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise ReconcileFailure(f"canonical chaos validator missing or escapes repository: {script_name}") from exc
+    require(resolved == Path("scripts") / script_name and script.is_file(),
+            f"canonical chaos validator path drift: {script_name}")
+    try:
+        result = subprocess.run(
+            [sys.executable, str(script)],
+            cwd=ROOT,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError as exc:
+        raise ReconcileFailure(f"cannot execute canonical chaos validator: {script_name}") from exc
+    require(result.returncode == 0, f"canonical chaos validator rejected authority: {script_name}")
+
+
+def validate_canonical_source_authorities() -> None:
+    run_canonical_validator(OBJECT_VALIDATOR)
+    run_canonical_validator(PARSER_VALIDATOR)
+    database_result = load(DATABASE_RESULT)
+    assertions = database_result.get("assertions")
+    require(isinstance(assertions, dict), "database outage assertions missing")
+    if assertions.get("sameSpoolIdReused") is True:
+        run_canonical_validator(DATABASE_VALIDATOR)
 
 
 def source_is_ancestor(source_sha: Any) -> bool:
@@ -210,6 +245,7 @@ def validate_database_result(result: dict[str, Any]) -> bool:
 def normalized_status(status: dict[str, Any]) -> dict[str, Any]:
     require(status.get("productionDecision") == "NO_GO",
             "chaos authority requires productionDecision NO_GO")
+    validate_canonical_source_authorities()
     areas = status.get("areas")
     require(isinstance(areas, list), "status areas must be a list")
     matches = [item for item in areas
