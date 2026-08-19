@@ -86,6 +86,28 @@ def canonical_human_tabletop_count() -> int:
     return len(scenarios)
 
 
+def require_canonical_load_authority() -> None:
+    script_name = "validate-memory-os-load.py"
+    path = ROOT / "scripts" / script_name
+    try:
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise SystemExit(f"canonical load validator missing or escapes repository: {script_name}") from exc
+    if resolved != Path("scripts") / script_name or not path.is_file():
+        raise SystemExit(f"canonical load validator path drift: {script_name}")
+    spec = importlib.util.spec_from_file_location("memory_os_load_inventory_generator_authority", path)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"cannot load canonical load validator: {script_name}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    validator = getattr(module, "main", None)
+    if not callable(validator):
+        raise SystemExit(f"canonical load validator missing main: {script_name}")
+    result = validator()
+    if result != 0:
+        raise SystemExit(f"canonical load authority invalid: validator exit {result}")
+
+
 def p0_status(status: dict[str, Any], area_id: str) -> dict[str, Any]:
     rows = status.get("areas")
     if not isinstance(rows, list):
@@ -215,6 +237,7 @@ def main() -> int:
     )
 
     human_tabletop_count = canonical_human_tabletop_count()
+    require_canonical_load_authority()
     load_ready = load_contract.get("readiness")
     if not isinstance(load_ready, dict):
         raise SystemExit("load readiness missing")
