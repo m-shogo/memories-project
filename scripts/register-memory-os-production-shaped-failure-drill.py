@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/production-shaped-failure-drill-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/production-shaped-failure-drill-registry.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+GEN_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-production-shaped-failure-drills.py"
 LOCK = ROOT / "contracts/operations/.production-shaped-failure-drill.lock"
 REVIEW_ROOT = Path("docs/evidence/production-shaped-failure-drills/independent-reviews")
@@ -77,6 +78,15 @@ def validate_registry_before_append(registry: dict[str, Any]) -> list[dict[str, 
         return validator.validate_registry_for_append(registry)
     except validator.Fail as exc:
         raise Fail(f"existing failure-drill registry rejected before append: {exc}") from exc
+
+
+def validated_generation_rows() -> list[dict[str, Any]]:
+    generation_writer = load_module(GEN_WRITER, "memory_os_generation_writer_for_failure_drill")
+    require(generation_writer.REGISTRY.resolve() == GEN_REGISTRY.resolve(), "environment generation writer registry authority drift")
+    try:
+        return generation_writer.validate_registry_for_append(generation_writer.load(GEN_REGISTRY))
+    except generation_writer.Fail as exc:
+        raise Fail(f"environment generation authority rejected: {exc}") from exc
 
 
 def git(*args: str) -> str:
@@ -265,9 +275,8 @@ def validate_record(record: dict[str, Any], confirmation: str) -> None:
         require(record.get("productionTraffic") is False, "production-equivalent drill cannot use production traffic")
         require(record.get("productionEvidence") is False, "production-equivalent drill cannot be production evidence")
         require(isinstance(generation, str) and generation, "production-equivalent drill requires generation id")
-        gen_registry = load(GEN_REGISTRY)
-        generations = gen_registry.get("generations")
-        require(isinstance(generations, list) and any(isinstance(row, dict) and row.get("generationId") == generation for row in generations), "environment generation not registered")
+        generations = validated_generation_rows()
+        require(any(row.get("generationId") == generation for row in generations), "environment generation not registered in valid generation authority")
     else:
         require(generation is None, "production drill must not borrow production-equivalent generation id")
         require(confirmation == PRODUCTION_CONFIRMATION, f"production drill requires confirmation: {PRODUCTION_CONFIRMATION}")
