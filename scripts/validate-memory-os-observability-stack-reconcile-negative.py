@@ -16,6 +16,7 @@ CONTRACT = ROOT / "contracts/operations/observability-stack-deployment-contract.
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 WRITER = ROOT / "scripts/register-memory-os-observability-stack-deployment.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-observability-stack-deployment.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-observability-stack-deployment.py"
 TEMP_POST_SOURCE = ROOT / "docs/fixtures/memory-os-operability/.observability-stack-post-source-negative.tmp"
 TEMP_SYMLINK = ROOT / "docs/fixtures/memory-os-operability/.observability-stack-symlink-negative.tmp"
@@ -154,6 +155,30 @@ raise SystemExit(0 if count == 0 else 1)
         STATUS.write_bytes(status_bytes)
 
 
+def expect_aggregate_post_write_rollback(contract_bytes: bytes, status_bytes: bytes) -> None:
+    operability_bytes = OPERABILITY_VALIDATOR.read_bytes()
+    try:
+        OPERABILITY_VALIDATOR.write_text("raise SystemExit(1)\n", encoding="utf-8")
+        completed = subprocess.run(
+            ["python", str(RECONCILER)],
+            cwd=ROOT,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        if completed.returncode == 0:
+            raise RuntimeError("reconciler accepted injected aggregate operability failure")
+        if CONTRACT.read_bytes() != contract_bytes:
+            raise RuntimeError("aggregate failure left observability stack contract mutated")
+        if STATUS.read_bytes() != status_bytes:
+            raise RuntimeError("aggregate failure left production operability status mutated")
+    finally:
+        OPERABILITY_VALIDATOR.write_bytes(operability_bytes)
+        CONTRACT.write_bytes(contract_bytes)
+        STATUS.write_bytes(status_bytes)
+
+
 def main() -> int:
     writer = load_writer()
     registry_bytes = REGISTRY.read_bytes()
@@ -243,10 +268,11 @@ def main() -> int:
         STATUS.write_bytes(status_bytes)
 
     expect_post_write_rollback(contract_bytes, status_bytes)
+    expect_aggregate_post_write_rollback(contract_bytes, status_bytes)
 
     print("PASS: observability stack registry/source-binding/review/lock corruption is rejected without mutation")
     print("PASS: observability stack direct append rolls back on post-append validation failure")
-    print("PASS: observability stack post-write validation failure rolls back contract and status")
+    print("PASS: observability stack post-write and aggregate validation failures roll back contract and status")
     print("generic repository JSON accepted as independent review: false")
     print("automatic production promotion authorized: false")
     return 0
