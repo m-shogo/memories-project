@@ -61,6 +61,7 @@ on:
       - "scripts/register-memory-os-client-baseline.py"
       - "scripts/register-memory-os-parser-artifact.py"
       - "scripts/register-memory-os-production-shaped-failure-drill.py"
+      - "scripts/register-memory-os-sustained-soak-independent-review.py"
       - "scripts/validate-memory-os-sustained-soak-independent-review.py"
       - "scripts/validate-memory-os-sustained-soak-independent-review-negative.py"
       - "scripts/validate-memory-os-sustained-soak-human-evidence-path-negative.py"
@@ -165,6 +166,7 @@ jobs:
             scripts/register-memory-os-client-baseline.py \
             scripts/register-memory-os-parser-artifact.py \
             scripts/register-memory-os-production-shaped-failure-drill.py \
+            scripts/register-memory-os-sustained-soak-independent-review.py \
             scripts/validate-memory-os-sustained-soak-independent-review.py \
             scripts/validate-memory-os-sustained-soak-independent-review-negative.py \
             scripts/validate-memory-os-sustained-soak-human-evidence-path-negative.py \
