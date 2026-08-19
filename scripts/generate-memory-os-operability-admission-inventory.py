@@ -131,6 +131,60 @@ def main() -> int:
         backup_promotion_reviews,
         "human promotion review registry",
     )
+    require_canonical_registry(
+        "register-memory-os-migration-production-shaped-admission.py",
+        "memory_os_migration_production_inventory_generator_authority",
+        migration,
+        "migration production-shaped admission registry",
+    )
+    require_canonical_registry(
+        "register-memory-os-incident-contact-routing.py",
+        "memory_os_incident_contact_inventory_generator_authority",
+        incident_contact,
+        "incident contact routing registry",
+    )
+    require_canonical_registry(
+        "register-memory-os-observability-stack-deployment.py",
+        "memory_os_observability_stack_inventory_generator_authority",
+        observability,
+        "observability stack deployment registry",
+    )
+    require_canonical_registry(
+        "register-memory-os-rate-limit-distributed-runtime.py",
+        "memory_os_rate_runtime_inventory_generator_authority",
+        rate_runtime,
+        "rate-limit distributed runtime registry",
+    )
+    require_canonical_registry(
+        "register-memory-os-release-baseline.py",
+        "memory_os_release_baseline_inventory_generator_authority",
+        releases,
+        "release baseline registry",
+    )
+    require_canonical_registry(
+        "register-memory-os-release-compatibility-pair.py",
+        "memory_os_release_pair_inventory_generator_authority",
+        release_pairs,
+        "release compatibility pair registry",
+    )
+    require_canonical_registry(
+        "register-memory-os-client-baseline.py",
+        "memory_os_client_baseline_inventory_generator_authority",
+        clients,
+        "client baseline registry",
+    )
+    require_canonical_registry(
+        "register-memory-os-parser-artifact.py",
+        "memory_os_parser_artifact_inventory_generator_authority",
+        parsers,
+        "parser artifact registry",
+    )
+    require_canonical_registry(
+        "register-memory-os-production-shaped-failure-drill.py",
+        "memory_os_failure_drill_inventory_generator_authority",
+        failure_drills,
+        "production-shaped failure drill registry",
+    )
 
     human_tabletop_count = len(list((ROOT / "docs/evidence/incident-tabletops").glob("IR-DRILL-*.json")))
     load_ready = load_contract.get("readiness")
