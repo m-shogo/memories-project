@@ -9,9 +9,13 @@ on:
       - "contracts/operations/requests/production-shaped-failure-drill-foundation.v1.json"
       - "contracts/operations/production-shaped-failure-drill-contract.v1.json"
       - "contracts/operations/production-shaped-failure-drill-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
+      - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
       - "docs/evidence/production-shaped-failure-drills/independent-reviews/**"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/register-memory-os-production-shaped-failure-drill.py"
       - "scripts/validate-memory-os-production-shaped-failure-drills.py"
       - "scripts/validate-memory-os-production-shaped-failure-drill-registry-negative.py"
@@ -25,9 +29,13 @@ on:
       - "contracts/operations/requests/production-shaped-failure-drill-foundation.v1.json"
       - "contracts/operations/production-shaped-failure-drill-contract.v1.json"
       - "contracts/operations/production-shaped-failure-drill-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
+      - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
       - "docs/evidence/production-shaped-failure-drills/independent-reviews/**"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/register-memory-os-production-shaped-failure-drill.py"
       - "scripts/validate-memory-os-production-shaped-failure-drills.py"
       - "scripts/validate-memory-os-production-shaped-failure-drill-registry-negative.py"
@@ -68,6 +76,7 @@ jobs:
           code=0
           python -m py_compile \
             scripts/register-memory-os-production-equivalent-environment-generation.py \
+            scripts/validate-memory-os-production-equivalent-environment-record.py \
             scripts/register-memory-os-production-shaped-failure-drill.py \
             scripts/validate-memory-os-production-shaped-failure-drills.py \
             scripts/validate-memory-os-production-shaped-failure-drill-registry-negative.py \
