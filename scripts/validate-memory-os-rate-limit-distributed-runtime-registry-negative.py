@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
@@ -190,6 +191,35 @@ def prove_reconciler_status_rollback(reconciler: Any) -> None:
         STATUS.write_bytes(status_before)
 
 
+def prove_reconciler_aggregate_rollback(reconciler: Any) -> None:
+    contract_before = CONTRACT.read_bytes()
+    status_before = STATUS.read_bytes()
+    contract = json.loads(contract_before.decode("utf-8"))
+    status = json.loads(status_before.decode("utf-8"))
+    contract["rollbackProbe"] = "must-not-persist"
+    status["rollbackProbe"] = "must-not-persist"
+    original_validators = reconciler.POST_WRITE_VALIDATORS
+    with tempfile.TemporaryDirectory(prefix="rate-limit-runtime-aggregate-negative-") as tmp:
+        fail_validator = Path(tmp) / "fail.py"
+        fail_validator.write_text("raise SystemExit(1)\n", encoding="utf-8")
+        reconciler.POST_WRITE_VALIDATORS = (reconciler.VALIDATOR, fail_validator)
+        try:
+            try:
+                reconciler.commit_outputs_transactionally({CONTRACT: contract, STATUS: status})
+            except reconciler.Fail:
+                pass
+            else:
+                raise RuntimeError("reconciler accepted synthetic aggregate validator failure")
+            if CONTRACT.read_bytes() != contract_before:
+                raise RuntimeError("aggregate failure left distributed runtime contract mutated")
+            if STATUS.read_bytes() != status_before:
+                raise RuntimeError("aggregate failure left production operability status mutated")
+        finally:
+            reconciler.POST_WRITE_VALIDATORS = original_validators
+            CONTRACT.write_bytes(contract_before)
+            STATUS.write_bytes(status_before)
+
+
 def main() -> int:
     writer = load_module(WRITER_PATH, "rate_limit_runtime_writer_negative")
     validator = load_module(VALIDATOR_PATH, "rate_limit_runtime_validator_negative")
@@ -215,6 +245,7 @@ def main() -> int:
         prove_writer_post_append_rollback(writer, original)
         prove_reconciler_no_autoheal(reconciler, original)
         prove_reconciler_status_rollback(reconciler)
+        prove_reconciler_aggregate_rollback(reconciler)
     finally:
         REGISTRY.write_bytes(original)
 
@@ -225,6 +256,7 @@ def main() -> int:
     print("writer post-append rollback: true")
     print("reconciler auto-heal: false")
     print("reconciler partial writes: false")
+    print("reconciler aggregate rollback: true")
     print("production readiness: false")
     print("production decision: NO_GO")
     return 0
