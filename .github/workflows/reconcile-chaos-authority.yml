@@ -10,12 +10,14 @@ on:
       - "scripts/validate-memory-os-parser-restart-matrix.py"
       - "scripts/validate-memory-os-database-commit-outage.py"
       - "scripts/validate-memory-os-parser-inflight-cancellation.py"
+      - "scripts/validate-memory-os-parser-process-group-reaping.py"
       - "scripts/validate-memory-os-operability.py"
       - "contracts/operations/production-operability-status.json"
       - "docs/fixtures/memory-os-operability/chaos-failure-drill-results.v2.sample.json"
       - "docs/fixtures/memory-os-operability/parser-restart-matrix-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/database-commit-outage-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/parser-inflight-cancellation-results.sample.v1.json"
+      - "docs/fixtures/memory-os-operability/parser-process-group-reaping-results.sample.v1.json"
   push:
     branches:
       - so
@@ -27,12 +29,14 @@ on:
       - "scripts/validate-memory-os-parser-restart-matrix.py"
       - "scripts/validate-memory-os-database-commit-outage.py"
       - "scripts/validate-memory-os-parser-inflight-cancellation.py"
+      - "scripts/validate-memory-os-parser-process-group-reaping.py"
       - "scripts/validate-memory-os-operability.py"
       - "contracts/operations/production-operability-status.json"
       - "docs/fixtures/memory-os-operability/chaos-failure-drill-results.v2.sample.json"
       - "docs/fixtures/memory-os-operability/parser-restart-matrix-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/database-commit-outage-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/parser-inflight-cancellation-results.sample.v1.json"
+      - "docs/fixtures/memory-os-operability/parser-process-group-reaping-results.sample.v1.json"
   schedule:
     - cron: "23 20 * * *"
   workflow_dispatch:
@@ -83,6 +87,7 @@ jobs:
             scripts/validate-memory-os-parser-restart-matrix.py \
             scripts/validate-memory-os-database-commit-outage.py \
             scripts/validate-memory-os-parser-inflight-cancellation.py \
+            scripts/validate-memory-os-parser-process-group-reaping.py \
             scripts/validate-memory-os-operability.py
           python scripts/reconcile-memory-os-chaos-authority.py
           python scripts/reconcile-memory-os-chaos-authority.py --check
@@ -106,6 +111,11 @@ jobs:
             python scripts/validate-memory-os-parser-inflight-cancellation.py
           else
             echo "In-flight cancellation result not committed yet; gap remains open."
+          fi
+          if test -f docs/fixtures/memory-os-operability/parser-process-group-reaping-results.sample.v1.json; then
+            python scripts/validate-memory-os-parser-process-group-reaping.py
+          else
+            echo "Process-group reaping result not committed yet; orphan/reaping gap remains open."
           fi
           python scripts/validate-memory-os-operability.py
 
