@@ -39,6 +39,12 @@ def load_json(path: Path) -> dict[str, Any]:
     return value
 
 
+def controlled_failure(module: ModuleType):
+    def fail_after_write() -> None:
+        raise module.ReconcileFailure("controlled post-write validator failure")
+    return fail_after_write
+
+
 def run_case(name: str, module: ModuleType) -> None:
     original_metrics = METRICS.read_bytes()
     original_status = STATUS.read_bytes()
@@ -47,11 +53,8 @@ def run_case(name: str, module: ModuleType) -> None:
     metrics["_rollbackNegativeMarker"] = name
     status["_rollbackNegativeMarker"] = name
 
-    def fail_after_write() -> None:
-        raise module.ReconcileFailure("controlled post-write validator failure")
-
     original_validator = module.validate_written_authority
-    module.validate_written_authority = fail_after_write
+    module.validate_written_authority = controlled_failure(module)
     try:
         try:
             module.write_transactionally(metrics, status)
@@ -69,16 +72,36 @@ def run_case(name: str, module: ModuleType) -> None:
     require(STATUS.read_bytes() == original_status, f"{name}: operability status was not rolled back")
 
 
+def run_metrics_case(name: str, module: ModuleType) -> None:
+    original_metrics = METRICS.read_bytes()
+    metrics = copy.deepcopy(load_json(METRICS))
+    metrics["description"] = f"synthetic rollback marker: {name}"
+
+    original_validator = module.validate_written_authority
+    module.validate_written_authority = controlled_failure(module)
+    try:
+        try:
+            module.write_transactionally(metrics)
+        except module.ReconcileFailure as exc:
+            require(
+                "controlled post-write validator failure" in str(exc),
+                f"{name}: unexpected failure: {exc}",
+            )
+        else:
+            raise NegativeFailure(f"{name}: controlled validator failure was accepted")
+    finally:
+        module.validate_written_authority = original_validator
+
+    require(METRICS.read_bytes() == original_metrics, f"{name}: metrics authority was not rolled back")
+
+
 def run_status_case(name: str, module: ModuleType) -> None:
     original_status = STATUS.read_bytes()
     status = copy.deepcopy(load_json(STATUS))
     status["asOf"] = "2099-01-01"
 
-    def fail_after_write() -> None:
-        raise module.ReconcileFailure("controlled post-write validator failure")
-
     original_validator = module.validate_written_authority
-    module.validate_written_authority = fail_after_write
+    module.validate_written_authority = controlled_failure(module)
     try:
         try:
             module.write_transactionally(status)
@@ -96,6 +119,10 @@ def run_status_case(name: str, module: ModuleType) -> None:
 
 
 def main() -> int:
+    primary = load_module(
+        "metrics_primary_contract_reconcile",
+        "scripts/reconcile-memory-os-metrics-contract.py",
+    )
     scrape = load_module(
         "metrics_scrape_status_reconcile",
         "scripts/reconcile-memory-os-metrics-scrape-status.py",
@@ -108,10 +135,11 @@ def main() -> int:
         "metrics_alerting_reconcile",
         "scripts/reconcile-memory-os-metrics-alerting.py",
     )
+    run_metrics_case("primary", primary)
     run_status_case("scrape", scrape)
     run_case("operations", operations)
     run_case("alerting", alerting)
-    print("PASS: metrics scrape, operations and alerting reconciles roll back after post-write validation failure")
+    print("PASS: metrics primary, scrape, operations and alerting reconciles roll back after post-write validation failure")
     return 0
 
 
