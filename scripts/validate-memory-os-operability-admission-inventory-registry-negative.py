@@ -29,7 +29,7 @@ AUTHORITIES = {
     "parser artifact": ROOT / "contracts/operations/parser-artifact-registry.v1.json",
     "production-shaped failure drill": ROOT / "contracts/operations/production-shaped-failure-drill-registry.v1.json",
 }
-DOMAIN_REJECTIONS = {"Fail", "RegistrationFailure"}
+DOMAIN_REJECTIONS = {"Fail", "Failure", "RegistrationFailure"}
 
 
 class Fail(RuntimeError):
