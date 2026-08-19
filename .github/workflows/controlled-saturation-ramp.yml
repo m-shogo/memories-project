@@ -204,6 +204,29 @@ jobs:
           reconciled=false
           for attempt in 1 2 3; do
             git fetch origin so
+            if ! git diff --quiet "${SOURCE_SHA}" origin/so -- \
+              .github/workflows/controlled-saturation-ramp.yml \
+              services/import-api/internal/httpserver \
+              services/import-api/internal/fenced \
+              services/import-api/internal/epochguard \
+              services/import-api/internal/pgrepo \
+              services/import-api/internal/dbscope \
+              services/import-api/internal/pgscope \
+              services/import-api/internal/authstore \
+              services/import-api/internal/upload \
+              services/import-api/internal/objectstore \
+              services/import-api/go.mod \
+              services/import-api/go.sum \
+              infra/postgresql/security \
+              contracts/operations/controlled-saturation-ramp-contract.v1.json \
+              scripts/validate-memory-os-controlled-saturation-ramp.py \
+              scripts/reconcile-memory-os-controlled-saturation-ramp-status.py \
+              scripts/validate-memory-os-load.py \
+              scripts/validate-memory-os-load-evidence-index.py \
+              scripts/validate-memory-os-operability.py; then
+              echo "Newer controlled-ramp authority source exists; refusing stale reconcile."
+              exit 75
+            fi
             git reset --hard origin/so
             EXPECTED_COMMIT_SHA="${SOURCE_SHA}" python scripts/validate-memory-os-controlled-saturation-ramp.py
             EXPECTED_COMMIT_SHA="${SOURCE_SHA}" python scripts/reconcile-memory-os-controlled-saturation-ramp-status.py
