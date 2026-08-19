@@ -66,7 +66,7 @@ def validate_immutable_ledger_path(path: Path) -> None:
             f"accepted tabletop record changed after admission: {path.name}")
 
 
-def main() -> int:
+def validate_ledger() -> set[str]:
     contract = load(CONTRACT)
     require(contract.get("schemaVersion") == "memory-os-incident-human-tabletop-evidence.v1", "contract schema drift")
     require(contract.get("ledgerDirectory") == str(LEDGER.relative_to(ROOT)), "ledger directory drift")
@@ -102,6 +102,12 @@ def main() -> int:
         require(current.get(key) is False, f"human tabletop authority cannot enable {key}")
     require(current.get("productionDecision") == "NO_GO", "production decision drift")
     require(readiness.get("productionRecoveryDrillCompleted") is False and readiness.get("productionReady") is False, "readiness production boundary drift")
+    return scenarios
+
+
+def main() -> int:
+    scenarios = validate_ledger()
+    required = set(load(CONTRACT).get("requiredScenarioIds", []))
     print("Memory OS human incident tabletop ledger validation PASS")
     print(f"accepted scenarios: {len(scenarios)}/{len(required)}")
     print(f"all required scenarios completed: {scenarios == required}")
