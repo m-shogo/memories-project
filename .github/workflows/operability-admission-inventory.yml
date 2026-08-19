@@ -116,13 +116,25 @@ on:
       - ".github/workflows/backup-restore-non-resurrection-admission.yml"
       - ".github/workflows/backup-restore-admission-chain.yml"
       - ".github/workflows/backup-restore-promotion-review.yml"
+  pull_request:
+    paths:
+      - ".github/workflows/operability-admission-inventory.yml"
+      - "contracts/operations/operability-admission-inventory.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "scripts/generate-memory-os-operability-admission-inventory.py"
+      - "scripts/validate-memory-os-operability-admission-inventory.py"
+      - "scripts/validate-memory-os-operability-admission-inventory-source-authorities.py"
+      - "scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py"
+      - "scripts/validate-memory-os-operability-admission-inventory-registry-negative.py"
+      - "scripts/validate-memory-os-incident-human-tabletops.py"
+      - "scripts/validate-memory-os-load.py"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: operability-admission-inventory-so
+  group: operability-admission-inventory-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
@@ -132,19 +144,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Capture exact inventory source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          git fetch origin so
-          test "$(git branch --show-current)" = "so"
           test -z "$(git status --porcelain)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
-          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+            SOURCE_SHA="$PR_HEAD_SHA"
+          else
+            git fetch origin so
+            test "$(git branch --show-current)" = "so"
+            test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+            SOURCE_SHA="$(git rev-parse HEAD)"
+          fi
+          echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
       - name: Generate and validate inventory
         id: inventory
         run: |
@@ -291,8 +311,15 @@ jobs:
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
+      - name: Require deterministic inventory on pull requests
+        if: github.event_name == 'pull_request' && steps.inventory.outputs.exit_code == '0'
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
       - name: Commit deterministic inventory
-        if: steps.inventory.outputs.exit_code == '0'
+        if: github.event_name != 'pull_request' && steps.inventory.outputs.exit_code == '0'
         run: |
           set -euo pipefail
           log=/tmp/operability-admission-inventory.log
@@ -373,7 +400,7 @@ jobs:
           done
           exit 75
       - name: Record privacy-safe inventory diagnostic
-        if: steps.inventory.outputs.exit_code != '0'
+        if: github.event_name != 'pull_request' && steps.inventory.outputs.exit_code != '0'
         env:
           INVENTORY_EXIT_CODE: ${{ steps.inventory.outputs.exit_code }}
         run: |
