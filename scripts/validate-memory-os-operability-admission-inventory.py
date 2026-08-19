@@ -35,9 +35,12 @@ def require_count_match(value: Any, expected: int, message: str) -> None:
 
 def repo_relative(path: Path) -> Path:
     try:
-        return path.resolve(strict=False).relative_to(ROOT.resolve())
-    except (OSError, ValueError) as exc:
-        raise Fail(f"authority path escapes repository: {path}") from exc
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"authority path missing or escapes repository: {path}") from exc
+    require(resolved == lexical and path.is_file(), f"canonical authority path drift: {lexical}")
+    return lexical
 
 
 def load(path: Path) -> dict[str, Any]:
