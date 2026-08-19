@@ -13,12 +13,21 @@ ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-operability-admission-inventory.py"
 GENERATOR = ROOT / "scripts/generate-memory-os-operability-admission-inventory.py"
 AUTHORITIES = {
+    "migration production-shaped admission": ROOT / "contracts/operations/migration-production-shaped-admission-registry.v1.json",
+    "incident contact routing": ROOT / "contracts/operations/incident-contact-routing-admission-registry.v1.json",
+    "observability stack": ROOT / "contracts/operations/observability-stack-deployment-registry.v1.json",
+    "rate-limit distributed runtime": ROOT / "contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json",
     "environment generation": ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
     "recovery objective": ROOT / "contracts/operations/recovery-objectives-registry.v1.json",
     "drill request": ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json",
     "generation recovery evidence": ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
     "typed non-resurrection": ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json",
     "human promotion review": ROOT / "contracts/operations/backup-restore-promotion-review-registry.v1.json",
+    "release baseline": ROOT / "contracts/operations/release-baseline-registry.v1.json",
+    "release compatibility pair": ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json",
+    "client baseline": ROOT / "contracts/operations/client-baseline-registry.v1.json",
+    "parser artifact": ROOT / "contracts/operations/parser-artifact-registry.v1.json",
+    "production-shaped failure drill": ROOT / "contracts/operations/production-shaped-failure-drill-registry.v1.json",
 }
 
 
@@ -117,6 +126,26 @@ def main() -> int:
 
     cases: list[tuple[Path, str, Callable[[dict[str, Any]], None]]] = [
         (
+            AUTHORITIES["migration production-shaped admission"],
+            "migration production-shaped admission append-only disabled",
+            lambda value: value.__setitem__("appendOnly", False),
+        ),
+        (
+            AUTHORITIES["incident contact routing"],
+            "incident contact routing append-only disabled",
+            lambda value: value.__setitem__("appendOnly", False),
+        ),
+        (
+            AUTHORITIES["observability stack"],
+            "observability stack append-only disabled",
+            lambda value: value.__setitem__("appendOnly", False),
+        ),
+        (
+            AUTHORITIES["rate-limit distributed runtime"],
+            "rate-limit distributed runtime append-only disabled",
+            lambda value: value.__setitem__("appendOnly", False),
+        ),
+        (
             AUTHORITIES["environment generation"],
             "environment generation registryClass drift",
             lambda value: value.__setitem__("registryClass", "NOT_PRODUCTION_EQUIVALENT_GENERATIONS"),
@@ -210,6 +239,31 @@ def main() -> int:
             AUTHORITIES["human promotion review"],
             "human promotion production traffic manufactured",
             lambda value: value.__setitem__("productionTrafficChanged", True),
+        ),
+        (
+            AUTHORITIES["release baseline"],
+            "release baseline append-only disabled",
+            lambda value: value.__setitem__("appendOnly", False),
+        ),
+        (
+            AUTHORITIES["release compatibility pair"],
+            "release compatibility pair append-only disabled",
+            lambda value: value.__setitem__("appendOnly", False),
+        ),
+        (
+            AUTHORITIES["client baseline"],
+            "client baseline append-only disabled",
+            lambda value: value.__setitem__("appendOnly", False),
+        ),
+        (
+            AUTHORITIES["parser artifact"],
+            "parser artifact append-only disabled",
+            lambda value: value.__setitem__("appendOnly", False),
+        ),
+        (
+            AUTHORITIES["production-shaped failure drill"],
+            "production-shaped failure drill append-only disabled",
+            lambda value: value.__setitem__("appendOnly", False),
         ),
     ]
     for path, name, mutate in cases:
