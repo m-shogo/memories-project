@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -12,6 +13,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 CONTRACT_PATH = ROOT / "contracts/operations/metrics-scrape-contract.v1.json"
+SCRAPE_VALIDATOR = ROOT / "scripts/validate-memory-os-metrics-scrape.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 
 OLD_MISSING = "Prometheus/OTel exporter and an exposed scrape endpoint"
 NEW_EXISTING = (
@@ -55,6 +58,40 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def load_validator(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load validator: {path.relative_to(ROOT)}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def require_validator_success(path: Path, name: str) -> None:
+    result = load_validator(path, name).main()
+    require(
+        not isinstance(result, bool) and isinstance(result, int) and result == 0,
+        f"validator rejected authority: {path.relative_to(ROOT)} returned {result!r}",
+    )
+
+
+def validate_written_authority() -> None:
+    require_validator_success(SCRAPE_VALIDATOR, "memory_os_metrics_scrape_validator")
+    require_validator_success(OPERABILITY_VALIDATOR, "memory_os_operability_validator")
+
+
+def write_transactionally(status: dict[str, Any]) -> None:
+    original = STATUS_PATH.read_bytes()
+    STATUS_PATH.write_text(
+        json.dumps(status, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    try:
+        validate_written_authority()
+    except BaseException:
+        STATUS_PATH.write_bytes(original)
+        raise
+
+
 def has_gap(missing: list[Any], aliases: tuple[str, ...]) -> bool:
     return any(
         isinstance(item, str) and any(alias in item for alias in aliases)
@@ -63,6 +100,8 @@ def has_gap(missing: list[Any], aliases: tuple[str, ...]) -> bool:
 
 
 def main() -> int:
+    validate_written_authority()
+
     contract = load(CONTRACT_PATH)
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "scrape readiness must be an object")
@@ -137,10 +176,7 @@ def main() -> int:
         return 0
 
     status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
-    STATUS_PATH.write_text(
-        json.dumps(status, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    write_transactionally(status)
     print("Registered metrics scrape foundations; OPS-P0-004 remains PARTIAL")
     return 0
 
