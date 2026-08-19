@@ -13,9 +13,17 @@ CONTRACT = ROOT / "contracts/operations/rate-limit-distributed-runtime-admission
 REGISTRY = ROOT / "contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-rate-limit-distributed-runtime.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit-distributed-runtime.py"
+RATE_LIMIT_OPERATIONS_VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit-operations.py"
+RATE_LIMIT_VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+POST_WRITE_VALIDATORS = (
+    VALIDATOR,
+    RATE_LIMIT_OPERATIONS_VALIDATOR,
+    RATE_LIMIT_VALIDATOR,
+    OPERABILITY_VALIDATOR,
+)
 WORKFLOW = ROOT / ".github/workflows/rate-limit-distributed-runtime-admission.yml"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 
 EVIDENCE = (
     "generation-bound distributed rate-limit runtime admission is implemented: future evidence must bind the exact policy digest, at least two runtime instances, an atomic shared store, trusted-proxy deployment, restart continuity, fail-closed dependency behavior, runtime-observed emergency expiry/restoration, alert delivery and independent security/operability review; the registry is currently empty and creates no runtime deployment claim"
@@ -76,21 +84,21 @@ def commit_outputs_transactionally(outputs: dict[Path, dict[str, Any]]) -> None:
     try:
         for path, value in outputs.items():
             write(path, value)
-        run_validator()
-        completed = subprocess.run(
-            ["python", str(OPERABILITY_VALIDATOR)],
-            cwd=ROOT,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-        )
-        require(
-            completed.returncode == 0,
-            "operability authority rejected after distributed runtime reconcile:\n"
-            + completed.stdout[-4000:]
-            + completed.stderr[-4000:],
-        )
+        for validator in POST_WRITE_VALIDATORS:
+            completed = subprocess.run(
+                ["python", str(validator)],
+                cwd=ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            require(
+                completed.returncode == 0,
+                f"authority rejected after distributed runtime reconcile: {validator.name}\n"
+                + completed.stdout[-4000:]
+                + completed.stderr[-4000:],
+            )
     except Exception as exc:
         for path, data in originals.items():
             path.write_bytes(data)
@@ -98,7 +106,7 @@ def commit_outputs_transactionally(outputs: dict[Path, dict[str, Any]]) -> None:
 
 
 def main() -> int:
-    for path in (REGISTRY, WRITER, VALIDATOR, WORKFLOW, OPERABILITY_VALIDATOR):
+    for path in (REGISTRY, WRITER, *POST_WRITE_VALIDATORS, WORKFLOW):
         require(path.is_file(), f"distributed runtime admission missing: {path.relative_to(ROOT)}")
     run_validator()
     registry = load(REGISTRY)
