@@ -14,6 +14,7 @@ CONTRACT = ROOT / "contracts/operations/deletion-worker-host-failure-contract.v1
 GENERATION = ROOT / "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 GENERATION_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
+NO_GENERATION_LIMITATION = "no production-equivalent environment generation is registered"
 
 
 class Fail(RuntimeError):
@@ -55,8 +56,7 @@ def load_generation_writer():
     return module
 
 
-def main() -> int:
-    contract = load(CONTRACT)
+def canonical_generation_count() -> int:
     generation = load(GENERATION)
     registry = load(REGISTRY)
     generation_writer = load_generation_writer()
@@ -65,16 +65,56 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001 - shared authority must fail closed
         raise Fail(f"environment generation registry authority invalid: {exc}") from exc
 
+    registered = registry.get("registeredGenerationCount")
+    require(isinstance(registered, int) and not isinstance(registered, bool) and registered >= 0, "registered generation count invalid")
+    require(len(generation_rows) == registered, "generation registry row/count drift")
+
+    generation_boundary = generation.get("currentBoundary")
+    require(isinstance(generation_boundary, dict), "generation currentBoundary missing")
+    boundary_count = generation_boundary.get("registeredGenerationCount")
+    require(isinstance(boundary_count, int) and not isinstance(boundary_count, bool), "generation contract registered count invalid")
+    require(boundary_count == registered, "generation contract/registry count drift")
+    require(generation_boundary.get("productionEvidence") is False, "generation contract cannot claim production evidence")
+    require(generation_boundary.get("productionReady") is False, "generation contract cannot claim production readiness")
+    require(generation_boundary.get("productionDecision") == "NO_GO", "generation contract must remain NO_GO")
+    return registered
+
+
+def validate_generation_projection(contract: dict[str, Any], registered: int) -> None:
+    require(isinstance(registered, int) and not isinstance(registered, bool) and registered >= 0, "registered generation count invalid")
+    generation_available = registered > 0
+
+    boundary = contract.get("currentBoundary")
+    require(isinstance(boundary, dict), "currentBoundary required")
+    require(boundary.get("environmentGenerationAvailable") is generation_available, "host-failure generation availability drift")
+
+    readiness = contract.get("readiness")
+    require(isinstance(readiness, dict), "readiness required")
+    require(readiness.get("environmentGenerationAvailable") is generation_available, "host-failure readiness generation availability drift")
+
+    limitations = contract.get("limitations")
+    require(isinstance(limitations, list) and all(isinstance(item, str) for item in limitations), "limitations required")
+    if generation_available:
+        require(NO_GENERATION_LIMITATION not in limitations, "registered generation cannot retain missing-generation limitation")
+    else:
+        require(NO_GENERATION_LIMITATION in limitations, "empty generation registry must retain missing-generation limitation")
+
+
+def main() -> int:
+    contract = load(CONTRACT)
+    registered = canonical_generation_count()
+
     require(contract.get("schemaVersion") == "memory-os-deletion-worker-host-failure.v1", "contract schema drift")
     require(contract.get("failureClass") == "PHYSICAL_HOST_OR_VM_NODE_LOSS", "host failure class drift")
     require(contract.get("dependencyMode") == "PRODUCTION_EQUIVALENT_REQUIRED", "host proof must require production-equivalent dependencies")
     require(contract.get("environmentGenerationContract") == str(GENERATION.relative_to(ROOT)), "generation contract ref drift")
     require(contract.get("environmentGenerationRegistry") == str(REGISTRY.relative_to(ROOT)), "generation registry ref drift")
 
+    validate_generation_projection(contract, registered)
+
     boundary = contract.get("currentBoundary")
     require(isinstance(boundary, dict), "currentBoundary required")
     for key in (
-        "environmentGenerationAvailable",
         "actualPhysicalHostOrVMNodeLossCovered",
         "externalFailureControllerCovered",
         "replacementDifferentNodeCovered",
@@ -133,19 +173,12 @@ def main() -> int:
     for phrase in ("process sigkill", "docker container kill", "same node", "local postgres", "local minio"):
         require(phrase in lowered, f"host-failure substitution guard missing: {phrase}")
 
-    generation_boundary = generation.get("currentBoundary", {})
-    registered = registry.get("registeredGenerationCount")
-    require(registered == 0 and len(generation_rows) == 0, "validator foundation assumptions changed: generation registry is no longer empty")
-    require(generation_boundary.get("registeredGenerationCount") == 0, "generation contract/registry count drift")
-    require(generation_boundary.get("productionEquivalentDependencies") is False, "production-equivalent dependencies unexpectedly enabled")
-
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "readiness required")
     require(readiness.get("contractDefined") is True, "contractDefined must be true")
     require(readiness.get("validatorImplemented") is True, "validatorImplemented must be true")
     require(isinstance(readiness.get("automaticWorkflowImplemented"), bool), "automaticWorkflowImplemented must be boolean")
     for key in (
-        "environmentGenerationAvailable",
         "hostFailureDrillExecuted",
         "hostFailureResultCommitted",
         "independentReviewCompleted",
@@ -156,7 +189,8 @@ def main() -> int:
         require(readiness.get(key) is False, f"host-failure foundation cannot enable readiness.{key}")
 
     print("Memory OS deletion-worker physical host-failure admission PASS")
-    print("registered production-equivalent generations: 0")
+    print(f"registered production-equivalent generations: {registered}")
+    print(f"environment generation available: {str(registered > 0).lower()}")
     print("process/container kill substitution: forbidden")
     print("physical host/node failure recovery: false")
     print("production-equivalent evidence: false")
