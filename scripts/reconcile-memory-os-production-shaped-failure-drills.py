@@ -18,8 +18,11 @@ WORKFLOW = ROOT / ".github/workflows/production-shaped-failure-drills.yml"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 
-EVIDENCE = (
+LEGACY_EMPTY_EVIDENCE = (
     "generation-bound production-shaped failure-drill admission is implemented for four required classes: multi-instance/node interruption, object-store outage/partition, PostgreSQL pool disruption/failover, and parser host/container restart with durable spool remount; local outage/process/container/candidate evidence cannot be relabeled, and the registry is currently empty"
+)
+EVIDENCE = (
+    "generation-bound production-shaped failure-drill admission is implemented for four required classes: multi-instance/node interruption, object-store outage/partition, PostgreSQL pool disruption/failover, and parser host/container restart with durable spool remount; local outage/process/container/candidate evidence cannot be relabeled and admitted drill counts remain derived only from the canonical append-only registry"
 )
 REFS = (
     "contracts/operations/production-shaped-failure-drill-contract.v1.json",
@@ -71,6 +74,12 @@ def write(path: Path, value: dict[str, Any]) -> None:
 def append_once(values: list[Any], value: str) -> None:
     if value not in values:
         values.append(value)
+
+
+def replace_legacy_evidence(values: list[Any]) -> None:
+    while LEGACY_EMPTY_EVIDENCE in values:
+        values.remove(LEGACY_EMPTY_EVIDENCE)
+    append_once(values, EVIDENCE)
 
 
 def commit_outputs_transactionally(outputs: dict[Path, dict[str, Any]]) -> None:
@@ -150,7 +159,7 @@ def main() -> int:
     existing = gate.get("existingEvidence")
     refs = gate.get("evidenceRefs")
     require(isinstance(existing, list) and isinstance(refs, list), "OPS-P0-009 authority arrays missing")
-    append_once(existing, EVIDENCE)
+    replace_legacy_evidence(existing)
     for ref in REFS:
         append_once(refs, ref)
 
