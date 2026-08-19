@@ -4,8 +4,8 @@
 from __future__ import annotations
 
 import datetime as dt
+import importlib.util
 import json
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -19,7 +19,6 @@ EXERCISE_VALIDATOR = ROOT / "scripts/validate-memory-os-incident-control-exercis
 INCIDENT_RESPONSE_VALIDATOR = ROOT / "scripts/validate-memory-os-incident-response.py"
 TABLETOP_VALIDATOR = ROOT / "scripts/validate-memory-os-incident-tabletop.py"
 OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
-SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 NEW_EXISTING = (
     "exact-source automated incident control exercise covering tenant isolation, PostgreSQL commit outage, object-store outage, migration/version incompatibility, restore non-resurrection and parser compromise/stall scenarios",
@@ -75,23 +74,23 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def load_exercise_validator() -> Any:
+    spec = importlib.util.spec_from_file_location(
+        "memory_os_incident_control_exercise_validator",
+        EXERCISE_VALIDATOR,
+    )
+    require(spec is not None and spec.loader is not None,
+            "incident exercise validator loader unavailable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    require(hasattr(module, "validate_contract") and hasattr(module, "validate_result") and
+            hasattr(module, "ValidationFailure"),
+            "incident exercise validator authority drift")
+    return module
+
+
 def render(value: dict[str, Any]) -> bytes:
     return (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
-
-
-def source_is_ancestor(value: Any) -> bool:
-    if not isinstance(value, str) or SHA_RE.fullmatch(value) is None:
-        return False
-    try:
-        return subprocess.run(
-            ["git", "merge-base", "--is-ancestor", value, "HEAD"],
-            cwd=ROOT,
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        ).returncode == 0
-    except OSError:
-        return False
 
 
 def append_once(items: list[Any], value: str) -> bool:
@@ -128,36 +127,14 @@ def commit_validated_pair(contract: dict[str, Any], status: dict[str, Any]) -> N
 
 def main() -> int:
     result = load(RESULT_PATH)
-    require(result.get("schemaVersion") ==
-            "memory-os-incident-control-exercise-results.v1",
-            "incident exercise result schema drift")
-    require(source_is_ancestor(result.get("commitSha")),
-            "incident exercise source SHA is not an ancestor")
-    environment = result.get("environment")
-    require(isinstance(environment, dict), "incident exercise environment missing")
-    require(environment.get("productionEvidence") is False and
-            environment.get("humanTabletopCompleted") is False and
-            environment.get("pagingConfigured") is False and
-            environment.get("containsSecrets") is False,
-            "incident exercise evidence boundary drift")
-    exercise = result.get("exercise")
-    require(isinstance(exercise, dict), "incident exercise body missing")
-    require(exercise.get("overallResult") == "AUTOMATED_CONTROL_EXERCISE_PASS",
-            "automated control exercise is not PASS")
-    require(exercise.get("humanTabletopResult") == "NOT_COMPLETED" and
-            exercise.get("productionDrillResult") == "NOT_COMPLETED" and
-            exercise.get("closureResult") == "BLOCKED_PENDING_HUMAN_APPROVAL",
-            "incident exercise overclaims completion")
-    scenarios = exercise.get("scenarios")
-    require(isinstance(scenarios, list) and len(scenarios) == 6,
-            "incident exercise must contain six scenarios")
-    require(all(isinstance(item, dict) and item.get("controlResult") == "CONTROL_PATH_PASS"
-                for item in scenarios),
-            "incident exercise contains a failed control path")
-
     contract = load(CONTRACT_PATH)
-    require(contract.get("schemaVersion") == "memory-os-incident-control-exercise.v1",
-            "incident exercise contract schema drift")
+    validator = load_exercise_validator()
+    try:
+        validator.validate_contract(contract)
+        validator.validate_result(result, contract, None)
+    except validator.ValidationFailure as exc:
+        raise ReconcileFailure(f"incident exercise source authority rejected: {exc}") from exc
+
     readiness = contract.get("readiness")
     refs = contract.get("evidenceRefs")
     require(isinstance(readiness, dict), "incident exercise readiness missing")
