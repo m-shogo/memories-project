@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate every append-only source authority used by the operability inventory."""
+"""Validate every source authority used by the operability inventory."""
 
 from __future__ import annotations
 
@@ -197,14 +197,27 @@ def validate_human_tabletop_source() -> int:
     return len(scenarios)
 
 
+def validate_load_source() -> None:
+    validator = load_validator(
+        "scripts/validate-memory-os-load.py",
+        "memory_os_inventory_source_load",
+        "main",
+    )
+    result = validator()
+    require(result == 0, f"load-test source authority invalid: validator exit {result}")
+
+
 def main() -> int:
     human_tabletop_count = validate_human_tabletop_source()
+    validate_load_source()
     for relative, validator_path, module_name, function_name, label in SOURCES:
         validate_source(relative, validator_path, module_name, function_name, label)
     print("Memory OS operability inventory source authority validation PASS")
     print(f"canonical append-only source registries: {len(SOURCES)}")
     print(f"validated human tabletop scenarios: {human_tabletop_count}")
+    print("canonical load contract/results/status validation: PASS")
     print("raw human tabletop filename counts accepted without canonical ledger validation: false")
+    print("raw load readiness/counts accepted without canonical load validation: false")
     print("raw registry counts accepted without owning authority validation: false")
     print("production evidence created: false")
     print("production decision: NO_GO")
