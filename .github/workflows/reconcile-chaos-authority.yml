@@ -92,37 +92,45 @@ jobs:
             scripts/validate-memory-os-parser-inflight-cancellation.py \
             scripts/validate-memory-os-parser-process-group-reaping.py \
             scripts/validate-memory-os-operability.py
-          python scripts/validate-memory-os-chaos-scenario-reconcile-monotonicity-negative.py
-          python scripts/reconcile-memory-os-chaos-authority.py
-          python scripts/reconcile-memory-os-chaos-authority.py --check
-          python scripts/reconcile-memory-os-chaos-inflight-overlay.py
-          python scripts/reconcile-memory-os-chaos-inflight-overlay.py --check
-          python scripts/validate-memory-os-chaos-scenario-reconcile-monotonicity-negative.py
-          python scripts/validate-memory-os-chaos-failure-drills-v2.py
-          python scripts/validate-memory-os-parser-restart-matrix.py
-          if python - <<'PY'
+
+          validate_committed_sources() {
+            python scripts/validate-memory-os-chaos-failure-drills-v2.py
+            python scripts/validate-memory-os-parser-restart-matrix.py
+            if python - <<'PY'
           import json
           from pathlib import Path
           value = json.loads(Path('docs/fixtures/memory-os-operability/database-commit-outage-results.sample.v1.json').read_text())
           assertions = value.get('assertions', {})
           raise SystemExit(0 if assertions.get('sameSpoolIdReused') is True else 1)
           PY
-          then
-            python scripts/validate-memory-os-database-commit-outage.py
-          else
-            echo "Legacy new-spool database result retained until same-spool exact-source evidence arrives."
-          fi
-          if test -f docs/fixtures/memory-os-operability/parser-inflight-cancellation-results.sample.v1.json; then
-            python scripts/validate-memory-os-parser-inflight-cancellation.py
-          else
-            echo "In-flight cancellation result not committed yet; gap remains open."
-          fi
-          if test -f docs/fixtures/memory-os-operability/parser-process-group-reaping-results.sample.v1.json; then
-            python scripts/validate-memory-os-parser-process-group-reaping.py
-          else
-            echo "Process-group reaping result not committed yet; orphan/reaping gap remains open."
-          fi
-          python scripts/validate-memory-os-operability.py
+            then
+              python scripts/validate-memory-os-database-commit-outage.py
+            else
+              echo "Legacy new-spool database result retained until same-spool exact-source evidence arrives."
+            fi
+            if test -f docs/fixtures/memory-os-operability/parser-inflight-cancellation-results.sample.v1.json; then
+              python scripts/validate-memory-os-parser-inflight-cancellation.py
+            else
+              echo "In-flight cancellation result not committed yet; gap remains open."
+            fi
+            if test -f docs/fixtures/memory-os-operability/parser-process-group-reaping-results.sample.v1.json; then
+              python scripts/validate-memory-os-parser-process-group-reaping.py
+            else
+              echo "Process-group reaping result not committed yet; orphan/reaping gap remains open."
+            fi
+            python scripts/validate-memory-os-operability.py
+          }
+
+          # Fail before any deterministic mutation if committed source authority is invalid.
+          validate_committed_sources
+          python scripts/validate-memory-os-chaos-scenario-reconcile-monotonicity-negative.py
+          python scripts/reconcile-memory-os-chaos-authority.py
+          python scripts/reconcile-memory-os-chaos-authority.py --check
+          python scripts/reconcile-memory-os-chaos-inflight-overlay.py
+          python scripts/reconcile-memory-os-chaos-inflight-overlay.py --check
+          python scripts/validate-memory-os-chaos-scenario-reconcile-monotonicity-negative.py
+          # Re-read all canonical validators after normalization as the final authority boundary.
+          validate_committed_sources
 
       - name: Require deterministic authority on pull requests
         if: github.event_name == 'pull_request'
