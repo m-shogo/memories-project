@@ -15,6 +15,8 @@ STANDALONE_VALIDATOR = ROOT / "scripts/validate-memory-os-operability-admission-
 GENERATOR = ROOT / "scripts/generate-memory-os-operability-admission-inventory.py"
 TABLETOP_LEDGER = ROOT / "docs/evidence/incident-tabletops"
 ROGUE_TABLETOP = TABLETOP_LEDGER / "IR-DRILL-ROGUE.json"
+PATH_ALIAS_TARGET = ROOT / "contracts/operations/.inventory-authority-negative-target.json"
+PATH_ALIAS = ROOT / "contracts/operations/.inventory-authority-negative-alias.json"
 AUTHORITIES = {
     "migration production-shaped admission": ROOT / "contracts/operations/migration-production-shaped-admission-registry.v1.json",
     "incident contact routing": ROOT / "contracts/operations/incident-contact-routing-admission-registry.v1.json",
@@ -140,6 +142,66 @@ def expect_standalone_source_rejected(
         path.write_bytes(original)
     require(rejected, f"corrupt source authority unexpectedly accepted by standalone inventory validator: {name}")
     print(f"PASS standalone validator reject: {name}")
+
+
+def expect_standalone_source_wrapper_boundaries(standalone: Any) -> None:
+    original = VALIDATOR.read_bytes()
+    try:
+        VALIDATOR.write_text("def main():\n    return False\n", encoding="utf-8")
+        try:
+            standalone.validate_source_authorities()
+        except standalone.Fail as exc:
+            require("returned nonzero result" in str(exc), f"unexpected false-result rejection: {exc}")
+        else:
+            raise Fail("boolean false source-validator result unexpectedly accepted as exit zero")
+
+        VALIDATOR.write_text(
+            "class Fail(RuntimeError):\n    pass\n\ndef main():\n    raise Fail('synthetic source authority rejection')\n",
+            encoding="utf-8",
+        )
+        try:
+            standalone.validate_source_authorities()
+        except standalone.Fail as exc:
+            require("inventory source authority invalid" in str(exc), f"domain rejection was not normalized: {exc}")
+        else:
+            raise Fail("domain source-authority rejection unexpectedly accepted")
+
+        VALIDATOR.write_text(
+            "def main():\n    raise RuntimeError('synthetic standalone source implementation bug')\n",
+            encoding="utf-8",
+        )
+        propagated = False
+        try:
+            standalone.validate_source_authorities()
+        except standalone.Fail as exc:
+            raise Fail(f"implementation RuntimeError was normalized as standalone authority rejection: {exc}") from exc
+        except RuntimeError as exc:
+            require(exc.__class__ is RuntimeError, f"unexpected standalone implementation error type: {exc.__class__.__name__}")
+            require("synthetic standalone source implementation bug" in str(exc), "standalone implementation RuntimeError detail lost")
+            propagated = True
+        require(propagated, "standalone source-validator implementation RuntimeError did not propagate")
+    finally:
+        VALIDATOR.write_bytes(original)
+    require(VALIDATOR.read_bytes() == original, "standalone wrapper boundary test did not restore source validator bytes")
+    print("PASS standalone validator: source wrapper result/error boundaries are fail-closed")
+
+
+def expect_standalone_path_alias_rejected(standalone: Any) -> None:
+    require(not PATH_ALIAS_TARGET.exists() and not PATH_ALIAS.exists(), "standalone path alias fixture already exists")
+    PATH_ALIAS_TARGET.write_text("{}\n", encoding="utf-8")
+    PATH_ALIAS.symlink_to(PATH_ALIAS_TARGET.name)
+    try:
+        try:
+            standalone.load(PATH_ALIAS)
+        except standalone.Fail as exc:
+            require("canonical authority path drift" in str(exc), f"unexpected path alias rejection: {exc}")
+        else:
+            raise Fail("repository-internal authority symlink alias unexpectedly accepted")
+    finally:
+        PATH_ALIAS.unlink(missing_ok=True)
+        PATH_ALIAS_TARGET.unlink(missing_ok=True)
+    require(not PATH_ALIAS.exists() and not PATH_ALIAS_TARGET.exists(), "standalone path alias fixture cleanup failed")
+    print("PASS standalone validator: repository-internal authority symlink alias rejected")
 
 
 def expect_untracked_tabletop_rejected(validator: Any, generator: Any) -> None:
@@ -288,6 +350,8 @@ def main() -> int:
     expect_generator_load_authority_rejected(generator)
     expect_generator_backup_derived_authority_rejected(generator)
     expect_source_validator_implementation_error_propagates(validator)
+    expect_standalone_source_wrapper_boundaries(standalone)
+    expect_standalone_path_alias_rejected(standalone)
     expect_standalone_source_rejected(
         standalone,
         AUTHORITIES["rate-limit distributed runtime"],
@@ -364,9 +428,14 @@ def main() -> int:
     require(after == before, "negative suite mutated canonical append-only authority")
     require(generator.OUTPUT.read_bytes() == inventory_before, "negative suite mutated canonical inventory")
     require(not ROGUE_TABLETOP.exists(), "negative suite left rogue tabletop fixture behind")
+    require(not PATH_ALIAS.exists() and not PATH_ALIAS_TARGET.exists(), "negative suite left standalone path alias fixture behind")
     print("Memory OS operability inventory append-only authority negative suite PASS")
     print("canonical registry corruption accepted by source-authority validator: false")
     print("non-OPS source corruption accepted by standalone inventory validator: false")
+    print("boolean false source-validator success accepted by standalone inventory validator: false")
+    print("source-validator domain rejection hidden by standalone inventory validator: false")
+    print("source-validator implementation RuntimeError normalized by standalone inventory validator: false")
+    print("repository-internal symlink alias accepted by standalone inventory validator: false")
     print("sustained-soak source corruption accepted by source-authority validator: false")
     print("sustained-soak source corruption accepted by inventory generator: false")
     print("canonical registry corruption accepted by inventory generator: false")
