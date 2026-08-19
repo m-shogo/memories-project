@@ -4,12 +4,15 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 LOAD = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
+LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 
 PREFENCE_PROVEN_FLAGS = (
     "previewPreFenceInFlightLinearizationProven",
@@ -39,7 +42,16 @@ def write(path: Path, value: dict[str, Any]) -> None:
     path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
 
 
+def validate(path: Path) -> None:
+    subprocess.run(["python", str(path)], cwd=ROOT, check=True)
+
+
 def main() -> int:
+    # Refuse to derive blocker state from a corrupt load authority. The full
+    # validator is safe before reconciliation because PARTIAL status does not
+    # require the human-readable missingEvidence list to already be normalized.
+    validate(LOAD_VALIDATOR)
+
     load_contract = load(LOAD)
     readiness = load_contract.get("readiness")
     if not isinstance(readiness, dict):
@@ -60,6 +72,7 @@ def main() -> int:
         if readiness.get(flag) is not False:
             raise SystemExit(f"unresolved load flag unexpectedly promoted: {flag}")
 
+    status_bytes = STATUS.read_bytes()
     status = load(STATUS)
     area = next((item for item in status.get("areas", []) if item.get("id") == "OPS-P0-006"), None)
     if area is None:
@@ -102,7 +115,14 @@ def main() -> int:
     area["missingEvidence"] = normalized
     if status.get("productionDecision") != "NO_GO":
         raise SystemExit("productionDecision must remain NO_GO")
-    write(STATUS, status)
+
+    try:
+        write(STATUS, status)
+        validate(LOAD_VALIDATOR)
+        validate(OPERABILITY_VALIDATOR)
+    except BaseException:
+        STATUS.write_bytes(status_bytes)
+        raise
 
     print("Memory OS load missing-evidence reconciliation PASS")
     print("primary pre-fence/multi-account blocker: resolved")
