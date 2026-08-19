@@ -161,6 +161,13 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def exact_success(result: Any, label: str) -> None:
+    require(
+        isinstance(result, int) and not isinstance(result, bool) and result == 0,
+        f"{label} invalid: validator exit {result}",
+    )
+
+
 def load(relative: str) -> dict[str, Any]:
     path = ROOT / relative
     try:
@@ -232,8 +239,7 @@ def validate_load_source() -> None:
         "memory_os_inventory_source_load",
         "main",
     )
-    result = validator()
-    require(result == 0, f"load-test source authority invalid: validator exit {result}")
+    exact_success(validator(), "load-test source authority")
 
 
 def validate_command_source(relative: str, module_name: str, label: str) -> None:
@@ -244,7 +250,7 @@ def validate_command_source(relative: str, module_name: str, label: str) -> None
         if exc.__class__.__name__ in DOMAIN_REJECTIONS:
             raise Fail(f"{label} invalid: {exc}") from exc
         raise
-    require(result == 0, f"{label} invalid: validator exit {result}")
+    exact_success(result, label)
 
 
 def main() -> int:
@@ -259,6 +265,7 @@ def main() -> int:
     print(f"validated backup/restore derived authorities: {len(COMMAND_SOURCES)}")
     print(f"validated human tabletop scenarios: {human_tabletop_count}")
     print("canonical load contract/results/status validation: PASS")
+    print("boolean validator exit codes accepted as success: false")
     print("raw human tabletop filename counts accepted without canonical ledger validation: false")
     print("raw load readiness/counts accepted without canonical load validation: false")
     print("raw backup/restore derived counts accepted without canonical validators: false")
