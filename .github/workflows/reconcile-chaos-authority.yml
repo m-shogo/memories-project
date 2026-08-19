@@ -6,6 +6,7 @@ on:
       - ".github/workflows/reconcile-chaos-authority.yml"
       - "scripts/reconcile-memory-os-chaos-authority.py"
       - "scripts/reconcile-memory-os-chaos-inflight-overlay.py"
+      - "scripts/validate-memory-os-chaos-scenario-reconcile-monotonicity-negative.py"
       - "scripts/validate-memory-os-chaos-failure-drills-v2.py"
       - "scripts/validate-memory-os-parser-restart-matrix.py"
       - "scripts/validate-memory-os-database-commit-outage.py"
@@ -25,6 +26,7 @@ on:
       - ".github/workflows/reconcile-chaos-authority.yml"
       - "scripts/reconcile-memory-os-chaos-authority.py"
       - "scripts/reconcile-memory-os-chaos-inflight-overlay.py"
+      - "scripts/validate-memory-os-chaos-scenario-reconcile-monotonicity-negative.py"
       - "scripts/validate-memory-os-chaos-failure-drills-v2.py"
       - "scripts/validate-memory-os-parser-restart-matrix.py"
       - "scripts/validate-memory-os-database-commit-outage.py"
@@ -83,16 +85,19 @@ jobs:
           python -m py_compile \
             scripts/reconcile-memory-os-chaos-authority.py \
             scripts/reconcile-memory-os-chaos-inflight-overlay.py \
+            scripts/validate-memory-os-chaos-scenario-reconcile-monotonicity-negative.py \
             scripts/validate-memory-os-chaos-failure-drills-v2.py \
             scripts/validate-memory-os-parser-restart-matrix.py \
             scripts/validate-memory-os-database-commit-outage.py \
             scripts/validate-memory-os-parser-inflight-cancellation.py \
             scripts/validate-memory-os-parser-process-group-reaping.py \
             scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-chaos-scenario-reconcile-monotonicity-negative.py
           python scripts/reconcile-memory-os-chaos-authority.py
           python scripts/reconcile-memory-os-chaos-authority.py --check
           python scripts/reconcile-memory-os-chaos-inflight-overlay.py
           python scripts/reconcile-memory-os-chaos-inflight-overlay.py --check
+          python scripts/validate-memory-os-chaos-scenario-reconcile-monotonicity-negative.py
           python scripts/validate-memory-os-chaos-failure-drills-v2.py
           python scripts/validate-memory-os-parser-restart-matrix.py
           if python - <<'PY'
