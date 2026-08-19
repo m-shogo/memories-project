@@ -80,6 +80,11 @@ def validate_registry_before_append(registry: dict[str, Any]) -> list[dict[str, 
         raise Fail(f"existing failure-drill registry rejected before append: {exc}") from exc
 
 
+def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any]]:
+    """Expose the canonical standalone registry authority through the writer API."""
+    return validate_registry_before_append(registry)
+
+
 def validated_generation_rows() -> list[dict[str, Any]]:
     generation_writer = load_module(GEN_WRITER, "memory_os_generation_writer_for_failure_drill")
     require(generation_writer.REGISTRY.resolve() == GEN_REGISTRY.resolve(), "environment generation writer registry authority drift")
