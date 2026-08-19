@@ -29,6 +29,11 @@ def valid_count(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
+def exact_success(result: Any, label: str) -> None:
+    if not isinstance(result, int) or isinstance(result, bool) or result != 0:
+        raise SystemExit(f"{label} invalid: validator exit {result}")
+
+
 def canonical_registry_validator(script_name: str, module_name: str):
     path = ROOT / "scripts" / script_name
     try:
@@ -104,8 +109,7 @@ def require_canonical_load_authority() -> None:
     if not callable(validator):
         raise SystemExit(f"canonical load validator missing main: {script_name}")
     result = validator()
-    if result != 0:
-        raise SystemExit(f"canonical load authority invalid: validator exit {result}")
+    exact_success(result, "canonical load authority")
 
 
 def require_canonical_command_authority(script_name: str, module_name: str, label: str) -> None:
@@ -130,8 +134,7 @@ def require_canonical_command_authority(script_name: str, module_name: str, labe
         if exc.__class__.__name__ == "Fail":
             raise SystemExit(f"{label} invalid: {exc}") from exc
         raise
-    if result != 0:
-        raise SystemExit(f"{label} invalid: validator exit {result}")
+    exact_success(result, label)
 
 
 def p0_status(status: dict[str, Any], area_id: str) -> dict[str, Any]:
