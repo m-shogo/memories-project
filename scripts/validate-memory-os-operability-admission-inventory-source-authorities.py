@@ -126,6 +126,29 @@ SOURCES: tuple[tuple[str, str, str, str, str], ...] = (
     ),
 )
 
+COMMAND_SOURCES: tuple[tuple[str, str, str], ...] = (
+    (
+        "scripts/validate-memory-os-backup-restore-generation-binding.py",
+        "memory_os_inventory_source_backup_generation_binding",
+        "backup/restore generation binding authority",
+    ),
+    (
+        "scripts/validate-memory-os-backup-restore-drill-request.py",
+        "memory_os_inventory_source_backup_drill_request_contract",
+        "backup/restore drill request derived authority",
+    ),
+    (
+        "scripts/validate-memory-os-backup-restore-drill-preflight.py",
+        "memory_os_inventory_source_backup_drill_preflight",
+        "backup/restore drill preflight authority",
+    ),
+    (
+        "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py",
+        "memory_os_inventory_source_backup_non_resurrection_contract",
+        "backup/restore typed non-resurrection authority",
+    ),
+)
+
 
 class Fail(RuntimeError):
     pass
@@ -207,17 +230,30 @@ def validate_load_source() -> None:
     require(result == 0, f"load-test source authority invalid: validator exit {result}")
 
 
+def validate_command_source(relative: str, module_name: str, label: str) -> None:
+    validator = load_validator(relative, module_name, "main")
+    try:
+        result = validator()
+    except RuntimeError as exc:
+        raise Fail(f"{label} invalid: {exc}") from exc
+    require(result == 0, f"{label} invalid: validator exit {result}")
+
+
 def main() -> int:
     human_tabletop_count = validate_human_tabletop_source()
     validate_load_source()
+    for relative, module_name, label in COMMAND_SOURCES:
+        validate_command_source(relative, module_name, label)
     for relative, validator_path, module_name, function_name, label in SOURCES:
         validate_source(relative, validator_path, module_name, function_name, label)
     print("Memory OS operability inventory source authority validation PASS")
     print(f"canonical append-only source registries: {len(SOURCES)}")
+    print(f"validated backup/restore derived authorities: {len(COMMAND_SOURCES)}")
     print(f"validated human tabletop scenarios: {human_tabletop_count}")
     print("canonical load contract/results/status validation: PASS")
     print("raw human tabletop filename counts accepted without canonical ledger validation: false")
     print("raw load readiness/counts accepted without canonical load validation: false")
+    print("raw backup/restore derived counts accepted without canonical validators: false")
     print("raw registry counts accepted without owning authority validation: false")
     print("production evidence created: false")
     print("production decision: NO_GO")
