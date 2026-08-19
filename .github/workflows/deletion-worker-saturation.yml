@@ -9,6 +9,7 @@ on:
       - "contracts/operations/deletion-worker-saturation-contract.v1.json"
       - "scripts/validate-memory-os-deletion-worker-saturation.py"
       - "scripts/reconcile-memory-os-deletion-worker-saturation.py"
+      - "scripts/validate-memory-os-deletion-worker-saturation-reconcile-negative.py"
       - "services/import-api/internal/httpserver/**"
       - "services/import-api/internal/accountdelete/**"
       - "services/import-api/internal/pgrepo/**"
@@ -102,7 +103,11 @@ jobs:
           python -m py_compile \
             scripts/validate-memory-os-deletion-worker-saturation.py \
             scripts/reconcile-memory-os-deletion-worker-saturation.py \
+            scripts/validate-memory-os-deletion-worker-saturation-reconcile-negative.py \
             >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-deletion-worker-saturation-reconcile-negative.py >> "$log" 2>&1 || code=$?
+          fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-deletion-worker-saturation.py >> "$log" 2>&1 || code=$?
           fi
