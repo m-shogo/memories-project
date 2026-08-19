@@ -243,6 +243,7 @@ def main() -> int:
     ]
     for path, name, mutate in source_only_cases:
         expect_validator_rejected(validator, path, name, mutate)
+        expect_generator_rejected(generator, path, name, mutate)
 
     cases: list[tuple[Path, str, Callable[[dict[str, Any]], None]]] = [
         (AUTHORITIES["migration production-shaped admission"], "migration production-shaped admission append-only disabled", lambda value: value.__setitem__("appendOnly", False)),
@@ -285,6 +286,7 @@ def main() -> int:
     print("Memory OS operability inventory append-only authority negative suite PASS")
     print("canonical registry corruption accepted by source-authority validator: false")
     print("sustained-soak source corruption accepted by source-authority validator: false")
+    print("sustained-soak source corruption accepted by inventory generator: false")
     print("canonical registry corruption accepted by inventory generator: false")
     print("untracked human tabletop filename accepted as inventory source authority: false")
     print("untracked human tabletop filename accepted by inventory generator: false")
