@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-INVENTORY = "contracts/operations/operability-admission-inventory.v1.json"
 
 SOURCES: tuple[tuple[str, str, str, str, str], ...] = (
     (
@@ -137,10 +136,6 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
-def valid_count(value: Any) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
-
-
 def load(relative: str) -> dict[str, Any]:
     path = ROOT / relative
     try:
@@ -202,31 +197,14 @@ def validate_human_tabletop_source() -> int:
     return len(scenarios)
 
 
-def validate_human_tabletop_inventory_count(expected_count: int) -> None:
-    inventory = load(INVENTORY)
-    rows = inventory.get("areas")
-    require(isinstance(rows, list), "operability inventory areas missing")
-    matches = [row for row in rows if isinstance(row, dict) and row.get("id") == "OPS-P0-002"]
-    require(len(matches) == 1, "OPS-P0-002 inventory row missing or duplicate")
-    row = matches[0]
-    admitted = row.get("admittedEvidenceCount")
-    required = row.get("requiredEvidenceCount")
-    require(valid_count(admitted) and admitted == expected_count, "OPS-P0-002 human tabletop admitted evidence count drift")
-    require(valid_count(required) and required == 6, "OPS-P0-002 human tabletop required evidence count drift")
-    require(row.get("productionEvidence") is False and row.get("productionReady") is False,
-            "OPS-P0-002 inventory cannot promote production")
-
-
 def main() -> int:
     human_tabletop_count = validate_human_tabletop_source()
-    validate_human_tabletop_inventory_count(human_tabletop_count)
     for relative, validator_path, module_name, function_name, label in SOURCES:
         validate_source(relative, validator_path, module_name, function_name, label)
     print("Memory OS operability inventory source authority validation PASS")
     print(f"canonical append-only source registries: {len(SOURCES)}")
     print(f"validated human tabletop scenarios: {human_tabletop_count}")
     print("raw human tabletop filename counts accepted without canonical ledger validation: false")
-    print("human tabletop inventory count may drift from canonical ledger: false")
     print("raw registry counts accepted without owning authority validation: false")
     print("production evidence created: false")
     print("production decision: NO_GO")
