@@ -12,6 +12,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 INVENTORY = ROOT / "contracts/operations/operability-admission-inventory.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
+SOURCE_AUTHORITY_VALIDATOR = ROOT / "scripts" / "validate-memory-os-operability-admission-inventory-source-authorities.py"
 
 
 class Fail(RuntimeError):
@@ -74,7 +75,27 @@ def require_canonical_registry(script_name: str, module_name: str, registry: dic
         raise
 
 
+def validate_source_authorities() -> None:
+    try:
+        resolved = SOURCE_AUTHORITY_VALIDATOR.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail("canonical inventory source-authority validator missing or escapes repository") from exc
+    require(
+        resolved == Path("scripts") / SOURCE_AUTHORITY_VALIDATOR.name and SOURCE_AUTHORITY_VALIDATOR.is_file(),
+        "canonical inventory source-authority validator path drift",
+    )
+    spec = importlib.util.spec_from_file_location("memory_os_operability_inventory_source_authority", SOURCE_AUTHORITY_VALIDATOR)
+    require(spec is not None and spec.loader is not None, "cannot load canonical inventory source-authority validator")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    validator = getattr(module, "main", None)
+    require(callable(validator), "canonical inventory source-authority validator missing main")
+    result = validator()
+    require(result in (None, 0), f"inventory source-authority validator returned nonzero result: {result}")
+
+
 def main() -> int:
+    validate_source_authorities()
     inventory = load(INVENTORY)
     status = load(STATUS)
     require(inventory.get("schemaVersion") == "memory-os-operability-admission-inventory.v1", "inventory schema drift")
