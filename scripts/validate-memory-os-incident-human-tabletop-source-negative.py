@@ -11,6 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WRITER = ROOT / "scripts/register-memory-os-incident-human-tabletop.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-incident-human-tabletops.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-incident-human-tabletops.py"
 CONTRACT = ROOT / "contracts/operations/incident-human-tabletop-evidence-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
@@ -78,6 +79,32 @@ raise SystemExit(0 if count == 0 else 1)
         STATUS.write_bytes(status_bytes)
 
 
+def expect_aggregate_post_write_rollback() -> None:
+    operability_bytes = OPERABILITY_VALIDATOR.read_bytes()
+    contract_bytes = CONTRACT.read_bytes()
+    status_bytes = STATUS.read_bytes()
+    try:
+        OPERABILITY_VALIDATOR.write_text("raise SystemExit(1)\n", encoding="utf-8")
+        completed = subprocess.run(
+            ["python", str(RECONCILER)],
+            cwd=ROOT,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        if completed.returncode == 0:
+            raise RuntimeError("human tabletop reconciler accepted aggregate operability failure")
+        if CONTRACT.read_bytes() != contract_bytes:
+            raise RuntimeError("aggregate failure left human tabletop contract mutated")
+        if STATUS.read_bytes() != status_bytes:
+            raise RuntimeError("aggregate failure left production operability status mutated")
+    finally:
+        OPERABILITY_VALIDATOR.write_bytes(operability_bytes)
+        CONTRACT.write_bytes(contract_bytes)
+        STATUS.write_bytes(status_bytes)
+
+
 def main() -> int:
     writer = load_writer()
     head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
@@ -89,8 +116,9 @@ def main() -> int:
     if writer.source_is_ancestor(future):
         raise RuntimeError("future/side commit was accepted as human tabletop source authority")
     expect_post_write_rollback()
+    expect_aggregate_post_write_rollback()
     print("PASS: human tabletop source authority is ancestor-only without creating human evidence")
-    print("PASS: human tabletop post-write validation failure rolls back contract and status")
+    print("PASS: human tabletop post-write and aggregate validation failures roll back contract and status")
     return 0
 
 
