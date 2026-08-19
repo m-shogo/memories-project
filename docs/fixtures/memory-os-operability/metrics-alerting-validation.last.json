@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v2",
   "workflow": "reconcile-metrics-authority",
-  "sourceCommitSha": "6e8ec1eb3a89fc1a4ca9a1bb9ea7b8f96b0ecc44",
+  "sourceCommitSha": "6e1289f70f7463d5ba989baf5dd18d22ed6b8d41",
   "result": "PASS",
   "exitCode": 0,
   "steps": [
@@ -28,7 +28,7 @@
     {
       "command": "python scripts/reconcile-memory-os-metrics-operations.py",
       "exitCode": 0,
-      "output": "Memory OS metrics contract validation PASS\nmetrics: 28  slis: 17  slos: 3  alerts: 7\nnegative cases rejected: 14\nOPS-P0-004 status: PARTIAL\nMemory OS metrics operations validation PASS\ndashboards: 4  panels: 22\nretention tiers: 3  eligible SLIs: 6\nconfiguration state: NOT_CONFIGURED\nproduction decision: NO_GO\nMemory OS production-operability validation PASS\nready gates: 0/10\nproduction decision: NO_GO\nRegistered dashboard, retention and error-budget definitions; OPS-P0-004 remains PARTIAL\n"
+      "output": "Memory OS metrics operations validation PASS\ndashboards: 4  panels: 22\nretention tiers: 3  eligible SLIs: 6\nconfiguration state: NOT_CONFIGURED\nproduction decision: NO_GO\nMemory OS metrics contract validation PASS\nmetrics: 28  slis: 17  slos: 3  alerts: 7\nnegative cases rejected: 14\nOPS-P0-004 status: PARTIAL\nMemory OS metrics operations validation PASS\ndashboards: 4  panels: 22\nretention tiers: 3  eligible SLIs: 6\nconfiguration state: NOT_CONFIGURED\nproduction decision: NO_GO\nMemory OS production-operability validation PASS\nready gates: 0/10\nproduction decision: NO_GO\nRegistered dashboard, retention and error-budget definitions; OPS-P0-004 remains PARTIAL\n"
     },
     {
       "command": "python scripts/reconcile-memory-os-metrics-alerting.py",
