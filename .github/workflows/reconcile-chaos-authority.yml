@@ -6,6 +6,10 @@ on:
       - ".github/workflows/reconcile-chaos-authority.yml"
       - "scripts/reconcile-memory-os-chaos-authority.py"
       - "scripts/reconcile-memory-os-chaos-inflight-overlay.py"
+      - "scripts/reconcile-memory-os-chaos-failure-drills.py"
+      - "scripts/reconcile-memory-os-chaos-failure-drills-v2.py"
+      - "scripts/reconcile-memory-os-parser-restart-matrix.py"
+      - "scripts/reconcile-memory-os-parser-inflight-cancellation.py"
       - "scripts/validate-memory-os-chaos-scenario-reconcile-monotonicity-negative.py"
       - "scripts/validate-memory-os-chaos-failure-drills-v2.py"
       - "scripts/validate-memory-os-parser-restart-matrix.py"
@@ -26,6 +30,10 @@ on:
       - ".github/workflows/reconcile-chaos-authority.yml"
       - "scripts/reconcile-memory-os-chaos-authority.py"
       - "scripts/reconcile-memory-os-chaos-inflight-overlay.py"
+      - "scripts/reconcile-memory-os-chaos-failure-drills.py"
+      - "scripts/reconcile-memory-os-chaos-failure-drills-v2.py"
+      - "scripts/reconcile-memory-os-parser-restart-matrix.py"
+      - "scripts/reconcile-memory-os-parser-inflight-cancellation.py"
       - "scripts/validate-memory-os-chaos-scenario-reconcile-monotonicity-negative.py"
       - "scripts/validate-memory-os-chaos-failure-drills-v2.py"
       - "scripts/validate-memory-os-parser-restart-matrix.py"
@@ -85,6 +93,10 @@ jobs:
           python -m py_compile \
             scripts/reconcile-memory-os-chaos-authority.py \
             scripts/reconcile-memory-os-chaos-inflight-overlay.py \
+            scripts/reconcile-memory-os-chaos-failure-drills.py \
+            scripts/reconcile-memory-os-chaos-failure-drills-v2.py \
+            scripts/reconcile-memory-os-parser-restart-matrix.py \
+            scripts/reconcile-memory-os-parser-inflight-cancellation.py \
             scripts/validate-memory-os-chaos-scenario-reconcile-monotonicity-negative.py \
             scripts/validate-memory-os-chaos-failure-drills-v2.py \
             scripts/validate-memory-os-parser-restart-matrix.py \
