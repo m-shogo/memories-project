@@ -108,6 +108,32 @@ def require_canonical_load_authority() -> None:
         raise SystemExit(f"canonical load authority invalid: validator exit {result}")
 
 
+def require_canonical_command_authority(script_name: str, module_name: str, label: str) -> None:
+    path = ROOT / "scripts" / script_name
+    try:
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise SystemExit(f"canonical command validator missing or escapes repository: {script_name}") from exc
+    if resolved != Path("scripts") / script_name or not path.is_file():
+        raise SystemExit(f"canonical command validator path drift: {script_name}")
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"cannot load canonical command validator: {script_name}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    validator = getattr(module, "main", None)
+    if not callable(validator):
+        raise SystemExit(f"canonical command validator missing main: {script_name}")
+    try:
+        result = validator()
+    except RuntimeError as exc:
+        if exc.__class__.__name__ == "Fail":
+            raise SystemExit(f"{label} invalid: {exc}") from exc
+        raise
+    if result != 0:
+        raise SystemExit(f"{label} invalid: validator exit {result}")
+
+
 def p0_status(status: dict[str, Any], area_id: str) -> dict[str, Any]:
     rows = status.get("areas")
     if not isinstance(rows, list):
@@ -238,6 +264,29 @@ def main() -> int:
 
     human_tabletop_count = canonical_human_tabletop_count()
     require_canonical_load_authority()
+    for script_name, module_name, label in (
+        (
+            "validate-memory-os-backup-restore-generation-binding.py",
+            "memory_os_backup_generation_binding_inventory_generator_authority",
+            "backup/restore generation binding authority",
+        ),
+        (
+            "validate-memory-os-backup-restore-drill-request.py",
+            "memory_os_backup_drill_request_inventory_generator_authority",
+            "backup/restore drill request derived authority",
+        ),
+        (
+            "validate-memory-os-backup-restore-drill-preflight.py",
+            "memory_os_backup_drill_preflight_inventory_generator_authority",
+            "backup/restore drill preflight authority",
+        ),
+        (
+            "validate-memory-os-backup-restore-non-resurrection-admission.py",
+            "memory_os_backup_non_resurrection_inventory_generator_authority",
+            "backup/restore typed non-resurrection authority",
+        ),
+    ):
+        require_canonical_command_authority(script_name, module_name, label)
     load_ready = load_contract.get("readiness")
     if not isinstance(load_ready, dict):
         raise SystemExit("load readiness missing")
