@@ -15,6 +15,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/parser-process-group-reaping-contract.v1.json"
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/parser-process-group-reaping-results.sample.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+PROCESS_GROUP_VALIDATOR = ROOT / "scripts/validate-memory-os-parser-process-group-reaping.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 SATISFIED_MISSING = "independent child-process orphan/reaping scan after parser process-group termination"
@@ -71,6 +73,37 @@ def append_once(values: list[Any], value: str) -> bool:
         return False
     values.append(value)
     return True
+
+
+def write_json(path: Path, value: dict[str, Any]) -> None:
+    path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def run_post_validators() -> None:
+    for validator in (PROCESS_GROUP_VALIDATOR, OPERABILITY_VALIDATOR):
+        completed = subprocess.run(
+            [sys.executable, str(validator)],
+            cwd=ROOT,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        require(completed.returncode == 0,
+                f"post-write validator failed: {validator.relative_to(ROOT)}\n{completed.stdout}")
+
+
+def commit_candidate(contract: dict[str, Any], status: dict[str, Any]) -> None:
+    original_contract = CONTRACT_PATH.read_bytes()
+    original_status = STATUS_PATH.read_bytes()
+    try:
+        write_json(CONTRACT_PATH, contract)
+        write_json(STATUS_PATH, status)
+        run_post_validators()
+    except Exception:
+        CONTRACT_PATH.write_bytes(original_contract)
+        STATUS_PATH.write_bytes(original_status)
+        raise
 
 
 def main() -> int:
@@ -157,12 +190,12 @@ def main() -> int:
             "completed child-process orphan/reaping gap remained stale")
 
     if not changed:
+        run_post_validators()
         print("Parser process-group reaping authority already reconciled")
         return 0
 
     status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
-    CONTRACT_PATH.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    STATUS_PATH.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    commit_candidate(contract, status)
     print("Registered exact-source parser process-group reaping evidence")
     print("child-process orphan/reaping gap: satisfied locally")
     print("OPS-P0-009: PARTIAL")
