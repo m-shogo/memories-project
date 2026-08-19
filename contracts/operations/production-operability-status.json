@@ -392,7 +392,8 @@
         "append-only independent sustained-soak review authority accepts only externally supplied human-approved leak/stability criteria and distinct independent review; automatic threshold selection, leak proof, capacity-boundary promotion and production promotion remain forbidden",
         "3 exact-source LOCAL_LONG_SOAK run document(s) satisfy the per-run validator; production evidence and leak proof remain false",
         "5 exact-source LOCAL_LONG_SOAK run document(s) satisfy the per-run validator; production evidence and leak proof remain false",
-        "production-equivalent environment generation admission is machine-readable and append-only: load, restore, failure-drill and review evidence must bind immutable generation, environment/dependency/evidence/material-delta hashes and source commit; registered generations=0, preflight-eligible generations=0, current generation=none, and current production-equivalent dependencies=false; registration alone never creates preflight eligibility"
+        "production-equivalent environment generation admission is machine-readable and append-only: load, restore, failure-drill and review evidence must bind immutable generation, environment/dependency/evidence/material-delta hashes and source commit; registered generations=0, preflight-eligible generations=0, current generation=none, and current production-equivalent dependencies=false; registration alone never creates preflight eligibility",
+        "6 exact-source LOCAL_LONG_SOAK run document(s) satisfy the per-run validator; production evidence and leak proof remain false"
       ],
       "missingEvidence": [
         "capacity boundary, saturation report and load-calibrated operational thresholds",
@@ -540,7 +541,8 @@
         "scripts/register-memory-os-sustained-soak-independent-review.py",
         "docs/fixtures/memory-os-operability/sustained-local-soak-results.run-31833538490-1.v1.json",
         "docs/fixtures/memory-os-operability/sustained-local-soak-results.run-32010573115-1-a.v1.json",
-        "docs/fixtures/memory-os-operability/sustained-local-soak-results.run-32010573115-1-b.v1.json"
+        "docs/fixtures/memory-os-operability/sustained-local-soak-results.run-32010573115-1-b.v1.json",
+        "docs/fixtures/memory-os-operability/sustained-local-soak-results.run-32174904406-1.v1.json"
       ]
     },
     {
