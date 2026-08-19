@@ -182,11 +182,29 @@ def validate_source(
         raise Fail(f"{label} invalid: {exc}") from exc
 
 
+def validate_human_tabletop_source() -> int:
+    validator = load_validator(
+        "scripts/validate-memory-os-incident-human-tabletops.py",
+        "memory_os_inventory_source_human_tabletop",
+        "validate_ledger",
+    )
+    try:
+        scenarios = validator()
+    except RuntimeError as exc:
+        raise Fail(f"human incident tabletop ledger invalid: {exc}") from exc
+    require(isinstance(scenarios, set), "human incident tabletop validator result invalid")
+    require(all(isinstance(scenario, str) for scenario in scenarios), "human incident tabletop scenario authority invalid")
+    return len(scenarios)
+
+
 def main() -> int:
+    human_tabletop_count = validate_human_tabletop_source()
     for relative, validator_path, module_name, function_name, label in SOURCES:
         validate_source(relative, validator_path, module_name, function_name, label)
     print("Memory OS operability inventory source authority validation PASS")
     print(f"canonical append-only source registries: {len(SOURCES)}")
+    print(f"validated human tabletop scenarios: {human_tabletop_count}")
+    print("raw human tabletop filename counts accepted without canonical ledger validation: false")
     print("raw registry counts accepted without owning authority validation: false")
     print("production evidence created: false")
     print("production decision: NO_GO")
