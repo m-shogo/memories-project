@@ -63,7 +63,7 @@ def validate_canonical_source_delegation(canonical, current: dict) -> None:
         canonical.run_canonical_validator = original_runner
 
 
-def validate_inflight_source_delegation() -> None:
+def validate_inflight_source_delegation(current: dict) -> None:
     overlay = load_module(INFLIGHT_OVERLAY, "memory_os_chaos_inflight_delegation")
     if not overlay.RESULT_PATH.is_file():
         return
@@ -99,12 +99,32 @@ def validate_inflight_source_delegation() -> None:
     finally:
         overlay.load_result_validator = original_loader
 
+    original_full_runner = overlay.run_full_validator
+    full_calls: list[Path] = []
+    try:
+        def reject_full(path: Path) -> None:
+            full_calls.append(path)
+            raise overlay.ReconcileFailure("synthetic full in-flight source rejection")
+
+        overlay.run_full_validator = reject_full
+        try:
+            overlay.normalize(copy.deepcopy(current))
+        except overlay.ReconcileFailure as exc:
+            if "synthetic full in-flight source rejection" not in str(exc):
+                raise RuntimeError(f"unexpected full in-flight source rejection: {exc}") from exc
+        else:
+            raise RuntimeError("in-flight overlay accepted rejected full canonical source authority")
+    finally:
+        overlay.run_full_validator = original_full_runner
+    if full_calls != [overlay.INFLIGHT_VALIDATOR]:
+        raise RuntimeError(f"full in-flight source validation did not precede mutation: {full_calls}")
+
 
 def main() -> int:
     canonical = load_module(CANONICAL, "memory_os_chaos_monotonicity_canonical")
     current = json.loads(STATUS.read_text(encoding="utf-8"))
     validate_canonical_source_delegation(canonical, current)
-    validate_inflight_source_delegation()
+    validate_inflight_source_delegation(current)
 
     gate = next(
         item for item in current["areas"]
@@ -147,7 +167,7 @@ def main() -> int:
             if reconciled.get("productionDecision") != "NO_GO":
                 raise RuntimeError(f"scenario reconcile changed production decision: {path.name}")
 
-    print("PASS: chaos reconcile delegates canonical source validation and preserves stronger missing-evidence authority")
+    print("PASS: chaos reconcile delegates full canonical source validation and preserves stronger missing-evidence authority")
     return 0
 
 
