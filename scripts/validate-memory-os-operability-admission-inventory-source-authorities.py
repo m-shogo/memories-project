@@ -11,95 +11,117 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 
-SOURCES: tuple[tuple[str, str, str, str], ...] = (
+SOURCES: tuple[tuple[str, str, str, str, str], ...] = (
     (
         "contracts/operations/migration-production-shaped-admission-registry.v1.json",
         "scripts/register-memory-os-migration-production-shaped-admission.py",
         "memory_os_inventory_source_migration",
+        "validate_registry_for_append",
         "migration production-shaped admission registry",
     ),
     (
         "contracts/operations/incident-contact-routing-admission-registry.v1.json",
         "scripts/register-memory-os-incident-contact-routing.py",
         "memory_os_inventory_source_incident_contact",
+        "validate_registry_for_append",
         "incident contact routing registry",
     ),
     (
         "contracts/operations/observability-stack-deployment-registry.v1.json",
         "scripts/register-memory-os-observability-stack-deployment.py",
         "memory_os_inventory_source_observability_stack",
+        "validate_registry_for_append",
         "observability stack deployment registry",
     ),
     (
         "contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json",
         "scripts/validate-memory-os-rate-limit-distributed-runtime.py",
         "memory_os_inventory_source_rate_runtime",
+        "validate_registry_for_append",
         "rate-limit distributed runtime registry",
+    ),
+    (
+        "contracts/operations/sustained-soak-independent-review-registry.v1.json",
+        "scripts/validate-memory-os-sustained-soak-independent-review.py",
+        "memory_os_inventory_source_sustained_soak_review",
+        "validate_registry_aggregates",
+        "sustained-soak independent review registry",
     ),
     (
         "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
         "scripts/register-memory-os-production-equivalent-environment-generation.py",
         "memory_os_inventory_source_generation",
+        "validate_registry_for_append",
         "environment generation registry",
     ),
     (
         "contracts/operations/recovery-objectives-registry.v1.json",
         "scripts/register-memory-os-recovery-objectives.py",
         "memory_os_inventory_source_objective",
+        "validate_registry_for_append",
         "recovery objective registry",
     ),
     (
         "contracts/operations/backup-restore-drill-request-registry.v1.json",
         "scripts/request-memory-os-backup-restore-drill.py",
         "memory_os_inventory_source_drill_request",
+        "validate_registry_for_append",
         "backup/restore drill request registry",
     ),
     (
         "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
         "scripts/register-memory-os-backup-restore-generation-evidence.py",
         "memory_os_inventory_source_generation_evidence",
+        "validate_registry_for_append",
         "generation recovery evidence registry",
     ),
     (
         "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json",
         "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py",
         "memory_os_inventory_source_non_resurrection",
+        "validate_registry_for_append",
         "typed non-resurrection registry",
     ),
     (
         "contracts/operations/backup-restore-promotion-review-registry.v1.json",
         "scripts/register-memory-os-backup-restore-promotion-review.py",
         "memory_os_inventory_source_promotion_review",
+        "validate_registry_for_append",
         "human promotion review registry",
     ),
     (
         "contracts/operations/release-baseline-registry.v1.json",
         "scripts/register-memory-os-release-baseline.py",
         "memory_os_inventory_source_release",
+        "validate_registry_for_append",
         "release baseline registry",
     ),
     (
         "contracts/operations/release-compatibility-pair-registry.v1.json",
         "scripts/register-memory-os-release-compatibility-pair.py",
         "memory_os_inventory_source_release_pair",
+        "validate_registry_for_append",
         "release compatibility pair registry",
     ),
     (
         "contracts/operations/client-baseline-registry.v1.json",
         "scripts/register-memory-os-client-baseline.py",
         "memory_os_inventory_source_client",
+        "validate_registry_for_append",
         "client baseline registry",
     ),
     (
         "contracts/operations/parser-artifact-registry.v1.json",
         "scripts/register-memory-os-parser-artifact.py",
         "memory_os_inventory_source_parser",
+        "validate_registry_for_append",
         "parser artifact registry",
     ),
     (
         "contracts/operations/production-shaped-failure-drill-registry.v1.json",
         "scripts/register-memory-os-production-shaped-failure-drill.py",
         "memory_os_inventory_source_failure_drill",
+        "validate_registry_for_append",
         "production-shaped failure drill registry",
     ),
 )
@@ -129,7 +151,7 @@ def load(relative: str) -> dict[str, Any]:
     return value
 
 
-def load_validator(relative: str, module_name: str):
+def load_validator(relative: str, module_name: str, function_name: str):
     path = ROOT / relative
     try:
         resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
@@ -140,14 +162,20 @@ def load_validator(relative: str, module_name: str):
     require(spec is not None and spec.loader is not None, f"cannot load source validator: {relative}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    validator = getattr(module, "validate_registry_for_append", None)
-    require(callable(validator), f"source validator missing validate_registry_for_append: {relative}")
+    validator = getattr(module, function_name, None)
+    require(callable(validator), f"source validator missing {function_name}: {relative}")
     return validator
 
 
-def validate_source(relative: str, validator_path: str, module_name: str, label: str) -> None:
+def validate_source(
+    relative: str,
+    validator_path: str,
+    module_name: str,
+    function_name: str,
+    label: str,
+) -> None:
     registry = load(relative)
-    validator = load_validator(validator_path, module_name)
+    validator = load_validator(validator_path, module_name, function_name)
     try:
         validator(registry)
     except RuntimeError as exc:
@@ -155,8 +183,8 @@ def validate_source(relative: str, validator_path: str, module_name: str, label:
 
 
 def main() -> int:
-    for relative, validator_path, module_name, label in SOURCES:
-        validate_source(relative, validator_path, module_name, label)
+    for relative, validator_path, module_name, function_name, label in SOURCES:
+        validate_source(relative, validator_path, module_name, function_name, label)
     print("Memory OS operability inventory source authority validation PASS")
     print(f"canonical append-only source registries: {len(SOURCES)}")
     print("raw registry counts accepted without owning authority validation: false")
