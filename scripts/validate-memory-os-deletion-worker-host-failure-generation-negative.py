@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import copy
+import importlib.util
 import json
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +30,14 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def load_module(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load module: {path.name}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def write(value: dict[str, Any]) -> None:
     REGISTRY.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
@@ -46,6 +56,70 @@ def rejected(label: str, mutate: Callable[[dict[str, Any]], None], baseline: dic
     require(completed.returncode != 0, f"{label}: corrupt generation authority was accepted")
     REGISTRY.write_bytes(baseline_bytes)
     require(REGISTRY.read_bytes() == baseline_bytes, f"{label}: canonical generation registry was not restored")
+
+
+def generation_progression_preserves_no_go() -> None:
+    validator = load_module(VALIDATOR, "memory_os_host_failure_validator_progression_negative")
+    reconciler = load_module(RECONCILER, "memory_os_host_failure_reconciler_progression_negative")
+    baseline = json.loads(CONTRACT.read_text(encoding="utf-8"))
+    require(isinstance(baseline, dict), "host-failure contract root must be object")
+
+    stale = copy.deepcopy(baseline)
+    try:
+        validator.validate_generation_projection(stale, 2)
+    except Exception:
+        pass
+    else:
+        raise Fail("registered generation progression accepted stale host-failure projection")
+
+    candidate = copy.deepcopy(baseline)
+    stub = SimpleNamespace(
+        NO_GENERATION_LIMITATION=validator.NO_GENERATION_LIMITATION,
+        canonical_generation_count=lambda: 2,
+        validate_generation_projection=validator.validate_generation_projection,
+    )
+    original_loader = reconciler.load_host_validator
+    try:
+        reconciler.load_host_validator = lambda: stub
+        registered = reconciler.reconcile_generation_projection(candidate)
+    finally:
+        reconciler.load_host_validator = original_loader
+
+    require(registered == 2, "synthetic registered generation count was not preserved")
+    validator.validate_generation_projection(candidate, 2)
+    boundary = candidate.get("currentBoundary")
+    readiness = candidate.get("readiness")
+    limitations = candidate.get("limitations")
+    require(isinstance(boundary, dict) and isinstance(readiness, dict) and isinstance(limitations, list), "host-failure projection missing")
+    require(boundary.get("environmentGenerationAvailable") is True, "registered generation did not enable availability projection")
+    require(readiness.get("environmentGenerationAvailable") is True, "registered generation did not enable readiness availability projection")
+    require(validator.NO_GENERATION_LIMITATION not in limitations, "registered generation retained missing-generation limitation")
+    for key in (
+        "actualPhysicalHostOrVMNodeLossCovered",
+        "externalFailureControllerCovered",
+        "replacementDifferentNodeCovered",
+        "leaseExclusionUntilExpiryCovered",
+        "replacementAttempt2Covered",
+        "dependencyReconnectCovered",
+        "zeroOwnedRowsAfterRecoveryCovered",
+        "zeroObjectVersionsAfterRecoveryCovered",
+        "independentReviewCompleted",
+        "deletionHostFailureRecoveryProven",
+        "productionEquivalentEvidence",
+        "productionEvidence",
+        "productionReady",
+    ):
+        require(boundary.get(key) is False, f"generation inventory incorrectly promoted host-failure boundary: {key}")
+    require(boundary.get("productionDecision") == "NO_GO", "generation inventory changed host-failure production decision")
+    for key in (
+        "hostFailureDrillExecuted",
+        "hostFailureResultCommitted",
+        "independentReviewCompleted",
+        "deletionHostFailureRecoveryProven",
+        "productionEquivalentEvidence",
+        "productionReady",
+    ):
+        require(readiness.get(key) is False, f"generation inventory incorrectly promoted host-failure readiness: {key}")
 
 
 def load_authority_rejected() -> None:
@@ -113,11 +187,12 @@ def main() -> int:
         ]
         for label, mutate in cases:
             rejected(label, mutate, baseline, baseline_bytes)
+        generation_progression_preserves_no_go()
         load_authority_rejected()
         rollback_rejected()
     finally:
         REGISTRY.write_bytes(baseline_bytes)
-    print("PASS: deletion host-failure admission rejects corrupted generation/load authority and rolls back post-write failures")
+    print("PASS: deletion host-failure admission rejects corrupt authority, permits registered generation inventory without promotion, and rolls back post-write failures")
     return 0
 
 
