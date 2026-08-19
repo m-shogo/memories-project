@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v2",
   "workflow": "reconcile-metrics-authority",
-  "sourceCommitSha": "b8f820f572de94e610042aab46da979adc124913",
+  "sourceCommitSha": "91a2e06eddd14d89b244b016a967b589bbb53837",
   "result": "PASS",
   "exitCode": 0,
   "steps": [
@@ -23,7 +23,7 @@
     {
       "command": "python scripts/reconcile-memory-os-metrics-scrape-status.py",
       "exitCode": 0,
-      "output": "Metrics scrape status already reconciled\n"
+      "output": "Memory OS metrics scrape validation PASS\nPrometheus exporter: implemented\nauthenticated scrape handler: implemented\nHTTP server mount seam: supported, production unmounted\nOPS-P0-004 status: PARTIAL\nproduction decision: NO_GO\nMemory OS production-operability validation PASS\nready gates: 0/10\nproduction decision: NO_GO\nMetrics scrape status already reconciled\n"
     },
     {
       "command": "python scripts/reconcile-memory-os-metrics-operations.py",
