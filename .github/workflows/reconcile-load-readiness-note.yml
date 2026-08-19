@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/reconcile-load-readiness-note.yml"
       - "scripts/reconcile-memory-os-load-readiness-note.py"
+      - "scripts/validate-memory-os-load-readiness-note-reconcile-negative.py"
       - "scripts/validate-memory-os-load.py"
       - "contracts/operations/load-test-scenario-contract.v1.json"
   push:
@@ -13,6 +14,7 @@ on:
     paths:
       - ".github/workflows/reconcile-load-readiness-note.yml"
       - "scripts/reconcile-memory-os-load-readiness-note.py"
+      - "scripts/validate-memory-os-load-readiness-note-reconcile-negative.py"
       - "scripts/validate-memory-os-load.py"
       - "contracts/operations/load-test-scenario-contract.v1.json"
   workflow_dispatch:
@@ -57,7 +59,9 @@ jobs:
           set -euo pipefail
           python -m py_compile \
             scripts/reconcile-memory-os-load-readiness-note.py \
+            scripts/validate-memory-os-load-readiness-note-reconcile-negative.py \
             scripts/validate-memory-os-load.py
+          python scripts/validate-memory-os-load-readiness-note-reconcile-negative.py
           python scripts/reconcile-memory-os-load-readiness-note.py
           python scripts/validate-memory-os-load.py
 
