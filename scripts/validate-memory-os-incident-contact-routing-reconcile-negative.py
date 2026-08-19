@@ -17,6 +17,7 @@ CONTRACT = ROOT / "contracts/operations/incident-contact-routing-admission-contr
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 WRITER = ROOT / "scripts/register-memory-os-incident-contact-routing.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-incident-contact-routing.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-incident-contact-routing.py"
 TEMP_POST_SOURCE = ROOT / "docs/fixtures/memory-os-operability/.incident-contact-routing-post-source-negative.tmp"
 TEMP_SYMLINK = ROOT / "docs/fixtures/memory-os-operability/.incident-contact-routing-symlink-negative.tmp"
@@ -156,6 +157,30 @@ raise SystemExit(0 if count == 0 else 1)
         STATUS.write_bytes(status_bytes)
 
 
+def expect_aggregate_post_write_rollback(contract_bytes: bytes, status_bytes: bytes) -> None:
+    operability_bytes = OPERABILITY_VALIDATOR.read_bytes()
+    try:
+        OPERABILITY_VALIDATOR.write_text("raise SystemExit(1)\n", encoding="utf-8")
+        completed = subprocess.run(
+            ["python", str(RECONCILER)],
+            cwd=ROOT,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        if completed.returncode == 0:
+            raise RuntimeError("reconciler accepted injected aggregate operability failure")
+        if CONTRACT.read_bytes() != contract_bytes:
+            raise RuntimeError("aggregate failure left contact routing contract mutated")
+        if STATUS.read_bytes() != status_bytes:
+            raise RuntimeError("aggregate failure left production operability status mutated")
+    finally:
+        OPERABILITY_VALIDATOR.write_bytes(operability_bytes)
+        CONTRACT.write_bytes(contract_bytes)
+        STATUS.write_bytes(status_bytes)
+
+
 def main() -> int:
     writer = load_writer()
     registry_bytes = REGISTRY.read_bytes()
@@ -261,6 +286,7 @@ def main() -> int:
         STATUS.write_bytes(status_bytes)
 
     expect_post_write_rollback(contract_bytes, status_bytes)
+    expect_aggregate_post_write_rollback(contract_bytes, status_bytes)
 
     if REGISTRY.read_bytes() != registry_bytes:
         raise RuntimeError("negative validation failed to restore contact routing registry")
@@ -268,7 +294,7 @@ def main() -> int:
         raise RuntimeError("negative validation failed to restore observability stack registry")
     print("PASS: contact routing rejects local/upstream/review/lock authority corruption without mutation")
     print("PASS: contact routing direct append rolls back on post-append validation failure")
-    print("PASS: contact routing post-write validation failure rolls back contract and status")
+    print("PASS: contact routing post-write and aggregate validation failures roll back contract and status")
     print("generic repository JSON accepted as privacy/operability review: false")
     print("automatic production promotion authorized: false")
     return 0
