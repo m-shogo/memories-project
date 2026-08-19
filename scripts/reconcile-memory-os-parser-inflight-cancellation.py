@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import importlib.util
 import json
 import re
 import subprocess
@@ -14,6 +15,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/parser-inflight-cancellation-results.sample.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+CANONICAL_RECONCILER = ROOT / "scripts/reconcile-memory-os-chaos-authority.py"
+CANONICAL_OVERLAY = ROOT / "scripts/reconcile-memory-os-chaos-inflight-overlay.py"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 OLD_MISSING = "in-flight parser cancellation latency and process-group termination proof while the worker is blocked"
@@ -54,6 +57,23 @@ def load(path: Path) -> dict[str, Any]:
         raise ReconcileFailure(f"invalid JSON in {path.relative_to(ROOT)}: {exc}") from exc
     require(isinstance(value, dict), f"root must be an object: {path.relative_to(ROOT)}")
     return value
+
+
+def load_normalizer(path: Path, module_name: str, attribute: str):
+    try:
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise ReconcileFailure(f"canonical chaos authority missing or escapes repository: {path.name}") from exc
+    require(resolved == Path("scripts") / path.name and path.is_file(),
+            f"canonical chaos authority path drift: {path.name}")
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    require(spec is not None and spec.loader is not None,
+            f"cannot load canonical chaos authority: {path.name}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    normalizer = getattr(module, attribute, None)
+    require(callable(normalizer), f"canonical chaos authority missing {attribute}: {path.name}")
+    return normalizer
 
 
 def source_is_ancestor(source_sha: str) -> bool:
@@ -103,7 +123,9 @@ def main() -> int:
     status = load(STATUS_PATH)
     require(status.get("productionDecision") == "NO_GO",
             "in-flight evidence cannot change production decision")
-    gate = next((item for item in status.get("areas", [])
+    areas = status.get("areas")
+    require(isinstance(areas, list), "status areas must be a list")
+    gate = next((item for item in areas
                  if isinstance(item, dict) and item.get("id") == "OPS-P0-009"), None)
     require(isinstance(gate, dict), "OPS-P0-009 missing")
     require(gate.get("status") == "PARTIAL", "OPS-P0-009 must remain PARTIAL")
@@ -132,12 +154,28 @@ def main() -> int:
             refs.append(ref)
             changed = True
 
+    before_canonical = json.dumps(status, sort_keys=True, ensure_ascii=False)
+    status = load_normalizer(
+        CANONICAL_RECONCILER,
+        "memory_os_canonical_chaos_authority_inflight_reconcile",
+        "normalized_status",
+    )(status)
+    status = load_normalizer(
+        CANONICAL_OVERLAY,
+        "memory_os_canonical_chaos_inflight_overlay_reconcile",
+        "normalize",
+    )(status)
+    changed = changed or json.dumps(status, sort_keys=True, ensure_ascii=False) != before_canonical
+
+    gate = next((item for item in status.get("areas", [])
+                 if isinstance(item, dict) and item.get("id") == "OPS-P0-009"), None)
+    require(isinstance(gate, dict), "OPS-P0-009 missing after canonical reconcile")
+    missing = gate.get("missingEvidence")
+    require(isinstance(missing, list), "OPS-P0-009 missingEvidence invalid after canonical reconcile")
     for phrase in (
-        "mixed-version failure",
         "production multi-instance",
         "production-shaped object-store",
         "production-shaped PostgreSQL",
-        "child-process orphan",
         "host or container restart",
     ):
         require(any(phrase in item for item in missing),
@@ -154,7 +192,7 @@ def main() -> int:
         json.dumps(status, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
-    print("Registered exact-source in-flight parser cancellation; OPS-P0-009 remains PARTIAL")
+    print("Registered exact-source in-flight parser cancellation through canonical chaos authorities")
     return 0
 
 
