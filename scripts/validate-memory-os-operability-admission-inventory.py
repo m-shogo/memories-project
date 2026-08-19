@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 INVENTORY = ROOT / "contracts/operations/operability-admission-inventory.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 SOURCE_AUTHORITY_VALIDATOR = ROOT / "scripts" / "validate-memory-os-operability-admission-inventory-source-authorities.py"
+DOMAIN_REJECTIONS = {"Fail", "Failure", "RegistrationFailure"}
 
 
 class Fail(RuntimeError):
@@ -90,8 +91,13 @@ def validate_source_authorities() -> None:
     spec.loader.exec_module(module)
     validator = getattr(module, "main", None)
     require(callable(validator), "canonical inventory source-authority validator missing main")
-    result = validator()
-    require(result in (None, 0), f"inventory source-authority validator returned nonzero result: {result}")
+    try:
+        result = validator()
+    except RuntimeError as exc:
+        if exc.__class__.__name__ in DOMAIN_REJECTIONS:
+            raise Fail(f"inventory source authority invalid: {exc}") from exc
+        raise
+    require(isinstance(result, int) and not isinstance(result, bool) and result == 0, f"inventory source-authority validator returned nonzero result: {result}")
 
 
 def main() -> int:
