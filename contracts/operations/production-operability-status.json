@@ -579,7 +579,11 @@
         "database recovery verification for expired sessions, deleted accounts, leases and duplicate effects under failover",
         "parser host or container restart recovery using a reviewed production artifact",
         "host or container restart between spool seal and ResumeCommit with durable spool remount verification",
-        "independent child-process orphan/reaping scan after parser process-group termination"
+        "independent child-process orphan/reaping scan after parser process-group termination",
+        "database loss or failover drill",
+        "object-store outage drill",
+        "expanded parser restart matrix across timeout, CPU, memory, cancellation, process-group and host-restart failures",
+        "mixed-version failure drill"
       ],
       "evidenceRefs": [
         "contracts/operations/chaos-failure-drill-contract.v1.json",
