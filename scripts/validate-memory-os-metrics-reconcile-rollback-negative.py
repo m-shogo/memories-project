@@ -72,7 +72,7 @@ def run_case(name: str, module: ModuleType) -> None:
     require(STATUS.read_bytes() == original_status, f"{name}: operability status was not rolled back")
 
 
-def run_source_delegation_case(module: ModuleType) -> None:
+def run_source_delegation_case(name: str, module: ModuleType) -> None:
     original_metrics = METRICS.read_bytes()
     original_status = STATUS.read_bytes()
     original_validator = module.validate_source_authority
@@ -87,20 +87,20 @@ def run_source_delegation_case(module: ModuleType) -> None:
         except module.ReconcileFailure as exc:
             require(
                 "controlled source validator failure" in str(exc),
-                f"operations-source: unexpected failure: {exc}",
+                f"{name}-source: unexpected failure: {exc}",
             )
         else:
-            raise NegativeFailure("operations-source: source validator failure was accepted")
+            raise NegativeFailure(f"{name}-source: source validator failure was accepted")
     finally:
         module.validate_source_authority = original_validator
 
     require(
         METRICS.read_bytes() == original_metrics,
-        "operations-source: metrics authority changed after source rejection",
+        f"{name}-source: metrics authority changed after source rejection",
     )
     require(
         STATUS.read_bytes() == original_status,
-        "operations-source: operability status changed after source rejection",
+        f"{name}-source: operability status changed after source rejection",
     )
 
 
@@ -169,10 +169,11 @@ def main() -> int:
     )
     run_metrics_case("primary", primary)
     run_status_case("scrape", scrape)
-    run_source_delegation_case(operations)
+    run_source_delegation_case("operations", operations)
     run_case("operations", operations)
+    run_source_delegation_case("alerting", alerting)
     run_case("alerting", alerting)
-    print("PASS: metrics source delegation plus primary, scrape, operations and alerting rollback are fail-closed")
+    print("PASS: metrics source delegation and primary/scrape/operations/alerting rollback are fail-closed")
     return 0
 
 
