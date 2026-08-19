@@ -117,9 +117,9 @@ def expect_generator_rejected(
     print(f"PASS generator reject: {name}")
 
 
-def expect_untracked_tabletop_rejected(validator: Any) -> None:
+def expect_untracked_tabletop_rejected(validator: Any, generator: Any) -> None:
     require(not ROGUE_TABLETOP.exists(), "rogue tabletop fixture path already exists")
-    inventory_before = (ROOT / "contracts/operations/operability-admission-inventory.v1.json").read_bytes()
+    inventory_before = generator.OUTPUT.read_bytes()
     TABLETOP_LEDGER.mkdir(parents=True, exist_ok=True)
     ROGUE_TABLETOP.write_text(
         json.dumps(
@@ -135,21 +135,32 @@ def expect_untracked_tabletop_rejected(validator: Any) -> None:
         encoding="utf-8",
     )
     try:
-        validator.main()
-    except validator.Fail as exc:
-        require(
-            "must be committed" in str(exc) or "human incident tabletop ledger invalid" in str(exc),
-            f"unexpected human tabletop rejection reason: {exc}",
-        )
-        print("PASS validator reject: untracked human tabletop filename cannot inflate inventory source authority")
-    else:
-        raise Fail("untracked human tabletop filename unexpectedly accepted by inventory source authority")
+        try:
+            validator.main()
+        except validator.Fail as exc:
+            require(
+                "must be committed" in str(exc) or "human incident tabletop ledger invalid" in str(exc),
+                f"unexpected human tabletop source rejection reason: {exc}",
+            )
+            print("PASS validator reject: untracked human tabletop filename cannot inflate inventory source authority")
+        else:
+            raise Fail("untracked human tabletop filename unexpectedly accepted by inventory source authority")
+
+        generator_rejected = False
+        try:
+            generator.main()
+        except SystemExit as exc:
+            require(exc.code not in (None, 0), "inventory generator exited successfully for rogue tabletop authority")
+            generator_rejected = True
+        except RuntimeError as exc:
+            require(exc.__class__.__name__ in DOMAIN_REJECTIONS, f"unexpected generator RuntimeError for rogue tabletop authority: {exc}")
+            generator_rejected = True
+        require(generator_rejected, "untracked human tabletop filename unexpectedly accepted by inventory generator")
+        require(generator.OUTPUT.read_bytes() == inventory_before, "generator mutated inventory after rejecting rogue tabletop authority")
+        print("PASS generator reject: untracked human tabletop filename cannot inflate generated inventory")
     finally:
         ROGUE_TABLETOP.unlink(missing_ok=True)
-    require(
-        (ROOT / "contracts/operations/operability-admission-inventory.v1.json").read_bytes() == inventory_before,
-        "human tabletop source rejection mutated canonical inventory",
-    )
+    require(generator.OUTPUT.read_bytes() == inventory_before, "human tabletop source rejection mutated canonical inventory")
 
 
 def main() -> int:
@@ -165,149 +176,37 @@ def main() -> int:
     generator.main()
     require(generator.OUTPUT.read_bytes() == inventory_before, "canonical inventory generator is not byte-deterministic")
     print("PASS baseline: canonical append-only authorities accepted without inventory drift")
-    expect_untracked_tabletop_rejected(validator)
+    expect_untracked_tabletop_rejected(validator, generator)
 
     cases: list[tuple[Path, str, Callable[[dict[str, Any]], None]]] = [
-        (
-            AUTHORITIES["migration production-shaped admission"],
-            "migration production-shaped admission append-only disabled",
-            lambda value: value.__setitem__("appendOnly", False),
-        ),
-        (
-            AUTHORITIES["incident contact routing"],
-            "incident contact routing append-only disabled",
-            lambda value: value.__setitem__("appendOnly", False),
-        ),
-        (
-            AUTHORITIES["observability stack"],
-            "observability stack append-only disabled",
-            lambda value: value.__setitem__("appendOnly", False),
-        ),
-        (
-            AUTHORITIES["rate-limit distributed runtime"],
-            "rate-limit distributed runtime append-only disabled",
-            lambda value: value.__setitem__("appendOnly", False),
-        ),
-        (
-            AUTHORITIES["environment generation"],
-            "environment generation registryClass drift",
-            lambda value: value.__setitem__("registryClass", "NOT_PRODUCTION_EQUIVALENT_GENERATIONS"),
-        ),
-        (
-            AUTHORITIES["environment generation"],
-            "environment generation boolean count",
-            lambda value: value.__setitem__("registeredGenerationCount", True),
-        ),
-        (
-            AUTHORITIES["environment generation"],
-            "environment generation empty current pointer manufactured",
-            lambda value: value.__setitem__("currentGenerationId", "pegen_manufactured_current"),
-        ),
-        (
-            AUTHORITIES["recovery objective"],
-            "recovery objective schema drift",
-            lambda value: value.__setitem__("schemaVersion", "invalid"),
-        ),
-        (
-            AUTHORITIES["recovery objective"],
-            "recovery objective boolean count",
-            lambda value: value.__setitem__("approvedObjectiveCount", True),
-        ),
-        (
-            AUTHORITIES["recovery objective"],
-            "recovery objective empty current pointer manufactured",
-            lambda value: value.__setitem__("currentObjectiveId", "bro_manufactured_current"),
-        ),
-        (
-            AUTHORITIES["drill request"],
-            "drill request append-only disabled",
-            lambda value: value.__setitem__("appendOnly", False),
-        ),
-        (
-            AUTHORITIES["drill request"],
-            "drill request boolean executable count",
-            lambda value: value.__setitem__("currentExecutableRequestCount", True),
-        ),
-        (
-            AUTHORITIES["drill request"],
-            "drill request executable count manufactured without history",
-            lambda value: value.__setitem__("currentExecutableRequestCount", 1),
-        ),
-        (
-            AUTHORITIES["generation recovery evidence"],
-            "generation recovery evidence schema drift",
-            lambda value: value.__setitem__("schemaVersion", "invalid"),
-        ),
-        (
-            AUTHORITIES["generation recovery evidence"],
-            "generation recovery evidence boolean count",
-            lambda value: value.__setitem__("registeredEvidenceCount", True),
-        ),
-        (
-            AUTHORITIES["generation recovery evidence"],
-            "generation recovery final candidate manufactured without evidence",
-            lambda value: value.__setitem__("productionEquivalentRecoveryCandidateCount", 1),
-        ),
-        (
-            AUTHORITIES["typed non-resurrection"],
-            "typed non-resurrection production readiness manufactured",
-            lambda value: value.__setitem__("productionReady", True),
-        ),
-        (
-            AUTHORITIES["typed non-resurrection"],
-            "typed non-resurrection boolean count",
-            lambda value: value.__setitem__("registeredRecordCount", True),
-        ),
-        (
-            AUTHORITIES["typed non-resurrection"],
-            "typed non-resurrection candidate coverage manufactured without records",
-            lambda value: value.__setitem__("candidateCoveredCount", 1),
-        ),
-        (
-            AUTHORITIES["human promotion review"],
-            "human promotion latest decision manufactured",
-            lambda value: value.__setitem__("latestDecisionId", "brpr_manufactured_authority"),
-        ),
-        (
-            AUTHORITIES["human promotion review"],
-            "human promotion current decision manufactured",
-            lambda value: value.__setitem__("currentDecisionId", "brpr_manufactured_current_authority"),
-        ),
-        (
-            AUTHORITIES["human promotion review"],
-            "human promotion boolean count",
-            lambda value: value.__setitem__("registeredReviewCount", True),
-        ),
-        (
-            AUTHORITIES["human promotion review"],
-            "human promotion production traffic manufactured",
-            lambda value: value.__setitem__("productionTrafficChanged", True),
-        ),
-        (
-            AUTHORITIES["release baseline"],
-            "release baseline append-only disabled",
-            lambda value: value.__setitem__("appendOnly", False),
-        ),
-        (
-            AUTHORITIES["release compatibility pair"],
-            "release compatibility pair append-only disabled",
-            lambda value: value.__setitem__("appendOnly", False),
-        ),
-        (
-            AUTHORITIES["client baseline"],
-            "client baseline append-only disabled",
-            lambda value: value.__setitem__("appendOnly", False),
-        ),
-        (
-            AUTHORITIES["parser artifact"],
-            "parser artifact append-only disabled",
-            lambda value: value.__setitem__("appendOnly", False),
-        ),
-        (
-            AUTHORITIES["production-shaped failure drill"],
-            "production-shaped failure drill append-only disabled",
-            lambda value: value.__setitem__("appendOnly", False),
-        ),
+        (AUTHORITIES["migration production-shaped admission"], "migration production-shaped admission append-only disabled", lambda value: value.__setitem__("appendOnly", False)),
+        (AUTHORITIES["incident contact routing"], "incident contact routing append-only disabled", lambda value: value.__setitem__("appendOnly", False)),
+        (AUTHORITIES["observability stack"], "observability stack append-only disabled", lambda value: value.__setitem__("appendOnly", False)),
+        (AUTHORITIES["rate-limit distributed runtime"], "rate-limit distributed runtime append-only disabled", lambda value: value.__setitem__("appendOnly", False)),
+        (AUTHORITIES["environment generation"], "environment generation registryClass drift", lambda value: value.__setitem__("registryClass", "NOT_PRODUCTION_EQUIVALENT_GENERATIONS")),
+        (AUTHORITIES["environment generation"], "environment generation boolean count", lambda value: value.__setitem__("registeredGenerationCount", True)),
+        (AUTHORITIES["environment generation"], "environment generation empty current pointer manufactured", lambda value: value.__setitem__("currentGenerationId", "pegen_manufactured_current")),
+        (AUTHORITIES["recovery objective"], "recovery objective schema drift", lambda value: value.__setitem__("schemaVersion", "invalid")),
+        (AUTHORITIES["recovery objective"], "recovery objective boolean count", lambda value: value.__setitem__("approvedObjectiveCount", True)),
+        (AUTHORITIES["recovery objective"], "recovery objective empty current pointer manufactured", lambda value: value.__setitem__("currentObjectiveId", "bro_manufactured_current")),
+        (AUTHORITIES["drill request"], "drill request append-only disabled", lambda value: value.__setitem__("appendOnly", False)),
+        (AUTHORITIES["drill request"], "drill request boolean executable count", lambda value: value.__setitem__("currentExecutableRequestCount", True)),
+        (AUTHORITIES["drill request"], "drill request executable count manufactured without history", lambda value: value.__setitem__("currentExecutableRequestCount", 1)),
+        (AUTHORITIES["generation recovery evidence"], "generation recovery evidence schema drift", lambda value: value.__setitem__("schemaVersion", "invalid")),
+        (AUTHORITIES["generation recovery evidence"], "generation recovery evidence boolean count", lambda value: value.__setitem__("registeredEvidenceCount", True)),
+        (AUTHORITIES["generation recovery evidence"], "generation recovery final candidate manufactured without evidence", lambda value: value.__setitem__("productionEquivalentRecoveryCandidateCount", 1)),
+        (AUTHORITIES["typed non-resurrection"], "typed non-resurrection production readiness manufactured", lambda value: value.__setitem__("productionReady", True)),
+        (AUTHORITIES["typed non-resurrection"], "typed non-resurrection boolean count", lambda value: value.__setitem__("registeredRecordCount", True)),
+        (AUTHORITIES["typed non-resurrection"], "typed non-resurrection candidate coverage manufactured without records", lambda value: value.__setitem__("candidateCoveredCount", 1)),
+        (AUTHORITIES["human promotion review"], "human promotion latest decision manufactured", lambda value: value.__setitem__("latestDecisionId", "brpr_manufactured_authority")),
+        (AUTHORITIES["human promotion review"], "human promotion current decision manufactured", lambda value: value.__setitem__("currentDecisionId", "brpr_manufactured_current_authority")),
+        (AUTHORITIES["human promotion review"], "human promotion boolean count", lambda value: value.__setitem__("registeredReviewCount", True)),
+        (AUTHORITIES["human promotion review"], "human promotion production traffic manufactured", lambda value: value.__setitem__("productionTrafficChanged", True)),
+        (AUTHORITIES["release baseline"], "release baseline append-only disabled", lambda value: value.__setitem__("appendOnly", False)),
+        (AUTHORITIES["release compatibility pair"], "release compatibility pair append-only disabled", lambda value: value.__setitem__("appendOnly", False)),
+        (AUTHORITIES["client baseline"], "client baseline append-only disabled", lambda value: value.__setitem__("appendOnly", False)),
+        (AUTHORITIES["parser artifact"], "parser artifact append-only disabled", lambda value: value.__setitem__("appendOnly", False)),
+        (AUTHORITIES["production-shaped failure drill"], "production-shaped failure drill append-only disabled", lambda value: value.__setitem__("appendOnly", False)),
     ]
     for path, name, mutate in cases:
         expect_validator_rejected(validator, path, name, mutate)
@@ -321,6 +220,7 @@ def main() -> int:
     print("canonical registry corruption accepted by source-authority validator: false")
     print("canonical registry corruption accepted by inventory generator: false")
     print("untracked human tabletop filename accepted as inventory source authority: false")
+    print("untracked human tabletop filename accepted by inventory generator: false")
     print("unexpected implementation RuntimeError normalized as domain rejection: false")
     print("rejected generator run mutated inventory: false")
     print("canonical append-only authority mutated: false")
