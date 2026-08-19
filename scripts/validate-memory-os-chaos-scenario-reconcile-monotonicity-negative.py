@@ -17,6 +17,7 @@ SCENARIOS = (
     ROOT / "scripts/reconcile-memory-os-chaos-failure-drills.py",
     ROOT / "scripts/reconcile-memory-os-chaos-failure-drills-v2.py",
     ROOT / "scripts/reconcile-memory-os-parser-restart-matrix.py",
+    ROOT / "scripts/reconcile-memory-os-parser-inflight-cancellation.py",
 )
 
 
