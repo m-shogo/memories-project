@@ -19,6 +19,7 @@ AUTHORITIES = {
     "incident contact routing": ROOT / "contracts/operations/incident-contact-routing-admission-registry.v1.json",
     "observability stack": ROOT / "contracts/operations/observability-stack-deployment-registry.v1.json",
     "rate-limit distributed runtime": ROOT / "contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json",
+    "sustained soak independent review": ROOT / "contracts/operations/sustained-soak-independent-review-registry.v1.json",
     "environment generation": ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
     "recovery objective": ROOT / "contracts/operations/recovery-objectives-registry.v1.json",
     "drill request": ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json",
@@ -228,6 +229,21 @@ def main() -> int:
     expect_generator_load_authority_rejected(generator)
     expect_generator_backup_derived_authority_rejected(generator)
 
+    source_only_cases: list[tuple[Path, str, Callable[[dict[str, Any]], None]]] = [
+        (
+            AUTHORITIES["sustained soak independent review"],
+            "sustained soak independent review append-only disabled",
+            lambda value: value.__setitem__("appendOnly", False),
+        ),
+        (
+            AUTHORITIES["sustained soak independent review"],
+            "sustained soak independent review boolean criteria count",
+            lambda value: value.__setitem__("approvedLeakStabilityCriteriaCount", True),
+        ),
+    ]
+    for path, name, mutate in source_only_cases:
+        expect_validator_rejected(validator, path, name, mutate)
+
     cases: list[tuple[Path, str, Callable[[dict[str, Any]], None]]] = [
         (AUTHORITIES["migration production-shaped admission"], "migration production-shaped admission append-only disabled", lambda value: value.__setitem__("appendOnly", False)),
         (AUTHORITIES["incident contact routing"], "incident contact routing append-only disabled", lambda value: value.__setitem__("appendOnly", False)),
@@ -268,6 +284,7 @@ def main() -> int:
     require(not ROGUE_TABLETOP.exists(), "negative suite left rogue tabletop fixture behind")
     print("Memory OS operability inventory append-only authority negative suite PASS")
     print("canonical registry corruption accepted by source-authority validator: false")
+    print("sustained-soak source corruption accepted by source-authority validator: false")
     print("canonical registry corruption accepted by inventory generator: false")
     print("untracked human tabletop filename accepted as inventory source authority: false")
     print("untracked human tabletop filename accepted by inventory generator: false")
