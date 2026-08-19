@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "deletion-worker-saturation",
+  "sourceCommitSha": "1ad3154d7dfa54391fda6a5934c54851309e101c",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "STAGE: python-and-contract\nTraceback (most recent call last):\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-deletion-worker-saturation-reconcile-negative.py\", line 75, in <module>\n    raise SystemExit(main())\n                     ^^^^^^\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-deletion-worker-saturation-reconcile-negative.py\", line 28, in main\n    result = json.loads(reconciler.RESULT_PATH.read_text(encoding=\"utf-8\"))\n                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.13/x64/lib/python3.12/pathlib.py\", line 1027, in read_text\n    with self.open(mode='r', encoding=encoding, errors=errors) as f:\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.13/x64/lib/python3.12/pathlib.py\", line 1013, in open\n    return io.open(self, mode, buffering, encoding, errors, newline)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nFileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/memories-project/memories-project/docs/fixtures/memory-os-operability/deletion-worker-saturation-results.sample.v1.json'\n",
+  "containsSecrets": false,
+  "productionEvidence": false,
+  "productionEquivalentDependencies": false,
+  "capacityBoundaryEstablished": false,
+  "operationalThresholdApproved": false
+}
