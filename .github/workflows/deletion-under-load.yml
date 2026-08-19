@@ -9,8 +9,12 @@ on:
       - "services/import-api/internal/**"
       - "infra/postgresql/security/**"
       - "contracts/operations/deletion-under-load-contract.v1.json"
+      - "contracts/operations/load-test-scenario-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "scripts/validate-memory-os-deletion-under-load.py"
       - "scripts/reconcile-memory-os-deletion-under-load-status.py"
+      - "scripts/validate-memory-os-load.py"
+      - "scripts/validate-memory-os-operability.py"
   schedule:
     - cron: "17 19 * * 3,6"
   workflow_dispatch:
@@ -138,10 +142,14 @@ jobs:
           for attempt in 1 2 3; do
             git fetch origin so
             if ! git diff --quiet "${SOURCE_SHA}" origin/so -- \
+              .github/workflows/deletion-under-load.yml \
               services/import-api/internal \
               infra/postgresql/security \
               contracts/operations/deletion-under-load-contract.v1.json \
-              scripts/validate-memory-os-deletion-under-load.py; then
+              scripts/validate-memory-os-deletion-under-load.py \
+              scripts/reconcile-memory-os-deletion-under-load-status.py \
+              scripts/validate-memory-os-load.py \
+              scripts/validate-memory-os-operability.py; then
               echo "Newer deletion-load-critical source exists; its own run must publish evidence."
               exit 75
             fi
@@ -172,6 +180,18 @@ jobs:
           reconciled=false
           for attempt in 1 2 3; do
             git fetch origin so
+            if ! git diff --quiet "${SOURCE_SHA}" origin/so -- \
+              .github/workflows/deletion-under-load.yml \
+              services/import-api/internal \
+              infra/postgresql/security \
+              contracts/operations/deletion-under-load-contract.v1.json \
+              scripts/validate-memory-os-deletion-under-load.py \
+              scripts/reconcile-memory-os-deletion-under-load-status.py \
+              scripts/validate-memory-os-load.py \
+              scripts/validate-memory-os-operability.py; then
+              echo "Newer deletion-load-critical source exists; refusing to reinterpret stale result authority."
+              exit 75
+            fi
             git reset --hard origin/so
             EXPECTED_COMMIT_SHA="${SOURCE_SHA}" python scripts/validate-memory-os-deletion-under-load.py
             EXPECTED_COMMIT_SHA="${SOURCE_SHA}" python scripts/reconcile-memory-os-deletion-under-load-status.py
