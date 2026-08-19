@@ -11,6 +11,7 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-operability-admission-inventory-source-authorities.py"
+STANDALONE_VALIDATOR = ROOT / "scripts/validate-memory-os-operability-admission-inventory.py"
 GENERATOR = ROOT / "scripts/generate-memory-os-operability-admission-inventory.py"
 TABLETOP_LEDGER = ROOT / "docs/evidence/incident-tabletops"
 ROGUE_TABLETOP = TABLETOP_LEDGER / "IR-DRILL-ROGUE.json"
@@ -116,6 +117,29 @@ def expect_generator_rejected(
     require(rejected, f"corrupt append-only authority unexpectedly accepted by generator: {name}")
     require(generator.OUTPUT.read_bytes() == output_before, f"generator mutated inventory after rejecting corrupt authority: {name}")
     print(f"PASS generator reject: {name}")
+
+
+def expect_standalone_source_rejected(
+    standalone: Any,
+    path: Path,
+    name: str,
+    mutate: Callable[[dict[str, Any]], None],
+) -> None:
+    original = path.read_bytes()
+    bad = copy.deepcopy(load(path))
+    mutate(bad)
+    path.write_text(json.dumps(bad, indent=2) + "\n", encoding="utf-8")
+    rejected = False
+    try:
+        try:
+            standalone.main()
+        except RuntimeError as exc:
+            require(exc.__class__.__name__ in DOMAIN_REJECTIONS, f"unexpected standalone RuntimeError for {name}: {exc}")
+            rejected = True
+    finally:
+        path.write_bytes(original)
+    require(rejected, f"corrupt source authority unexpectedly accepted by standalone inventory validator: {name}")
+    print(f"PASS standalone validator reject: {name}")
 
 
 def expect_untracked_tabletop_rejected(validator: Any, generator: Any) -> None:
@@ -246,14 +270,17 @@ def expect_source_validator_implementation_error_propagates(validator: Any) -> N
 
 def main() -> int:
     require(VALIDATOR.is_file(), "inventory source-authority validator missing")
+    require(STANDALONE_VALIDATOR.is_file(), "standalone inventory validator missing")
     require(GENERATOR.is_file(), "inventory generator missing")
     require(all(path.is_file() for path in AUTHORITIES.values()), "canonical append-only authority missing")
     validator = load_module(VALIDATOR, "memory_os_inventory_registry_negative_validator")
+    standalone = load_module(STANDALONE_VALIDATOR, "memory_os_inventory_registry_negative_standalone")
     generator = load_module(GENERATOR, "memory_os_inventory_registry_negative_generator")
     before = {path: path.read_bytes() for path in AUTHORITIES.values()}
     inventory_before = generator.OUTPUT.read_bytes()
 
     validator.main()
+    standalone.main()
     generator.main()
     require(generator.OUTPUT.read_bytes() == inventory_before, "canonical inventory generator is not byte-deterministic")
     print("PASS baseline: canonical append-only authorities accepted without inventory drift")
@@ -261,6 +288,12 @@ def main() -> int:
     expect_generator_load_authority_rejected(generator)
     expect_generator_backup_derived_authority_rejected(generator)
     expect_source_validator_implementation_error_propagates(validator)
+    expect_standalone_source_rejected(
+        standalone,
+        AUTHORITIES["rate-limit distributed runtime"],
+        "rate-limit distributed runtime append-only disabled through full source-authority delegation",
+        lambda value: value.__setitem__("appendOnly", False),
+    )
 
     source_only_cases: list[tuple[Path, str, Callable[[dict[str, Any]], None]]] = [
         (
@@ -333,6 +366,7 @@ def main() -> int:
     require(not ROGUE_TABLETOP.exists(), "negative suite left rogue tabletop fixture behind")
     print("Memory OS operability inventory append-only authority negative suite PASS")
     print("canonical registry corruption accepted by source-authority validator: false")
+    print("non-OPS source corruption accepted by standalone inventory validator: false")
     print("sustained-soak source corruption accepted by source-authority validator: false")
     print("sustained-soak source corruption accepted by inventory generator: false")
     print("canonical registry corruption accepted by inventory generator: false")
