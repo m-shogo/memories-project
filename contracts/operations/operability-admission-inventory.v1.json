@@ -78,7 +78,7 @@
       "authority": "contracts/operations/load-test-scenario-contract.v1.json",
       "secondaryAuthority": "contracts/operations/sustained-soak-independent-review-registry.v1.json",
       "foundationImplemented": true,
-      "admittedEvidenceCount": 5,
+      "admittedEvidenceCount": 6,
       "requiredEvidenceCount": 2,
       "approvedLeakStabilityCriteriaCount": 0,
       "passingIndependentReviewCount": 0,
