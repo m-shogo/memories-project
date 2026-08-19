@@ -11,6 +11,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/deletion-worker-host-failure-contract.v1.json"
 VALIDATOR = ROOT / "scripts/validate-memory-os-deletion-worker-host-failure.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 WORKFLOW = ROOT / ".github/workflows/deletion-worker-host-failure-admission.yml"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 LOAD = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
@@ -48,6 +49,22 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
+def write_transactionally(contract: dict[str, Any], status: dict[str, Any]) -> None:
+    contract_bytes = CONTRACT.read_bytes()
+    status_bytes = STATUS.read_bytes()
+    try:
+        CONTRACT.write_text(json.dumps(contract, indent=2) + "\n", encoding="utf-8")
+        STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=True)
+        subprocess.run(["python", str(OPERABILITY_VALIDATOR)], cwd=ROOT, check=True)
+    except Exception as exc:
+        CONTRACT.write_bytes(contract_bytes)
+        STATUS.write_bytes(status_bytes)
+        if isinstance(exc, Fail):
+            raise
+        raise Fail(f"host-failure post-write authority validation failed: {exc}") from exc
+
+
 def main() -> int:
     contract = load(CONTRACT)
     readiness = contract.get("readiness")
@@ -55,8 +72,6 @@ def main() -> int:
     require(readiness.get("contractDefined") is True and readiness.get("validatorImplemented") is True, "host-failure foundation incomplete")
     if WORKFLOW.is_file():
         readiness["automaticWorkflowImplemented"] = True
-    CONTRACT.write_text(json.dumps(contract, indent=2) + "\n", encoding="utf-8")
-    subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=True)
 
     status = load(STATUS)
     require(status.get("productionDecision") == "NO_GO", "production decision must remain NO_GO")
@@ -81,7 +96,7 @@ def main() -> int:
     require(readiness_load.get("deletionContainerKillRecoveryProven") is True, "container recovery must remain proven")
     require(readiness_load.get("deletionHostFailureRecoveryProven") is False, "host recovery cannot be promoted by admission foundation")
 
-    STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    write_transactionally(contract, status)
     print("Memory OS deletion-worker host-failure admission reconciliation PASS")
     print("container recovery: proven locally")
     print("physical host/node recovery: unexecuted")
