@@ -233,6 +233,25 @@ jobs:
           reconciled=false
           for attempt in 1 2 3; do
             git fetch origin so
+
+            # Reconciliation may follow documentation/status-only movement, but it
+            # must never evaluate exact-source evidence with newer load-critical code.
+            if ! git diff --quiet "${SOURCE_SHA}" origin/so -- \
+              .github/workflows/regenerate-live-postgres-load-results.yml \
+              services/import-api \
+              infra/postgresql/security \
+              contracts/operations/live-postgres-load-scenario-contract.v1.json \
+              contracts/operations/live-object-load-scenario-contract.v1.json \
+              scripts/validate-memory-os-live-load.py \
+              scripts/validate-memory-os-live-object-load.py \
+              scripts/reconcile-memory-os-live-load-status.py \
+              scripts/validate-memory-os-load.py \
+              scripts/validate-memory-os-load-evidence-index.py \
+              scripts/validate-memory-os-operability.py; then
+              echo "A newer load-critical source exists; a newer workflow run must reconcile its evidence."
+              exit 75
+            fi
+
             git reset --hard origin/so
 
             EXPECTED_COMMIT_SHA="${SOURCE_SHA}" python scripts/validate-memory-os-live-load.py
