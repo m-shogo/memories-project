@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
-VALIDATOR = ROOT / "scripts/validate-memory-os-operability-admission-inventory.py"
+VALIDATOR = ROOT / "scripts/validate-memory-os-operability-admission-inventory-source-authorities.py"
 GENERATOR = ROOT / "scripts/generate-memory-os-operability-admission-inventory.py"
 AUTHORITIES = {
     "migration production-shaped admission": ROOT / "contracts/operations/migration-production-shaped-admission-registry.v1.json",
@@ -64,8 +64,9 @@ def expect_validator_rejected(
     mutate(bad)
     original_load = validator.load
 
-    def patched_load(candidate: Path) -> dict[str, Any]:
-        if candidate == path:
+    def patched_load(candidate: str) -> dict[str, Any]:
+        relative = path.relative_to(ROOT).as_posix()
+        if candidate == relative:
             return copy.deepcopy(bad)
         return original_load(candidate)
 
@@ -111,7 +112,7 @@ def expect_generator_rejected(
 
 
 def main() -> int:
-    require(VALIDATOR.is_file(), "inventory validator missing")
+    require(VALIDATOR.is_file(), "inventory source-authority validator missing")
     require(GENERATOR.is_file(), "inventory generator missing")
     require(all(path.is_file() for path in AUTHORITIES.values()), "canonical append-only authority missing")
     validator = load_module(VALIDATOR, "memory_os_inventory_registry_negative_validator")
@@ -274,7 +275,7 @@ def main() -> int:
     require(after == before, "negative suite mutated canonical append-only authority")
     require(generator.OUTPUT.read_bytes() == inventory_before, "negative suite mutated canonical inventory")
     print("Memory OS operability inventory append-only authority negative suite PASS")
-    print("canonical registry corruption accepted by standalone inventory validator: false")
+    print("canonical registry corruption accepted by source-authority validator: false")
     print("canonical registry corruption accepted by inventory generator: false")
     print("rejected generator run mutated inventory: false")
     print("canonical append-only authority mutated: false")
