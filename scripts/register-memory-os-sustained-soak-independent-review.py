@@ -59,6 +59,10 @@ def validate_lock_authority() -> None:
     lock_ref = contract.get("appendLockPath")
     require(lock_ref == CANONICAL_LOCK_REF, "sustained-soak append lock contract authority drift")
     require((ROOT / lock_ref).resolve() == LOCK_PATH.resolve(), "sustained-soak append lock writer authority drift")
+    require(
+        contract.get("appendMustRevalidateCanonicalRegistryAndRollbackOnFailure") is True,
+        "sustained-soak transactional append authority drift",
+    )
 
 
 def validate_existing_registry() -> None:
@@ -161,6 +165,45 @@ def validate_candidate(candidate: dict[str, Any]) -> Path:
         raise
 
 
+def atomic_restore(payload: bytes) -> None:
+    descriptor, temp_name = tempfile.mkstemp(
+        prefix=".sustained-soak-independent-review-rollback-",
+        suffix=".tmp",
+        dir=REGISTRY.parent,
+    )
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, REGISTRY)
+    finally:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
+
+
+def replace_registry_transactionally(candidate_path: Path) -> None:
+    """Install a validated candidate and rollback if canonical revalidation fails."""
+    try:
+        original = REGISTRY.read_bytes()
+    except OSError as exc:
+        raise Fail("cannot snapshot sustained-soak review registry before append") from exc
+
+    validator = load_validator()
+    require(validator.REGISTRY.resolve() == REGISTRY.resolve(), "sustained-soak registry validator authority drift")
+    try:
+        os.replace(candidate_path, REGISTRY)
+        validator.validate_registry_aggregates(load(REGISTRY))
+        validator.main()
+    except Exception as exc:
+        atomic_restore(original)
+        if isinstance(exc, validator.Fail):
+            raise Fail(f"post-append canonical registry validation failed: {exc}") from exc
+        raise
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--kind", required=True, choices=("criteria", "review"))
@@ -178,7 +221,7 @@ def main() -> int:
         record_id = append_record(registry, args.kind, record)
         candidate_path = validate_candidate(registry)
         try:
-            os.replace(candidate_path, REGISTRY)
+            replace_registry_transactionally(candidate_path)
         finally:
             candidate_path.unlink(missing_ok=True)
 
