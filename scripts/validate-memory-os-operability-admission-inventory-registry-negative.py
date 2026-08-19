@@ -273,6 +273,21 @@ def main() -> int:
             "sustained soak independent review boolean criteria count",
             lambda value: value.__setitem__("approvedLeakStabilityCriteriaCount", True),
         ),
+        (
+            AUTHORITIES["sustained soak independent review"],
+            "sustained soak independent review registry class drift",
+            lambda value: value.__setitem__("registryClass", "NOT_SUSTAINED_SOAK_INDEPENDENT_REVIEW"),
+        ),
+        (
+            AUTHORITIES["sustained soak independent review"],
+            "sustained soak independent review unknown field",
+            lambda value: value.__setitem__("automaticPromotionAuthorized", True),
+        ),
+        (
+            AUTHORITIES["sustained soak independent review"],
+            "sustained soak independent review production readiness manufactured",
+            lambda value: value.__setitem__("productionReady", True),
+        ),
     ]
     for path, name, mutate in source_only_cases:
         expect_validator_rejected(validator, path, name, mutate)
