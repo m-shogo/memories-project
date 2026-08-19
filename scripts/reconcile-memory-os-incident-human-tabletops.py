@@ -13,6 +13,15 @@ CONTRACT = ROOT / "contracts/operations/incident-human-tabletop-evidence-contrac
 LEDGER = ROOT / "docs/evidence/incident-tabletops"
 WRITER = ROOT / "scripts/register-memory-os-incident-human-tabletop.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-incident-human-tabletops.py"
+INCIDENT_TABLETOP_VALIDATOR = ROOT / "scripts/validate-memory-os-incident-tabletop.py"
+INCIDENT_RESPONSE_VALIDATOR = ROOT / "scripts/validate-memory-os-incident-response.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+POST_WRITE_VALIDATORS = (
+    VALIDATOR,
+    INCIDENT_TABLETOP_VALIDATOR,
+    INCIDENT_RESPONSE_VALIDATOR,
+    OPERABILITY_VALIDATOR,
+)
 WORKFLOW = ROOT / ".github/workflows/incident-human-tabletop-evidence.yml"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 
@@ -64,8 +73,10 @@ def commit_validated_pair(contract: dict[str, Any], status: dict[str, Any]) -> N
     try:
         CONTRACT.write_bytes(render(contract))
         STATUS.write_bytes(render(status))
-        completed = subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=False)
-        require(completed.returncode == 0, "reconciled human tabletop authority failed validation")
+        for validator in POST_WRITE_VALIDATORS:
+            completed = subprocess.run(["python", str(validator)], cwd=ROOT, check=False)
+            require(completed.returncode == 0,
+                    f"reconciled human tabletop authority failed validation: {validator.name}")
     except BaseException:
         CONTRACT.write_bytes(original_contract)
         STATUS.write_bytes(original_status)
@@ -73,7 +84,7 @@ def commit_validated_pair(contract: dict[str, Any], status: dict[str, Any]) -> N
 
 
 def main() -> int:
-    for path in (WRITER, VALIDATOR, WORKFLOW):
+    for path in (WRITER, *POST_WRITE_VALIDATORS, WORKFLOW):
         require(path.is_file(), f"human tabletop admission missing: {path.relative_to(ROOT)}")
     validate_current_authority()
     required = set(load(CONTRACT).get("requiredScenarioIds", []))
