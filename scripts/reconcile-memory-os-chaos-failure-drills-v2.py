@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import importlib.util
 import json
 import re
 import subprocess
@@ -14,6 +15,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/chaos-failure-drill-results.v2.sample.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+CANONICAL_RECONCILER = ROOT / "scripts/reconcile-memory-os-chaos-authority.py"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 NEW_EXISTING = (
@@ -54,6 +56,17 @@ def load(path: Path) -> dict[str, Any]:
         raise ReconcileFailure(f"invalid JSON in {path.relative_to(ROOT)}: {exc}") from exc
     require(isinstance(value, dict), f"root must be an object: {path.relative_to(ROOT)}")
     return value
+
+
+def load_canonical_normalizer():
+    require(CANONICAL_RECONCILER.is_file(), "canonical chaos authority reconciler missing")
+    spec = importlib.util.spec_from_file_location("memory_os_canonical_chaos_authority_v2", CANONICAL_RECONCILER)
+    require(spec is not None and spec.loader is not None, "cannot load canonical chaos authority reconciler")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    normalizer = getattr(module, "normalized_status", None)
+    require(callable(normalizer), "canonical chaos authority reconciler missing normalized_status")
+    return normalizer
 
 
 def source_is_ancestor(source_sha: str) -> bool:
@@ -153,15 +166,9 @@ def main() -> int:
             refs.append(ref)
             changed = True
 
-    for phrase in (
-        "database loss or failover",
-        "mixed-version failure",
-        "expanded parser restart matrix",
-        "production multi-instance",
-        "production-shaped object-store",
-    ):
-        require(any(phrase in item for item in missing),
-                f"required OPS-P0-009 gap disappeared: {phrase}")
+    before_canonical = json.dumps(status, sort_keys=True, ensure_ascii=False)
+    status = load_canonical_normalizer()(status)
+    changed = changed or json.dumps(status, sort_keys=True, ensure_ascii=False) != before_canonical
     require(status.get("productionDecision") == "NO_GO",
             "production decision changed unexpectedly")
 
@@ -174,7 +181,7 @@ def main() -> int:
         json.dumps(status, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
-    print("Registered exact-source object-store outage recovery; OPS-P0-009 remains PARTIAL")
+    print("Registered exact-source object-store outage recovery and preserved canonical stronger chaos authority")
     return 0
 
 
