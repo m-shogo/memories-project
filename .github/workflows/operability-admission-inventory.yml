@@ -230,6 +230,9 @@ jobs:
             python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-recovery-objectives-negative.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-backup-restore-drill-preflight-negative.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
