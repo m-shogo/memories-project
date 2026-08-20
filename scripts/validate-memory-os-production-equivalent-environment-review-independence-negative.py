@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove independent-review evidence refs remain canonical and repository-contained."""
+"""Prove independent-review evidence refs and helper authority remain canonical and repository-contained."""
 
 from __future__ import annotations
 
@@ -44,6 +44,7 @@ def main() -> int:
     require(VALIDATOR.is_file(), "environment review-independence validator missing")
     validator = load_validator()
     real_root = validator.ROOT
+    real_helper = validator.HELPER
 
     with tempfile.TemporaryDirectory(prefix="memory-os-review-ref-root-") as root_tmp, tempfile.TemporaryDirectory(prefix="memory-os-review-ref-external-") as external_tmp:
         root = Path(root_tmp)
@@ -68,9 +69,34 @@ def main() -> int:
         finally:
             validator.ROOT = real_root
 
+    with tempfile.TemporaryDirectory(prefix="memory-os-review-helper-root-") as root_tmp, tempfile.TemporaryDirectory(prefix="memory-os-review-helper-external-") as external_tmp:
+        root = Path(root_tmp)
+        scripts = root / "scripts"
+        scripts.mkdir(parents=True, exist_ok=True)
+        external_helper = Path(external_tmp) / "memory_os_environment_generation_eligibility.py"
+        external_helper.write_text("def derive(*args, **kwargs):\n    return {}\n", encoding="utf-8")
+        helper_link = scripts / "memory_os_environment_generation_eligibility.py"
+        helper_link.symlink_to(external_helper)
+
+        validator.ROOT = root
+        validator.HELPER = helper_link
+        try:
+            expect_rejected(validator, "generation eligibility helper symlink escape", validator.load_helper)
+        finally:
+            validator.ROOT = real_root
+            validator.HELPER = real_helper
+
+    validator.HELPER = ROOT / "scripts/validate-memory-os-production-equivalent-environment-review-independence.py"
+    try:
+        expect_rejected(validator, "generation eligibility helper executable substitution", validator.load_helper)
+    finally:
+        validator.HELPER = real_helper
+
     print("Environment review-independence authority negative suite PASS")
     print("review ref symlink escape accepted: false")
     print("review ref symlink loop accepted: false")
+    print("eligibility helper symlink escape accepted: false")
+    print("eligibility helper executable substitution accepted: false")
     print("review evidence created: false")
     print("production evidence: false")
     print("production ready: false")
