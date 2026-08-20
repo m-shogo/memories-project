@@ -6,6 +6,7 @@ from __future__ import annotations
 import datetime as dt
 import importlib.util
 import json
+import os
 import re
 import subprocess
 import sys
@@ -16,6 +17,8 @@ ROOT = Path(__file__).resolve().parents[1]
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/chaos-failure-drill-results.v2.sample.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 CANONICAL_RECONCILER = ROOT / "scripts/reconcile-memory-os-chaos-authority.py"
+V2_VALIDATOR = ROOT / "scripts/validate-memory-os-chaos-failure-drills-v2.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 NEW_EXISTING = (
@@ -60,6 +63,7 @@ def load(path: Path) -> dict[str, Any]:
 
 def load_canonical_normalizer():
     require(CANONICAL_RECONCILER.is_file(), "canonical chaos authority reconciler missing")
+    require(not CANONICAL_RECONCILER.is_symlink(), "canonical chaos authority reconciler cannot be a symlink")
     spec = importlib.util.spec_from_file_location("memory_os_canonical_chaos_authority_v2", CANONICAL_RECONCILER)
     require(spec is not None and spec.loader is not None, "cannot load canonical chaos authority reconciler")
     module = importlib.util.module_from_spec(spec)
@@ -82,53 +86,43 @@ def source_is_ancestor(source_sha: str) -> bool:
         return False
 
 
+def run_validator(path: Path, *, expected_sha: str | None = None) -> None:
+    require(path.is_file(), f"canonical validator missing: {path.relative_to(ROOT)}")
+    require(not path.is_symlink(), f"canonical validator cannot be a symlink: {path.relative_to(ROOT)}")
+    env = os.environ.copy()
+    if expected_sha is not None:
+        env["EXPECTED_COMMIT_SHA"] = expected_sha
+    completed = subprocess.run(
+        [sys.executable, str(path)],
+        cwd=ROOT,
+        env=env,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    require(type(completed.returncode) is int and completed.returncode == 0,
+            f"canonical validator rejected authority: {path.relative_to(ROOT)}\n{completed.stdout[-4000:]}")
+
+
+def validate_authority_chain(source_sha: str) -> None:
+    run_validator(V2_VALIDATOR, expected_sha=source_sha)
+    run_validator(OPERABILITY_VALIDATOR)
+
+
 def main() -> int:
     result = load(RESULT_PATH)
-    require(result.get("schemaVersion") == "memory-os-chaos-failure-drill-results.v2",
-            "v2 result schemaVersion drift")
     source_sha = result.get("commitSha")
     require(isinstance(source_sha, str) and SHA_RE.fullmatch(source_sha) is not None,
             "v2 result source SHA is invalid")
     require(source_is_ancestor(source_sha),
             "v2 result source SHA is not an ancestor of current HEAD")
-    require(result.get("overallResult") == "PARTIAL_PASS",
-            "v2 result must remain PARTIAL_PASS")
-    environment = result.get("environment")
-    require(isinstance(environment, dict), "v2 result environment missing")
-    require(environment.get("productionEvidence") is False,
-            "v2 CI dependency result cannot be production evidence")
-    require(environment.get("containsSecrets") is False,
-            "v2 result must contain no secrets")
 
-    scenarios = result.get("scenarios")
-    require(isinstance(scenarios, list), "v2 result scenarios must be a list")
-    by_id = {item.get("scenarioId"): item for item in scenarios if isinstance(item, dict)}
-    for scenario_id in (
-        "api-graceful-interruption-drain",
-        "parser-restart-after-protocol-failure",
-        "object-store-outage-and-recovery",
-    ):
-        item = by_id.get(scenario_id)
-        require(isinstance(item, dict) and item.get("result") == "PASS" and
-                item.get("integrityResult") == "PASS" and item.get("exitCode") == 0,
-                f"required v2 CI drill is not PASS: {scenario_id}")
-    for scenario_id in (
-        "database-loss-or-failover",
-        "mixed-version-failure-and-rollback",
-    ):
-        item = by_id.get(scenario_id)
-        require(isinstance(item, dict) and item.get("result") == "NOT_RUN",
-                f"unexecuted v2 production-shaped drill mislabeled: {scenario_id}")
+    # The v2 validator owns all contract/result semantics. The reconciler only
+    # consumes exact-source authority that passes the shared canonical boundary.
+    validate_authority_chain(source_sha)
 
-    assertions = by_id["object-store-outage-and-recovery"].get("assertions")
-    require(isinstance(assertions, dict), "object outage assertions missing")
-    require(assertions.get("durablePreviewRowsDuringOutage") == 0,
-            "outage created durable Preview state")
-    require(assertions.get("spoolEntriesDuringOutage") == 0,
-            "outage left spool residue")
-    require(assertions.get("durablePreviewRowsAfterRecovery") == 1,
-            "recovery did not commit exactly one Preview")
-
+    original_status_bytes = STATUS_PATH.read_bytes()
     status = load(STATUS_PATH)
     require(status.get("productionDecision") == "NO_GO",
             "v2 failure-drill evidence cannot change production decision")
@@ -173,6 +167,7 @@ def main() -> int:
             "production decision changed unexpectedly")
 
     if not changed:
+        validate_authority_chain(source_sha)
         print("Chaos/failure-drill v2 authority already reconciled")
         return 0
 
@@ -181,6 +176,12 @@ def main() -> int:
         json.dumps(status, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
+    try:
+        validate_authority_chain(source_sha)
+    except Exception:
+        STATUS_PATH.write_bytes(original_status_bytes)
+        raise
+
     print("Registered exact-source object-store outage recovery and preserved canonical stronger chaos authority")
     return 0
 
