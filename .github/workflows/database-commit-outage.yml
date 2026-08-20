@@ -12,6 +12,7 @@ on:
       - "services/import-api/internal/importflow/flow.go"
       - "services/import-api/internal/previewcommit/committer.go"
       - "scripts/validate-memory-os-database-commit-outage.py"
+      - "scripts/validate-memory-os-database-commit-outage-reconcile-negative.py"
       - "scripts/reconcile-memory-os-database-commit-outage.py"
   schedule:
     - cron: "7 20 * * *"
@@ -81,7 +82,10 @@ jobs:
         run: |
           python -m py_compile \
             scripts/validate-memory-os-database-commit-outage.py \
+            scripts/validate-memory-os-database-commit-outage-reconcile-negative.py \
+            scripts/validate-memory-os-operability.py \
             scripts/reconcile-memory-os-database-commit-outage.py
+          python scripts/validate-memory-os-database-commit-outage-reconcile-negative.py
           test -z "$(gofmt -l \
             services/import-api/internal/importflow/database_outage_drill_linux_test.go \
             services/import-api/internal/importflow/resume.go)"
