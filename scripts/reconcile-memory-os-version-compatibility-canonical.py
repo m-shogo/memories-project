@@ -15,8 +15,12 @@ from pathlib import Path
 from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
-PATH = ROOT / "contracts/operations/version-compatibility-contract.v1.json"
-VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-version-compatibility.py"
+PATH_REL = Path("contracts/operations/version-compatibility-contract.v1.json")
+VALIDATOR_REL = Path("scripts/validate-memory-os-version-compatibility.py")
+WORKFLOW_REL = Path(".github/workflows/version-compatibility-foundations.yml")
+PATH = ROOT / PATH_REL
+VALIDATOR_PATH = ROOT / VALIDATOR_REL
+WORKFLOW_PATH = ROOT / WORKFLOW_REL
 
 
 class ReconcileFailure(RuntimeError):
@@ -26,6 +30,28 @@ class ReconcileFailure(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise ReconcileFailure(message)
+
+
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise ReconcileFailure(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    for path, relative, field in (
+        (PATH, PATH_REL, "canonical compatibility contract"),
+        (VALIDATOR_PATH, VALIDATOR_REL, "canonical compatibility validator"),
+        (WORKFLOW_PATH, WORKFLOW_REL, "compatibility foundations workflow"),
+    ):
+        require_exact_repo_file(path, relative, field)
 
 
 def load() -> dict[str, Any]:
@@ -80,6 +106,7 @@ def commit_transaction(
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     document = load()
     require(document.get("schemaVersion") == "memory-os-version-compatibility.v1",
             "canonical compatibility schema drift")
