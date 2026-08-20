@@ -9,6 +9,8 @@ on:
       - "contracts/operations/parser-restart-matrix-contract.v1.json"
       - "services/import-api/internal/parsersup/**"
       - "scripts/validate-memory-os-parser-restart-matrix.py"
+      - "scripts/validate-memory-os-parser-restart-reconcile-negative.py"
+      - "scripts/validate-memory-os-operability.py"
       - "scripts/reconcile-memory-os-parser-restart-matrix.py"
       - "scripts/reconcile-memory-os-chaos-authority.py"
   schedule:
@@ -54,10 +56,13 @@ jobs:
         run: |
           python -m py_compile \
             scripts/validate-memory-os-parser-restart-matrix.py \
+            scripts/validate-memory-os-parser-restart-reconcile-negative.py \
+            scripts/validate-memory-os-operability.py \
             scripts/reconcile-memory-os-parser-restart-matrix.py \
             scripts/reconcile-memory-os-chaos-authority.py
           test -z "$(gofmt -l services/import-api/internal/parsersup/restart_matrix_drill_linux_test.go)"
           python scripts/validate-memory-os-parser-restart-matrix.py
+          python scripts/validate-memory-os-parser-restart-reconcile-negative.py
 
       - name: Execute exact-source matrix cases
         id: matrix
