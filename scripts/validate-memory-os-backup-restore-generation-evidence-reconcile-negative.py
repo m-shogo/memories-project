@@ -89,23 +89,26 @@ def main() -> int:
         for path, expected in originals.items():
             path.write_bytes(expected)
 
-        failing_validator = tmp / "forced-validator-failure.py"
-        failing_validator.write_text("#!/usr/bin/env python3\nraise SystemExit(23)\n", encoding="utf-8")
-        reconciler.BINDING_VALIDATOR = failing_validator
-        reconciler.VALIDATOR = failing_validator
+        pass_validator = tmp / "pass-validator.py"
+        pass_validator.write_text("#!/usr/bin/env python3\nraise SystemExit(0)\n", encoding="utf-8")
+        fail_validator = tmp / "forced-validator-failure.py"
+        fail_validator.write_text("#!/usr/bin/env python3\nraise SystemExit(23)\n", encoding="utf-8")
+        reconciler.BINDING_VALIDATOR = pass_validator
+        reconciler.VALIDATOR = pass_validator
+        reconciler.OPERABILITY_VALIDATOR = fail_validator
 
         try:
             reconciler.main()
         except reconciler.Fail as exc:
-            require("generation binding validator failed" in str(exc), f"unexpected reconcile failure: {exc}")
+            require("operability validator failed" in str(exc), f"unexpected reconcile failure: {exc}")
         else:
-            raise Fail("forced post-validation failure unexpectedly accepted")
+            raise Fail("forced aggregate post-validation failure unexpectedly accepted")
 
         for path, expected in originals.items():
             require(path.read_bytes() == expected, f"rollback drifted derived authority: {path.name}")
 
     print("PASS reject: corrupt generation append-only authority is never auto-healed by reconcile")
-    print("PASS rollback: generation evidence reconcile restores registry/contract/binding/status byte-for-byte")
+    print("PASS rollback: generation evidence reconcile restores registry/contract/binding/status after aggregate validation failure")
     print("Generation evidence reconcile negative suite PASS")
     return 0
 
