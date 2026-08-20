@@ -25,7 +25,7 @@ CONTRACTS = [
 FILE_KEYS = {
     "registryPath", "writer", "validator", "reconcile", "workflow",
     "sourceMigrationLifecycleContract", "sourceMigrationEvidenceRegistryContract",
-    "sourceReleaseRegistry", "sourceCompatibilityExecutionAuthority",
+    "sourceReleaseRegistry", "sourceReleasePairRegistry", "sourceCompatibilityExecutionAuthority",
     "environmentGenerationContract", "environmentGenerationRegistry",
     "backupRestoreGenerationContract", "sourceIncidentPolicy",
     "sourceObservabilityStackContract", "sourceObservabilityStackRegistry",
