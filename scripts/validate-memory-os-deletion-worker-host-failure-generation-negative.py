@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reject corrupted generation/load authority before host-failure admission."""
+"""Reject corrupted generation/load/executable authority before host-failure admission."""
 
 from __future__ import annotations
 
@@ -19,6 +19,8 @@ CONTRACT = ROOT / "contracts/operations/deletion-worker-host-failure-contract.v1
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 VALIDATOR = ROOT / "scripts/validate-memory-os-deletion-worker-host-failure.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-deletion-worker-host-failure.py"
+LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 
 
 class Fail(RuntimeError):
@@ -147,6 +149,31 @@ def load_authority_rejected() -> None:
         LOAD.write_bytes(load_bytes)
 
 
+def executable_authority_rejected() -> None:
+    reconciler = load_module(RECONCILER, "memory_os_host_failure_reconciler_executable_negative")
+    contract_bytes = CONTRACT.read_bytes()
+    status_bytes = STATUS.read_bytes()
+    substitutions = (
+        ("VALIDATOR", LOAD_VALIDATOR, "host-failure validator authority drift"),
+        ("LOAD_VALIDATOR", OPERABILITY_VALIDATOR, "load validator authority drift"),
+        ("OPERABILITY_VALIDATOR", LOAD_VALIDATOR, "operability validator authority drift"),
+    )
+    for attr, substitute, expected in substitutions:
+        original = getattr(reconciler, attr)
+        try:
+            setattr(reconciler, attr, substitute)
+            try:
+                reconciler.validate_executable_authorities()
+            except reconciler.Fail as exc:
+                require(expected in str(exc), f"unexpected {attr} substitution rejection: {exc}")
+            else:
+                raise Fail(f"host-failure reconciler accepted substituted executable authority: {attr}")
+            require(CONTRACT.read_bytes() == contract_bytes, f"{attr}: host-failure contract changed after rejected executable authority")
+            require(STATUS.read_bytes() == status_bytes, f"{attr}: production status changed after rejected executable authority")
+        finally:
+            setattr(reconciler, attr, original)
+
+
 def rollback_rejected() -> None:
     contract_bytes = CONTRACT.read_bytes()
     status_bytes = STATUS.read_bytes()
@@ -189,10 +216,11 @@ def main() -> int:
             rejected(label, mutate, baseline, baseline_bytes)
         generation_progression_preserves_no_go()
         load_authority_rejected()
+        executable_authority_rejected()
         rollback_rejected()
     finally:
         REGISTRY.write_bytes(baseline_bytes)
-    print("PASS: deletion host-failure admission rejects corrupt authority, permits registered generation inventory without promotion, and rolls back post-write failures")
+    print("PASS: deletion host-failure admission rejects corrupt generation/load/executable authority, permits registered generation inventory without promotion, and rolls back post-write failures")
     return 0
 
 
