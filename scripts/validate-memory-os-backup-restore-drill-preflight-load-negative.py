@@ -59,29 +59,30 @@ def prove_transactional_rollback(reconciler: object, tmp: Path) -> None:
     original_run = reconciler.subprocess.run
     call_count = 0
 
-    def fail_only_post_reconcile(*args, **kwargs):
+    def fail_only_aggregate_post_reconcile(*args, **kwargs):
         nonlocal call_count
         call_count += 1
-        if call_count <= 3:
-            return SimpleNamespace(returncode=0, stdout="upstream authority validator pass", stderr="")
-        return SimpleNamespace(returncode=1, stdout="forced post-reconcile validator failure", stderr="")
+        if call_count <= 4:
+            return SimpleNamespace(returncode=0, stdout="upstream/preflight authority validator pass", stderr="")
+        return SimpleNamespace(returncode=1, stdout="forced post-reconcile operability validator failure", stderr="")
 
     reconciler.CONTRACT = contract
     reconciler.STATUS = status
-    reconciler.subprocess.run = fail_only_post_reconcile
+    reconciler.subprocess.run = fail_only_aggregate_post_reconcile
     try:
-        expect_domain_fail("forced post-reconcile validation failure", reconciler.main, reconciler.Fail)
+        expect_domain_fail("forced aggregate operability validation failure", reconciler.main, reconciler.Fail)
     finally:
         reconciler.CONTRACT = original_contract
         reconciler.STATUS = original_status
         reconciler.subprocess.run = original_run
 
-    require(call_count == 4, "expected three upstream validators before one post-reconcile validation")
+    require(call_count == 5, "expected three upstream validators before preflight and operability post-validation")
     require(contract.read_bytes() == before_contract, "preflight contract was not rolled back byte-for-byte")
     require(status.read_bytes() == before_status, "production status was not rolled back byte-for-byte")
     print("PASS boundary: three upstream authority validators ran before reconcile mutation")
-    print("PASS rollback: preflight contract restored byte-for-byte")
-    print("PASS rollback: production status restored byte-for-byte")
+    print("PASS boundary: preflight validator passed before aggregate operability rejection")
+    print("PASS rollback: preflight contract restored byte-for-byte after aggregate rejection")
+    print("PASS rollback: production status restored byte-for-byte after aggregate rejection")
 
 
 def main() -> int:
@@ -116,7 +117,8 @@ def main() -> int:
     print("reconciler unreadable directory authority leaked raw exception: false")
     print("reconciler escaped authority accepted: false")
     print("upstream append-only authorities validated before derived mutation: true")
-    print("failed post-validation leaves derived authority mutation behind: false")
+    print("preflight and operability validators execute inside reconcile transaction: true")
+    print("failed aggregate post-validation leaves derived authority mutation behind: false")
     print("production evidence created: false")
     print("production decision: NO_GO")
     return 0
