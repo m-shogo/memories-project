@@ -122,6 +122,22 @@ def prove_evaluator_authority_boundaries() -> None:
     else:
         raise AssertionError("invalid RFC3339 timestamp was incorrectly accepted")
 
+    with tempfile.TemporaryDirectory(prefix="memory-os-rate-limit-evaluator-ledger-") as tmp:
+        ledger = Path(tmp) / "ledger"
+        ledger.mkdir()
+        external = Path(tmp) / "external-record.json"
+        external.write_text("{}\n", encoding="utf-8")
+        operation_id = "RLOP-20260820T000000Z-symlink"
+        record_path = ledger / f"{operation_id}.json"
+        record_path.symlink_to(external)
+        try:
+            evaluator.resolve_operation_record(ledger, operation_id)
+        except SystemExit as exc:
+            if "must not be a symlink" not in str(exc):
+                raise AssertionError(f"unexpected symlink record rejection: {exc}") from exc
+        else:
+            raise AssertionError("symlink operation evidence record was incorrectly accepted")
+
 
 def prove_transactional_rollback() -> None:
     reconciler = load_module(
@@ -170,6 +186,7 @@ def main() -> int:
     print("PASS: detached emergency drill sources are rejected")
     print("PASS: emergency evaluator validator authority and exact exit semantics are fail-closed")
     print("PASS: emergency evaluator rejects invalid UTC timestamps without traceback semantics")
+    print("PASS: emergency evaluator rejects symlink operation evidence records")
     print("PASS: emergency drill reconcile rolls back contract and status on post-write failure")
     return 0
 
