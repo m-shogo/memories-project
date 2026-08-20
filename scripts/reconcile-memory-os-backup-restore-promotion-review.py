@@ -18,6 +18,7 @@ REGISTRY = ROOT / "contracts/operations/backup-restore-promotion-review-registry
 GEN_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-backup-restore-promotion-review.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-promotion-review.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 
 
@@ -92,6 +93,22 @@ def validate_generation_registry(writer: Any, registry: dict[str, Any]) -> tuple
     return generation_writer, rows
 
 
+def run_validator(path: Path, label: str) -> None:
+    relative = repo_relative(path)
+    completed = subprocess.run(
+        [sys.executable, str(path)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    require(
+        completed.returncode == 0,
+        f"post-reconcile {label} failed ({relative}):\n{completed.stdout[-9000:]}{completed.stderr[-9000:]}",
+    )
+
+
 def main() -> int:
     original_contract_text = read_text(CONTRACT)
     original_registry_text = read_text(REGISTRY)
@@ -146,8 +163,8 @@ def main() -> int:
     try:
         write_text(REGISTRY, registry_text)
         write_text(CONTRACT, contract_text)
-        completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-        require(completed.returncode == 0, f"post-reconcile promotion review validator failed:\n{completed.stdout[-9000:]}{completed.stderr[-9000:]}")
+        run_validator(VALIDATOR, "promotion review validator")
+        run_validator(OPERABILITY_VALIDATOR, "aggregate operability validator")
     except Exception:
         write_text(REGISTRY, original_registry_text)
         write_text(CONTRACT, original_contract_text)
@@ -163,6 +180,7 @@ def main() -> int:
     print("historical review rows retained: true")
     print("current authority may only be revoked automatically: true")
     print("failed post-validation leaves promotion registry/contract mutation behind: false")
+    print("aggregate operability validated inside transaction: true")
     print("canonical OPS-P0-007 blockers preserved: 6")
     print("production traffic changed: false")
     print("production ready: false")
