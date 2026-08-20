@@ -9,8 +9,10 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-LOAD_PATH = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
-LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
+CANONICAL_LOAD_PATH = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
+CANONICAL_LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
+LOAD_PATH = CANONICAL_LOAD_PATH
+LOAD_VALIDATOR = CANONICAL_LOAD_VALIDATOR
 
 REQUIRED_TRUE = (
     "previewPreFenceInFlightLinearizationProven",
@@ -27,11 +29,28 @@ REQUIRED_TRUE = (
 )
 
 
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise RuntimeError(message)
+
+
+def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
+    require(path == canonical, f"{label} authority drift")
+    require(canonical.is_file(), f"canonical {label} missing")
+    require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
+
+
+def validate_authorities() -> None:
+    require_exact_authority(LOAD_PATH, CANONICAL_LOAD_PATH, "load contract")
+    require_exact_authority(LOAD_VALIDATOR, CANONICAL_LOAD_VALIDATOR, "load validator")
+
+
 def load(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def load_validator_module():
+    validate_authorities()
     spec = importlib.util.spec_from_file_location("memory_os_load_validator", LOAD_VALIDATOR)
     if spec is None or spec.loader is None:
         raise SystemExit("cannot load canonical load validator")
@@ -41,12 +60,14 @@ def load_validator_module():
 
 
 def validate_canonical_load() -> None:
+    validate_authorities()
     result = load_validator_module().main()
     if isinstance(result, bool) or not isinstance(result, int) or result != 0:
         raise SystemExit(f"canonical load validator rejected authority: {result!r}")
 
 
 def main() -> int:
+    validate_authorities()
     original_bytes = LOAD_PATH.read_bytes()
     validate_canonical_load()
 
