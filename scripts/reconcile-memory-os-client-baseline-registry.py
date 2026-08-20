@@ -11,20 +11,34 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/client-baseline-registry-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/client-baseline-registry.v1.json"
-SUPPORT = ROOT / "contracts/operations/client-server-support-window-contract.v1.json"
-RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
-RELEASE_PAIRS = ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"
-SKEW = ROOT / "contracts/operations/client-server-skew-registry.v1.json"
-STATUS = ROOT / "contracts/operations/production-operability-status.json"
-WRITER = ROOT / "scripts/register-memory-os-client-baseline.py"
-PAIR_WRITER = ROOT / "scripts/register-memory-os-release-compatibility-pair.py"
-VALIDATOR = ROOT / "scripts/validate-memory-os-client-baseline-registry.py"
-SUPPORT_VALIDATOR = ROOT / "scripts/validate-memory-os-client-server-support-window.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
-WORKFLOW = ROOT / ".github/workflows/client-baseline-registry.yml"
-RUNBOOK = ROOT / "docs/evidence/clients/README.md"
+CONTRACT_REL = Path("contracts/operations/client-baseline-registry-contract.v1.json")
+REGISTRY_REL = Path("contracts/operations/client-baseline-registry.v1.json")
+SUPPORT_REL = Path("contracts/operations/client-server-support-window-contract.v1.json")
+RELEASES_REL = Path("contracts/operations/release-baseline-registry.v1.json")
+RELEASE_PAIRS_REL = Path("contracts/operations/release-compatibility-pair-registry.v1.json")
+SKEW_REL = Path("contracts/operations/client-server-skew-registry.v1.json")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+WRITER_REL = Path("scripts/register-memory-os-client-baseline.py")
+PAIR_WRITER_REL = Path("scripts/register-memory-os-release-compatibility-pair.py")
+VALIDATOR_REL = Path("scripts/validate-memory-os-client-baseline-registry.py")
+SUPPORT_VALIDATOR_REL = Path("scripts/validate-memory-os-client-server-support-window.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+WORKFLOW_REL = Path(".github/workflows/client-baseline-registry.yml")
+RUNBOOK_REL = Path("docs/evidence/clients/README.md")
+CONTRACT = ROOT / CONTRACT_REL
+REGISTRY = ROOT / REGISTRY_REL
+SUPPORT = ROOT / SUPPORT_REL
+RELEASES = ROOT / RELEASES_REL
+RELEASE_PAIRS = ROOT / RELEASE_PAIRS_REL
+SKEW = ROOT / SKEW_REL
+STATUS = ROOT / STATUS_REL
+WRITER = ROOT / WRITER_REL
+PAIR_WRITER = ROOT / PAIR_WRITER_REL
+VALIDATOR = ROOT / VALIDATOR_REL
+SUPPORT_VALIDATOR = ROOT / SUPPORT_VALIDATOR_REL
+OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
+WORKFLOW = ROOT / WORKFLOW_REL
+RUNBOOK = ROOT / RUNBOOK_REL
 
 EVIDENCE = (
     "append-only reviewed client baseline authority now has an external-byte-verifying writer, fail-closed validator and operator runbook: exact iOS/Portal artifact SHA-256 and byte length are recomputed, source provenance and repository evidence are bound, CLIENT_OWNER/Security/Compatibility approvals must be distinct, and baseline approval remains explicitly separate from client/server skew and Production readiness"
@@ -47,6 +61,39 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    for path, relative, field in (
+        (CONTRACT, CONTRACT_REL, "client baseline contract"),
+        (REGISTRY, REGISTRY_REL, "client baseline registry"),
+        (SUPPORT, SUPPORT_REL, "client/server support contract"),
+        (RELEASES, RELEASES_REL, "release baseline registry"),
+        (RELEASE_PAIRS, RELEASE_PAIRS_REL, "release compatibility pair registry"),
+        (SKEW, SKEW_REL, "client/server skew registry"),
+        (STATUS, STATUS_REL, "production operability status"),
+        (WRITER, WRITER_REL, "client baseline writer"),
+        (PAIR_WRITER, PAIR_WRITER_REL, "release pair writer"),
+        (VALIDATOR, VALIDATOR_REL, "client baseline validator"),
+        (SUPPORT_VALIDATOR, SUPPORT_VALIDATOR_REL, "support-window validator"),
+        (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+        (WORKFLOW, WORKFLOW_REL, "client baseline workflow"),
+        (RUNBOOK, RUNBOOK_REL, "client baseline runbook"),
+    ):
+        require_exact_repo_file(path, relative, field)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -106,8 +153,7 @@ def write_and_validate_transactionally(
 
 
 def main() -> int:
-    for path in (WRITER, PAIR_WRITER, VALIDATOR, SUPPORT_VALIDATOR, OPERABILITY_VALIDATOR, WORKFLOW, RUNBOOK):
-        require(path.is_file(), f"client baseline foundation missing: {path.relative_to(ROOT)}")
+    enforce_runtime_authorities()
 
     registry = load(REGISTRY)
     releases = load(RELEASES)
