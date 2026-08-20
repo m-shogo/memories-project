@@ -46,6 +46,78 @@ def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[
     raise Fail(f"negative case unexpectedly accepted: {name}")
 
 
+def expect_direct_authority_rejected(
+    reconciler: object,
+    name: str,
+    field: str,
+    attribute: str,
+    replacement: Path,
+    contract_before: bytes,
+    status_before: bytes,
+) -> None:
+    original = getattr(reconciler, attribute)
+    setattr(reconciler, attribute, replacement)
+    try:
+        try:
+            reconciler.main()
+        except reconciler.Fail as exc:
+            require(f"{field} authority drift" in str(exc), f"{name} rejected at wrong boundary: {exc}")
+        else:
+            raise Fail(f"direct reconciler unexpectedly accepted: {name}")
+        require(CANONICAL_CONTRACT.read_bytes() == contract_before, f"canonical contract mutated while rejecting {name}")
+        require(CANONICAL_STATUS.read_bytes() == status_before, f"canonical status mutated while rejecting {name}")
+    finally:
+        setattr(reconciler, attribute, original)
+
+
+def prove_executable_authority_rejection(reconciler: object) -> None:
+    contract_before = CANONICAL_CONTRACT.read_bytes()
+    status_before = CANONICAL_STATUS.read_bytes()
+    cases = (
+        (
+            "environment generation registry substitution",
+            "environment generation registry",
+            "GEN_REGISTRY",
+            reconciler.OBJECTIVES,
+        ),
+        (
+            "recovery objectives registry substitution",
+            "recovery objectives registry",
+            "OBJECTIVES",
+            reconciler.DRILL_REGISTRY,
+        ),
+        (
+            "drill request registry substitution",
+            "drill request registry",
+            "DRILL_REGISTRY",
+            reconciler.GEN_REGISTRY,
+        ),
+        (
+            "preflight validator substitution",
+            "preflight validator",
+            "VALIDATOR_MODULE",
+            reconciler.OPERABILITY_VALIDATOR,
+        ),
+        (
+            "operability validator substitution",
+            "operability validator",
+            "OPERABILITY_VALIDATOR",
+            reconciler.VALIDATOR_MODULE,
+        ),
+    )
+    for name, field, attribute, replacement in cases:
+        expect_direct_authority_rejected(
+            reconciler,
+            name,
+            field,
+            attribute,
+            replacement,
+            contract_before,
+            status_before,
+        )
+    print(f"PASS boundary: direct preflight source/executable substitutions rejected: {len(cases)}")
+
+
 def prove_transactional_rollback(reconciler: object, tmp: Path) -> None:
     contract = tmp / "preflight-contract.json"
     status = tmp / "production-operability-status.json"
@@ -94,6 +166,8 @@ def main() -> int:
     validator = load_module(VALIDATOR, "memory_os_restore_drill_preflight_load_negative")
     reconciler = load_module(RECONCILER, "memory_os_restore_drill_preflight_reconcile_load_negative")
 
+    prove_executable_authority_rejection(reconciler)
+
     with tempfile.TemporaryDirectory(prefix=".tmp-preflight-load-", dir=TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
 
@@ -113,6 +187,7 @@ def main() -> int:
     expect_domain_fail("preflight reconcile authority path escapes repository", lambda: reconciler.load(escaped), reconciler.Fail)
 
     print("Preflight unreadable-authority and reconcile rollback negative suite PASS")
+    print("direct reconciler source/executable authority substitutions accepted: false")
     print("reconciler invalid UTF-8 authority leaked raw exception: false")
     print("reconciler unreadable directory authority leaked raw exception: false")
     print("reconciler escaped authority accepted: false")
