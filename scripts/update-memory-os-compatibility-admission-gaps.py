@@ -23,6 +23,7 @@ CLIENT_WRITER = ROOT / "scripts/register-memory-os-client-baseline.py"
 PARSER_WRITER = ROOT / "scripts/register-memory-os-parser-artifact.py"
 FOUNDATIONS_VALIDATOR = ROOT / "scripts/validate-memory-os-version-compatibility-foundations.py"
 EXECUTION_VALIDATOR = ROOT / "scripts/validate-memory-os-version-compatibility-execution-evidence.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -52,6 +53,19 @@ def run_validator(path: Path) -> None:
     completed = subprocess.run(["python", str(path)], cwd=ROOT, check=False)
     if completed.returncode != 0:
         raise SystemExit(f"canonical compatibility validator failed: {path.name}")
+
+
+def write_validated_output(document: dict[str, Any]) -> None:
+    original = OUTPUT.read_bytes() if OUTPUT.exists() else None
+    try:
+        OUTPUT.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+        run_validator(OPERABILITY_VALIDATOR)
+    except BaseException:
+        if original is None:
+            OUTPUT.unlink(missing_ok=True)
+        else:
+            OUTPUT.write_bytes(original)
+        raise
 
 
 def non_negative_count(value: Any, field: str) -> int:
@@ -215,7 +229,7 @@ def main() -> int:
             "complete independent integrated compatibility review"
         ]
     }
-    OUTPUT.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    write_validated_output(document)
     print("Memory OS compatibility admission gaps updated")
     print(f"blocking gaps: {len(blockers)}")
     print(f"approved backend releases: {release_count}")
