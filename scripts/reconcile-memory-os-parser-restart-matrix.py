@@ -16,9 +16,12 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/parser-restart-matrix-results.sample.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
-CANONICAL_RECONCILER = ROOT / "scripts/reconcile-memory-os-chaos-authority.py"
-PARSER_VALIDATOR = ROOT / "scripts/validate-memory-os-parser-restart-matrix.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CANONICAL_RECONCILER_PATH = ROOT / "scripts/reconcile-memory-os-chaos-authority.py"
+CANONICAL_PARSER_VALIDATOR = ROOT / "scripts/validate-memory-os-parser-restart-matrix.py"
+CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CANONICAL_RECONCILER = CANONICAL_RECONCILER_PATH
+PARSER_VALIDATOR = CANONICAL_PARSER_VALIDATOR
+OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 OLD_MISSING = "expanded parser restart matrix across timeout, CPU, memory, cancellation, process-group and host-restart failures"
@@ -60,9 +63,18 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
+    require(path == canonical, f"{label} authority drift")
+    require(canonical.is_file(), f"canonical {label} missing")
+    require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
+
+
 def load_canonical_normalizer():
-    require(CANONICAL_RECONCILER.is_file(), "canonical chaos authority reconciler missing")
-    require(not CANONICAL_RECONCILER.is_symlink(), "canonical chaos authority reconciler cannot be a symlink")
+    require_exact_authority(
+        CANONICAL_RECONCILER,
+        CANONICAL_RECONCILER_PATH,
+        "chaos authority reconciler",
+    )
     spec = importlib.util.spec_from_file_location("memory_os_canonical_chaos_authority_parser_matrix", CANONICAL_RECONCILER)
     require(spec is not None and spec.loader is not None, "cannot load canonical chaos authority reconciler")
     module = importlib.util.module_from_spec(spec)
@@ -110,6 +122,16 @@ def run_validator(path: Path, *, expected_sha: str | None = None) -> None:
 
 
 def validate_authority_chain(source_sha: str) -> None:
+    require_exact_authority(
+        PARSER_VALIDATOR,
+        CANONICAL_PARSER_VALIDATOR,
+        "parser restart validator",
+    )
+    require_exact_authority(
+        OPERABILITY_VALIDATOR,
+        CANONICAL_OPERABILITY_VALIDATOR,
+        "operability validator",
+    )
     run_validator(PARSER_VALIDATOR, expected_sha=source_sha)
     run_validator(OPERABILITY_VALIDATOR)
 
