@@ -40,6 +40,23 @@ def expect_rejection(module, value, field: str) -> None:
     require(rejected, f"invalid zero-count authority accepted for {field}: {value!r}")
 
 
+def expect_runtime_authority_identity(module, substitutions, label: str) -> None:
+    module.enforce_runtime_authorities()
+    for field, substitute in substitutions:
+        original = getattr(module, field)
+        try:
+            setattr(module, field, substitute)
+            rejected = False
+            try:
+                module.enforce_runtime_authorities()
+            except module.ReconcileFailure:
+                rejected = True
+            require(rejected, f"{label} accepted {field} authority substitution")
+        finally:
+            setattr(module, field, original)
+    module.enforce_runtime_authorities()
+
+
 def expect_source_authority_rejection(reconciler, validator, path: Path, field: str,
                                       replacement, label: str) -> None:
     original = path.read_bytes()
@@ -142,9 +159,12 @@ def expect_nonempty_source_inventory_allowed(module, validator_mode: bool) -> No
     }
     original_load = module.load
     original_load_module = module.load_module
+    original_enforce = getattr(module, "enforce_runtime_authorities", None)
     try:
         module.load = lambda path: values[path]
         module.load_module = lambda path, _name: writers[path]
+        if original_enforce is not None:
+            module.enforce_runtime_authorities = lambda: None
         if validator_mode:
             counts = module.validate_source_authorities()
         else:
@@ -152,6 +172,8 @@ def expect_nonempty_source_inventory_allowed(module, validator_mode: bool) -> No
     finally:
         module.load = original_load
         module.load_module = original_load_module
+        if original_enforce is not None:
+            module.enforce_runtime_authorities = original_enforce
     require(counts["approvedReleases"] == 2, "approved release source inventory was not preserved")
     require(counts["rollbackRequests"] == 1, "rollback request source inventory was not preserved")
     require(counts["reviewedParserArtifacts"] == 1, "parser source inventory was not preserved")
@@ -250,6 +272,29 @@ def main() -> int:
     canonical_reconciler = load_module(CANONICAL_RECONCILER, "canonical_compatibility_reconciler")
     reconciler = load_module(RECONCILER, "compatibility_foundation_status_reconciler")
     validator = load_module(FOUNDATION_VALIDATOR, "compatibility_foundation_validator")
+
+    expect_runtime_authority_identity(
+        canonical_reconciler,
+        (
+            ("VALIDATOR_PATH", ROOT / "scripts/validate-memory-os-operability.py"),
+            ("WORKFLOW_PATH", ROOT / ".github/workflows/client-server-support-window.yml"),
+        ),
+        "canonical compatibility reconciler",
+    )
+    expect_runtime_authority_identity(
+        reconciler,
+        (
+            ("RELEASE_WRITER_PATH", ROOT / "scripts/request-memory-os-rollback-rehearsal.py"),
+            ("ROLLBACK_WRITER_PATH", ROOT / "scripts/register-memory-os-release-baseline.py"),
+            ("PARSER_WRITER_PATH", ROOT / "scripts/register-memory-os-release-compatibility-pair.py"),
+            ("PAIR_WRITER_PATH", ROOT / "scripts/register-memory-os-parser-artifact.py"),
+            ("FOUNDATION_VALIDATOR_PATH", ROOT / "scripts/validate-memory-os-operability.py"),
+            ("OPERABILITY_VALIDATOR_PATH", ROOT / "scripts/validate-memory-os-version-compatibility-foundations.py"),
+            ("WORKFLOW_PATH", ROOT / ".github/workflows/client-server-support-window.yml"),
+        ),
+        "compatibility foundation reconciler",
+    )
+
     for field in reconciler.ZERO_COUNT_FIELDS:
         expect_rejection(reconciler, False, field)
         expect_rejection(reconciler, True, field)
@@ -281,7 +326,7 @@ def main() -> int:
         False, "release compatibility pair",
     )
 
-    print("PASS: compatibility foundations preserve source progression, canonical/shared authority and rollback")
+    print("PASS: compatibility foundations preserve source progression, exact executable authority and rollback")
     return 0
 
 
