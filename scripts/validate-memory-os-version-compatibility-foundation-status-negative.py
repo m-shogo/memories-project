@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+CANONICAL_RECONCILER = ROOT / "scripts/reconcile-memory-os-version-compatibility-canonical.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-version-compatibility-foundation-status.py"
 FOUNDATION_VALIDATOR = ROOT / "scripts/validate-memory-os-version-compatibility-foundations.py"
 
@@ -198,6 +199,26 @@ def expect_aggregate_validator_chain(reconciler) -> None:
             "foundation reconciler does not enforce foundation/operability validators in order")
 
 
+def expect_canonical_transaction_rollback(reconciler) -> None:
+    path = reconciler.PATH
+    original = path.read_bytes()
+    candidate = json.loads(original.decode("utf-8"))
+    candidate["supplementalCompatibilityEvidence"] = ["synthetic canonical rollback probe"]
+
+    def fail_post_write() -> None:
+        raise RuntimeError("synthetic canonical compatibility validator failure")
+
+    try:
+        reconciler.commit_transaction(candidate, validator_runner=fail_post_write)
+    except RuntimeError as exc:
+        require("synthetic canonical compatibility validator failure" in str(exc),
+                f"unexpected canonical rollback failure reason: {exc}")
+    else:
+        raise NegativeFailure("canonical compatibility reconcile accepted synthetic post-write failure")
+    require(path.read_bytes() == original,
+            "canonical compatibility reconcile left partial authority after validator failure")
+
+
 def expect_aggregate_transaction_rollback(reconciler) -> None:
     path = reconciler.STATUS_PATH
     original = path.read_bytes()
@@ -226,6 +247,7 @@ def expect_aggregate_transaction_rollback(reconciler) -> None:
 
 
 def main() -> int:
+    canonical_reconciler = load_module(CANONICAL_RECONCILER, "canonical_compatibility_reconciler")
     reconciler = load_module(RECONCILER, "compatibility_foundation_status_reconciler")
     validator = load_module(FOUNDATION_VALIDATOR, "compatibility_foundation_validator")
     for field in reconciler.ZERO_COUNT_FIELDS:
@@ -239,6 +261,7 @@ def main() -> int:
     expect_nonempty_source_inventory_allowed(validator, validator_mode=True)
     expect_stale_empty_evidence_cleanup(reconciler)
     expect_aggregate_validator_chain(reconciler)
+    expect_canonical_transaction_rollback(canonical_reconciler)
     expect_aggregate_transaction_rollback(reconciler)
 
     expect_source_authority_rejection(
@@ -258,7 +281,7 @@ def main() -> int:
         False, "release compatibility pair",
     )
 
-    print("PASS: compatibility foundations preserve source progression, shared authority and aggregate rollback")
+    print("PASS: compatibility foundations preserve source progression, canonical/shared authority and rollback")
     return 0
 
 
