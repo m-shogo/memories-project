@@ -267,6 +267,18 @@ jobs:
           cat "$log"
           exit 0
 
+      - name: Reject stale generation recovery authority on pull requests
+        if: steps.validation.outputs.exit_code == '0' && github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- \
+            contracts/operations/backup-restore-generation-evidence-contract.v1.json \
+            contracts/operations/backup-restore-generation-evidence-registry.v1.json \
+            contracts/operations/backup-restore-generation-binding-contract.v1.json \
+            contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json \
+            contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json \
+            contracts/operations/production-operability-status.json
+
       - name: Commit bounded recovery authority
         if: steps.validation.outputs.exit_code == '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         run: |
