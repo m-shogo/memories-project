@@ -10,6 +10,28 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+REQUEST = "contracts/operations/requests/operability-admission-inventory.v1.json"
+REQUEST_FIELDS = {
+    "schemaVersion",
+    "requestId",
+    "operation",
+    "productionTraffic",
+    "productionCredentials",
+    "productionEvidence",
+    "constraints",
+}
+REQUEST_CONSTRAINTS = {
+    "deterministicOutputRequired",
+    "canonicalRegistryCountsOnly",
+    "foundationImplementationMustNotEqualProductionEvidence",
+    "productionDecisionMustRemainNoGo",
+    "registeredGenerationCountMustRemainDistinctFromSemanticPreflightEligibility",
+    "approvedRecoveryObjectiveCountMustDeriveFromTypedHumanApprovalAuthority",
+    "recoveryCandidateRequiresIndependentEvidenceReview",
+    "recoveryCandidateMustNotImplyHumanProductionPromotionReview",
+    "recoveryCandidateMustNotAuthorizeProductionPromotion",
+    "humanProductionPromotionAuthorityMustRemainSeparate",
+}
 
 SOURCES: tuple[tuple[str, str, str, str, str], ...] = (
     (
@@ -191,6 +213,21 @@ def load(relative: str) -> dict[str, Any]:
     return value
 
 
+def validate_inventory_request() -> None:
+    request = load(REQUEST)
+    require(set(request) == REQUEST_FIELDS, "operability inventory request field shape drift")
+    require(request.get("schemaVersion") == "memory-os-operation-request.v1", "operability inventory request schema drift")
+    require(request.get("requestId") == "operability-admission-inventory-20260807-v1", "operability inventory request identity drift")
+    require(request.get("operation") == "GENERATE_OPERABILITY_ADMISSION_INVENTORY", "operability inventory request operation drift")
+    for field in ("productionTraffic", "productionCredentials", "productionEvidence"):
+        require(request.get(field) is False, f"operability inventory request cannot enable {field}")
+    constraints = request.get("constraints")
+    require(isinstance(constraints, dict), "operability inventory request constraints missing")
+    require(set(constraints) == REQUEST_CONSTRAINTS, "operability inventory request constraint shape drift")
+    for field in REQUEST_CONSTRAINTS:
+        require(constraints.get(field) is True, f"operability inventory request constraint must remain true: {field}")
+
+
 def load_validator(relative: str, module_name: str, function_name: str):
     path = ROOT / relative
     try:
@@ -269,6 +306,7 @@ def validate_command_source(relative: str, module_name: str, label: str) -> None
 
 
 def main() -> int:
+    validate_inventory_request()
     human_tabletop_count = validate_human_tabletop_source()
     validate_load_source()
     for relative, module_name, label in COMMAND_SOURCES:
@@ -276,6 +314,7 @@ def main() -> int:
     for relative, validator_path, module_name, function_name, label in SOURCES:
         validate_source(relative, validator_path, module_name, function_name, label)
     print("Memory OS operability inventory source authority validation PASS")
+    print("operability inventory generation request authority: PASS")
     print(f"canonical append-only source registries: {len(SOURCES)}")
     print(f"validated backup/restore derived authorities: {len(COMMAND_SOURCES)}")
     print(f"validated human tabletop scenarios: {human_tabletop_count}")
@@ -286,6 +325,8 @@ def main() -> int:
     print("raw load readiness/counts accepted without canonical load validation: false")
     print("raw backup/restore derived counts accepted without canonical validators: false")
     print("raw registry counts accepted without owning authority validation: false")
+    print("request production traffic/credentials/evidence enabled: false")
+    print("request human-approved recovery-objective constraint bypassed: false")
     print("production evidence created: false")
     print("production decision: NO_GO")
     return 0
