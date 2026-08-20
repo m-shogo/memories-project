@@ -59,11 +59,26 @@ def expect_authority_rejected(validator: Any, name: str, callback: Callable[[], 
     raise RuntimeError(f"{name}: substituted authority accepted")
 
 
+def expect_direct_reconcile_rejected(reconciler: Any, name: str, expected: str, contract_before: bytes, status_before: bytes) -> None:
+    try:
+        reconciler.main()
+    except reconciler.Fail as exc:
+        if expected not in str(exc):
+            raise RuntimeError(f"{name}: direct reconcile rejected at wrong boundary: {exc}") from exc
+    else:
+        raise RuntimeError(f"{name}: direct reconcile accepted substituted authority")
+    if CONTRACT.read_bytes() != contract_before or STATUS.read_bytes() != status_before:
+        raise RuntimeError(f"{name}: direct reconcile mutated contract/status before rejecting authority")
+
+
 def prove_executable_authority_rejection(validator: Any, writer: Any, reconciler: Any) -> None:
     original_lock = writer.LOCK
     original_generation_writer = writer.GEN_WRITER
     original_reconciler_validator = reconciler.VALIDATOR
     original_reconciler_status = reconciler.STATUS
+    original_reconciler_operability = reconciler.OPERABILITY_VALIDATOR
+    contract_before = CONTRACT.read_bytes()
+    status_before = STATUS.read_bytes()
     try:
         writer.LOCK = ALTERNATE_LOCK
         expect_authority_rejected(
@@ -87,7 +102,24 @@ def prove_executable_authority_rejection(validator: Any, writer: Any, reconciler
             "reconciler validator substitution",
             lambda: validator.validate_reconciler_authority(reconciler),
         )
+        expect_direct_reconcile_rejected(
+            reconciler,
+            "reconciler validator substitution",
+            "distributed runtime validator authority drift",
+            contract_before,
+            status_before,
+        )
         reconciler.VALIDATOR = original_reconciler_validator
+
+        reconciler.OPERABILITY_VALIDATOR = reconciler.RATE_LIMIT_VALIDATOR
+        expect_direct_reconcile_rejected(
+            reconciler,
+            "reconciler operability validator substitution",
+            "operability validator authority drift",
+            contract_before,
+            status_before,
+        )
+        reconciler.OPERABILITY_VALIDATOR = original_reconciler_operability
 
         reconciler.STATUS = CONTRACT
         expect_authority_rejected(
@@ -100,6 +132,9 @@ def prove_executable_authority_rejection(validator: Any, writer: Any, reconciler
         writer.GEN_WRITER = original_generation_writer
         reconciler.VALIDATOR = original_reconciler_validator
         reconciler.STATUS = original_reconciler_status
+        reconciler.OPERABILITY_VALIDATOR = original_reconciler_operability
+        CONTRACT.write_bytes(contract_before)
+        STATUS.write_bytes(status_before)
 
 
 def prove_contract_lock_binding_rejection(validator: Any) -> None:
@@ -252,6 +287,7 @@ def main() -> int:
     print("PASS: distributed rate-limit runtime registry corruption, authority substitution, append rollback and reconcile partial writes are rejected")
     print(f"corruption cases: {len(cases)}")
     print("executable authority substitution: rejected")
+    print("direct reconciler executable substitution: rejected")
     print("contract append lock substitution: rejected")
     print("writer post-append rollback: true")
     print("reconciler auto-heal: false")
