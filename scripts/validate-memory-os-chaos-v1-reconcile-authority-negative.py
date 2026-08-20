@@ -10,9 +10,13 @@ ROOT = Path(__file__).resolve().parents[1]
 V1_RECONCILER = ROOT / "scripts/reconcile-memory-os-chaos-failure-drills.py"
 V2_RECONCILER = ROOT / "scripts/reconcile-memory-os-chaos-failure-drills-v2.py"
 PARSER_RECONCILER = ROOT / "scripts/reconcile-memory-os-parser-restart-matrix.py"
+INFLIGHT_RECONCILER = ROOT / "scripts/reconcile-memory-os-parser-inflight-cancellation.py"
+PROCESS_GROUP_RECONCILER = ROOT / "scripts/reconcile-memory-os-parser-process-group-reaping.py"
 V1_VALIDATOR = ROOT / "scripts/validate-memory-os-chaos-failure-drills.py"
 V2_VALIDATOR = ROOT / "scripts/validate-memory-os-chaos-failure-drills-v2.py"
 PARSER_VALIDATOR = ROOT / "scripts/validate-memory-os-parser-restart-matrix.py"
+INFLIGHT_VALIDATOR = ROOT / "scripts/validate-memory-os-parser-inflight-cancellation.py"
+PROCESS_GROUP_VALIDATOR = ROOT / "scripts/validate-memory-os-parser-process-group-reaping.py"
 
 
 def load_module(path: Path, name: str):
@@ -75,15 +79,50 @@ def validate_module(
         module.CANONICAL_RECONCILER = original_reconciler
 
 
+def validate_inflight(module) -> None:
+    substitutions = (
+        ("INFLIGHT_VALIDATOR", V1_VALIDATOR, "in-flight validator authority drift"),
+        ("OPERABILITY_VALIDATOR", V1_VALIDATOR, "operability validator authority drift"),
+        ("CANONICAL_RECONCILER", V1_VALIDATOR, "chaos authority reconciler authority drift"),
+        ("CANONICAL_OVERLAY", V1_VALIDATOR, "chaos in-flight overlay authority drift"),
+    )
+    for attr, substitute, expected in substitutions:
+        original = getattr(module, attr)
+        try:
+            setattr(module, attr, substitute)
+            expect_rejection(module.validate_executable_authorities, expected)
+        finally:
+            setattr(module, attr, original)
+
+
+def validate_process_group(module) -> None:
+    source_sha = "0" * 40
+    for attr, substitute, expected in (
+        ("PROCESS_GROUP_VALIDATOR", V1_VALIDATOR, "process-group validator authority drift"),
+        ("OPERABILITY_VALIDATOR", V1_VALIDATOR, "operability validator authority drift"),
+    ):
+        original = getattr(module, attr)
+        try:
+            setattr(module, attr, substitute)
+            expect_rejection(lambda: module.run_authority_validators(source_sha), expected)
+        finally:
+            setattr(module, attr, original)
+
+
 def main() -> int:
-    for path in (
+    fixtures = (
         V1_RECONCILER,
         V2_RECONCILER,
         PARSER_RECONCILER,
+        INFLIGHT_RECONCILER,
+        PROCESS_GROUP_RECONCILER,
         V1_VALIDATOR,
         V2_VALIDATOR,
         PARSER_VALIDATOR,
-    ):
+        INFLIGHT_VALIDATOR,
+        PROCESS_GROUP_VALIDATOR,
+    )
+    for path in fixtures:
         if not path.is_file():
             raise RuntimeError(f"authority fixture missing: {path.name}")
 
@@ -108,8 +147,14 @@ def main() -> int:
         validator_error="parser restart validator authority drift",
         reconciler_substitute=V1_VALIDATOR,
     )
+    validate_inflight(
+        load_module(INFLIGHT_RECONCILER, "memory_os_parser_inflight_authority_negative")
+    )
+    validate_process_group(
+        load_module(PROCESS_GROUP_RECONCILER, "memory_os_process_group_authority_negative")
+    )
 
-    print("PASS: v1/v2/parser-restart reconcile executable substitutions are rejected")
+    print("PASS: chaos scenario reconcile executable substitutions are rejected")
     return 0
 
 
