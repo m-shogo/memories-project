@@ -18,6 +18,7 @@ GEN_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-r
 TYPED_WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
 GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 EVIDENCE_PREFIX = "production-equivalent non-resurrection admission overlay is typed and fail-closed:"
 LOCAL_APPLE_EVIDENCE = "exact-source local Apple replay-guard logical restore proves synthetic live nonce and authorization-code replay records remain consumed after restore and the identical pair is rejected without durable replay mutation; this remains same-cluster synthetic local evidence and is not PITR or production-equivalent proof"
@@ -194,6 +195,7 @@ def main() -> int:
         append_once(refs, ref)
 
     require_repo_file(VALIDATOR, "typed non-resurrection validator missing")
+    require_repo_file(OPERABILITY_VALIDATOR, "operability validator missing")
     rendered = {
         REGISTRY: json.dumps(registry, indent=2, ensure_ascii=False) + "\n",
         GEN_REGISTRY: json.dumps(generation_registry, indent=2, ensure_ascii=False) + "\n",
@@ -205,6 +207,8 @@ def main() -> int:
             write_text(path, text)
         completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
         require(completed.returncode == 0, f"typed non-resurrection validator failed:\n{completed.stdout[-7000:]}{completed.stderr[-7000:]}")
+        completed = subprocess.run([sys.executable, str(OPERABILITY_VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        require(completed.returncode == 0, f"operability validator failed:\n{completed.stdout[-7000:]}{completed.stderr[-7000:]}")
     except Exception:
         for path, text in original_text.items():
             write_text(path, text)
