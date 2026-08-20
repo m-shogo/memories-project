@@ -62,9 +62,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Confirm exact clean authority source
+        run: |
+          set -euo pipefail
+          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
       - name: Compile unreadable-authority boundaries
         run: |
           python -m py_compile \
@@ -99,3 +107,5 @@ jobs:
           python scripts/validate-memory-os-backup-restore-generation-evidence-load-negative.py
           python scripts/validate-memory-os-backup-restore-non-resurrection-load-negative.py
           python scripts/validate-memory-os-backup-restore-admission-chain-load-negative.py
+      - name: Verify read-only negative suite
+        run: test -z "$(git status --porcelain)"
