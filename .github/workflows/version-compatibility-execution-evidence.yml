@@ -6,8 +6,13 @@ on:
       - ".github/workflows/version-compatibility-execution-evidence.yml"
       - "contracts/operations/requests/version-compatibility-status-normalize.v1.json"
       - "contracts/operations/version-compatibility-execution-evidence.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "scripts/validate-memory-os-version-compatibility-execution-evidence.py"
+      - "scripts/validate-memory-os-version-compatibility-execution-status-reconcile-negative.py"
       - "scripts/reconcile-memory-os-version-compatibility-execution-status.py"
+      - "scripts/validate-memory-os-version-compatibility.py"
+      - "scripts/validate-memory-os-version-compatibility-foundations.py"
+      - "scripts/validate-memory-os-operability.py"
       - "docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/mixed-version-session-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json"
@@ -19,8 +24,13 @@ on:
       - ".github/workflows/version-compatibility-execution-evidence.yml"
       - "contracts/operations/requests/version-compatibility-status-normalize.v1.json"
       - "contracts/operations/version-compatibility-execution-evidence.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "scripts/validate-memory-os-version-compatibility-execution-evidence.py"
+      - "scripts/validate-memory-os-version-compatibility-execution-status-reconcile-negative.py"
       - "scripts/reconcile-memory-os-version-compatibility-execution-status.py"
+      - "scripts/validate-memory-os-version-compatibility.py"
+      - "scripts/validate-memory-os-version-compatibility-foundations.py"
+      - "scripts/validate-memory-os-operability.py"
       - "docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/mixed-version-session-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json"
@@ -68,8 +78,16 @@ jobs:
           echo "STAGE: py_compile" >> "$log"
           python -m py_compile \
             scripts/validate-memory-os-version-compatibility-execution-evidence.py \
+            scripts/validate-memory-os-version-compatibility-execution-status-reconcile-negative.py \
             scripts/reconcile-memory-os-version-compatibility-execution-status.py \
+            scripts/validate-memory-os-version-compatibility.py \
+            scripts/validate-memory-os-version-compatibility-foundations.py \
+            scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: execution-status-negative" >> "$log"
+            python scripts/validate-memory-os-version-compatibility-execution-status-reconcile-negative.py >> "$log" 2>&1 || code=$?
+          fi
           if [[ "$code" == "0" ]]; then
             echo "STAGE: execution-validator" >> "$log"
             python scripts/validate-memory-os-version-compatibility-execution-evidence.py >> "$log" 2>&1 || code=$?
