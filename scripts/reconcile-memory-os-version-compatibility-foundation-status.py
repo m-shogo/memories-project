@@ -12,20 +12,36 @@ from pathlib import Path
 from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
-FOUNDATION_PATH = ROOT / "contracts/operations/version-compatibility-foundations.v1.json"
-STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
-RELEASE_CONTRACT_PATH = ROOT / "contracts/operations/release-baseline-registry-contract.v1.json"
-RELEASE_REGISTRY_PATH = ROOT / "contracts/operations/release-baseline-registry.v1.json"
-RELEASE_WRITER_PATH = ROOT / "scripts/register-memory-os-release-baseline.py"
-ROLLBACK_CONTRACT_PATH = ROOT / "contracts/operations/rollback-rehearsal-gate-contract.v1.json"
-ROLLBACK_REGISTRY_PATH = ROOT / "contracts/operations/rollback-rehearsal-registry.v1.json"
-ROLLBACK_WRITER_PATH = ROOT / "scripts/request-memory-os-rollback-rehearsal.py"
-PARSER_REGISTRY_PATH = ROOT / "contracts/operations/parser-artifact-registry.v1.json"
-PARSER_WRITER_PATH = ROOT / "scripts/register-memory-os-parser-artifact.py"
-PAIR_REGISTRY_PATH = ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"
-PAIR_WRITER_PATH = ROOT / "scripts/register-memory-os-release-compatibility-pair.py"
-FOUNDATION_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-version-compatibility-foundations.py"
-OPERABILITY_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-operability.py"
+FOUNDATION_REL = Path("contracts/operations/version-compatibility-foundations.v1.json")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+RELEASE_CONTRACT_REL = Path("contracts/operations/release-baseline-registry-contract.v1.json")
+RELEASE_REGISTRY_REL = Path("contracts/operations/release-baseline-registry.v1.json")
+RELEASE_WRITER_REL = Path("scripts/register-memory-os-release-baseline.py")
+ROLLBACK_CONTRACT_REL = Path("contracts/operations/rollback-rehearsal-gate-contract.v1.json")
+ROLLBACK_REGISTRY_REL = Path("contracts/operations/rollback-rehearsal-registry.v1.json")
+ROLLBACK_WRITER_REL = Path("scripts/request-memory-os-rollback-rehearsal.py")
+PARSER_REGISTRY_REL = Path("contracts/operations/parser-artifact-registry.v1.json")
+PARSER_WRITER_REL = Path("scripts/register-memory-os-parser-artifact.py")
+PAIR_REGISTRY_REL = Path("contracts/operations/release-compatibility-pair-registry.v1.json")
+PAIR_WRITER_REL = Path("scripts/register-memory-os-release-compatibility-pair.py")
+FOUNDATION_VALIDATOR_REL = Path("scripts/validate-memory-os-version-compatibility-foundations.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+WORKFLOW_REL = Path(".github/workflows/version-compatibility-foundations.yml")
+FOUNDATION_PATH = ROOT / FOUNDATION_REL
+STATUS_PATH = ROOT / STATUS_REL
+RELEASE_CONTRACT_PATH = ROOT / RELEASE_CONTRACT_REL
+RELEASE_REGISTRY_PATH = ROOT / RELEASE_REGISTRY_REL
+RELEASE_WRITER_PATH = ROOT / RELEASE_WRITER_REL
+ROLLBACK_CONTRACT_PATH = ROOT / ROLLBACK_CONTRACT_REL
+ROLLBACK_REGISTRY_PATH = ROOT / ROLLBACK_REGISTRY_REL
+ROLLBACK_WRITER_PATH = ROOT / ROLLBACK_WRITER_REL
+PARSER_REGISTRY_PATH = ROOT / PARSER_REGISTRY_REL
+PARSER_WRITER_PATH = ROOT / PARSER_WRITER_REL
+PAIR_REGISTRY_PATH = ROOT / PAIR_REGISTRY_REL
+PAIR_WRITER_PATH = ROOT / PAIR_WRITER_REL
+FOUNDATION_VALIDATOR_PATH = ROOT / FOUNDATION_VALIDATOR_REL
+OPERABILITY_VALIDATOR_PATH = ROOT / OPERABILITY_VALIDATOR_REL
+WORKFLOW_PATH = ROOT / WORKFLOW_REL
 
 EXISTING = (
     "supplemental compatibility foundation authority records candidate-only, local-CI-only and empty-registry evidence without changing the canonical approved-release matrix",
@@ -65,6 +81,40 @@ class ReconcileFailure(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise ReconcileFailure(message)
+
+
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise ReconcileFailure(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    for path, relative, field in (
+        (FOUNDATION_PATH, FOUNDATION_REL, "compatibility foundation contract"),
+        (STATUS_PATH, STATUS_REL, "production operability status"),
+        (RELEASE_CONTRACT_PATH, RELEASE_CONTRACT_REL, "release baseline contract"),
+        (RELEASE_REGISTRY_PATH, RELEASE_REGISTRY_REL, "release baseline registry"),
+        (RELEASE_WRITER_PATH, RELEASE_WRITER_REL, "release baseline writer"),
+        (ROLLBACK_CONTRACT_PATH, ROLLBACK_CONTRACT_REL, "rollback rehearsal contract"),
+        (ROLLBACK_REGISTRY_PATH, ROLLBACK_REGISTRY_REL, "rollback rehearsal registry"),
+        (ROLLBACK_WRITER_PATH, ROLLBACK_WRITER_REL, "rollback rehearsal writer"),
+        (PARSER_REGISTRY_PATH, PARSER_REGISTRY_REL, "parser artifact registry"),
+        (PARSER_WRITER_PATH, PARSER_WRITER_REL, "parser artifact writer"),
+        (PAIR_REGISTRY_PATH, PAIR_REGISTRY_REL, "release compatibility pair registry"),
+        (PAIR_WRITER_PATH, PAIR_WRITER_REL, "release compatibility pair writer"),
+        (FOUNDATION_VALIDATOR_PATH, FOUNDATION_VALIDATOR_REL, "compatibility foundation validator"),
+        (OPERABILITY_VALIDATOR_PATH, OPERABILITY_VALIDATOR_REL, "operability validator"),
+        (WORKFLOW_PATH, WORKFLOW_REL, "compatibility foundations workflow"),
+    ):
+        require_exact_repo_file(path, relative, field)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -153,6 +203,7 @@ def commit_status_transaction(
 
 
 def validate_source_registries() -> dict[str, int]:
+    enforce_runtime_authorities()
     releases = load(RELEASE_REGISTRY_PATH)
     rollback = load(ROLLBACK_REGISTRY_PATH)
     parsers = load(PARSER_REGISTRY_PATH)
@@ -183,6 +234,7 @@ def validate_source_registries() -> dict[str, int]:
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     foundation = load(FOUNDATION_PATH)
     boundaries = foundation.get("aggregateBoundaries")
     require(isinstance(boundaries, dict), "compatibility foundation boundary missing")
