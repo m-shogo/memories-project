@@ -9,10 +9,14 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-LOAD = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
-STATUS = ROOT / "contracts/operations/production-operability-status.json"
-LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CANONICAL_LOAD = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
+CANONICAL_STATUS = ROOT / "contracts/operations/production-operability-status.json"
+CANONICAL_LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
+CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+LOAD = CANONICAL_LOAD
+STATUS = CANONICAL_STATUS
+LOAD_VALIDATOR = CANONICAL_LOAD_VALIDATOR
+OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
 
 PREFENCE_PROVEN_FLAGS = (
     "previewPreFenceInFlightLinearizationProven",
@@ -34,6 +38,24 @@ CANONICAL_HOST_BLOCKER = (
 )
 
 
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise RuntimeError(message)
+
+
+def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
+    require(path == canonical, f"{label} authority drift")
+    require(canonical.is_file(), f"canonical {label} missing")
+    require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
+
+
+def validate_authorities() -> None:
+    require_exact_authority(LOAD, CANONICAL_LOAD, "load contract")
+    require_exact_authority(STATUS, CANONICAL_STATUS, "production status")
+    require_exact_authority(LOAD_VALIDATOR, CANONICAL_LOAD_VALIDATOR, "load validator")
+    require_exact_authority(OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, "operability validator")
+
+
 def load(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -47,6 +69,7 @@ def validate(path: Path) -> None:
 
 
 def main() -> int:
+    validate_authorities()
     # Refuse to derive blocker state from a corrupt load authority. The full
     # validator is safe before reconciliation because PARTIAL status does not
     # require the human-readable missingEvidence list to already be normalized.
