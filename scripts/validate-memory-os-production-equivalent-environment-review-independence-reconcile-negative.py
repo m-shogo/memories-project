@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove environment review-independence reconciliation rejects helper substitution and rolls back failed validation."""
+"""Prove environment review-independence reconciliation pins authorities, rejects helper substitution and rolls back failed validation."""
 
 from __future__ import annotations
 
@@ -32,10 +32,39 @@ def load_reconciler():
     return module
 
 
+def expect_rejected(reconciler, name: str, expected: str) -> None:
+    try:
+        reconciler.main()
+    except reconciler.Fail as exc:
+        require(expected in str(exc), f"{name} rejected at wrong boundary: {exc}")
+        print(f"PASS reject: {name}")
+        return
+    except Exception as exc:
+        raise Fail(f"{name} leaked non-domain exception: {type(exc).__name__}: {exc}") from exc
+    raise Fail(f"{name} unexpectedly accepted")
+
+
 def main() -> int:
     require(RECONCILER.is_file(), "environment review reconciler missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
     reconciler = load_reconciler()
+    canonical_contract = reconciler.CONTRACT.read_bytes()
+
+    original_validator = reconciler.VALIDATOR
+    reconciler.VALIDATOR = reconciler.HELPER
+    try:
+        expect_rejected(reconciler, "review independence validator executable substitution", "review independence validator authority drift")
+        require(reconciler.CONTRACT.read_bytes() == canonical_contract, "validator substitution changed review-independence contract")
+    finally:
+        reconciler.VALIDATOR = original_validator
+
+    original_generation_registry = reconciler.GEN_REGISTRY
+    reconciler.GEN_REGISTRY = reconciler.CONTRACT
+    try:
+        expect_rejected(reconciler, "review independence generation registry substitution", "generation registry authority drift")
+        require(reconciler.CONTRACT.read_bytes() == canonical_contract, "registry substitution changed review-independence contract")
+    finally:
+        reconciler.GEN_REGISTRY = original_generation_registry
 
     with tempfile.TemporaryDirectory(prefix=".tmp-environment-review-reconcile-", dir=TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
@@ -73,6 +102,8 @@ def main() -> int:
         require(contract_copy.read_bytes() == original_contract, "failed review-independence validation left contract mutation")
 
     print("Environment review-independence reconcile negative suite PASS")
+    print("review validator executable substitution accepted: false")
+    print("generation registry substitution accepted: false")
     print("eligibility helper substitution accepted: false")
     print("failed post-validation leaves authority mutation behind: false")
     print("review evidence created: false")
