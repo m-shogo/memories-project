@@ -27,6 +27,15 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_validator() -> ModuleType:
+    try:
+        lexical = VALIDATOR_PATH.relative_to(ROOT)
+        resolved = VALIDATOR_PATH.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise SystemExit("operation evidence validator authority is unavailable") from exc
+    if lexical != Path("scripts/validate-memory-os-rate-limit-operation-evidence.py"):
+        raise SystemExit("operation evidence validator authority path drift")
+    if resolved != lexical or not VALIDATOR_PATH.is_file():
+        raise SystemExit("operation evidence validator authority escapes canonical repository path")
     spec = importlib.util.spec_from_file_location(
         "memory_os_rate_limit_operation_validator", VALIDATOR_PATH
     )
@@ -40,7 +49,13 @@ def load_validator() -> ModuleType:
 def timestamp(value: str) -> dt.datetime:
     if not isinstance(value, str) or not value.endswith("Z"):
         raise SystemExit("timestamp must be UTC RFC3339")
-    return dt.datetime.fromisoformat(value[:-1] + "+00:00")
+    try:
+        parsed = dt.datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError as exc:
+        raise SystemExit("timestamp must be valid UTC RFC3339") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() != dt.timedelta(0):
+        raise SystemExit("timestamp must be valid UTC RFC3339")
+    return parsed
 
 
 def resolve_ledger(raw: str | None) -> Path:
@@ -55,17 +70,20 @@ def resolve_ledger(raw: str | None) -> Path:
 
 def validate_authority(ledger: Path, record: dict[str, Any]) -> None:
     validator = load_validator()
+    failure_type = getattr(validator, "ValidationFailure", None)
+    if not isinstance(failure_type, type) or not issubclass(failure_type, BaseException):
+        raise SystemExit("operation evidence validator failure authority is invalid")
     try:
         if ledger == DEFAULT_LEDGER.resolve():
             result = validator.main()
-            if result != 0:
+            if not isinstance(result, int) or isinstance(result, bool) or result != 0:
                 raise SystemExit(
                     f"canonical operation ledger validation returned non-zero: {result}"
                 )
         else:
             contract, policy_ids = validator.load_contract_context()
             validator.validate_record(record, contract, policy_ids)
-    except validator.ValidationFailure as exc:
+    except failure_type as exc:
         raise SystemExit(f"operation evidence authority is invalid: {exc}") from exc
 
 
