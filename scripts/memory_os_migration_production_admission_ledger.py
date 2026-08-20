@@ -17,6 +17,8 @@ LEDGER_CONTRACT = ROOT / "contracts/operations/migration-evidence-registry-contr
 LEDGER_WRITER = ROOT / "scripts/register-memory-os-migration-rehearsal-evidence.py"
 LEDGER_VALIDATOR = ROOT / "scripts/validate-memory-os-migration-evidence-registry.py"
 LEDGER_LOCK = ROOT / "contracts/operations/.migration-evidence-registry.lock"
+LEDGER_WRITER_REL = Path("scripts/register-memory-os-migration-rehearsal-evidence.py")
+LEDGER_VALIDATOR_REL = Path("scripts/validate-memory-os-migration-evidence-registry.py")
 
 
 class LedgerBindingFailure(RuntimeError):
@@ -37,10 +39,20 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def canonical_repo_file(path: Path, relative: Path, label: str) -> Path:
+    expected = ROOT / relative
+    require(path == expected, f"canonical {label} executable authority drift")
+    try:
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise LedgerBindingFailure(f"canonical {label} missing or escapes repository") from exc
+    require(resolved == relative and path.is_file(), f"canonical {label} must resolve to repository file")
+    return path
+
+
 def load_writer() -> ModuleType:
-    require(LEDGER_WRITER == ROOT / "scripts/register-memory-os-migration-rehearsal-evidence.py",
-            "canonical migration rehearsal writer executable authority drift")
-    spec = importlib.util.spec_from_file_location("memory_os_migration_rehearsal_writer_for_admission", LEDGER_WRITER)
+    writer_path = canonical_repo_file(LEDGER_WRITER, LEDGER_WRITER_REL, "migration rehearsal writer")
+    spec = importlib.util.spec_from_file_location("memory_os_migration_rehearsal_writer_for_admission", writer_path)
     require(spec is not None and spec.loader is not None, "cannot load canonical migration rehearsal writer")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -52,10 +64,9 @@ def load_writer() -> ModuleType:
 
 
 def validate_canonical_ledger() -> dict[str, Any]:
-    require(LEDGER_VALIDATOR == ROOT / "scripts/validate-memory-os-migration-evidence-registry.py",
-            "canonical migration rehearsal validator executable authority drift")
+    validator_path = canonical_repo_file(LEDGER_VALIDATOR, LEDGER_VALIDATOR_REL, "migration rehearsal validator")
     completed = subprocess.run(
-        [sys.executable, str(LEDGER_VALIDATOR)],
+        [sys.executable, str(validator_path)],
         cwd=ROOT,
         text=True,
         stdout=subprocess.PIPE,
