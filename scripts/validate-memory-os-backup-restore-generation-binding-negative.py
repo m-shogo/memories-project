@@ -177,18 +177,25 @@ def prove_status_reconcile_boundaries() -> None:
         original_status_path = reconciler.STATUS
         original_validator = reconciler.VALIDATOR
         original_backup_validator = reconciler.BACKUP_VALIDATOR
+        original_operability_validator = reconciler.OPERABILITY_VALIDATOR
         try:
             reconciler.CONTRACT = contract_copy
             reconciler.STATUS = status_copy
             reconciler.VALIDATOR = pass_validator
             reconciler.BACKUP_VALIDATOR = fail_validator
+            reconciler.OPERABILITY_VALIDATOR = pass_validator
             expect_rejected(reconciler, "generation status forced post-validator failure", reconciler.main)
             require(status_copy.read_bytes() == original_status, "generation status rollback drift after post-validator failure")
+
+            reconciler.BACKUP_VALIDATOR = pass_validator
+            reconciler.OPERABILITY_VALIDATOR = fail_validator
+            expect_rejected(reconciler, "generation status forced operability failure", reconciler.main)
+            require(status_copy.read_bytes() == original_status, "generation status rollback drift after operability failure")
 
             contract = json.loads(contract_copy.read_text(encoding="utf-8"))
             contract["currentBoundary"]["generationBoundBackupCount"] = True
             contract_copy.write_text(json.dumps(contract, indent=2) + "\n", encoding="utf-8")
-            reconciler.BACKUP_VALIDATOR = pass_validator
+            reconciler.OPERABILITY_VALIDATOR = pass_validator
             expect_rejected(reconciler, "generation status boolean boundary count", reconciler.main)
             require(status_copy.read_bytes() == original_status, "generation status mutated after boolean count rejection")
         finally:
@@ -196,8 +203,9 @@ def prove_status_reconcile_boundaries() -> None:
             reconciler.STATUS = original_status_path
             reconciler.VALIDATOR = original_validator
             reconciler.BACKUP_VALIDATOR = original_backup_validator
+            reconciler.OPERABILITY_VALIDATOR = original_operability_validator
 
-    print("PASS rollback: generation status restored byte-for-byte after forced post-validator failure")
+    print("PASS rollback: generation status restored byte-for-byte after forced backup and operability validator failures")
 
 
 def main() -> int:
@@ -393,6 +401,7 @@ def main() -> int:
     print("invalid UTF-8 or unreadable generation-binding authority accepted: false")
     print("generation-binding authority symlink loop accepted: false")
     print("generation status post-validator failure leaves partial status: false")
+    print("generation status operability failure leaves partial status: false")
     print("generation status boolean boundary count accepted: false")
     print("artifact path escape accepted: false")
     print("local foundation evidence symlink escape accepted: false")
