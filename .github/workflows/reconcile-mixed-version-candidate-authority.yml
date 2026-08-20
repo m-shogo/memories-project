@@ -10,6 +10,7 @@ on:
       - "docs/fixtures/memory-os-operability/mixed-version-candidate-rejections.v1.json"
       - "scripts/validate-memory-os-mixed-version-candidate.py"
       - "scripts/reconcile-memory-os-mixed-version-candidate.py"
+      - "scripts/validate-memory-os-mixed-version-candidate-reconcile-rollback-negative.py"
       - "scripts/validate-memory-os-version-compatibility.py"
       - "scripts/validate-memory-os-operability.py"
   push:
@@ -23,6 +24,7 @@ on:
       - "docs/fixtures/memory-os-operability/mixed-version-candidate-rejections.v1.json"
       - "scripts/validate-memory-os-mixed-version-candidate.py"
       - "scripts/reconcile-memory-os-mixed-version-candidate.py"
+      - "scripts/validate-memory-os-mixed-version-candidate-reconcile-rollback-negative.py"
       - "scripts/validate-memory-os-version-compatibility.py"
       - "scripts/validate-memory-os-operability.py"
   schedule:
@@ -69,8 +71,14 @@ jobs:
           python -m py_compile \
             scripts/validate-memory-os-mixed-version-candidate.py \
             scripts/reconcile-memory-os-mixed-version-candidate.py \
+            scripts/validate-memory-os-mixed-version-candidate-reconcile-rollback-negative.py \
             scripts/validate-memory-os-version-compatibility.py \
             scripts/validate-memory-os-operability.py
+
+      - name: Validate candidate reconcile rollback boundary
+        run: |
+          set -euo pipefail
+          python scripts/validate-memory-os-mixed-version-candidate-reconcile-rollback-negative.py
 
       - name: Reconcile and validate candidate-specific authority
         run: |
