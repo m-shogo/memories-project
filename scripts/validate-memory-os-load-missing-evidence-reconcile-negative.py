@@ -12,6 +12,9 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-load-missing-evidence.py"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
+LOAD = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
+LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 
 
 class NegativeFailure(RuntimeError):
@@ -37,9 +40,33 @@ def load_json(path: Path) -> dict[str, Any]:
     return value
 
 
+def authority_substitution_rejected(module: ModuleType) -> None:
+    canonical_status = STATUS.read_bytes()
+    substitutions = (
+        ("LOAD", STATUS, "load contract authority drift"),
+        ("STATUS", LOAD, "production status authority drift"),
+        ("LOAD_VALIDATOR", OPERABILITY_VALIDATOR, "load validator authority drift"),
+        ("OPERABILITY_VALIDATOR", LOAD_VALIDATOR, "operability validator authority drift"),
+    )
+    for attr, substitute, expected in substitutions:
+        original = getattr(module, attr)
+        try:
+            setattr(module, attr, substitute)
+            try:
+                module.validate_authorities()
+            except RuntimeError as exc:
+                require(expected in str(exc), f"unexpected {attr} substitution rejection: {exc}")
+            else:
+                raise NegativeFailure(f"load missing-evidence reconciler accepted substituted authority: {attr}")
+            require(STATUS.read_bytes() == canonical_status, f"{attr}: production status changed after rejected authority substitution")
+        finally:
+            setattr(module, attr, original)
+
+
 def main() -> int:
     module = load_module()
     canonical_bytes = STATUS.read_bytes()
+    authority_substitution_rejected(module)
     status = load_json(STATUS)
     area = next(
         (row for row in status.get("areas", []) if isinstance(row, dict) and row.get("id") == "OPS-P0-006"),
@@ -79,7 +106,7 @@ def main() -> int:
         STATUS.write_bytes(canonical_bytes)
 
     require(STATUS.read_bytes() == canonical_bytes, "canonical production status was not restored")
-    print("PASS: load missing-evidence reconcile is transactional and fail-closed")
+    print("PASS: load missing-evidence reconcile pins canonical authorities and is transactional fail-closed")
     return 0
 
 
