@@ -11,13 +11,22 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/client-server-support-window-contract.v1.json"
-RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
-CLIENTS = ROOT / "contracts/operations/client-baseline-registry.v1.json"
-SKEW = ROOT / "contracts/operations/client-server-skew-registry.v1.json"
-VALIDATOR = ROOT / "scripts/validate-memory-os-client-server-support-window.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
-STATUS = ROOT / "contracts/operations/production-operability-status.json"
+CONTRACT_REL = Path("contracts/operations/client-server-support-window-contract.v1.json")
+RELEASES_REL = Path("contracts/operations/release-baseline-registry.v1.json")
+CLIENTS_REL = Path("contracts/operations/client-baseline-registry.v1.json")
+SKEW_REL = Path("contracts/operations/client-server-skew-registry.v1.json")
+VALIDATOR_REL = Path("scripts/validate-memory-os-client-server-support-window.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+WORKFLOW_REL = Path(".github/workflows/client-server-support-window.yml")
+CONTRACT = ROOT / CONTRACT_REL
+RELEASES = ROOT / RELEASES_REL
+CLIENTS = ROOT / CLIENTS_REL
+SKEW = ROOT / SKEW_REL
+VALIDATOR = ROOT / VALIDATOR_REL
+OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
+STATUS = ROOT / STATUS_REL
+WORKFLOW = ROOT / WORKFLOW_REL
 
 EVIDENCE = (
     "client/server support-window admission foundation is machine-readable and fail-closed: approved backend release and approved client artifact "
@@ -42,6 +51,33 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    for path, relative, field in (
+        (CONTRACT, CONTRACT_REL, "support-window contract"),
+        (RELEASES, RELEASES_REL, "release baseline registry"),
+        (CLIENTS, CLIENTS_REL, "client baseline registry"),
+        (SKEW, SKEW_REL, "client/server skew registry"),
+        (VALIDATOR, VALIDATOR_REL, "support-window validator"),
+        (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+        (STATUS, STATUS_REL, "production operability status"),
+        (WORKFLOW, WORKFLOW_REL, "support-window workflow"),
+    ):
+        require_exact_repo_file(path, relative, field)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -91,6 +127,7 @@ def write_and_validate_transactionally(contract: dict[str, Any], status: dict[st
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     validator = load_validator()
     releases = load(RELEASES)
     clients = load(CLIENTS)
