@@ -14,6 +14,7 @@ on:
       - "scripts/register-memory-os-release-baseline.py"
       - "scripts/validate-memory-os-parser-artifact-registry.py"
       - "scripts/validate-memory-os-parser-artifact-registry-authority-negative.py"
+      - "scripts/validate-memory-os-parser-artifact-reconcile-authority-negative.py"
       - "scripts/reconcile-memory-os-parser-artifact-registry.py"
       - "scripts/validate-memory-os-version-compatibility.py"
       - "scripts/validate-memory-os-operability.py"
@@ -33,6 +34,7 @@ on:
       - "scripts/register-memory-os-release-baseline.py"
       - "scripts/validate-memory-os-parser-artifact-registry.py"
       - "scripts/validate-memory-os-parser-artifact-registry-authority-negative.py"
+      - "scripts/validate-memory-os-parser-artifact-reconcile-authority-negative.py"
       - "scripts/reconcile-memory-os-parser-artifact-registry.py"
       - "scripts/validate-memory-os-version-compatibility.py"
       - "scripts/validate-memory-os-operability.py"
@@ -86,6 +88,7 @@ jobs:
             scripts/register-memory-os-release-baseline.py \
             scripts/validate-memory-os-parser-artifact-registry.py \
             scripts/validate-memory-os-parser-artifact-registry-authority-negative.py \
+            scripts/validate-memory-os-parser-artifact-reconcile-authority-negative.py \
             scripts/reconcile-memory-os-parser-artifact-registry.py \
             scripts/validate-memory-os-version-compatibility.py \
             scripts/validate-memory-os-operability.py
@@ -95,6 +98,9 @@ jobs:
 
       - name: Validate parser registry corruption negatives
         run: python scripts/validate-memory-os-parser-artifact-registry-authority-negative.py
+
+      - name: Validate parser reconcile authority negatives
+        run: python scripts/validate-memory-os-parser-artifact-reconcile-authority-negative.py
 
       - name: Prove invalid and unapproved artifacts cannot mutate authority
         run: |
