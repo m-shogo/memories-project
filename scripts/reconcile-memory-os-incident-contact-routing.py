@@ -9,19 +9,27 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/incident-contact-routing-admission-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/incident-contact-routing-admission-registry.v1.json"
-WRITER = ROOT / "scripts/register-memory-os-incident-contact-routing.py"
-VALIDATOR = ROOT / "scripts/validate-memory-os-incident-contact-routing.py"
-INCIDENT_RESPONSE_VALIDATOR = ROOT / "scripts/validate-memory-os-incident-response.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CONTRACT_REL = Path("contracts/operations/incident-contact-routing-admission-contract.v1.json")
+REGISTRY_REL = Path("contracts/operations/incident-contact-routing-admission-registry.v1.json")
+WRITER_REL = Path("scripts/register-memory-os-incident-contact-routing.py")
+VALIDATOR_REL = Path("scripts/validate-memory-os-incident-contact-routing.py")
+INCIDENT_RESPONSE_VALIDATOR_REL = Path("scripts/validate-memory-os-incident-response.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+WORKFLOW_REL = Path(".github/workflows/incident-contact-routing-admission.yml")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+CONTRACT = ROOT / CONTRACT_REL
+REGISTRY = ROOT / REGISTRY_REL
+WRITER = ROOT / WRITER_REL
+VALIDATOR = ROOT / VALIDATOR_REL
+INCIDENT_RESPONSE_VALIDATOR = ROOT / INCIDENT_RESPONSE_VALIDATOR_REL
+OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
 POST_WRITE_VALIDATORS = (
     VALIDATOR,
     INCIDENT_RESPONSE_VALIDATOR,
     OPERABILITY_VALIDATOR,
 )
-WORKFLOW = ROOT / ".github/workflows/incident-contact-routing-admission.yml"
-STATUS = ROOT / "contracts/operations/production-operability-status.json"
+WORKFLOW = ROOT / WORKFLOW_REL
+STATUS = ROOT / STATUS_REL
 
 EVIDENCE = (
     "incident contact-routing admission is fail-closed and composes with an already-admitted observability stack: future evidence must provide pseudonymous owners and destination digests for incident command, security/privacy, system ownership, provider escalation and user communication, plus delivery/escalation/user-communication drills and independent privacy/operability review; the registry is currently empty"
@@ -43,6 +51,37 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    canonical_contract = CONTRACT == ROOT / CONTRACT_REL
+    canonical_status = STATUS == ROOT / STATUS_REL
+    require(canonical_contract is canonical_status, "contact routing fixture boundary must replace contract and status together")
+    if canonical_contract:
+        for path, relative, field in (
+            (CONTRACT, CONTRACT_REL, "contact routing contract"),
+            (REGISTRY, REGISTRY_REL, "contact routing registry"),
+            (WRITER, WRITER_REL, "contact routing writer"),
+            (VALIDATOR, VALIDATOR_REL, "contact routing validator"),
+            (INCIDENT_RESPONSE_VALIDATOR, INCIDENT_RESPONSE_VALIDATOR_REL, "incident response validator"),
+            (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+            (WORKFLOW, WORKFLOW_REL, "contact routing workflow"),
+            (STATUS, STATUS_REL, "production operability status"),
+        ):
+            require_exact_repo_file(path, relative, field)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -83,6 +122,7 @@ def commit_validated_pair(contract: dict[str, Any], status: dict[str, Any]) -> N
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     for path in (REGISTRY, WRITER, *POST_WRITE_VALIDATORS, WORKFLOW):
         require(path.is_file(), f"contact routing admission missing: {path.relative_to(ROOT)}")
 
