@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import re
 import subprocess
 import sys
@@ -14,6 +15,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/database-commit-outage-results.sample.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+DATABASE_VALIDATOR = ROOT / "scripts/validate-memory-os-database-commit-outage.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 OLD_MISSING = "database loss or failover drill"
@@ -70,43 +73,43 @@ def source_is_ancestor(source_sha: str) -> bool:
         return False
 
 
+def run_validator(path: Path, *, expected_sha: str | None = None) -> None:
+    require(path.is_file(), f"canonical validator missing: {path.relative_to(ROOT)}")
+    require(not path.is_symlink(), f"canonical validator cannot be a symlink: {path.relative_to(ROOT)}")
+    env = os.environ.copy()
+    if expected_sha is not None:
+        env["EXPECTED_COMMIT_SHA"] = expected_sha
+    completed = subprocess.run(
+        [sys.executable, str(path)],
+        cwd=ROOT,
+        env=env,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    require(type(completed.returncode) is int and completed.returncode == 0,
+            f"canonical validator rejected authority: {path.relative_to(ROOT)}\n{completed.stdout[-4000:]}")
+
+
+def validate_authority_chain(source_sha: str) -> None:
+    run_validator(DATABASE_VALIDATOR, expected_sha=source_sha)
+    run_validator(OPERABILITY_VALIDATOR)
+
+
 def main() -> int:
     result = load(RESULT_PATH)
-    require(result.get("schemaVersion") == "memory-os-database-commit-outage-results.v1",
-            "database outage result schemaVersion drift")
     source_sha = result.get("commitSha")
     require(isinstance(source_sha, str) and SHA_RE.fullmatch(source_sha) is not None,
             "database outage result source SHA is invalid")
     require(source_is_ancestor(source_sha),
             "database outage source SHA is not an ancestor of current HEAD")
-    require(result.get("result") == "PASS" and result.get("integrityResult") == "PASS",
-            "database outage result is not PASS")
-    environment = result.get("environment")
-    require(isinstance(environment, dict), "database outage environment missing")
-    require(environment.get("productionEvidence") is False,
-            "database outage result cannot be production evidence")
-    require(environment.get("containsSecrets") is False,
-            "database outage result must contain no secrets")
-    assertions = result.get("assertions")
-    require(isinstance(assertions, dict), "database outage assertions missing")
-    require(assertions.get("previewRowsDuringOutage") == 0,
-            "outage created durable Preview rows")
-    require(assertions.get("jobStateDuringOutage") == "preview_building",
-            "outage changed the import job state")
-    require(assertions.get("sealedSpoolEntriesAfterFailure") == 1,
-            "outage did not preserve sealed spool evidence")
-    require(assertions.get("previewRowsAfterRecovery") == 1,
-            "recovery did not commit exactly one Preview")
-    require(assertions.get("candidateRowsAfterRecovery") == 2 and
-            assertions.get("rejectionRowsAfterRecovery") == 1,
-            "recovery row accounting mismatch")
-    require(assertions.get("sameSourceAndPreviewIdReused") is True and
-            assertions.get("sameSpoolIdReused") is True,
-            "recovery did not use the exact same request/spool binding")
-    require(assertions.get("resumeWithoutObjectStore") is True and
-            assertions.get("resumeWithoutParser") is True,
-            "ResumeCommit still depends on object storage or parser execution")
 
+    # The canonical validator owns the exact-source result and contract
+    # semantics; the direct reconciler may only derive from accepted authority.
+    validate_authority_chain(source_sha)
+
+    original_status_bytes = STATUS_PATH.read_bytes()
     status = load(STATUS_PATH)
     require(status.get("productionDecision") == "NO_GO",
             "database outage evidence cannot change production decision")
@@ -154,6 +157,7 @@ def main() -> int:
             "production decision changed unexpectedly")
 
     if not changed:
+        validate_authority_chain(source_sha)
         print("Database commit outage authority already reconciled")
         return 0
 
@@ -162,6 +166,12 @@ def main() -> int:
         json.dumps(status, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
+    try:
+        validate_authority_chain(source_sha)
+    except Exception:
+        STATUS_PATH.write_bytes(original_status_bytes)
+        raise
+
     print("Registered exact-source same-spool database commit recovery; OPS-P0-009 remains PARTIAL")
     return 0
 
