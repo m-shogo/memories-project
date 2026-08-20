@@ -26,6 +26,7 @@ on:
       - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/request-memory-os-backup-restore-drill.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
@@ -63,6 +64,7 @@ on:
       - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/request-memory-os-backup-restore-drill.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
@@ -115,6 +117,7 @@ jobs:
             scripts/memory_os_environment_generation_eligibility.py \
             scripts/request-memory-os-backup-restore-drill.py \
             scripts/register-memory-os-production-equivalent-environment-generation.py \
+            scripts/validate-memory-os-production-equivalent-environment-record.py \
             scripts/register-memory-os-recovery-objectives.py \
             scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
             scripts/register-memory-os-backup-restore-generation-evidence.py \
