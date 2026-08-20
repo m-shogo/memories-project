@@ -27,6 +27,7 @@ ELIGIBILITY_HELPER = ROOT / "scripts/memory_os_environment_generation_eligibilit
 OBJECTIVES_WRITER = ROOT / "scripts/register-memory-os-recovery-objectives.py"
 WRITER = ROOT / "scripts/request-memory-os-backup-restore-drill.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-request.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 EVIDENCE_PREFIX = "production-equivalent backup/restore drill request admission is planning-only and fail-closed:"
 REFS = (
@@ -133,6 +134,7 @@ def main() -> int:
         (OBJECTIVES_REGISTRY, "recovery objectives registry missing"),
         (STATUS, "operability status missing"),
         (VALIDATOR, "drill request validator missing"),
+        (OPERABILITY_VALIDATOR, "operability validator missing"),
         (WRITER, "drill request writer missing"),
         (ELIGIBILITY_HELPER, "semantic generation eligibility helper missing"),
         (OBJECTIVES_WRITER, "recovery objectives writer missing"),
@@ -296,6 +298,8 @@ def main() -> int:
         write_text(STATUS, json.dumps(status, indent=2, ensure_ascii=False) + "\n")
         completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
         require(completed.returncode == 0, f"post-reconcile drill request validator failed:\n{completed.stdout[-5000:]}{completed.stderr[-5000:]}")
+        operability = subprocess.run([sys.executable, str(OPERABILITY_VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        require(operability.returncode == 0, f"post-reconcile operability validator failed:\n{operability.stdout[-5000:]}{operability.stderr[-5000:]}")
     except Exception:
         write_text(REGISTRY, original_registry_text)
         write_text(CONTRACT, original_contract_text)
@@ -319,6 +323,7 @@ def main() -> int:
     print("boolean generation/objective aggregate counts accepted: false")
     print("corrupt drill-request aggregate authority auto-healed: false")
     print("recovery objective append-only authority validated through canonical writer: true")
+    print("aggregate operability validation is inside reconciliation transaction: true")
     print("registered generation or historical objective count alone creates planning authority: false")
     print("canonical OPS-P0-007 blockers preserved: 6")
     print("restore executed: false")
