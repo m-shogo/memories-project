@@ -13,9 +13,10 @@ ROOT = Path(__file__).resolve().parents[1]
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 CANONICAL = ROOT / "scripts/reconcile-memory-os-chaos-authority.py"
 INFLIGHT_OVERLAY = ROOT / "scripts/reconcile-memory-os-chaos-inflight-overlay.py"
+V1_RECONCILER = ROOT / "scripts/reconcile-memory-os-chaos-failure-drills.py"
 INFLIGHT_RECONCILER = ROOT / "scripts/reconcile-memory-os-parser-inflight-cancellation.py"
 SCENARIOS = (
-    ROOT / "scripts/reconcile-memory-os-chaos-failure-drills.py",
+    V1_RECONCILER,
     ROOT / "scripts/reconcile-memory-os-chaos-failure-drills-v2.py",
     ROOT / "scripts/reconcile-memory-os-parser-restart-matrix.py",
     INFLIGHT_RECONCILER,
@@ -122,6 +123,69 @@ def validate_inflight_source_delegation(current: dict) -> None:
         raise RuntimeError(f"full in-flight source validation did not precede mutation: {full_calls}")
 
 
+def validate_direct_v1_transaction(current: dict) -> None:
+    module = load_module(V1_RECONCILER, "memory_os_direct_v1_transaction")
+    result = module.load(module.RESULT_PATH)
+    source_sha = result.get("commitSha")
+    if not isinstance(source_sha, str):
+        raise RuntimeError("v1 result source SHA missing")
+
+    candidate = copy.deepcopy(current)
+    gate = next(
+        item for item in candidate["areas"]
+        if isinstance(item, dict) and item.get("id") == "OPS-P0-009"
+    )
+    missing = gate.get("missingEvidence")
+    existing = gate.get("existingEvidence")
+    if not isinstance(missing, list) or not isinstance(existing, list):
+        raise RuntimeError("OPS-P0-009 arrays missing for v1 transaction proof")
+    marker = module.REMOVE_MISSING[0]
+    if marker not in missing:
+        missing.append(marker)
+    for item in module.NEW_EXISTING:
+        while item in existing:
+            existing.remove(item)
+
+    with tempfile.TemporaryDirectory(prefix="memory-os-v1-chaos-transaction-") as tmp:
+        temp_status = Path(tmp) / "status.json"
+        original_bytes = json.dumps(candidate, indent=2, ensure_ascii=False).encode("utf-8") + b"\n"
+        temp_status.write_bytes(original_bytes)
+
+        original_status = module.STATUS_PATH
+        original_ancestor = module.source_is_ancestor
+        original_normalizer = module.load_canonical_normalizer
+        original_chain = module.validate_authority_chain
+        calls: list[str] = []
+        try:
+            module.STATUS_PATH = temp_status
+            module.source_is_ancestor = lambda _sha: True
+            module.load_canonical_normalizer = lambda: (lambda value: value)
+
+            def reject_post(validated_sha: str) -> None:
+                calls.append(validated_sha)
+                if len(calls) == 2:
+                    raise module.ReconcileFailure("synthetic v1 post-write rejection")
+
+            module.validate_authority_chain = reject_post
+            try:
+                module.main()
+            except module.ReconcileFailure as exc:
+                if "synthetic v1 post-write rejection" not in str(exc):
+                    raise RuntimeError(f"unexpected direct v1 rejection: {exc}") from exc
+            else:
+                raise RuntimeError("direct v1 reconcile accepted post-write authority rejection")
+        finally:
+            module.STATUS_PATH = original_status
+            module.source_is_ancestor = original_ancestor
+            module.load_canonical_normalizer = original_normalizer
+            module.validate_authority_chain = original_chain
+
+        if calls != [source_sha, source_sha]:
+            raise RuntimeError(f"direct v1 authority validation order drift: {calls}")
+        if temp_status.read_bytes() != original_bytes:
+            raise RuntimeError("direct v1 reconcile did not roll back Production Status")
+
+
 def validate_direct_inflight_transaction(current: dict) -> None:
     module = load_module(INFLIGHT_RECONCILER, "memory_os_direct_inflight_transaction")
     result = module.load(module.RESULT_PATH)
@@ -189,6 +253,7 @@ def main() -> int:
     current = json.loads(STATUS.read_text(encoding="utf-8"))
     validate_canonical_source_delegation(canonical, current)
     validate_inflight_source_delegation(current)
+    validate_direct_v1_transaction(current)
     validate_direct_inflight_transaction(current)
 
     gate = next(
@@ -232,7 +297,7 @@ def main() -> int:
             if reconciled.get("productionDecision") != "NO_GO":
                 raise RuntimeError(f"scenario reconcile changed production decision: {path.name}")
 
-    print("PASS: chaos reconcile delegates full canonical source validation, rolls back in-flight authority and preserves stronger missing-evidence authority")
+    print("PASS: chaos reconcile delegates canonical sources, rolls back direct v1/in-flight authority and preserves stronger missing-evidence authority")
     return 0
 
 
