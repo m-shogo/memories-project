@@ -24,6 +24,36 @@ GEN_EVIDENCE_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generati
 TYPED_WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
 GEN_BLOCKER = "TWO_DISTINCT_SEMANTICALLY_ELIGIBLE_ENVIRONMENTS"
 OBJECTIVE_BLOCKER = "CURRENT_APPROVED_RECOVERY_OBJECTIVE"
+SNAPSHOT_FIELDS = {
+    "schemaVersion",
+    "deterministic",
+    "areaId",
+    "stage",
+    "strictPrerequisiteBlockers",
+    "strictPrerequisiteBlockerCount",
+    "registeredEnvironmentGenerationCount",
+    "preflightEligibleGenerationCount",
+    "unsupersededPreflightEligibleGenerationCount",
+    "distinctPreflightEligibleEnvironmentCount",
+    "eligibleDirectedRestorePairCount",
+    "approvedRecoveryObjectiveCount",
+    "currentRecoveryObjectiveId",
+    "reviewedDrillRequestCount",
+    "currentExecutableDrillRequestCount",
+    "generationRecoveryEvidenceCount",
+    "drillRequestBoundGenerationRecoveryEvidenceCount",
+    "completeTypedNonResurrectionRecordCount",
+    "finalProductionEquivalentRecoveryCandidateCount",
+    "canonicalMissingEvidenceCount",
+    "downstreamRequirements",
+    "nextAction",
+    "requestCreated",
+    "restoreExecuted",
+    "productionTrafficChanged",
+    "productionEvidence",
+    "productionReady",
+    "productionDecision",
+}
 
 
 class Fail(RuntimeError):
@@ -95,6 +125,7 @@ def main() -> int:
     validate_registry(generation_writer, generation_evidence, "generation recovery evidence")
     validate_registry(typed_writer, typed, "typed non-resurrection")
 
+    require(set(snapshot) == SNAPSHOT_FIELDS, "snapshot field set drift")
     require(snapshot.get("schemaVersion") == "memory-os-ops-p0-007-admission-snapshot.v1", "snapshot schema drift")
     require(snapshot.get("deterministic") is True and snapshot.get("areaId") == "OPS-P0-007", "snapshot identity drift")
     require(snapshot.get("productionEvidence") is False and snapshot.get("productionReady") is False and snapshot.get("productionDecision") == "NO_GO", "snapshot cannot promote production")
@@ -192,6 +223,7 @@ def main() -> int:
     print("Memory OS OPS-P0-007 strict admission snapshot validation PASS")
     print("canonical append-only registry validators enforced: true")
     print("canonical production blocker authority enforced: true")
+    print("snapshot exact field set enforced: true")
     print(f"stage: {expected_stage}")
     print(f"strict prerequisite blockers: {len(strict_blockers)}")
     print(f"eligible directed restore pairs: {eligibility['eligibleDirectedPairCount']}")
