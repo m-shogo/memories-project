@@ -9,6 +9,7 @@ on:
       - "infra/postgresql/security/**"
       - "scripts/run-memory-os-postgresql-major-upgrade.sh"
       - "scripts/validate-memory-os-postgresql-major-upgrade.py"
+      - "scripts/validate-memory-os-postgresql-major-upgrade-reconcile-negative.py"
       - "scripts/reconcile-memory-os-postgresql-major-upgrade.py"
   push:
     branches:
@@ -20,6 +21,7 @@ on:
       - "infra/postgresql/security/**"
       - "scripts/run-memory-os-postgresql-major-upgrade.sh"
       - "scripts/validate-memory-os-postgresql-major-upgrade.py"
+      - "scripts/validate-memory-os-postgresql-major-upgrade-reconcile-negative.py"
       - "scripts/reconcile-memory-os-postgresql-major-upgrade.py"
   schedule:
     - cron: "29 6 * * 3"
@@ -58,7 +60,11 @@ jobs:
           bash -n scripts/run-memory-os-postgresql-major-upgrade.sh
           python -m py_compile \
             scripts/validate-memory-os-postgresql-major-upgrade.py \
+            scripts/validate-memory-os-postgresql-major-upgrade-reconcile-negative.py \
+            scripts/validate-memory-os-version-compatibility.py \
+            scripts/validate-memory-os-operability.py \
             scripts/reconcile-memory-os-postgresql-major-upgrade.py
+          python scripts/validate-memory-os-postgresql-major-upgrade-reconcile-negative.py
 
       - name: Validate static upgrade contract
         run: python scripts/validate-memory-os-postgresql-major-upgrade.py
