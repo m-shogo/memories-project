@@ -46,6 +46,31 @@ def write_json(path: Path, value: dict[str, Any]) -> None:
     path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
+def expect_direct_authority_rejected(
+    reconciler: Any,
+    name: str,
+    field: str,
+    mutate: Callable[[], None],
+    restore: Callable[[], None],
+    contract_before: bytes,
+    registry_before: bytes,
+    status_before: bytes,
+) -> None:
+    mutate()
+    try:
+        try:
+            reconciler.main()
+        except reconciler.Fail as exc:
+            require(f"{field} authority drift" in str(exc), f"{name} rejected at wrong boundary: {exc}")
+        else:
+            raise Fail(f"direct reconciler unexpectedly accepted: {name}")
+        require(CONTRACT.read_bytes() == contract_before, f"canonical contract mutated while rejecting {name}")
+        require(REGISTRY.read_bytes() == registry_before, f"canonical registry mutated while rejecting {name}")
+        require(STATUS.read_bytes() == status_before, f"canonical status mutated while rejecting {name}")
+    finally:
+        restore()
+
+
 def main() -> int:
     require(RECONCILER.is_file(), "drill request reconciler missing")
     for path in (CONTRACT, REGISTRY, OBJECTIVES, STATUS):
@@ -53,6 +78,66 @@ def main() -> int:
 
     reconciler = load_reconciler()
     require(issubclass(reconciler.Fail, RuntimeError), "reconciler Fail must remain a runtime validation error")
+
+    canonical_contract = CONTRACT.read_bytes()
+    canonical_registry = REGISTRY.read_bytes()
+    canonical_status = STATUS.read_bytes()
+    original_writer = reconciler.WRITER
+    original_eligibility = reconciler.ELIGIBILITY_HELPER
+    original_objectives_writer = reconciler.OBJECTIVES_WRITER
+    original_validator = reconciler.VALIDATOR
+    original_operability = reconciler.OPERABILITY_VALIDATOR
+
+    expect_direct_authority_rejected(
+        reconciler,
+        "drill request writer substitution",
+        "drill request writer",
+        lambda: setattr(reconciler, "WRITER", original_objectives_writer),
+        lambda: setattr(reconciler, "WRITER", original_writer),
+        canonical_contract,
+        canonical_registry,
+        canonical_status,
+    )
+    expect_direct_authority_rejected(
+        reconciler,
+        "semantic eligibility helper substitution",
+        "semantic generation eligibility helper",
+        lambda: setattr(reconciler, "ELIGIBILITY_HELPER", original_writer),
+        lambda: setattr(reconciler, "ELIGIBILITY_HELPER", original_eligibility),
+        canonical_contract,
+        canonical_registry,
+        canonical_status,
+    )
+    expect_direct_authority_rejected(
+        reconciler,
+        "recovery objectives writer substitution",
+        "recovery objectives writer",
+        lambda: setattr(reconciler, "OBJECTIVES_WRITER", original_writer),
+        lambda: setattr(reconciler, "OBJECTIVES_WRITER", original_objectives_writer),
+        canonical_contract,
+        canonical_registry,
+        canonical_status,
+    )
+    expect_direct_authority_rejected(
+        reconciler,
+        "drill request validator substitution",
+        "drill request validator",
+        lambda: setattr(reconciler, "VALIDATOR", original_operability),
+        lambda: setattr(reconciler, "VALIDATOR", original_validator),
+        canonical_contract,
+        canonical_registry,
+        canonical_status,
+    )
+    expect_direct_authority_rejected(
+        reconciler,
+        "operability validator substitution",
+        "operability validator",
+        lambda: setattr(reconciler, "OPERABILITY_VALIDATOR", original_validator),
+        lambda: setattr(reconciler, "OPERABILITY_VALIDATOR", original_operability),
+        canonical_contract,
+        canonical_registry,
+        canonical_status,
+    )
 
     # A corrupt recovery-objective authority must fail before any derived drill
     # contract, request registry or production status mutation can occur.
@@ -158,6 +243,7 @@ def main() -> int:
         require(status.read_bytes() == original_status, "production status mutation survived failed aggregate validation")
 
     print("Memory OS backup/restore drill request reconcile rollback negative suite PASS")
+    print("direct reconciler executable authority substitutions rejected: 5")
     print("corrupt recovery objective authority rejected before derived writes: true")
     print("shared objective authority corruption cases: 6")
     print("drill request validator succeeds before aggregate failure: true")
