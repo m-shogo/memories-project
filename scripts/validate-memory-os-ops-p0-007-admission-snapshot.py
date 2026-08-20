@@ -86,10 +86,16 @@ def valid_count(value: Any) -> bool:
 
 def load(path: Path) -> dict[str, Any]:
     try:
+        relative = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"cannot resolve canonical authority: {path}") from exc
+    require(relative == resolved and path.is_file(), f"authority escapes canonical repository path: {relative}")
+    try:
         value = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
-        raise Fail(f"cannot load {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+    except (json.JSONDecodeError, OSError) as exc:
+        raise Fail(f"cannot load {relative}: {exc}") from exc
+    require(isinstance(value, dict), f"root must be object: {relative}")
     return value
 
 
