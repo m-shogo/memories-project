@@ -19,16 +19,26 @@ from typing import Any
 from memory_os_backup_restore_blockers import require_canonical_gaps
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/backup-restore-drill-request-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
-GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
-OBJECTIVES_REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
-ELIGIBILITY_HELPER = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
-OBJECTIVES_WRITER = ROOT / "scripts/register-memory-os-recovery-objectives.py"
-WRITER = ROOT / "scripts/request-memory-os-backup-restore-drill.py"
-VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-request.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
-STATUS = ROOT / "contracts/operations/production-operability-status.json"
+CONTRACT_REL = Path("contracts/operations/backup-restore-drill-request-contract.v1.json")
+REGISTRY_REL = Path("contracts/operations/backup-restore-drill-request-registry.v1.json")
+GEN_REGISTRY_REL = Path("contracts/operations/production-equivalent-environment-generation-registry.v1.json")
+OBJECTIVES_REGISTRY_REL = Path("contracts/operations/recovery-objectives-registry.v1.json")
+ELIGIBILITY_HELPER_REL = Path("scripts/memory_os_environment_generation_eligibility.py")
+OBJECTIVES_WRITER_REL = Path("scripts/register-memory-os-recovery-objectives.py")
+WRITER_REL = Path("scripts/request-memory-os-backup-restore-drill.py")
+VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-drill-request.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+CONTRACT = ROOT / CONTRACT_REL
+REGISTRY = ROOT / REGISTRY_REL
+GEN_REGISTRY = ROOT / GEN_REGISTRY_REL
+OBJECTIVES_REGISTRY = ROOT / OBJECTIVES_REGISTRY_REL
+ELIGIBILITY_HELPER = ROOT / ELIGIBILITY_HELPER_REL
+OBJECTIVES_WRITER = ROOT / OBJECTIVES_WRITER_REL
+WRITER = ROOT / WRITER_REL
+VALIDATOR = ROOT / VALIDATOR_REL
+OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
+STATUS = ROOT / STATUS_REL
 EVIDENCE_PREFIX = "production-equivalent backup/restore drill request admission is planning-only and fail-closed:"
 REFS = (
     "contracts/operations/backup-restore-drill-request-contract.v1.json",
@@ -63,6 +73,43 @@ def require_repo_file(path: Path, message: str) -> Path:
     relative = repo_relative(path)
     require((ROOT / relative).is_file(), message)
     return relative
+
+
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    mutable_authorities = (
+        CONTRACT == ROOT / CONTRACT_REL,
+        REGISTRY == ROOT / REGISTRY_REL,
+        OBJECTIVES_REGISTRY == ROOT / OBJECTIVES_REGISTRY_REL,
+        STATUS == ROOT / STATUS_REL,
+    )
+    require(
+        len(set(mutable_authorities)) == 1,
+        "drill request fixture boundary must replace contract, registry, objectives and status together",
+    )
+    if mutable_authorities[0]:
+        require_exact_repo_file(CONTRACT, CONTRACT_REL, "drill request contract")
+        require_exact_repo_file(REGISTRY, REGISTRY_REL, "drill request registry")
+        require_exact_repo_file(GEN_REGISTRY, GEN_REGISTRY_REL, "environment generation registry")
+        require_exact_repo_file(OBJECTIVES_REGISTRY, OBJECTIVES_REGISTRY_REL, "recovery objectives registry")
+        require_exact_repo_file(ELIGIBILITY_HELPER, ELIGIBILITY_HELPER_REL, "semantic generation eligibility helper")
+        require_exact_repo_file(OBJECTIVES_WRITER, OBJECTIVES_WRITER_REL, "recovery objectives writer")
+        require_exact_repo_file(WRITER, WRITER_REL, "drill request writer")
+        require_exact_repo_file(VALIDATOR, VALIDATOR_REL, "drill request validator")
+        require_exact_repo_file(OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator")
+        require_exact_repo_file(STATUS, STATUS_REL, "production operability status")
 
 
 def read_text(path: Path) -> str:
@@ -127,6 +174,7 @@ def expected_decision(
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     for path, message in (
         (CONTRACT, "drill request contract missing"),
         (REGISTRY, "drill request registry missing"),
