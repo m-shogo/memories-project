@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Prove independent-review evidence refs, counts and helper authority remain fail-closed."""
+"""Prove independent-review evidence refs, counts, contract shape and helper authority remain fail-closed."""
 
 from __future__ import annotations
 
+import copy
 import importlib.util
 import tempfile
 from pathlib import Path
@@ -57,6 +58,21 @@ def main() -> int:
     ):
         expect_rejected(validator, name, lambda value=value: validator.exact_int(value, name))
 
+    canonical_contract = validator.load(validator.CONTRACT)
+    validator.validate_contract_shape(canonical_contract)
+    contract_mutations: tuple[tuple[str, Callable[[dict[str, Any]], None]], ...] = (
+        ("unknown root field", lambda value: value.__setitem__("automaticPromotionAuthorized", True)),
+        ("missing root field", lambda value: value.pop("workflow")),
+        ("unknown rule field", lambda value: value["rules"].__setitem__("automaticPromotionAllowed", True)),
+        ("missing rule field", lambda value: value["rules"].pop("productionReadyForbidden")),
+        ("unknown boundary field", lambda value: value["currentBoundary"].__setitem__("productionAuthorization", "APPROVED")),
+        ("missing boundary field", lambda value: value["currentBoundary"].pop("productionReady")),
+    )
+    for name, mutate in contract_mutations:
+        candidate = copy.deepcopy(canonical_contract)
+        mutate(candidate)
+        expect_rejected(validator, name, lambda candidate=candidate: validator.validate_contract_shape(candidate))
+
     with tempfile.TemporaryDirectory(prefix="memory-os-review-ref-root-") as root_tmp, tempfile.TemporaryDirectory(prefix="memory-os-review-ref-external-") as external_tmp:
         root = Path(root_tmp)
         canonical = root / "review.json"
@@ -105,6 +121,9 @@ def main() -> int:
 
     print("Environment review-independence authority negative suite PASS")
     print("boolean or invalid review-independence count accepted: false")
+    print("unknown or missing review-independence contract fields accepted: false")
+    print("unknown or missing review-independence rules accepted: false")
+    print("unknown or missing review-independence boundary fields accepted: false")
     print("review ref symlink escape accepted: false")
     print("review ref symlink loop accepted: false")
     print("eligibility helper symlink escape accepted: false")
