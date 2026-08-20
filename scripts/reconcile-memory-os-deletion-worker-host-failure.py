@@ -10,16 +10,20 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/deletion-worker-host-failure-contract.v1.json"
+CANONICAL_CONTRACT = ROOT / "contracts/operations/deletion-worker-host-failure-contract.v1.json"
 CANONICAL_HOST_VALIDATOR = ROOT / "scripts/validate-memory-os-deletion-worker-host-failure.py"
 CANONICAL_LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
 CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CANONICAL_WORKFLOW = ROOT / ".github/workflows/deletion-worker-host-failure-admission.yml"
+CANONICAL_STATUS = ROOT / "contracts/operations/production-operability-status.json"
+CANONICAL_LOAD = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
+CONTRACT = CANONICAL_CONTRACT
 VALIDATOR = CANONICAL_HOST_VALIDATOR
 LOAD_VALIDATOR = CANONICAL_LOAD_VALIDATOR
 OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
-WORKFLOW = ROOT / ".github/workflows/deletion-worker-host-failure-admission.yml"
-STATUS = ROOT / "contracts/operations/production-operability-status.json"
-LOAD = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
+WORKFLOW = CANONICAL_WORKFLOW
+STATUS = CANONICAL_STATUS
+LOAD = CANONICAL_LOAD
 
 EVIDENCE = (
     "physical host/node deletion-worker failure admission is now fail-closed: actual process SIGKILL and Docker container kill remain local evidence only; "
@@ -60,7 +64,15 @@ def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
     require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
 
 
+def validate_data_authorities() -> None:
+    require_exact_authority(CONTRACT, CANONICAL_CONTRACT, "host-failure contract")
+    require_exact_authority(WORKFLOW, CANONICAL_WORKFLOW, "host-failure workflow")
+    require_exact_authority(STATUS, CANONICAL_STATUS, "production status")
+    require_exact_authority(LOAD, CANONICAL_LOAD, "load contract")
+
+
 def validate_executable_authorities() -> None:
+    validate_data_authorities()
     require_exact_authority(VALIDATOR, CANONICAL_HOST_VALIDATOR, "host-failure validator")
     require_exact_authority(LOAD_VALIDATOR, CANONICAL_LOAD_VALIDATOR, "load validator")
     require_exact_authority(
