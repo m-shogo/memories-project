@@ -304,6 +304,12 @@ jobs:
           cat "$log"
           exit 0
 
+      - name: Reject stale admission chain authority on pull requests
+        if: steps.chain.outputs.exit_code == '0' && github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- contracts/operations/backup-restore-admission-chain-contract.v1.json
+
       - name: Commit bounded chain authority
         if: steps.chain.outputs.exit_code == '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         run: |
