@@ -13,6 +13,8 @@ on:
       - "services/import-api/internal/importflow/flow.go"
       - "services/import-api/internal/objectstore/client.go"
       - "scripts/validate-memory-os-chaos-failure-drills-v2.py"
+      - "scripts/validate-memory-os-chaos-failure-drills-v2-reconcile-negative.py"
+      - "scripts/validate-memory-os-operability.py"
       - "scripts/reconcile-memory-os-chaos-failure-drills-v2.py"
       - "scripts/reconcile-memory-os-chaos-authority.py"
   schedule:
@@ -86,8 +88,11 @@ jobs:
         run: |
           python -m py_compile \
             scripts/validate-memory-os-chaos-failure-drills-v2.py \
+            scripts/validate-memory-os-chaos-failure-drills-v2-reconcile-negative.py \
+            scripts/validate-memory-os-operability.py \
             scripts/reconcile-memory-os-chaos-failure-drills-v2.py \
             scripts/reconcile-memory-os-chaos-authority.py
+          python scripts/validate-memory-os-chaos-failure-drills-v2-reconcile-negative.py
           test -z "$(gofmt -l \
             services/import-api/internal/httpserver/interruption_drill_test.go \
             services/import-api/internal/parsersup/restart_drill_linux_test.go \
