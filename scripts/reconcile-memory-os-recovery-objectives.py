@@ -13,12 +13,18 @@ from typing import Any
 from memory_os_backup_restore_blockers import require_canonical_gaps
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/recovery-objectives-admission-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
-WRITER = ROOT / "scripts/register-memory-os-recovery-objectives.py"
-VALIDATOR = ROOT / "scripts/validate-memory-os-recovery-objectives.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
-STATUS = ROOT / "contracts/operations/production-operability-status.json"
+CONTRACT_REL = Path("contracts/operations/recovery-objectives-admission-contract.v1.json")
+REGISTRY_REL = Path("contracts/operations/recovery-objectives-registry.v1.json")
+WRITER_REL = Path("scripts/register-memory-os-recovery-objectives.py")
+VALIDATOR_REL = Path("scripts/validate-memory-os-recovery-objectives.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+CONTRACT = ROOT / CONTRACT_REL
+REGISTRY = ROOT / REGISTRY_REL
+WRITER = ROOT / WRITER_REL
+VALIDATOR = ROOT / VALIDATOR_REL
+OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
+STATUS = ROOT / STATUS_REL
 EVIDENCE_PREFIX = "recovery objectives approval is append-only:"
 REFS = (
     "contracts/operations/recovery-objectives-admission-contract.v1.json",
@@ -52,6 +58,32 @@ def require_repo_file(path: Path, message: str) -> Path:
     return relative
 
 
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    canonical_contract = CONTRACT == ROOT / CONTRACT_REL
+    canonical_status = STATUS == ROOT / STATUS_REL
+    require(canonical_contract is canonical_status, "recovery objective fixture boundary must replace contract and status together")
+    if canonical_contract:
+        require_exact_repo_file(CONTRACT, CONTRACT_REL, "recovery objective contract")
+        require_exact_repo_file(REGISTRY, REGISTRY_REL, "recovery objective registry")
+        require_exact_repo_file(WRITER, WRITER_REL, "recovery objective writer")
+        require_exact_repo_file(VALIDATOR, VALIDATOR_REL, "recovery objective validator")
+        require_exact_repo_file(OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator")
+        require_exact_repo_file(STATUS, STATUS_REL, "production operability status")
+
+
 def read_text(path: Path) -> str:
     relative = repo_relative(path)
     try:
@@ -79,14 +111,17 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_writer():
-    relative = require_repo_file(WRITER, "recovery objective writer missing")
+    if CONTRACT == ROOT / CONTRACT_REL and STATUS == ROOT / STATUS_REL:
+        require_exact_repo_file(WRITER, WRITER_REL, "recovery objective writer")
+    else:
+        require_repo_file(WRITER, "recovery objective writer missing")
     spec = importlib.util.spec_from_file_location("memory_os_recovery_objectives_reconcile_writer", WRITER)
-    require(spec is not None and spec.loader is not None, f"cannot load {relative}")
+    require(spec is not None and spec.loader is not None, "cannot load recovery objective writer")
     try:
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
     except (FileNotFoundError, OSError) as exc:
-        raise Fail(f"cannot load {relative}: {exc}") from exc
+        raise Fail(f"cannot load recovery objective writer: {exc}") from exc
     return module
 
 
@@ -112,6 +147,7 @@ def run_validator(path: Path, label: str) -> None:
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     original_contract_text = read_text(CONTRACT)
     original_status_text = read_text(STATUS)
     registry = load(REGISTRY)
