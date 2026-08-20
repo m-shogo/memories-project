@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RECONCILER_PATH = ROOT / "scripts/reconcile-memory-os-rate-limit-emergency-drill.py"
 VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-rate-limit-emergency-drill.py"
 EVALUATOR_PATH = ROOT / "scripts/evaluate-memory-os-rate-limit-emergency-state.py"
+RUNNER_PATH = ROOT / "scripts/run-memory-os-rate-limit-emergency-drill.py"
 
 
 def load_module(path: Path, name: str):
@@ -184,6 +185,36 @@ def prove_evaluator_authority_boundaries() -> None:
             raise AssertionError("symlink operation evidence record was incorrectly accepted")
 
 
+def prove_runner_foundation_delegation() -> None:
+    runner = load_module(RUNNER_PATH, "memory_os_rate_limit_emergency_runner_negative")
+    original_run = runner.subprocess.run
+    calls: list[list[str]] = []
+
+    def reject_foundation(command, **kwargs):
+        calls.append(list(command))
+        return SimpleNamespace(
+            returncode=17,
+            stdout="",
+            stderr="synthetic canonical foundation rejection",
+        )
+
+    runner.subprocess.run = reject_foundation
+    try:
+        try:
+            runner.validate_foundation_authority()
+        except runner.DrillFailure as exc:
+            if "canonical emergency drill authority invalid" not in str(exc):
+                raise AssertionError(f"unexpected runner foundation rejection: {exc}") from exc
+        else:
+            raise AssertionError("direct emergency drill runner bypassed canonical foundation validation")
+    finally:
+        runner.subprocess.run = original_run
+
+    expected = ["python", str(runner.VALIDATOR_PATH)]
+    if calls != [expected]:
+        raise AssertionError(f"runner delegated to unexpected foundation authority: {calls}")
+
+
 def prove_transactional_rollback() -> None:
     reconciler = load_module(
         RECONCILER_PATH,
@@ -227,6 +258,7 @@ def prove_transactional_rollback() -> None:
 def main() -> int:
     prove_lineage_rejection()
     prove_evaluator_authority_boundaries()
+    prove_runner_foundation_delegation()
     prove_transactional_rollback()
     print("PASS: detached emergency drill sources are rejected")
     print("PASS: emergency evaluator validator authority and exact exit semantics are fail-closed")
@@ -234,6 +266,7 @@ def main() -> int:
     print("PASS: emergency evaluator rejects record drift during authority validation")
     print("PASS: emergency evaluator rejects invalid UTC timestamps without traceback semantics")
     print("PASS: emergency evaluator rejects symlink operation evidence records")
+    print("PASS: direct emergency drill runner delegates to canonical foundation validation")
     print("PASS: emergency drill reconcile rolls back contract and status on post-write failure")
     return 0
 
