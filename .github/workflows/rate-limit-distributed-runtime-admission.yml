@@ -19,6 +19,7 @@ on:
       - "scripts/validate-memory-os-rate-limit-distributed-runtime.py"
       - "scripts/validate-memory-os-rate-limit-distributed-runtime-registry-negative.py"
       - "scripts/validate-memory-os-rate-limit-distributed-runtime-evidence-binding-negative.py"
+      - "scripts/validate-memory-os-rate-limit-distributed-runtime-generation-authority-negative.py"
       - "scripts/validate-memory-os-rate-limit-operations.py"
       - "scripts/validate-memory-os-rate-limit.py"
       - "scripts/validate-memory-os-operability.py"
@@ -43,6 +44,7 @@ on:
       - "scripts/validate-memory-os-rate-limit-distributed-runtime.py"
       - "scripts/validate-memory-os-rate-limit-distributed-runtime-registry-negative.py"
       - "scripts/validate-memory-os-rate-limit-distributed-runtime-evidence-binding-negative.py"
+      - "scripts/validate-memory-os-rate-limit-distributed-runtime-generation-authority-negative.py"
       - "scripts/validate-memory-os-rate-limit-operations.py"
       - "scripts/validate-memory-os-rate-limit.py"
       - "scripts/validate-memory-os-operability.py"
@@ -85,11 +87,15 @@ jobs:
             scripts/validate-memory-os-rate-limit-distributed-runtime.py \
             scripts/validate-memory-os-rate-limit-distributed-runtime-registry-negative.py \
             scripts/validate-memory-os-rate-limit-distributed-runtime-evidence-binding-negative.py \
+            scripts/validate-memory-os-rate-limit-distributed-runtime-generation-authority-negative.py \
             scripts/validate-memory-os-rate-limit-operations.py \
             scripts/validate-memory-os-rate-limit.py \
             scripts/validate-memory-os-operability.py \
             scripts/reconcile-memory-os-rate-limit-distributed-runtime.py \
             >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-rate-limit-distributed-runtime-generation-authority-negative.py >> "$log" 2>&1 || code=$?
+          fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-rate-limit-distributed-runtime-registry-negative.py >> "$log" 2>&1 || code=$?
           fi
