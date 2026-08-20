@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -15,7 +14,10 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/postgresql-major-upgrade-contract.v1.json"
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/postgresql-major-upgrade-results.sample.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
-SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+MAJOR_UPGRADE_VALIDATOR = ROOT / "scripts/validate-memory-os-postgresql-major-upgrade.py"
+VERSION_VALIDATOR = ROOT / "scripts/validate-memory-os-version-compatibility.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+SHA_RE = __import__("re").compile(r"^[0-9a-f]{40}$")
 
 EXISTING = (
     "exact-source isolated PostgreSQL 16 to PostgreSQL 17 logical forward-upgrade rehearsal using fresh expand-migrated target schema and PostgreSQL 17 dump tooling",
@@ -86,28 +88,53 @@ def append_once(items: list[Any], value: str) -> bool:
     return True
 
 
+def run_validator(path: Path, *arguments: str) -> None:
+    require(path.is_file(), f"canonical validator missing: {path.relative_to(ROOT)}")
+    require(not path.is_symlink(), f"canonical validator cannot be a symlink: {path.relative_to(ROOT)}")
+    completed = subprocess.run(
+        [sys.executable, str(path), *arguments],
+        cwd=ROOT,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    require(type(completed.returncode) is int and completed.returncode == 0,
+            f"canonical validator rejected authority: {path.relative_to(ROOT)}\n{completed.stdout[-4000:]}")
+
+
+def validate_authority_chain(commit_sha: str, *, require_reconciled: bool) -> None:
+    arguments = ["--expected-commit-sha", commit_sha]
+    if require_reconciled:
+        arguments.append("--require-reconciled")
+    run_validator(MAJOR_UPGRADE_VALIDATOR, *arguments)
+    run_validator(VERSION_VALIDATOR)
+    run_validator(OPERABILITY_VALIDATOR)
+
+
+def commit_candidate(contract: dict[str, Any], status: dict[str, Any], commit_sha: str) -> None:
+    original_contract = CONTRACT_PATH.read_bytes()
+    original_status = STATUS_PATH.read_bytes()
+    try:
+        write(CONTRACT_PATH, contract)
+        write(STATUS_PATH, status)
+        validate_authority_chain(commit_sha, require_reconciled=True)
+    except Exception:
+        CONTRACT_PATH.write_bytes(original_contract)
+        STATUS_PATH.write_bytes(original_status)
+        raise
+
+
 def main() -> int:
     result = load(RESULT_PATH)
-    require(result.get("schemaVersion") ==
-            "memory-os-postgresql-major-upgrade-results.v1",
-            "PostgreSQL upgrade result schema drift")
     commit_sha = result.get("commitSha")
     require(isinstance(commit_sha, str) and SHA_RE.fullmatch(commit_sha) is not None and
             is_ancestor(commit_sha, "HEAD"),
             "PostgreSQL upgrade result source lineage invalid")
-    environment = result.get("environment")
-    scenario = result.get("scenario")
-    require(isinstance(environment, dict) and
-            environment.get("productionEvidence") is False and
-            environment.get("productionTraffic") is False and
-            environment.get("productionCredentials") is False and
-            environment.get("containsSecrets") is False,
-            "PostgreSQL upgrade evidence boundary drift")
-    require(isinstance(scenario, dict) and
-            scenario.get("sourceMajor") == 16 and scenario.get("targetMajor") == 17 and
-            scenario.get("result") == "PASS" and
-            scenario.get("integrityResult") == "PASS",
-            "PostgreSQL 16 to 17 scenario is not PASS")
+
+    # The canonical validator owns the full contract/result semantics. Validate
+    # the exact source and current aggregate authority before deriving updates.
+    validate_authority_chain(commit_sha, require_reconciled=False)
 
     contract = load(CONTRACT_PATH)
     readiness = contract.get("readiness")
@@ -169,14 +196,14 @@ def main() -> int:
             status.get("productionDecision") == "NO_GO",
             "PostgreSQL logical upgrade evidence changed readiness")
 
-    if contract_changed:
-        write(CONTRACT_PATH, contract)
-    if status_changed:
-        status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
-        write(STATUS_PATH, status)
     if not contract_changed and not status_changed:
+        validate_authority_chain(commit_sha, require_reconciled=True)
         print("PostgreSQL major-upgrade authority already reconciled")
         return 0
+
+    if status_changed:
+        status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
+    commit_candidate(contract, status, commit_sha)
     print("Registered PostgreSQL 16 to 17 logical upgrade; OPS-P0-008 remains PARTIAL")
     return 0
 
