@@ -54,6 +54,21 @@ SNAPSHOT_FIELDS = {
     "productionReady",
     "productionDecision",
 }
+DOWNSTREAM_REQUIREMENTS = [
+    "submit one externally reviewed planning-only restore drill request bound to an eligible source/target generation pair and the current approved recovery objective",
+    "revalidate the drill request immediately before any isolated restore execution",
+    "admit request-bound generation recovery evidence with exact backup/manifest/restore hashes and measured approved objectives",
+    "bind all eight typed non-resurrection domains with independent security and operability review",
+    "retain the canonical six production backup/restore blockers until genuine production-shaped evidence closes them",
+    "make any production promotion as a separate human decision",
+]
+NEXT_ACTIONS = {
+    "PREREQUISITES_BLOCKED": "produce and independently review two distinct semantically eligible non-production environment generations; independently approve explicit recovery objectives without AI-selected defaults",
+    "READY_FOR_REVIEWED_DRILL_REQUEST": "submit one external planning-only restore drill request for human review using an eligible directed generation pair and the current approved objective",
+    "READY_FOR_ISOLATED_RESTORE_EVIDENCE": "immediately revalidate the current reviewed drill request before isolated execution, then register exact request-bound generation recovery evidence",
+    "READY_FOR_TYPED_NON_RESURRECTION_EVIDENCE": "bind all eight typed non-resurrection domains with independent security and operability review before any final recovery candidate",
+    "RECOVERY_CANDIDATE_AVAILABLE_PRODUCTION_STILL_NO_GO": "retain NO_GO until the canonical six production backup/restore blockers are genuinely closed and a separate human production promotion decision is made",
+}
 
 
 class Fail(RuntimeError):
@@ -209,9 +224,8 @@ def main() -> int:
     else:
         expected_stage = "RECOVERY_CANDIDATE_AVAILABLE_PRODUCTION_STILL_NO_GO"
     require(snapshot.get("stage") == expected_stage, "snapshot stage drift")
-    requirements = snapshot.get("downstreamRequirements")
-    require(isinstance(requirements, list) and len(requirements) >= 6 and len(requirements) == len(set(requirements)), "snapshot downstream requirements incomplete")
-    require(isinstance(snapshot.get("nextAction"), str) and snapshot.get("nextAction"), "snapshot nextAction missing")
+    require(snapshot.get("downstreamRequirements") == DOWNSTREAM_REQUIREMENTS, "snapshot downstream requirement projection drift")
+    require(snapshot.get("nextAction") == NEXT_ACTIONS[expected_stage], "snapshot nextAction projection drift")
 
     if current_request_count > 0:
         require(eligibility["eligibleDirectedPairCount"] > 0 and objective_available, "current request cannot exist without strict prerequisites")
@@ -224,6 +238,7 @@ def main() -> int:
     print("canonical append-only registry validators enforced: true")
     print("canonical production blocker authority enforced: true")
     print("snapshot exact field set enforced: true")
+    print("snapshot downstream requirement and next-action projection enforced: true")
     print(f"stage: {expected_stage}")
     print(f"strict prerequisite blockers: {len(strict_blockers)}")
     print(f"eligible directed restore pairs: {eligibility['eligibleDirectedPairCount']}")
