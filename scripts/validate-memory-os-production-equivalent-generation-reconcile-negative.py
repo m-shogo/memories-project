@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
@@ -110,22 +111,38 @@ def main() -> int:
             print(f"PASS reject before reconcile: {name}")
         registry_copy.write_bytes(original_registry)
 
-        failing_validator = tmp / "forced-validator-failure.py"
-        failing_validator.write_text("#!/usr/bin/env python3\nraise SystemExit(31)\n", encoding="utf-8")
-        reconciler.VALIDATOR = failing_validator
+        observed_commands: list[list[str]] = []
 
+        def aggregate_failure_after_generation_success(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            command = [str(item) for item in (args[0] if args else [])]
+            observed_commands.append(command)
+            if len(observed_commands) == 1:
+                require(command[-1] == str(reconciler.VALIDATOR), "generation validator was not first post-write validator")
+                return subprocess.CompletedProcess(args=command, returncode=0, stdout="synthetic generation validator success\n", stderr="")
+            require(len(observed_commands) == 2, "unexpected extra generation post-write validator invocation")
+            require(command[-1] == str(reconciler.OPERABILITY_VALIDATOR), "operability validator was not second post-write validator")
+            return subprocess.CompletedProcess(args=command, returncode=31, stdout="synthetic operability failure\n", stderr="")
+
+        real_run = reconciler.subprocess.run
+        reconciler.subprocess.run = aggregate_failure_after_generation_success
         try:
-            reconciler.main()
-        except reconciler.Fail as exc:
-            require("generation validator failed" in str(exc), f"unexpected reconcile failure: {exc}")
-        else:
-            raise Fail("forced generation post-validation failure unexpectedly accepted")
+            try:
+                reconciler.main()
+            except reconciler.Fail as exc:
+                require("operability validator failed" in str(exc), f"unexpected reconcile failure: {exc}")
+            else:
+                raise Fail("forced operability post-validation failure unexpectedly accepted")
+        finally:
+            reconciler.subprocess.run = real_run
 
+        require(len(observed_commands) == 2, "generation and operability validators were not both invoked")
         require(contract_copy.read_bytes() == original_contract, "generation contract rollback drift")
         require(registry_copy.read_bytes() == original_registry, "generation registry mutation drift")
         require(status_copy.read_bytes() == original_status, "operability status rollback drift")
 
     print("PASS rollback: environment generation contract/registry/status preserved byte-for-byte")
+    print("generation validator succeeds before aggregate failure: true")
+    print("aggregate operability failure triggers rollback: true")
     print("Environment generation reconcile negative suite PASS")
     return 0
 
