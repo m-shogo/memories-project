@@ -6,6 +6,7 @@ from __future__ import annotations
 import datetime as dt
 import importlib.util
 import json
+import os
 import re
 import subprocess
 import sys
@@ -17,6 +18,8 @@ RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/parser-inflight-cancel
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 CANONICAL_RECONCILER = ROOT / "scripts/reconcile-memory-os-chaos-authority.py"
 CANONICAL_OVERLAY = ROOT / "scripts/reconcile-memory-os-chaos-inflight-overlay.py"
+INFLIGHT_VALIDATOR = ROOT / "scripts/validate-memory-os-parser-inflight-cancellation.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 OLD_MISSING = "in-flight parser cancellation latency and process-group termination proof while the worker is blocked"
@@ -89,37 +92,42 @@ def source_is_ancestor(source_sha: str) -> bool:
         return False
 
 
+def run_validator(path: Path, *, expected_sha: str | None = None) -> None:
+    require(path.is_file(), f"canonical validator missing: {path.relative_to(ROOT)}")
+    require(not path.is_symlink(), f"canonical validator cannot be a symlink: {path.relative_to(ROOT)}")
+    env = os.environ.copy()
+    if expected_sha is not None:
+        env["EXPECTED_COMMIT_SHA"] = expected_sha
+    completed = subprocess.run(
+        [sys.executable, str(path)],
+        cwd=ROOT,
+        env=env,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    require(type(completed.returncode) is int and completed.returncode == 0,
+            f"canonical validator rejected authority: {path.relative_to(ROOT)}\n{completed.stdout[-4000:]}")
+
+
+def validate_authority_chain(source_sha: str) -> None:
+    run_validator(INFLIGHT_VALIDATOR, expected_sha=source_sha)
+    run_validator(OPERABILITY_VALIDATOR)
+
+
 def main() -> int:
     result = load(RESULT_PATH)
-    require(result.get("schemaVersion") ==
-            "memory-os-parser-inflight-cancellation-results.v1",
-            "in-flight result schemaVersion drift")
     source_sha = result.get("commitSha")
     require(isinstance(source_sha, str) and SHA_RE.fullmatch(source_sha) is not None,
             "in-flight result source SHA is invalid")
     require(source_is_ancestor(source_sha),
             "in-flight result source SHA is not an ancestor of current HEAD")
-    require(result.get("result") == "PASS" and result.get("integrityResult") == "PASS" and
-            result.get("exitCode") == 0,
-            "in-flight cancellation result is not PASS")
-    environment = result.get("environment")
-    require(isinstance(environment, dict), "in-flight result environment missing")
-    require(environment.get("productionEvidence") is False,
-            "in-flight result cannot be production evidence")
-    require(environment.get("containsSecrets") is False,
-            "in-flight result must contain no secrets")
-    assertions = result.get("assertions")
-    require(isinstance(assertions, dict), "in-flight result assertions missing")
-    for flag in (
-        "workerFrameObservedBeforeCancel", "spoolDataObservedBeforeCancel",
-        "returnedContextCanceled", "spoolResidueAbsent", "sameSpoolReusable",
-        "replacementSealValid", "independentVerificationMatched",
-    ):
-        require(assertions.get(flag) is True, f"in-flight assertion failed: {flag}")
-    latency = assertions.get("cancellationLatencyMilliseconds")
-    require(isinstance(latency, (int, float)) and 0 <= latency < 1000,
-            "in-flight cancellation latency is not below one second")
 
+    # Exact-source result/contract semantics belong to the canonical validator.
+    validate_authority_chain(source_sha)
+
+    original_status_bytes = STATUS_PATH.read_bytes()
     status = load(STATUS_PATH)
     require(status.get("productionDecision") == "NO_GO",
             "in-flight evidence cannot change production decision")
@@ -184,6 +192,7 @@ def main() -> int:
             "production decision changed unexpectedly")
 
     if not changed:
+        validate_authority_chain(source_sha)
         print("Parser in-flight cancellation authority already reconciled")
         return 0
 
@@ -192,6 +201,12 @@ def main() -> int:
         json.dumps(status, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
+    try:
+        validate_authority_chain(source_sha)
+    except Exception:
+        STATUS_PATH.write_bytes(original_status_bytes)
+        raise
+
     print("Registered exact-source in-flight parser cancellation through canonical chaos authorities")
     return 0
 
