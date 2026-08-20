@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Prove production-shaped migration reconcile rolls back post-write aggregate failures."""
+"""Prove migration production admission rejects executable substitution and rolls back aggregate failures."""
 
 from __future__ import annotations
 
 import importlib.util
 import subprocess
-import tempfile
 from pathlib import Path
 from types import ModuleType
 
@@ -14,6 +13,7 @@ RECONCILER = ROOT / "scripts/reconcile-memory-os-migration-production-shaped-adm
 CONTRACT = ROOT / "contracts/operations/migration-production-shaped-admission-contract.v1.json"
 LIFECYCLE = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
+SUBSTITUTE = ROOT / "scripts/validate-memory-os-migration-evidence-registry.py"
 
 
 class Fail(RuntimeError):
@@ -33,23 +33,47 @@ def load_reconciler() -> ModuleType:
     return module
 
 
-def main() -> int:
-    module = load_reconciler()
-    originals = {path: path.read_bytes() for path in (CONTRACT, LIFECYCLE, STATUS)}
+def executable_substitution_rejected(module: ModuleType, originals: dict[Path, bytes]) -> None:
+    cases = (
+        ("VALIDATOR", "migration admission validator authority drift"),
+        ("LIFECYCLE_VALIDATOR", "migration lifecycle validator authority drift"),
+        ("OPERABILITY_VALIDATOR", "operability validator authority drift"),
+        ("WRITER", "migration admission writer authority drift"),
+        ("RELEASE_WRITER", "release baseline writer authority drift"),
+        ("RELEASE_PAIR_WRITER", "release compatibility pair writer authority drift"),
+        ("GENERATION_WRITER", "environment generation writer authority drift"),
+    )
+    for attr, expected in cases:
+        original = getattr(module, attr)
+        try:
+            setattr(module, attr, SUBSTITUTE)
+            try:
+                module.enforce_runtime_authorities()
+            except module.Fail as exc:
+                require(expected in str(exc), f"unexpected {attr} substitution rejection: {exc}")
+            else:
+                raise Fail(f"migration reconciler accepted substituted executable authority: {attr}")
+            for path, expected_bytes in originals.items():
+                require(path.read_bytes() == expected_bytes, f"{attr}: rejected executable authority mutated {path.relative_to(ROOT)}")
+        finally:
+            setattr(module, attr, original)
 
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        prefix=".migration-production-post-operability-",
-        suffix=".py",
-        dir=ROOT / "scripts",
-        delete=False,
-    ) as handle:
-        handle.write("raise SystemExit(73)\n")
-        failing_validator = Path(handle.name)
 
+def aggregate_rollback_rejected(module: ModuleType, originals: dict[Path, bytes]) -> None:
+    original_run = module.subprocess.run
+
+    def injected_run(args, *pargs, **kwargs):
+        if (
+            isinstance(args, list)
+            and len(args) >= 2
+            and args[0] == "python"
+            and args[1] == str(module.OPERABILITY_VALIDATOR)
+        ):
+            raise subprocess.CalledProcessError(73, args)
+        return original_run(args, *pargs, **kwargs)
+
+    module.subprocess.run = injected_run
     try:
-        module.OPERABILITY_VALIDATOR = failing_validator
         try:
             module.main()
         except subprocess.CalledProcessError as exc:
@@ -57,12 +81,18 @@ def main() -> int:
         else:
             raise Fail("reconciler accepted an injected post-write aggregate validator failure")
     finally:
-        failing_validator.unlink(missing_ok=True)
+        module.subprocess.run = original_run
 
     for path, expected in originals.items():
         require(path.read_bytes() == expected, f"reconciler failed to roll back {path.relative_to(ROOT)}")
 
-    print("PASS: migration production-shaped admission reconciler rolls back contract, lifecycle, and status after post-write aggregate validation failure")
+
+def main() -> int:
+    module = load_reconciler()
+    originals = {path: path.read_bytes() for path in (CONTRACT, LIFECYCLE, STATUS)}
+    executable_substitution_rejected(module, originals)
+    aggregate_rollback_rejected(module, originals)
+    print("PASS: migration production-shaped reconciler rejects executable substitution and rolls back contract, lifecycle, and status after aggregate validation failure")
     return 0
 
 
