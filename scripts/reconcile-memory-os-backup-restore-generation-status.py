@@ -84,7 +84,10 @@ def require_exact_repo_file(path: Path, expected_relative: Path, message: str) -
 
 
 def enforce_runtime_authorities() -> None:
-    if CONTRACT == ROOT / CONTRACT_REL and STATUS == ROOT / STATUS_REL:
+    canonical_contract = CONTRACT == ROOT / CONTRACT_REL
+    canonical_status = STATUS == ROOT / STATUS_REL
+    require(canonical_contract is canonical_status, "generation status fixture boundary must replace contract and status together")
+    if canonical_contract:
         require_exact_repo_file(CONTRACT, CONTRACT_REL, "generation binding contract")
         require_exact_repo_file(VALIDATOR, VALIDATOR_REL, "generation binding validator")
         require_exact_repo_file(BACKUP_VALIDATOR, BACKUP_VALIDATOR_REL, "backup validator")
