@@ -11,9 +11,12 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/deletion-worker-host-failure-contract.v1.json"
-VALIDATOR = ROOT / "scripts/validate-memory-os-deletion-worker-host-failure.py"
-LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CANONICAL_HOST_VALIDATOR = ROOT / "scripts/validate-memory-os-deletion-worker-host-failure.py"
+CANONICAL_LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
+CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+VALIDATOR = CANONICAL_HOST_VALIDATOR
+LOAD_VALIDATOR = CANONICAL_LOAD_VALIDATOR
+OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
 WORKFLOW = ROOT / ".github/workflows/deletion-worker-host-failure-admission.yml"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 LOAD = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
@@ -51,12 +54,29 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
+def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
+    require(path == canonical, f"{label} authority drift")
+    require(canonical.is_file(), f"canonical {label} missing")
+    require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
+
+
+def validate_executable_authorities() -> None:
+    require_exact_authority(VALIDATOR, CANONICAL_HOST_VALIDATOR, "host-failure validator")
+    require_exact_authority(LOAD_VALIDATOR, CANONICAL_LOAD_VALIDATOR, "load validator")
+    require_exact_authority(
+        OPERABILITY_VALIDATOR,
+        CANONICAL_OPERABILITY_VALIDATOR,
+        "operability validator",
+    )
+
+
 def load_host_validator():
+    validate_executable_authorities()
     try:
         resolved = VALIDATOR.resolve(strict=True).relative_to(ROOT.resolve())
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail("canonical host-failure validator missing or escapes repository") from exc
-    require(resolved == VALIDATOR.relative_to(ROOT), "host-failure validator authority drift")
+    require(resolved == CANONICAL_HOST_VALIDATOR.relative_to(ROOT), "host-failure validator authority drift")
     spec = importlib.util.spec_from_file_location("memory_os_host_failure_validator_for_reconcile", VALIDATOR)
     require(spec is not None and spec.loader is not None, "cannot load canonical host-failure validator")
     module = importlib.util.module_from_spec(spec)
@@ -101,6 +121,7 @@ def reconcile_generation_projection(contract: dict[str, Any]) -> int:
 
 
 def validate_load_authority() -> None:
+    validate_executable_authorities()
     try:
         subprocess.run(["python", str(LOAD_VALIDATOR)], cwd=ROOT, check=True)
     except subprocess.CalledProcessError as exc:
@@ -108,6 +129,7 @@ def validate_load_authority() -> None:
 
 
 def write_transactionally(contract: dict[str, Any], status: dict[str, Any]) -> None:
+    validate_executable_authorities()
     contract_bytes = CONTRACT.read_bytes()
     status_bytes = STATUS.read_bytes()
     try:
@@ -125,6 +147,7 @@ def write_transactionally(contract: dict[str, Any], status: dict[str, Any]) -> N
 
 
 def main() -> int:
+    validate_executable_authorities()
     validate_load_authority()
 
     contract = load(CONTRACT)
