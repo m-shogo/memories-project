@@ -28,6 +28,33 @@ def load_generator():
     return module
 
 
+def expect_runtime_authority_identity(module) -> None:
+    module.enforce_runtime_authorities()
+    substitutions = (
+        ("RELEASE_WRITER", ROOT / "scripts/request-memory-os-rollback-rehearsal.py"),
+        ("PAIR_WRITER", ROOT / "scripts/register-memory-os-client-baseline.py"),
+        ("CLIENT_WRITER", ROOT / "scripts/register-memory-os-parser-artifact.py"),
+        ("PARSER_WRITER", ROOT / "scripts/register-memory-os-release-baseline.py"),
+        ("FOUNDATIONS_VALIDATOR", ROOT / "scripts/validate-memory-os-operability.py"),
+        ("EXECUTION_VALIDATOR", ROOT / "scripts/validate-memory-os-version-compatibility-foundations.py"),
+        ("OPERABILITY_VALIDATOR", ROOT / "scripts/validate-memory-os-client-server-support-window.py"),
+        ("WORKFLOW", ROOT / ".github/workflows/version-compatibility-foundations.yml"),
+    )
+    for field, substitute in substitutions:
+        original = getattr(module, field)
+        try:
+            setattr(module, field, substitute)
+            rejected = False
+            try:
+                module.enforce_runtime_authorities()
+            except SystemExit:
+                rejected = True
+            require(rejected, f"compatibility gap generator accepted {field} authority substitution")
+        finally:
+            setattr(module, field, original)
+    module.enforce_runtime_authorities()
+
+
 def expect_count_rejection(module, value, field: str) -> None:
     rejected = False
     try:
@@ -107,6 +134,7 @@ def expect_projection_rollback(module) -> None:
 
 def main() -> int:
     module = load_generator()
+    expect_runtime_authority_identity(module)
     for field in (
         "approvedReleaseCount",
         "approvedClientBaselineCount",
@@ -119,7 +147,7 @@ def main() -> int:
     require(module.non_negative_count(0, "validZero") == 0, "zero count should remain valid")
     expect_pair_authority_rejection(module)
     expect_projection_rollback(module)
-    print("PASS: compatibility admission counts, source authority and projection rollback fail closed")
+    print("PASS: compatibility admission counts, exact executable authority and projection rollback fail closed")
     return 0
 
 
