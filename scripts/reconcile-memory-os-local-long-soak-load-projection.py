@@ -4,13 +4,20 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-SOAK_PATH = ROOT / "contracts/operations/sustained-local-soak-contract.v1.json"
-LOAD_PATH = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
+CANONICAL_SOAK_PATH = ROOT / "contracts/operations/sustained-local-soak-contract.v1.json"
+CANONICAL_LOAD_PATH = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
+CANONICAL_SOAK_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak.py"
+CANONICAL_LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
+SOAK_PATH = CANONICAL_SOAK_PATH
+LOAD_PATH = CANONICAL_LOAD_PATH
+SOAK_VALIDATOR = CANONICAL_SOAK_VALIDATOR
+LOAD_VALIDATOR = CANONICAL_LOAD_VALIDATOR
 
 SCENARIO_ID = "mixed-import-lifecycle-local-long-soak"
 LEGACY_ALIAS_ID = "LOCAL_LONG_SOAK"
@@ -27,6 +34,35 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
+    require(path == canonical, f"{label} authority drift")
+    require(canonical.is_file(), f"canonical {label} missing")
+    require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
+
+
+def validate_authorities() -> None:
+    require_exact_authority(SOAK_PATH, CANONICAL_SOAK_PATH, "sustained-soak contract")
+    require_exact_authority(LOAD_PATH, CANONICAL_LOAD_PATH, "load contract")
+    require_exact_authority(SOAK_VALIDATOR, CANONICAL_SOAK_VALIDATOR, "sustained-soak validator")
+    require_exact_authority(LOAD_VALIDATOR, CANONICAL_LOAD_VALIDATOR, "load validator")
+
+
+def run_validator(path: Path, label: str) -> None:
+    validate_authorities()
+    try:
+        subprocess.run([sys.executable, str(path)], cwd=ROOT, check=True)
+    except subprocess.CalledProcessError as exc:
+        raise Fail(f"canonical {label} rejected authority: {exc}") from exc
+
+
+def validate_source_authority() -> None:
+    run_validator(SOAK_VALIDATOR, "sustained-soak validator")
+
+
+def validate_projected_load_authority() -> None:
+    run_validator(LOAD_VALIDATOR, "load validator")
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -111,6 +147,8 @@ def assert_projection_input_safe(rows: Any) -> list[dict[str, Any]]:
 
 
 def main() -> int:
+    validate_authorities()
+    validate_source_authority()
     soak = load(SOAK_PATH)
     load_contract = load(LOAD_PATH)
 
@@ -163,7 +201,13 @@ def main() -> int:
         rebuilt.append(derived_row(local_evidence=local_evidence))
 
     load_contract["externalExecutedScenarios"] = rebuilt
-    LOAD_PATH.write_text(json.dumps(load_contract, indent=2) + "\n", encoding="utf-8")
+    original_load_bytes = LOAD_PATH.read_bytes()
+    try:
+        LOAD_PATH.write_text(json.dumps(load_contract, indent=2) + "\n", encoding="utf-8")
+        validate_projected_load_authority()
+    except BaseException:
+        LOAD_PATH.write_bytes(original_load_bytes)
+        raise
     print(f"{SCENARIO_ID} load projection reconciled: {'registered' if first_run else 'withheld'}")
     print(f"legacy {LEGACY_ALIAS_ID} alias present after reconcile: false")
     print(f"local sustained-soak evidence: {str(local_evidence).lower()}")
