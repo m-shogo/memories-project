@@ -23,6 +23,7 @@ DRILL_WRITER = ROOT / "scripts/request-memory-os-backup-restore-drill.py"
 GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
 TYPED_WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-admission-chain.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 
 
@@ -109,6 +110,21 @@ def validate_shared_registry(module: Any, registry: dict[str, Any], label: str) 
     return rows
 
 
+def run_validator(path: Path, label: str) -> None:
+    completed = subprocess.run(
+        [sys.executable, str(path)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    require(
+        completed.returncode == 0,
+        f"post-reconcile {label} failed:\n{completed.stdout[-8000:]}{completed.stderr[-8000:]}",
+    )
+
+
 def main() -> int:
     for path, message in (
         (CONTRACT, "admission-chain contract missing"),
@@ -121,6 +137,7 @@ def main() -> int:
         (GEN_WRITER, "generation evidence writer missing"),
         (TYPED_WRITER, "typed non-resurrection writer missing"),
         (VALIDATOR, "admission-chain validator missing"),
+        (OPERABILITY_VALIDATOR, "operability validator missing"),
         (STATUS, "operability status missing"),
     ):
         require_repo_file(path, message)
@@ -251,8 +268,8 @@ def main() -> int:
     contract_text = json.dumps(contract, indent=2, ensure_ascii=False) + "\n"
     try:
         write_text(CONTRACT, contract_text)
-        completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-        require(completed.returncode == 0, f"post-reconcile admission-chain validator failed:\n{completed.stdout[-8000:]}{completed.stderr[-8000:]}")
+        run_validator(VALIDATOR, "admission-chain validator")
+        run_validator(OPERABILITY_VALIDATOR, "operability validator")
     except Exception:
         write_text(CONTRACT, original_contract_text)
         raise
@@ -269,7 +286,7 @@ def main() -> int:
     print("boolean aggregate counts accepted by reconciler: false")
     print("authority reads and executable refs repository-contained: true")
     print("invalid UTF-8 authority accepted: false")
-    print("failed post-validation leaves derived contract mutation behind: false")
+    print("failed chain/operability post-validation leaves derived contract mutation behind: false")
     print(f"candidate-level independent evidence review completed: {str(candidate_count > 0).lower()}")
     print("human production-promotion review completed: false")
     print("human production-promotion authorized: false")
