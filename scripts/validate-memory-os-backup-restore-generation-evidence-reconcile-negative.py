@@ -49,10 +49,56 @@ def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[
     raise Fail(f"negative case unexpectedly accepted: {name}")
 
 
+def expect_direct_authority_rejected(
+    reconciler: object,
+    *,
+    name: str,
+    field: str,
+    attribute: str,
+    replacement: Path,
+    before: dict[Path, bytes],
+) -> None:
+    original = getattr(reconciler, attribute)
+    setattr(reconciler, attribute, replacement)
+    try:
+        try:
+            reconciler.main()
+        except reconciler.Fail as exc:
+            require(f"{field} authority drift" in str(exc), f"{name} rejected at wrong boundary: {exc}")
+        else:
+            raise Fail(f"direct reconciler unexpectedly accepted: {name}")
+        for path, expected in before.items():
+            require(path.read_bytes() == expected, f"canonical authority mutated while rejecting {name}: {path.name}")
+    finally:
+        setattr(reconciler, attribute, original)
+
+
+def prove_direct_authority_identity(reconciler: object) -> None:
+    before = {path: path.read_bytes() for path in CANONICAL.values()}
+    cases = (
+        ("generation writer substitution", "generation evidence writer", "WRITER", reconciler.VALIDATOR),
+        ("generation validator substitution", "generation evidence validator", "VALIDATOR", reconciler.OPERABILITY_VALIDATOR),
+        ("generation binding validator substitution", "generation binding validator", "BINDING_VALIDATOR", reconciler.VALIDATOR),
+        ("operability validator substitution", "operability validator", "OPERABILITY_VALIDATOR", reconciler.BINDING_VALIDATOR),
+    )
+    for name, field, attribute, replacement in cases:
+        expect_direct_authority_rejected(
+            reconciler,
+            name=name,
+            field=field,
+            attribute=attribute,
+            replacement=replacement,
+            before=before,
+        )
+    print(f"PASS boundary: direct generation-evidence writer/validator substitutions rejected: {len(cases)}")
+
+
 def main() -> int:
     require(RECONCILER.is_file(), "generation evidence reconciler missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
     reconciler = load_reconciler()
+
+    prove_direct_authority_identity(reconciler)
 
     with tempfile.TemporaryDirectory(prefix=".tmp-generation-evidence-reconcile-", dir=TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
@@ -109,6 +155,7 @@ def main() -> int:
 
     print("PASS reject: corrupt generation append-only authority is never auto-healed by reconcile")
     print("PASS rollback: generation evidence reconcile restores registry/contract/binding/status after aggregate validation failure")
+    print("direct generation-evidence writer/validator substitutions accepted: false")
     print("Generation evidence reconcile negative suite PASS")
     return 0
 
