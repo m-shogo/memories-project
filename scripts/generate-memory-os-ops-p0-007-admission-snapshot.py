@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "contracts/operations/ops-p0-007-admission-snapshot.v1.json"
 ELIGIBILITY_HELPER = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
 BLOCKER_HELPER = ROOT / "scripts/memory_os_backup_restore_blockers.py"
+SNAPSHOT_VALIDATOR = ROOT / "scripts/validate-memory-os-ops-p0-007-admission-snapshot.py"
 OBJECTIVES = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
 DRILL_REQUESTS = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
 GEN_EVIDENCE = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
@@ -60,6 +61,20 @@ def validate_registry(module, registry: dict[str, Any], label: str) -> list[dict
     if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
         raise SystemExit(f"{label} canonical registry validator returned invalid rows")
     return rows
+
+
+def validate_generated_snapshot() -> None:
+    module = load_module(SNAPSHOT_VALIDATOR, "memory_os_ops_p0_007_snapshot_post_write_validator")
+    validator = getattr(module, "main", None)
+    failure_type = getattr(module, "Fail", RuntimeError)
+    if not callable(validator) or not isinstance(failure_type, type) or not issubclass(failure_type, BaseException):
+        raise SystemExit("strict snapshot validator interface invalid")
+    try:
+        result = validator()
+    except failure_type as exc:
+        raise SystemExit(f"generated strict snapshot invalid: {exc}") from exc
+    if not isinstance(result, int) or isinstance(result, bool) or result != 0:
+        raise SystemExit(f"generated strict snapshot validator returned invalid result: {result}")
 
 
 def load_helper():
@@ -187,7 +202,16 @@ def main() -> int:
         "productionReady": False,
         "productionDecision": "NO_GO",
     }
-    OUTPUT.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    previous = OUTPUT.read_bytes() if OUTPUT.exists() else None
+    try:
+        OUTPUT.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        validate_generated_snapshot()
+    except (Exception, SystemExit):
+        if previous is None:
+            OUTPUT.unlink(missing_ok=True)
+        else:
+            OUTPUT.write_bytes(previous)
+        raise
     print("Memory OS OPS-P0-007 strict admission snapshot generated")
     print(f"stage: {stage}")
     print(f"strict prerequisite blockers: {len(strict_blockers)}")
