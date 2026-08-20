@@ -28,6 +28,16 @@ GENERATION_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-env
 LIFECYCLE = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 
+CANONICAL_EXECUTABLES = {
+    "migration admission validator": ROOT / "scripts/validate-memory-os-migration-production-shaped-admission.py",
+    "migration lifecycle validator": ROOT / "scripts/validate-memory-os-migration-lifecycle.py",
+    "operability validator": ROOT / "scripts/validate-memory-os-operability.py",
+    "migration admission writer": ROOT / "scripts/register-memory-os-migration-production-shaped-admission.py",
+    "release baseline writer": ROOT / "scripts/register-memory-os-release-baseline.py",
+    "release compatibility pair writer": ROOT / "scripts/register-memory-os-release-compatibility-pair.py",
+    "environment generation writer": ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py",
+}
+
 EVIDENCE = (
     "production-shaped migration rehearsal admission is generation-bound and reuses the canonical append-only migration evidence ledger: admission additionally requires a registered environment generation, an approved predecessor/successor release pair, generation-consistent recovery evidence, mixed-version observation and independent security/operability review; the admission registry is currently empty"
 )
@@ -56,8 +66,32 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def require_exact_executable(path: Path, label: str) -> None:
+    canonical = CANONICAL_EXECUTABLES[label]
+    require(path == canonical, f"{label} authority drift")
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"canonical {label} missing or escapes repository") from exc
+    require(lexical == resolved and path.is_file() and not path.is_symlink(), f"{label} authority drift")
+
+
+def enforce_runtime_authorities() -> None:
+    for path, label in (
+        (VALIDATOR, "migration admission validator"),
+        (LIFECYCLE_VALIDATOR, "migration lifecycle validator"),
+        (OPERABILITY_VALIDATOR, "operability validator"),
+        (WRITER, "migration admission writer"),
+        (RELEASE_WRITER, "release baseline writer"),
+        (RELEASE_PAIR_WRITER, "release compatibility pair writer"),
+        (GENERATION_WRITER, "environment generation writer"),
+    ):
+        require_exact_executable(path, label)
+
+
 def load_module(path: Path, name: str, label: str) -> ModuleType:
-    require(path.is_file(), f"canonical {label} missing")
+    require_exact_executable(path, label)
     spec = importlib.util.spec_from_file_location(name, path)
     require(spec is not None and spec.loader is not None, f"cannot load canonical {label}")
     module = importlib.util.module_from_spec(spec)
@@ -79,6 +113,7 @@ def append_once(values: list[Any], value: str) -> None:
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     for path in (
         REGISTRY,
         VALIDATOR,
