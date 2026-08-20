@@ -17,6 +17,8 @@ OPERATIONS_PATH = ROOT / "contracts/operations/rate-limit-operations-contract.v1
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-rate-limit-emergency-drill.py"
 OPERATIONS_VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit-operations.py"
+RATE_LIMIT_VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 WORKFLOW_PATH = ".github/workflows/rate-limit-emergency-drill.yml"
 NEW_REFS = (
     "contracts/operations/rate-limit-emergency-drill-contract.v1.json",
@@ -80,6 +82,8 @@ def validate_written_authority(source_sha: str) -> None:
         "--require-reconciled",
     )
     run_validator(OPERATIONS_VALIDATOR)
+    run_validator(RATE_LIMIT_VALIDATOR)
+    run_validator(OPERABILITY_VALIDATOR)
 
 
 def transactional_write(contract: dict[str, Any], status: dict[str, Any], source_sha: str) -> None:
