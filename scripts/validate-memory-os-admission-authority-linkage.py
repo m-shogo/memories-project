@@ -12,6 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 ROOT_RESOLVED = ROOT.resolve()
 CONTRACTS = [
     "contracts/operations/migration-production-shaped-admission-contract.v1.json",
+    "contracts/operations/release-baseline-registry-contract.v1.json",
+    "contracts/operations/release-compatibility-pair-contract.v1.json",
     "contracts/operations/incident-human-tabletop-evidence-contract.v1.json",
     "contracts/operations/incident-contact-routing-admission-contract.v1.json",
     "contracts/operations/observability-stack-deployment-contract.v1.json",
@@ -23,7 +25,8 @@ CONTRACTS = [
     "contracts/operations/production-equivalent-environment-generation-contract.v1.json",
 ]
 FILE_KEYS = {
-    "registryPath", "registry", "writer", "validator", "reconcile", "workflow",
+    "registryPath", "registry", "releaseRegistry", "writer", "validator", "reconcile", "workflow",
+    "independentReviewValidator", "independentReviewNegativeValidator",
     "sourceMigrationLifecycleContract", "sourceMigrationEvidenceRegistryContract",
     "sourceReleaseRegistry", "sourceReleasePairRegistry", "sourceCompatibilityExecutionAuthority",
     "environmentGenerationContract", "environmentGenerationRegistry",
