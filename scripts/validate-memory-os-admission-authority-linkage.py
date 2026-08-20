@@ -23,10 +23,11 @@ CONTRACTS = [
     "contracts/operations/production-equivalent-environment-generation-contract.v1.json",
 ]
 FILE_KEYS = {
-    "registryPath", "writer", "validator", "reconcile", "workflow",
+    "registryPath", "registry", "writer", "validator", "reconcile", "workflow",
     "sourceMigrationLifecycleContract", "sourceMigrationEvidenceRegistryContract",
     "sourceReleaseRegistry", "sourceReleasePairRegistry", "sourceCompatibilityExecutionAuthority",
     "environmentGenerationContract", "environmentGenerationRegistry",
+    "environmentRecordSemanticValidator", "generationRegistryRecordSchema", "negativeAdmissionValidator",
     "backupRestoreGenerationContract", "sourceIncidentPolicy",
     "sourceObservabilityStackContract", "sourceObservabilityStackRegistry",
     "sourceLogContract", "sourceLogAccessContract", "sourceMetricsContract",
