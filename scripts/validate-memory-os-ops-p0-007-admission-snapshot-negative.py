@@ -182,7 +182,7 @@ def run_module_symlink_escape(originals: dict[Path, bytes]) -> None:
         run_validator(False, "objective writer module symlink escape")
         run_generator_rejects(
             "generator objective writer module symlink escape",
-            "authority module escapes canonical repository path",
+            "cannot resolve canonical authority module",
         )
     finally:
         if OBJECTIVE_WRITER.is_symlink():
