@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove failure-drill reconcile is transactional and removes superseded empty-registry claims."""
+"""Prove failure-drill reconcile is transactional, monotonic, and exact-authority bound."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/production-shaped-failure-drill-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-production-shaped-failure-drills.py"
+SUBSTITUTE = ROOT / "scripts/validate-memory-os-migration-evidence-registry.py"
 
 
 def load_module(path: Path, name: str) -> Any:
@@ -28,6 +29,32 @@ def status_gate(status: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(gate, dict):
         raise RuntimeError("OPS-P0-009 missing in test status")
     return gate
+
+
+def prove_executable_authority(reconciler: Any, contract_before: bytes, status_before: bytes) -> None:
+    cases = (
+        ("WRITER", "failure-drill writer authority drift"),
+        ("VALIDATOR", "failure-drill validator authority drift"),
+        ("CHAOS_VALIDATOR", "chaos validator authority drift"),
+        ("OPERABILITY_VALIDATOR", "operability validator authority drift"),
+    )
+    for attr, expected in cases:
+        original = getattr(reconciler, attr)
+        try:
+            setattr(reconciler, attr, SUBSTITUTE)
+            try:
+                reconciler.enforce_runtime_authorities()
+            except reconciler.Fail as exc:
+                if expected not in str(exc):
+                    raise RuntimeError(f"unexpected {attr} authority rejection: {exc}") from exc
+            else:
+                raise RuntimeError(f"reconciler accepted substituted executable authority: {attr}")
+            if CONTRACT.read_bytes() != contract_before:
+                raise RuntimeError(f"{attr}: executable rejection mutated failure-drill contract")
+            if STATUS.read_bytes() != status_before:
+                raise RuntimeError(f"{attr}: executable rejection mutated production status")
+        finally:
+            setattr(reconciler, attr, original)
 
 
 def prove_corrupt_status_rollback(reconciler: Any, contract_before: bytes, status_before: bytes) -> None:
@@ -122,11 +149,12 @@ def main() -> int:
     reconciler = load_module(RECONCILER, "failure_drill_reconcile_rollback_negative")
     contract_before = CONTRACT.read_bytes()
     status_before = STATUS.read_bytes()
+    prove_executable_authority(reconciler, contract_before, status_before)
     prove_corrupt_status_rollback(reconciler, contract_before, status_before)
     prove_aggregate_validator_rollback(reconciler, contract_before, status_before)
     prove_legacy_empty_evidence_is_monotonic(reconciler, contract_before, status_before)
 
-    print("PASS: failure-drill reconcile is transactional across direct and aggregate validators and removes superseded empty-registry evidence")
+    print("PASS: failure-drill reconcile is exact-authority bound, transactional across direct and aggregate validators, and removes superseded empty-registry evidence")
     print("production readiness: false")
     print("production decision: NO_GO")
     return 0
