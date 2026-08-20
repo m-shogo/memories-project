@@ -13,13 +13,20 @@ from typing import Any
 from memory_os_backup_restore_blockers import require_canonical_gaps
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/backup-restore-promotion-review-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/backup-restore-promotion-review-registry.v1.json"
-GEN_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
-WRITER = ROOT / "scripts/register-memory-os-backup-restore-promotion-review.py"
-VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-promotion-review.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
-STATUS = ROOT / "contracts/operations/production-operability-status.json"
+CONTRACT_REL = Path("contracts/operations/backup-restore-promotion-review-contract.v1.json")
+REGISTRY_REL = Path("contracts/operations/backup-restore-promotion-review-registry.v1.json")
+GEN_REGISTRY_REL = Path("contracts/operations/backup-restore-generation-evidence-registry.v1.json")
+WRITER_REL = Path("scripts/register-memory-os-backup-restore-promotion-review.py")
+VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-promotion-review.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+CONTRACT = ROOT / CONTRACT_REL
+REGISTRY = ROOT / REGISTRY_REL
+GEN_REGISTRY = ROOT / GEN_REGISTRY_REL
+WRITER = ROOT / WRITER_REL
+VALIDATOR = ROOT / VALIDATOR_REL
+OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
+STATUS = ROOT / STATUS_REL
 
 
 class Fail(RuntimeError):
@@ -40,6 +47,29 @@ def repo_relative(path: Path) -> Path:
         return path.resolve(strict=False).relative_to(ROOT.resolve())
     except (OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"authority path escapes repository: {path}") from exc
+
+
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    require_exact_repo_file(CONTRACT, CONTRACT_REL, "promotion review contract")
+    require_exact_repo_file(REGISTRY, REGISTRY_REL, "promotion review registry")
+    require_exact_repo_file(GEN_REGISTRY, GEN_REGISTRY_REL, "generation evidence registry")
+    require_exact_repo_file(WRITER, WRITER_REL, "promotion review writer")
+    require_exact_repo_file(VALIDATOR, VALIDATOR_REL, "promotion review validator")
+    require_exact_repo_file(OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator")
+    require_exact_repo_file(STATUS, STATUS_REL, "production operability status")
 
 
 def read_text(path: Path) -> str:
@@ -69,15 +99,14 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_writer():
-    relative = repo_relative(WRITER)
-    require((ROOT / relative).is_file(), "promotion review writer missing")
+    require_exact_repo_file(WRITER, WRITER_REL, "promotion review writer")
     spec = importlib.util.spec_from_file_location("memory_os_promotion_review_writer_reconcile", WRITER)
-    require(spec is not None and spec.loader is not None, f"cannot load {relative}")
+    require(spec is not None and spec.loader is not None, "cannot load canonical promotion review writer")
     try:
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
     except (FileNotFoundError, OSError) as exc:
-        raise Fail(f"cannot load {relative}: {exc}") from exc
+        raise Fail(f"cannot load {WRITER_REL}: {exc}") from exc
     return module
 
 
@@ -110,6 +139,7 @@ def run_validator(path: Path, label: str) -> None:
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     original_contract_text = read_text(CONTRACT)
     original_registry_text = read_text(REGISTRY)
     contract = load(CONTRACT)
