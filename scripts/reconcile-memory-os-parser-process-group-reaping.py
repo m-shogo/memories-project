@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import re
 import subprocess
 import sys
@@ -79,27 +80,37 @@ def write_json(path: Path, value: dict[str, Any]) -> None:
     path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
-def run_post_validators() -> None:
-    for validator in (PROCESS_GROUP_VALIDATOR, OPERABILITY_VALIDATOR):
-        completed = subprocess.run(
-            [sys.executable, str(validator)],
-            cwd=ROOT,
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
-        require(completed.returncode == 0,
-                f"post-write validator failed: {validator.relative_to(ROOT)}\n{completed.stdout}")
+def run_validator(path: Path, *, expected_sha: str | None = None) -> None:
+    require(path.is_file(), f"canonical validator missing: {path.relative_to(ROOT)}")
+    require(not path.is_symlink(), f"canonical validator cannot be a symlink: {path.relative_to(ROOT)}")
+    env = os.environ.copy()
+    if expected_sha is not None:
+        env["EXPECTED_COMMIT_SHA"] = expected_sha
+    completed = subprocess.run(
+        [sys.executable, str(path)],
+        cwd=ROOT,
+        env=env,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    require(type(completed.returncode) is int and completed.returncode == 0,
+            f"canonical validator failed: {path.relative_to(ROOT)}\n{completed.stdout}")
 
 
-def commit_candidate(contract: dict[str, Any], status: dict[str, Any]) -> None:
+def run_authority_validators(source_sha: str) -> None:
+    run_validator(PROCESS_GROUP_VALIDATOR, expected_sha=source_sha)
+    run_validator(OPERABILITY_VALIDATOR)
+
+
+def commit_candidate(contract: dict[str, Any], status: dict[str, Any], source_sha: str) -> None:
     original_contract = CONTRACT_PATH.read_bytes()
     original_status = STATUS_PATH.read_bytes()
     try:
         write_json(CONTRACT_PATH, contract)
         write_json(STATUS_PATH, status)
-        run_post_validators()
+        run_authority_validators(source_sha)
     except Exception:
         CONTRACT_PATH.write_bytes(original_contract)
         STATUS_PATH.write_bytes(original_status)
@@ -108,31 +119,15 @@ def commit_candidate(contract: dict[str, Any], status: dict[str, Any]) -> None:
 
 def main() -> int:
     result = load(RESULT_PATH)
-    require(result.get("schemaVersion") == "memory-os-parser-process-group-reaping-results.v1",
-            "process-group reaping result schemaVersion drift")
     source_sha = result.get("commitSha")
     require(isinstance(source_sha, str) and SHA_RE.fullmatch(source_sha) is not None,
             "process-group reaping result source SHA invalid")
     require(source_is_ancestor(source_sha),
             "process-group reaping result source SHA is not an ancestor of HEAD")
-    require(result.get("result") == "PASS" and result.get("integrityResult") == "PASS" and
-            result.get("exitCode") == 0,
-            "process-group reaping result is not PASS")
-    environment = result.get("environment")
-    require(isinstance(environment, dict) and environment.get("productionEvidence") is False and
-            environment.get("containsSecrets") is False,
-            "process-group reaping environment boundary drift")
-    assertions = result.get("assertions")
-    require(isinstance(assertions, dict), "process-group reaping assertions missing")
-    require(isinstance(assertions.get("trackedProcessCountBeforeCancel"), int) and
-            assertions["trackedProcessCountBeforeCancel"] >= 2,
-            "worker plus child were not independently observed")
-    require(assertions.get("trackedProcessCountAfterCancel") == 0 and
-            assertions.get("allCapturedProcEntriesGone") is True,
-            "captured process entries survived cancellation")
-    require(assertions.get("returnedContextCanceled") is True and
-            assertions.get("spoolResidueAbsent") is True,
-            "cancellation or spool cleanup assertion failed")
+
+    # The canonical validator owns contract/result semantics. Validate the exact
+    # source before interpreting any derived fields or mutating canonical state.
+    run_authority_validators(source_sha)
 
     contract = load(CONTRACT_PATH)
     readiness = contract.get("readiness")
@@ -190,12 +185,12 @@ def main() -> int:
             "completed child-process orphan/reaping gap remained stale")
 
     if not changed:
-        run_post_validators()
+        run_authority_validators(source_sha)
         print("Parser process-group reaping authority already reconciled")
         return 0
 
     status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
-    commit_candidate(contract, status)
+    commit_candidate(contract, status, source_sha)
     print("Registered exact-source parser process-group reaping evidence")
     print("child-process orphan/reaping gap: satisfied locally")
     print("OPS-P0-009: PARTIAL")
