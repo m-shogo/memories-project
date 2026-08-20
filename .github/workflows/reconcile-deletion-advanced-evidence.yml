@@ -6,6 +6,8 @@ on:
       - so
     paths:
       - ".github/workflows/reconcile-deletion-advanced-evidence.yml"
+      - "scripts/reconcile-memory-os-deletion-prefence-linearization.py"
+      - "scripts/validate-memory-os-deletion-prefence-linearization-reconcile-negative.py"
       - "scripts/reconcile-memory-os-deletion-advanced-evidence.py"
       - "scripts/validate-memory-os-deletion-advanced-evidence-reconcile-negative.py"
       - "scripts/validate-memory-os-deletion-prefence-linearization.py"
@@ -22,6 +24,8 @@ on:
       - so
     paths:
       - ".github/workflows/reconcile-deletion-advanced-evidence.yml"
+      - "scripts/reconcile-memory-os-deletion-prefence-linearization.py"
+      - "scripts/validate-memory-os-deletion-prefence-linearization-reconcile-negative.py"
       - "scripts/reconcile-memory-os-deletion-advanced-evidence.py"
       - "scripts/validate-memory-os-deletion-advanced-evidence-reconcile-negative.py"
       - "scripts/validate-memory-os-deletion-prefence-linearization.py"
@@ -66,6 +70,8 @@ jobs:
         run: |
           set -euo pipefail
           python -m py_compile \
+            scripts/reconcile-memory-os-deletion-prefence-linearization.py \
+            scripts/validate-memory-os-deletion-prefence-linearization-reconcile-negative.py \
             scripts/reconcile-memory-os-deletion-advanced-evidence.py \
             scripts/validate-memory-os-deletion-advanced-evidence-reconcile-negative.py \
             scripts/validate-memory-os-deletion-prefence-linearization.py \
@@ -73,6 +79,7 @@ jobs:
             scripts/validate-memory-os-load-evidence-index.py \
             scripts/validate-memory-os-load.py \
             scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-deletion-prefence-linearization-reconcile-negative.py
           python scripts/validate-memory-os-deletion-advanced-evidence-reconcile-negative.py
           python scripts/validate-memory-os-deletion-prefence-linearization.py --require-result
           python scripts/validate-memory-os-deletion-worker-saturation.py --require-result
