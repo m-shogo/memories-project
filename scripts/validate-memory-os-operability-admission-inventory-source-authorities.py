@@ -175,6 +175,11 @@ COMMAND_SOURCES: tuple[tuple[str, str, str], ...] = (
         "backup/restore drill preflight authority",
     ),
     (
+        "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py",
+        "memory_os_inventory_source_backup_preflight_generation_consistency",
+        "backup/restore preflight generation eligibility consistency authority",
+    ),
+    (
         "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py",
         "memory_os_inventory_source_backup_generation_evidence_writer_authority",
         "backup/restore generation evidence executable authority",
@@ -183,6 +188,11 @@ COMMAND_SOURCES: tuple[tuple[str, str, str], ...] = (
         "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py",
         "memory_os_inventory_source_backup_non_resurrection_contract",
         "backup/restore typed non-resurrection authority",
+    ),
+    (
+        "scripts/validate-memory-os-backup-restore-admission-chain.py",
+        "memory_os_inventory_source_backup_admission_chain",
+        "backup/restore admission chain authority",
     ),
 )
 
