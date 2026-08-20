@@ -12,6 +12,7 @@ on:
       - "scripts/validate-memory-os-release-baseline-registry-negative.py"
       - "scripts/validate-memory-os-release-baseline-evidence-binding.py"
       - "scripts/validate-memory-os-release-baseline-evidence-binding-negative.py"
+      - "scripts/validate-memory-os-release-baseline-reconcile-authority-negative.py"
       - "scripts/reconcile-memory-os-release-baseline-registry.py"
       - "scripts/validate-memory-os-version-compatibility.py"
       - "scripts/validate-memory-os-operability.py"
@@ -28,6 +29,7 @@ on:
       - "scripts/validate-memory-os-release-baseline-registry-negative.py"
       - "scripts/validate-memory-os-release-baseline-evidence-binding.py"
       - "scripts/validate-memory-os-release-baseline-evidence-binding-negative.py"
+      - "scripts/validate-memory-os-release-baseline-reconcile-authority-negative.py"
       - "scripts/reconcile-memory-os-release-baseline-registry.py"
       - "scripts/validate-memory-os-version-compatibility.py"
       - "scripts/validate-memory-os-operability.py"
@@ -78,6 +80,7 @@ jobs:
             scripts/validate-memory-os-release-baseline-registry-negative.py \
             scripts/validate-memory-os-release-baseline-evidence-binding.py \
             scripts/validate-memory-os-release-baseline-evidence-binding-negative.py \
+            scripts/validate-memory-os-release-baseline-reconcile-authority-negative.py \
             scripts/reconcile-memory-os-release-baseline-registry.py \
             scripts/validate-memory-os-version-compatibility.py \
             scripts/validate-memory-os-operability.py
@@ -163,6 +166,9 @@ jobs:
 
       - name: Validate append-only registry corruption negatives
         run: python scripts/validate-memory-os-release-baseline-registry-negative.py
+
+      - name: Validate release reconcile authority negatives
+        run: python scripts/validate-memory-os-release-baseline-reconcile-authority-negative.py
 
       - name: Validate immutable release evidence source binding
         run: |
