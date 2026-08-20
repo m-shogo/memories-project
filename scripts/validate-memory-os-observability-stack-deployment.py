@@ -34,6 +34,28 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def load_generation_writer() -> ModuleType:
+    require(GEN_WRITER.is_file(), "canonical environment-generation writer missing")
+    spec = importlib.util.spec_from_file_location("memory_os_generation_writer_for_observability_validator", GEN_WRITER)
+    require(spec is not None and spec.loader is not None, "cannot load environment-generation writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    require(getattr(module, "REGISTRY", None) == GEN_REGISTRY,
+            "environment-generation writer registry authority drift")
+    require(callable(getattr(module, "validate_registry_for_append", None)),
+            "environment-generation registry validator missing")
+    return module
+
+
+def validate_generation_authority() -> None:
+    registry = load(GEN_REGISTRY)
+    writer = load_generation_writer()
+    try:
+        writer.validate_registry_for_append(registry)
+    except Exception as exc:
+        raise Fail(f"environment-generation authority invalid: {exc}") from exc
+
+
 def load_writer() -> ModuleType:
     spec = importlib.util.spec_from_file_location("memory_os_observability_stack_writer", WRITER)
     require(spec is not None and spec.loader is not None, "cannot load stack writer")
@@ -73,6 +95,7 @@ def main() -> int:
     promotion = contract.get("promotionRules")
     require(isinstance(promotion, dict) and promotion and all(value is False or key == "automaticProductionReadyForbidden" and value is True for key, value in promotion.items()), "promotion rules drift")
 
+    validate_generation_authority()
     writer = load_writer()
     try:
         writer.validate_registry_for_append(registry)
