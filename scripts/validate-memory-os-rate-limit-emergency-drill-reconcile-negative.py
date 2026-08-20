@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove emergency drill authority rejects detached sources and rolls back on post-write failure."""
+"""Prove emergency drill/evaluator authority rejects detached or weak sources and rolls back."""
 
 from __future__ import annotations
 
@@ -7,11 +7,14 @@ import importlib.util
 import json
 import os
 import subprocess
+import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER_PATH = ROOT / "scripts/reconcile-memory-os-rate-limit-emergency-drill.py"
 VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-rate-limit-emergency-drill.py"
+EVALUATOR_PATH = ROOT / "scripts/evaluate-memory-os-rate-limit-emergency-state.py"
 
 
 def load_module(path: Path, name: str):
@@ -71,6 +74,55 @@ def prove_lineage_rejection() -> None:
         raise AssertionError("lineage negative changed the current branch ref")
 
 
+def prove_evaluator_authority_boundaries() -> None:
+    evaluator = load_module(EVALUATOR_PATH, "memory_os_rate_limit_emergency_evaluator_negative")
+
+    class SyntheticValidationFailure(RuntimeError):
+        pass
+
+    original_loader = evaluator.load_validator
+    evaluator.load_validator = lambda: SimpleNamespace(
+        main=lambda: False,
+        ValidationFailure=SyntheticValidationFailure,
+        load_contract_context=lambda: ({}, set()),
+        validate_record=lambda record, contract, policy_ids: None,
+    )
+    try:
+        try:
+            evaluator.validate_authority(evaluator.DEFAULT_LEDGER.resolve(), {})
+        except SystemExit as exc:
+            if "returned non-zero: False" not in str(exc):
+                raise AssertionError(f"unexpected boolean-exit rejection: {exc}") from exc
+        else:
+            raise AssertionError("boolean false validator result was incorrectly accepted as exit zero")
+    finally:
+        evaluator.load_validator = original_loader
+
+    original_path = evaluator.VALIDATOR_PATH
+    with tempfile.TemporaryDirectory(prefix="memory-os-rate-limit-evaluator-authority-") as tmp:
+        rogue = Path(tmp) / "validator.py"
+        rogue.write_text("class ValidationFailure(RuntimeError):\n    pass\n\ndef main():\n    return 0\n", encoding="utf-8")
+        evaluator.VALIDATOR_PATH = rogue
+        try:
+            try:
+                evaluator.load_validator()
+            except SystemExit as exc:
+                if "validator authority" not in str(exc):
+                    raise AssertionError(f"unexpected evaluator path rejection: {exc}") from exc
+            else:
+                raise AssertionError("out-of-repository evaluator validator authority was incorrectly accepted")
+        finally:
+            evaluator.VALIDATOR_PATH = original_path
+
+    try:
+        evaluator.timestamp("2026-99-99T99:99:99Z")
+    except SystemExit as exc:
+        if "valid UTC RFC3339" not in str(exc):
+            raise AssertionError(f"unexpected invalid timestamp rejection: {exc}") from exc
+    else:
+        raise AssertionError("invalid RFC3339 timestamp was incorrectly accepted")
+
+
 def prove_transactional_rollback() -> None:
     reconciler = load_module(
         RECONCILER_PATH,
@@ -113,8 +165,11 @@ def prove_transactional_rollback() -> None:
 
 def main() -> int:
     prove_lineage_rejection()
+    prove_evaluator_authority_boundaries()
     prove_transactional_rollback()
     print("PASS: detached emergency drill sources are rejected")
+    print("PASS: emergency evaluator validator authority and exact exit semantics are fail-closed")
+    print("PASS: emergency evaluator rejects invalid UTC timestamps without traceback semantics")
     print("PASS: emergency drill reconcile rolls back contract and status on post-write failure")
     return 0
 
