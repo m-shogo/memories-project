@@ -11,11 +11,14 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-review-independence-contract.v1.json"
-GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
-HELPER = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
+CONTRACT_REL = Path("contracts/operations/production-equivalent-environment-review-independence-contract.v1.json")
+GEN_REGISTRY_REL = Path("contracts/operations/production-equivalent-environment-generation-registry.v1.json")
 HELPER_REL = Path("scripts/memory_os_environment_generation_eligibility.py")
-VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-review-independence.py"
+VALIDATOR_REL = Path("scripts/validate-memory-os-production-equivalent-environment-review-independence.py")
+CONTRACT = ROOT / CONTRACT_REL
+GEN_REGISTRY = ROOT / GEN_REGISTRY_REL
+HELPER = ROOT / HELPER_REL
+VALIDATOR = ROOT / VALIDATOR_REL
 
 
 class Fail(RuntimeError):
@@ -27,12 +30,40 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    if CONTRACT == ROOT / CONTRACT_REL:
+        require_exact_repo_file(CONTRACT, CONTRACT_REL, "review independence contract")
+        require_exact_repo_file(GEN_REGISTRY, GEN_REGISTRY_REL, "generation registry")
+        require_exact_repo_file(VALIDATOR, VALIDATOR_REL, "review independence validator")
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise Fail(f"cannot load {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+        try:
+            label = path.relative_to(ROOT)
+        except ValueError:
+            label = path
+        raise Fail(f"cannot load {label}: {exc}") from exc
+    try:
+        label = path.relative_to(ROOT)
+    except ValueError:
+        label = path
+    require(isinstance(value, dict), f"root must be object: {label}")
     return value
 
 
@@ -57,14 +88,20 @@ def load_helper():
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     try:
         original_contract_text = CONTRACT.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
-        raise Fail(f"cannot read {CONTRACT.relative_to(ROOT)}: {exc}") from exc
+        try:
+            label = CONTRACT.relative_to(ROOT)
+        except ValueError:
+            label = CONTRACT
+        raise Fail(f"cannot read {label}: {exc}") from exc
     contract = load(CONTRACT)
     helper = load_helper()
     state = helper.derive(GEN_REGISTRY)
     eligible_count = state["preflightEligibleGenerationCount"]
+    require(isinstance(eligible_count, int) and not isinstance(eligible_count, bool) and eligible_count >= 0, "preflight eligible generation count invalid")
     boundary = contract.get("currentBoundary")
     require(isinstance(boundary, dict), "review independence currentBoundary missing")
     boundary["preflightEligibleGenerationCount"] = eligible_count
