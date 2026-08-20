@@ -12,13 +12,24 @@ from pathlib import Path
 from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT_PATH = ROOT / "contracts/operations/parser-artifact-registry-contract.v1.json"
-REGISTRY_PATH = ROOT / "contracts/operations/parser-artifact-registry.v1.json"
-WRITER_PATH = ROOT / "scripts/register-memory-os-parser-artifact.py"
-VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-parser-artifact-registry.py"
-VERSION_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-version-compatibility.py"
-OPERABILITY_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-operability.py"
-STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+CONTRACT_REL = Path("contracts/operations/parser-artifact-registry-contract.v1.json")
+REGISTRY_REL = Path("contracts/operations/parser-artifact-registry.v1.json")
+WRITER_REL = Path("scripts/register-memory-os-parser-artifact.py")
+VALIDATOR_REL = Path("scripts/validate-memory-os-parser-artifact-registry.py")
+VERSION_VALIDATOR_REL = Path("scripts/validate-memory-os-version-compatibility.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+WORKFLOW_REL = Path(".github/workflows/parser-artifact-registry.yml")
+RUNBOOK_REL = Path("docs/runbooks/memory-os-parser-artifact-registry.md")
+CONTRACT_PATH = ROOT / CONTRACT_REL
+REGISTRY_PATH = ROOT / REGISTRY_REL
+WRITER_PATH = ROOT / WRITER_REL
+VALIDATOR_PATH = ROOT / VALIDATOR_REL
+VERSION_VALIDATOR_PATH = ROOT / VERSION_VALIDATOR_REL
+OPERABILITY_VALIDATOR_PATH = ROOT / OPERABILITY_VALIDATOR_REL
+STATUS_PATH = ROOT / STATUS_REL
+WORKFLOW_PATH = ROOT / WORKFLOW_REL
+RUNBOOK_PATH = ROOT / RUNBOOK_REL
 
 EXISTING = (
     "append-only reviewed parser artifact registry separating repository test harnesses, source, build outputs, digest strings and CI results from approved artifact bytes",
@@ -53,6 +64,34 @@ def require(condition: bool, message: str) -> None:
         raise ReconcileFailure(message)
 
 
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise ReconcileFailure(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    for path, relative, field in (
+        (CONTRACT_PATH, CONTRACT_REL, "parser artifact contract"),
+        (REGISTRY_PATH, REGISTRY_REL, "parser artifact registry"),
+        (WRITER_PATH, WRITER_REL, "parser artifact writer"),
+        (VALIDATOR_PATH, VALIDATOR_REL, "parser artifact validator"),
+        (VERSION_VALIDATOR_PATH, VERSION_VALIDATOR_REL, "version compatibility validator"),
+        (OPERABILITY_VALIDATOR_PATH, OPERABILITY_VALIDATOR_REL, "operability validator"),
+        (STATUS_PATH, STATUS_REL, "production operability status"),
+        (WORKFLOW_PATH, WORKFLOW_REL, "parser artifact workflow"),
+        (RUNBOOK_PATH, RUNBOOK_REL, "parser artifact runbook"),
+    ):
+        require_exact_repo_file(path, relative, field)
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -65,7 +104,7 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_writer() -> Any:
-    require(WRITER_PATH.is_file(), "canonical parser writer missing")
+    require_exact_repo_file(WRITER_PATH, WRITER_REL, "parser artifact writer")
     spec = importlib.util.spec_from_file_location(
         "memory_os_parser_artifact_writer_for_reconcile", WRITER_PATH
     )
@@ -106,6 +145,7 @@ def write(path: Path, value: dict[str, Any]) -> None:
 
 
 def run_canonical_validators() -> None:
+    enforce_runtime_authorities()
     for validator in (
         VALIDATOR_PATH,
         VERSION_VALIDATOR_PATH,
@@ -138,6 +178,7 @@ def commit_authority_transaction(
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     contract = load(CONTRACT_PATH)
     registry = load(REGISTRY_PATH)
     writer = load_writer()
