@@ -75,6 +75,11 @@ jobs:
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
+      - name: Reject stale review-independence authority on pull requests
+        if: steps.validation.outputs.exit_code == '0' && github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- contracts/operations/production-equivalent-environment-review-independence-contract.v1.json
       - name: Commit bounded review-independence authority
         if: steps.validation.outputs.exit_code == '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         run: |
