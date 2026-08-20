@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import copy
 import importlib.util
 from pathlib import Path
 from typing import Any
@@ -90,6 +91,46 @@ def expect_validate_source_result_semantics(source_validator: Any) -> None:
     print("PASS source validator: validate_source rejects scalar registry results while preserving legitimate return contracts")
 
 
+def expect_inventory_request_authority(source_validator: Any) -> None:
+    canonical = source_validator.load(source_validator.REQUEST)
+    original_load = source_validator.load
+
+    def run_case(name: str, mutate) -> None:
+        bad = copy.deepcopy(canonical)
+        mutate(bad)
+
+        def patched_load(relative: str):
+            if relative == source_validator.REQUEST:
+                return copy.deepcopy(bad)
+            return original_load(relative)
+
+        source_validator.load = patched_load
+        try:
+            source_validator.validate_inventory_request()
+        except source_validator.Fail:
+            print(f"PASS request authority reject: {name}")
+            return
+        finally:
+            source_validator.load = original_load
+        raise Fail(f"invalid operability inventory request unexpectedly accepted: {name}")
+
+    run_case("production traffic enabled", lambda value: value.__setitem__("productionTraffic", True))
+    run_case(
+        "human-approved recovery objective constraint disabled",
+        lambda value: value["constraints"].__setitem__("approvedRecoveryObjectiveCountMustDeriveFromTypedHumanApprovalAuthority", False),
+    )
+    run_case(
+        "unknown request constraint",
+        lambda value: value["constraints"].__setitem__("automaticProductionPromotionAllowed", True),
+    )
+    run_case(
+        "required request constraint removed",
+        lambda value: value["constraints"].pop("humanProductionPromotionAuthorityMustRemainSeparate"),
+    )
+    source_validator.validate_inventory_request()
+    print("PASS request authority: canonical inventory generation request remains fail-closed")
+
+
 def main() -> int:
     require(GENERATOR.is_file(), "operability inventory generator missing")
     require(SOURCE_VALIDATOR.is_file(), "operability inventory source-authority validator missing")
@@ -118,6 +159,7 @@ def main() -> int:
     for value in (False, True, 0, 1, -1, "FAIL", b"FAIL", 1.5):
         expect_registry_result_rejected(source_validator, value)
     expect_validate_source_result_semantics(source_validator)
+    expect_inventory_request_authority(source_validator)
 
     print("Memory OS operability inventory validator result negative PASS")
     print("exact integer zero command-validator success accepted: true")
@@ -128,6 +170,9 @@ def main() -> int:
     print("boolean registry validator result accepted: false")
     print("scalar registry validator result accepted: false")
     print("validate_source scalar-result bypass: false")
+    print("inventory request production boundary drift accepted: false")
+    print("inventory request human-approved objective constraint drift accepted: false")
+    print("inventory request unknown/missing constraints accepted: false")
     print("production evidence created: false")
     print("production decision: NO_GO")
     return 0
