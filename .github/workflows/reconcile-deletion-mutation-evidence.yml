@@ -7,6 +7,11 @@ on:
     paths:
       - ".github/workflows/reconcile-deletion-mutation-evidence.yml"
       - "scripts/reconcile-memory-os-deletion-mutation-evidence.py"
+      - "scripts/validate-memory-os-deletion-mutation-evidence-reconcile-negative.py"
+      - "scripts/validate-memory-os-deletion-prefence-mutation-linearization.py"
+      - "scripts/validate-memory-os-load-evidence-index.py"
+      - "scripts/validate-memory-os-load.py"
+      - "scripts/validate-memory-os-operability.py"
       - "contracts/operations/deletion-prefence-mutation-linearization-contract.v1.json"
       - "docs/fixtures/memory-os-operability/deletion-prefence-mutation-linearization-results.sample.v1.json"
   pull_request:
@@ -15,6 +20,11 @@ on:
     paths:
       - ".github/workflows/reconcile-deletion-mutation-evidence.yml"
       - "scripts/reconcile-memory-os-deletion-mutation-evidence.py"
+      - "scripts/validate-memory-os-deletion-mutation-evidence-reconcile-negative.py"
+      - "scripts/validate-memory-os-deletion-prefence-mutation-linearization.py"
+      - "scripts/validate-memory-os-load-evidence-index.py"
+      - "scripts/validate-memory-os-load.py"
+      - "scripts/validate-memory-os-operability.py"
       - "contracts/operations/deletion-prefence-mutation-linearization-contract.v1.json"
       - "docs/fixtures/memory-os-operability/deletion-prefence-mutation-linearization-results.sample.v1.json"
   workflow_dispatch:
@@ -51,7 +61,12 @@ jobs:
           set -euo pipefail
           python -m py_compile \
             scripts/reconcile-memory-os-deletion-mutation-evidence.py \
-            scripts/validate-memory-os-deletion-prefence-mutation-linearization.py
+            scripts/validate-memory-os-deletion-mutation-evidence-reconcile-negative.py \
+            scripts/validate-memory-os-deletion-prefence-mutation-linearization.py \
+            scripts/validate-memory-os-load-evidence-index.py \
+            scripts/validate-memory-os-load.py \
+            scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-deletion-mutation-evidence-reconcile-negative.py
           python scripts/validate-memory-os-deletion-prefence-mutation-linearization.py --require-result
           python scripts/reconcile-memory-os-deletion-mutation-evidence.py
           python scripts/validate-memory-os-load-evidence-index.py
