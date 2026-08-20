@@ -33,6 +33,15 @@ def load_writer():
     return module
 
 
+def load_reconciler():
+    spec = importlib.util.spec_from_file_location("incident_contact_routing_reconcile_negative", RECONCILER)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("unable to load contact routing reconciler")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def expect_writer_rejected(writer, registry, label: str) -> None:
     try:
         writer.validate_registry_for_append(registry, validate_rows=False)
@@ -105,6 +114,39 @@ def expect_validator_rejected(label: str) -> None:
     if completed.returncode != 0:
         return
     raise RuntimeError(f"validator accepted corrupt contact-routing authority: {label}")
+
+
+def expect_reconciler_authority_rejected(contract_bytes: bytes, status_bytes: bytes) -> None:
+    reconciler = load_reconciler()
+    original_writer = reconciler.WRITER
+    reconciler.WRITER = reconciler.VALIDATOR
+    try:
+        try:
+            reconciler.main()
+        except reconciler.Fail as exc:
+            if "contact routing writer authority drift" not in str(exc):
+                raise RuntimeError(f"writer substitution rejected at wrong boundary: {exc}") from exc
+        else:
+            raise RuntimeError("contact routing reconciler accepted writer executable substitution")
+        if CONTRACT.read_bytes() != contract_bytes or STATUS.read_bytes() != status_bytes:
+            raise RuntimeError("writer substitution mutated contact routing authority")
+    finally:
+        reconciler.WRITER = original_writer
+
+    original_operability = reconciler.OPERABILITY_VALIDATOR
+    reconciler.OPERABILITY_VALIDATOR = reconciler.INCIDENT_RESPONSE_VALIDATOR
+    try:
+        try:
+            reconciler.main()
+        except reconciler.Fail as exc:
+            if "operability validator authority drift" not in str(exc):
+                raise RuntimeError(f"operability validator substitution rejected at wrong boundary: {exc}") from exc
+        else:
+            raise RuntimeError("contact routing reconciler accepted operability validator executable substitution")
+        if CONTRACT.read_bytes() != contract_bytes or STATUS.read_bytes() != status_bytes:
+            raise RuntimeError("validator substitution mutated contact routing authority")
+    finally:
+        reconciler.OPERABILITY_VALIDATOR = original_operability
 
 
 def create_descendant_commit() -> str:
@@ -207,6 +249,7 @@ def main() -> int:
         expect_writer_rejected(writer, candidate, label)
 
     expect_writer_append_rollback(writer, registry, registry_bytes)
+    expect_reconciler_authority_rejected(contract_bytes, status_bytes)
 
     source = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     if not writer.source_is_ancestor(source):
@@ -293,6 +336,7 @@ def main() -> int:
     if OBS_REGISTRY.read_bytes() != observability_registry_bytes:
         raise RuntimeError("negative validation failed to restore observability stack registry")
     print("PASS: contact routing rejects local/upstream/review/lock authority corruption without mutation")
+    print("PASS: contact routing reconciler rejects canonical executable/registry substitution without mutation")
     print("PASS: contact routing direct append rolls back on post-append validation failure")
     print("PASS: contact routing post-write and aggregate validation failures roll back contract and status")
     print("generic repository JSON accepted as privacy/operability review: false")
