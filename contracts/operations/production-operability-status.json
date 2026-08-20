@@ -402,7 +402,8 @@
         "physical deletion-worker host/node/AZ interruption recovery in a registered production-equivalent generation, plus production topology and independently reviewed deletion-load thresholds",
         "actual deletion-worker process kill and host failure behavior, production topology and independently reviewed deletion-load thresholds",
         "independently approved leak/stability criteria and review over the repeated LOCAL_LONG_SOAK trends; descriptive cross-run review is complete but leakProof remains false",
-        "production-shaped sustained soak against registered production-equivalent dependencies with runtime topology, TLS, scoped credentials, dependency latency/failure behavior and independent review; LOCAL_LONG_SOAK remains local-only evidence"
+        "production-shaped sustained soak against registered production-equivalent dependencies with runtime topology, TLS, scoped credentials, dependency latency/failure behavior and independent review; LOCAL_LONG_SOAK remains local-only evidence",
+        "pre-fence in-flight linearization for upload-completion requests, host/process failure behavior, production topology and independently reviewed deletion-load thresholds"
       ],
       "evidenceRefs": [
         "services/import-api/internal/loadtest/harness.go",
