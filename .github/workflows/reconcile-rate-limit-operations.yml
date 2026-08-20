@@ -5,24 +5,34 @@ on:
     paths:
       - ".github/workflows/reconcile-rate-limit-operations.yml"
       - "contracts/operations/rate-limit-operations-contract.v1.json"
+      - "contracts/operations/rate-limit-policy-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "docs/runbooks/memory-os-rate-limit-operations.md"
       - "scripts/validate-memory-os-rate-limit-operations.py"
       - "scripts/validate-memory-os-rate-limit-operations-reconcile-negative.py"
       - "scripts/validate-memory-os-rate-limit-operation-evidence-reconcile-negative.py"
       - "scripts/reconcile-memory-os-rate-limit-operations.py"
       - "scripts/reconcile-memory-os-rate-limit-operation-evidence.py"
+      - "scripts/validate-memory-os-rate-limit.py"
+      - "scripts/validate-memory-os-operability.py"
+      - "scripts/validate-memory-os-entry-docs.py"
   push:
     branches:
       - so
     paths:
       - ".github/workflows/reconcile-rate-limit-operations.yml"
       - "contracts/operations/rate-limit-operations-contract.v1.json"
+      - "contracts/operations/rate-limit-policy-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "docs/runbooks/memory-os-rate-limit-operations.md"
       - "scripts/validate-memory-os-rate-limit-operations.py"
       - "scripts/validate-memory-os-rate-limit-operations-reconcile-negative.py"
       - "scripts/validate-memory-os-rate-limit-operation-evidence-reconcile-negative.py"
       - "scripts/reconcile-memory-os-rate-limit-operations.py"
       - "scripts/reconcile-memory-os-rate-limit-operation-evidence.py"
+      - "scripts/validate-memory-os-rate-limit.py"
+      - "scripts/validate-memory-os-operability.py"
+      - "scripts/validate-memory-os-entry-docs.py"
   workflow_dispatch:
 
 permissions:
@@ -68,7 +78,10 @@ jobs:
             scripts/validate-memory-os-rate-limit-operations-reconcile-negative.py \
             scripts/validate-memory-os-rate-limit-operation-evidence-reconcile-negative.py \
             scripts/reconcile-memory-os-rate-limit-operations.py \
-            scripts/reconcile-memory-os-rate-limit-operation-evidence.py
+            scripts/reconcile-memory-os-rate-limit-operation-evidence.py \
+            scripts/validate-memory-os-rate-limit.py \
+            scripts/validate-memory-os-operability.py \
+            scripts/validate-memory-os-entry-docs.py
           python scripts/validate-memory-os-rate-limit-operations.py
           python scripts/validate-memory-os-rate-limit-operations-reconcile-negative.py
           python scripts/validate-memory-os-rate-limit-operation-evidence-reconcile-negative.py
