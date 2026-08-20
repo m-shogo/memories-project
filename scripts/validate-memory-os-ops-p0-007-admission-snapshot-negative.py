@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import copy
+import importlib.util
 import json
 import subprocess
 import sys
@@ -34,6 +35,15 @@ def load(path: Path) -> dict[str, Any]:
 
 def write(path: Path, value: dict[str, Any]) -> None:
     path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+
+
+def load_generator_module():
+    spec = importlib.util.spec_from_file_location("memory_os_ops_p0_007_snapshot_negative_generator", GENERATOR)
+    if spec is None or spec.loader is None:
+        raise Fail("cannot load strict snapshot generator")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def run_validator(expect_success: bool, label: str) -> None:
@@ -74,6 +84,30 @@ def run_generator_rejects(label: str, expected_message: str) -> None:
         raise Fail(f"{label}: generator rejection surfaced an implementation exception")
     if SNAPSHOT.read_bytes() != before:
         raise Fail(f"{label}: rejected generator attempt mutated deterministic snapshot")
+
+
+def run_generator_post_write_rollback() -> None:
+    before = SNAPSHOT.read_bytes()
+    module = load_generator_module()
+    original_validator = module.validate_generated_snapshot
+
+    def reject_after_write() -> None:
+        raise RuntimeError("synthetic post-write snapshot validation failure")
+
+    module.validate_generated_snapshot = reject_after_write
+    try:
+        try:
+            module.main()
+        except RuntimeError as exc:
+            if str(exc) != "synthetic post-write snapshot validation failure":
+                raise Fail(f"post-write rollback used unexpected rejection: {exc}") from exc
+        else:
+            raise Fail("post-write rollback case unexpectedly succeeded")
+    finally:
+        module.validate_generated_snapshot = original_validator
+
+    if SNAPSHOT.read_bytes() != before:
+        raise Fail("post-write snapshot validation failure did not restore original snapshot bytes")
 
 
 def mutate_field(field: str, value: Any) -> Callable[[dict[str, Any]], None]:
@@ -152,6 +186,7 @@ def main() -> int:
 
     try:
         run_validator(True, "clean baseline")
+        run_generator_post_write_rollback()
         for label, path, mutate in cases:
             restore_all(originals)
             authority = copy.deepcopy(load(path))
@@ -178,6 +213,7 @@ def main() -> int:
     print("Memory OS OPS-P0-007 strict admission snapshot negative validation PASS")
     print(f"controlled validator corruption cases rejected: {len(cases)}")
     print(f"controlled generator corruption cases rejected: {len(generator_cases)}")
+    print("post-write snapshot validator failure restores original snapshot bytes: true")
     print("canonical authority files preserved byte-for-byte: true")
     print("rejected generator attempts leave snapshot byte-for-byte unchanged: true")
     print("canonical six-blocker content and ordering preserved: true")
