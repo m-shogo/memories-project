@@ -7,6 +7,7 @@ on:
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/request-memory-os-backup-restore-drill.py"
+      - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-backup-restore-drill-request.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-drill-request.py"
@@ -14,6 +15,7 @@ on:
       - "contracts/operations/backup-restore-drill-request-contract.v1.json"
       - "contracts/operations/backup-restore-drill-request-registry.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/recovery-objectives-admission-contract.v1.json"
       - "contracts/operations/recovery-objectives-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
   push:
@@ -24,6 +26,7 @@ on:
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/memory_os_environment_generation_eligibility.py"
       - "scripts/request-memory-os-backup-restore-drill.py"
+      - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-backup-restore-drill-request.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-drill-request.py"
@@ -31,6 +34,7 @@ on:
       - "contracts/operations/backup-restore-drill-request-contract.v1.json"
       - "contracts/operations/backup-restore-drill-request-registry.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/recovery-objectives-admission-contract.v1.json"
       - "contracts/operations/recovery-objectives-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
   workflow_dispatch:
@@ -69,6 +73,7 @@ jobs:
             scripts/memory_os_backup_restore_blockers.py \
             scripts/memory_os_environment_generation_eligibility.py \
             scripts/request-memory-os-backup-restore-drill.py \
+            scripts/register-memory-os-recovery-objectives.py \
             scripts/validate-memory-os-backup-restore-drill-request.py \
             scripts/validate-memory-os-backup-restore-drill-request-negative.py \
             scripts/reconcile-memory-os-backup-restore-drill-request.py \
