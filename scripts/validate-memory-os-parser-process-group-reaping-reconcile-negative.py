@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Negative proof for transactional parser process-group authority reconcile."""
+"""Negative proof for parser process-group authority delegation and rollback."""
 
 from __future__ import annotations
 
@@ -31,29 +31,37 @@ def main() -> int:
         raise RuntimeError("process-group readiness missing")
     readiness["productionReady"] = True
 
-    original_runner = module.run_post_validators
+    source_sha = "0" * 40
+    original_runner = module.run_authority_validators
+    calls: list[str] = []
 
-    def fail_post_validation() -> None:
-        raise module.ReconcileFailure("synthetic post-write validation failure")
+    def fail_post_validation(validated_sha: str) -> None:
+        calls.append(validated_sha)
+        if len(calls) == 2:
+            raise module.ReconcileFailure("synthetic post-write validation failure")
 
-    module.run_post_validators = fail_post_validation
+    module.run_authority_validators = fail_post_validation
     try:
+        # First prove that direct authority validation is part of the reconcile path.
+        module.run_authority_validators(source_sha)
         try:
-            module.commit_candidate(contract, status)
+            module.commit_candidate(contract, status, source_sha)
         except module.ReconcileFailure as exc:
             if "synthetic post-write validation failure" not in str(exc):
                 raise
         else:
             raise RuntimeError("transaction accepted synthetic post-write validation failure")
     finally:
-        module.run_post_validators = original_runner
+        module.run_authority_validators = original_runner
 
+    if calls != [source_sha, source_sha]:
+        raise RuntimeError(f"process-group authority validation order drift: {calls}")
     if module.CONTRACT_PATH.read_bytes() != original_contract:
         raise RuntimeError("process-group contract changed after rejected transaction")
     if module.STATUS_PATH.read_bytes() != original_status:
         raise RuntimeError("production status changed after rejected transaction")
 
-    print("PASS: process-group reconcile rolls back both canonical authorities after post-write failure")
+    print("PASS: process-group reconcile delegates canonical authority and rolls back after post-write failure")
     return 0
 
 
