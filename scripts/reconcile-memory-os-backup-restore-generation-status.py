@@ -18,11 +18,16 @@ from typing import Any
 from memory_os_backup_restore_blockers import require_canonical_gaps
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/backup-restore-generation-binding-contract.v1.json"
-VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-binding.py"
-BACKUP_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
-STATUS = ROOT / "contracts/operations/production-operability-status.json"
+CONTRACT_REL = Path("contracts/operations/backup-restore-generation-binding-contract.v1.json")
+VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-generation-binding.py")
+BACKUP_VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+CONTRACT = ROOT / CONTRACT_REL
+VALIDATOR = ROOT / VALIDATOR_REL
+BACKUP_VALIDATOR = ROOT / BACKUP_VALIDATOR_REL
+OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
+STATUS = ROOT / STATUS_REL
 
 EVIDENCE = (
     "future production-equivalent restore promotion is generation-bound: backup artifact/manifest hashes, source environment generation/manifest, "
@@ -65,6 +70,28 @@ def require_repo_file(path: Path, message: str) -> Path:
     return relative
 
 
+def require_exact_repo_file(path: Path, expected_relative: Path, message: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{message} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{message} authority drift",
+    )
+    return expected_relative
+
+
+def enforce_runtime_authorities() -> None:
+    if CONTRACT == ROOT / CONTRACT_REL and STATUS == ROOT / STATUS_REL:
+        require_exact_repo_file(CONTRACT, CONTRACT_REL, "generation binding contract")
+        require_exact_repo_file(VALIDATOR, VALIDATOR_REL, "generation binding validator")
+        require_exact_repo_file(BACKUP_VALIDATOR, BACKUP_VALIDATOR_REL, "backup validator")
+        require_exact_repo_file(OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator")
+        require_exact_repo_file(STATUS, STATUS_REL, "production operability status")
+
+
 def load(path: Path) -> dict[str, Any]:
     relative = repo_relative(path)
     try:
@@ -88,6 +115,7 @@ def run_validator(path: Path, label: str) -> None:
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     require_repo_file(CONTRACT, "generation binding contract missing")
     require_repo_file(VALIDATOR, "generation binding validator missing")
     require_repo_file(BACKUP_VALIDATOR, "backup validator missing")
