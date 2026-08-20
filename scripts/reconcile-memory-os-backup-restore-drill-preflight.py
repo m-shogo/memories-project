@@ -18,6 +18,7 @@ GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-ge
 OBJECTIVES = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
 DRILL_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
 VALIDATOR_MODULE = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 REFS = (
     "contracts/operations/backup-restore-drill-preflight-contract.v1.json",
@@ -94,6 +95,22 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
+def run_post_reconcile_validator(path: Path, label: str) -> None:
+    relative = require_repo_file(path, f"{label} validator missing")
+    completed = subprocess.run(
+        [sys.executable, str(ROOT / relative)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    require(
+        completed.returncode == 0,
+        f"post-reconcile {label} validator failed:\n{completed.stdout[-8000:]}{completed.stderr[-8000:]}",
+    )
+
+
 def main() -> int:
     original_contract_text = read_text(CONTRACT)
     original_status_text = read_text(STATUS)
@@ -166,8 +183,8 @@ def main() -> int:
     try:
         write_text(CONTRACT, contract_text)
         write_text(STATUS, status_text)
-        completed = subprocess.run([sys.executable, str(VALIDATOR_MODULE)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-        require(completed.returncode == 0, f"post-reconcile preflight validator failed:\n{completed.stdout[-8000:]}{completed.stderr[-8000:]}")
+        run_post_reconcile_validator(VALIDATOR_MODULE, "preflight")
+        run_post_reconcile_validator(OPERABILITY_VALIDATOR, "operability")
     except Exception:
         write_text(CONTRACT, original_contract_text)
         write_text(STATUS, original_status_text)
@@ -183,6 +200,7 @@ def main() -> int:
     print(f"reviewed/current drill requests: {state['reviewedDrillRequestCount']}/{state['currentExecutableDrillRequestCount']}")
     print("preflight authority state canonicalized: true")
     print("upstream authority validated before reconcile mutation: true")
+    print("preflight and aggregate operability validated inside transaction: true")
     print("failed post-validation leaves derived preflight/status mutation behind: false")
     print("registered generation inventory alone creates restore-planning authority: false")
     print("automatic prerequisite/request creation: false")
