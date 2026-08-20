@@ -16,6 +16,9 @@ CONTRACT_PATH = ROOT / "contracts/operations/mixed-version-candidate-contract.v1
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json"
 REJECTION_PATH = ROOT / "docs/fixtures/memory-os-operability/mixed-version-candidate-rejections.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+CANDIDATE_VALIDATOR = ROOT / "scripts/validate-memory-os-mixed-version-candidate.py"
+VERSION_VALIDATOR = ROOT / "scripts/validate-memory-os-version-compatibility.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 ACTIVE_BASELINE_SHA = "2af6e8e10755cc707c6bdd958a049a0f4afb3d70"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 RESULT_REF = "docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json"
@@ -67,6 +70,35 @@ def write(path: Path, value: dict[str, Any]) -> None:
     path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
+def run_validator(path: Path, failure_label: str) -> None:
+    completed = subprocess.run(
+        ["python", str(path)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    require(
+        completed.returncode == 0,
+        failure_label + ":\n" + completed.stdout[-4000:] + completed.stderr[-4000:],
+    )
+
+
+def commit_outputs_transactionally(outputs: dict[Path, dict[str, Any]]) -> None:
+    originals = {path: path.read_bytes() for path in outputs}
+    try:
+        for path, value in outputs.items():
+            write(path, value)
+        run_validator(CANDIDATE_VALIDATOR, "candidate authority rejected after reconcile")
+        run_validator(VERSION_VALIDATOR, "version compatibility authority rejected after candidate reconcile")
+        run_validator(OPERABILITY_VALIDATOR, "operability authority rejected after candidate reconcile")
+    except Exception as exc:
+        for path, data in originals.items():
+            path.write_bytes(data)
+        raise ReconcileFailure(f"candidate reconcile validation failed; restored prior authority: {exc}") from exc
+
+
 def is_ancestor(base: str, head: str) -> bool:
     try:
         return subprocess.run(
@@ -109,6 +141,9 @@ def main() -> int:
     assertions = scenario.get("assertions")
     require(isinstance(assertions, dict) and assertions and all(assertions.values()),
             "candidate result contains a failed assertion")
+
+    for path in (CANDIDATE_VALIDATOR, VERSION_VALIDATOR, OPERABILITY_VALIDATOR):
+        require(path.is_file(), f"candidate validator missing: {path.relative_to(ROOT)}")
 
     contract = load(CONTRACT_PATH)
     require(contract.get("candidateBaseline", {}).get("commitSha") == ACTIVE_BASELINE_SHA,
@@ -183,12 +218,15 @@ def main() -> int:
         require(any(all(term in item for term in terms) for item in lowered),
                 f"required compatibility gap disappeared: {label}")
 
+    outputs: dict[Path, dict[str, Any]] = {}
     if contract_changed:
-        write(CONTRACT_PATH, contract)
+        outputs[CONTRACT_PATH] = contract
     if status_changed:
         status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
-        write(STATUS_PATH, status)
-    if not contract_changed and not status_changed:
+        outputs[STATUS_PATH] = status
+
+    commit_outputs_transactionally(outputs)
+    if not outputs:
         print("Mixed-version candidate authority already reconciled")
         return 0
     print("Registered active historical candidate compatibility; OPS-P0-008 remains PARTIAL")
