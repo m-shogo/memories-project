@@ -52,6 +52,8 @@ def load_writer() -> ModuleType:
 
 
 def validate_canonical_ledger() -> dict[str, Any]:
+    require(LEDGER_VALIDATOR == ROOT / "scripts/validate-memory-os-migration-evidence-registry.py",
+            "canonical migration rehearsal validator executable authority drift")
     completed = subprocess.run(
         [sys.executable, str(LEDGER_VALIDATOR)],
         cwd=ROOT,
