@@ -22,6 +22,7 @@ BINDING = ROOT / "contracts/operations/backup-restore-generation-binding-contrac
 WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence.py"
 BINDING_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-binding.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 REFS = (
     "contracts/operations/backup-restore-generation-evidence-contract.v1.json",
@@ -269,6 +270,7 @@ def main() -> int:
 
     require_repo_file(BINDING_VALIDATOR, "generation binding validator missing")
     require_repo_file(VALIDATOR, "generation evidence validator missing")
+    require_repo_file(OPERABILITY_VALIDATOR, "operability validator missing")
     rendered = {
         REGISTRY: json.dumps(registry, indent=2, ensure_ascii=False) + "\n",
         CONTRACT: json.dumps(contract, indent=2, ensure_ascii=False) + "\n",
@@ -282,6 +284,8 @@ def main() -> int:
         require(completed.returncode == 0, f"generation binding validator failed:\n{completed.stdout[-5000:]}{completed.stderr[-5000:]}")
         completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
         require(completed.returncode == 0, f"generation evidence validator failed:\n{completed.stdout[-7000:]}{completed.stderr[-7000:]}")
+        completed = subprocess.run([sys.executable, str(OPERABILITY_VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        require(completed.returncode == 0, f"operability validator failed:\n{completed.stdout[-7000:]}{completed.stderr[-7000:]}")
     except Exception:
         for path, text in original_text.items():
             write_text(path, text)
