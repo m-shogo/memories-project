@@ -13,18 +13,30 @@ from typing import Any
 from memory_os_backup_restore_blockers import require_canonical_gaps
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/backup-restore-admission-chain-contract.v1.json"
-PREFLIGHT = ROOT / "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
-DRILL_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
-GEN_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
-BINDING_CONTRACT = ROOT / "contracts/operations/backup-restore-generation-binding-contract.v1.json"
-TYPED_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
-DRILL_WRITER = ROOT / "scripts/request-memory-os-backup-restore-drill.py"
-GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
-TYPED_WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
-VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-admission-chain.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
-STATUS = ROOT / "contracts/operations/production-operability-status.json"
+CONTRACT_REL = Path("contracts/operations/backup-restore-admission-chain-contract.v1.json")
+PREFLIGHT_REL = Path("contracts/operations/backup-restore-drill-preflight-contract.v1.json")
+DRILL_REGISTRY_REL = Path("contracts/operations/backup-restore-drill-request-registry.v1.json")
+GEN_REGISTRY_REL = Path("contracts/operations/backup-restore-generation-evidence-registry.v1.json")
+BINDING_CONTRACT_REL = Path("contracts/operations/backup-restore-generation-binding-contract.v1.json")
+TYPED_REGISTRY_REL = Path("contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json")
+DRILL_WRITER_REL = Path("scripts/request-memory-os-backup-restore-drill.py")
+GEN_WRITER_REL = Path("scripts/register-memory-os-backup-restore-generation-evidence.py")
+TYPED_WRITER_REL = Path("scripts/register-memory-os-backup-restore-non-resurrection-evidence.py")
+VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-admission-chain.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+CONTRACT = ROOT / CONTRACT_REL
+PREFLIGHT = ROOT / PREFLIGHT_REL
+DRILL_REGISTRY = ROOT / DRILL_REGISTRY_REL
+GEN_REGISTRY = ROOT / GEN_REGISTRY_REL
+BINDING_CONTRACT = ROOT / BINDING_CONTRACT_REL
+TYPED_REGISTRY = ROOT / TYPED_REGISTRY_REL
+DRILL_WRITER = ROOT / DRILL_WRITER_REL
+GEN_WRITER = ROOT / GEN_WRITER_REL
+TYPED_WRITER = ROOT / TYPED_WRITER_REL
+VALIDATOR = ROOT / VALIDATOR_REL
+OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
+STATUS = ROOT / STATUS_REL
 
 
 class Fail(RuntimeError):
@@ -51,6 +63,42 @@ def require_repo_file(path: Path, message: str) -> Path:
     relative = repo_relative(path)
     require((ROOT / relative).is_file(), message)
     return relative
+
+
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    canonical_contract = CONTRACT == ROOT / CONTRACT_REL
+    if canonical_contract:
+        for path, expected, field in (
+            (CONTRACT, CONTRACT_REL, "admission-chain contract"),
+            (PREFLIGHT, PREFLIGHT_REL, "preflight contract"),
+            (DRILL_REGISTRY, DRILL_REGISTRY_REL, "drill request registry"),
+            (GEN_REGISTRY, GEN_REGISTRY_REL, "generation evidence registry"),
+            (BINDING_CONTRACT, BINDING_CONTRACT_REL, "generation binding contract"),
+            (TYPED_REGISTRY, TYPED_REGISTRY_REL, "typed non-resurrection registry"),
+            (VALIDATOR, VALIDATOR_REL, "admission-chain validator"),
+            (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+            (STATUS, STATUS_REL, "production operability status"),
+        ):
+            require_exact_repo_file(path, expected, field)
+    for path, expected, field in (
+        (DRILL_WRITER, DRILL_WRITER_REL, "drill request writer"),
+        (GEN_WRITER, GEN_WRITER_REL, "generation evidence writer"),
+        (TYPED_WRITER, TYPED_WRITER_REL, "typed non-resurrection writer"),
+    ):
+        require_exact_repo_file(path, expected, field)
 
 
 def read_text(path: Path) -> str:
@@ -80,7 +128,14 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_writer(path: Path, name: str, label: str):
-    relative = require_repo_file(path, f"{label} writer missing")
+    if path == DRILL_WRITER:
+        relative = require_exact_repo_file(path, DRILL_WRITER_REL, f"{label} writer")
+    elif path == GEN_WRITER:
+        relative = require_exact_repo_file(path, GEN_WRITER_REL, f"{label} writer")
+    elif path == TYPED_WRITER:
+        relative = require_exact_repo_file(path, TYPED_WRITER_REL, f"{label} writer")
+    else:
+        relative = require_repo_file(path, f"{label} writer missing")
     spec = importlib.util.spec_from_file_location(name, path)
     require(spec is not None and spec.loader is not None, f"cannot load {relative}")
     try:
@@ -111,6 +166,15 @@ def validate_shared_registry(module: Any, registry: dict[str, Any], label: str) 
 
 
 def run_validator(path: Path, label: str) -> None:
+    if CONTRACT == ROOT / CONTRACT_REL:
+        if path == VALIDATOR:
+            require_exact_repo_file(path, VALIDATOR_REL, f"{label} validator")
+        elif path == OPERABILITY_VALIDATOR:
+            require_exact_repo_file(path, OPERABILITY_VALIDATOR_REL, f"{label} validator")
+        else:
+            require_repo_file(path, f"{label} validator missing")
+    else:
+        require_repo_file(path, f"{label} validator missing")
     completed = subprocess.run(
         [sys.executable, str(path)],
         cwd=ROOT,
@@ -126,6 +190,7 @@ def run_validator(path: Path, label: str) -> None:
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     for path, message in (
         (CONTRACT, "admission-chain contract missing"),
         (PREFLIGHT, "preflight contract missing"),
@@ -154,9 +219,6 @@ def main() -> int:
     gen_writer = load_generation_writer()
     typed_writer = load_writer(TYPED_WRITER, "memory_os_typed_writer_admission_chain_reconcile", "typed non-resurrection")
 
-    # Fail before any derived contract mutation when an upstream append-only
-    # authority is malformed or stale. Reconciliation is never a repair path for
-    # registry schema/class/count/current-authority corruption.
     drill_rows = validate_shared_registry(drill_writer, drill_registry, "drill request")
     gen_rows = validate_shared_registry(gen_writer, gen_registry, "generation evidence")
     typed_rows = validate_shared_registry(typed_writer, typed_registry, "typed non-resurrection")
@@ -276,6 +338,7 @@ def main() -> int:
 
     print("Memory OS backup/restore admission chain reconciliation PASS")
     print("shared drill/generation/typed append-only registry authority validated before contract write: true")
+    print("canonical admission-chain executable authorities enforced: true")
     print(f"preflight: {preflight_decision}")
     print(f"preflight eligible pairs: {preflight_pair_count}")
     print(f"reviewed/current drill requests: {drill_count}/{current_drill_count}")
