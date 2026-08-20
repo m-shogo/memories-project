@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "ops-p0-007-admission-snapshot",
+  "sourceCommitSha": "b7dd74978f98fc9c2921ec777c1aa09abb9ecb1a",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "Memory OS OPS-P0-007 strict admission snapshot validation PASS\ncanonical append-only registry validators enforced: true\ncanonical production blocker authority enforced: true\nsnapshot exact field set enforced: true\nsnapshot count types enforced as integers excluding booleans: true\nsnapshot downstream requirement and next-action projection enforced: true\nstage: PREREQUISITES_BLOCKED\nstrict prerequisite blockers: 2\neligible directed restore pairs: 0\nreviewed/current drill requests: 0/0\ngeneration recovery evidence: 0\nfinal recovery candidates: 0\ncanonical OPS-P0-007 blockers preserved: 6\nproduction decision: NO_GO\nMemory OS OPS-P0-007 strict admission snapshot generated\nstage: PREREQUISITES_BLOCKED\nstrict prerequisite blockers: 2\neligible directed restore pairs: 0\ncanonical blockers: 6\nproduction decision: NO_GO\nMemory OS OPS-P0-007 strict admission snapshot validation PASS\ncanonical append-only registry validators enforced: true\ncanonical production blocker authority enforced: true\nsnapshot exact field set enforced: true\nsnapshot count types enforced as integers excluding booleans: true\nsnapshot downstream requirement and next-action projection enforced: true\nstage: PREREQUISITES_BLOCKED\nstrict prerequisite blockers: 2\neligible directed restore pairs: 0\nreviewed/current drill requests: 0/0\ngeneration recovery evidence: 0\nfinal recovery candidates: 0\ncanonical OPS-P0-007 blockers preserved: 6\nproduction decision: NO_GO\nOPS-P0-007 ADMISSION SNAPSHOT NEGATIVE FAILED: generator objective writer module symlink escape: generator rejection did not use expected authority boundary: cannot resolve canonical authority module: /home/runner/work/memories-project/memories-project/scripts/register-memory-os-recovery-objectives.py\n\n",
+  "containsSecrets": false,
+  "generationCreated": false,
+  "objectiveCreated": false,
+  "requestCreated": false,
+  "restoreExecuted": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
