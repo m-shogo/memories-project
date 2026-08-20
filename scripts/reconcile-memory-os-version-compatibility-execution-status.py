@@ -6,11 +6,14 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 EXECUTION = ROOT / "contracts/operations/version-compatibility-execution-evidence.v1.json"
 VALIDATOR = ROOT / "scripts/validate-memory-os-version-compatibility-execution-evidence.py"
+CANONICAL_VALIDATOR = ROOT / "scripts/validate-memory-os-version-compatibility.py"
+FOUNDATION_VALIDATOR = ROOT / "scripts/validate-memory-os-version-compatibility-foundations.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 
 EXECUTION_EVIDENCE = (
@@ -62,8 +65,42 @@ def append_once(items: list[Any], value: str) -> None:
         items.append(value)
 
 
+def run_validator(path: Path, label: str) -> None:
+    completed = subprocess.run(
+        ["python", str(path)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    require(
+        completed.returncode == 0,
+        f"{label} failed:\n{completed.stdout[-4000:]}{completed.stderr[-4000:]}",
+    )
+
+
+def run_post_write_validators() -> None:
+    run_validator(CANONICAL_VALIDATOR, "canonical version compatibility validator")
+    run_validator(FOUNDATION_VALIDATOR, "compatibility foundation validator")
+    run_validator(OPERABILITY_VALIDATOR, "operability validator")
+
+
+def commit_status_transaction(
+    status: dict[str, Any],
+    *,
+    validator_runner: Callable[[], None] = run_post_write_validators,
+) -> None:
+    original = STATUS.read_bytes()
+    STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    try:
+        validator_runner()
+    except Exception:
+        STATUS.write_bytes(original)
+        raise
+
+
 def main() -> int:
-    subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=True)
+    run_validator(VALIDATOR, "version compatibility execution evidence validator")
     execution = load(EXECUTION)
     release = execution.get("releaseAuthorityBoundary", {})
     readiness = execution.get("readiness", {})
@@ -124,7 +161,7 @@ def main() -> int:
     }.items():
         require(all(term in joined for term in terms), f"required compatibility blocker missing: {label}")
 
-    STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    commit_status_transaction(status)
     print("Memory OS version compatibility execution status reconciliation PASS")
     print("candidate/local execution evidence: classified")
     print("approved release pair: false")
