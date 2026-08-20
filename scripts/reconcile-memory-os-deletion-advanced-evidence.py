@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,11 @@ PREFENCE_CONTRACT_PATH = ROOT / "contracts/operations/deletion-prefence-lineariz
 WORKER_CONTRACT_PATH = ROOT / "contracts/operations/deletion-worker-saturation-contract.v1.json"
 PREFENCE_RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/deletion-prefence-linearization-results.sample.v1.json"
 WORKER_RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/deletion-worker-saturation-results.sample.v1.json"
+PREFENCE_VALIDATOR = ROOT / "scripts/validate-memory-os-deletion-prefence-linearization.py"
+WORKER_VALIDATOR = ROOT / "scripts/validate-memory-os-deletion-worker-saturation.py"
+LOAD_INDEX_VALIDATOR = ROOT / "scripts/validate-memory-os-load-evidence-index.py"
+LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 
 PREFENCE_SCENARIO_ID = "account-deletion-prefence-inflight-linearization-local-dependencies"
 WORKER_SCENARIO_ID = "multi-account-deletion-worker-saturation-local-dependencies"
@@ -61,6 +67,10 @@ def write(path: Path, value: dict[str, Any]) -> None:
     path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
 
 
+def run_validator(path: Path, *args: str) -> None:
+    subprocess.run(["python", str(path), *args], cwd=ROOT, check=True)
+
+
 def append_unique(values: list[Any], value: Any) -> None:
     if value not in values:
         values.append(value)
@@ -84,6 +94,9 @@ def proof_ready(contract: dict[str, Any], result: dict[str, Any], field: str) ->
 
 
 def main() -> int:
+    run_validator(PREFENCE_VALIDATOR, "--require-result")
+    run_validator(WORKER_VALIDATOR, "--require-result")
+
     prefence_contract = load(PREFENCE_CONTRACT_PATH)
     prefence_result = load(PREFENCE_RESULT_PATH)
     worker_contract = load(WORKER_CONTRACT_PATH)
@@ -231,8 +244,19 @@ def main() -> int:
     require(readiness.get("productionEquivalentDependencies") is False, "production equivalence drift")
     require(readiness.get("capacityBoundaryEstablished") is False, "capacity boundary drift")
 
-    write(LOAD_PATH, load_contract)
-    write(STATUS_PATH, status)
+    original_load = LOAD_PATH.read_bytes()
+    original_status = STATUS_PATH.read_bytes()
+    try:
+        write(LOAD_PATH, load_contract)
+        write(STATUS_PATH, status)
+        run_validator(LOAD_INDEX_VALIDATOR)
+        run_validator(LOAD_VALIDATOR)
+        run_validator(OPERABILITY_VALIDATOR)
+    except BaseException:
+        LOAD_PATH.write_bytes(original_load)
+        STATUS_PATH.write_bytes(original_status)
+        raise
+
     print("Memory OS advanced deletion evidence reconciled")
     print("Preview pre-fence in-flight linearization: true")
     print("multi-account deletion-worker saturation: true")
