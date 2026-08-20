@@ -12,7 +12,12 @@ on:
       - "contracts/operations/backup-restore-drill-request-registry.v1.json"
       - "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
       - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
+      - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
+      - "contracts/operations/recovery-objectives-admission-contract.v1.json"
       - "contracts/operations/recovery-objectives-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
       - "docs/evidence/backup-restore/**"
@@ -24,6 +29,7 @@ on:
       - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
       - "scripts/register-memory-os-backup-restore-promotion-review.py"
       - "scripts/validate-memory-os-backup-restore-promotion-review-negative.py"
       - "scripts/validate-memory-os-backup-restore-promotion-review-reconcile-negative.py"
@@ -43,7 +49,12 @@ on:
       - "contracts/operations/backup-restore-drill-request-registry.v1.json"
       - "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
       - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
+      - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
+      - "contracts/operations/recovery-objectives-admission-contract.v1.json"
       - "contracts/operations/recovery-objectives-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
       - "docs/evidence/backup-restore/**"
@@ -55,6 +66,7 @@ on:
       - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-independent-review.py"
       - "scripts/register-memory-os-backup-restore-promotion-review.py"
       - "scripts/validate-memory-os-backup-restore-promotion-review-negative.py"
       - "scripts/validate-memory-os-backup-restore-promotion-review-reconcile-negative.py"
@@ -106,6 +118,7 @@ jobs:
             scripts/register-memory-os-recovery-objectives.py \
             scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
             scripts/register-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-generation-independent-review.py \
             scripts/register-memory-os-backup-restore-promotion-review.py \
             scripts/validate-memory-os-backup-restore-promotion-review-negative.py \
             scripts/validate-memory-os-backup-restore-promotion-review-reconcile-negative.py \
