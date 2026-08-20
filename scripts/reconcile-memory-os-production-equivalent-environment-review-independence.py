@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-review-independence-contract.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
 HELPER = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
+HELPER_REL = Path("scripts/memory_os_environment_generation_eligibility.py")
 VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-review-independence.py"
 
 
@@ -35,8 +36,20 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def canonical_helper_path() -> Path:
+    expected = ROOT / HELPER_REL
+    require(HELPER == expected, "generation eligibility helper executable authority drift")
+    try:
+        resolved = HELPER.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail("generation eligibility helper missing or escapes repository") from exc
+    require(resolved == HELPER_REL and HELPER.is_file(), "generation eligibility helper must be canonical repository file")
+    return HELPER
+
+
 def load_helper():
-    spec = importlib.util.spec_from_file_location("memory_os_generation_eligibility_review_reconcile", HELPER)
+    path = canonical_helper_path()
+    spec = importlib.util.spec_from_file_location("memory_os_generation_eligibility_review_reconcile", path)
     require(spec is not None and spec.loader is not None, "cannot load generation eligibility helper")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
