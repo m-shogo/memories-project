@@ -6,6 +6,8 @@ on:
       - ".github/workflows/backup-restore-drill-request-reconcile-rollback.yml"
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/memory_os_environment_generation_eligibility.py"
+      - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/request-memory-os-backup-restore-drill.py"
       - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-backup-restore-drill-request.py"
@@ -14,7 +16,10 @@ on:
       - "scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py"
       - "contracts/operations/backup-restore-drill-request-contract.v1.json"
       - "contracts/operations/backup-restore-drill-request-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
+      - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
       - "contracts/operations/recovery-objectives-admission-contract.v1.json"
       - "contracts/operations/recovery-objectives-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
@@ -25,6 +30,8 @@ on:
       - ".github/workflows/backup-restore-drill-request-reconcile-rollback.yml"
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/memory_os_environment_generation_eligibility.py"
+      - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/request-memory-os-backup-restore-drill.py"
       - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-backup-restore-drill-request.py"
@@ -33,7 +40,10 @@ on:
       - "scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py"
       - "contracts/operations/backup-restore-drill-request-contract.v1.json"
       - "contracts/operations/backup-restore-drill-request-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
+      - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
       - "contracts/operations/recovery-objectives-admission-contract.v1.json"
       - "contracts/operations/recovery-objectives-registry.v1.json"
       - "contracts/operations/production-operability-status.json"
@@ -72,6 +82,8 @@ jobs:
           python -m py_compile \
             scripts/memory_os_backup_restore_blockers.py \
             scripts/memory_os_environment_generation_eligibility.py \
+            scripts/register-memory-os-production-equivalent-environment-generation.py \
+            scripts/validate-memory-os-production-equivalent-environment-record.py \
             scripts/request-memory-os-backup-restore-drill.py \
             scripts/register-memory-os-recovery-objectives.py \
             scripts/validate-memory-os-backup-restore-drill-request.py \
