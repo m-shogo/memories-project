@@ -22,6 +22,7 @@ on:
       - "scripts/register-memory-os-migration-production-shaped-admission.py"
       - "scripts/validate-memory-os-migration-production-shaped-admission.py"
       - "scripts/validate-memory-os-migration-production-shaped-admission-negative.py"
+      - "scripts/validate-memory-os-migration-production-shaped-admission-generation-authority-negative.py"
       - "scripts/validate-memory-os-migration-production-shaped-admission-reconcile-rollback.py"
       - "scripts/reconcile-memory-os-migration-production-shaped-admission.py"
       - "scripts/register-memory-os-release-baseline.py"
@@ -57,6 +58,7 @@ on:
       - "scripts/register-memory-os-migration-production-shaped-admission.py"
       - "scripts/validate-memory-os-migration-production-shaped-admission.py"
       - "scripts/validate-memory-os-migration-production-shaped-admission-negative.py"
+      - "scripts/validate-memory-os-migration-production-shaped-admission-generation-authority-negative.py"
       - "scripts/validate-memory-os-migration-production-shaped-admission-reconcile-rollback.py"
       - "scripts/reconcile-memory-os-migration-production-shaped-admission.py"
       - "scripts/register-memory-os-release-baseline.py"
@@ -104,6 +106,7 @@ jobs:
             scripts/register-memory-os-migration-production-shaped-admission.py \
             scripts/validate-memory-os-migration-production-shaped-admission.py \
             scripts/validate-memory-os-migration-production-shaped-admission-negative.py \
+            scripts/validate-memory-os-migration-production-shaped-admission-generation-authority-negative.py \
             scripts/validate-memory-os-migration-production-shaped-admission-reconcile-rollback.py \
             scripts/reconcile-memory-os-migration-production-shaped-admission.py \
             scripts/register-memory-os-release-baseline.py \
@@ -117,6 +120,9 @@ jobs:
             scripts/validate-memory-os-migration-lifecycle.py \
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-migration-production-shaped-admission-generation-authority-negative.py >> "$log" 2>&1 || code=$?
+          fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-migration-production-shaped-admission-negative.py >> "$log" 2>&1 || code=$?
           fi
