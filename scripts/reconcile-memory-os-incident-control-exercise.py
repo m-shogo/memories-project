@@ -12,13 +12,24 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT_PATH = ROOT / "contracts/operations/incident-control-exercise-contract.v1.json"
-RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/incident-control-exercise-results.sample.v1.json"
-STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
-EXERCISE_VALIDATOR = ROOT / "scripts/validate-memory-os-incident-control-exercise.py"
-INCIDENT_RESPONSE_VALIDATOR = ROOT / "scripts/validate-memory-os-incident-response.py"
-TABLETOP_VALIDATOR = ROOT / "scripts/validate-memory-os-incident-tabletop.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CONTRACT_REL = Path("contracts/operations/incident-control-exercise-contract.v1.json")
+RESULT_REL = Path("docs/fixtures/memory-os-operability/incident-control-exercise-results.sample.v1.json")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+EXERCISE_VALIDATOR_REL = Path("scripts/validate-memory-os-incident-control-exercise.py")
+INCIDENT_RESPONSE_VALIDATOR_REL = Path("scripts/validate-memory-os-incident-response.py")
+TABLETOP_VALIDATOR_REL = Path("scripts/validate-memory-os-incident-tabletop.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+RUNNER_REL = Path("scripts/run-memory-os-incident-control-exercise.py")
+WORKFLOW_REL = Path(".github/workflows/incident-control-exercise.yml")
+CONTRACT_PATH = ROOT / CONTRACT_REL
+RESULT_PATH = ROOT / RESULT_REL
+STATUS_PATH = ROOT / STATUS_REL
+EXERCISE_VALIDATOR = ROOT / EXERCISE_VALIDATOR_REL
+INCIDENT_RESPONSE_VALIDATOR = ROOT / INCIDENT_RESPONSE_VALIDATOR_REL
+TABLETOP_VALIDATOR = ROOT / TABLETOP_VALIDATOR_REL
+OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
+RUNNER = ROOT / RUNNER_REL
+WORKFLOW = ROOT / WORKFLOW_REL
 
 NEW_EXISTING = (
     "exact-source automated incident control exercise covering tenant isolation, PostgreSQL commit outage, object-store outage, migration/version incompatibility, restore non-resurrection and parser compromise/stall scenarios",
@@ -61,6 +72,34 @@ class ReconcileFailure(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise ReconcileFailure(message)
+
+
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise ReconcileFailure(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    for path, relative, field in (
+        (CONTRACT_PATH, CONTRACT_REL, "incident exercise contract"),
+        (RESULT_PATH, RESULT_REL, "incident exercise result"),
+        (STATUS_PATH, STATUS_REL, "production operability status"),
+        (EXERCISE_VALIDATOR, EXERCISE_VALIDATOR_REL, "incident exercise validator"),
+        (INCIDENT_RESPONSE_VALIDATOR, INCIDENT_RESPONSE_VALIDATOR_REL, "incident response validator"),
+        (TABLETOP_VALIDATOR, TABLETOP_VALIDATOR_REL, "incident tabletop validator"),
+        (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+        (RUNNER, RUNNER_REL, "incident exercise runner"),
+        (WORKFLOW, WORKFLOW_REL, "incident exercise workflow"),
+    ):
+        require_exact_repo_file(path, relative, field)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -126,6 +165,7 @@ def commit_validated_pair(contract: dict[str, Any], status: dict[str, Any]) -> N
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     result = load(RESULT_PATH)
     contract = load(CONTRACT_PATH)
     validator = load_exercise_validator()
