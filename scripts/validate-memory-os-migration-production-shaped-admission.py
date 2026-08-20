@@ -23,6 +23,7 @@ RELEASE_VALIDATOR = ROOT / "scripts/validate-memory-os-release-baseline-registry
 RELEASE_PAIRS = ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"
 RELEASE_PAIR_WRITER = ROOT / "scripts/register-memory-os-release-compatibility-pair.py"
 GENERATIONS = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+GENERATION_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
 GENERATION_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-generation.py"
 
 
@@ -61,6 +62,22 @@ def load_module(path: Path, name: str, label: str) -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def validate_generation_authority(generations: dict[str, Any]) -> None:
+    generation_writer = load_module(
+        GENERATION_WRITER,
+        "memory_os_environment_generation_writer_for_migration_admission_validator",
+        "environment generation writer",
+    )
+    require(getattr(generation_writer, "REGISTRY", None) == GENERATIONS,
+            "environment generation writer registry authority drift")
+    require(callable(getattr(generation_writer, "validate_registry_for_append", None)),
+            "environment generation registry validator missing")
+    try:
+        generation_writer.validate_registry_for_append(generations)
+    except Exception as exc:
+        raise Fail(f"environment generation append-only authority invalid: {exc}") from exc
 
 
 def main() -> int:
@@ -109,12 +126,16 @@ def main() -> int:
     except Exception as exc:
         raise Fail(f"release compatibility pair append-only authority invalid: {exc}") from exc
 
+    validate_generation_authority(generations)
+
     writer = load_module(
         WRITER,
         "memory_os_migration_production_admission_writer",
         "migration admission writer",
     )
     require(getattr(writer, "LOCK", None) == LOCK, "migration admission writer append lock authority drift")
+    require(getattr(writer, "GENERATION_WRITER", None) == GENERATION_WRITER,
+            "migration admission generation writer authority drift")
     try:
         writer.validate_registry_for_append(registry)
     except Exception as exc:
