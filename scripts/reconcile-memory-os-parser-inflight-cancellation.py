@@ -16,10 +16,14 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/parser-inflight-cancellation-results.sample.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
-CANONICAL_RECONCILER = ROOT / "scripts/reconcile-memory-os-chaos-authority.py"
-CANONICAL_OVERLAY = ROOT / "scripts/reconcile-memory-os-chaos-inflight-overlay.py"
-INFLIGHT_VALIDATOR = ROOT / "scripts/validate-memory-os-parser-inflight-cancellation.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CANONICAL_RECONCILER_PATH = ROOT / "scripts/reconcile-memory-os-chaos-authority.py"
+CANONICAL_OVERLAY_PATH = ROOT / "scripts/reconcile-memory-os-chaos-inflight-overlay.py"
+CANONICAL_INFLIGHT_VALIDATOR = ROOT / "scripts/validate-memory-os-parser-inflight-cancellation.py"
+CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CANONICAL_RECONCILER = CANONICAL_RECONCILER_PATH
+CANONICAL_OVERLAY = CANONICAL_OVERLAY_PATH
+INFLIGHT_VALIDATOR = CANONICAL_INFLIGHT_VALIDATOR
+OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 OLD_MISSING = "in-flight parser cancellation latency and process-group termination proof while the worker is blocked"
@@ -62,7 +66,37 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
+    require(path == canonical, f"{label} authority drift")
+    require(canonical.is_file(), f"canonical {label} missing")
+    require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
+
+
+def validate_executable_authorities() -> None:
+    require_exact_authority(
+        CANONICAL_RECONCILER,
+        CANONICAL_RECONCILER_PATH,
+        "chaos authority reconciler",
+    )
+    require_exact_authority(
+        CANONICAL_OVERLAY,
+        CANONICAL_OVERLAY_PATH,
+        "chaos in-flight overlay",
+    )
+    require_exact_authority(
+        INFLIGHT_VALIDATOR,
+        CANONICAL_INFLIGHT_VALIDATOR,
+        "in-flight validator",
+    )
+    require_exact_authority(
+        OPERABILITY_VALIDATOR,
+        CANONICAL_OPERABILITY_VALIDATOR,
+        "operability validator",
+    )
+
+
 def load_normalizer(path: Path, module_name: str, attribute: str):
+    validate_executable_authorities()
     try:
         resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
@@ -112,6 +146,7 @@ def run_validator(path: Path, *, expected_sha: str | None = None) -> None:
 
 
 def validate_authority_chain(source_sha: str) -> None:
+    validate_executable_authorities()
     run_validator(INFLIGHT_VALIDATOR, expected_sha=source_sha)
     run_validator(OPERABILITY_VALIDATOR)
 
