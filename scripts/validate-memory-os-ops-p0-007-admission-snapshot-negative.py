@@ -20,6 +20,7 @@ REQUESTS = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1
 GENERATION = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 TYPED = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
+OBJECTIVE_WRITER = ROOT / "scripts/register-memory-os-recovery-objectives.py"
 
 
 class Fail(RuntimeError):
@@ -171,6 +172,25 @@ def run_source_symlink_escape(originals: dict[Path, bytes]) -> None:
         external.unlink(missing_ok=True)
 
 
+def run_module_symlink_escape(originals: dict[Path, bytes]) -> None:
+    external = Path("/tmp/memory-os-ops-p0-007-objective-writer.py")
+    external.write_bytes(originals[OBJECTIVE_WRITER])
+    restore_all(originals)
+    OBJECTIVE_WRITER.unlink()
+    OBJECTIVE_WRITER.symlink_to(external)
+    try:
+        run_validator(False, "objective writer module symlink escape")
+        run_generator_rejects(
+            "generator objective writer module symlink escape",
+            "authority module escapes canonical repository path",
+        )
+    finally:
+        if OBJECTIVE_WRITER.is_symlink():
+            OBJECTIVE_WRITER.unlink()
+        OBJECTIVE_WRITER.write_bytes(originals[OBJECTIVE_WRITER])
+        external.unlink(missing_ok=True)
+
+
 def main() -> int:
     originals = {
         SNAPSHOT: SNAPSHOT.read_bytes(),
@@ -179,6 +199,7 @@ def main() -> int:
         GENERATION: GENERATION.read_bytes(),
         TYPED: TYPED.read_bytes(),
         STATUS: STATUS.read_bytes(),
+        OBJECTIVE_WRITER: OBJECTIVE_WRITER.read_bytes(),
     }
     cases: list[tuple[str, Path, Callable[[dict[str, Any]], None]]] = [
         ("snapshot unknown production authority field", SNAPSHOT, mutate_field("productionAuthorization", True)),
@@ -226,6 +247,7 @@ def main() -> int:
         run_validator(True, "clean baseline")
         run_generator_post_write_rollback()
         run_source_symlink_escape(originals)
+        run_module_symlink_escape(originals)
         for label, path, mutate in cases:
             restore_all(originals)
             authority = copy.deepcopy(load(path))
@@ -253,6 +275,7 @@ def main() -> int:
     print(f"controlled validator corruption cases rejected: {len(cases)}")
     print(f"controlled generator corruption cases rejected: {len(generator_cases)}")
     print("snapshot source symlink escape rejected by validator and generator: true")
+    print("snapshot executable module symlink escape rejected by validator and generator: true")
     print("snapshot unknown/missing field drift rejected: true")
     print("snapshot boolean count drift rejected: true")
     print("snapshot downstream requirement/next-action drift rejected: true")
