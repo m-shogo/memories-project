@@ -31,6 +31,32 @@ def load_reconciler():
     return module
 
 
+def verify_runtime_authority_identity(module) -> None:
+    module.enforce_runtime_authorities()
+    substitutions = (
+        ("RESULT_PATH", ROOT / "README.md"),
+        ("EXERCISE_VALIDATOR", ROOT / "scripts/validate-memory-os-operability.py"),
+        ("INCIDENT_RESPONSE_VALIDATOR", ROOT / "scripts/validate-memory-os-incident-tabletop.py"),
+        ("TABLETOP_VALIDATOR", ROOT / "scripts/validate-memory-os-incident-response.py"),
+        ("OPERABILITY_VALIDATOR", ROOT / "scripts/validate-memory-os-incident-response.py"),
+        ("RUNNER", ROOT / "scripts/reconcile-memory-os-incident-control-exercise.py"),
+        ("WORKFLOW", ROOT / ".github/workflows/reconcile-incident-control-authority.yml"),
+    )
+    for field, substitute in substitutions:
+        original = getattr(module, field)
+        try:
+            setattr(module, field, substitute)
+            rejected = False
+            try:
+                module.enforce_runtime_authorities()
+            except module.ReconcileFailure:
+                rejected = True
+            require(rejected, f"incident reconciler accepted {field} authority substitution")
+        finally:
+            setattr(module, field, original)
+    module.enforce_runtime_authorities()
+
+
 def verify_source_validator_delegation(module, original_contract: bytes, original_status: bytes) -> None:
     class SourceValidationFailure(RuntimeError):
         pass
@@ -71,6 +97,12 @@ def verify_post_write_rollback(module, original_contract: bytes, original_status
     contract["rollbackProbe"] = "must-not-persist"
     status["rollbackProbe"] = "must-not-persist"
 
+    original_validators = (
+        module.EXERCISE_VALIDATOR,
+        module.INCIDENT_RESPONSE_VALIDATOR,
+        module.TABLETOP_VALIDATOR,
+        module.OPERABILITY_VALIDATOR,
+    )
     with tempfile.TemporaryDirectory(prefix="incident-reconcile-negative-") as tmp:
         tmp_path = Path(tmp)
         pass_validator = tmp_path / "pass.py"
@@ -89,6 +121,13 @@ def verify_post_write_rollback(module, original_contract: bytes, original_status
         except module.ReconcileFailure as exc:
             require("failed validation" in str(exc), f"unexpected rejection: {exc}")
             rejected = True
+        finally:
+            (
+                module.EXERCISE_VALIDATOR,
+                module.INCIDENT_RESPONSE_VALIDATOR,
+                module.TABLETOP_VALIDATOR,
+                module.OPERABILITY_VALIDATOR,
+            ) = original_validators
 
     require(rejected, "post-write validator failure was not rejected")
     require(CONTRACT.read_bytes() == original_contract,
@@ -102,9 +141,11 @@ def main() -> int:
     original_status = STATUS.read_bytes()
     module = load_reconciler()
 
+    verify_runtime_authority_identity(module)
     verify_source_validator_delegation(module, original_contract, original_status)
     verify_post_write_rollback(module, original_contract, original_status)
 
+    print("PASS: incident control exercise reconcile executable authorities reject substitution")
     print("PASS: incident control exercise source delegation and reconcile rollback are fail-closed")
     return 0
 
