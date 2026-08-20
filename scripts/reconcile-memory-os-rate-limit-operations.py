@@ -11,10 +11,22 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-POLICY_PATH = ROOT / "contracts/operations/rate-limit-policy-contract.v1.json"
-OPERATIONS_PATH = ROOT / "contracts/operations/rate-limit-operations-contract.v1.json"
-STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
-VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-rate-limit-operations.py"
+POLICY_REL = Path("contracts/operations/rate-limit-policy-contract.v1.json")
+OPERATIONS_REL = Path("contracts/operations/rate-limit-operations-contract.v1.json")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+OPERATIONS_VALIDATOR_REL = Path("scripts/validate-memory-os-rate-limit-operations.py")
+RATE_LIMIT_VALIDATOR_REL = Path("scripts/validate-memory-os-rate-limit.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+ENTRY_DOCS_VALIDATOR_REL = Path("scripts/validate-memory-os-entry-docs.py")
+WORKFLOW_REL = Path(".github/workflows/reconcile-rate-limit-operations.yml")
+POLICY_PATH = ROOT / POLICY_REL
+OPERATIONS_PATH = ROOT / OPERATIONS_REL
+STATUS_PATH = ROOT / STATUS_REL
+OPERATIONS_VALIDATOR_PATH = ROOT / OPERATIONS_VALIDATOR_REL
+RATE_LIMIT_VALIDATOR_PATH = ROOT / RATE_LIMIT_VALIDATOR_REL
+OPERABILITY_VALIDATOR_PATH = ROOT / OPERABILITY_VALIDATOR_REL
+ENTRY_DOCS_VALIDATOR_PATH = ROOT / ENTRY_DOCS_VALIDATOR_REL
+WORKFLOW_PATH = ROOT / WORKFLOW_REL
 
 OLD_GAP = "operational disable/rollback runbook"
 STALE_LEDGER_GAP = "production emergency control plane with automatic expiry and append-only operation evidence ledger"
@@ -44,6 +56,33 @@ def require(condition: bool, message: str) -> None:
         raise ReconcileFailure(message)
 
 
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise ReconcileFailure(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    for path, relative, field in (
+        (POLICY_PATH, POLICY_REL, "rate-limit policy contract"),
+        (OPERATIONS_PATH, OPERATIONS_REL, "rate-limit operations contract"),
+        (STATUS_PATH, STATUS_REL, "production operability status"),
+        (OPERATIONS_VALIDATOR_PATH, OPERATIONS_VALIDATOR_REL, "rate-limit operations validator"),
+        (RATE_LIMIT_VALIDATOR_PATH, RATE_LIMIT_VALIDATOR_REL, "rate-limit validator"),
+        (OPERABILITY_VALIDATOR_PATH, OPERABILITY_VALIDATOR_REL, "operability validator"),
+        (ENTRY_DOCS_VALIDATOR_PATH, ENTRY_DOCS_VALIDATOR_REL, "entry docs validator"),
+        (WORKFLOW_PATH, WORKFLOW_REL, "rate-limit operations workflow"),
+    ):
+        require_exact_repo_file(path, relative, field)
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -62,17 +101,36 @@ def append_once(items: list[Any], value: str) -> bool:
     return True
 
 
-def validate_written_authority() -> None:
+def run_validator(path: Path, label: str) -> None:
+    enforce_runtime_authorities()
     completed = subprocess.run(
-        [sys.executable, str(VALIDATOR_PATH)],
+        [sys.executable, str(path)],
         cwd=ROOT,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         check=False,
     )
-    require(completed.returncode == 0,
-            f"rate-limit operations post-write validation failed:\n{completed.stdout[-4000:]}")
+    require(
+        completed.returncode == 0,
+        f"{label} validation failed:\n{completed.stdout[-4000:]}",
+    )
+
+
+def validate_source_authority() -> None:
+    enforce_runtime_authorities()
+    run_validator(OPERATIONS_VALIDATOR_PATH, "rate-limit operations source")
+
+
+def validate_written_authority() -> None:
+    enforce_runtime_authorities()
+    for validator, label in (
+        (OPERATIONS_VALIDATOR_PATH, "rate-limit operations post-write"),
+        (RATE_LIMIT_VALIDATOR_PATH, "rate-limit aggregate post-write"),
+        (OPERABILITY_VALIDATOR_PATH, "operability aggregate post-write"),
+        (ENTRY_DOCS_VALIDATOR_PATH, "entry docs post-write"),
+    ):
+        run_validator(validator, label)
 
 
 def transactional_write(policy: dict[str, Any], status: dict[str, Any]) -> None:
@@ -97,6 +155,8 @@ def transactional_write(policy: dict[str, Any], status: dict[str, Any]) -> None:
 
 
 def main() -> int:
+    enforce_runtime_authorities()
+    validate_source_authority()
     policy = load(POLICY_PATH)
     operations = load(OPERATIONS_PATH)
     readiness = operations.get("readiness")
