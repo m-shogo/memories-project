@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reject repo-contained executable substitutions in v1/v2 chaos reconcilers."""
+"""Reject repo-contained executable substitutions in chaos scenario reconcilers."""
 
 from __future__ import annotations
 
@@ -9,8 +9,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 V1_RECONCILER = ROOT / "scripts/reconcile-memory-os-chaos-failure-drills.py"
 V2_RECONCILER = ROOT / "scripts/reconcile-memory-os-chaos-failure-drills-v2.py"
+PARSER_RECONCILER = ROOT / "scripts/reconcile-memory-os-parser-restart-matrix.py"
 V1_VALIDATOR = ROOT / "scripts/validate-memory-os-chaos-failure-drills.py"
 V2_VALIDATOR = ROOT / "scripts/validate-memory-os-chaos-failure-drills-v2.py"
+PARSER_VALIDATOR = ROOT / "scripts/validate-memory-os-parser-restart-matrix.py"
 
 
 def load_module(path: Path, name: str):
@@ -74,7 +76,14 @@ def validate_module(
 
 
 def main() -> int:
-    for path in (V1_RECONCILER, V2_RECONCILER, V1_VALIDATOR, V2_VALIDATOR):
+    for path in (
+        V1_RECONCILER,
+        V2_RECONCILER,
+        PARSER_RECONCILER,
+        V1_VALIDATOR,
+        V2_VALIDATOR,
+        PARSER_VALIDATOR,
+    ):
         if not path.is_file():
             raise RuntimeError(f"authority fixture missing: {path.name}")
 
@@ -92,8 +101,15 @@ def main() -> int:
         validator_error="v2 failure-drill validator authority drift",
         reconciler_substitute=V1_VALIDATOR,
     )
+    validate_module(
+        load_module(PARSER_RECONCILER, "memory_os_parser_restart_authority_negative"),
+        validator_attr="PARSER_VALIDATOR",
+        validator_substitute=V1_VALIDATOR,
+        validator_error="parser restart validator authority drift",
+        reconciler_substitute=V1_VALIDATOR,
+    )
 
-    print("PASS: v1/v2 chaos reconcile executable substitutions are rejected")
+    print("PASS: v1/v2/parser-restart reconcile executable substitutions are rejected")
     return 0
 
 
