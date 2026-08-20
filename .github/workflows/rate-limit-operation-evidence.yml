@@ -7,13 +7,17 @@ on:
       - "contracts/operations/rate-limit-operation-evidence-contract.v1.json"
       - "contracts/operations/rate-limit-operations-contract.v1.json"
       - "contracts/operations/rate-limit-policy-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "docs/evidence/rate-limit-operations/**"
       - "docs/fixtures/memory-os-operability/rate-limit-operation-record.template.v1.json"
       - "scripts/create-memory-os-rate-limit-operation-evidence.py"
       - "scripts/validate-memory-os-rate-limit-operation-evidence.py"
       - "scripts/validate-memory-os-rate-limit-operation-writer-negative.py"
+      - "scripts/validate-memory-os-rate-limit-operation-reconcile-authority-negative.py"
       - "scripts/reconcile-memory-os-rate-limit-operation-evidence.py"
       - "scripts/validate-memory-os-rate-limit-operations.py"
+      - "scripts/validate-memory-os-rate-limit.py"
+      - "scripts/validate-memory-os-operability.py"
   push:
     branches:
       - so
@@ -22,13 +26,17 @@ on:
       - "contracts/operations/rate-limit-operation-evidence-contract.v1.json"
       - "contracts/operations/rate-limit-operations-contract.v1.json"
       - "contracts/operations/rate-limit-policy-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "docs/evidence/rate-limit-operations/**"
       - "docs/fixtures/memory-os-operability/rate-limit-operation-record.template.v1.json"
       - "scripts/create-memory-os-rate-limit-operation-evidence.py"
       - "scripts/validate-memory-os-rate-limit-operation-evidence.py"
       - "scripts/validate-memory-os-rate-limit-operation-writer-negative.py"
+      - "scripts/validate-memory-os-rate-limit-operation-reconcile-authority-negative.py"
       - "scripts/reconcile-memory-os-rate-limit-operation-evidence.py"
       - "scripts/validate-memory-os-rate-limit-operations.py"
+      - "scripts/validate-memory-os-rate-limit.py"
+      - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
 
 permissions:
@@ -74,10 +82,14 @@ jobs:
             scripts/create-memory-os-rate-limit-operation-evidence.py \
             scripts/validate-memory-os-rate-limit-operation-evidence.py \
             scripts/validate-memory-os-rate-limit-operation-writer-negative.py \
+            scripts/validate-memory-os-rate-limit-operation-reconcile-authority-negative.py \
             scripts/reconcile-memory-os-rate-limit-operation-evidence.py \
-            scripts/validate-memory-os-rate-limit-operations.py
+            scripts/validate-memory-os-rate-limit-operations.py \
+            scripts/validate-memory-os-rate-limit.py \
+            scripts/validate-memory-os-operability.py
           python scripts/validate-memory-os-rate-limit-operation-evidence.py
           python scripts/validate-memory-os-rate-limit-operation-writer-negative.py
+          python scripts/validate-memory-os-rate-limit-operation-reconcile-authority-negative.py
 
       - name: Self-prove exclusive writer and duplicate rejection
         run: |
