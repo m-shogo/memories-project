@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove environment review-independence reconciliation rolls back failed validation."""
+"""Prove environment review-independence reconciliation rejects helper substitution and rolls back failed validation."""
 
 from __future__ import annotations
 
@@ -47,6 +47,20 @@ def main() -> int:
 
         reconciler.CONTRACT = contract_copy
         reconciler.GEN_REGISTRY = GEN_REGISTRY
+        real_helper = reconciler.HELPER
+        reconciler.HELPER = RECONCILER
+        try:
+            reconciler.main()
+        except reconciler.Fail as exc:
+            require("generation eligibility helper executable authority drift" in str(exc), f"helper substitution rejected at wrong boundary: {exc}")
+        except Exception as exc:
+            raise Fail(f"helper substitution leaked non-domain exception: {type(exc).__name__}: {exc}") from exc
+        else:
+            raise Fail("generation eligibility helper substitution unexpectedly accepted")
+        finally:
+            reconciler.HELPER = real_helper
+        require(contract_copy.read_bytes() == original_contract, "helper substitution changed review-independence contract")
+
         reconciler.VALIDATOR = failing_validator
         try:
             reconciler.main()
@@ -59,6 +73,7 @@ def main() -> int:
         require(contract_copy.read_bytes() == original_contract, "failed review-independence validation left contract mutation")
 
     print("Environment review-independence reconcile negative suite PASS")
+    print("eligibility helper substitution accepted: false")
     print("failed post-validation leaves authority mutation behind: false")
     print("review evidence created: false")
     print("production evidence: false")
