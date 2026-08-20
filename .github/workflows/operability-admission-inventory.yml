@@ -86,17 +86,20 @@ on:
       - "scripts/validate-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-recovery-objectives-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
+      - "scripts/validate-memory-os-backup-restore-drill-preflight-authority.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight-negative.py"
       - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py"
       - "scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-drill-preflight.py"
       - "scripts/request-memory-os-backup-restore-drill.py"
       - "scripts/validate-memory-os-backup-restore-drill-request.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request-writer-authority.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-drill-request.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py"
       - "scripts/validate-memory-os-backup-restore-semantic-generation-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py"
@@ -190,16 +193,19 @@ jobs:
             scripts/validate-memory-os-recovery-objectives.py \
             scripts/validate-memory-os-recovery-objectives-negative.py \
             scripts/validate-memory-os-backup-restore-drill-preflight.py \
+            scripts/validate-memory-os-backup-restore-drill-preflight-authority.py \
             scripts/validate-memory-os-backup-restore-drill-preflight-negative.py \
             scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py \
             scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py \
             scripts/request-memory-os-backup-restore-drill.py \
             scripts/validate-memory-os-backup-restore-drill-request.py \
+            scripts/validate-memory-os-backup-restore-drill-request-writer-authority.py \
             scripts/validate-memory-os-backup-restore-drill-request-negative.py \
             scripts/reconcile-memory-os-backup-restore-drill-request.py \
             scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py \
             scripts/register-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-backup-restore-generation-evidence.py \
+            scripts/validate-memory-os-backup-restore-generation-evidence-writer-authority.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-negative.py \
             scripts/validate-memory-os-backup-restore-semantic-generation-negative.py \
             scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py \
