@@ -15,6 +15,7 @@ PROOF_VALIDATOR = ROOT / "scripts/validate-memory-os-deletion-prefence-upload-co
 LOAD_CONTRACT = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 
 PROOF_REFS = [
     "contracts/operations/deletion-prefence-upload-completion-contract.v1.json",
@@ -110,7 +111,6 @@ def main() -> int:
     load_refs = load_contract.setdefault("evidenceRefs", [])
     for ref in PROOF_REFS:
         append_unique(load_refs, ref)
-    write(LOAD_CONTRACT, load_contract)
 
     status = load(STATUS)
     ops = None
@@ -142,9 +142,19 @@ def main() -> int:
 
     if status.get("productionDecision") != "NO_GO":
         raise SystemExit("productionDecision must remain NO_GO")
-    write(STATUS, status)
 
-    subprocess.run(["python", str(LOAD_VALIDATOR)], cwd=ROOT, check=True)
+    original_load = LOAD_CONTRACT.read_bytes()
+    original_status = STATUS.read_bytes()
+    try:
+        write(LOAD_CONTRACT, load_contract)
+        write(STATUS, status)
+        subprocess.run(["python", str(LOAD_VALIDATOR)], cwd=ROOT, check=True)
+        subprocess.run(["python", str(OPERABILITY_VALIDATOR)], cwd=ROOT, check=True)
+    except BaseException:
+        LOAD_CONTRACT.write_bytes(original_load)
+        STATUS.write_bytes(original_status)
+        raise
+
     print("Memory OS upload-completion load authority reconciliation PASS")
     print("upload completion pre-fence linearization proven: true")
     print("OPS-P0-006: PARTIAL")
