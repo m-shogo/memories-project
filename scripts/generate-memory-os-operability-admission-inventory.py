@@ -11,6 +11,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "contracts/operations/operability-admission-inventory.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
+INVENTORY_VALIDATOR = ROOT / "scripts" / "validate-memory-os-operability-admission-inventory.py"
 
 
 def load(relative: str) -> dict[str, Any]:
@@ -135,6 +136,34 @@ def require_canonical_command_authority(script_name: str, module_name: str, labe
             raise SystemExit(f"{label} invalid: {exc}") from exc
         raise
     exact_success(result, label)
+
+
+def validate_generated_inventory() -> None:
+    try:
+        resolved = INVENTORY_VALIDATOR.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise SystemExit("canonical inventory validator missing or escapes repository") from exc
+    expected = Path("scripts") / INVENTORY_VALIDATOR.name
+    if resolved != expected or not INVENTORY_VALIDATOR.is_file():
+        raise SystemExit("canonical inventory validator path drift")
+    spec = importlib.util.spec_from_file_location(
+        "memory_os_operability_inventory_generator_postwrite_validator",
+        INVENTORY_VALIDATOR,
+    )
+    if spec is None or spec.loader is None:
+        raise SystemExit("cannot load canonical inventory validator")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    validator = getattr(module, "main", None)
+    if not callable(validator):
+        raise SystemExit("canonical inventory validator missing main")
+    try:
+        result = validator()
+    except RuntimeError as exc:
+        if exc.__class__.__name__ in {"Fail", "Failure", "RegistrationFailure"}:
+            raise SystemExit(f"generated inventory invalid: {exc}") from exc
+        raise
+    exact_success(result, "generated inventory")
 
 
 def p0_status(status: dict[str, Any], area_id: str) -> dict[str, Any]:
@@ -684,7 +713,16 @@ def main() -> int:
             "candidate/local mixed-version execution remains separate from the approved release-pair registry and can never create an approved predecessor/successor pair"
         ]
     }
+    output_before = OUTPUT.read_bytes() if OUTPUT.exists() else None
     OUTPUT.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    try:
+        validate_generated_inventory()
+    except BaseException:
+        if output_before is None:
+            OUTPUT.unlink(missing_ok=True)
+        else:
+            OUTPUT.write_bytes(output_before)
+        raise
     print("Memory OS operability admission inventory generated")
     print(f"P0 areas inventoried: {len(areas)}")
     print(f"production-equivalent generations: {document['productionEquivalentEnvironmentGenerationCount']}")
