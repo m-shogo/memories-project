@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "migration-production-shaped-admission",
+  "result": "FAIL",
+  "exitCode": 1,
+  "sourceCommitSha": "efd1d6b0da648a65bd034cb7a1e529aee01cc19a",
+  "output": "PASS: migration production-shaped admission rejects corrupt environment-generation authority before admission\nproduction evidence generated: false\nproduction readiness changed: false\nPASS: migration production admission ledger writer, validator and append-lock substitutions are rejected\nwriter symlink escape accepted: false\nvalidator symlink escape accepted: false\nproduction evidence generated: false\nproduction readiness changed: false\nPASS: migration production-shaped admission registry, digest authority, transactional append rollback, append-lock authority, upstream release-pair, ledger, release, external evidence containment, and independent-review authority drift are rejected\nTraceback (most recent call last):\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-migration-production-shaped-admission-reconcile-rollback.py\", line 71, in <module>\n    raise SystemExit(main())\n                     ^^^^^^\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-migration-production-shaped-admission-reconcile-rollback.py\", line 54, in main\n    module.main()\n  File \"/home/runner/work/memories-project/memories-project/scripts/reconcile-memory-os-migration-production-shaped-admission.py\", line 116, in main\n    enforce_runtime_authorities()\n  File \"/home/runner/work/memories-project/memories-project/scripts/reconcile-memory-os-migration-production-shaped-admission.py\", line 90, in enforce_runtime_authorities\n    require_exact_executable(path, label)\n  File \"/home/runner/work/memories-project/memories-project/scripts/reconcile-memory-os-migration-production-shaped-admission.py\", line 71, in require_exact_executable\n    require(path == canonical, f\"{label} authority drift\")\n  File \"/home/runner/work/memories-project/memories-project/scripts/reconcile-memory-os-migration-production-shaped-admission.py\", line 60, in require\n    raise Fail(message)\nmemory_os_migration_production_admission_reconcile_rollback.Fail: operability validator authority drift\n",
+  "containsSecrets": false,
+  "admittedRehearsalCount": 0,
+  "productionEvidence": false,
+  "productionReady": false
+}
