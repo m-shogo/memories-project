@@ -13,13 +13,20 @@ from typing import Any
 from memory_os_backup_restore_blockers import require_canonical_gaps
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
-GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
-OBJECTIVES = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
-DRILL_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
-VALIDATOR_MODULE = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
-STATUS = ROOT / "contracts/operations/production-operability-status.json"
+CONTRACT_REL = Path("contracts/operations/backup-restore-drill-preflight-contract.v1.json")
+GEN_REGISTRY_REL = Path("contracts/operations/production-equivalent-environment-generation-registry.v1.json")
+OBJECTIVES_REL = Path("contracts/operations/recovery-objectives-registry.v1.json")
+DRILL_REGISTRY_REL = Path("contracts/operations/backup-restore-drill-request-registry.v1.json")
+VALIDATOR_MODULE_REL = Path("scripts/validate-memory-os-backup-restore-drill-preflight.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+CONTRACT = ROOT / CONTRACT_REL
+GEN_REGISTRY = ROOT / GEN_REGISTRY_REL
+OBJECTIVES = ROOT / OBJECTIVES_REL
+DRILL_REGISTRY = ROOT / DRILL_REGISTRY_REL
+VALIDATOR_MODULE = ROOT / VALIDATOR_MODULE_REL
+OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
+STATUS = ROOT / STATUS_REL
 REFS = (
     "contracts/operations/backup-restore-drill-preflight-contract.v1.json",
     "scripts/validate-memory-os-backup-restore-drill-preflight.py",
@@ -52,6 +59,36 @@ def require_repo_file(path: Path, message: str) -> Path:
     return relative
 
 
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    canonical_contract = CONTRACT == ROOT / CONTRACT_REL
+    canonical_status = STATUS == ROOT / STATUS_REL
+    require(
+        canonical_contract is canonical_status,
+        "preflight fixture boundary must replace contract and status together",
+    )
+    if canonical_contract:
+        require_exact_repo_file(CONTRACT, CONTRACT_REL, "preflight contract")
+        require_exact_repo_file(STATUS, STATUS_REL, "production operability status")
+    require_exact_repo_file(GEN_REGISTRY, GEN_REGISTRY_REL, "environment generation registry")
+    require_exact_repo_file(OBJECTIVES, OBJECTIVES_REL, "recovery objectives registry")
+    require_exact_repo_file(DRILL_REGISTRY, DRILL_REGISTRY_REL, "drill request registry")
+    require_exact_repo_file(VALIDATOR_MODULE, VALIDATOR_MODULE_REL, "preflight validator")
+    require_exact_repo_file(OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator")
+
+
 def read_text(path: Path) -> str:
     relative = repo_relative(path)
     try:
@@ -79,14 +116,14 @@ def write_text(path: Path, text: str) -> None:
 
 
 def load_validator_module():
-    relative = require_repo_file(VALIDATOR_MODULE, "restore drill preflight validator missing")
+    require_exact_repo_file(VALIDATOR_MODULE, VALIDATOR_MODULE_REL, "preflight validator")
     spec = importlib.util.spec_from_file_location("memory_os_restore_drill_preflight_validator_for_reconcile", VALIDATOR_MODULE)
-    require(spec is not None and spec.loader is not None, f"cannot load {relative}")
+    require(spec is not None and spec.loader is not None, "cannot load preflight validator")
     try:
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
     except (FileNotFoundError, OSError) as exc:
-        raise Fail(f"cannot load {relative}: {exc}") from exc
+        raise Fail(f"cannot load preflight validator: {exc}") from exc
     return module
 
 
@@ -96,7 +133,12 @@ def append_once(values: list[Any], value: str) -> None:
 
 
 def run_post_reconcile_validator(path: Path, label: str) -> None:
-    relative = require_repo_file(path, f"{label} validator missing")
+    if path == VALIDATOR_MODULE:
+        relative = require_exact_repo_file(path, VALIDATOR_MODULE_REL, f"{label} validator")
+    elif path == OPERABILITY_VALIDATOR:
+        relative = require_exact_repo_file(path, OPERABILITY_VALIDATOR_REL, f"{label} validator")
+    else:
+        relative = require_repo_file(path, f"{label} validator missing")
     completed = subprocess.run(
         [sys.executable, str(ROOT / relative)],
         cwd=ROOT,
@@ -112,6 +154,7 @@ def run_post_reconcile_validator(path: Path, label: str) -> None:
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     original_contract_text = read_text(CONTRACT)
     original_status_text = read_text(STATUS)
     contract = load(CONTRACT)
@@ -200,6 +243,7 @@ def main() -> int:
     print(f"reviewed/current drill requests: {state['reviewedDrillRequestCount']}/{state['currentExecutableDrillRequestCount']}")
     print("preflight authority state canonicalized: true")
     print("upstream authority validated before reconcile mutation: true")
+    print("canonical reconciler executable authorities enforced: true")
     print("preflight and aggregate operability validated inside transaction: true")
     print("failed post-validation leaves derived preflight/status mutation behind: false")
     print("registered generation inventory alone creates restore-planning authority: false")
