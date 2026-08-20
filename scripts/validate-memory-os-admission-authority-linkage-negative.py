@@ -44,9 +44,20 @@ def expect_slot_fail(module, value: str, *, contains: str) -> None:
 
 def main() -> int:
     module = load_validator()
+    required_contracts = {
+        "contracts/operations/release-baseline-registry-contract.v1.json",
+        "contracts/operations/release-compatibility-pair-contract.v1.json",
+        "contracts/operations/production-equivalent-environment-generation-contract.v1.json",
+    }
+    missing_contracts = sorted(required_contracts - set(module.CONTRACTS))
+    if missing_contracts:
+        raise AssertionError(f"high-impact admission contracts are not covered: {missing_contracts}")
     required_file_keys = {
         "sourceReleasePairRegistry",
         "registry",
+        "releaseRegistry",
+        "independentReviewValidator",
+        "independentReviewNegativeValidator",
         "environmentRecordSemanticValidator",
         "generationRegistryRecordSchema",
         "negativeAdmissionValidator",
@@ -114,7 +125,7 @@ def main() -> int:
             contains="symlinked admission authority file slot",
         )
 
-        print("PASS: admission authority root aliases, release-pair/generation linkage, symlinks, repository escapes and append-lock escapes are rejected")
+        print("PASS: admission authority release/pair/generation coverage, root aliases, symlinks, repository escapes and append-lock escapes are rejected")
         return 0
     finally:
         shutil.rmtree(fixture, ignore_errors=True)
