@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove independent-review evidence refs and helper authority remain canonical and repository-contained."""
+"""Prove independent-review evidence refs, counts and helper authority remain fail-closed."""
 
 from __future__ import annotations
 
@@ -45,6 +45,17 @@ def main() -> int:
     validator = load_validator()
     real_root = validator.ROOT
     real_helper = validator.HELPER
+
+    require(validator.exact_int(0, "zero") == 0, "canonical zero count rejected")
+    require(validator.exact_int(3, "positive") == 3, "canonical positive count rejected")
+    for name, value in (
+        ("boolean false count", False),
+        ("boolean true count", True),
+        ("negative count", -1),
+        ("string count", "0"),
+        ("null count", None),
+    ):
+        expect_rejected(validator, name, lambda value=value: validator.exact_int(value, name))
 
     with tempfile.TemporaryDirectory(prefix="memory-os-review-ref-root-") as root_tmp, tempfile.TemporaryDirectory(prefix="memory-os-review-ref-external-") as external_tmp:
         root = Path(root_tmp)
@@ -93,6 +104,7 @@ def main() -> int:
         validator.HELPER = real_helper
 
     print("Environment review-independence authority negative suite PASS")
+    print("boolean or invalid review-independence count accepted: false")
     print("review ref symlink escape accepted: false")
     print("review ref symlink loop accepted: false")
     print("eligibility helper symlink escape accepted: false")
