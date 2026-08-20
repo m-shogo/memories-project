@@ -11,13 +11,16 @@ on:
       - "scripts/reconcile-memory-os-parser-restart-matrix.py"
       - "scripts/reconcile-memory-os-parser-inflight-cancellation.py"
       - "scripts/validate-memory-os-chaos-scenario-reconcile-monotonicity-negative.py"
+      - "scripts/validate-memory-os-chaos-failure-drills.py"
       - "scripts/validate-memory-os-chaos-failure-drills-v2.py"
       - "scripts/validate-memory-os-parser-restart-matrix.py"
       - "scripts/validate-memory-os-database-commit-outage.py"
       - "scripts/validate-memory-os-parser-inflight-cancellation.py"
       - "scripts/validate-memory-os-parser-process-group-reaping.py"
       - "scripts/validate-memory-os-operability.py"
+      - "contracts/operations/chaos-failure-drill-contract.v1.json"
       - "contracts/operations/production-operability-status.json"
+      - "docs/fixtures/memory-os-operability/chaos-failure-drill-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/chaos-failure-drill-results.v2.sample.json"
       - "docs/fixtures/memory-os-operability/parser-restart-matrix-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/database-commit-outage-results.sample.v1.json"
@@ -35,13 +38,16 @@ on:
       - "scripts/reconcile-memory-os-parser-restart-matrix.py"
       - "scripts/reconcile-memory-os-parser-inflight-cancellation.py"
       - "scripts/validate-memory-os-chaos-scenario-reconcile-monotonicity-negative.py"
+      - "scripts/validate-memory-os-chaos-failure-drills.py"
       - "scripts/validate-memory-os-chaos-failure-drills-v2.py"
       - "scripts/validate-memory-os-parser-restart-matrix.py"
       - "scripts/validate-memory-os-database-commit-outage.py"
       - "scripts/validate-memory-os-parser-inflight-cancellation.py"
       - "scripts/validate-memory-os-parser-process-group-reaping.py"
       - "scripts/validate-memory-os-operability.py"
+      - "contracts/operations/chaos-failure-drill-contract.v1.json"
       - "contracts/operations/production-operability-status.json"
+      - "docs/fixtures/memory-os-operability/chaos-failure-drill-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/chaos-failure-drill-results.v2.sample.json"
       - "docs/fixtures/memory-os-operability/parser-restart-matrix-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/database-commit-outage-results.sample.v1.json"
@@ -98,6 +104,7 @@ jobs:
             scripts/reconcile-memory-os-parser-restart-matrix.py \
             scripts/reconcile-memory-os-parser-inflight-cancellation.py \
             scripts/validate-memory-os-chaos-scenario-reconcile-monotonicity-negative.py \
+            scripts/validate-memory-os-chaos-failure-drills.py \
             scripts/validate-memory-os-chaos-failure-drills-v2.py \
             scripts/validate-memory-os-parser-restart-matrix.py \
             scripts/validate-memory-os-database-commit-outage.py \
@@ -106,6 +113,7 @@ jobs:
             scripts/validate-memory-os-operability.py
 
           validate_committed_sources() {
+            python scripts/validate-memory-os-chaos-failure-drills.py
             python scripts/validate-memory-os-chaos-failure-drills-v2.py
             python scripts/validate-memory-os-parser-restart-matrix.py
             if python - <<'PY'
