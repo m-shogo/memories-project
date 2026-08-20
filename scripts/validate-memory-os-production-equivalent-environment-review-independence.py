@@ -93,15 +93,19 @@ def validate_contract_shape(contract: dict[str, Any]) -> None:
     require(isinstance(boundary, dict) and set(boundary) == EXPECTED_BOUNDARY_FIELDS, "review independence currentBoundary field set drift")
 
 
-def canonical_helper_path() -> Path:
-    expected = ROOT / HELPER_REL
-    require(HELPER == expected, "generation eligibility helper executable authority drift")
+def canonical_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    expected = ROOT / expected_relative
+    require(path == expected, f"{field} executable/content authority drift")
     try:
-        resolved = HELPER.resolve(strict=True).relative_to(ROOT.resolve())
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
-        raise Fail("generation eligibility helper missing or escapes repository") from exc
-    require(resolved == HELPER_REL and HELPER.is_file(), "generation eligibility helper must be canonical repository file")
-    return HELPER
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(resolved == expected_relative and path.is_file(), f"{field} must resolve to its canonical repository file")
+    return path
+
+
+def canonical_helper_path() -> Path:
+    return canonical_repo_file(HELPER, HELPER_REL, "generation eligibility helper")
 
 
 def load_helper():
@@ -127,20 +131,22 @@ def repo_ref(value: Any, field: str) -> str:
 
 
 def main() -> int:
+    canonical_repo_file(CONTRACT, Path("contracts/operations/production-equivalent-environment-review-independence-contract.v1.json"), "review independence contract")
+    canonical_repo_file(GEN_REGISTRY, Path("contracts/operations/production-equivalent-environment-generation-registry.v1.json"), "generation registry")
+    canonical_repo_file(ROOT / "scripts/validate-memory-os-production-equivalent-environment-review-independence.py", Path("scripts/validate-memory-os-production-equivalent-environment-review-independence.py"), "review independence validator")
+    canonical_repo_file(ROOT / ".github/workflows/production-equivalent-environment-review-independence.yml", Path(".github/workflows/production-equivalent-environment-review-independence.yml"), "review independence workflow")
     contract = load(CONTRACT)
     validate_contract_shape(contract)
     helper = load_helper()
     state = helper.derive(GEN_REGISTRY)
     refs = {
-        "generationRegistry": GEN_REGISTRY,
-        "generationEligibilityHelper": HELPER,
-        "validator": Path("scripts/validate-memory-os-production-equivalent-environment-review-independence.py"),
-        "workflow": Path(".github/workflows/production-equivalent-environment-review-independence.yml"),
+        "generationRegistry": "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+        "generationEligibilityHelper": HELPER_REL.as_posix(),
+        "validator": "scripts/validate-memory-os-production-equivalent-environment-review-independence.py",
+        "workflow": ".github/workflows/production-equivalent-environment-review-independence.yml",
     }
-    for field, path in refs.items():
-        expected = str(path.relative_to(ROOT)) if path.is_absolute() else str(path)
+    for field, expected in refs.items():
         require(contract.get(field) == expected, f"review independence ref drift: {field}")
-        require((ROOT / expected).is_file(), f"review independence artifact missing: {expected}")
 
     violations = 0
     reviewed_count = 0
