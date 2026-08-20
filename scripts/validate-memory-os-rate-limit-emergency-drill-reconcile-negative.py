@@ -81,22 +81,67 @@ def prove_evaluator_authority_boundaries() -> None:
         pass
 
     original_loader = evaluator.load_validator
-    evaluator.load_validator = lambda: SimpleNamespace(
-        main=lambda: False,
-        ValidationFailure=SyntheticValidationFailure,
-        load_contract_context=lambda: ({}, set()),
-        validate_record=lambda record, contract, policy_ids: None,
-    )
-    try:
+    with tempfile.TemporaryDirectory(prefix="memory-os-rate-limit-evaluator-record-") as tmp:
+        record_path = Path(tmp) / "record.json"
+        record_path.write_text("{}\n", encoding="utf-8")
+        record_bytes = record_path.read_bytes()
+
+        evaluator.load_validator = lambda: SimpleNamespace(
+            main=lambda: False,
+            ValidationFailure=SyntheticValidationFailure,
+            load_contract_context=lambda: ({}, set()),
+            validate_record=lambda record, contract, policy_ids: None,
+        )
         try:
-            evaluator.validate_authority(evaluator.DEFAULT_LEDGER.resolve(), {})
-        except SystemExit as exc:
-            if "returned non-zero: False" not in str(exc):
-                raise AssertionError(f"unexpected boolean-exit rejection: {exc}") from exc
-        else:
-            raise AssertionError("boolean false validator result was incorrectly accepted as exit zero")
-    finally:
-        evaluator.load_validator = original_loader
+            try:
+                evaluator.validate_authority(
+                    evaluator.DEFAULT_LEDGER.resolve(), record_path, {}, record_bytes
+                )
+            except SystemExit as exc:
+                if "returned non-zero: False" not in str(exc):
+                    raise AssertionError(f"unexpected boolean-exit rejection: {exc}") from exc
+            else:
+                raise AssertionError("boolean false validator result was incorrectly accepted as exit zero")
+        finally:
+            evaluator.load_validator = original_loader
+
+        calls: list[str] = []
+        evaluator.load_validator = lambda: SimpleNamespace(
+            main=lambda: 0,
+            ValidationFailure=SyntheticValidationFailure,
+            load_contract_context=lambda: ({}, set()),
+            validate_record=lambda record, contract, policy_ids: calls.append("record"),
+        )
+        try:
+            evaluator.validate_authority(
+                evaluator.DEFAULT_LEDGER.resolve(), record_path, {}, record_bytes
+            )
+        finally:
+            evaluator.load_validator = original_loader
+        if calls != ["record"]:
+            raise AssertionError(
+                f"canonical evaluator did not validate the exact record after ledger validation: {calls}"
+            )
+
+        def mutate_record(record, contract, policy_ids) -> None:
+            record_path.write_text('{"mutated":true}\n', encoding="utf-8")
+
+        evaluator.load_validator = lambda: SimpleNamespace(
+            main=lambda: 0,
+            ValidationFailure=SyntheticValidationFailure,
+            load_contract_context=lambda: ({}, set()),
+            validate_record=mutate_record,
+        )
+        try:
+            try:
+                evaluator.validate_authority(Path(tmp), record_path, {}, record_bytes)
+            except SystemExit as exc:
+                if "changed during authority validation" not in str(exc):
+                    raise AssertionError(f"unexpected record-drift rejection: {exc}") from exc
+            else:
+                raise AssertionError("operation evidence record drift during validation was accepted")
+        finally:
+            evaluator.load_validator = original_loader
 
     original_path = evaluator.VALIDATOR_PATH
     with tempfile.TemporaryDirectory(prefix="memory-os-rate-limit-evaluator-authority-") as tmp:
@@ -185,6 +230,8 @@ def main() -> int:
     prove_transactional_rollback()
     print("PASS: detached emergency drill sources are rejected")
     print("PASS: emergency evaluator validator authority and exact exit semantics are fail-closed")
+    print("PASS: emergency evaluator validates the exact record used for state evaluation")
+    print("PASS: emergency evaluator rejects record drift during authority validation")
     print("PASS: emergency evaluator rejects invalid UTC timestamps without traceback semantics")
     print("PASS: emergency evaluator rejects symlink operation evidence records")
     print("PASS: emergency drill reconcile rolls back contract and status on post-write failure")
