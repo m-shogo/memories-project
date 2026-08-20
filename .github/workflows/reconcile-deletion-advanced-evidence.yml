@@ -7,7 +7,12 @@ on:
     paths:
       - ".github/workflows/reconcile-deletion-advanced-evidence.yml"
       - "scripts/reconcile-memory-os-deletion-advanced-evidence.py"
+      - "scripts/validate-memory-os-deletion-advanced-evidence-reconcile-negative.py"
+      - "scripts/validate-memory-os-deletion-prefence-linearization.py"
+      - "scripts/validate-memory-os-deletion-worker-saturation.py"
       - "scripts/validate-memory-os-load-evidence-index.py"
+      - "scripts/validate-memory-os-load.py"
+      - "scripts/validate-memory-os-operability.py"
       - "contracts/operations/deletion-prefence-linearization-contract.v1.json"
       - "contracts/operations/deletion-worker-saturation-contract.v1.json"
       - "docs/fixtures/memory-os-operability/deletion-prefence-linearization-results.sample.v1.json"
@@ -18,7 +23,12 @@ on:
     paths:
       - ".github/workflows/reconcile-deletion-advanced-evidence.yml"
       - "scripts/reconcile-memory-os-deletion-advanced-evidence.py"
+      - "scripts/validate-memory-os-deletion-advanced-evidence-reconcile-negative.py"
+      - "scripts/validate-memory-os-deletion-prefence-linearization.py"
+      - "scripts/validate-memory-os-deletion-worker-saturation.py"
       - "scripts/validate-memory-os-load-evidence-index.py"
+      - "scripts/validate-memory-os-load.py"
+      - "scripts/validate-memory-os-operability.py"
       - "contracts/operations/deletion-prefence-linearization-contract.v1.json"
       - "contracts/operations/deletion-worker-saturation-contract.v1.json"
       - "docs/fixtures/memory-os-operability/deletion-prefence-linearization-results.sample.v1.json"
@@ -57,9 +67,13 @@ jobs:
           set -euo pipefail
           python -m py_compile \
             scripts/reconcile-memory-os-deletion-advanced-evidence.py \
+            scripts/validate-memory-os-deletion-advanced-evidence-reconcile-negative.py \
             scripts/validate-memory-os-deletion-prefence-linearization.py \
             scripts/validate-memory-os-deletion-worker-saturation.py \
-            scripts/validate-memory-os-load-evidence-index.py
+            scripts/validate-memory-os-load-evidence-index.py \
+            scripts/validate-memory-os-load.py \
+            scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-deletion-advanced-evidence-reconcile-negative.py
           python scripts/validate-memory-os-deletion-prefence-linearization.py --require-result
           python scripts/validate-memory-os-deletion-worker-saturation.py --require-result
       - name: Reconcile without production promotion
