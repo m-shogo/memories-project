@@ -26,7 +26,9 @@ on:
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/register-memory-os-backup-restore-promotion-review.py"
       - "scripts/validate-memory-os-backup-restore-promotion-review-negative.py"
+      - "scripts/validate-memory-os-backup-restore-promotion-review-reconcile-negative.py"
       - "scripts/validate-memory-os-backup-restore-promotion-review.py"
+      - "scripts/validate-memory-os-operability.py"
       - "scripts/reconcile-memory-os-backup-restore-promotion-review.py"
   push:
     branches:
@@ -55,7 +57,9 @@ on:
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/register-memory-os-backup-restore-promotion-review.py"
       - "scripts/validate-memory-os-backup-restore-promotion-review-negative.py"
+      - "scripts/validate-memory-os-backup-restore-promotion-review-reconcile-negative.py"
       - "scripts/validate-memory-os-backup-restore-promotion-review.py"
+      - "scripts/validate-memory-os-operability.py"
       - "scripts/reconcile-memory-os-backup-restore-promotion-review.py"
   workflow_dispatch:
 
@@ -104,12 +108,15 @@ jobs:
             scripts/register-memory-os-backup-restore-generation-evidence.py \
             scripts/register-memory-os-backup-restore-promotion-review.py \
             scripts/validate-memory-os-backup-restore-promotion-review-negative.py \
+            scripts/validate-memory-os-backup-restore-promotion-review-reconcile-negative.py \
             scripts/validate-memory-os-backup-restore-promotion-review.py \
+            scripts/validate-memory-os-operability.py \
             scripts/reconcile-memory-os-backup-restore-promotion-review.py \
             >> "$log" 2>&1 || code=$?
           if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-backup-restore-promotion-review.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-promotion-review.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-promotion-review-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-promotion-review-reconcile-negative.py >> "$log" 2>&1 || code=$?; fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
