@@ -17,6 +17,7 @@ CONTRACT = ROOT / "contracts/operations/recovery-objectives-admission-contract.v
 REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
 WRITER = ROOT / "scripts/register-memory-os-recovery-objectives.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-recovery-objectives.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 EVIDENCE_PREFIX = "recovery objectives approval is append-only:"
 REFS = (
@@ -94,6 +95,22 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
+def run_validator(path: Path, label: str) -> None:
+    relative = require_repo_file(path, f"{label} missing")
+    completed = subprocess.run(
+        [sys.executable, str(ROOT / relative)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    require(
+        completed.returncode == 0,
+        f"post-reconcile {label} failed:\n{completed.stdout[-7000:]}{completed.stderr[-7000:]}",
+    )
+
+
 def main() -> int:
     original_contract_text = read_text(CONTRACT)
     original_status_text = read_text(STATUS)
@@ -153,15 +170,14 @@ def main() -> int:
         append_once(refs, ref)
     require_canonical_gaps(gate.get("missingEvidence"), Fail)
     require(status.get("productionDecision") == "NO_GO", "productionDecision changed unexpectedly")
-    require_repo_file(VALIDATOR, "recovery objective validator missing")
 
     contract_text = json.dumps(contract, indent=2, ensure_ascii=False) + "\n"
     status_text = json.dumps(status, indent=2, ensure_ascii=False) + "\n"
     try:
         write_text(CONTRACT, contract_text)
         write_text(STATUS, status_text)
-        completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-        require(completed.returncode == 0, f"recovery objective validator failed:\n{completed.stdout[-7000:]}{completed.stderr[-7000:]}")
+        run_validator(VALIDATOR, "recovery objective validator")
+        run_validator(OPERABILITY_VALIDATOR, "aggregate operability validator")
     except Exception:
         write_text(CONTRACT, original_contract_text)
         write_text(STATUS, original_status_text)
@@ -172,6 +188,7 @@ def main() -> int:
     print(f"current objective: {current_id or 'none'}")
     print("corrupt append-only objective registry auto-healed by reconcile: false")
     print("failed post-validation leaves objective/status mutation behind: false")
+    print("aggregate operability validated inside transaction: true")
     print("canonical OPS-P0-007 blockers preserved: 6")
     print("production evidence: false")
     print("productionDecision: NO_GO")
