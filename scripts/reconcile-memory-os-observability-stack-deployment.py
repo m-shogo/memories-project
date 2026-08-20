@@ -9,16 +9,28 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/observability-stack-deployment-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/observability-stack-deployment-registry.v1.json"
-WRITER = ROOT / "scripts/register-memory-os-observability-stack-deployment.py"
-VALIDATOR = ROOT / "scripts/validate-memory-os-observability-stack-deployment.py"
-OBSERVABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-observability.py"
-ACCESS_VALIDATOR = ROOT / "scripts/validate-memory-os-observability-access.py"
-METRICS_VALIDATOR = ROOT / "scripts/validate-memory-os-metrics.py"
-METRICS_OPERATIONS_VALIDATOR = ROOT / "scripts/validate-memory-os-metrics-operations.py"
-METRICS_ALERTING_VALIDATOR = ROOT / "scripts/validate-memory-os-metrics-alerting.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CONTRACT_REL = Path("contracts/operations/observability-stack-deployment-contract.v1.json")
+REGISTRY_REL = Path("contracts/operations/observability-stack-deployment-registry.v1.json")
+WRITER_REL = Path("scripts/register-memory-os-observability-stack-deployment.py")
+VALIDATOR_REL = Path("scripts/validate-memory-os-observability-stack-deployment.py")
+OBSERVABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-observability.py")
+ACCESS_VALIDATOR_REL = Path("scripts/validate-memory-os-observability-access.py")
+METRICS_VALIDATOR_REL = Path("scripts/validate-memory-os-metrics.py")
+METRICS_OPERATIONS_VALIDATOR_REL = Path("scripts/validate-memory-os-metrics-operations.py")
+METRICS_ALERTING_VALIDATOR_REL = Path("scripts/validate-memory-os-metrics-alerting.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+WORKFLOW_REL = Path(".github/workflows/observability-stack-deployment.yml")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+CONTRACT = ROOT / CONTRACT_REL
+REGISTRY = ROOT / REGISTRY_REL
+WRITER = ROOT / WRITER_REL
+VALIDATOR = ROOT / VALIDATOR_REL
+OBSERVABILITY_VALIDATOR = ROOT / OBSERVABILITY_VALIDATOR_REL
+ACCESS_VALIDATOR = ROOT / ACCESS_VALIDATOR_REL
+METRICS_VALIDATOR = ROOT / METRICS_VALIDATOR_REL
+METRICS_OPERATIONS_VALIDATOR = ROOT / METRICS_OPERATIONS_VALIDATOR_REL
+METRICS_ALERTING_VALIDATOR = ROOT / METRICS_ALERTING_VALIDATOR_REL
+OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
 POST_WRITE_VALIDATORS = (
     VALIDATOR,
     OBSERVABILITY_VALIDATOR,
@@ -28,8 +40,8 @@ POST_WRITE_VALIDATORS = (
     METRICS_ALERTING_VALIDATOR,
     OPERABILITY_VALIDATOR,
 )
-WORKFLOW = ROOT / ".github/workflows/observability-stack-deployment.yml"
-STATUS = ROOT / "contracts/operations/production-operability-status.json"
+WORKFLOW = ROOT / WORKFLOW_REL
+STATUS = ROOT / STATUS_REL
 
 EVIDENCE = (
     "integrated observability-stack deployment admission is fail-closed: a future record must jointly prove structured-log backend health and retention deletion, identity-group/access-audit controls, metrics scrape/backend/dashboard wiring, paging ownership/delivery/response drills and independent security/operability review; the registry is currently empty and creates no deployment claim"
@@ -51,6 +63,41 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    canonical_contract = CONTRACT == ROOT / CONTRACT_REL
+    canonical_status = STATUS == ROOT / STATUS_REL
+    require(canonical_contract is canonical_status, "observability stack fixture boundary must replace contract and status together")
+    if canonical_contract:
+        for path, relative, field in (
+            (CONTRACT, CONTRACT_REL, "observability stack contract"),
+            (REGISTRY, REGISTRY_REL, "observability stack registry"),
+            (WRITER, WRITER_REL, "observability stack writer"),
+            (VALIDATOR, VALIDATOR_REL, "observability stack validator"),
+            (OBSERVABILITY_VALIDATOR, OBSERVABILITY_VALIDATOR_REL, "observability validator"),
+            (ACCESS_VALIDATOR, ACCESS_VALIDATOR_REL, "observability access validator"),
+            (METRICS_VALIDATOR, METRICS_VALIDATOR_REL, "metrics validator"),
+            (METRICS_OPERATIONS_VALIDATOR, METRICS_OPERATIONS_VALIDATOR_REL, "metrics operations validator"),
+            (METRICS_ALERTING_VALIDATOR, METRICS_ALERTING_VALIDATOR_REL, "metrics alerting validator"),
+            (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+            (WORKFLOW, WORKFLOW_REL, "observability stack workflow"),
+            (STATUS, STATUS_REL, "production operability status"),
+        ):
+            require_exact_repo_file(path, relative, field)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -91,6 +138,7 @@ def commit_validated_pair(contract: dict[str, Any], status: dict[str, Any]) -> N
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     for path in (REGISTRY, WRITER, *POST_WRITE_VALIDATORS, WORKFLOW):
         require(path.is_file(), f"observability stack foundation missing: {path.relative_to(ROOT)}")
     validate_current_authority()
