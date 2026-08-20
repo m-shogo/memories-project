@@ -18,6 +18,10 @@ WORKFLOW = ROOT / ".github/workflows/production-shaped-failure-drills.yml"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 CHAOS_VALIDATOR = ROOT / "scripts/validate-memory-os-chaos-failure-drills-v2.py"
 OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CANONICAL_WRITER = ROOT / "scripts/register-memory-os-production-shaped-failure-drill.py"
+CANONICAL_VALIDATOR = ROOT / "scripts/validate-memory-os-production-shaped-failure-drills.py"
+CANONICAL_CHAOS_VALIDATOR = ROOT / "scripts/validate-memory-os-chaos-failure-drills-v2.py"
+CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 
 LEGACY_EMPTY_EVIDENCE = (
     "generation-bound production-shaped failure-drill admission is implemented for four required classes: multi-instance/node interruption, object-store outage/partition, PostgreSQL pool disruption/failover, and parser host/container restart with durable spool remount; local outage/process/container/candidate evidence cannot be relabeled, and the registry is currently empty"
@@ -44,6 +48,26 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
+    require(path == canonical, f"{label} authority drift")
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"canonical {label} missing or escapes repository") from exc
+    require(lexical == resolved and path.is_file() and not path.is_symlink(), f"{label} authority drift")
+
+
+def enforce_runtime_authorities() -> None:
+    for path, canonical, label in (
+        (WRITER, CANONICAL_WRITER, "failure-drill writer"),
+        (VALIDATOR, CANONICAL_VALIDATOR, "failure-drill validator"),
+        (CHAOS_VALIDATOR, CANONICAL_CHAOS_VALIDATOR, "chaos validator"),
+        (OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, "operability validator"),
+    ):
+        require_exact_authority(path, canonical, label)
+
+
 def load(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
@@ -51,6 +75,7 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_module(path: Path, name: str) -> Any:
+    enforce_runtime_authorities()
     spec = importlib.util.spec_from_file_location(name, path)
     require(spec is not None and spec.loader is not None, f"cannot load {path.name}")
     module = importlib.util.module_from_spec(spec)
@@ -59,6 +84,7 @@ def load_module(path: Path, name: str) -> Any:
 
 
 def validate_registry_before_reconcile(registry: dict[str, Any]) -> list[dict[str, Any]]:
+    enforce_runtime_authorities()
     validator = load_module(VALIDATOR, "memory_os_production_failure_validator_for_reconcile")
     require(validator.REGISTRY.resolve() == REGISTRY.resolve(), "failure-drill registry validator authority drift")
     require(validator.WRITER.resolve() == WRITER.resolve(), "failure-drill writer validator authority drift")
@@ -84,6 +110,7 @@ def replace_legacy_evidence(values: list[Any]) -> None:
 
 
 def run_validator(path: Path, failure_label: str) -> None:
+    enforce_runtime_authorities()
     completed = subprocess.run(
         ["python", str(path)],
         cwd=ROOT,
@@ -93,7 +120,7 @@ def run_validator(path: Path, failure_label: str) -> None:
         check=False,
     )
     require(
-        completed.returncode == 0,
+        type(completed.returncode) is int and completed.returncode == 0,
         failure_label + ":\n" + completed.stdout[-4000:] + completed.stderr[-4000:],
     )
 
@@ -113,6 +140,7 @@ def commit_outputs_transactionally(outputs: dict[Path, dict[str, Any]]) -> None:
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     for path in (REGISTRY, WRITER, VALIDATOR, WORKFLOW, CHAOS_VALIDATOR, OPERABILITY_VALIDATOR):
         require(path.is_file(), f"failure-drill admission missing: {path.relative_to(ROOT)}")
     registry = load(REGISTRY)
