@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove independent-review evidence refs, counts, contract shape and helper authority remain fail-closed."""
+"""Prove independent-review evidence refs, counts, contract shape and authority containment remain fail-closed."""
 
 from __future__ import annotations
 
@@ -77,18 +77,26 @@ def main() -> int:
         root = Path(root_tmp)
         canonical = root / "review.json"
         canonical.write_text("{}\n", encoding="utf-8")
+        internal = root / "internal.json"
+        internal.write_text("{}\n", encoding="utf-8")
         external = Path(external_tmp) / "external-review.json"
         external.write_text("{}\n", encoding="utf-8")
 
         validator.ROOT = root
         try:
             require(validator.repo_ref("review.json", "review") == "review.json", "canonical review ref rejected")
+            require(validator.canonical_repo_file(canonical, Path("review.json"), "review authority") == canonical, "canonical authority file rejected")
             expect_rejected(validator, "absolute review ref", lambda: validator.repo_ref(str(canonical.resolve()), "review"))
             expect_rejected(validator, "parent traversal review ref", lambda: validator.repo_ref("nested/../review.json", "review"))
 
             escaped = root / "escaped-review.json"
             escaped.symlink_to(external)
             expect_rejected(validator, "review ref symlink escape", lambda: validator.repo_ref("escaped-review.json", "review"))
+            expect_rejected(validator, "authority file symlink escape", lambda: validator.canonical_repo_file(escaped, Path("escaped-review.json"), "review authority"))
+
+            aliased = root / "aliased-review.json"
+            aliased.symlink_to(internal.name)
+            expect_rejected(validator, "authority file symlink alias", lambda: validator.canonical_repo_file(aliased, Path("aliased-review.json"), "review authority"))
 
             loop = root / "loop-review.json"
             loop.symlink_to(loop.name)
@@ -126,6 +134,8 @@ def main() -> int:
     print("unknown or missing review-independence boundary fields accepted: false")
     print("review ref symlink escape accepted: false")
     print("review ref symlink loop accepted: false")
+    print("authority file symlink escape accepted: false")
+    print("authority file symlink alias accepted: false")
     print("eligibility helper symlink escape accepted: false")
     print("eligibility helper executable substitution accepted: false")
     print("review evidence created: false")
