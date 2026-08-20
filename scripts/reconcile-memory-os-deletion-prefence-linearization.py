@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/deletion-prefence-linearization-contract.v1.json"
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/deletion-prefence-linearization-results.sample.v1.json"
+VALIDATOR = ROOT / "scripts/validate-memory-os-deletion-prefence-linearization.py"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
@@ -60,7 +62,18 @@ def main() -> int:
     require(boundary.get("productionEquivalentDependencies") is False, "local proof cannot become production-equivalent evidence")
     require(boundary.get("previewReadSurfaceOnly") is True, "Preview-only limitation must remain explicit")
 
-    CONTRACT_PATH.write_text(json.dumps(contract, indent=2) + "\n", encoding="utf-8")
+    original = CONTRACT_PATH.read_bytes()
+    try:
+        CONTRACT_PATH.write_text(json.dumps(contract, indent=2) + "\n", encoding="utf-8")
+        subprocess.run(
+            ["python", str(VALIDATOR), "--require-result", "--expected-commit-sha", expected],
+            cwd=ROOT,
+            check=True,
+        )
+    except BaseException:
+        CONTRACT_PATH.write_bytes(original)
+        raise
+
     print("Memory OS deletion pre-fence authority reconciled")
     print("pre-fence in-flight linearization proven: true")
     print("production dependencies tested: false")
