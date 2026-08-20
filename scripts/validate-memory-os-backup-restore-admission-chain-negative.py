@@ -82,6 +82,34 @@ def expect_reconciler_rejected_without_contract_write(
     require(after == before, f"reconciler mutated admission-chain contract before rejecting: {name}")
 
 
+def expect_reconciler_operability_rollback(reconciler: Any) -> None:
+    before = reconciler.CONTRACT.read_text(encoding="utf-8")
+    calls: list[Path] = []
+    original_run_validator = reconciler.run_validator
+
+    def fake_run_validator(path: Path, label: str) -> None:
+        calls.append(path)
+        if path == reconciler.OPERABILITY_VALIDATOR:
+            raise reconciler.Fail("synthetic aggregate operability rejection")
+
+    reconciler.run_validator = fake_run_validator
+    try:
+        expect_rejected(
+            reconciler,
+            "reconciler aggregate operability rejection after contract write",
+            lambda: reconciler.main(),
+        )
+    finally:
+        reconciler.run_validator = original_run_validator
+
+    after = reconciler.CONTRACT.read_text(encoding="utf-8")
+    require(after == before, "reconciler left admission-chain contract mutated after aggregate operability rejection")
+    require(
+        calls == [reconciler.VALIDATOR, reconciler.OPERABILITY_VALIDATOR],
+        "reconciler post-write validator order drift",
+    )
+
+
 def main() -> int:
     module = load_module()
     real_load = module.load
@@ -441,6 +469,8 @@ def main() -> int:
         lambda: run_with_overrides(reconciler, {reconciler.TYPED_REGISTRY: reconcile_boolean_typed}),
     )
 
+    expect_reconciler_operability_rollback(reconciler)
+
     print("Memory OS backup/restore admission-chain negative suite PASS")
     print("escaped JSON/module authority path accepted: false")
     print("shared drill/generation/typed registry shape corruption accepted: false")
@@ -455,6 +485,7 @@ def main() -> int:
     print("integer-as-review/promotion-boolean authority accepted: false")
     print("inventory review/promotion projection accepted: false")
     print("reconciler boolean aggregate authority accepted: false")
+    print("post-write aggregate operability rejection leaves contract mutation behind: false")
     print("candidate may authorize human production promotion: false")
     print("canonical files mutated: false")
     print("production evidence: false")
