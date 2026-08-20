@@ -86,6 +86,16 @@ def validate_reconciler_authority(reconciler: ModuleType) -> None:
     require(reconciler.STATUS.resolve() == STATUS.resolve(), "distributed runtime reconciler status authority drift")
 
 
+def validate_generation_authority(writer: ModuleType) -> list[dict[str, Any]]:
+    try:
+        rows = writer.validated_generation_rows()
+    except Exception as exc:
+        raise Fail(f"environment-generation authority invalid: {exc}") from exc
+    require(isinstance(rows, list) and all(isinstance(row, dict) for row in rows),
+            "environment-generation validator returned invalid rows")
+    return rows
+
+
 def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any]]:
     """Validate the append-only runtime authority without consulting derived contract state."""
     require(set(registry) == EXPECTED_REGISTRY_FIELDS, "registry field drift")
@@ -95,6 +105,7 @@ def validate_registry_for_append(registry: dict[str, Any]) -> list[dict[str, Any
     require(isinstance(runtimes, list), "registry runtimes missing")
     writer = load_writer()
     validate_writer_authority(writer)
+    validate_generation_authority(writer)
     ids: set[str] = set()
     identities: set[str] = set()
     pe = 0
