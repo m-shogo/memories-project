@@ -51,6 +51,46 @@ def prove_corrupt_status_rollback(reconciler: Any, contract_before: bytes, statu
         STATUS.write_bytes(status_before)
 
 
+def prove_aggregate_validator_rollback(reconciler: Any, contract_before: bytes, status_before: bytes) -> None:
+    original_run = reconciler.subprocess.run
+    calls: list[Path] = []
+
+    class Result:
+        def __init__(self, returncode: int, stdout: str = "", stderr: str = "") -> None:
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
+    def fake_run(command: list[str], **_: Any) -> Result:
+        path = Path(command[1]).resolve()
+        calls.append(path)
+        if path == reconciler.CHAOS_VALIDATOR.resolve():
+            return Result(1, stderr="synthetic chaos aggregate rejection")
+        return Result(0)
+
+    reconciler.subprocess.run = fake_run
+    try:
+        try:
+            reconciler.main()
+        except reconciler.Fail as exc:
+            if "chaos authority rejected after failure-drill reconcile" not in str(exc):
+                raise RuntimeError(f"unexpected aggregate rejection: {exc}") from exc
+        else:
+            raise RuntimeError("reconciler accepted rejected chaos aggregate authority")
+        if reconciler.CHAOS_VALIDATOR.resolve() not in calls:
+            raise RuntimeError("reconciler did not invoke canonical chaos aggregate validator")
+        if reconciler.OPERABILITY_VALIDATOR.resolve() in calls:
+            raise RuntimeError("reconciler continued after chaos aggregate rejection")
+        if CONTRACT.read_bytes() != contract_before:
+            raise RuntimeError("reconciler retained failure-drill contract after chaos aggregate rejection")
+        if STATUS.read_bytes() != status_before:
+            raise RuntimeError("reconciler retained production status after chaos aggregate rejection")
+    finally:
+        reconciler.subprocess.run = original_run
+        CONTRACT.write_bytes(contract_before)
+        STATUS.write_bytes(status_before)
+
+
 def prove_legacy_empty_evidence_is_monotonic(reconciler: Any, contract_before: bytes, status_before: bytes) -> None:
     status = json.loads(status_before.decode("utf-8"))
     gate = status_gate(status)
@@ -83,9 +123,10 @@ def main() -> int:
     contract_before = CONTRACT.read_bytes()
     status_before = STATUS.read_bytes()
     prove_corrupt_status_rollback(reconciler, contract_before, status_before)
+    prove_aggregate_validator_rollback(reconciler, contract_before, status_before)
     prove_legacy_empty_evidence_is_monotonic(reconciler, contract_before, status_before)
 
-    print("PASS: failure-drill reconcile is transactional and removes superseded empty-registry evidence")
+    print("PASS: failure-drill reconcile is transactional across direct and aggregate validators and removes superseded empty-registry evidence")
     print("production readiness: false")
     print("production decision: NO_GO")
     return 0
