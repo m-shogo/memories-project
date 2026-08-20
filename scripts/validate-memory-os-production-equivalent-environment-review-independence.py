@@ -25,6 +25,12 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def exact_int(value: Any, field: str) -> int:
+    require(isinstance(value, int) and not isinstance(value, bool), f"{field} must be an integer")
+    require(value >= 0, f"{field} must be non-negative")
+    return value
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -127,13 +133,13 @@ def main() -> int:
             raise Fail(f"eligible generation reuses environment independent review evidence as implementation/delta evidence: {generation_id}")
         reviewed_count += 1
 
-    eligible_count = state["preflightEligibleGenerationCount"]
+    eligible_count = exact_int(state["preflightEligibleGenerationCount"], "semantic eligibility preflightEligibleGenerationCount")
     require(reviewed_count == eligible_count, "eligible/reviewed generation count drift")
     boundary = contract.get("currentBoundary")
     require(isinstance(boundary, dict), "review independence currentBoundary missing")
-    require(boundary.get("preflightEligibleGenerationCount") == eligible_count, "review independence eligible count drift")
-    require(boundary.get("independentlyReviewedEligibleGenerationCount") == reviewed_count, "review independence reviewed count drift")
-    require(boundary.get("reviewReuseViolationCount") == violations, "review independence violation count drift")
+    require(exact_int(boundary.get("preflightEligibleGenerationCount"), "currentBoundary.preflightEligibleGenerationCount") == eligible_count, "review independence eligible count drift")
+    require(exact_int(boundary.get("independentlyReviewedEligibleGenerationCount"), "currentBoundary.independentlyReviewedEligibleGenerationCount") == reviewed_count, "review independence reviewed count drift")
+    require(exact_int(boundary.get("reviewReuseViolationCount"), "currentBoundary.reviewReuseViolationCount") == violations, "review independence violation count drift")
     require(boundary.get("productionEvidence") is False and boundary.get("productionReady") is False and boundary.get("productionDecision") == "NO_GO", "review independence cannot promote production")
 
     print("Memory OS production-equivalent environment review independence PASS")
