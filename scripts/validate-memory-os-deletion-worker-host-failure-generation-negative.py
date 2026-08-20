@@ -21,6 +21,7 @@ VALIDATOR = ROOT / "scripts/validate-memory-os-deletion-worker-host-failure.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-deletion-worker-host-failure.py"
 LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
 OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+WORKFLOW = ROOT / ".github/workflows/deletion-worker-host-failure-admission.yml"
 
 
 class Fail(RuntimeError):
@@ -149,6 +150,32 @@ def load_authority_rejected() -> None:
         LOAD.write_bytes(load_bytes)
 
 
+def data_authority_rejected() -> None:
+    reconciler = load_module(RECONCILER, "memory_os_host_failure_reconciler_data_negative")
+    contract_bytes = CONTRACT.read_bytes()
+    status_bytes = STATUS.read_bytes()
+    substitutions = (
+        ("CONTRACT", LOAD, "host-failure contract authority drift"),
+        ("WORKFLOW", RECONCILER, "host-failure workflow authority drift"),
+        ("STATUS", CONTRACT, "production status authority drift"),
+        ("LOAD", CONTRACT, "load contract authority drift"),
+    )
+    for attr, substitute, expected in substitutions:
+        original = getattr(reconciler, attr)
+        try:
+            setattr(reconciler, attr, substitute)
+            try:
+                reconciler.validate_data_authorities()
+            except reconciler.Fail as exc:
+                require(expected in str(exc), f"unexpected {attr} substitution rejection: {exc}")
+            else:
+                raise Fail(f"host-failure reconciler accepted substituted data authority: {attr}")
+            require(CONTRACT.read_bytes() == contract_bytes, f"{attr}: host-failure contract changed after rejected data authority")
+            require(STATUS.read_bytes() == status_bytes, f"{attr}: production status changed after rejected data authority")
+        finally:
+            setattr(reconciler, attr, original)
+
+
 def executable_authority_rejected() -> None:
     reconciler = load_module(RECONCILER, "memory_os_host_failure_reconciler_executable_negative")
     contract_bytes = CONTRACT.read_bytes()
@@ -216,11 +243,12 @@ def main() -> int:
             rejected(label, mutate, baseline, baseline_bytes)
         generation_progression_preserves_no_go()
         load_authority_rejected()
+        data_authority_rejected()
         executable_authority_rejected()
         rollback_rejected()
     finally:
         REGISTRY.write_bytes(baseline_bytes)
-    print("PASS: deletion host-failure admission rejects corrupt generation/load/executable authority, permits registered generation inventory without promotion, and rolls back post-write failures")
+    print("PASS: deletion host-failure admission rejects corrupt generation/load/data/executable authority, permits registered generation inventory without promotion, and rolls back post-write failures")
     return 0
 
 
