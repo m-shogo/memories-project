@@ -17,6 +17,7 @@ GEN_SCHEMA = ROOT / "contracts/operations/production-equivalent-environment-gene
 ENV_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-record.py"
 WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-generation.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 NEGATIVE = ROOT / "scripts/validate-memory-os-production-equivalent-environment-generation-negative.py"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 REFS = (
@@ -147,6 +148,7 @@ def main() -> int:
         (ENV_VALIDATOR, "environment semantic validator missing"),
         (WRITER, "environment generation writer missing"),
         (VALIDATOR, "environment generation validator missing"),
+        (OPERABILITY_VALIDATOR, "operability validator missing"),
         (NEGATIVE, "environment generation negative suite missing"),
     ):
         require_repo_file(path, message)
@@ -224,6 +226,8 @@ def main() -> int:
         write_text(STATUS, status_text)
         completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
         require(completed.returncode == 0, f"generation validator failed:\n{completed.stdout[-9000:]}{completed.stderr[-9000:]}")
+        operability = subprocess.run([sys.executable, str(OPERABILITY_VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+        require(operability.returncode == 0, f"operability validator failed:\n{operability.stdout[-9000:]}{operability.stderr[-9000:]}")
     except Exception:
         write_text(CONTRACT, original_contract_text)
         write_text(STATUS, original_status_text)
@@ -236,7 +240,8 @@ def main() -> int:
     print(f"current production-equivalent dependencies: {str(equivalent).lower()}")
     print("registration implies preflight eligibility: false")
     print("cross-generation evidence reuse: forbidden")
-    print("failed post-validation leaves generation/status mutation behind: false")
+    print("failed aggregate validation leaves generation/status mutation behind: false")
+    print("aggregate operability validation is inside reconciliation transaction: true")
     print("OPS-P0-006: PARTIAL")
     print("productionDecision: NO_GO")
     return 0
