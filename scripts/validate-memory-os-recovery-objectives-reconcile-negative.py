@@ -73,21 +73,24 @@ def main() -> int:
         original_contract = contract_copy.read_bytes()
         original_status = status_copy.read_bytes()
 
-        failing_validator = tmp / "forced-validator-failure.py"
-        failing_validator.write_text("#!/usr/bin/env python3\nraise SystemExit(37)\n", encoding="utf-8")
-        reconciler.VALIDATOR = failing_validator
+        passing_validator = tmp / "passing-objective-validator.py"
+        passing_validator.write_text("#!/usr/bin/env python3\nraise SystemExit(0)\n", encoding="utf-8")
+        failing_operability = tmp / "forced-operability-failure.py"
+        failing_operability.write_text("#!/usr/bin/env python3\nraise SystemExit(37)\n", encoding="utf-8")
+        reconciler.VALIDATOR = passing_validator
+        reconciler.OPERABILITY_VALIDATOR = failing_operability
 
         try:
             reconciler.main()
         except reconciler.Fail as exc:
-            require("recovery objective validator failed" in str(exc), f"unexpected reconcile failure: {exc}")
+            require("aggregate operability validator failed" in str(exc), f"unexpected reconcile failure: {exc}")
         else:
-            raise Fail("forced objective post-validation failure unexpectedly accepted")
+            raise Fail("forced aggregate operability failure unexpectedly accepted")
 
         require(contract_copy.read_bytes() == original_contract, "objective contract rollback drift")
         require(status_copy.read_bytes() == original_status, "objective operability status rollback drift")
 
-    print("PASS rollback: recovery objective contract/status restored byte-for-byte")
+    print("PASS rollback: aggregate operability rejection restores recovery objective contract/status byte-for-byte")
     print("Recovery objective reconcile negative suite PASS")
     return 0
 
