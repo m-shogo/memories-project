@@ -6,6 +6,9 @@ on:
       - so
     paths:
       - ".github/workflows/reconcile-upload-completion-load-authority.yml"
+      - "scripts/reconcile-memory-os-deletion-prefence-upload-completion.py"
+      - "scripts/validate-memory-os-deletion-prefence-upload-completion-reconcile-negative.py"
+      - "scripts/validate-memory-os-deletion-prefence-upload-completion.py"
       - "scripts/reconcile-memory-os-upload-completion-load-authority.py"
       - "scripts/validate-memory-os-upload-completion-load-reconcile-negative.py"
       - "scripts/validate-memory-os-load.py"
@@ -17,6 +20,9 @@ on:
       - so
     paths:
       - ".github/workflows/reconcile-upload-completion-load-authority.yml"
+      - "scripts/reconcile-memory-os-deletion-prefence-upload-completion.py"
+      - "scripts/validate-memory-os-deletion-prefence-upload-completion-reconcile-negative.py"
+      - "scripts/validate-memory-os-deletion-prefence-upload-completion.py"
       - "scripts/reconcile-memory-os-upload-completion-load-authority.py"
       - "scripts/validate-memory-os-upload-completion-load-reconcile-negative.py"
       - "scripts/validate-memory-os-load.py"
@@ -56,11 +62,14 @@ jobs:
         run: |
           set -euo pipefail
           python -m py_compile \
+            scripts/reconcile-memory-os-deletion-prefence-upload-completion.py \
+            scripts/validate-memory-os-deletion-prefence-upload-completion-reconcile-negative.py \
             scripts/validate-memory-os-deletion-prefence-upload-completion.py \
             scripts/reconcile-memory-os-upload-completion-load-authority.py \
             scripts/validate-memory-os-upload-completion-load-reconcile-negative.py \
             scripts/validate-memory-os-load.py \
             scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-deletion-prefence-upload-completion-reconcile-negative.py
           python scripts/validate-memory-os-upload-completion-load-reconcile-negative.py
           python scripts/reconcile-memory-os-upload-completion-load-authority.py
           python scripts/validate-memory-os-load.py
