@@ -150,7 +150,25 @@ def mutate_ops7_missing(reorder: bool) -> Callable[[dict[str, Any]], None]:
 
 def restore_all(originals: dict[Path, bytes]) -> None:
     for path, payload in originals.items():
+        if path.is_symlink():
+            path.unlink()
         path.write_bytes(payload)
+
+
+def run_source_symlink_escape(originals: dict[Path, bytes]) -> None:
+    external = Path("/tmp/memory-os-ops-p0-007-objective-authority.json")
+    external.write_bytes(originals[OBJECTIVES])
+    restore_all(originals)
+    OBJECTIVES.unlink()
+    OBJECTIVES.symlink_to(external)
+    try:
+        run_validator(False, "objective source symlink escape")
+        run_generator_rejects("generator objective source symlink escape", "generated strict snapshot invalid")
+    finally:
+        if OBJECTIVES.is_symlink():
+            OBJECTIVES.unlink()
+        OBJECTIVES.write_bytes(originals[OBJECTIVES])
+        external.unlink(missing_ok=True)
 
 
 def main() -> int:
@@ -207,6 +225,7 @@ def main() -> int:
     try:
         run_validator(True, "clean baseline")
         run_generator_post_write_rollback()
+        run_source_symlink_escape(originals)
         for label, path, mutate in cases:
             restore_all(originals)
             authority = copy.deepcopy(load(path))
@@ -233,6 +252,7 @@ def main() -> int:
     print("Memory OS OPS-P0-007 strict admission snapshot negative validation PASS")
     print(f"controlled validator corruption cases rejected: {len(cases)}")
     print(f"controlled generator corruption cases rejected: {len(generator_cases)}")
+    print("snapshot source symlink escape rejected by validator and generator: true")
     print("snapshot unknown/missing field drift rejected: true")
     print("snapshot boolean count drift rejected: true")
     print("snapshot downstream requirement/next-action drift rejected: true")
