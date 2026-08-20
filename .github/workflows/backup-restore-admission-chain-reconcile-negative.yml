@@ -5,10 +5,13 @@ on:
     paths:
       - ".github/workflows/backup-restore-admission-chain-reconcile-negative.yml"
       - "scripts/reconcile-memory-os-backup-restore-admission-chain.py"
+      - "scripts/request-memory-os-backup-restore-drill.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py"
+      - "scripts/validate-memory-os-operability.py"
       - "contracts/operations/backup-restore-admission-chain-contract.v1.json"
       - "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
       - "contracts/operations/backup-restore-drill-request-registry.v1.json"
@@ -22,10 +25,13 @@ on:
     paths:
       - ".github/workflows/backup-restore-admission-chain-reconcile-negative.yml"
       - "scripts/reconcile-memory-os-backup-restore-admission-chain.py"
+      - "scripts/request-memory-os-backup-restore-drill.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
+      - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py"
+      - "scripts/validate-memory-os-operability.py"
       - "contracts/operations/backup-restore-admission-chain-contract.v1.json"
       - "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
       - "contracts/operations/backup-restore-drill-request-registry.v1.json"
@@ -58,9 +64,12 @@ jobs:
           test "$(git rev-parse HEAD)" = "$expected"
           python -m py_compile \
             scripts/reconcile-memory-os-backup-restore-admission-chain.py \
+            scripts/request-memory-os-backup-restore-drill.py \
             scripts/register-memory-os-backup-restore-generation-evidence.py \
+            scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
             scripts/memory_os_backup_restore_blockers.py \
             scripts/validate-memory-os-backup-restore-admission-chain.py \
-            scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py
+            scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py \
+            scripts/validate-memory-os-operability.py
           python scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py
           git diff --exit-code
