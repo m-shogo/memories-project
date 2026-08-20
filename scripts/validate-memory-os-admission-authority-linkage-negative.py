@@ -44,6 +44,8 @@ def expect_slot_fail(module, value: str, *, contains: str) -> None:
 
 def main() -> int:
     module = load_validator()
+    if "sourceReleasePairRegistry" not in module.FILE_KEYS:
+        raise AssertionError("migration release-pair source authority is not covered by admission linkage")
     fixture = ROOT / f".tmp-admission-authority-linkage-negative-{os.getpid()}"
     external_root = Path(tempfile.mkdtemp(prefix="memory-os-linkage-negative-"))
     try:
@@ -104,7 +106,7 @@ def main() -> int:
             contains="symlinked admission authority file slot",
         )
 
-        print("PASS: admission authority root aliases, symlinks, repository escapes and append-lock escapes are rejected")
+        print("PASS: admission authority root aliases, release-pair linkage, symlinks, repository escapes and append-lock escapes are rejected")
         return 0
     finally:
         shutil.rmtree(fixture, ignore_errors=True)
