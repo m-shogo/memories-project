@@ -11,10 +11,28 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-EVENT_PATH = ROOT / "contracts/operations/observability-event-contract.v1.json"
-ACCESS_PATH = ROOT / "contracts/operations/observability-retention-access-contract.v1.json"
-STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
-VALIDATOR = ROOT / "scripts/validate-memory-os-observability-access.py"
+EVENT_REL = Path("contracts/operations/observability-event-contract.v1.json")
+ACCESS_REL = Path("contracts/operations/observability-retention-access-contract.v1.json")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+OBSERVABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-observability.py")
+ACCESS_VALIDATOR_REL = Path("scripts/validate-memory-os-observability-access.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+ENTRY_DOCS_VALIDATOR_REL = Path("scripts/validate-memory-os-entry-docs.py")
+WORKFLOW_REL = Path(".github/workflows/reconcile-observability-access.yml")
+EVENT_PATH = ROOT / EVENT_REL
+ACCESS_PATH = ROOT / ACCESS_REL
+STATUS_PATH = ROOT / STATUS_REL
+OBSERVABILITY_VALIDATOR = ROOT / OBSERVABILITY_VALIDATOR_REL
+VALIDATOR = ROOT / ACCESS_VALIDATOR_REL
+OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
+ENTRY_DOCS_VALIDATOR = ROOT / ENTRY_DOCS_VALIDATOR_REL
+POST_WRITE_VALIDATORS = (
+    OBSERVABILITY_VALIDATOR,
+    VALIDATOR,
+    OPERABILITY_VALIDATOR,
+    ENTRY_DOCS_VALIDATOR,
+)
+WORKFLOW = ROOT / WORKFLOW_REL
 
 OLD_GAP = "log retention and access policy configured"
 NEW_EXISTING = (
@@ -42,6 +60,33 @@ class ReconcileFailure(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise ReconcileFailure(message)
+
+
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise ReconcileFailure(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    for path, relative, field in (
+        (EVENT_PATH, EVENT_REL, "observability event contract"),
+        (ACCESS_PATH, ACCESS_REL, "observability access contract"),
+        (STATUS_PATH, STATUS_REL, "production operability status"),
+        (OBSERVABILITY_VALIDATOR, OBSERVABILITY_VALIDATOR_REL, "observability validator"),
+        (VALIDATOR, ACCESS_VALIDATOR_REL, "observability access validator"),
+        (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+        (ENTRY_DOCS_VALIDATOR, ENTRY_DOCS_VALIDATOR_REL, "entry docs validator"),
+        (WORKFLOW, WORKFLOW_REL, "observability access workflow"),
+    ):
+        require_exact_repo_file(path, relative, field)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -78,9 +123,10 @@ def commit_validated_pair(event: dict[str, Any], status: dict[str, Any]) -> None
     try:
         EVENT_PATH.write_bytes(render(event))
         STATUS_PATH.write_bytes(render(status))
-        completed = subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=False)
-        require(completed.returncode == 0,
-                "reconciled observability access authority failed validation")
+        for validator in POST_WRITE_VALIDATORS:
+            completed = subprocess.run(["python", str(validator)], cwd=ROOT, check=False)
+            require(completed.returncode == 0,
+                    f"reconciled observability access authority failed validation: {validator.name}")
     except BaseException:
         EVENT_PATH.write_bytes(original_event)
         STATUS_PATH.write_bytes(original_status)
@@ -88,6 +134,7 @@ def commit_validated_pair(event: dict[str, Any], status: dict[str, Any]) -> None
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     validate_current_authority()
     event = load(EVENT_PATH)
     access = load(ACCESS_PATH)
