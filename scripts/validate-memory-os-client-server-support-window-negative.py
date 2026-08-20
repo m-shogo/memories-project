@@ -13,6 +13,7 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-client-server-support-window.py"
+SUPPORT_RECONCILER_PATH = ROOT / "scripts/reconcile-memory-os-client-server-support-window-status.py"
 CLIENT_RECONCILER_PATH = ROOT / "scripts/reconcile-memory-os-client-baseline-registry.py"
 CONTRACT = ROOT / "contracts/operations/client-server-support-window-contract.v1.json"
 RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
@@ -46,6 +47,32 @@ def load(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
     return value
+
+
+def verify_support_reconcile_authority_identity() -> None:
+    reconciler = load_module(SUPPORT_RECONCILER_PATH, "memory_os_support_window_reconcile_authority_negative")
+    reconciler.enforce_runtime_authorities()
+    substitutions = (
+        ("VALIDATOR", ROOT / "scripts/validate-memory-os-operability.py"),
+        ("OPERABILITY_VALIDATOR", ROOT / "scripts/validate-memory-os-client-server-support-window.py"),
+        ("WORKFLOW", ROOT / ".github/workflows/version-compatibility-foundations.yml"),
+        ("RELEASES", ROOT / "contracts/operations/client-baseline-registry.v1.json"),
+        ("CLIENTS", ROOT / "contracts/operations/release-baseline-registry.v1.json"),
+        ("SKEW", ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"),
+    )
+    for field, substitute in substitutions:
+        original = getattr(reconciler, field)
+        try:
+            setattr(reconciler, field, substitute)
+            rejected = False
+            try:
+                reconciler.enforce_runtime_authorities()
+            except reconciler.Fail:
+                rejected = True
+            require(rejected, f"support-window reconciler accepted {field} authority substitution")
+        finally:
+            setattr(reconciler, field, original)
+    reconciler.enforce_runtime_authorities()
 
 
 def expect_rejection(validator: Any, path: Path, base: dict[str, Any], label: str,
@@ -214,6 +241,7 @@ def main() -> int:
     client_base = load(CLIENTS)
     skew_base = load(SKEW)
     validator.main()
+    verify_support_reconcile_authority_identity()
     verify_inventory_only_intermediate_state(validator)
     verify_client_reconcile_preserves_admitted_skew()
     verify_client_reconcile_allows_approved_pair_progression()
