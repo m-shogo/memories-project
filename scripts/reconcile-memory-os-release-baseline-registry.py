@@ -14,14 +14,26 @@ from types import ModuleType
 from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT_PATH = ROOT / "contracts/operations/release-baseline-registry-contract.v1.json"
-REGISTRY_PATH = ROOT / "contracts/operations/release-baseline-registry.v1.json"
-STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
-WRITER_PATH = ROOT / "scripts/register-memory-os-release-baseline.py"
-VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-release-baseline-registry.py"
-EVIDENCE_BINDING_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-release-baseline-evidence-binding.py"
-VERSION_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-version-compatibility.py"
-OPERABILITY_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-operability.py"
+CONTRACT_REL = Path("contracts/operations/release-baseline-registry-contract.v1.json")
+REGISTRY_REL = Path("contracts/operations/release-baseline-registry.v1.json")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+WRITER_REL = Path("scripts/register-memory-os-release-baseline.py")
+VALIDATOR_REL = Path("scripts/validate-memory-os-release-baseline-registry.py")
+EVIDENCE_BINDING_VALIDATOR_REL = Path("scripts/validate-memory-os-release-baseline-evidence-binding.py")
+VERSION_VALIDATOR_REL = Path("scripts/validate-memory-os-version-compatibility.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+WORKFLOW_REL = Path(".github/workflows/release-baseline-registry.yml")
+EVIDENCE_README_REL = Path("docs/evidence/releases/README.md")
+CONTRACT_PATH = ROOT / CONTRACT_REL
+REGISTRY_PATH = ROOT / REGISTRY_REL
+STATUS_PATH = ROOT / STATUS_REL
+WRITER_PATH = ROOT / WRITER_REL
+VALIDATOR_PATH = ROOT / VALIDATOR_REL
+EVIDENCE_BINDING_VALIDATOR_PATH = ROOT / EVIDENCE_BINDING_VALIDATOR_REL
+VERSION_VALIDATOR_PATH = ROOT / VERSION_VALIDATOR_REL
+OPERABILITY_VALIDATOR_PATH = ROOT / OPERABILITY_VALIDATOR_REL
+WORKFLOW_PATH = ROOT / WORKFLOW_REL
+EVIDENCE_README_PATH = ROOT / EVIDENCE_README_REL
 
 STATIC_EXISTING = (
     "append-only approved release baseline registry authority separating historical candidates, CI results, tags and branch heads from multi-role production release approval",
@@ -59,6 +71,35 @@ def require(condition: bool, message: str) -> None:
         raise ReconcileFailure(message)
 
 
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise ReconcileFailure(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    for path, relative, field in (
+        (CONTRACT_PATH, CONTRACT_REL, "release baseline contract"),
+        (REGISTRY_PATH, REGISTRY_REL, "release baseline registry"),
+        (STATUS_PATH, STATUS_REL, "production operability status"),
+        (WRITER_PATH, WRITER_REL, "release baseline writer"),
+        (VALIDATOR_PATH, VALIDATOR_REL, "release baseline validator"),
+        (EVIDENCE_BINDING_VALIDATOR_PATH, EVIDENCE_BINDING_VALIDATOR_REL, "release evidence binding validator"),
+        (VERSION_VALIDATOR_PATH, VERSION_VALIDATOR_REL, "version compatibility validator"),
+        (OPERABILITY_VALIDATOR_PATH, OPERABILITY_VALIDATOR_REL, "operability validator"),
+        (WORKFLOW_PATH, WORKFLOW_REL, "release baseline workflow"),
+        (EVIDENCE_README_PATH, EVIDENCE_README_REL, "release evidence README"),
+    ):
+        require_exact_repo_file(path, relative, field)
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -71,6 +112,7 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_writer() -> ModuleType:
+    require_exact_repo_file(WRITER_PATH, WRITER_REL, "release baseline writer")
     spec = importlib.util.spec_from_file_location("memory_os_release_baseline_writer_for_reconcile", WRITER_PATH)
     require(spec is not None and spec.loader is not None, "cannot load release baseline writer")
     module = importlib.util.module_from_spec(spec)
@@ -92,6 +134,7 @@ def remove_value(items: list[Any], value: str) -> bool:
 
 
 def run_canonical_validators() -> None:
+    enforce_runtime_authorities()
     for validator in (
         VALIDATOR_PATH,
         EVIDENCE_BINDING_VALIDATOR_PATH,
@@ -250,6 +293,7 @@ def reconcile_status(
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     contract = load(CONTRACT_PATH)
     registry = load(REGISTRY_PATH)
     writer = load_writer()
