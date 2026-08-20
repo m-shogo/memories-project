@@ -45,13 +45,15 @@ def expect_blocker_monotonicity(module) -> None:
     gate = ops_gate(status)
     before = list(gate.get("missingEvidence", []))
     require(before, "OPS-P0-008 blockers missing before execution projection")
-    require(
-        "approved predecessor and successor release pair despite candidate-only mixed-version evidence" in before,
-        "current canonical release-pair blocker missing before monotonicity probe",
-    )
+    sentinel = "synthetic stronger canonical blocker preserved by execution projection"
+    require(sentinel not in before, "synthetic blocker unexpectedly present in canonical status")
+    gate["missingEvidence"].append(sentinel)
+    expected = list(gate["missingEvidence"])
+
     reconciled = module.reconcile_execution_projection(status)
     after = ops_gate(reconciled).get("missingEvidence")
-    require(after == before, "candidate/local execution projection rewrote production blockers")
+    require(after == expected, "candidate/local execution projection rewrote production blockers")
+    require(sentinel in after, "candidate/local execution projection dropped a stronger canonical blocker")
     require(reconciled.get("productionDecision") == "NO_GO",
             "candidate/local execution projection changed productionDecision")
 
