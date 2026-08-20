@@ -160,6 +160,11 @@ COMMAND_SOURCES: tuple[tuple[str, str, str], ...] = (
         "backup/restore drill request derived authority",
     ),
     (
+        "scripts/validate-memory-os-backup-restore-drill-request-writer-authority.py",
+        "memory_os_inventory_source_backup_drill_request_writer_authority",
+        "backup/restore drill request executable authority",
+    ),
+    (
         "scripts/validate-memory-os-backup-restore-drill-preflight.py",
         "memory_os_inventory_source_backup_drill_preflight",
         "backup/restore drill preflight authority",
