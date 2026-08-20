@@ -7,6 +7,7 @@ on:
       - "scripts/reconcile-memory-os-backup-restore-admission-chain.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/memory_os_backup_restore_blockers.py"
+      - "scripts/validate-memory-os-backup-restore-admission-chain.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py"
       - "contracts/operations/backup-restore-admission-chain-contract.v1.json"
       - "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
@@ -23,6 +24,7 @@ on:
       - "scripts/reconcile-memory-os-backup-restore-admission-chain.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/memory_os_backup_restore_blockers.py"
+      - "scripts/validate-memory-os-backup-restore-admission-chain.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py"
       - "contracts/operations/backup-restore-admission-chain-contract.v1.json"
       - "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
@@ -58,6 +60,7 @@ jobs:
             scripts/reconcile-memory-os-backup-restore-admission-chain.py \
             scripts/register-memory-os-backup-restore-generation-evidence.py \
             scripts/memory_os_backup_restore_blockers.py \
+            scripts/validate-memory-os-backup-restore-admission-chain.py \
             scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py
           python scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py
           git diff --exit-code
