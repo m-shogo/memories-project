@@ -7,9 +7,16 @@ on:
       - "contracts/operations/requests/incident-contact-routing-foundation.v1.json"
       - "contracts/operations/incident-contact-routing-admission-contract.v1.json"
       - "contracts/operations/incident-contact-routing-admission-registry.v1.json"
+      - "contracts/operations/observability-stack-deployment-contract.v1.json"
       - "contracts/operations/observability-stack-deployment-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
+      - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
       - "docs/evidence/incident-contact-routing/independent-reviews/**"
+      - "docs/evidence/observability-stack/independent-reviews/**"
+      - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/register-memory-os-observability-stack-deployment.py"
       - "scripts/register-memory-os-incident-contact-routing.py"
       - "scripts/validate-memory-os-incident-contact-routing.py"
@@ -25,9 +32,16 @@ on:
       - "contracts/operations/requests/incident-contact-routing-foundation.v1.json"
       - "contracts/operations/incident-contact-routing-admission-contract.v1.json"
       - "contracts/operations/incident-contact-routing-admission-registry.v1.json"
+      - "contracts/operations/observability-stack-deployment-contract.v1.json"
       - "contracts/operations/observability-stack-deployment-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
+      - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
       - "docs/evidence/incident-contact-routing/independent-reviews/**"
+      - "docs/evidence/observability-stack/independent-reviews/**"
+      - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/register-memory-os-observability-stack-deployment.py"
       - "scripts/register-memory-os-incident-contact-routing.py"
       - "scripts/validate-memory-os-incident-contact-routing.py"
@@ -76,6 +90,8 @@ jobs:
           : > "$log"
           code=0
           python -m py_compile \
+            scripts/register-memory-os-production-equivalent-environment-generation.py \
+            scripts/validate-memory-os-production-equivalent-environment-record.py \
             scripts/register-memory-os-observability-stack-deployment.py \
             scripts/register-memory-os-incident-contact-routing.py \
             scripts/validate-memory-os-incident-contact-routing.py \
