@@ -17,6 +17,8 @@ WRITER = ROOT / "scripts/register-memory-os-incident-contact-routing.py"
 LOCK = ROOT / "contracts/operations/.incident-contact-routing.lock"
 OBS_REGISTRY = ROOT / "contracts/operations/observability-stack-deployment-registry.v1.json"
 OBS_WRITER = ROOT / "scripts/register-memory-os-observability-stack-deployment.py"
+GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+GEN_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
 
 
 class Fail(RuntimeError):
@@ -34,6 +36,28 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def load_generation_writer() -> ModuleType:
+    require(GEN_WRITER.is_file(), "canonical environment-generation writer missing")
+    spec = importlib.util.spec_from_file_location("memory_os_generation_writer_for_contact_routing_validator", GEN_WRITER)
+    require(spec is not None and spec.loader is not None, "cannot load environment-generation writer")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    require(getattr(module, "REGISTRY", None) == GEN_REGISTRY,
+            "environment-generation writer registry authority drift")
+    require(callable(getattr(module, "validate_registry_for_append", None)),
+            "environment-generation registry validator missing")
+    return module
+
+
+def validate_generation_authority() -> None:
+    registry = load(GEN_REGISTRY)
+    writer = load_generation_writer()
+    try:
+        writer.validate_registry_for_append(registry)
+    except Exception as exc:
+        raise Fail(f"environment-generation authority invalid: {exc}") from exc
+
+
 def load_writer() -> ModuleType:
     spec = importlib.util.spec_from_file_location("memory_os_incident_contact_writer", WRITER)
     require(spec is not None and spec.loader is not None, "cannot load contact routing writer")
@@ -49,6 +73,8 @@ def load_writer() -> ModuleType:
             "contact routing observability registry authority drift")
     require(getattr(module, "OBS_WRITER", None) == OBS_WRITER,
             "contact routing observability executable authority drift")
+    require(getattr(module, "GEN_REGISTRY", None) == GEN_REGISTRY,
+            "contact routing generation registry authority drift")
     require(callable(getattr(module, "validate_registry_for_append", None)),
             "contact routing writer registry validator missing")
     require(callable(getattr(module, "commit_registry_candidate", None)),
@@ -86,6 +112,7 @@ def main() -> int:
         else:
             require(value is False, f"unsafe contact routing promotion enabled: {key}")
 
+    validate_generation_authority()
     writer = load_writer()
     try:
         writer.validate_registry_for_append(registry)
