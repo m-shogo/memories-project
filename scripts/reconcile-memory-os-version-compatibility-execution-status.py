@@ -31,19 +31,6 @@ REFS = (
     "docs/fixtures/memory-os-operability/postgresql-major-upgrade-results.sample.v1.json",
 )
 
-CANONICAL_MISSING = [
-    "implemented client/server support windows, offline/skew policy and old-client/new-server plus new-client/old-server compatibility tests",
-    "approved predecessor and successor release pair with three distinct required approvals and complete security, migration, parser, restore, load and compatibility evidence",
-    "rollback-eligible approved release pair with retained exact binaries, parser artifacts, object-version requirements and an admitted isolated rollback rehearsal",
-    "production rolling deployment using rollback-eligible approved releases, including simultaneous old/current traffic, connection drain, rollout ordering, monitored stop conditions, application rollback timing and deterministic recovery",
-    "mixed-version coverage for remaining import, Preview, parser and other persisted-state routes beyond the locally proven session and Apply surfaces, using an approved predecessor/successor pair",
-    "reviewed production parser artifact registry entry with exact-byte old-artifact replay, protocol binding, immutable rollback retention and retirement proof",
-    "production-shaped mixed-version process/host/network interruption with connection-pool cleanup and recovery evidence using approved release artifacts",
-    "destructive contract-migration and downgrade compatibility proof with an explicit irreversible rollback boundary",
-    "reviewed PostgreSQL support window plus production-shaped blue-green or in-place upgrade rehearsal with connection-pool drain, physical replication, WAL continuity, replication slots, failover and rollback decision evidence",
-    "independent review of integrated compatibility controls with zero unresolved Critical or High findings",
-]
-
 
 class Fail(RuntimeError):
     pass
@@ -99,6 +86,33 @@ def commit_status_transaction(
         raise
 
 
+def reconcile_execution_projection(status: dict[str, Any]) -> dict[str, Any]:
+    require(status.get("productionDecision") == "NO_GO", "productionDecision must remain NO_GO")
+    gate = next((item for item in status.get("areas", []) if isinstance(item, dict) and item.get("id") == "OPS-P0-008"), None)
+    require(isinstance(gate, dict), "OPS-P0-008 missing")
+    require(gate.get("status") == "PARTIAL" and gate.get("blocking") is True,
+            "OPS-P0-008 must remain blocking PARTIAL")
+    existing = gate.get("existingEvidence")
+    refs = gate.get("evidenceRefs")
+    missing = gate.get("missingEvidence")
+    require(isinstance(existing, list), "OPS-P0-008 existingEvidence must be list")
+    require(isinstance(refs, list), "OPS-P0-008 evidenceRefs must be list")
+    require(isinstance(missing, list) and all(isinstance(item, str) and item.strip() for item in missing),
+            "OPS-P0-008 missingEvidence must remain a non-empty string list")
+    require(missing, "OPS-P0-008 production blockers may not be cleared by candidate/local evidence")
+
+    # Candidate/local execution evidence is supplemental only. It may add its own
+    # evidence/ref classification, but it does not own production blockers. The
+    # canonical foundation/release authorities evolve missingEvidence separately.
+    # Preserving the existing list prevents this weaker projection from
+    # reintroducing stale blockers or erasing stronger current authority.
+    append_once(existing, EXECUTION_EVIDENCE)
+    for ref in REFS:
+        require((ROOT / ref).is_file(), f"evidence ref missing: {ref}")
+        append_once(refs, ref)
+    return status
+
+
 def main() -> int:
     run_validator(VALIDATOR, "version compatibility execution evidence validator")
     execution = load(EXECUTION)
@@ -127,43 +141,11 @@ def main() -> int:
     ):
         require(readiness.get(key) is False, f"unsafe compatibility promotion: {key}")
 
-    status = load(STATUS)
-    require(status.get("productionDecision") == "NO_GO", "productionDecision must remain NO_GO")
-    gate = next((item for item in status.get("areas", []) if isinstance(item, dict) and item.get("id") == "OPS-P0-008"), None)
-    require(isinstance(gate, dict), "OPS-P0-008 missing")
-    require(gate.get("status") == "PARTIAL" and gate.get("blocking") is True, "OPS-P0-008 must remain blocking PARTIAL")
-    existing = gate.get("existingEvidence")
-    refs = gate.get("evidenceRefs")
-    require(isinstance(existing, list), "OPS-P0-008 existingEvidence must be list")
-    require(isinstance(refs, list), "OPS-P0-008 evidenceRefs must be list")
-    append_once(existing, EXECUTION_EVIDENCE)
-    for ref in REFS:
-        require((ROOT / ref).is_file(), f"evidence ref missing: {ref}")
-        append_once(refs, ref)
-
-    # Replace the historically accumulated, overlapping list with one complete
-    # category-level set. Nothing here is treated as resolved unless the
-    # execution validator above proved the candidate/local scope explicitly.
-    gate["missingEvidence"] = list(CANONICAL_MISSING)
-
-    joined = "\n".join(CANONICAL_MISSING).lower()
-    for label, terms in {
-        "client skew": ("client/server", "old-client/new-server", "new-client/old-server"),
-        "approved release pair": ("approved predecessor", "successor"),
-        "rollback pair": ("rollback-eligible", "rollback rehearsal"),
-        "rolling traffic": ("production rolling", "rollback-eligible", "connection drain", "application rollback"),
-        "remaining routes": ("mixed-version", "persisted-state", "remaining import", "preview", "parser"),
-        "parser artifact": ("parser artifact", "reviewed production parser artifact", "exact-byte"),
-        "failure recovery": ("process/host/network", "connection-pool"),
-        "destructive downgrade": ("destructive", "downgrade"),
-        "database upgrade": ("postgresql", "physical replication", "wal continuity", "failover"),
-        "independent review": ("independent review", "critical", "high"),
-    }.items():
-        require(all(term in joined for term in terms), f"required compatibility blocker missing: {label}")
-
+    status = reconcile_execution_projection(load(STATUS))
     commit_status_transaction(status)
     print("Memory OS version compatibility execution status reconciliation PASS")
     print("candidate/local execution evidence: classified")
+    print("production blockers: preserved from current canonical authority")
     print("approved release pair: false")
     print("canonical release matrix changed: false")
     print("OPS-P0-008: PARTIAL")
