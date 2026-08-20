@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/backup-restore-generation-binding-contract.v1.json"
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-binding.py"
 BACKUP_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 
 EVIDENCE = (
@@ -90,6 +91,7 @@ def main() -> int:
     require_repo_file(CONTRACT, "generation binding contract missing")
     require_repo_file(VALIDATOR, "generation binding validator missing")
     require_repo_file(BACKUP_VALIDATOR, "backup validator missing")
+    require_repo_file(OPERABILITY_VALIDATOR, "operability validator missing")
     require_repo_file(STATUS, "production operability status missing")
     run_validator(VALIDATOR, "generation binding validator")
 
@@ -149,6 +151,7 @@ def main() -> int:
     try:
         STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         run_validator(BACKUP_VALIDATOR, "backup validator")
+        run_validator(OPERABILITY_VALIDATOR, "operability validator")
     except Exception:
         STATUS.write_bytes(original_status)
         raise
