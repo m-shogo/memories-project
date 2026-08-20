@@ -19,11 +19,15 @@ VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-rate-limit-operation-evidenc
 OPERATION_ID = re.compile(r"^RLOP-[0-9]{8}T[0-9]{6}Z-[a-z0-9]{6,24}$")
 
 
-def load(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+def load(path: Path) -> tuple[dict[str, Any], bytes]:
+    try:
+        raw = path.read_bytes()
+        value = json.loads(raw.decode("utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise SystemExit("operation evidence record is unreadable or invalid JSON") from exc
     if not isinstance(value, dict):
         raise SystemExit("operation evidence root must be object")
-    return value
+    return value, raw
 
 
 def load_validator() -> ModuleType:
@@ -87,23 +91,33 @@ def resolve_operation_record(ledger: Path, operation_id: str) -> Path | None:
     return resolved
 
 
-def validate_authority(ledger: Path, record: dict[str, Any]) -> None:
+def validate_authority(
+    ledger: Path,
+    path: Path,
+    record: dict[str, Any],
+    record_bytes: bytes,
+) -> None:
     validator = load_validator()
     failure_type = getattr(validator, "ValidationFailure", None)
     if not isinstance(failure_type, type) or not issubclass(failure_type, BaseException):
         raise SystemExit("operation evidence validator failure authority is invalid")
     try:
+        contract, policy_ids = validator.load_contract_context()
         if ledger == DEFAULT_LEDGER.resolve():
             result = validator.main()
             if not isinstance(result, int) or isinstance(result, bool) or result != 0:
                 raise SystemExit(
                     f"canonical operation ledger validation returned non-zero: {result}"
                 )
-        else:
-            contract, policy_ids = validator.load_contract_context()
-            validator.validate_record(record, contract, policy_ids)
+        validator.validate_record(record, contract, policy_ids)
     except failure_type as exc:
         raise SystemExit(f"operation evidence authority is invalid: {exc}") from exc
+    try:
+        current_bytes = path.read_bytes()
+    except OSError as exc:
+        raise SystemExit("operation evidence record became unreadable during authority validation") from exc
+    if current_bytes != record_bytes:
+        raise SystemExit("operation evidence record changed during authority validation")
 
 
 def main() -> int:
@@ -131,8 +145,8 @@ def main() -> int:
         }, indent=2))
         return 0
 
-    record = load(path)
-    validate_authority(ledger, record)
+    record, record_bytes = load(path)
+    validate_authority(ledger, path, record, record_bytes)
     started = timestamp(record["startedAt"])
     expires = timestamp(record["expiresAt"])
     lifecycle = record.get("lifecycle")
