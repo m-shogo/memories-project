@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,10 @@ MUTATION_CONTRACT = ROOT / "contracts/operations/deletion-prefence-mutation-line
 MUTATION_RESULT = ROOT / "docs/fixtures/memory-os-operability/deletion-prefence-mutation-linearization-results.sample.v1.json"
 LOAD_PATH = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+MUTATION_VALIDATOR = ROOT / "scripts/validate-memory-os-deletion-prefence-mutation-linearization.py"
+LOAD_INDEX_VALIDATOR = ROOT / "scripts/validate-memory-os-load-evidence-index.py"
+LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 
 REFS = (
     "contracts/operations/deletion-prefence-mutation-linearization-contract.v1.json",
@@ -48,12 +53,18 @@ def write(path: Path, value: dict[str, Any]) -> None:
     path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
 
 
+def run_validator(path: Path, *args: str) -> None:
+    subprocess.run(["python", str(path), *args], cwd=ROOT, check=True)
+
+
 def append_unique(values: list[Any], value: Any) -> None:
     if value not in values:
         values.append(value)
 
 
 def main() -> int:
+    run_validator(MUTATION_VALIDATOR, "--require-result")
+
     proof = load(MUTATION_CONTRACT)
     result = load(MUTATION_RESULT)
     readiness = proof.get("readiness")
@@ -107,10 +118,9 @@ def main() -> int:
 
     note = load_readiness.get("note")
     if isinstance(note, str):
-        load_readiness["note"] = (
-            note.rstrip(".")
-            + ". Apply and upload-authorization pre-fence mutation linearization are now proven locally with zero durable mutation; upload completion already in flight remains unproven."
-        )
+        suffix = ". Apply and upload-authorization pre-fence mutation linearization are now proven locally with zero durable mutation; upload completion already in flight remains unproven."
+        if not note.endswith(suffix):
+            load_readiness["note"] = note.rstrip(".") + suffix
 
     status = load(STATUS_PATH)
     require(status.get("productionDecision") == "NO_GO", "local mutation proof cannot reconcile into Production GO")
@@ -157,8 +167,19 @@ def main() -> int:
     require(load_readiness.get("capacityBoundaryEstablished") is False, "capacity boundary drift")
     require(load_readiness.get("uploadCompletionPreFenceInFlightLinearizationProven") is False, "upload completion must remain unproven")
 
-    write(LOAD_PATH, load_contract)
-    write(STATUS_PATH, status)
+    original_load = LOAD_PATH.read_bytes()
+    original_status = STATUS_PATH.read_bytes()
+    try:
+        write(LOAD_PATH, load_contract)
+        write(STATUS_PATH, status)
+        run_validator(LOAD_INDEX_VALIDATOR)
+        run_validator(LOAD_VALIDATOR)
+        run_validator(OPERABILITY_VALIDATOR)
+    except BaseException:
+        LOAD_PATH.write_bytes(original_load)
+        STATUS_PATH.write_bytes(original_status)
+        raise
+
     print("Memory OS deletion mutation evidence reconciled")
     print("Apply pre-fence linearization: true")
     print("upload authorization pre-fence linearization: true")
