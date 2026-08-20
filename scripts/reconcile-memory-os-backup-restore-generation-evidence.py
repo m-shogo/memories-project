@@ -13,17 +13,28 @@ from typing import Any
 from memory_os_backup_restore_blockers import require_canonical_gaps
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
-GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
-OBJECTIVES_REGISTRY = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
-DRILL_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
-BINDING = ROOT / "contracts/operations/backup-restore-generation-binding-contract.v1.json"
-WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
-VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence.py"
-BINDING_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-binding.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
-STATUS = ROOT / "contracts/operations/production-operability-status.json"
+CONTRACT_REL = Path("contracts/operations/backup-restore-generation-evidence-contract.v1.json")
+REGISTRY_REL = Path("contracts/operations/backup-restore-generation-evidence-registry.v1.json")
+GEN_REGISTRY_REL = Path("contracts/operations/production-equivalent-environment-generation-registry.v1.json")
+OBJECTIVES_REGISTRY_REL = Path("contracts/operations/recovery-objectives-registry.v1.json")
+DRILL_REGISTRY_REL = Path("contracts/operations/backup-restore-drill-request-registry.v1.json")
+BINDING_REL = Path("contracts/operations/backup-restore-generation-binding-contract.v1.json")
+WRITER_REL = Path("scripts/register-memory-os-backup-restore-generation-evidence.py")
+VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-generation-evidence.py")
+BINDING_VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-generation-binding.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+CONTRACT = ROOT / CONTRACT_REL
+REGISTRY = ROOT / REGISTRY_REL
+GEN_REGISTRY = ROOT / GEN_REGISTRY_REL
+OBJECTIVES_REGISTRY = ROOT / OBJECTIVES_REGISTRY_REL
+DRILL_REGISTRY = ROOT / DRILL_REGISTRY_REL
+BINDING = ROOT / BINDING_REL
+WRITER = ROOT / WRITER_REL
+VALIDATOR = ROOT / VALIDATOR_REL
+BINDING_VALIDATOR = ROOT / BINDING_VALIDATOR_REL
+OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
+STATUS = ROOT / STATUS_REL
 REFS = (
     "contracts/operations/backup-restore-generation-evidence-contract.v1.json",
     "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
@@ -64,6 +75,45 @@ def require_repo_file(path: Path, message: str) -> Path:
     return relative
 
 
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    canonical_contract = CONTRACT == ROOT / CONTRACT_REL
+    canonical_registry = REGISTRY == ROOT / REGISTRY_REL
+    canonical_binding = BINDING == ROOT / BINDING_REL
+    canonical_status = STATUS == ROOT / STATUS_REL
+    require(
+        len({canonical_contract, canonical_registry, canonical_binding, canonical_status}) == 1,
+        "generation evidence fixture boundary must replace contract, registry, binding and status together",
+    )
+    require_exact_repo_file(WRITER, WRITER_REL, "generation evidence writer")
+    if canonical_contract:
+        for path, expected, field in (
+            (CONTRACT, CONTRACT_REL, "generation evidence contract"),
+            (REGISTRY, REGISTRY_REL, "generation evidence registry"),
+            (GEN_REGISTRY, GEN_REGISTRY_REL, "environment generation registry"),
+            (OBJECTIVES_REGISTRY, OBJECTIVES_REGISTRY_REL, "recovery objectives registry"),
+            (DRILL_REGISTRY, DRILL_REGISTRY_REL, "drill request registry"),
+            (BINDING, BINDING_REL, "generation binding contract"),
+            (VALIDATOR, VALIDATOR_REL, "generation evidence validator"),
+            (BINDING_VALIDATOR, BINDING_VALIDATOR_REL, "generation binding validator"),
+            (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+            (STATUS, STATUS_REL, "production operability status"),
+        ):
+            require_exact_repo_file(path, expected, field)
+
+
 def read_text(path: Path) -> str:
     relative = repo_relative(path)
     try:
@@ -91,7 +141,7 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_writer():
-    relative = require_repo_file(WRITER, "generation evidence writer missing")
+    relative = require_exact_repo_file(WRITER, WRITER_REL, "generation evidence writer")
     spec = importlib.util.spec_from_file_location("memory_os_backup_restore_generation_reconcile_writer", WRITER)
     require(spec is not None and spec.loader is not None, f"cannot load {relative}")
     try:
@@ -107,7 +157,24 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
+def run_post_validator(path: Path, expected_relative: Path, label: str) -> None:
+    if CONTRACT == ROOT / CONTRACT_REL:
+        require_exact_repo_file(path, expected_relative, label)
+    else:
+        require_repo_file(path, f"{label} missing")
+    completed = subprocess.run(
+        [sys.executable, str(path)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    require(completed.returncode == 0, f"{label} failed:\n{completed.stdout[-7000:]}{completed.stderr[-7000:]}")
+
+
 def main() -> int:
+    enforce_runtime_authorities()
     original_text = {
         REGISTRY: read_text(REGISTRY),
         CONTRACT: read_text(CONTRACT),
@@ -123,10 +190,6 @@ def main() -> int:
     status = load(STATUS)
     writer = load_writer()
 
-    # Derived projections may be refreshed only from an already-valid
-    # append-only evidence registry. Reuse writer admission validation before
-    # rewriting any counts or production-boundary fields so reconcile cannot
-    # normalize corruption that a direct append would reject.
     try:
         writer.validate_registry_for_append(registry)
     except RuntimeError as exc:
@@ -268,9 +331,6 @@ def main() -> int:
         require_repo_file(ROOT / ref, f"generation recovery evidence ref missing: {ref}")
         append_once(refs, ref)
 
-    require_repo_file(BINDING_VALIDATOR, "generation binding validator missing")
-    require_repo_file(VALIDATOR, "generation evidence validator missing")
-    require_repo_file(OPERABILITY_VALIDATOR, "operability validator missing")
     rendered = {
         REGISTRY: json.dumps(registry, indent=2, ensure_ascii=False) + "\n",
         CONTRACT: json.dumps(contract, indent=2, ensure_ascii=False) + "\n",
@@ -280,18 +340,16 @@ def main() -> int:
     try:
         for path, text in rendered.items():
             write_text(path, text)
-        completed = subprocess.run([sys.executable, str(BINDING_VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-        require(completed.returncode == 0, f"generation binding validator failed:\n{completed.stdout[-5000:]}{completed.stderr[-5000:]}")
-        completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-        require(completed.returncode == 0, f"generation evidence validator failed:\n{completed.stdout[-7000:]}{completed.stderr[-7000:]}")
-        completed = subprocess.run([sys.executable, str(OPERABILITY_VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-        require(completed.returncode == 0, f"operability validator failed:\n{completed.stdout[-7000:]}{completed.stderr[-7000:]}")
+        run_post_validator(BINDING_VALIDATOR, BINDING_VALIDATOR_REL, "generation binding validator")
+        run_post_validator(VALIDATOR, VALIDATOR_REL, "generation evidence validator")
+        run_post_validator(OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator")
     except Exception:
         for path, text in original_text.items():
             write_text(path, text)
         raise
 
     print("Memory OS drill-bound generation recovery authority reconciliation PASS")
+    print("canonical generation evidence writer/validator authorities enforced: true")
     print(f"registered/current drill requests: {drill_count}/{current_drill_count}")
     print(f"registered/drill-bound recovery evidence: {count}/{bound_count}")
     print(f"production-equivalent recovery candidates: {candidate_count}")
