@@ -13,13 +13,28 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT_PATH = ROOT / "contracts/operations/migration-operation-evidence-contract.v1.json"
-LIFECYCLE_PATH = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
-STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+CONTRACT_REL = Path("contracts/operations/migration-operation-evidence-contract.v1.json")
+LIFECYCLE_REL = Path("contracts/operations/migration-lifecycle-contract.v1.json")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+OPERATION_VALIDATOR_REL = Path("scripts/validate-memory-os-migration-operation-evidence.py")
+LIFECYCLE_VALIDATOR_REL = Path("scripts/validate-memory-os-migration-lifecycle.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+WORKFLOW_REL = Path(".github/workflows/migration-operation-evidence.yml")
+LIB_REL = Path("scripts/migration_operation_evidence_lib.py")
+WRITER_REL = Path("scripts/create-memory-os-migration-operation-evidence.py")
+CONTRACT_PATH = ROOT / CONTRACT_REL
+LIFECYCLE_PATH = ROOT / LIFECYCLE_REL
+STATUS_PATH = ROOT / STATUS_REL
+OPERATION_VALIDATOR = ROOT / OPERATION_VALIDATOR_REL
+LIFECYCLE_VALIDATOR = ROOT / LIFECYCLE_VALIDATOR_REL
+OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
+WORKFLOW_PATH = ROOT / WORKFLOW_REL
+LIB_PATH = ROOT / LIB_REL
+WRITER_PATH = ROOT / WRITER_REL
 POST_WRITE_VALIDATORS = (
-    ROOT / "scripts/validate-memory-os-migration-operation-evidence.py",
-    ROOT / "scripts/validate-memory-os-migration-lifecycle.py",
-    ROOT / "scripts/validate-memory-os-operability.py",
+    OPERATION_VALIDATOR,
+    LIFECYCLE_VALIDATOR,
+    OPERABILITY_VALIDATOR,
 )
 
 EVIDENCE_REFS = (
@@ -59,6 +74,34 @@ def require(condition: bool, message: str) -> None:
         raise ReconcileFailure(message)
 
 
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise ReconcileFailure(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    for path, relative, field in (
+        (CONTRACT_PATH, CONTRACT_REL, "migration operation contract"),
+        (LIFECYCLE_PATH, LIFECYCLE_REL, "migration lifecycle contract"),
+        (STATUS_PATH, STATUS_REL, "production operability status"),
+        (OPERATION_VALIDATOR, OPERATION_VALIDATOR_REL, "migration operation validator"),
+        (LIFECYCLE_VALIDATOR, LIFECYCLE_VALIDATOR_REL, "migration lifecycle validator"),
+        (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+        (WORKFLOW_PATH, WORKFLOW_REL, "migration operation workflow"),
+        (LIB_PATH, LIB_REL, "migration operation evidence library"),
+        (WRITER_PATH, WRITER_REL, "migration operation writer"),
+    ):
+        require_exact_repo_file(path, relative, field)
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -83,6 +126,7 @@ def unique(values: list[Any]) -> list[Any]:
 
 
 def run_validator(path: Path, *, phase: str) -> None:
+    enforce_runtime_authorities()
     require(path.is_file(), f"canonical validator missing: {path.relative_to(ROOT)}")
     completed = subprocess.run(["python", str(path)], cwd=ROOT, check=False)
     require(completed.returncode == 0,
@@ -90,6 +134,7 @@ def run_validator(path: Path, *, phase: str) -> None:
 
 
 def validate_current_authority() -> None:
+    enforce_runtime_authorities()
     for validator in POST_WRITE_VALIDATORS:
         run_validator(validator, phase="current")
 
@@ -105,7 +150,6 @@ def normalize_contract(contract: dict[str, Any]) -> dict[str, Any]:
         "exclusiveCreateSelfTestImplemented", "canonicalSequenceBindingImplemented",
     ):
         readiness[field] = True
-    # This foundation must never roll back or manufacture stronger recovery/readiness authority.
     for field in ("productionRecoveryPointVerificationImplemented", "productionReady"):
         require(isinstance(readiness.get(field), bool),
                 f"migration operation readiness.{field} must be boolean")
@@ -211,6 +255,7 @@ def commit_validated_triple(
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
