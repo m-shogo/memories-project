@@ -16,6 +16,7 @@ LEDGER = ROOT / "contracts/operations/migration-evidence-registry.v1.json"
 LEDGER_CONTRACT = ROOT / "contracts/operations/migration-evidence-registry-contract.v1.json"
 LEDGER_WRITER = ROOT / "scripts/register-memory-os-migration-rehearsal-evidence.py"
 LEDGER_VALIDATOR = ROOT / "scripts/validate-memory-os-migration-evidence-registry.py"
+LEDGER_LOCK = ROOT / "contracts/operations/.migration-evidence-registry.lock"
 
 
 class LedgerBindingFailure(RuntimeError):
@@ -37,10 +38,16 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_writer() -> ModuleType:
+    require(LEDGER_WRITER == ROOT / "scripts/register-memory-os-migration-rehearsal-evidence.py",
+            "canonical migration rehearsal writer executable authority drift")
     spec = importlib.util.spec_from_file_location("memory_os_migration_rehearsal_writer_for_admission", LEDGER_WRITER)
     require(spec is not None and spec.loader is not None, "cannot load canonical migration rehearsal writer")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    require(getattr(module, "REGISTRY", None) == LEDGER, "canonical migration rehearsal writer registry authority drift")
+    require(getattr(module, "CONTRACT", None) == LEDGER_CONTRACT, "canonical migration rehearsal writer contract authority drift")
+    require(getattr(module, "LOCK", None) == LEDGER_LOCK, "canonical migration rehearsal writer append lock authority drift")
+    require(callable(getattr(module, "validate_registry_for_append", None)), "canonical migration rehearsal registry validator missing")
     return module
 
 
