@@ -17,6 +17,7 @@ OPERATIONS_PATH = ROOT / "contracts/operations/rate-limit-operations-contract.v1
 POLICY_PATH = ROOT / "contracts/operations/rate-limit-policy-contract.v1.json"
 WRITER_PATH = ROOT / "scripts/create-memory-os-rate-limit-operation-evidence.py"
 EVALUATOR_PATH = ROOT / "scripts/evaluate-memory-os-rate-limit-emergency-state.py"
+VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-rate-limit-emergency-drill.py"
 
 
 class DrillFailure(RuntimeError):
@@ -48,6 +49,21 @@ def parse_args() -> argparse.Namespace:
 
 def utc_text(value: dt.datetime) -> str:
     return value.astimezone(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def validate_foundation_authority() -> None:
+    completed = subprocess.run(
+        ["python", str(VALIDATOR_PATH)],
+        cwd=ROOT,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    require(
+        completed.returncode == 0,
+        f"canonical emergency drill authority invalid: {completed.stderr.strip()[:500]}",
+    )
 
 
 def policy_by_id(policy: dict[str, Any], policy_id: str) -> dict[str, Any]:
@@ -191,6 +207,7 @@ def main() -> int:
     args = parse_args()
     require(len(args.source_sha) == 40 and all(ch in "0123456789abcdef" for ch in args.source_sha),
             "--source-sha must be a full lowercase commit SHA")
+    validate_foundation_authority()
 
     contract = load(CONTRACT_PATH)
     operations = load(OPERATIONS_PATH)
