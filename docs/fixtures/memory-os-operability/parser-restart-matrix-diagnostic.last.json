@@ -1,14 +1,14 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "parser-restart-recovery-matrix",
-  "sourceCommitSha": "2cc8f02d2bd4c920c628828e6271abaff97ff766",
+  "sourceCommitSha": "7f9efa0086f0fc90400db255415707c82081b026",
   "result": "PASS",
-  "generatedAt": "2026-08-20T20:02:07.144214Z",
+  "generatedAt": "2026-08-20T20:16:34.201481Z",
   "cases": [
     {
       "id": "protocol_truncation",
       "exitCode": 0,
-      "output": "ok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/parsersup\t0.038s\n"
+      "output": "ok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/parsersup\t0.026s\n"
     },
     {
       "id": "wall_clock_timeout",
