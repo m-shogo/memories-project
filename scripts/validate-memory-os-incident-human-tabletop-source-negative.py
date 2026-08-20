@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pin human-tabletop sourceCommitSha and reconcile rollback authority."""
+"""Pin human-tabletop sourceCommitSha, reconcile authority identity and rollback."""
 
 from __future__ import annotations
 
@@ -18,13 +18,21 @@ STATUS = ROOT / "contracts/operations/production-operability-status.json"
 POST_WRITE_MARKER = Path("/tmp/memory-os-incident-human-tabletop-post-write-negative.count")
 
 
-def load_writer():
-    spec = importlib.util.spec_from_file_location("incident_human_tabletop_writer", WRITER)
+def load_module(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
-        raise RuntimeError("unable to load human tabletop writer")
+        raise RuntimeError(f"unable to load {name}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def load_writer():
+    return load_module("incident_human_tabletop_writer", WRITER)
+
+
+def load_reconciler():
+    return load_module("incident_human_tabletop_reconciler", RECONCILER)
 
 
 def descendant_commit() -> str:
@@ -42,6 +50,33 @@ def descendant_commit() -> str:
         env=env,
         text=True,
     ).strip()
+
+
+def expect_reconcile_authority_identity() -> None:
+    module = load_reconciler()
+    module.enforce_runtime_authorities()
+    substitutions = (
+        ("WRITER", ROOT / "README.md"),
+        ("VALIDATOR", ROOT / "scripts/validate-memory-os-operability.py"),
+        ("INCIDENT_TABLETOP_VALIDATOR", ROOT / "scripts/validate-memory-os-incident-response.py"),
+        ("INCIDENT_RESPONSE_VALIDATOR", ROOT / "scripts/validate-memory-os-incident-tabletop.py"),
+        ("OPERABILITY_VALIDATOR", ROOT / "scripts/validate-memory-os-incident-response.py"),
+        ("WORKFLOW", ROOT / ".github/workflows/incident-control-exercise.yml"),
+        ("LEDGER", ROOT / "docs/evidence"),
+    )
+    for field, substitute in substitutions:
+        original = getattr(module, field)
+        try:
+            setattr(module, field, substitute)
+            try:
+                module.enforce_runtime_authorities()
+            except module.Fail:
+                pass
+            else:
+                raise RuntimeError(f"human tabletop reconciler accepted {field} authority substitution")
+        finally:
+            setattr(module, field, original)
+    module.enforce_runtime_authorities()
 
 
 def expect_post_write_rollback() -> None:
@@ -115,9 +150,11 @@ def main() -> int:
         raise RuntimeError("negative descendant commit was not created")
     if writer.source_is_ancestor(future):
         raise RuntimeError("future/side commit was accepted as human tabletop source authority")
+    expect_reconcile_authority_identity()
     expect_post_write_rollback()
     expect_aggregate_post_write_rollback()
     print("PASS: human tabletop source authority is ancestor-only without creating human evidence")
+    print("PASS: human tabletop reconcile executable authorities reject substitution")
     print("PASS: human tabletop post-write and aggregate validation failures roll back contract and status")
     return 0
 
