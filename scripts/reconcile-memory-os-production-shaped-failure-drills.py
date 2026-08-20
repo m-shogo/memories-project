@@ -16,6 +16,7 @@ WRITER = ROOT / "scripts/register-memory-os-production-shaped-failure-drill.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-production-shaped-failure-drills.py"
 WORKFLOW = ROOT / ".github/workflows/production-shaped-failure-drills.yml"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
+CHAOS_VALIDATOR = ROOT / "scripts/validate-memory-os-chaos-failure-drills-v2.py"
 OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 
 LEGACY_EMPTY_EVIDENCE = (
@@ -82,39 +83,29 @@ def replace_legacy_evidence(values: list[Any]) -> None:
     append_once(values, EVIDENCE)
 
 
+def run_validator(path: Path, failure_label: str) -> None:
+    completed = subprocess.run(
+        ["python", str(path)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    require(
+        completed.returncode == 0,
+        failure_label + ":\n" + completed.stdout[-4000:] + completed.stderr[-4000:],
+    )
+
+
 def commit_outputs_transactionally(outputs: dict[Path, dict[str, Any]]) -> None:
     originals = {path: path.read_bytes() for path in outputs}
     try:
         for path, value in outputs.items():
             write(path, value)
-        completed = subprocess.run(
-            ["python", str(VALIDATOR)],
-            cwd=ROOT,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-        )
-        require(
-            completed.returncode == 0,
-            "failure-drill authority rejected after reconcile:\n"
-            + completed.stdout[-4000:]
-            + completed.stderr[-4000:],
-        )
-        completed = subprocess.run(
-            ["python", str(OPERABILITY_VALIDATOR)],
-            cwd=ROOT,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-        )
-        require(
-            completed.returncode == 0,
-            "operability authority rejected after failure-drill reconcile:\n"
-            + completed.stdout[-4000:]
-            + completed.stderr[-4000:],
-        )
+        run_validator(VALIDATOR, "failure-drill authority rejected after reconcile")
+        run_validator(CHAOS_VALIDATOR, "chaos authority rejected after failure-drill reconcile")
+        run_validator(OPERABILITY_VALIDATOR, "operability authority rejected after failure-drill reconcile")
     except Exception as exc:
         for path, data in originals.items():
             path.write_bytes(data)
@@ -122,7 +113,7 @@ def commit_outputs_transactionally(outputs: dict[Path, dict[str, Any]]) -> None:
 
 
 def main() -> int:
-    for path in (REGISTRY, WRITER, VALIDATOR, WORKFLOW, OPERABILITY_VALIDATOR):
+    for path in (REGISTRY, WRITER, VALIDATOR, WORKFLOW, CHAOS_VALIDATOR, OPERABILITY_VALIDATOR):
         require(path.is_file(), f"failure-drill admission missing: {path.relative_to(ROOT)}")
     registry = load(REGISTRY)
     drills = validate_registry_before_reconcile(registry)
