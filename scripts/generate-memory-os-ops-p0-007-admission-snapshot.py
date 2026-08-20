@@ -27,9 +27,19 @@ OBJECTIVE_BLOCKER = "CURRENT_APPROVED_RECOVERY_OBJECTIVE"
 
 
 def load(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        relative = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise SystemExit(f"generated strict snapshot invalid: cannot resolve canonical authority: {path}") from exc
+    if relative != resolved or not path.is_file():
+        raise SystemExit(f"generated strict snapshot invalid: authority escapes canonical repository path: {relative}")
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        raise SystemExit(f"generated strict snapshot invalid: cannot load {relative}: {exc}") from exc
     if not isinstance(value, dict):
-        raise SystemExit(f"root must be object: {path.relative_to(ROOT)}")
+        raise SystemExit(f"generated strict snapshot invalid: root must be object: {relative}")
     return value
 
 
