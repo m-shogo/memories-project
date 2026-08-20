@@ -9,21 +9,30 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/rate-limit-distributed-runtime-admission-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json"
-WRITER = ROOT / "scripts/register-memory-os-rate-limit-distributed-runtime.py"
-VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit-distributed-runtime.py"
-RATE_LIMIT_OPERATIONS_VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit-operations.py"
-RATE_LIMIT_VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CONTRACT_REL = Path("contracts/operations/rate-limit-distributed-runtime-admission-contract.v1.json")
+REGISTRY_REL = Path("contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json")
+WRITER_REL = Path("scripts/register-memory-os-rate-limit-distributed-runtime.py")
+VALIDATOR_REL = Path("scripts/validate-memory-os-rate-limit-distributed-runtime.py")
+RATE_LIMIT_OPERATIONS_VALIDATOR_REL = Path("scripts/validate-memory-os-rate-limit-operations.py")
+RATE_LIMIT_VALIDATOR_REL = Path("scripts/validate-memory-os-rate-limit.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+WORKFLOW_REL = Path(".github/workflows/rate-limit-distributed-runtime-admission.yml")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+CONTRACT = ROOT / CONTRACT_REL
+REGISTRY = ROOT / REGISTRY_REL
+WRITER = ROOT / WRITER_REL
+VALIDATOR = ROOT / VALIDATOR_REL
+RATE_LIMIT_OPERATIONS_VALIDATOR = ROOT / RATE_LIMIT_OPERATIONS_VALIDATOR_REL
+RATE_LIMIT_VALIDATOR = ROOT / RATE_LIMIT_VALIDATOR_REL
+OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
 POST_WRITE_VALIDATORS = (
     VALIDATOR,
     RATE_LIMIT_OPERATIONS_VALIDATOR,
     RATE_LIMIT_VALIDATOR,
     OPERABILITY_VALIDATOR,
 )
-WORKFLOW = ROOT / ".github/workflows/rate-limit-distributed-runtime-admission.yml"
-STATUS = ROOT / "contracts/operations/production-operability-status.json"
+WORKFLOW = ROOT / WORKFLOW_REL
+STATUS = ROOT / STATUS_REL
 
 EVIDENCE = (
     "generation-bound distributed rate-limit runtime admission is implemented: future evidence must bind the exact policy digest, at least two runtime instances, an atomic shared store, trusted-proxy deployment, restart continuity, fail-closed dependency behavior, runtime-observed emergency expiry/restoration, alert delivery and independent security/operability review; the registry is currently empty and creates no runtime deployment claim"
@@ -45,6 +54,38 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    canonical_contract = CONTRACT == ROOT / CONTRACT_REL
+    canonical_status = STATUS == ROOT / STATUS_REL
+    require(canonical_contract is canonical_status, "distributed runtime fixture boundary must replace contract and status together")
+    if canonical_contract:
+        for path, relative, field in (
+            (CONTRACT, CONTRACT_REL, "distributed runtime contract"),
+            (REGISTRY, REGISTRY_REL, "distributed runtime registry"),
+            (WRITER, WRITER_REL, "distributed runtime writer"),
+            (VALIDATOR, VALIDATOR_REL, "distributed runtime validator"),
+            (RATE_LIMIT_OPERATIONS_VALIDATOR, RATE_LIMIT_OPERATIONS_VALIDATOR_REL, "rate limit operations validator"),
+            (RATE_LIMIT_VALIDATOR, RATE_LIMIT_VALIDATOR_REL, "rate limit validator"),
+            (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+            (WORKFLOW, WORKFLOW_REL, "distributed runtime workflow"),
+            (STATUS, STATUS_REL, "production operability status"),
+        ):
+            require_exact_repo_file(path, relative, field)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -106,6 +147,7 @@ def commit_outputs_transactionally(outputs: dict[Path, dict[str, Any]]) -> None:
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     for path in (REGISTRY, WRITER, *POST_WRITE_VALIDATORS, WORKFLOW):
         require(path.is_file(), f"distributed runtime admission missing: {path.relative_to(ROOT)}")
     run_validator()
