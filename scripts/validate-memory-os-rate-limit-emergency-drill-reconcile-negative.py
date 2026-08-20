@@ -215,6 +215,42 @@ def prove_runner_foundation_delegation() -> None:
         raise AssertionError(f"runner delegated to unexpected foundation authority: {calls}")
 
 
+def prove_aggregate_validator_delegation() -> None:
+    reconciler = load_module(
+        RECONCILER_PATH,
+        "memory_os_rate_limit_emergency_aggregate_negative",
+    )
+    original = reconciler.run_validator
+    calls: list[Path] = []
+
+    def reject_rate_limit(path: Path, *args: str) -> None:
+        calls.append(path)
+        if path == reconciler.RATE_LIMIT_VALIDATOR:
+            raise reconciler.ReconcileFailure("synthetic aggregate rate-limit rejection")
+
+    reconciler.run_validator = reject_rate_limit
+    try:
+        try:
+            reconciler.validate_written_authority("0" * 40)
+        except reconciler.ReconcileFailure as exc:
+            if "synthetic aggregate rate-limit rejection" not in str(exc):
+                raise AssertionError(f"unexpected aggregate rejection: {exc}") from exc
+        else:
+            raise AssertionError("aggregate rate-limit rejection was incorrectly accepted")
+    finally:
+        reconciler.run_validator = original
+
+    expected = [
+        reconciler.VALIDATOR_PATH,
+        reconciler.OPERATIONS_VALIDATOR,
+        reconciler.RATE_LIMIT_VALIDATOR,
+    ]
+    if calls != expected:
+        raise AssertionError(f"emergency reconcile aggregate validator order drift: {calls}")
+    if reconciler.OPERABILITY_VALIDATOR in calls:
+        raise AssertionError("operability validation ran after an earlier aggregate rejection")
+
+
 def prove_transactional_rollback() -> None:
     reconciler = load_module(
         RECONCILER_PATH,
@@ -259,6 +295,7 @@ def main() -> int:
     prove_lineage_rejection()
     prove_evaluator_authority_boundaries()
     prove_runner_foundation_delegation()
+    prove_aggregate_validator_delegation()
     prove_transactional_rollback()
     print("PASS: detached emergency drill sources are rejected")
     print("PASS: emergency evaluator validator authority and exact exit semantics are fail-closed")
@@ -267,6 +304,7 @@ def main() -> int:
     print("PASS: emergency evaluator rejects invalid UTC timestamps without traceback semantics")
     print("PASS: emergency evaluator rejects symlink operation evidence records")
     print("PASS: direct emergency drill runner delegates to canonical foundation validation")
+    print("PASS: emergency drill reconcile includes rate-limit and operability aggregate validation")
     print("PASS: emergency drill reconcile rolls back contract and status on post-write failure")
     return 0
 
