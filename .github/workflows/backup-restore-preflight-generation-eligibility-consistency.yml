@@ -8,6 +8,7 @@ on:
       - "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
       - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
       - "contracts/operations/recovery-objectives-admission-contract.v1.json"
       - "contracts/operations/recovery-objectives-registry.v1.json"
@@ -30,6 +31,7 @@ on:
       - "contracts/operations/production-equivalent-environment-eligibility-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+      - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
       - "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
       - "contracts/operations/recovery-objectives-admission-contract.v1.json"
       - "contracts/operations/recovery-objectives-registry.v1.json"
@@ -163,5 +165,5 @@ jobs:
             fi
             git push origin HEAD:so
           fi
-      - name: Enforce strict generation eligibility boundary
+      - name: Enforce consistency authority
         run: test "${{ steps.validation.outputs.exit_code }}" = "0"
