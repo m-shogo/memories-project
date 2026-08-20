@@ -15,6 +15,40 @@ GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-ge
 HELPER = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
 HELPER_REL = Path("scripts/memory_os_environment_generation_eligibility.py")
 
+EXPECTED_ROOT_FIELDS = {
+    "contractId",
+    "schemaVersion",
+    "description",
+    "generationRegistry",
+    "generationEligibilityHelper",
+    "validator",
+    "workflow",
+    "rules",
+    "currentBoundary",
+}
+EXPECTED_RULE_FIELDS = {
+    "appliesOnlyToPreflightEligibleGenerations",
+    "environmentIndependentReviewRefRequired",
+    "environmentReviewMustDifferFromPostgresqlRestoreEvidence",
+    "environmentReviewMustDifferFromObjectRestoreEvidence",
+    "environmentReviewMustDifferFromLatencyEvidence",
+    "environmentReviewMustDifferFromFailureInjectionEvidence",
+    "environmentReviewMustDifferFromCredentialScopeEvidence",
+    "environmentReviewMustDifferFromBackupRestoreEvidence",
+    "environmentReviewMustDifferFromMaterialDeltaReviewEvidence",
+    "allComparedEvidenceRefsMustResolveInRepository",
+    "productionEvidenceForbidden",
+    "productionReadyForbidden",
+}
+EXPECTED_BOUNDARY_FIELDS = {
+    "preflightEligibleGenerationCount",
+    "independentlyReviewedEligibleGenerationCount",
+    "reviewReuseViolationCount",
+    "productionEvidence",
+    "productionReady",
+    "productionDecision",
+}
+
 
 class Fail(RuntimeError):
     pass
@@ -46,6 +80,17 @@ def load(path: Path) -> dict[str, Any]:
         label = path
     require(isinstance(value, dict), f"root must be object: {label}")
     return value
+
+
+def validate_contract_shape(contract: dict[str, Any]) -> None:
+    require(set(contract) == EXPECTED_ROOT_FIELDS, "review independence contract field set drift")
+    require(contract.get("contractId") == "memory-os.operability.production-equivalent-environment-review-independence.v1", "review independence contract id drift")
+    require(contract.get("schemaVersion") == "memory-os-production-equivalent-environment-review-independence-contract.v1", "review independence contract schema drift")
+    rules = contract.get("rules")
+    require(isinstance(rules, dict) and set(rules) == EXPECTED_RULE_FIELDS, "review independence rule field set drift")
+    require(all(rules[field] is True for field in EXPECTED_RULE_FIELDS), "review independence rules must remain fail-closed")
+    boundary = contract.get("currentBoundary")
+    require(isinstance(boundary, dict) and set(boundary) == EXPECTED_BOUNDARY_FIELDS, "review independence currentBoundary field set drift")
 
 
 def canonical_helper_path() -> Path:
@@ -83,9 +128,9 @@ def repo_ref(value: Any, field: str) -> str:
 
 def main() -> int:
     contract = load(CONTRACT)
+    validate_contract_shape(contract)
     helper = load_helper()
     state = helper.derive(GEN_REGISTRY)
-    require(contract.get("schemaVersion") == "memory-os-production-equivalent-environment-review-independence-contract.v1", "review independence contract schema drift")
     refs = {
         "generationRegistry": GEN_REGISTRY,
         "generationEligibilityHelper": HELPER,
@@ -96,8 +141,6 @@ def main() -> int:
         expected = str(path.relative_to(ROOT)) if path.is_absolute() else str(path)
         require(contract.get(field) == expected, f"review independence ref drift: {field}")
         require((ROOT / expected).is_file(), f"review independence artifact missing: {expected}")
-    rules = contract.get("rules")
-    require(isinstance(rules, dict) and rules and all(value is True for value in rules.values()), "review independence rules must remain fail-closed")
 
     violations = 0
     reviewed_count = 0
@@ -135,8 +178,7 @@ def main() -> int:
 
     eligible_count = exact_int(state["preflightEligibleGenerationCount"], "semantic eligibility preflightEligibleGenerationCount")
     require(reviewed_count == eligible_count, "eligible/reviewed generation count drift")
-    boundary = contract.get("currentBoundary")
-    require(isinstance(boundary, dict), "review independence currentBoundary missing")
+    boundary = contract["currentBoundary"]
     require(exact_int(boundary.get("preflightEligibleGenerationCount"), "currentBoundary.preflightEligibleGenerationCount") == eligible_count, "review independence eligible count drift")
     require(exact_int(boundary.get("independentlyReviewedEligibleGenerationCount"), "currentBoundary.independentlyReviewedEligibleGenerationCount") == reviewed_count, "review independence reviewed count drift")
     require(exact_int(boundary.get("reviewReuseViolationCount"), "currentBoundary.reviewReuseViolationCount") == violations, "review independence violation count drift")
