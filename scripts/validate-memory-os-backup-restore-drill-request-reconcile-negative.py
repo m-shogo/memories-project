@@ -113,51 +113,55 @@ def main() -> int:
         shutil.copy2(STATUS, status)
 
         # Preserve semantically identical but byte-distinct inputs so the synthetic
-        # post-validator can prove reconciliation writes actually happened before it
-        # forces failure. This prevents a future pre-validation subprocess call from
-        # turning the rollback suite into a false positive.
+        # validators can prove reconciliation writes actually happened before the
+        # aggregate operability failure forces rollback.
         for path in (contract, registry, status):
             minify_json(path)
 
         original_contract = contract.read_bytes()
         original_registry = registry.read_bytes()
         original_status = status.read_bytes()
-        post_validator_observed_after_writes = False
+        observed_commands: list[list[str]] = []
 
-        def failed_post_validator(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
-            nonlocal post_validator_observed_after_writes
+        def aggregate_failure_after_drill_success(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
             require(contract.read_bytes() != original_contract, "post-validator invoked before contract reconcile write")
             require(registry.read_bytes() != original_registry, "post-validator invoked before registry reconcile write")
             require(status.read_bytes() != original_status, "post-validator invoked before production status reconcile write")
-            post_validator_observed_after_writes = True
-            return subprocess.CompletedProcess(args=args[0] if args else [], returncode=23, stdout="synthetic post-validator failure\n", stderr="")
+            command = [str(item) for item in (args[0] if args else [])]
+            observed_commands.append(command)
+            if len(observed_commands) == 1:
+                require(command[-1] == str(reconciler.VALIDATOR), "drill request validator was not first post-write validator")
+                return subprocess.CompletedProcess(args=command, returncode=0, stdout="synthetic drill validator success\n", stderr="")
+            require(len(observed_commands) == 2, "unexpected extra post-write validator invocation")
+            require(command[-1] == str(reconciler.OPERABILITY_VALIDATOR), "operability validator was not second post-write validator")
+            return subprocess.CompletedProcess(args=command, returncode=23, stdout="synthetic operability failure\n", stderr="")
 
         reconciler.CONTRACT = contract
         reconciler.REGISTRY = registry
         reconciler.OBJECTIVES_REGISTRY = objectives
         reconciler.STATUS = status
         real_run = reconciler.subprocess.run
-        reconciler.subprocess.run = failed_post_validator
+        reconciler.subprocess.run = aggregate_failure_after_drill_success
         try:
             try:
                 reconciler.main()
             except reconciler.Fail as exc:
-                require("post-reconcile drill request validator failed" in str(exc), "synthetic post-validator failure was not the rollback trigger")
+                require("post-reconcile operability validator failed" in str(exc), "aggregate operability failure was not the rollback trigger")
             else:
-                raise Fail("reconciler unexpectedly accepted a failed post-validator")
+                raise Fail("reconciler unexpectedly accepted failed aggregate operability validation")
         finally:
             reconciler.subprocess.run = real_run
 
-        require(post_validator_observed_after_writes, "synthetic post-validator failure did not observe all authority writes")
-        require(contract.read_bytes() == original_contract, "contract mutation survived failed post-validation")
-        require(registry.read_bytes() == original_registry, "registry mutation survived failed post-validation")
-        require(status.read_bytes() == original_status, "production status mutation survived failed post-validation")
+        require(len(observed_commands) == 2, "drill and operability validators were not both invoked after writes")
+        require(contract.read_bytes() == original_contract, "contract mutation survived failed aggregate validation")
+        require(registry.read_bytes() == original_registry, "registry mutation survived failed aggregate validation")
+        require(status.read_bytes() == original_status, "production status mutation survived failed aggregate validation")
 
     print("Memory OS backup/restore drill request reconcile rollback negative suite PASS")
     print("corrupt recovery objective authority rejected before derived writes: true")
     print("shared objective authority corruption cases: 6")
-    print("forced post-validator failure observed: true")
-    print("post-validator observed contract/registry/status writes: true")
+    print("drill request validator succeeds before aggregate failure: true")
+    print("aggregate operability failure observed after all authority writes: true")
     print("contract byte-for-byte rollback: true")
     print("registry byte-for-byte rollback: true")
     print("production status byte-for-byte rollback: true")
