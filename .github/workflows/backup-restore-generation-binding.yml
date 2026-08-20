@@ -188,6 +188,11 @@ jobs:
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
+      - name: Reject stale generation binding authority on pull requests
+        if: steps.restore.outputs.exit_code == '0' && github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          git diff --exit-code -- contracts/operations/production-operability-status.json
       - name: Commit bounded restore-generation authority
         if: steps.restore.outputs.exit_code == '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
         run: |
