@@ -7,6 +7,9 @@ on:
     paths:
       - ".github/workflows/reconcile-upload-completion-load-authority.yml"
       - "scripts/reconcile-memory-os-upload-completion-load-authority.py"
+      - "scripts/validate-memory-os-upload-completion-load-reconcile-negative.py"
+      - "scripts/validate-memory-os-load.py"
+      - "scripts/validate-memory-os-operability.py"
       - "contracts/operations/deletion-prefence-upload-completion-contract.v1.json"
       - "docs/fixtures/memory-os-operability/deletion-prefence-upload-completion-results.sample.v1.json"
   pull_request:
@@ -15,6 +18,9 @@ on:
     paths:
       - ".github/workflows/reconcile-upload-completion-load-authority.yml"
       - "scripts/reconcile-memory-os-upload-completion-load-authority.py"
+      - "scripts/validate-memory-os-upload-completion-load-reconcile-negative.py"
+      - "scripts/validate-memory-os-load.py"
+      - "scripts/validate-memory-os-operability.py"
       - "contracts/operations/deletion-prefence-upload-completion-contract.v1.json"
       - "docs/fixtures/memory-os-operability/deletion-prefence-upload-completion-results.sample.v1.json"
   workflow_dispatch:
@@ -52,9 +58,13 @@ jobs:
           python -m py_compile \
             scripts/validate-memory-os-deletion-prefence-upload-completion.py \
             scripts/reconcile-memory-os-upload-completion-load-authority.py \
-            scripts/validate-memory-os-load.py
+            scripts/validate-memory-os-upload-completion-load-reconcile-negative.py \
+            scripts/validate-memory-os-load.py \
+            scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-upload-completion-load-reconcile-negative.py
           python scripts/reconcile-memory-os-upload-completion-load-authority.py
           python scripts/validate-memory-os-load.py
+          python scripts/validate-memory-os-operability.py
           if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
             git diff --exit-code -- \
               contracts/operations/load-test-scenario-contract.v1.json \
