@@ -116,6 +116,12 @@ def mutate_field(field: str, value: Any) -> Callable[[dict[str, Any]], None]:
     return apply
 
 
+def remove_field(field: str) -> Callable[[dict[str, Any]], None]:
+    def apply(registry: dict[str, Any]) -> None:
+        registry.pop(field, None)
+    return apply
+
+
 def mutate_ops7_missing(reorder: bool) -> Callable[[dict[str, Any]], None]:
     def apply(status: dict[str, Any]) -> None:
         areas = status.get("areas")
@@ -148,6 +154,8 @@ def main() -> int:
         STATUS: STATUS.read_bytes(),
     }
     cases: list[tuple[str, Path, Callable[[dict[str, Any]], None]]] = [
+        ("snapshot unknown production authority field", SNAPSHOT, mutate_field("productionAuthorization", True)),
+        ("snapshot missing production readiness field", SNAPSHOT, remove_field("productionReady")),
         ("objective boolean aggregate count", OBJECTIVES, mutate_field("approvedObjectiveCount", True)),
         ("objective append-only boundary", OBJECTIVES, mutate_field("appendOnly", False)),
         ("objective schema boundary", OBJECTIVES, mutate_field("schemaVersion", "memory-os-recovery-objectives-registry.corrupt")),
@@ -213,6 +221,7 @@ def main() -> int:
     print("Memory OS OPS-P0-007 strict admission snapshot negative validation PASS")
     print(f"controlled validator corruption cases rejected: {len(cases)}")
     print(f"controlled generator corruption cases rejected: {len(generator_cases)}")
+    print("snapshot unknown/missing field drift rejected: true")
     print("post-write snapshot validator failure restores original snapshot bytes: true")
     print("canonical authority files preserved byte-for-byte: true")
     print("rejected generator attempts leave snapshot byte-for-byte unchanged: true")
