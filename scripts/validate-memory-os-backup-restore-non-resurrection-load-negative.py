@@ -13,6 +13,10 @@ ROOT = Path(__file__).resolve().parents[1]
 WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
+STATUS = ROOT / "contracts/operations/production-operability-status.json"
+CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
+REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+GEN_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 
 
@@ -42,6 +46,52 @@ def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[
     except Exception as exc:
         raise Fail(f"{name} leaked non-domain exception: {type(exc).__name__}: {exc}") from exc
     raise Fail(f"negative case unexpectedly accepted: {name}")
+
+
+def expect_direct_authority_rejected(
+    reconciler: object,
+    *,
+    name: str,
+    field: str,
+    attribute: str,
+    replacement: Path,
+    before: dict[Path, bytes],
+) -> None:
+    original = getattr(reconciler, attribute)
+    setattr(reconciler, attribute, replacement)
+    try:
+        try:
+            reconciler.main()
+        except reconciler.Fail as exc:
+            require(f"{field} authority drift" in str(exc), f"{name} rejected at wrong boundary: {exc}")
+        else:
+            raise Fail(f"direct typed reconciler unexpectedly accepted: {name}")
+        for path, expected in before.items():
+            require(path.read_bytes() == expected, f"canonical authority mutated while rejecting {name}: {path.name}")
+    finally:
+        setattr(reconciler, attribute, original)
+
+
+def prove_reconcile_runtime_authorities() -> None:
+    require(RECONCILER.is_file(), "typed non-resurrection reconciler missing")
+    reconciler = load_module(RECONCILER, "memory_os_typed_non_resurrection_reconcile_authority_negative")
+    before = {path: path.read_bytes() for path in (REGISTRY, GEN_REGISTRY, CONTRACT, STATUS)}
+    cases = (
+        ("typed writer substitution", "typed non-resurrection writer", "TYPED_WRITER", reconciler.GEN_WRITER),
+        ("generation writer substitution", "generation evidence writer", "GEN_WRITER", reconciler.TYPED_WRITER),
+        ("typed validator substitution", "typed non-resurrection validator", "VALIDATOR", reconciler.OPERABILITY_VALIDATOR),
+        ("operability validator substitution", "operability validator", "OPERABILITY_VALIDATOR", reconciler.VALIDATOR),
+    )
+    for name, field, attribute, replacement in cases:
+        expect_direct_authority_rejected(
+            reconciler,
+            name=name,
+            field=field,
+            attribute=attribute,
+            replacement=replacement,
+            before=before,
+        )
+    print(f"PASS boundary: direct typed writer/validator substitutions rejected: {len(cases)}")
 
 
 def prove_reconcile_operability_rollback() -> None:
@@ -91,6 +141,8 @@ def main() -> int:
     writer = load_module(WRITER, "memory_os_typed_non_resurrection_writer_load_negative")
     validator = load_module(VALIDATOR, "memory_os_typed_non_resurrection_load_negative")
     require(writer.canonical_repo_file(WRITER, "typed evidence writer") == WRITER, "canonical typed writer path rejected")
+
+    prove_reconcile_runtime_authorities()
 
     original_lock = writer.LOCK
     original_validator_loader = validator.load_module
@@ -175,6 +227,7 @@ def main() -> int:
 
     print("Typed unreadable/escaped-authority negative suite PASS")
     print("canonical typed contract/registry/generation registry containment: enforced")
+    print("direct typed writer/validator substitutions accepted: false")
     print("typed append lock authority substitution accepted: false")
     print("typed operability failure leaves partial authority: false")
     return 0
