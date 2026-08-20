@@ -75,6 +75,35 @@ def verify_support_reconcile_authority_identity() -> None:
     reconciler.enforce_runtime_authorities()
 
 
+def verify_client_reconcile_authority_identity() -> None:
+    reconciler = load_module(CLIENT_RECONCILER_PATH, "memory_os_client_reconcile_authority_negative")
+    reconciler.enforce_runtime_authorities()
+    substitutions = (
+        ("WRITER", ROOT / "scripts/register-memory-os-parser-artifact.py"),
+        ("PAIR_WRITER", ROOT / "scripts/register-memory-os-client-baseline.py"),
+        ("VALIDATOR", ROOT / "scripts/validate-memory-os-operability.py"),
+        ("SUPPORT_VALIDATOR", ROOT / "scripts/validate-memory-os-client-baseline-registry.py"),
+        ("OPERABILITY_VALIDATOR", ROOT / "scripts/validate-memory-os-client-server-support-window.py"),
+        ("WORKFLOW", ROOT / ".github/workflows/client-server-support-window.yml"),
+        ("RELEASES", ROOT / "contracts/operations/client-baseline-registry.v1.json"),
+        ("RELEASE_PAIRS", ROOT / "contracts/operations/release-baseline-registry.v1.json"),
+        ("SKEW", ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"),
+    )
+    for field, substitute in substitutions:
+        original = getattr(reconciler, field)
+        try:
+            setattr(reconciler, field, substitute)
+            rejected = False
+            try:
+                reconciler.enforce_runtime_authorities()
+            except reconciler.Fail:
+                rejected = True
+            require(rejected, f"client baseline reconciler accepted {field} authority substitution")
+        finally:
+            setattr(reconciler, field, original)
+    reconciler.enforce_runtime_authorities()
+
+
 def expect_rejection(validator: Any, path: Path, base: dict[str, Any], label: str,
                      mutate: Callable[[dict[str, Any]], None]) -> None:
     originals = {item: item.read_bytes() for item in (RELEASES, CLIENTS, SKEW)}
@@ -204,6 +233,8 @@ def verify_client_reconcile_allows_approved_pair_progression() -> None:
 
     reconciler.load_module = controlled_loader
     reconciler.write_and_validate_transactionally = capture_write
+    original_enforce = reconciler.enforce_runtime_authorities
+    reconciler.enforce_runtime_authorities = lambda: None
     try:
         RELEASE_PAIRS.write_text(json.dumps(pair_registry, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         reconciler.STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -230,6 +261,7 @@ def verify_client_reconcile_allows_approved_pair_progression() -> None:
         )
         require(captured["status"].get("productionDecision") == "NO_GO", "approved pair progression changed production decision")
     finally:
+        reconciler.enforce_runtime_authorities = original_enforce
         for path, data in originals.items():
             if path.read_bytes() != data:
                 path.write_bytes(data)
@@ -242,6 +274,7 @@ def main() -> int:
     skew_base = load(SKEW)
     validator.main()
     verify_support_reconcile_authority_identity()
+    verify_client_reconcile_authority_identity()
     verify_inventory_only_intermediate_state(validator)
     verify_client_reconcile_preserves_admitted_skew()
     verify_client_reconcile_allows_approved_pair_progression()
