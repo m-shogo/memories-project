@@ -12,12 +12,24 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-EVIDENCE_PATH = ROOT / "contracts/operations/rate-limit-operation-evidence-contract.v1.json"
-OPERATIONS_PATH = ROOT / "contracts/operations/rate-limit-operations-contract.v1.json"
-STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
-WRITER_PATH = ROOT / "scripts/create-memory-os-rate-limit-operation-evidence.py"
-EVIDENCE_VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit-operation-evidence.py"
-OPERATIONS_VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit-operations.py"
+EVIDENCE_REL = Path("contracts/operations/rate-limit-operation-evidence-contract.v1.json")
+OPERATIONS_REL = Path("contracts/operations/rate-limit-operations-contract.v1.json")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+WRITER_REL = Path("scripts/create-memory-os-rate-limit-operation-evidence.py")
+EVIDENCE_VALIDATOR_REL = Path("scripts/validate-memory-os-rate-limit-operation-evidence.py")
+OPERATIONS_VALIDATOR_REL = Path("scripts/validate-memory-os-rate-limit-operations.py")
+RATE_LIMIT_VALIDATOR_REL = Path("scripts/validate-memory-os-rate-limit.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+WORKFLOW_REL = Path(".github/workflows/rate-limit-operation-evidence.yml")
+EVIDENCE_PATH = ROOT / EVIDENCE_REL
+OPERATIONS_PATH = ROOT / OPERATIONS_REL
+STATUS_PATH = ROOT / STATUS_REL
+WRITER_PATH = ROOT / WRITER_REL
+EVIDENCE_VALIDATOR = ROOT / EVIDENCE_VALIDATOR_REL
+OPERATIONS_VALIDATOR = ROOT / OPERATIONS_VALIDATOR_REL
+RATE_LIMIT_VALIDATOR = ROOT / RATE_LIMIT_VALIDATOR_REL
+OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
+WORKFLOW_PATH = ROOT / WORKFLOW_REL
 
 OLD_GAP = (
     "production emergency control plane with automatic expiry and append-only operation evidence ledger"
@@ -47,6 +59,34 @@ def require(condition: bool, message: str) -> None:
         raise ReconcileFailure(message)
 
 
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise ReconcileFailure(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    for path, relative, field in (
+        (EVIDENCE_PATH, EVIDENCE_REL, "rate-limit operation evidence contract"),
+        (OPERATIONS_PATH, OPERATIONS_REL, "rate-limit operations contract"),
+        (STATUS_PATH, STATUS_REL, "production operability status"),
+        (WRITER_PATH, WRITER_REL, "rate-limit operation writer"),
+        (EVIDENCE_VALIDATOR, EVIDENCE_VALIDATOR_REL, "rate-limit operation evidence validator"),
+        (OPERATIONS_VALIDATOR, OPERATIONS_VALIDATOR_REL, "rate-limit operations validator"),
+        (RATE_LIMIT_VALIDATOR, RATE_LIMIT_VALIDATOR_REL, "rate-limit validator"),
+        (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+        (WORKFLOW_PATH, WORKFLOW_REL, "rate-limit operation workflow"),
+    ):
+        require_exact_repo_file(path, relative, field)
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -59,6 +99,7 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_writer() -> Any:
+    require_exact_repo_file(WRITER_PATH, WRITER_REL, "rate-limit operation writer")
     spec = importlib.util.spec_from_file_location(
         "memory_os_rate_limit_operation_writer_reconcile", WRITER_PATH
     )
@@ -90,6 +131,7 @@ def run_validator(path: Path, label: str) -> None:
 
 
 def validate_evidence_authority(evidence: dict[str, Any]) -> None:
+    enforce_runtime_authorities()
     try:
         load_writer().validate_contract_append_guards(evidence)
     except Exception as exc:
@@ -100,9 +142,12 @@ def validate_evidence_authority(evidence: dict[str, Any]) -> None:
 
 
 def validate_written_authority() -> None:
+    enforce_runtime_authorities()
     evidence = load(EVIDENCE_PATH)
     validate_evidence_authority(evidence)
     run_validator(OPERATIONS_VALIDATOR, "rate-limit operation evidence post-write")
+    run_validator(RATE_LIMIT_VALIDATOR, "rate-limit aggregate post-write")
+    run_validator(OPERABILITY_VALIDATOR, "operability aggregate post-write")
 
 
 def transactional_write(operations: dict[str, Any], status: dict[str, Any]) -> None:
@@ -127,6 +172,7 @@ def transactional_write(operations: dict[str, Any], status: dict[str, Any]) -> N
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     evidence = load(EVIDENCE_PATH)
     validate_evidence_authority(evidence)
     evidence_readiness = evidence.get("readiness")
