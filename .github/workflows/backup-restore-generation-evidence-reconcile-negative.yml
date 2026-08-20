@@ -12,6 +12,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-semantic-generation-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-reconcile-negative.py"
+      - "scripts/validate-memory-os-operability.py"
       - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
       - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
       - "contracts/operations/backup-restore-generation-binding-contract.v1.json"
@@ -32,6 +33,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-semantic-generation-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-reconcile-negative.py"
+      - "scripts/validate-memory-os-operability.py"
       - "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
       - "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
       - "contracts/operations/backup-restore-generation-binding-contract.v1.json"
@@ -70,6 +72,7 @@ jobs:
             scripts/validate-memory-os-backup-restore-generation-evidence-negative.py \
             scripts/validate-memory-os-backup-restore-semantic-generation-negative.py \
             scripts/validate-memory-os-backup-restore-generation-binding.py \
-            scripts/validate-memory-os-backup-restore-generation-evidence-reconcile-negative.py
+            scripts/validate-memory-os-backup-restore-generation-evidence-reconcile-negative.py \
+            scripts/validate-memory-os-operability.py
           python scripts/validate-memory-os-backup-restore-generation-evidence-reconcile-negative.py
           git diff --exit-code
