@@ -10,20 +10,68 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
-PAIRS = ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"
-CLIENTS = ROOT / "contracts/operations/client-baseline-registry.v1.json"
-PARSERS = ROOT / "contracts/operations/parser-artifact-registry.v1.json"
-FOUNDATIONS = ROOT / "contracts/operations/version-compatibility-foundations.v1.json"
-EXECUTION = ROOT / "contracts/operations/version-compatibility-execution-evidence.v1.json"
-OUTPUT = ROOT / "contracts/operations/compatibility-admission-gaps.v1.json"
-RELEASE_WRITER = ROOT / "scripts/register-memory-os-release-baseline.py"
-PAIR_WRITER = ROOT / "scripts/register-memory-os-release-compatibility-pair.py"
-CLIENT_WRITER = ROOT / "scripts/register-memory-os-client-baseline.py"
-PARSER_WRITER = ROOT / "scripts/register-memory-os-parser-artifact.py"
-FOUNDATIONS_VALIDATOR = ROOT / "scripts/validate-memory-os-version-compatibility-foundations.py"
-EXECUTION_VALIDATOR = ROOT / "scripts/validate-memory-os-version-compatibility-execution-evidence.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+RELEASES_REL = Path("contracts/operations/release-baseline-registry.v1.json")
+PAIRS_REL = Path("contracts/operations/release-compatibility-pair-registry.v1.json")
+CLIENTS_REL = Path("contracts/operations/client-baseline-registry.v1.json")
+PARSERS_REL = Path("contracts/operations/parser-artifact-registry.v1.json")
+FOUNDATIONS_REL = Path("contracts/operations/version-compatibility-foundations.v1.json")
+EXECUTION_REL = Path("contracts/operations/version-compatibility-execution-evidence.v1.json")
+OUTPUT_REL = Path("contracts/operations/compatibility-admission-gaps.v1.json")
+RELEASE_WRITER_REL = Path("scripts/register-memory-os-release-baseline.py")
+PAIR_WRITER_REL = Path("scripts/register-memory-os-release-compatibility-pair.py")
+CLIENT_WRITER_REL = Path("scripts/register-memory-os-client-baseline.py")
+PARSER_WRITER_REL = Path("scripts/register-memory-os-parser-artifact.py")
+FOUNDATIONS_VALIDATOR_REL = Path("scripts/validate-memory-os-version-compatibility-foundations.py")
+EXECUTION_VALIDATOR_REL = Path("scripts/validate-memory-os-version-compatibility-execution-evidence.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+WORKFLOW_REL = Path(".github/workflows/compatibility-admission-gaps.yml")
+RELEASES = ROOT / RELEASES_REL
+PAIRS = ROOT / PAIRS_REL
+CLIENTS = ROOT / CLIENTS_REL
+PARSERS = ROOT / PARSERS_REL
+FOUNDATIONS = ROOT / FOUNDATIONS_REL
+EXECUTION = ROOT / EXECUTION_REL
+OUTPUT = ROOT / OUTPUT_REL
+RELEASE_WRITER = ROOT / RELEASE_WRITER_REL
+PAIR_WRITER = ROOT / PAIR_WRITER_REL
+CLIENT_WRITER = ROOT / CLIENT_WRITER_REL
+PARSER_WRITER = ROOT / PARSER_WRITER_REL
+FOUNDATIONS_VALIDATOR = ROOT / FOUNDATIONS_VALIDATOR_REL
+EXECUTION_VALIDATOR = ROOT / EXECUTION_VALIDATOR_REL
+OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
+WORKFLOW = ROOT / WORKFLOW_REL
+
+
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise SystemExit(f"{field} missing or escapes repository") from exc
+    if lexical != expected_relative or resolved != expected_relative or not path.is_file():
+        raise SystemExit(f"{field} authority drift")
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    for path, relative, field in (
+        (RELEASES, RELEASES_REL, "release registry"),
+        (PAIRS, PAIRS_REL, "release pair registry"),
+        (CLIENTS, CLIENTS_REL, "client registry"),
+        (PARSERS, PARSERS_REL, "parser registry"),
+        (FOUNDATIONS, FOUNDATIONS_REL, "compatibility foundations"),
+        (EXECUTION, EXECUTION_REL, "compatibility execution evidence"),
+        (OUTPUT, OUTPUT_REL, "compatibility admission gaps output"),
+        (RELEASE_WRITER, RELEASE_WRITER_REL, "release writer"),
+        (PAIR_WRITER, PAIR_WRITER_REL, "release pair writer"),
+        (CLIENT_WRITER, CLIENT_WRITER_REL, "client writer"),
+        (PARSER_WRITER, PARSER_WRITER_REL, "parser writer"),
+        (FOUNDATIONS_VALIDATOR, FOUNDATIONS_VALIDATOR_REL, "compatibility foundations validator"),
+        (EXECUTION_VALIDATOR, EXECUTION_VALIDATOR_REL, "compatibility execution validator"),
+        (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+        (WORKFLOW, WORKFLOW_REL, "compatibility admission gaps workflow"),
+    ):
+        require_exact_repo_file(path, relative, field)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -80,6 +128,7 @@ def validate_registry_authorities(
     clients: dict[str, Any],
     parsers: dict[str, Any],
 ) -> None:
+    enforce_runtime_authorities()
     release_writer = load_module(RELEASE_WRITER, "compat_release_writer")
     pair_writer = load_module(PAIR_WRITER, "compat_pair_writer")
     client_writer = load_module(CLIENT_WRITER, "compat_client_writer")
@@ -97,8 +146,6 @@ def validate_registry_authorities(
     try:
         release_contract = load(Path(release_writer.CONTRACT_PATH))
         release_writer.validate_registry_for_append(releases, release_contract)
-        # The pair writer is the canonical historical-row guard, including
-        # typed Security/Operability independent-review semantics and validator identity.
         pair_writer.validate_registry_for_append(pairs)
         client_writer.validate_registry_for_append(clients)
         parser_writer.validate_registry_for_append(parsers)
@@ -107,6 +154,7 @@ def validate_registry_authorities(
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     releases = load(RELEASES)
     pairs = load(PAIRS)
     clients = load(CLIENTS)
