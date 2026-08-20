@@ -68,6 +68,25 @@ def resolve_ledger(raw: str | None) -> Path:
     raise SystemExit("ledger-dir is outside approved repository/temporary roots")
 
 
+def resolve_operation_record(ledger: Path, operation_id: str) -> Path | None:
+    ledger_resolved = ledger.resolve()
+    path = ledger / f"{operation_id}.json"
+    if path.is_symlink():
+        raise SystemExit("operation evidence record path must not be a symlink")
+    if not path.exists():
+        return None
+    if not path.is_file():
+        raise SystemExit("operation evidence record path must be a regular file")
+    try:
+        resolved = path.resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError) as exc:
+        raise SystemExit("operation evidence record path is unreadable") from exc
+    expected = ledger_resolved / path.name
+    if resolved != expected or resolved.parent != ledger_resolved:
+        raise SystemExit("operation evidence record path escapes ledger authority")
+    return resolved
+
+
 def validate_authority(ledger: Path, record: dict[str, Any]) -> None:
     validator = load_validator()
     failure_type = getattr(validator, "ValidationFailure", None)
@@ -100,8 +119,8 @@ def main() -> int:
     if OPERATION_ID.fullmatch(args.operation_id) is None:
         raise SystemExit("operation-id format invalid")
     ledger = resolve_ledger(args.ledger_dir)
-    path = ledger / f"{args.operation_id}.json"
-    if not path.is_file():
+    path = resolve_operation_record(ledger, args.operation_id)
+    if path is None:
         print(json.dumps({
             "operationId": args.operation_id,
             "evaluatedAt": args.at,
