@@ -317,15 +317,22 @@ jobs:
             python scripts/validate-memory-os-sustained-soak-independent-review-negative.py >> "$log" 2>&1
             python scripts/validate-memory-os-sustained-soak-human-evidence-path-negative.py >> "$log" 2>&1
             python scripts/validate-memory-os-recovery-objectives.py >> "$log" 2>&1
+            python scripts/validate-memory-os-recovery-objectives-negative.py >> "$log" 2>&1
+            python scripts/validate-memory-os-backup-restore-drill-preflight-negative.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-drill-preflight.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py >> "$log" 2>&1
             python scripts/reconcile-memory-os-backup-restore-drill-request.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1
+            python scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py >> "$log" 2>&1
+            python scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py >> "$log" 2>&1
+            python scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-generation-binding.py >> "$log" 2>&1
+            python scripts/validate-memory-os-backup-restore-generation-binding-negative.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-non-resurrection-admission.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-promotion-review.py >> "$log" 2>&1
+            python scripts/validate-memory-os-backup-restore-promotion-review-negative.py >> "$log" 2>&1
             python scripts/validate-memory-os-operability-admission-inventory-source-authorities.py >> "$log" 2>&1
             python scripts/generate-memory-os-operability-admission-inventory.py >> "$log" 2>&1
             python scripts/validate-memory-os-operability-admission-inventory.py >> "$log" 2>&1
