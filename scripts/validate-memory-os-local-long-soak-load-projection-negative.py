@@ -9,6 +9,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / "scripts/reconcile-memory-os-local-long-soak-load-projection.py"
+CANONICAL_SOAK = ROOT / "contracts/operations/sustained-local-soak-contract.v1.json"
+CANONICAL_LOAD = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
+SOAK_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak.py"
+LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
 SPEC = importlib.util.spec_from_file_location("local_long_soak_projection", MODULE_PATH)
 if SPEC is None or SPEC.loader is None:
     raise SystemExit("LOCAL LONG SOAK LOAD PROJECTION NEGATIVE FAILED: cannot load projection module")
@@ -59,6 +63,57 @@ def expect_projection_input_reject(label: str, rows) -> None:
         print(f"PASS reject projection input: {label}")
         return
     raise AssertionError(f"corrupt projection input accepted: {label}")
+
+
+def authority_substitution_rejected() -> None:
+    load_bytes = CANONICAL_LOAD.read_bytes()
+    substitutions = (
+        ("SOAK_PATH", CANONICAL_LOAD, "sustained-soak contract authority drift"),
+        ("LOAD_PATH", CANONICAL_SOAK, "load contract authority drift"),
+        ("SOAK_VALIDATOR", LOAD_VALIDATOR, "sustained-soak validator authority drift"),
+        ("LOAD_VALIDATOR", SOAK_VALIDATOR, "load validator authority drift"),
+    )
+    for attr, substitute, expected in substitutions:
+        original = getattr(module, attr)
+        try:
+            setattr(module, attr, substitute)
+            try:
+                module.validate_authorities()
+            except module.Fail as exc:
+                if expected not in str(exc):
+                    raise AssertionError(f"unexpected {attr} authority rejection: {exc}") from exc
+            else:
+                raise AssertionError(f"substituted projection authority accepted: {attr}")
+            if CANONICAL_LOAD.read_bytes() != load_bytes:
+                raise AssertionError(f"canonical load authority changed after rejected substitution: {attr}")
+        finally:
+            setattr(module, attr, original)
+
+
+def transaction_rollback_rejected() -> None:
+    original_bytes = CANONICAL_LOAD.read_bytes()
+    original_source_validator = module.validate_source_authority
+    original_load_validator = module.validate_projected_load_authority
+    module.validate_source_authority = lambda: None
+
+    def reject_after_write() -> None:
+        raise module.Fail("synthetic post-write load projection rejection")
+
+    module.validate_projected_load_authority = reject_after_write
+    try:
+        try:
+            module.main()
+        except module.Fail as exc:
+            if "synthetic post-write load projection rejection" not in str(exc):
+                raise AssertionError(f"unexpected transactional rejection: {exc}") from exc
+        else:
+            raise AssertionError("post-write load projection validator failure was accepted")
+        if CANONICAL_LOAD.read_bytes() != original_bytes:
+            raise AssertionError("canonical load authority was not restored after rejected projection")
+    finally:
+        module.validate_source_authority = original_source_validator
+        module.validate_projected_load_authority = original_load_validator
+        CANONICAL_LOAD.write_bytes(original_bytes)
 
 
 def main() -> int:
@@ -113,8 +168,13 @@ def main() -> int:
     )
     expect_legacy_reject("run metadata removed", lambda row: row.pop("runMetadata"))
 
+    authority_substitution_rejected()
+    transaction_rollback_rejected()
+
     print("Memory OS local long-soak load projection negative suite PASS")
     print("canonical scenario ID binding enforced: true")
+    print("canonical source/load authority identity enforced: true")
+    print("post-write load validation rollback enforced: true")
     print("aggregate external scenario corruption accepted: false")
     print("legacy LOCAL_LONG_SOAK alias may be removed only when non-production: true")
     print("production evidence promotion accepted: false")
