@@ -298,6 +298,31 @@ def expect_generator_backup_derived_authority_rejected(generator: Any) -> None:
     print("PASS generator reject: canonical backup derived authority validation cannot be bypassed")
 
 
+def expect_generator_post_write_validation_rollback(generator: Any) -> None:
+    inventory_before = generator.OUTPUT.read_bytes()
+    original = generator.validate_generated_inventory
+    calls = 0
+
+    def reject_generated_inventory() -> None:
+        nonlocal calls
+        calls += 1
+        raise SystemExit("synthetic post-write inventory validation failure")
+
+    generator.validate_generated_inventory = reject_generated_inventory
+    rejected = False
+    try:
+        generator.main()
+    except SystemExit as exc:
+        require(exc.code not in (None, 0), "inventory generator exited successfully after post-write validation failure")
+        rejected = True
+    finally:
+        generator.validate_generated_inventory = original
+    require(rejected, "inventory generator accepted synthetic post-write validation failure")
+    require(calls == 1, f"post-write inventory validator call count drift: {calls}")
+    require(generator.OUTPUT.read_bytes() == inventory_before, "post-write validation failure did not restore canonical inventory bytes")
+    print("PASS generator transaction: post-write validation failure rolls back canonical inventory")
+
+
 def expect_source_validator_implementation_error_propagates(validator: Any) -> None:
     original = validator.load_validator
 
@@ -346,6 +371,7 @@ def main() -> int:
     generator.main()
     require(generator.OUTPUT.read_bytes() == inventory_before, "canonical inventory generator is not byte-deterministic")
     print("PASS baseline: canonical append-only authorities accepted without inventory drift")
+    expect_generator_post_write_validation_rollback(generator)
     expect_untracked_tabletop_rejected(validator, generator)
     expect_generator_load_authority_rejected(generator)
     expect_generator_backup_derived_authority_rejected(generator)
@@ -444,6 +470,7 @@ def main() -> int:
     print("canonical load authority rejection bypassed by inventory generator: false")
     print("canonical backup derived authority rejection bypassed by inventory generator: false")
     print("unexpected implementation RuntimeError normalized as domain rejection: false")
+    print("post-write inventory validation failure left partial derived authority: false")
     print("rejected generator run mutated inventory: false")
     print("canonical append-only authority mutated: false")
     print("production evidence: false")
