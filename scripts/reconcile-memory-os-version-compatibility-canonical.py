@@ -9,12 +9,14 @@ idempotent and never promotes a canonical matrix entry.
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 PATH = ROOT / "contracts/operations/version-compatibility-contract.v1.json"
+VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-version-compatibility.py"
 
 
 class ReconcileFailure(RuntimeError):
@@ -44,6 +46,37 @@ def remove_keys(value: dict[str, Any], keys: tuple[str, ...]) -> bool:
             del value[key]
             changed = True
     return changed
+
+
+def run_canonical_validator() -> None:
+    result = subprocess.run(
+        [sys.executable, str(VALIDATOR_PATH)],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()
+        raise ReconcileFailure(
+            "canonical compatibility validation failed after reconcile"
+            + (f": {detail}" if detail else "")
+        )
+
+
+def commit_transaction(
+    document: dict[str, Any],
+    *,
+    validator_runner: Callable[[], None] = run_canonical_validator,
+) -> None:
+    original = PATH.read_bytes()
+    PATH.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n",
+                    encoding="utf-8")
+    try:
+        validator_runner()
+    except Exception:
+        PATH.write_bytes(original)
+        raise
 
 
 def main() -> int:
@@ -132,8 +165,7 @@ def main() -> int:
     if not changed:
         print("Canonical compatibility authority already conservative")
         return 0
-    PATH.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n",
-                    encoding="utf-8")
+    commit_transaction(document)
     print("Restored conservative canonical compatibility authority")
     return 0
 
