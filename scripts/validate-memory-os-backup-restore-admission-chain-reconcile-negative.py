@@ -18,6 +18,7 @@ CONTRACT = ROOT / "contracts/operations/backup-restore-admission-chain-contract.
 DRILL_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 TYPED_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+STATUS = ROOT / "contracts/operations/production-operability-status.json"
 
 
 class Fail(RuntimeError):
@@ -48,6 +49,54 @@ def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[
     raise Fail(f"negative case unexpectedly accepted: {name}")
 
 
+def expect_direct_authority_rejected(
+    reconciler: object,
+    *,
+    name: str,
+    field: str,
+    attribute: str,
+    replacement: Path,
+    contract_before: bytes,
+    status_before: bytes,
+) -> None:
+    original = getattr(reconciler, attribute)
+    setattr(reconciler, attribute, replacement)
+    try:
+        try:
+            reconciler.main()
+        except reconciler.Fail as exc:
+            require(f"{field} authority drift" in str(exc), f"{name} rejected at wrong boundary: {exc}")
+        else:
+            raise Fail(f"direct reconciler unexpectedly accepted: {name}")
+        require(CONTRACT.read_bytes() == contract_before, f"canonical admission-chain contract mutated while rejecting {name}")
+        require(STATUS.read_bytes() == status_before, f"canonical production status mutated while rejecting {name}")
+    finally:
+        setattr(reconciler, attribute, original)
+
+
+def prove_direct_authority_identity(reconciler: object) -> None:
+    contract_before = CONTRACT.read_bytes()
+    status_before = STATUS.read_bytes()
+    cases = (
+        ("drill writer substitution", "drill request writer", "DRILL_WRITER", reconciler.GEN_WRITER),
+        ("generation writer substitution", "generation evidence writer", "GEN_WRITER", reconciler.DRILL_WRITER),
+        ("typed writer substitution", "typed non-resurrection writer", "TYPED_WRITER", reconciler.GEN_WRITER),
+        ("admission-chain validator substitution", "admission-chain validator", "VALIDATOR", reconciler.OPERABILITY_VALIDATOR),
+        ("operability validator substitution", "operability validator", "OPERABILITY_VALIDATOR", reconciler.VALIDATOR),
+    )
+    for name, field, attribute, replacement in cases:
+        expect_direct_authority_rejected(
+            reconciler,
+            name=name,
+            field=field,
+            attribute=attribute,
+            replacement=replacement,
+            contract_before=contract_before,
+            status_before=status_before,
+        )
+    print(f"PASS boundary: direct admission-chain writer/validator substitutions rejected: {len(cases)}")
+
+
 def write_json(path: Path, value: dict[str, object]) -> None:
     path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
 
@@ -76,9 +125,12 @@ def corrupt_and_expect_rollback(
 def main() -> int:
     require(VALIDATOR.is_file(), "admission-chain validator missing")
     require(RECONCILER.is_file(), "admission-chain reconciler missing")
+    require(STATUS.is_file(), "production operability status missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
     validator = load_module(VALIDATOR, "memory_os_admission_chain_validator_negative")
     reconciler = load_module(RECONCILER, "memory_os_admission_chain_reconcile_negative")
+
+    prove_direct_authority_identity(reconciler)
 
     with tempfile.TemporaryDirectory(prefix=".tmp-admission-chain-reconcile-", dir=TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
@@ -222,6 +274,7 @@ def main() -> int:
 
     print("PASS rollback: admission-chain registries remain byte-for-byte corrupt until explicit repair")
     print("PASS rollback: admission-chain contract restored byte-for-byte after post-validation failure")
+    print("direct admission-chain writer/validator substitutions accepted: false")
     print("Admission-chain validator/reconcile negative suite PASS")
     return 0
 
