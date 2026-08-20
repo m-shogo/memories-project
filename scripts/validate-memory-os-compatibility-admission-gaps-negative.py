@@ -64,6 +64,47 @@ def expect_pair_authority_rejection(module) -> None:
             "canonical rollback-pair registry changed after negative validation")
 
 
+def expect_projection_rollback(module) -> None:
+    path = module.OUTPUT
+    original = path.read_bytes() if path.exists() else None
+    original_run_validator = module.run_validator
+    calls: list[Path] = []
+
+    def reject_operability(validator_path: Path) -> None:
+        calls.append(validator_path)
+        if validator_path == module.OPERABILITY_VALIDATOR:
+            raise SystemExit("synthetic aggregate operability rejection")
+
+    module.run_validator = reject_operability
+    try:
+        rejected = False
+        try:
+            module.write_validated_output({
+                "schemaVersion": "synthetic-invalid-compatibility-admission-gaps",
+                "productionEvidence": False,
+                "productionReady": False,
+                "productionDecision": "NO_GO",
+            })
+        except SystemExit as exc:
+            require("synthetic aggregate operability rejection" in str(exc),
+                    f"unexpected projection rollback rejection: {exc}")
+            rejected = True
+        require(rejected, "post-write aggregate rejection did not fail compatibility projection")
+        require(calls == [module.OPERABILITY_VALIDATOR],
+                f"compatibility projection did not invoke canonical operability validator exactly once: {calls}")
+        if original is None:
+            require(not path.exists(), "new compatibility projection remained after rejected post-write validation")
+        else:
+            require(path.read_bytes() == original,
+                    "compatibility projection was not restored after rejected post-write validation")
+    finally:
+        module.run_validator = original_run_validator
+        if original is None:
+            path.unlink(missing_ok=True)
+        else:
+            path.write_bytes(original)
+
+
 def main() -> int:
     module = load_generator()
     for field in (
@@ -77,7 +118,8 @@ def main() -> int:
         expect_count_rejection(module, -1, field)
     require(module.non_negative_count(0, "validZero") == 0, "zero count should remain valid")
     expect_pair_authority_rejection(module)
-    print("PASS: compatibility admission counts and canonical rollback-pair authority fail closed")
+    expect_projection_rollback(module)
+    print("PASS: compatibility admission counts, source authority and projection rollback fail closed")
     return 0
 
 
