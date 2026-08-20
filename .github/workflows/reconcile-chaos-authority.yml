@@ -11,6 +11,7 @@ on:
       - "scripts/reconcile-memory-os-parser-restart-matrix.py"
       - "scripts/reconcile-memory-os-parser-inflight-cancellation.py"
       - "scripts/validate-memory-os-chaos-scenario-reconcile-monotonicity-negative.py"
+      - "scripts/validate-memory-os-chaos-v1-reconcile-authority-negative.py"
       - "scripts/validate-memory-os-chaos-failure-drills.py"
       - "scripts/validate-memory-os-chaos-failure-drills-v2.py"
       - "scripts/validate-memory-os-parser-restart-matrix.py"
@@ -43,6 +44,7 @@ on:
       - "scripts/reconcile-memory-os-parser-restart-matrix.py"
       - "scripts/reconcile-memory-os-parser-inflight-cancellation.py"
       - "scripts/validate-memory-os-chaos-scenario-reconcile-monotonicity-negative.py"
+      - "scripts/validate-memory-os-chaos-v1-reconcile-authority-negative.py"
       - "scripts/validate-memory-os-chaos-failure-drills.py"
       - "scripts/validate-memory-os-chaos-failure-drills-v2.py"
       - "scripts/validate-memory-os-parser-restart-matrix.py"
@@ -114,6 +116,7 @@ jobs:
             scripts/reconcile-memory-os-parser-restart-matrix.py \
             scripts/reconcile-memory-os-parser-inflight-cancellation.py \
             scripts/validate-memory-os-chaos-scenario-reconcile-monotonicity-negative.py \
+            scripts/validate-memory-os-chaos-v1-reconcile-authority-negative.py \
             scripts/validate-memory-os-chaos-failure-drills.py \
             scripts/validate-memory-os-chaos-failure-drills-v2.py \
             scripts/validate-memory-os-parser-restart-matrix.py \
@@ -153,11 +156,13 @@ jobs:
 
           # Fail before any deterministic mutation if committed source authority is invalid.
           validate_committed_sources
+          python scripts/validate-memory-os-chaos-v1-reconcile-authority-negative.py
           python scripts/validate-memory-os-chaos-scenario-reconcile-monotonicity-negative.py
           python scripts/reconcile-memory-os-chaos-authority.py
           python scripts/reconcile-memory-os-chaos-authority.py --check
           python scripts/reconcile-memory-os-chaos-inflight-overlay.py
           python scripts/reconcile-memory-os-chaos-inflight-overlay.py --check
+          python scripts/validate-memory-os-chaos-v1-reconcile-authority-negative.py
           python scripts/validate-memory-os-chaos-scenario-reconcile-monotonicity-negative.py
           # Re-read all canonical validators after normalization as the final authority boundary.
           validate_committed_sources
