@@ -9,21 +9,30 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/incident-human-tabletop-evidence-contract.v1.json"
-LEDGER = ROOT / "docs/evidence/incident-tabletops"
-WRITER = ROOT / "scripts/register-memory-os-incident-human-tabletop.py"
-VALIDATOR = ROOT / "scripts/validate-memory-os-incident-human-tabletops.py"
-INCIDENT_TABLETOP_VALIDATOR = ROOT / "scripts/validate-memory-os-incident-tabletop.py"
-INCIDENT_RESPONSE_VALIDATOR = ROOT / "scripts/validate-memory-os-incident-response.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CONTRACT_REL = Path("contracts/operations/incident-human-tabletop-evidence-contract.v1.json")
+LEDGER_REL = Path("docs/evidence/incident-tabletops")
+WRITER_REL = Path("scripts/register-memory-os-incident-human-tabletop.py")
+VALIDATOR_REL = Path("scripts/validate-memory-os-incident-human-tabletops.py")
+INCIDENT_TABLETOP_VALIDATOR_REL = Path("scripts/validate-memory-os-incident-tabletop.py")
+INCIDENT_RESPONSE_VALIDATOR_REL = Path("scripts/validate-memory-os-incident-response.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+WORKFLOW_REL = Path(".github/workflows/incident-human-tabletop-evidence.yml")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+CONTRACT = ROOT / CONTRACT_REL
+LEDGER = ROOT / LEDGER_REL
+WRITER = ROOT / WRITER_REL
+VALIDATOR = ROOT / VALIDATOR_REL
+INCIDENT_TABLETOP_VALIDATOR = ROOT / INCIDENT_TABLETOP_VALIDATOR_REL
+INCIDENT_RESPONSE_VALIDATOR = ROOT / INCIDENT_RESPONSE_VALIDATOR_REL
+OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
 POST_WRITE_VALIDATORS = (
     VALIDATOR,
     INCIDENT_TABLETOP_VALIDATOR,
     INCIDENT_RESPONSE_VALIDATOR,
     OPERABILITY_VALIDATOR,
 )
-WORKFLOW = ROOT / ".github/workflows/incident-human-tabletop-evidence.yml"
-STATUS = ROOT / "contracts/operations/production-operability-status.json"
+WORKFLOW = ROOT / WORKFLOW_REL
+STATUS = ROOT / STATUS_REL
 
 EVIDENCE = (
     "human-led incident tabletop completion admission is append-only and fail-closed: accepted records must preserve the canonical plan, bind an exact source commit, record required command-role assignments and severity-specific closure approvals, and pass the canonical completed-tabletop validator; automated control exercises cannot manufacture human attendance"
@@ -45,6 +54,51 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def require_exact_repo_dir(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_dir(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    canonical_contract = CONTRACT == ROOT / CONTRACT_REL
+    canonical_status = STATUS == ROOT / STATUS_REL
+    require(canonical_contract is canonical_status, "human tabletop fixture boundary must replace contract and status together")
+    if canonical_contract:
+        require_exact_repo_file(CONTRACT, CONTRACT_REL, "human tabletop contract")
+        require_exact_repo_dir(LEDGER, LEDGER_REL, "human tabletop ledger")
+        for path, relative, field in (
+            (WRITER, WRITER_REL, "human tabletop writer"),
+            (VALIDATOR, VALIDATOR_REL, "human tabletop validator"),
+            (INCIDENT_TABLETOP_VALIDATOR, INCIDENT_TABLETOP_VALIDATOR_REL, "incident tabletop validator"),
+            (INCIDENT_RESPONSE_VALIDATOR, INCIDENT_RESPONSE_VALIDATOR_REL, "incident response validator"),
+            (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+            (WORKFLOW, WORKFLOW_REL, "human tabletop workflow"),
+            (STATUS, STATUS_REL, "production operability status"),
+        ):
+            require_exact_repo_file(path, relative, field)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -84,6 +138,7 @@ def commit_validated_pair(contract: dict[str, Any], status: dict[str, Any]) -> N
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     for path in (WRITER, *POST_WRITE_VALIDATORS, WORKFLOW):
         require(path.is_file(), f"human tabletop admission missing: {path.relative_to(ROOT)}")
     validate_current_authority()
