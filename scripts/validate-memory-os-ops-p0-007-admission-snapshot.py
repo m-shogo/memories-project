@@ -80,6 +80,10 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def valid_count(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -164,7 +168,7 @@ def main() -> int:
         (typed_complete, "completeTypedNonResurrectionRecordCount"),
         (candidate_count, "finalProductionEquivalentRecoveryCandidateCount"),
     ):
-        require(isinstance(value, int) and not isinstance(value, bool) and value >= 0, f"{field} invalid")
+        require(valid_count(value), f"{field} invalid")
     require(current_request_count <= request_count, "current request count exceeds history")
     require(drill_bound_count == generation_evidence_count, "all generation recovery evidence must be drill-request-bound")
     require(candidate_count <= generation_evidence_count, "candidate count exceeds generation evidence")
@@ -191,7 +195,11 @@ def main() -> int:
         "finalProductionEquivalentRecoveryCandidateCount": candidate_count,
     }
     for field, value in expected_counts.items():
+        require(valid_count(value), f"canonical count invalid: {field}")
+        require(valid_count(snapshot.get(field)), f"snapshot count invalid: {field}")
         require(snapshot.get(field) == value, f"snapshot count drift: {field}")
+    require(valid_count(snapshot.get("strictPrerequisiteBlockerCount")), "snapshot strict blocker count invalid")
+    require(valid_count(snapshot.get("canonicalMissingEvidenceCount")), "snapshot canonical blocker count invalid")
     require(snapshot.get("currentRecoveryObjectiveId") == current_objective, "snapshot current objective drift")
     require(snapshot.get("strictPrerequisiteBlockers") == strict_blockers, "snapshot strict blocker set drift")
     require(snapshot.get("strictPrerequisiteBlockerCount") == len(strict_blockers), "snapshot strict blocker count drift")
@@ -238,6 +246,7 @@ def main() -> int:
     print("canonical append-only registry validators enforced: true")
     print("canonical production blocker authority enforced: true")
     print("snapshot exact field set enforced: true")
+    print("snapshot count types enforced as integers excluding booleans: true")
     print("snapshot downstream requirement and next-action projection enforced: true")
     print(f"stage: {expected_stage}")
     print(f"strict prerequisite blockers: {len(strict_blockers)}")
