@@ -6,6 +6,7 @@ from __future__ import annotations
 import datetime as dt
 import importlib.util
 import json
+import os
 import re
 import subprocess
 import sys
@@ -16,6 +17,8 @@ ROOT = Path(__file__).resolve().parents[1]
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/parser-restart-matrix-results.sample.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 CANONICAL_RECONCILER = ROOT / "scripts/reconcile-memory-os-chaos-authority.py"
+PARSER_VALIDATOR = ROOT / "scripts/validate-memory-os-parser-restart-matrix.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 OLD_MISSING = "expanded parser restart matrix across timeout, CPU, memory, cancellation, process-group and host-restart failures"
@@ -59,6 +62,7 @@ def load(path: Path) -> dict[str, Any]:
 
 def load_canonical_normalizer():
     require(CANONICAL_RECONCILER.is_file(), "canonical chaos authority reconciler missing")
+    require(not CANONICAL_RECONCILER.is_symlink(), "canonical chaos authority reconciler cannot be a symlink")
     spec = importlib.util.spec_from_file_location("memory_os_canonical_chaos_authority_parser_matrix", CANONICAL_RECONCILER)
     require(spec is not None and spec.loader is not None, "cannot load canonical chaos authority reconciler")
     module = importlib.util.module_from_spec(spec)
@@ -81,42 +85,48 @@ def source_is_ancestor(source_sha: str) -> bool:
         return False
 
 
+def run_validator(path: Path, *, expected_sha: str | None = None) -> None:
+    require(path.is_file(), f"canonical validator missing: {path.relative_to(ROOT)}")
+    require(not path.is_symlink(), f"canonical validator cannot be a symlink: {path.relative_to(ROOT)}")
+    env = os.environ.copy()
+    if expected_sha is not None:
+        env["EXPECTED_COMMIT_SHA"] = expected_sha
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(path)],
+            cwd=ROOT,
+            env=env,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+    except OSError as exc:
+        raise ReconcileFailure(f"cannot execute canonical validator: {path.relative_to(ROOT)}") from exc
+    require(
+        type(completed.returncode) is int and completed.returncode == 0,
+        f"canonical validator rejected authority: {path.relative_to(ROOT)}\n{completed.stdout[-4000:]}",
+    )
+
+
+def validate_authority_chain(source_sha: str) -> None:
+    run_validator(PARSER_VALIDATOR, expected_sha=source_sha)
+    run_validator(OPERABILITY_VALIDATOR)
+
+
 def main() -> int:
     result = load(RESULT_PATH)
-    require(result.get("schemaVersion") == "memory-os-parser-restart-matrix-results.v1",
-            "matrix result schemaVersion drift")
     source_sha = result.get("commitSha")
     require(isinstance(source_sha, str) and SHA_RE.fullmatch(source_sha) is not None,
             "matrix result source SHA is invalid")
     require(source_is_ancestor(source_sha),
             "matrix result source SHA is not an ancestor of current HEAD")
-    require(result.get("overallResult") == "PASS",
-            "parser restart matrix is not PASS")
-    environment = result.get("environment")
-    require(isinstance(environment, dict), "matrix result environment missing")
-    require(environment.get("productionEvidence") is False,
-            "matrix result cannot be production evidence")
-    require(environment.get("containsSecrets") is False,
-            "matrix result must contain no secrets")
 
-    cases = result.get("failureClasses")
-    require(isinstance(cases, list), "matrix failureClasses must be a list")
-    expected_ids = {
-        "protocol_truncation", "wall_clock_timeout", "cpu_limit_kill",
-        "memory_limit_kill", "pre_start_cancellation",
-    }
-    by_id = {item.get("id"): item for item in cases if isinstance(item, dict)}
-    require(set(by_id) == expected_ids, "matrix failure class set drift")
-    for class_id in expected_ids:
-        item = by_id[class_id]
-        require(item.get("result") == "PASS", f"matrix class not PASS: {class_id}")
-        for assertion in (
-            "expectedErrorMatched", "spoolResidueAbsent", "sameSpoolReusable",
-            "replacementSealValid", "independentVerificationMatched",
-        ):
-            require(item.get(assertion) is True,
-                    f"matrix assertion failed for {class_id}: {assertion}")
+    # The canonical validator owns result/contract semantics. The reconciler must
+    # not maintain a weaker parallel interpretation of exact-source evidence.
+    validate_authority_chain(source_sha)
 
+    original_status_bytes = STATUS_PATH.read_bytes()
     status = load(STATUS_PATH)
     require(status.get("productionDecision") == "NO_GO",
             "parser matrix cannot change production decision")
@@ -159,6 +169,9 @@ def main() -> int:
             "production decision changed unexpectedly")
 
     if not changed:
+        # A no-op reconcile must still prove that current derived authority is
+        # acceptable to both the scenario validator and aggregate operability.
+        validate_authority_chain(source_sha)
         print("Parser restart matrix authority already reconciled")
         return 0
 
@@ -167,6 +180,12 @@ def main() -> int:
         json.dumps(status, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
+    try:
+        validate_authority_chain(source_sha)
+    except Exception:
+        STATUS_PATH.write_bytes(original_status_bytes)
+        raise
+
     print("Registered exact-source parser restart matrix and preserved canonical stronger chaos authority")
     return 0
 
