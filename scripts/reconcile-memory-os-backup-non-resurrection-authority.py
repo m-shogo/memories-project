@@ -12,14 +12,22 @@ from typing import Any
 from memory_os_backup_restore_blockers import require_canonical_gaps
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
-GEN_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
-TYPED_WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
-GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
-VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
-STATUS = ROOT / "contracts/operations/production-operability-status.json"
+CONTRACT_REL = Path("contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json")
+REGISTRY_REL = Path("contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json")
+GEN_REGISTRY_REL = Path("contracts/operations/backup-restore-generation-evidence-registry.v1.json")
+TYPED_WRITER_REL = Path("scripts/register-memory-os-backup-restore-non-resurrection-evidence.py")
+GEN_WRITER_REL = Path("scripts/register-memory-os-backup-restore-generation-evidence.py")
+VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-non-resurrection-admission.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+CONTRACT = ROOT / CONTRACT_REL
+REGISTRY = ROOT / REGISTRY_REL
+GEN_REGISTRY = ROOT / GEN_REGISTRY_REL
+TYPED_WRITER = ROOT / TYPED_WRITER_REL
+GEN_WRITER = ROOT / GEN_WRITER_REL
+VALIDATOR = ROOT / VALIDATOR_REL
+OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
+STATUS = ROOT / STATUS_REL
 EVIDENCE_PREFIX = "production-equivalent non-resurrection admission overlay is typed and fail-closed:"
 LOCAL_APPLE_EVIDENCE = "exact-source local Apple replay-guard logical restore proves synthetic live nonce and authorization-code replay records remain consumed after restore and the identical pair is rejected without durable replay mutation; this remains same-cluster synthetic local evidence and is not PITR or production-equivalent proof"
 REFS = (
@@ -54,6 +62,40 @@ def require_repo_file(path: Path, message: str) -> Path:
     require((ROOT / relative).is_file(), message)
     return relative
 
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+def enforce_runtime_authorities() -> None:
+    canonical_contract = CONTRACT == ROOT / CONTRACT_REL
+    canonical_registry = REGISTRY == ROOT / REGISTRY_REL
+    canonical_generation = GEN_REGISTRY == ROOT / GEN_REGISTRY_REL
+    canonical_status = STATUS == ROOT / STATUS_REL
+    require(
+        len({canonical_contract, canonical_registry, canonical_generation, canonical_status}) == 1,
+        "typed reconcile fixture boundary must replace typed registry, generation registry, contract and status together",
+    )
+    require_exact_repo_file(TYPED_WRITER, TYPED_WRITER_REL, "typed non-resurrection writer")
+    require_exact_repo_file(GEN_WRITER, GEN_WRITER_REL, "generation evidence writer")
+    if canonical_contract:
+        for path, expected, field in (
+            (CONTRACT, CONTRACT_REL, "typed non-resurrection contract"),
+            (REGISTRY, REGISTRY_REL, "typed non-resurrection registry"),
+            (GEN_REGISTRY, GEN_REGISTRY_REL, "generation evidence registry"),
+            (VALIDATOR, VALIDATOR_REL, "typed non-resurrection validator"),
+            (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+            (STATUS, STATUS_REL, "production operability status"),
+        ):
+            require_exact_repo_file(path, expected, field)
+
 def read_text(path: Path) -> str:
     relative = repo_relative(path)
     try:
@@ -78,7 +120,12 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 def load_module(path: Path, name: str):
-    relative = require_repo_file(path, f"module missing: {path.name}")
+    if path == TYPED_WRITER:
+        relative = require_exact_repo_file(path, TYPED_WRITER_REL, "typed non-resurrection writer")
+    elif path == GEN_WRITER:
+        relative = require_exact_repo_file(path, GEN_WRITER_REL, "generation evidence writer")
+    else:
+        relative = require_repo_file(path, f"module missing: {path.name}")
     spec = importlib.util.spec_from_file_location(name, path)
     require(spec is not None and spec.loader is not None, f"cannot load {relative}")
     try:
@@ -92,7 +139,23 @@ def append_once(values: list[Any], value: str) -> None:
     if value not in values:
         values.append(value)
 
+def run_post_validator(path: Path, expected_relative: Path, label: str) -> None:
+    if CONTRACT == ROOT / CONTRACT_REL:
+        require_exact_repo_file(path, expected_relative, label)
+    else:
+        require_repo_file(path, f"{label} missing")
+    completed = subprocess.run(
+        [sys.executable, str(path)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    require(completed.returncode == 0, f"{label} failed:\n{completed.stdout[-7000:]}{completed.stderr[-7000:]}")
+
 def main() -> int:
+    enforce_runtime_authorities()
     original_text = {
         REGISTRY: read_text(REGISTRY),
         GEN_REGISTRY: read_text(GEN_REGISTRY),
@@ -106,9 +169,6 @@ def main() -> int:
     typed_writer = load_module(TYPED_WRITER, "memory_os_non_resurrection_writer_reconcile")
     generation_writer = load_module(GEN_WRITER, "memory_os_generation_recovery_writer_reconcile")
 
-    # Reconciliation may refresh derived contract/status projections, but it
-    # must never repair a corrupt append-only evidence registry. Reuse the same
-    # writer admission validators before any derived field is rewritten.
     try:
         typed_writer.validate_registry_for_append(registry)
         generation_writer.validate_registry_for_append(generation_registry)
@@ -130,10 +190,7 @@ def main() -> int:
         if row.get("evidenceComplete") is True
         and generation_writer.typed_non_resurrection_covered(row.get("generationEvidenceId"))
     }
-    require(
-        declared_complete_typed_ids == validated_complete_typed_ids,
-        "typed registry evidenceComplete includes record that fails canonical typed validation",
-    )
+    require(declared_complete_typed_ids == validated_complete_typed_ids, "typed registry evidenceComplete includes record that fails canonical typed validation")
     complete_typed_ids = validated_complete_typed_ids
     covered_base_ids = base_candidate_ids & complete_typed_ids
     pending_typed_ids = base_candidate_ids - complete_typed_ids
@@ -194,8 +251,6 @@ def main() -> int:
         require_repo_file(ROOT / ref, f"non-resurrection authority evidence ref missing: {ref}")
         append_once(refs, ref)
 
-    require_repo_file(VALIDATOR, "typed non-resurrection validator missing")
-    require_repo_file(OPERABILITY_VALIDATOR, "operability validator missing")
     rendered = {
         REGISTRY: json.dumps(registry, indent=2, ensure_ascii=False) + "\n",
         GEN_REGISTRY: json.dumps(generation_registry, indent=2, ensure_ascii=False) + "\n",
@@ -205,16 +260,15 @@ def main() -> int:
     try:
         for path, text in rendered.items():
             write_text(path, text)
-        completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-        require(completed.returncode == 0, f"typed non-resurrection validator failed:\n{completed.stdout[-7000:]}{completed.stderr[-7000:]}")
-        completed = subprocess.run([sys.executable, str(OPERABILITY_VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-        require(completed.returncode == 0, f"operability validator failed:\n{completed.stdout[-7000:]}{completed.stderr[-7000:]}")
+        run_post_validator(VALIDATOR, VALIDATOR_REL, "typed non-resurrection validator")
+        run_post_validator(OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator")
     except Exception:
         for path, text in original_text.items():
             write_text(path, text)
         raise
 
     print("Memory OS backup/restore typed non-resurrection authority reconciliation PASS")
+    print("canonical typed/generation writer and validator authorities enforced: true")
     print(f"pre-overlay eligible generation records: {len(base_candidate_ids)}")
     print(f"final production-equivalent recovery candidates: {len(final_candidate_ids)}")
     print(f"pending typed coverage: {len(pending_typed_ids)}")
