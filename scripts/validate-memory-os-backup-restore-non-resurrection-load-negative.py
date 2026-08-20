@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
-"""Prove typed non-resurrection authority loading fails closed on unreadable or escaped inputs."""
+"""Prove typed non-resurrection authority loading and reconcile rollback fail closed."""
 
 from __future__ import annotations
 
 import importlib.util
+import shutil
 import tempfile
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
+RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
 TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 
 
@@ -40,6 +42,46 @@ def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[
     except Exception as exc:
         raise Fail(f"{name} leaked non-domain exception: {type(exc).__name__}: {exc}") from exc
     raise Fail(f"negative case unexpectedly accepted: {name}")
+
+
+def prove_reconcile_operability_rollback() -> None:
+    require(RECONCILER.is_file(), "typed non-resurrection reconciler missing")
+    reconciler = load_module(RECONCILER, "memory_os_typed_non_resurrection_reconcile_rollback_negative")
+    with tempfile.TemporaryDirectory(prefix=".tmp-typed-reconcile-rollback-", dir=TMP_PARENT) as tmpdir:
+        tmp = Path(tmpdir)
+        paths: dict[str, Path] = {}
+        for attr in ("REGISTRY", "GEN_REGISTRY", "CONTRACT", "STATUS"):
+            source = getattr(reconciler, attr)
+            target = tmp / source.name
+            shutil.copyfile(source, target)
+            paths[attr] = target
+
+        pass_validator = tmp / "pass-validator.py"
+        pass_validator.write_text("#!/usr/bin/env python3\nraise SystemExit(0)\n", encoding="utf-8")
+        fail_validator = tmp / "fail-validator.py"
+        fail_validator.write_text("#!/usr/bin/env python3\nraise SystemExit(47)\n", encoding="utf-8")
+
+        originals: dict[str, Any] = {attr: getattr(reconciler, attr) for attr in paths}
+        originals["VALIDATOR"] = reconciler.VALIDATOR
+        originals["OPERABILITY_VALIDATOR"] = reconciler.OPERABILITY_VALIDATOR
+        before = {attr: path.read_bytes() for attr, path in paths.items()}
+        try:
+            for attr, path in paths.items():
+                setattr(reconciler, attr, path)
+            reconciler.VALIDATOR = pass_validator
+            reconciler.OPERABILITY_VALIDATOR = fail_validator
+            expect_domain_fail(
+                "typed recovery operability aggregate failure",
+                reconciler.main,
+                reconciler.Fail,
+            )
+            for attr, path in paths.items():
+                require(path.read_bytes() == before[attr], f"{attr} drift after operability rollback")
+        finally:
+            for attr, value in originals.items():
+                setattr(reconciler, attr, value)
+
+    print("PASS rollback: typed recovery authority restored byte-for-byte after operability failure")
 
 
 def main() -> int:
@@ -129,9 +171,12 @@ def main() -> int:
                     writer.Fail,
                 )
 
+    prove_reconcile_operability_rollback()
+
     print("Typed unreadable/escaped-authority negative suite PASS")
     print("canonical typed contract/registry/generation registry containment: enforced")
     print("typed append lock authority substitution accepted: false")
+    print("typed operability failure leaves partial authority: false")
     return 0
 
 
