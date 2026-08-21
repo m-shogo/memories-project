@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,11 @@ from memory_os_backup_restore_blockers import require_canonical_gaps
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/backup-restore-contract.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+BACKUP_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-backup-restore.py"
+LOCAL_LOGICAL_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-local-logical-restore.py"
+LOCAL_OBJECT_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-local-object-version-restore.py"
+OPERABILITY_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-operability.py"
+ENTRY_DOCS_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-entry-docs.py"
 
 NEW_EXISTING = (
     "binding backup, PITR, object-version retention and isolated-restore policy with object versioning explicitly separated from backup completion",
@@ -59,7 +65,52 @@ def append_once(items: list[Any], value: str) -> bool:
     return True
 
 
+def validator_paths() -> tuple[Path, ...]:
+    return (
+        BACKUP_VALIDATOR_PATH,
+        LOCAL_LOGICAL_VALIDATOR_PATH,
+        LOCAL_OBJECT_VALIDATOR_PATH,
+        OPERABILITY_VALIDATOR_PATH,
+        ENTRY_DOCS_VALIDATOR_PATH,
+    )
+
+
+def validate_runtime_authority() -> None:
+    expected = {
+        BACKUP_VALIDATOR_PATH: ROOT / "scripts/validate-memory-os-backup-restore.py",
+        LOCAL_LOGICAL_VALIDATOR_PATH: ROOT / "scripts/validate-memory-os-local-logical-restore.py",
+        LOCAL_OBJECT_VALIDATOR_PATH: ROOT / "scripts/validate-memory-os-local-object-version-restore.py",
+        OPERABILITY_VALIDATOR_PATH: ROOT / "scripts/validate-memory-os-operability.py",
+        ENTRY_DOCS_VALIDATOR_PATH: ROOT / "scripts/validate-memory-os-entry-docs.py",
+    }
+    require(len(expected) == 5, "canonical backup validator authority set drift")
+    for path, canonical in expected.items():
+        require(path == canonical, f"canonical validator identity drift: {canonical.name}")
+        require(path.is_file(), f"canonical validator missing: {canonical.name}")
+        require(not path.is_symlink(), f"canonical validator must not be a symlink: {canonical.name}")
+        try:
+            require(path.resolve(strict=True) == canonical,
+                    f"canonical validator path drift: {canonical.name}")
+        except OSError as exc:
+            raise ReconcileFailure(f"cannot resolve canonical validator: {canonical.name}") from exc
+
+
+def run_validator(path: Path) -> None:
+    completed = subprocess.run([sys.executable, str(path)], cwd=ROOT, check=False)
+    require(
+        type(completed.returncode) is int and completed.returncode == 0,
+        f"canonical validator rejected backup/restore policy authority: {path.name}",
+    )
+
+
+def validate_current_authority() -> None:
+    validate_runtime_authority()
+    for path in validator_paths():
+        run_validator(path)
+
+
 def main() -> int:
+    validate_current_authority()
     contract = load(CONTRACT_PATH)
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "backup readiness must be an object")
@@ -126,10 +177,17 @@ def main() -> int:
         return 0
 
     status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
+    original_status = STATUS_PATH.read_bytes()
     STATUS_PATH.write_text(
         json.dumps(status, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
+    try:
+        for path in validator_paths():
+            run_validator(path)
+    except Exception:
+        STATUS_PATH.write_bytes(original_status)
+        raise
     print("Registered backup/restore policy foundations; canonical production blockers unchanged")
     return 0
 
