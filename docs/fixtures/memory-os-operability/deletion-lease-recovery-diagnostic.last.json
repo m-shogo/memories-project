@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "deletion-lease-recovery",
+  "sourceCommitSha": "08d49786c9447ef4513a91fa75eb20e3870ee751",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "STAGE: python-and-contract\nTraceback (most recent call last):\n  File \"/home/runner/work/memories-project/memories-project/scripts/reconcile-memory-os-deletion-lease-recovery.py\", line 36, in _require_exact_path\n    actual_resolved = actual.resolve(strict=True)\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/pathlib.py\", line 1240, in resolve\n    s = self._flavour.realpath(self, strict=strict)\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen posixpath>\", line 424, in realpath\n  File \"<frozen posixpath>\", line 468, in _joinrealpath\nFileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/memories-project/memories-project/docs/fixtures/memory-os-operability/deletion-lease-recovery-results.sample.v1.json'\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-deletion-lease-recovery-reconcile-negative.py\", line 87, in <module>\n    raise SystemExit(main())\n                     ^^^^^^\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-deletion-lease-recovery-reconcile-negative.py\", line 77, in main\n    module.validate_authority_identity()\n  File \"/home/runner/work/memories-project/memories-project/scripts/reconcile-memory-os-deletion-lease-recovery.py\", line 50, in validate_authority_identity\n    _require_exact_path(\"lease recovery result\", RESULT_PATH, CANONICAL_RESULT_PATH)\n  File \"/home/runner/work/memories-project/memories-project/scripts/reconcile-memory-os-deletion-lease-recovery.py\", line 39, in _require_exact_path\n    raise ReconcileFailure(f\"{label} authority is unreadable\") from exc\nmemory_os_deletion_lease_recovery_reconciler.ReconcileFailure: lease recovery result authority is unreadable\n",
+  "containsSecrets": false,
+  "productionEvidence": false,
+  "productionEquivalentDependencies": false,
+  "actualProcessKillCovered": false,
+  "actualHostFailureCovered": false
+}
