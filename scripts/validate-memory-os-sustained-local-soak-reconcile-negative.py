@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove sustained-soak multi-authority reconcile rolls back on post-write validation failure."""
+"""Prove sustained-soak authority identity and multi-authority rollback are fail-closed."""
 
 from __future__ import annotations
 
@@ -19,17 +19,44 @@ def load_reconciler():
     return module
 
 
+def expect_authority_rejection(module, attr: str, replacement: Path) -> None:
+    original = getattr(module, attr)
+    setattr(module, attr, replacement)
+    try:
+        try:
+            module.enforce_runtime_authorities()
+        except module.Fail:
+            pass
+        else:
+            raise AssertionError(f"{attr} substitution must be rejected")
+    finally:
+        setattr(module, attr, original)
+
+
 def main() -> int:
     module = load_reconciler()
     paths = (module.CONTRACT_PATH, module.LOAD_PATH, module.STATUS_PATH)
     original = {path: path.read_bytes() for path in paths}
+
+    expect_authority_rejection(module, "CONTRACT_PATH", module.LOAD_PATH)
+    expect_authority_rejection(module, "LOAD_PATH", module.STATUS_PATH)
+    expect_authority_rejection(module, "STATUS_PATH", module.CONTRACT_PATH)
+    expect_authority_rejection(module, "SOAK_VALIDATOR", module.LOAD_VALIDATOR)
+    expect_authority_rejection(module, "OPERABILITY_VALIDATOR", module.SOAK_VALIDATOR)
+
+    for path in paths:
+        if path.read_bytes() != original[path]:
+            raise AssertionError(f"authority substitution changed canonical bytes: {path.relative_to(ROOT)}")
+
     observed_post_write_failure = False
+    real_run_validator = module.run_validator
 
     def controlled_validator(path: Path, label: str, *args: str) -> None:
         nonlocal observed_post_write_failure
         if label == "post-write operability validator":
             observed_post_write_failure = True
             raise module.Fail("synthetic post-write operability validation failure")
+        real_run_validator(path, label, *args)
 
     module.run_validator = controlled_validator
     try:
@@ -47,11 +74,12 @@ def main() -> int:
             if path.read_bytes() != original[path]:
                 raise AssertionError(f"reconcile rollback changed canonical authority: {path.relative_to(ROOT)}")
     finally:
+        module.run_validator = real_run_validator
         for path in paths:
             if path.read_bytes() != original[path]:
                 path.write_bytes(original[path])
 
-    print("PASS: sustained local soak reconcile rolls back all canonical authority after post-write validation failure")
+    print("PASS: sustained local soak authority identity and reconcile rollback are fail-closed")
     return 0
 
 
