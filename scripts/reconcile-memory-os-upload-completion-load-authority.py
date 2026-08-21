@@ -9,13 +9,20 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-PROOF_CONTRACT = ROOT / "contracts/operations/deletion-prefence-upload-completion-contract.v1.json"
-PROOF_RESULT = ROOT / "docs/fixtures/memory-os-operability/deletion-prefence-upload-completion-results.sample.v1.json"
-PROOF_VALIDATOR = ROOT / "scripts/validate-memory-os-deletion-prefence-upload-completion.py"
-LOAD_CONTRACT = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
-STATUS = ROOT / "contracts/operations/production-operability-status.json"
-LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+PROOF_CONTRACT_REL = Path("contracts/operations/deletion-prefence-upload-completion-contract.v1.json")
+PROOF_RESULT_REL = Path("docs/fixtures/memory-os-operability/deletion-prefence-upload-completion-results.sample.v1.json")
+PROOF_VALIDATOR_REL = Path("scripts/validate-memory-os-deletion-prefence-upload-completion.py")
+LOAD_CONTRACT_REL = Path("contracts/operations/load-test-scenario-contract.v1.json")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+LOAD_VALIDATOR_REL = Path("scripts/validate-memory-os-load.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+PROOF_CONTRACT = ROOT / PROOF_CONTRACT_REL
+PROOF_RESULT = ROOT / PROOF_RESULT_REL
+PROOF_VALIDATOR = ROOT / PROOF_VALIDATOR_REL
+LOAD_CONTRACT = ROOT / LOAD_CONTRACT_REL
+STATUS = ROOT / STATUS_REL
+LOAD_VALIDATOR = ROOT / LOAD_VALIDATOR_REL
+OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
 
 PROOF_REFS = [
     "contracts/operations/deletion-prefence-upload-completion-contract.v1.json",
@@ -33,6 +40,40 @@ EVIDENCE_TEXT = (
     "completion returns 401 with zero consumed authorizations or quarantine rows before worker erasure; the "
     "worker subsequently removes all 16 object versions and all owned database rows"
 )
+
+
+class ReconcileFailure(RuntimeError):
+    pass
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ReconcileFailure(message)
+
+
+def require_exact_repo_file(path: Path, expected_relative: Path, label: str) -> None:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise ReconcileFailure(f"{label} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{label} authority drift",
+    )
+
+
+def enforce_runtime_authorities() -> None:
+    for path, relative, label in (
+        (PROOF_CONTRACT, PROOF_CONTRACT_REL, "upload-completion proof contract"),
+        (PROOF_RESULT, PROOF_RESULT_REL, "upload-completion proof result"),
+        (PROOF_VALIDATOR, PROOF_VALIDATOR_REL, "upload-completion proof validator"),
+        (LOAD_CONTRACT, LOAD_CONTRACT_REL, "load contract"),
+        (STATUS, STATUS_REL, "production operability status"),
+        (LOAD_VALIDATOR, LOAD_VALIDATOR_REL, "load validator"),
+        (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+    ):
+        require_exact_repo_file(path, relative, label)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -56,6 +97,7 @@ def replace_exact(values: list[Any], old: str, new: str) -> None:
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     subprocess.run(["python", str(PROOF_VALIDATOR), "--require-result"], cwd=ROOT, check=True)
 
     proof_contract = load(PROOF_CONTRACT)
