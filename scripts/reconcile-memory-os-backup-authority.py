@@ -120,14 +120,15 @@ def append_all(items: list[str], values: tuple[str, ...]) -> None:
 
 
 def validate_runtime_authority() -> None:
-    for path, label in (
-        (BACKUP_VALIDATOR, "backup restore validator"),
-        (OPERABILITY_VALIDATOR, "operability validator"),
+    for path, expected, label in (
+        (BACKUP_VALIDATOR, ROOT / "scripts/validate-memory-os-backup-restore.py", "backup restore validator"),
+        (OPERABILITY_VALIDATOR, ROOT / "scripts/validate-memory-os-operability.py", "operability validator"),
     ):
+        require(path == expected, f"canonical {label} identity drift")
         require(path.is_file(), f"canonical {label} missing")
         require(not path.is_symlink(), f"canonical {label} must not be a symlink")
         try:
-            require(path.resolve(strict=True) == path, f"canonical {label} path drift")
+            require(path.resolve(strict=True) == expected, f"canonical {label} path drift")
         except OSError as exc:
             raise ReconcileFailure(f"cannot resolve canonical {label}") from exc
 
@@ -235,9 +236,6 @@ def normalize(status: dict[str, Any]) -> dict[str, Any]:
         gate["evidenceRefs"] = refs
     require(isinstance(refs, list), "OPS-P0-007 evidenceRefs must be a list")
 
-    # Local foundation reconciliation may add local evidence and normalize the
-    # partial-foundation status only. It has no authority to repair, replace,
-    # reorder, split, merge, remove, or append production blockers.
     gate["status"] = "PARTIAL_FOUNDATIONS_ONLY"
     append_all(existing, POLICY_EVIDENCE + LOGICAL_EVIDENCE + OBJECT_EVIDENCE)
     for ref in EVIDENCE_REFS:
