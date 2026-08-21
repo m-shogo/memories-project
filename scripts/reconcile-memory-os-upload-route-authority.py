@@ -133,6 +133,9 @@ class ReconcileFailure(RuntimeError):
     pass
 
 
+ROLLBACK_SNAPSHOT: dict[Path, bytes | None] | None = None
+
+
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise ReconcileFailure(message)
@@ -189,7 +192,28 @@ def current_authority_files() -> list[Path]:
     return files
 
 
+def snapshot_authority_files() -> None:
+    global ROLLBACK_SNAPSHOT
+    paths = set(current_authority_files()) | {OBSERVABILITY, SERVER, LIVE_TEST, ROUTE_TEST}
+    ROLLBACK_SNAPSHOT = {
+        path: path.read_bytes() if path.exists() else None
+        for path in paths
+    }
+
+
+def rollback_authority_files() -> None:
+    if ROLLBACK_SNAPSHOT is None:
+        return
+    for path, original in ROLLBACK_SNAPSHOT.items():
+        if original is None:
+            if path.exists():
+                path.unlink()
+            continue
+        path.write_bytes(original)
+
+
 def main() -> int:
+    snapshot_authority_files()
     changed: list[str] = []
 
     observability = read(OBSERVABILITY)
@@ -270,5 +294,9 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except ReconcileFailure as exc:
+        rollback_authority_files()
         print(f"UPLOAD ROUTE AUTHORITY RECONCILE FAILED: {exc}", file=sys.stderr)
         raise SystemExit(1)
+    except Exception:
+        rollback_authority_files()
+        raise
