@@ -12,9 +12,18 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT_PATH = ROOT / "contracts/operations/mixed-version-apply-contract.v1.json"
-RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json"
-STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+CANONICAL_CONTRACT_PATH = ROOT / "contracts/operations/mixed-version-apply-contract.v1.json"
+CANONICAL_RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json"
+CANONICAL_STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+CANONICAL_APPLY_VALIDATOR = ROOT / "scripts/validate-memory-os-mixed-version-apply.py"
+CANONICAL_VERSION_VALIDATOR = ROOT / "scripts/validate-memory-os-version-compatibility.py"
+CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CONTRACT_PATH = CANONICAL_CONTRACT_PATH
+RESULT_PATH = CANONICAL_RESULT_PATH
+STATUS_PATH = CANONICAL_STATUS_PATH
+APPLY_VALIDATOR = CANONICAL_APPLY_VALIDATOR
+VERSION_VALIDATOR = CANONICAL_VERSION_VALIDATOR
+OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 EXISTING = (
@@ -62,6 +71,29 @@ def require(condition: bool, message: str) -> None:
         raise ReconcileFailure(message)
 
 
+def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
+    require(path == canonical, f"{label} authority substitution")
+    require(canonical.is_file(), f"canonical {label} missing")
+    require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
+    try:
+        resolved = canonical.resolve(strict=True)
+    except OSError as exc:
+        raise ReconcileFailure(f"canonical {label} cannot be resolved") from exc
+    require(resolved == canonical, f"canonical {label} escaped repository path")
+
+
+def enforce_runtime_authorities() -> None:
+    for path, canonical, label in (
+        (CONTRACT_PATH, CANONICAL_CONTRACT_PATH, "mixed-version Apply contract"),
+        (RESULT_PATH, CANONICAL_RESULT_PATH, "mixed-version Apply result"),
+        (STATUS_PATH, CANONICAL_STATUS_PATH, "production status"),
+        (APPLY_VALIDATOR, CANONICAL_APPLY_VALIDATOR, "mixed-version Apply validator"),
+        (VERSION_VALIDATOR, CANONICAL_VERSION_VALIDATOR, "version compatibility validator"),
+        (OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, "operability validator"),
+    ):
+        require_exact_authority(path, canonical, label)
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -97,10 +129,32 @@ def append_once(items: list[Any], value: str) -> bool:
     return True
 
 
+def run_validator(path: Path, *args: str) -> None:
+    enforce_runtime_authorities()
+    completed = subprocess.run(
+        [sys.executable, str(path), *args],
+        cwd=ROOT,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    require(type(completed.returncode) is int and completed.returncode == 0,
+            f"canonical validator rejected authority: {path.relative_to(ROOT)}\n{completed.stdout[-4000:]}")
+
+
+def validate_authority_chain(current_sha: str, *, require_reconciled: bool) -> None:
+    args = ["--expected-commit-sha", current_sha]
+    if require_reconciled:
+        args.append("--require-reconciled")
+    run_validator(APPLY_VALIDATOR, *args)
+    run_validator(VERSION_VALIDATOR)
+    run_validator(OPERABILITY_VALIDATOR)
+
+
 def main() -> int:
+    enforce_runtime_authorities()
     result = load(RESULT_PATH)
-    require(result.get("schemaVersion") == "memory-os-mixed-version-apply-results.v1",
-            "mixed-version Apply result schema drift")
     current_sha = result.get("currentCommitSha")
     old_sha = result.get("oldBackendCommitSha")
     require(isinstance(current_sha, str) and SHA_RE.fullmatch(current_sha) is not None,
@@ -109,32 +163,22 @@ def main() -> int:
             "old result SHA invalid")
     require(is_ancestor(old_sha, current_sha) and is_ancestor(current_sha, "HEAD"),
             "mixed-version Apply source lineage invalid")
-    require(result.get("result") == "PASS" and result.get("integrityResult") == "PASS",
-            "mixed-version Apply result is not PASS")
-    environment = result.get("environment")
-    require(isinstance(environment, dict) and
-            environment.get("historicalCandidateOnly") is True and
-            environment.get("productionEvidence") is False and
-            environment.get("releaseCompatibilityEvidence") is False and
-            environment.get("containsSecrets") is False,
-            "mixed-version Apply evidence boundary drift")
+
+    # The canonical validator owns exact-source result, contract, privacy and
+    # historical-candidate semantics. Aggregate validators gate any projection.
+    validate_authority_chain(current_sha, require_reconciled=False)
+
+    contract = load(CONTRACT_PATH)
     assertions = result.get("assertions")
     require(isinstance(assertions, dict), "mixed-version Apply assertions missing")
     race_passed = assertions.get("concurrentOldCurrentClaimRacePassed") is True
     termination_passed = assertions.get("oldProcessTerminationRecoveryPassed") is True
-
-    contract = load(CONTRACT_PATH)
-    require(contract.get("oldBackendCommitSha") == old_sha,
-            "contract and result old backend differ")
     readiness = contract.get("readiness")
     refs = contract.get("evidenceRefs")
     require(isinstance(readiness, dict), "contract readiness missing")
     require(isinstance(refs, list), "contract evidenceRefs must be a list")
-    for field in (
-        "approvedReleasePairAvailable", "rollbackRehearsalExecuted", "productionReady",
-    ):
-        require(readiness.get(field) is False,
-                f"historical-candidate evidence cannot promote {field}")
+    for field in ("approvedReleasePairAvailable", "rollbackRehearsalExecuted", "productionReady"):
+        require(readiness.get(field) is False, f"historical-candidate evidence cannot promote {field}")
 
     contract_changed = False
     if readiness.get("exactSourcePassResultCommitted") is not True:
@@ -157,12 +201,9 @@ def main() -> int:
         contract_changed = append_once(refs, ref) or contract_changed
 
     status = load(STATUS_PATH)
-    require(status.get("productionDecision") == "NO_GO",
-            "mixed-version Apply evidence cannot change production decision")
-    gate = next((item for item in status.get("areas", [])
-                 if isinstance(item, dict) and item.get("id") == "OPS-P0-008"), None)
-    require(isinstance(gate, dict) and gate.get("status") == "PARTIAL",
-            "OPS-P0-008 must remain PARTIAL")
+    require(status.get("productionDecision") == "NO_GO", "mixed-version Apply evidence cannot change production decision")
+    gate = next((item for item in status.get("areas", []) if isinstance(item, dict) and item.get("id") == "OPS-P0-008"), None)
+    require(isinstance(gate, dict) and gate.get("status") == "PARTIAL", "OPS-P0-008 must remain PARTIAL")
     existing = gate.get("existingEvidence")
     missing = gate.get("missingEvidence")
     status_refs = gate.get("evidenceRefs")
@@ -195,20 +236,29 @@ def main() -> int:
         "approved in-progress termination": ("approved-release", "termination", "in-progress"),
         "rolling rollback": ("rolling", "rollback", "rollback-eligible"),
     }.items():
-        require(any(all(term in item for term in terms) for item in lowered),
-                f"required compatibility gap disappeared: {label}")
-    require(gate.get("status") == "PARTIAL" and
-            status.get("productionDecision") == "NO_GO",
+        require(any(all(term in item for term in terms) for item in lowered), f"required compatibility gap disappeared: {label}")
+    require(gate.get("status") == "PARTIAL" and status.get("productionDecision") == "NO_GO",
             "mixed-version Apply evidence changed readiness")
+
+    original_contract_bytes = CONTRACT_PATH.read_bytes()
+    original_status_bytes = STATUS_PATH.read_bytes()
+    if not contract_changed and not status_changed:
+        validate_authority_chain(current_sha, require_reconciled=True)
+        print("Mixed-version Apply authority already reconciled")
+        return 0
 
     if contract_changed:
         write(CONTRACT_PATH, contract)
     if status_changed:
         status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
         write(STATUS_PATH, status)
-    if not contract_changed and not status_changed:
-        print("Mixed-version Apply authority already reconciled")
-        return 0
+    try:
+        validate_authority_chain(current_sha, require_reconciled=True)
+    except Exception:
+        CONTRACT_PATH.write_bytes(original_contract_bytes)
+        STATUS_PATH.write_bytes(original_status_bytes)
+        raise
+
     print("Registered mixed-version Apply evidence; OPS-P0-008 remains PARTIAL")
     return 0
 
