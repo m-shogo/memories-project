@@ -12,6 +12,7 @@ on:
       - "contracts/operations/parser-restart-matrix-contract.v1.json"
       - "contracts/operations/parser-inflight-cancellation-contract.v1.json"
       - "contracts/operations/database-commit-outage-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "services/import-api/internal/httpserver/interruption_drill_test.go"
       - "services/import-api/internal/parsersup/supervisor_linux.go"
       - "services/import-api/internal/parsersup/worker.go"
@@ -21,9 +22,20 @@ on:
       - "services/import-api/internal/importflow/object_outage_drill_linux_test.go"
       - "services/import-api/internal/importflow/database_outage_drill_linux_test.go"
       - "scripts/validate-memory-os-chaos-failure-drills-v2.py"
+      - "scripts/validate-memory-os-chaos-failure-drills-v2-reconcile-negative.py"
       - "scripts/validate-memory-os-parser-restart-matrix.py"
+      - "scripts/validate-memory-os-parser-restart-reconcile-negative.py"
       - "scripts/validate-memory-os-parser-inflight-cancellation.py"
+      - "scripts/validate-memory-os-parser-inflight-cancellation-reconcile-negative.py"
       - "scripts/validate-memory-os-database-commit-outage.py"
+      - "scripts/validate-memory-os-database-commit-outage-reconcile-negative.py"
+      - "scripts/validate-memory-os-operability.py"
+      - "scripts/reconcile-memory-os-chaos-failure-drills-v2.py"
+      - "scripts/reconcile-memory-os-parser-restart-matrix.py"
+      - "scripts/reconcile-memory-os-parser-inflight-cancellation.py"
+      - "scripts/reconcile-memory-os-database-commit-outage.py"
+      - "scripts/reconcile-memory-os-chaos-authority.py"
+      - "scripts/reconcile-memory-os-chaos-inflight-overlay.py"
   push:
     branches:
       - so
@@ -37,6 +49,7 @@ on:
       - "contracts/operations/parser-restart-matrix-contract.v1.json"
       - "contracts/operations/parser-inflight-cancellation-contract.v1.json"
       - "contracts/operations/database-commit-outage-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "services/import-api/internal/httpserver/interruption_drill_test.go"
       - "services/import-api/internal/parsersup/supervisor_linux.go"
       - "services/import-api/internal/parsersup/worker.go"
@@ -46,9 +59,20 @@ on:
       - "services/import-api/internal/importflow/object_outage_drill_linux_test.go"
       - "services/import-api/internal/importflow/database_outage_drill_linux_test.go"
       - "scripts/validate-memory-os-chaos-failure-drills-v2.py"
+      - "scripts/validate-memory-os-chaos-failure-drills-v2-reconcile-negative.py"
       - "scripts/validate-memory-os-parser-restart-matrix.py"
+      - "scripts/validate-memory-os-parser-restart-reconcile-negative.py"
       - "scripts/validate-memory-os-parser-inflight-cancellation.py"
+      - "scripts/validate-memory-os-parser-inflight-cancellation-reconcile-negative.py"
       - "scripts/validate-memory-os-database-commit-outage.py"
+      - "scripts/validate-memory-os-database-commit-outage-reconcile-negative.py"
+      - "scripts/validate-memory-os-operability.py"
+      - "scripts/reconcile-memory-os-chaos-failure-drills-v2.py"
+      - "scripts/reconcile-memory-os-parser-restart-matrix.py"
+      - "scripts/reconcile-memory-os-parser-inflight-cancellation.py"
+      - "scripts/reconcile-memory-os-database-commit-outage.py"
+      - "scripts/reconcile-memory-os-chaos-authority.py"
+      - "scripts/reconcile-memory-os-chaos-inflight-overlay.py"
   workflow_dispatch:
 
 permissions:
@@ -102,13 +126,28 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Validate contracts and formatting
+      - name: Validate contracts, negative suites and formatting
         run: |
           python -m py_compile \
             scripts/validate-memory-os-chaos-failure-drills-v2.py \
+            scripts/validate-memory-os-chaos-failure-drills-v2-reconcile-negative.py \
             scripts/validate-memory-os-parser-restart-matrix.py \
+            scripts/validate-memory-os-parser-restart-reconcile-negative.py \
             scripts/validate-memory-os-parser-inflight-cancellation.py \
-            scripts/validate-memory-os-database-commit-outage.py
+            scripts/validate-memory-os-parser-inflight-cancellation-reconcile-negative.py \
+            scripts/validate-memory-os-database-commit-outage.py \
+            scripts/validate-memory-os-database-commit-outage-reconcile-negative.py \
+            scripts/validate-memory-os-operability.py \
+            scripts/reconcile-memory-os-chaos-failure-drills-v2.py \
+            scripts/reconcile-memory-os-parser-restart-matrix.py \
+            scripts/reconcile-memory-os-parser-inflight-cancellation.py \
+            scripts/reconcile-memory-os-database-commit-outage.py \
+            scripts/reconcile-memory-os-chaos-authority.py \
+            scripts/reconcile-memory-os-chaos-inflight-overlay.py
+          python scripts/validate-memory-os-chaos-failure-drills-v2-reconcile-negative.py
+          python scripts/validate-memory-os-parser-restart-reconcile-negative.py
+          python scripts/validate-memory-os-parser-inflight-cancellation-reconcile-negative.py
+          python scripts/validate-memory-os-database-commit-outage-reconcile-negative.py
           test -z "$(gofmt -l \
             services/import-api/internal/httpserver/interruption_drill_test.go \
             services/import-api/internal/parsersup/supervisor_linux.go \
@@ -122,6 +161,16 @@ jobs:
           python scripts/validate-memory-os-parser-restart-matrix.py
           python scripts/validate-memory-os-parser-inflight-cancellation.py
           python scripts/validate-memory-os-database-commit-outage.py
+          python scripts/reconcile-memory-os-chaos-failure-drills-v2.py
+          python scripts/reconcile-memory-os-parser-restart-matrix.py
+          python scripts/reconcile-memory-os-parser-inflight-cancellation.py
+          python scripts/reconcile-memory-os-database-commit-outage.py
+          python scripts/validate-memory-os-chaos-failure-drills-v2.py
+          python scripts/validate-memory-os-parser-restart-matrix.py
+          python scripts/validate-memory-os-parser-inflight-cancellation.py
+          python scripts/validate-memory-os-database-commit-outage.py
+          python scripts/validate-memory-os-operability.py
+          git diff --exit-code -- contracts/operations/production-operability-status.json
 
       - name: Execute current recovery drills
         working-directory: services/import-api
