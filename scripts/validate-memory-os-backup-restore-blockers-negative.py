@@ -100,6 +100,50 @@ def validate_coherent_status(module, status: dict[str, Any]) -> None:
     module.normalized(copy.deepcopy(status))
 
 
+def validate_normalizer_transaction(module) -> None:
+    original_bytes = module.STATUS_PATH.read_bytes()
+    real_normalize = module.normalize
+    real_run_validator = module.run_validator
+    calls: list[Path] = []
+
+    def fake_normalize(status: dict[str, Any]) -> dict[str, Any]:
+        candidate = copy.deepcopy(status)
+        area = next(
+            row for row in candidate["areas"]
+            if isinstance(row, dict) and row.get("id") == "OPS-P0-007"
+        )
+        existing = area.get("existingEvidence")
+        require(isinstance(existing, list), "OPS-P0-007 existingEvidence missing in transaction fixture")
+        existing.append("synthetic local-only rollback sentinel")
+        return candidate
+
+    def fake_run_validator(path: Path) -> None:
+        calls.append(path)
+        if path == module.OPERABILITY_VALIDATOR:
+            raise module.ReconcileFailure("synthetic post-write operability rejection")
+
+    module.normalize = fake_normalize
+    module.run_validator = fake_run_validator
+    try:
+        expect_rejected(
+            "canonical normalizer rolls back after post-write operability rejection",
+            module.main,
+        )
+        require(
+            calls == [module.BACKUP_VALIDATOR, module.OPERABILITY_VALIDATOR],
+            "canonical normalizer validator transaction order drift",
+        )
+        require(
+            module.STATUS_PATH.read_bytes() == original_bytes,
+            "canonical normalizer did not roll back production status byte-for-byte",
+        )
+    finally:
+        module.normalize = real_normalize
+        module.run_validator = real_run_validator
+        if module.STATUS_PATH.read_bytes() != original_bytes:
+            module.STATUS_PATH.write_bytes(original_bytes)
+
+
 def main() -> int:
     module = load_module(
         VALIDATOR,
@@ -124,6 +168,7 @@ def main() -> int:
     validate_normalizer_status(normalizer, baseline)
     validate_semantic_status(semantic, baseline)
     validate_coherent_status(coherent, baseline)
+    validate_normalizer_transaction(normalizer)
     print("PASS baseline: canonical six OPS-P0-007 production blockers")
 
     extra = status_with_mutation(
@@ -235,6 +280,7 @@ def main() -> int:
     print("Memory OS backup/restore canonical blocker negative suite PASS")
     print("canonical blocker count: 6")
     print("canonical normalizer repair behavior: disabled")
+    print("canonical normalizer post-write rollback: enforced")
     print("semantic authority repair behavior: disabled")
     print("coherent restore blocker repair behavior: disabled")
     print("production evidence: false")
