@@ -14,6 +14,7 @@ from typing import Any
 from memory_os_backup_restore_blockers import require_canonical_gaps
 
 ROOT = Path(__file__).resolve().parents[1]
+ROOT_REAL = ROOT.resolve()
 CONTRACT = ROOT / "contracts/operations/local-apple-replay-restore-contract.v1.json"
 MIGRATION = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
 RESULT = ROOT / "docs/fixtures/memory-os-operability/local-apple-replay-restore-results.sample.v1.json"
@@ -36,6 +37,27 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def require_repo_regular_file(path: Path, label: str) -> None:
+    try:
+        relative = path.relative_to(ROOT)
+    except ValueError as exc:
+        raise Fail(f"{label} escapes repository root") from exc
+    require(relative != Path("."), f"{label} cannot resolve to repository root")
+    current = ROOT
+    for part in relative.parts:
+        current = current / part
+        require(not current.is_symlink(), f"{label} uses symlink component: {relative.as_posix()}")
+    try:
+        resolved = path.resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError) as exc:
+        raise Fail(f"{label} is missing or unreadable: {relative.as_posix()}") from exc
+    try:
+        resolved.relative_to(ROOT_REAL)
+    except ValueError as exc:
+        raise Fail(f"{label} resolves outside repository root: {relative.as_posix()}") from exc
+    require(resolved.is_file(), f"{label} must be a regular file: {relative.as_posix()}")
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -102,6 +124,13 @@ def validate_result(result: dict[str, Any], expected_sha: str | None, migration_
 
 
 def main() -> int:
+    for path, label in (
+        (CONTRACT, "Apple replay restore contract"),
+        (MIGRATION, "migration lifecycle authority"),
+        (STATUS, "production operability status"),
+    ):
+        require_repo_regular_file(path, label)
+
     contract = load(CONTRACT)
     migration = load(MIGRATION)
     require(contract.get("schemaVersion") == "memory-os-local-apple-replay-restore.v1", "contract schema drift")
@@ -125,7 +154,7 @@ def main() -> int:
     refs = contract.get("evidenceRefs")
     require(isinstance(refs, list) and set(refs) == EXPECTED_REFS and len(refs) == len(set(refs)), "evidenceRefs drift")
     for ref in refs:
-        require((ROOT / ref).is_file(), f"artifact missing: {ref}")
+        require_repo_regular_file(ROOT / ref, f"Apple replay restore evidence ref {ref}")
     runner = (ROOT / contract["runner"]).read_text(encoding="utf-8")
     for snippet in (
         "consume_apple_replay", "memory_auth_runtime", "source live replay row count must be two",
@@ -138,7 +167,7 @@ def main() -> int:
     require(isinstance(migrations, list) and migrations, "migration sequence missing")
     migration_count = len(migrations)
     for filename in migrations:
-        require((ROOT / "infra/postgresql/security" / filename).is_file(), f"migration missing: {filename}")
+        require_repo_regular_file(ROOT / "infra/postgresql/security" / filename, f"migration {filename}")
 
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "readiness missing")
@@ -157,6 +186,7 @@ def main() -> int:
     require(readiness.get("localReplayGuardRestoreProven") is result_present,
             "readiness localReplayGuardRestoreProven does not match committed PASS evidence presence")
     if result_present:
+        require_repo_regular_file(RESULT, "Apple replay restore result")
         validate_result(load(RESULT), expected_sha, migration_count)
 
     status = load(STATUS)
