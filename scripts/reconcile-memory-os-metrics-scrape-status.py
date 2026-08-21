@@ -11,10 +11,14 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
-CONTRACT_PATH = ROOT / "contracts/operations/metrics-scrape-contract.v1.json"
-SCRAPE_VALIDATOR = ROOT / "scripts/validate-memory-os-metrics-scrape.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CANONICAL_STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+CANONICAL_CONTRACT_PATH = ROOT / "contracts/operations/metrics-scrape-contract.v1.json"
+CANONICAL_SCRAPE_VALIDATOR = ROOT / "scripts/validate-memory-os-metrics-scrape.py"
+CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+STATUS_PATH = CANONICAL_STATUS_PATH
+CONTRACT_PATH = CANONICAL_CONTRACT_PATH
+SCRAPE_VALIDATOR = CANONICAL_SCRAPE_VALIDATOR
+OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
 
 OLD_MISSING = "Prometheus/OTel exporter and an exposed scrape endpoint"
 NEW_EXISTING = (
@@ -47,6 +51,27 @@ def require(condition: bool, message: str) -> None:
         raise ReconcileFailure(message)
 
 
+def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
+    require(path == canonical, f"{label} authority drift")
+    require(canonical.is_file(), f"canonical {label} missing")
+    require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
+    try:
+        resolved = canonical.resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError) as exc:
+        raise ReconcileFailure(f"canonical {label} cannot be resolved") from exc
+    require(resolved == canonical, f"canonical {label} escaped repository path")
+
+
+def enforce_runtime_authorities() -> None:
+    for path, canonical, label in (
+        (STATUS_PATH, CANONICAL_STATUS_PATH, "production operability status"),
+        (CONTRACT_PATH, CANONICAL_CONTRACT_PATH, "metrics scrape contract"),
+        (SCRAPE_VALIDATOR, CANONICAL_SCRAPE_VALIDATOR, "metrics scrape validator"),
+        (OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, "operability validator"),
+    ):
+        require_exact_authority(path, canonical, label)
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -59,6 +84,7 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_validator(path: Path, name: str):
+    enforce_runtime_authorities()
     spec = importlib.util.spec_from_file_location(name, path)
     require(spec is not None and spec.loader is not None, f"cannot load validator: {path.relative_to(ROOT)}")
     module = importlib.util.module_from_spec(spec)
@@ -67,6 +93,7 @@ def load_validator(path: Path, name: str):
 
 
 def require_validator_success(path: Path, name: str) -> None:
+    enforce_runtime_authorities()
     result = load_validator(path, name).main()
     require(
         not isinstance(result, bool) and isinstance(result, int) and result == 0,
@@ -80,6 +107,7 @@ def validate_written_authority() -> None:
 
 
 def write_transactionally(status: dict[str, Any]) -> None:
+    enforce_runtime_authorities()
     original = STATUS_PATH.read_bytes()
     STATUS_PATH.write_text(
         json.dumps(status, indent=2, ensure_ascii=False) + "\n",
@@ -100,6 +128,7 @@ def has_gap(missing: list[Any], aliases: tuple[str, ...]) -> bool:
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     validate_written_authority()
 
     contract = load(CONTRACT_PATH)
@@ -172,6 +201,7 @@ def main() -> int:
             "production decision changed unexpectedly")
 
     if not changed:
+        validate_written_authority()
         print("Metrics scrape status already reconciled")
         return 0
 
