@@ -72,6 +72,21 @@ def run_identity_case(
     require(STATUS.read_bytes() == original_status, f"{name}: status changed after authority rejection")
 
 
+def run_validator_order_case(name: str, module: ModuleType, expected: list[Path]) -> None:
+    original = module.require_validator_success
+    calls: list[Path] = []
+
+    def record(path: Path, _module_name: str) -> None:
+        calls.append(path)
+
+    module.require_validator_success = record
+    try:
+        module.validate_written_authority()
+    finally:
+        module.require_validator_success = original
+    require(calls == expected, f"{name}: validator order drift: {calls} != {expected}")
+
+
 def run_case(name: str, module: ModuleType) -> None:
     original_metrics = METRICS.read_bytes()
     original_status = STATUS.read_bytes()
@@ -196,6 +211,27 @@ def main() -> int:
     )
 
     run_identity_case(
+        "primary",
+        primary,
+        (
+            ("METRICS_PATH", ROOT / "README.md", "metrics contract authority drift"),
+            ("SCRAPE_PATH", ROOT / "README.md", "metrics scrape contract authority drift"),
+            ("SCRAPE_VALIDATOR", operations.CANONICAL_OPERATIONS_VALIDATOR, "metrics scrape validator authority drift"),
+            ("METRICS_VALIDATOR", operations.CANONICAL_OPERATIONS_VALIDATOR, "metrics validator authority drift"),
+            ("OPERABILITY_VALIDATOR", operations.CANONICAL_OPERATIONS_VALIDATOR, "operability validator authority drift"),
+        ),
+    )
+    run_identity_case(
+        "scrape",
+        scrape,
+        (
+            ("STATUS_PATH", ROOT / "SECURITY.md", "production operability status authority drift"),
+            ("CONTRACT_PATH", ROOT / "README.md", "metrics scrape contract authority drift"),
+            ("SCRAPE_VALIDATOR", operations.CANONICAL_OPERATIONS_VALIDATOR, "metrics scrape validator authority drift"),
+            ("OPERABILITY_VALIDATOR", operations.CANONICAL_OPERATIONS_VALIDATOR, "operability validator authority drift"),
+        ),
+    )
+    run_identity_case(
         "operations",
         operations,
         (
@@ -221,13 +257,23 @@ def main() -> int:
         ),
     )
 
+    run_validator_order_case(
+        "primary",
+        primary,
+        [primary.METRICS_VALIDATOR, primary.SCRAPE_VALIDATOR, primary.OPERABILITY_VALIDATOR],
+    )
+    run_validator_order_case(
+        "scrape",
+        scrape,
+        [scrape.SCRAPE_VALIDATOR, scrape.OPERABILITY_VALIDATOR],
+    )
     run_metrics_case("primary", primary)
     run_status_case("scrape", scrape)
     run_source_delegation_case("operations", operations)
     run_case("operations", operations)
     run_source_delegation_case("alerting", alerting)
     run_case("alerting", alerting)
-    print("PASS: metrics authority identity, source delegation and primary/scrape/operations/alerting rollback are fail-closed")
+    print("PASS: metrics primary/scrape/operations/alerting authority identity, validator order, source delegation and rollback are fail-closed")
     return 0
 
 
