@@ -10,12 +10,17 @@ on:
       - "contracts/operations/controlled-saturation-repeatability-contract.v1.json"
       - "contracts/operations/load-test-scenario-contract.v1.json"
       - "contracts/operations/production-operability-status.json"
+      - "docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/controlled-saturation-repeatability-results.v1.json"
       - "docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.repeat-*.v1.json"
+      - "scripts/validate-memory-os-controlled-saturation-ramp.py"
+      - "scripts/validate-memory-os-controlled-saturation-ramp-authority-negative.py"
+      - "scripts/reconcile-memory-os-controlled-saturation-ramp-status.py"
       - "scripts/validate-memory-os-controlled-saturation-repeatability.py"
       - "scripts/validate-memory-os-controlled-saturation-repeatability-reconcile-negative.py"
       - "scripts/reconcile-memory-os-controlled-saturation-repeatability.py"
       - "scripts/validate-memory-os-load.py"
+      - "scripts/validate-memory-os-load-evidence-index.py"
       - "scripts/validate-memory-os-operability.py"
   pull_request:
     branches:
@@ -26,12 +31,17 @@ on:
       - "contracts/operations/controlled-saturation-repeatability-contract.v1.json"
       - "contracts/operations/load-test-scenario-contract.v1.json"
       - "contracts/operations/production-operability-status.json"
+      - "docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.sample.v1.json"
       - "docs/fixtures/memory-os-operability/controlled-saturation-repeatability-results.v1.json"
       - "docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.repeat-*.v1.json"
+      - "scripts/validate-memory-os-controlled-saturation-ramp.py"
+      - "scripts/validate-memory-os-controlled-saturation-ramp-authority-negative.py"
+      - "scripts/reconcile-memory-os-controlled-saturation-ramp-status.py"
       - "scripts/validate-memory-os-controlled-saturation-repeatability.py"
       - "scripts/validate-memory-os-controlled-saturation-repeatability-reconcile-negative.py"
       - "scripts/reconcile-memory-os-controlled-saturation-repeatability.py"
       - "scripts/validate-memory-os-load.py"
+      - "scripts/validate-memory-os-load-evidence-index.py"
       - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
 
@@ -76,12 +86,21 @@ jobs:
           stage=compile
           echo "STAGE: compile" >> "$log"
           python -m py_compile \
+            scripts/validate-memory-os-controlled-saturation-ramp.py \
+            scripts/validate-memory-os-controlled-saturation-ramp-authority-negative.py \
+            scripts/reconcile-memory-os-controlled-saturation-ramp-status.py \
             scripts/validate-memory-os-controlled-saturation-repeatability.py \
             scripts/validate-memory-os-controlled-saturation-repeatability-reconcile-negative.py \
             scripts/reconcile-memory-os-controlled-saturation-repeatability.py \
             scripts/validate-memory-os-load.py \
+            scripts/validate-memory-os-load-evidence-index.py \
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            stage=controlled-ramp-authority-negative
+            echo "STAGE: controlled-ramp-authority-negative" >> "$log"
+            python scripts/validate-memory-os-controlled-saturation-ramp-authority-negative.py >> "$log" 2>&1 || code=$?
+          fi
           if [[ "$code" == "0" ]]; then
             stage=repeatability-validation
             echo "STAGE: repeatability-validation" >> "$log"
