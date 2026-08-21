@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove live-load reconcile rolls back both derived authorities on post-write failure."""
+"""Prove live-load reconcile pins canonical authorities and rolls back on failure."""
 
 from __future__ import annotations
 
@@ -36,7 +36,31 @@ def write_json(path: Path, value: dict) -> None:
     path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
+def expect_authority_rejection(mutator, expected_text: str) -> None:
+    module = load_module()
+    mutator(module)
+    try:
+        module.validate_authority_identity()
+    except module.ReconcileFailure as exc:
+        require(expected_text in str(exc), f"unexpected authority rejection: {exc}")
+    else:
+        raise Fail(f"live-load reconciler accepted authority substitution: {expected_text}")
+
+
 def main() -> int:
+    expect_authority_rejection(
+        lambda module: setattr(
+            module,
+            "POSTGRES_VALIDATOR",
+            ROOT / "scripts/validate-memory-os-load.py",
+        ),
+        "canonical PostgreSQL live-load validator authority drift",
+    )
+    expect_authority_rejection(
+        lambda module: setattr(module, "STATUS_PATH", LOAD),
+        "canonical production status authority drift",
+    )
+
     module = load_module()
     expected_sha = "1" * 40
 
@@ -89,6 +113,7 @@ def main() -> int:
         module.OBJECT_RESULT = object_result
         module.LOAD_VALIDATOR = pass_validator
         module.OPERABILITY_VALIDATOR = fail_validator
+        module.validate_authority_identity = lambda: None
         module.validate_live_authorities = lambda expected: None
 
         before_status = status_path.read_bytes()
@@ -114,7 +139,9 @@ def main() -> int:
         require(status_path.read_bytes() == before_status, "status was not rolled back byte-for-byte")
         require(load_path.read_bytes() == before_load, "load contract was not rolled back byte-for-byte")
 
-    print("PASS: live-load reconcile rolls back both derived authorities after post-write validation failure")
+    print(
+        "PASS: live-load reconcile pins canonical authorities and rolls back both derived authorities after post-write validation failure"
+    )
     return 0
 
 
