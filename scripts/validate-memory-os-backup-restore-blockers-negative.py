@@ -36,10 +36,6 @@ def expect_rejected(name: str, action: Callable[[], Any]) -> None:
     try:
         result = action()
     except Exception as exc:
-        # Only domain-level fail-closed errors from the dynamically loaded
-        # authority targets count as expected rejection. In particular, never
-        # let this suite's own Fail or implementation errors such as TypeError
-        # make a broken negative case pass.
         exc_module = exc.__class__.__module__
         controlled = (
             exc_module.startswith("memory_os_backup_restore_")
@@ -52,9 +48,6 @@ def expect_rejected(name: str, action: Callable[[], Any]) -> None:
         print(f"PASS reject: {name}")
         return
 
-    # CLI-style validators catch their domain exception and return 1. Accept
-    # exactly that controlled rejection; booleans and arbitrary nonzero values
-    # are not valid substitutes for the expected validator contract.
     if type(result) is int and result == 1:
         print(f"PASS reject: {name}")
         return
@@ -100,6 +93,17 @@ def validate_coherent_status(module, status: dict[str, Any]) -> None:
     module.normalized(copy.deepcopy(status))
 
 
+def append_transaction_sentinel(candidate: dict[str, Any], label: str) -> dict[str, Any]:
+    area = next(
+        row for row in candidate["areas"]
+        if isinstance(row, dict) and row.get("id") == "OPS-P0-007"
+    )
+    existing = area.get("existingEvidence")
+    require(isinstance(existing, list), f"OPS-P0-007 existingEvidence missing in {label} fixture")
+    existing.append(f"synthetic local-only {label} rollback sentinel")
+    return candidate
+
+
 def validate_normalizer_transaction(module) -> None:
     original_bytes = module.STATUS_PATH.read_bytes()
     real_normalize = module.normalize
@@ -107,15 +111,7 @@ def validate_normalizer_transaction(module) -> None:
     calls: list[Path] = []
 
     def fake_normalize(status: dict[str, Any]) -> dict[str, Any]:
-        candidate = copy.deepcopy(status)
-        area = next(
-            row for row in candidate["areas"]
-            if isinstance(row, dict) and row.get("id") == "OPS-P0-007"
-        )
-        existing = area.get("existingEvidence")
-        require(isinstance(existing, list), "OPS-P0-007 existingEvidence missing in transaction fixture")
-        existing.append("synthetic local-only rollback sentinel")
-        return candidate
+        return append_transaction_sentinel(copy.deepcopy(status), "normalizer")
 
     def fake_run_validator(path: Path) -> None:
         calls.append(path)
@@ -144,6 +140,42 @@ def validate_normalizer_transaction(module) -> None:
             module.STATUS_PATH.write_bytes(original_bytes)
 
 
+def validate_coherent_transaction(module) -> None:
+    original_bytes = module.STATUS.read_bytes()
+    real_normalized = module.normalized
+    real_run_validator = module.run_validator
+    calls: list[Path] = []
+
+    def fake_normalized(status: dict[str, Any]) -> dict[str, Any]:
+        return append_transaction_sentinel(copy.deepcopy(status), "coherent")
+
+    def fake_run_validator(path: Path) -> None:
+        calls.append(path)
+        if path == module.OPERABILITY_VALIDATOR:
+            raise module.Fail("synthetic post-write operability rejection")
+
+    module.normalized = fake_normalized
+    module.run_validator = fake_run_validator
+    try:
+        expect_rejected(
+            "coherent restore authority rolls back after post-write operability rejection",
+            module.main,
+        )
+        require(
+            calls == [module.VALIDATOR, module.BACKUP_VALIDATOR, module.OPERABILITY_VALIDATOR],
+            "coherent restore validator transaction order drift",
+        )
+        require(
+            module.STATUS.read_bytes() == original_bytes,
+            "coherent restore authority did not roll back production status byte-for-byte",
+        )
+    finally:
+        module.normalized = real_normalized
+        module.run_validator = real_run_validator
+        if module.STATUS.read_bytes() != original_bytes:
+            module.STATUS.write_bytes(original_bytes)
+
+
 def main() -> int:
     module = load_module(
         VALIDATOR,
@@ -169,6 +201,7 @@ def main() -> int:
     validate_semantic_status(semantic, baseline)
     validate_coherent_status(coherent, baseline)
     validate_normalizer_transaction(normalizer)
+    validate_coherent_transaction(coherent)
     print("PASS baseline: canonical six OPS-P0-007 production blockers")
 
     extra = status_with_mutation(
@@ -283,6 +316,7 @@ def main() -> int:
     print("canonical normalizer post-write rollback: enforced")
     print("semantic authority repair behavior: disabled")
     print("coherent restore blocker repair behavior: disabled")
+    print("coherent restore post-write rollback: enforced")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
