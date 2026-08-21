@@ -67,10 +67,10 @@ jobs:
           --health-retries 30
 
     steps:
-      - name: Checkout latest so
+      - name: Checkout exact event source
         uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Go
@@ -88,11 +88,9 @@ jobs:
         id: source
         run: |
           set -euo pipefail
-          git fetch origin so
-          test "$(git branch --show-current)" = "so"
           test -z "$(git status --porcelain)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
-          sha="$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          sha="$GITHUB_SHA"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "SOURCE_SHA=$sha" >> "$GITHUB_ENV"
 
@@ -124,7 +122,7 @@ jobs:
           MEMORY_OS_SOAK_DURATION_SECONDS: "12"
         run: |
           set +e
-          log=/tmp/memory-os-sustained-soak-smoke.log
+          log=/tmp/memory-os-sustained-local-soak-smoke.log
           : > "$log"
           code=0
           echo "STAGE: contract-and-python" >> "$log"
@@ -165,21 +163,7 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin so
-          if ! git diff --quiet "$SOURCE_SHA" origin/so -- \
-            .github/workflows/sustained-local-soak.yml \
-            contracts/operations/sustained-local-soak-contract.v1.json \
-            scripts/validate-memory-os-sustained-local-soak.py \
-            scripts/validate-memory-os-sustained-local-soak-result.py \
-            scripts/validate-memory-os-sustained-local-soak-aggregate.py \
-            scripts/update-memory-os-sustained-local-soak-aggregate.py \
-            scripts/reconcile-memory-os-sustained-local-soak-status.py \
-            scripts/validate-memory-os-load-evidence-index.py \
-            services/import-api/internal/httpserver/sustained_local_soak_test.go; then
-            echo "Newer soak-foundation source exists; refusing stale reconciliation."
-            exit 75
-          fi
-          git reset --hard origin/so
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           python scripts/validate-memory-os-sustained-local-soak.py
           python scripts/validate-memory-os-sustained-local-soak-aggregate.py
           python scripts/reconcile-memory-os-sustained-local-soak-status.py
@@ -195,7 +179,11 @@ jobs:
           git add -u docs/fixtures/memory-os-operability/sustained-local-soak-smoke-diagnostic.last.json 2>/dev/null || true
           if ! git diff --cached --quiet; then
             git commit -m "docs(ops): register sustained local soak foundation"
-            git pull --rebase origin so
+            git fetch origin so
+            test "$(git rev-parse origin/so)" = "$SOURCE_SHA" || {
+              echo "so advanced after foundation validation; refusing stale deterministic authority publication."
+              exit 75
+            }
             git push origin HEAD:so
           fi
 
@@ -203,14 +191,13 @@ jobs:
         if: steps.smoke.outputs.exit_code != '0'
         run: |
           set -euo pipefail
-          git fetch origin so
-          git reset --hard origin/so
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           python - <<'PY'
           import json
           import os
           import re
           from pathlib import Path
-          text = Path('/tmp/memory-os-sustained-soak-smoke.log').read_text(encoding='utf-8', errors='replace')
+          text = Path('/tmp/memory-os-sustained-local-soak-smoke.log').read_text(encoding='utf-8', errors='replace')
           text = re.sub(r'postgres(?:ql)?://[^\s]+', '<redacted-database-url>', text)
           text = re.sub(r'https?://[^\s]+', '<redacted-endpoint>', text)
           text = text.replace('minioadmin', '<redacted-local-credential>')
@@ -240,7 +227,11 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --cached --quiet; then
             git commit -m "test(soak): record sustained local soak diagnostic"
-            git pull --rebase origin so
+            git fetch origin so
+            test "$(git rev-parse origin/so)" = "$SOURCE_SHA" || {
+              echo "so advanced after failed smoke; refusing stale diagnostic publication."
+              exit 75
+            }
             git push origin HEAD:so
           fi
 
@@ -307,7 +298,7 @@ jobs:
             fi
             sleep 1
           done
-          docker logs memory-os-sustained-soak-minio
+          docker logs memory-os-sustained-local-soak-minio
           exit 1
 
       - name: Execute one 60-minute LOCAL_LONG_SOAK run
