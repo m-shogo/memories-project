@@ -176,6 +176,28 @@ def validate_coherent_transaction(module) -> None:
             module.STATUS.write_bytes(original_bytes)
 
 
+def validate_runtime_authority_identity(normalizer, coherent) -> None:
+    real_normalizer_operability = normalizer.OPERABILITY_VALIDATOR
+    normalizer.OPERABILITY_VALIDATOR = normalizer.BACKUP_VALIDATOR
+    try:
+        expect_rejected(
+            "canonical normalizer rejects repository-contained operability validator substitution",
+            normalizer.validate_runtime_authority,
+        )
+    finally:
+        normalizer.OPERABILITY_VALIDATOR = real_normalizer_operability
+
+    real_coherent_validator = coherent.VALIDATOR
+    coherent.VALIDATOR = coherent.BACKUP_VALIDATOR
+    try:
+        expect_rejected(
+            "coherent authority rejects repository-contained validator substitution",
+            coherent.validate_runtime_authority,
+        )
+    finally:
+        coherent.VALIDATOR = real_coherent_validator
+
+
 def main() -> int:
     module = load_module(
         VALIDATOR,
@@ -200,6 +222,7 @@ def main() -> int:
     validate_normalizer_status(normalizer, baseline)
     validate_semantic_status(semantic, baseline)
     validate_coherent_status(coherent, baseline)
+    validate_runtime_authority_identity(normalizer, coherent)
     validate_normalizer_transaction(normalizer)
     validate_coherent_transaction(coherent)
     print("PASS baseline: canonical six OPS-P0-007 production blockers")
@@ -312,6 +335,7 @@ def main() -> int:
 
     print("Memory OS backup/restore canonical blocker negative suite PASS")
     print("canonical blocker count: 6")
+    print("canonical local/coherent validator identities: enforced")
     print("canonical normalizer repair behavior: disabled")
     print("canonical normalizer post-write rollback: enforced")
     print("semantic authority repair behavior: disabled")
