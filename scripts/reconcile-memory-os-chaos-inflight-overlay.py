@@ -18,11 +18,18 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
-RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/parser-inflight-cancellation-results.sample.v1.json"
-PROCESS_GROUP_RESULT = ROOT / "docs/fixtures/memory-os-operability/parser-process-group-reaping-results.sample.v1.json"
-INFLIGHT_VALIDATOR = ROOT / "scripts/validate-memory-os-parser-inflight-cancellation.py"
-PROCESS_GROUP_VALIDATOR = ROOT / "scripts/validate-memory-os-parser-process-group-reaping.py"
+CANONICAL_STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+CANONICAL_RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/parser-inflight-cancellation-results.sample.v1.json"
+CANONICAL_PROCESS_GROUP_RESULT = ROOT / "docs/fixtures/memory-os-operability/parser-process-group-reaping-results.sample.v1.json"
+CANONICAL_INFLIGHT_VALIDATOR = ROOT / "scripts/validate-memory-os-parser-inflight-cancellation.py"
+CANONICAL_PROCESS_GROUP_VALIDATOR = ROOT / "scripts/validate-memory-os-parser-process-group-reaping.py"
+CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+STATUS_PATH = CANONICAL_STATUS_PATH
+RESULT_PATH = CANONICAL_RESULT_PATH
+PROCESS_GROUP_RESULT = CANONICAL_PROCESS_GROUP_RESULT
+INFLIGHT_VALIDATOR = CANONICAL_INFLIGHT_VALIDATOR
+PROCESS_GROUP_VALIDATOR = CANONICAL_PROCESS_GROUP_VALIDATOR
+OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
 GAP = "in-flight parser cancellation latency and process-group termination proof while the worker is blocked"
 CHILD_REAPING_GAP = "independent child-process orphan/reaping scan after parser process-group termination"
 HOST_RESTART_GAP = "parser host or container restart recovery using a reviewed production artifact"
@@ -60,6 +67,43 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def require_exact_authority(path: Path, canonical: Path, label: str, *, optional: bool = False) -> None:
+    require(path == canonical, f"{label} authority drift")
+    if optional and not canonical.exists():
+        return
+    require(canonical.is_file(), f"canonical {label} missing")
+    require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
+
+
+def require_external_fixture(path: Path, label: str) -> None:
+    require(path.is_file(), f"{label} fixture missing")
+    require(not path.is_symlink(), f"{label} fixture cannot be a symlink")
+    try:
+        path.resolve(strict=True).relative_to(ROOT.resolve())
+    except ValueError:
+        return
+    except (FileNotFoundError, OSError, RuntimeError) as exc:
+        raise ReconcileFailure(f"cannot resolve {label} fixture") from exc
+    raise ReconcileFailure(f"{label} fixture must remain outside repository")
+
+
+def enforce_source_data_authorities() -> None:
+    require_exact_authority(RESULT_PATH, CANONICAL_RESULT_PATH, "in-flight result", optional=True)
+    require_exact_authority(
+        PROCESS_GROUP_RESULT,
+        CANONICAL_PROCESS_GROUP_RESULT,
+        "process-group result",
+        optional=True,
+    )
+
+
+def enforce_status_authority() -> None:
+    if STATUS_PATH == CANONICAL_STATUS_PATH:
+        require_exact_authority(STATUS_PATH, CANONICAL_STATUS_PATH, "production operability status")
+        return
+    require_external_fixture(STATUS_PATH, "production operability status")
+
+
 def canonical_validator_path(path: Path) -> Path:
     try:
         resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
@@ -82,7 +126,8 @@ def run_full_validator(path: Path) -> None:
         )
     except OSError as exc:
         raise ReconcileFailure(f"cannot execute canonical source validator: {path.name}") from exc
-    require(result.returncode == 0, f"canonical source validator rejected authority: {path.name}")
+    require(type(result.returncode) is int and result.returncode == 0,
+            f"canonical source validator rejected authority: {path.name}")
 
 
 def load_result_validator(path: Path, module_name: str):
@@ -125,6 +170,22 @@ def process_group_reaping_complete() -> bool:
     return True
 
 
+def run_post_write_validators() -> None:
+    enforce_source_data_authorities()
+    require_exact_authority(INFLIGHT_VALIDATOR, CANONICAL_INFLIGHT_VALIDATOR, "in-flight validator")
+    require_exact_authority(
+        PROCESS_GROUP_VALIDATOR,
+        CANONICAL_PROCESS_GROUP_VALIDATOR,
+        "process-group validator",
+    )
+    require_exact_authority(OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, "operability validator")
+    if RESULT_PATH.is_file():
+        run_full_validator(INFLIGHT_VALIDATOR)
+    if PROCESS_GROUP_RESULT.is_file():
+        run_full_validator(PROCESS_GROUP_VALIDATOR)
+    run_full_validator(OPERABILITY_VALIDATOR)
+
+
 def unique(values: list[Any]) -> list[Any]:
     result: list[Any] = []
     for value in values:
@@ -134,6 +195,7 @@ def unique(values: list[Any]) -> list[Any]:
 
 
 def normalize(status: dict[str, Any]) -> dict[str, Any]:
+    enforce_source_data_authorities()
     require(status.get("productionDecision") == "NO_GO",
             "in-flight overlay requires productionDecision NO_GO")
     gate = next((item for item in status.get("areas", [])
@@ -188,6 +250,7 @@ def main() -> int:
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
 
+    enforce_status_authority()
     current = load(STATUS_PATH)
     candidate = normalize(copy.deepcopy(current))
     candidate["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
@@ -199,15 +262,26 @@ def main() -> int:
 
     if args.check:
         require(not changed, "in-flight chaos authority overlay is not normalized")
+        if STATUS_PATH == CANONICAL_STATUS_PATH:
+            run_post_write_validators()
         print("Memory OS in-flight chaos authority overlay check PASS")
         return 0
     if not changed:
+        if STATUS_PATH == CANONICAL_STATUS_PATH:
+            run_post_write_validators()
         print("Memory OS in-flight chaos authority overlay already normalized")
         return 0
+
+    original_bytes = STATUS_PATH.read_bytes()
     STATUS_PATH.write_text(
         json.dumps(candidate, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
+    try:
+        run_post_write_validators()
+    except BaseException:
+        STATUS_PATH.write_bytes(original_bytes)
+        raise
     print("Normalized in-flight cancellation evidence within OPS-P0-009")
     return 0
 
