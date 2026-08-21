@@ -5,28 +5,40 @@ on:
     paths:
       - ".github/workflows/chaos-failure-drill-contracts.yml"
       - ".github/workflows/chaos-failure-drills.yml"
+      - ".github/workflows/chaos-failure-drills-v2.yml"
       - "contracts/operations/chaos-failure-drill-contract.v1.json"
+      - "contracts/operations/chaos-failure-drill-contract.v2.json"
       - "contracts/operations/production-operability-status.json"
       - "services/import-api/internal/httpserver/interruption_drill_test.go"
       - "services/import-api/internal/parsersup/restart_drill_linux_test.go"
+      - "services/import-api/internal/importflow/object_outage_drill_linux_test.go"
       - "scripts/validate-memory-os-chaos-failure-drills.py"
       - "scripts/validate-memory-os-chaos-failure-drills-reconcile-negative.py"
+      - "scripts/validate-memory-os-chaos-failure-drills-v2.py"
+      - "scripts/validate-memory-os-chaos-failure-drills-v2-reconcile-negative.py"
       - "scripts/validate-memory-os-operability.py"
       - "scripts/reconcile-memory-os-chaos-failure-drills.py"
+      - "scripts/reconcile-memory-os-chaos-failure-drills-v2.py"
   push:
     branches:
       - so
     paths:
       - ".github/workflows/chaos-failure-drill-contracts.yml"
       - ".github/workflows/chaos-failure-drills.yml"
+      - ".github/workflows/chaos-failure-drills-v2.yml"
       - "contracts/operations/chaos-failure-drill-contract.v1.json"
+      - "contracts/operations/chaos-failure-drill-contract.v2.json"
       - "contracts/operations/production-operability-status.json"
       - "services/import-api/internal/httpserver/interruption_drill_test.go"
       - "services/import-api/internal/parsersup/restart_drill_linux_test.go"
+      - "services/import-api/internal/importflow/object_outage_drill_linux_test.go"
       - "scripts/validate-memory-os-chaos-failure-drills.py"
       - "scripts/validate-memory-os-chaos-failure-drills-reconcile-negative.py"
+      - "scripts/validate-memory-os-chaos-failure-drills-v2.py"
+      - "scripts/validate-memory-os-chaos-failure-drills-v2-reconcile-negative.py"
       - "scripts/validate-memory-os-operability.py"
       - "scripts/reconcile-memory-os-chaos-failure-drills.py"
+      - "scripts/reconcile-memory-os-chaos-failure-drills-v2.py"
   workflow_dispatch:
 
 permissions:
@@ -55,20 +67,28 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Validate static contract and formatting
+      - name: Validate static contracts and formatting
         run: |
           python -m py_compile \
             scripts/validate-memory-os-chaos-failure-drills.py \
             scripts/validate-memory-os-chaos-failure-drills-reconcile-negative.py \
+            scripts/validate-memory-os-chaos-failure-drills-v2.py \
+            scripts/validate-memory-os-chaos-failure-drills-v2-reconcile-negative.py \
             scripts/validate-memory-os-operability.py \
-            scripts/reconcile-memory-os-chaos-failure-drills.py
+            scripts/reconcile-memory-os-chaos-failure-drills.py \
+            scripts/reconcile-memory-os-chaos-failure-drills-v2.py
           python scripts/validate-memory-os-chaos-failure-drills-reconcile-negative.py
+          python scripts/validate-memory-os-chaos-failure-drills-v2-reconcile-negative.py
           test -z "$(gofmt -l \
             services/import-api/internal/httpserver/interruption_drill_test.go \
-            services/import-api/internal/parsersup/restart_drill_linux_test.go)"
+            services/import-api/internal/parsersup/restart_drill_linux_test.go \
+            services/import-api/internal/importflow/object_outage_drill_linux_test.go)"
           python scripts/validate-memory-os-chaos-failure-drills.py
+          python scripts/validate-memory-os-chaos-failure-drills-v2.py
           python scripts/reconcile-memory-os-chaos-failure-drills.py
+          python scripts/reconcile-memory-os-chaos-failure-drills-v2.py
           python scripts/validate-memory-os-chaos-failure-drills.py
+          python scripts/validate-memory-os-chaos-failure-drills-v2.py
           python scripts/validate-memory-os-operability.py
           git diff --exit-code -- contracts/operations/production-operability-status.json
 
