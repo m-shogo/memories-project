@@ -12,13 +12,20 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT_PATH = ROOT / "contracts/operations/mixed-version-candidate-contract.v1.json"
-RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json"
-REJECTION_PATH = ROOT / "docs/fixtures/memory-os-operability/mixed-version-candidate-rejections.v1.json"
-STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
-CANDIDATE_VALIDATOR = ROOT / "scripts/validate-memory-os-mixed-version-candidate.py"
-VERSION_VALIDATOR = ROOT / "scripts/validate-memory-os-version-compatibility.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CANONICAL_CONTRACT_PATH = ROOT / "contracts/operations/mixed-version-candidate-contract.v1.json"
+CANONICAL_RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json"
+CANONICAL_REJECTION_PATH = ROOT / "docs/fixtures/memory-os-operability/mixed-version-candidate-rejections.v1.json"
+CANONICAL_STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+CANONICAL_CANDIDATE_VALIDATOR = ROOT / "scripts/validate-memory-os-mixed-version-candidate.py"
+CANONICAL_VERSION_VALIDATOR = ROOT / "scripts/validate-memory-os-version-compatibility.py"
+CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CONTRACT_PATH = CANONICAL_CONTRACT_PATH
+RESULT_PATH = CANONICAL_RESULT_PATH
+REJECTION_PATH = CANONICAL_REJECTION_PATH
+STATUS_PATH = CANONICAL_STATUS_PATH
+CANDIDATE_VALIDATOR = CANONICAL_CANDIDATE_VALIDATOR
+VERSION_VALIDATOR = CANONICAL_VERSION_VALIDATOR
+OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
 ACTIVE_BASELINE_SHA = "2af6e8e10755cc707c6bdd958a049a0f4afb3d70"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 RESULT_REF = "docs/fixtures/memory-os-operability/mixed-version-candidate-results.sample.v1.json"
@@ -55,6 +62,30 @@ def require(condition: bool, message: str) -> None:
         raise ReconcileFailure(message)
 
 
+def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
+    require(path == canonical, f"{label} authority substitution")
+    require(canonical.is_file(), f"canonical {label} missing")
+    require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
+    try:
+        resolved = canonical.resolve(strict=True)
+    except OSError as exc:
+        raise ReconcileFailure(f"canonical {label} cannot be resolved") from exc
+    require(resolved == canonical, f"canonical {label} escaped repository path")
+
+
+def enforce_runtime_authorities() -> None:
+    for path, canonical, label in (
+        (CONTRACT_PATH, CANONICAL_CONTRACT_PATH, "mixed-version candidate contract"),
+        (RESULT_PATH, CANONICAL_RESULT_PATH, "mixed-version candidate result"),
+        (REJECTION_PATH, CANONICAL_REJECTION_PATH, "mixed-version candidate rejection registry"),
+        (STATUS_PATH, CANONICAL_STATUS_PATH, "production status"),
+        (CANDIDATE_VALIDATOR, CANONICAL_CANDIDATE_VALIDATOR, "mixed-version candidate validator"),
+        (VERSION_VALIDATOR, CANONICAL_VERSION_VALIDATOR, "version compatibility validator"),
+        (OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, "operability validator"),
+    ):
+        require_exact_authority(path, canonical, label)
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -71,8 +102,9 @@ def write(path: Path, value: dict[str, Any]) -> None:
 
 
 def run_validator(path: Path, failure_label: str) -> None:
+    enforce_runtime_authorities()
     completed = subprocess.run(
-        ["python", str(path)],
+        [sys.executable, str(path)],
         cwd=ROOT,
         text=True,
         stdout=subprocess.PIPE,
@@ -80,7 +112,7 @@ def run_validator(path: Path, failure_label: str) -> None:
         check=False,
     )
     require(
-        completed.returncode == 0,
+        type(completed.returncode) is int and completed.returncode == 0,
         failure_label + ":\n" + completed.stdout[-4000:] + completed.stderr[-4000:],
     )
 
@@ -113,6 +145,7 @@ def is_ancestor(base: str, head: str) -> bool:
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     result = load(RESULT_PATH)
     require(result.get("schemaVersion") ==
             "memory-os-mixed-version-candidate-results.v1",
@@ -142,15 +175,12 @@ def main() -> int:
     require(isinstance(assertions, dict) and assertions and all(assertions.values()),
             "candidate result contains a failed assertion")
 
-    for path in (CANDIDATE_VALIDATOR, VERSION_VALIDATOR, OPERABILITY_VALIDATOR):
-        require(path.is_file(), f"candidate validator missing: {path.relative_to(ROOT)}")
-
     contract = load(CONTRACT_PATH)
     require(contract.get("candidateBaseline", {}).get("commitSha") == ACTIVE_BASELINE_SHA,
             "candidate contract baseline drift")
     require(contract.get("rejectedCandidateRegistry") ==
-            str(REJECTION_PATH.relative_to(ROOT)) and REJECTION_PATH.is_file(),
-            "candidate rejection registry is missing")
+            str(REJECTION_PATH.relative_to(ROOT)),
+            "candidate rejection registry authority drift")
     require(contract.get("evidenceBoundary", {}).get("productionReady") is False,
             "candidate contract cannot claim production readiness")
     readiness = contract.get("readiness")
@@ -227,6 +257,9 @@ def main() -> int:
 
     commit_outputs_transactionally(outputs)
     if not outputs:
+        run_validator(CANDIDATE_VALIDATOR, "candidate authority rejected without reconcile")
+        run_validator(VERSION_VALIDATOR, "version compatibility authority rejected without candidate reconcile")
+        run_validator(OPERABILITY_VALIDATOR, "operability authority rejected without candidate reconcile")
         print("Mixed-version candidate authority already reconciled")
         return 0
     print("Registered active historical candidate compatibility; OPS-P0-008 remains PARTIAL")
