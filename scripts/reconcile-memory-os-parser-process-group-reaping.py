@@ -13,11 +13,14 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT_PATH = ROOT / "contracts/operations/parser-process-group-reaping-contract.v1.json"
-RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/parser-process-group-reaping-results.sample.v1.json"
-STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+CANONICAL_CONTRACT_PATH = ROOT / "contracts/operations/parser-process-group-reaping-contract.v1.json"
+CANONICAL_RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/parser-process-group-reaping-results.sample.v1.json"
+CANONICAL_STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 CANONICAL_PROCESS_GROUP_VALIDATOR = ROOT / "scripts/validate-memory-os-parser-process-group-reaping.py"
 CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CONTRACT_PATH = CANONICAL_CONTRACT_PATH
+RESULT_PATH = CANONICAL_RESULT_PATH
+STATUS_PATH = CANONICAL_STATUS_PATH
 PROCESS_GROUP_VALIDATOR = CANONICAL_PROCESS_GROUP_VALIDATOR
 OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -88,6 +91,12 @@ def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
     require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
 
 
+def enforce_data_authorities() -> None:
+    require_exact_authority(CONTRACT_PATH, CANONICAL_CONTRACT_PATH, "process-group contract")
+    require_exact_authority(RESULT_PATH, CANONICAL_RESULT_PATH, "process-group result")
+    require_exact_authority(STATUS_PATH, CANONICAL_STATUS_PATH, "production operability status")
+
+
 def run_validator(path: Path, *, expected_sha: str | None = None) -> None:
     require(path.is_file(), f"canonical validator missing: {path.relative_to(ROOT)}")
     require(not path.is_symlink(), f"canonical validator cannot be a symlink: {path.relative_to(ROOT)}")
@@ -108,6 +117,7 @@ def run_validator(path: Path, *, expected_sha: str | None = None) -> None:
 
 
 def run_authority_validators(source_sha: str) -> None:
+    enforce_data_authorities()
     require_exact_authority(
         PROCESS_GROUP_VALIDATOR,
         CANONICAL_PROCESS_GROUP_VALIDATOR,
@@ -123,6 +133,7 @@ def run_authority_validators(source_sha: str) -> None:
 
 
 def commit_candidate(contract: dict[str, Any], status: dict[str, Any], source_sha: str) -> None:
+    enforce_data_authorities()
     original_contract = CONTRACT_PATH.read_bytes()
     original_status = STATUS_PATH.read_bytes()
     try:
@@ -136,6 +147,7 @@ def commit_candidate(contract: dict[str, Any], status: dict[str, Any], source_sh
 
 
 def main() -> int:
+    enforce_data_authorities()
     result = load(RESULT_PATH)
     source_sha = result.get("commitSha")
     require(isinstance(source_sha, str) and SHA_RE.fullmatch(source_sha) is not None,
