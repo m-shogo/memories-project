@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/reconcile-upload-route-authority.yml"
       - "scripts/reconcile-memory-os-upload-route-authority.py"
+      - "scripts/validate-memory-os-upload-route-reconcile-rollback.py"
       - "services/import-api/internal/httpserver/**"
       - "services/import-api/internal/httpapi/upload_handler.go"
       - "contracts/operations/metrics-contract.v1.json"
@@ -19,6 +20,7 @@ on:
     paths:
       - ".github/workflows/reconcile-upload-route-authority.yml"
       - "scripts/reconcile-memory-os-upload-route-authority.py"
+      - "scripts/validate-memory-os-upload-route-reconcile-rollback.py"
       - "services/import-api/internal/httpserver/**"
       - "services/import-api/internal/httpapi/upload_handler.go"
       - "contracts/operations/metrics-contract.v1.json"
@@ -120,10 +122,14 @@ jobs:
           fi
           python -m py_compile \
             scripts/reconcile-memory-os-upload-route-authority.py \
+            scripts/validate-memory-os-upload-route-reconcile-rollback.py \
             scripts/validate-memory-os-metrics.py \
             scripts/validate-memory-os-rate-limit.py \
             scripts/validate-memory-os-observability.py \
             scripts/validate-memory-os-operability.py
+
+      - name: Validate reconcile rollback boundary
+        run: python scripts/validate-memory-os-upload-route-reconcile-rollback.py
 
       - name: Reconcile registered routes and authority contracts
         run: python scripts/reconcile-memory-os-upload-route-authority.py
@@ -170,6 +176,7 @@ jobs:
           git add \
             .github/workflows/reconcile-upload-route-authority.yml \
             scripts/reconcile-memory-os-upload-route-authority.py \
+            scripts/validate-memory-os-upload-route-reconcile-rollback.py \
             services/import-api/internal/httpserver \
             services/import-api/internal/metrics \
             services/import-api/internal/ratelimit \
