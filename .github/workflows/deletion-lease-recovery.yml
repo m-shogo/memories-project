@@ -103,7 +103,6 @@ jobs:
           log=/tmp/memory-os-deletion-lease-recovery.log
           : > "$log"
           result=docs/fixtures/memory-os-operability/deletion-lease-recovery-results.sample.v1.json
-          rm -f "$result"
           code=0
           echo "STAGE: python-and-contract" >> "$log"
           python -m py_compile \
@@ -123,6 +122,7 @@ jobs:
               >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
+            rm -f "$result"
             echo "STAGE: live-proof" >> "$log"
             (
               cd services/import-api
