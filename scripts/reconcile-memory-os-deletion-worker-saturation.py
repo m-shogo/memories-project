@@ -12,9 +12,12 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT_PATH = ROOT / "contracts/operations/deletion-worker-saturation-contract.v1.json"
-RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/deletion-worker-saturation-results.sample.v1.json"
-VALIDATOR_PATH = ROOT / "scripts" / "validate-memory-os-deletion-worker-saturation.py"
+CANONICAL_CONTRACT_PATH = ROOT / "contracts/operations/deletion-worker-saturation-contract.v1.json"
+CANONICAL_RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/deletion-worker-saturation-results.sample.v1.json"
+CANONICAL_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-deletion-worker-saturation.py"
+CONTRACT_PATH = CANONICAL_CONTRACT_PATH
+RESULT_PATH = CANONICAL_RESULT_PATH
+VALIDATOR_PATH = CANONICAL_VALIDATOR_PATH
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
@@ -27,6 +30,22 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
+    require(path == canonical, f"{label} authority drift")
+    try:
+        resolved = canonical.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"canonical {label} missing or escapes repository") from exc
+    require(resolved == canonical.relative_to(ROOT), f"canonical {label} path drift")
+    require(canonical.is_file() and not canonical.is_symlink(), f"canonical {label} must be regular file")
+
+
+def enforce_runtime_authorities() -> None:
+    require_exact_authority(CONTRACT_PATH, CANONICAL_CONTRACT_PATH, "deletion-worker saturation contract")
+    require_exact_authority(RESULT_PATH, CANONICAL_RESULT_PATH, "deletion-worker saturation result")
+    require_exact_authority(VALIDATOR_PATH, CANONICAL_VALIDATOR_PATH, "deletion-worker saturation validator")
+
+
 def load(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
@@ -34,14 +53,7 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_validator():
-    try:
-        resolved = VALIDATOR_PATH.resolve(strict=True).relative_to(ROOT.resolve())
-    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
-        raise Fail("canonical deletion-worker saturation validator missing or escapes repository") from exc
-    require(
-        resolved == Path("scripts") / VALIDATOR_PATH.name and VALIDATOR_PATH.is_file(),
-        "canonical deletion-worker saturation validator path drift",
-    )
+    enforce_runtime_authorities()
     spec = importlib.util.spec_from_file_location("memory_os_deletion_worker_saturation_validator", VALIDATOR_PATH)
     require(spec is not None and spec.loader is not None, "cannot load canonical deletion-worker saturation validator")
     module = importlib.util.module_from_spec(spec)
@@ -62,6 +74,7 @@ def validate_canonical(validator, contract: dict[str, Any], expected: str) -> No
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     expected = os.getenv("EXPECTED_COMMIT_SHA", "")
     require(SHA_RE.fullmatch(expected) is not None, "EXPECTED_COMMIT_SHA must be full SHA")
     validator = load_validator()
@@ -92,6 +105,7 @@ def main() -> int:
         require(boundary.get(key) is False, f"local proof cannot enable {key}")
 
     try:
+        enforce_runtime_authorities()
         CONTRACT_PATH.write_text(json.dumps(contract, indent=2) + "\n", encoding="utf-8")
         validate_canonical(validator, load(CONTRACT_PATH), expected)
     except Exception:
