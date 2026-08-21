@@ -12,14 +12,22 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT_PATH = ROOT / "contracts/operations/short-stability-sample-contract.v1.json"
-LOAD_PATH = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
-STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
-RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json"
-SHORT_VALIDATOR = ROOT / "scripts/validate-memory-os-short-stability-sample.py"
-SOAK_RECONCILER = ROOT / "scripts/reconcile-memory-os-sustained-local-soak-status.py"
-LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CANONICAL_CONTRACT_PATH = ROOT / "contracts/operations/short-stability-sample-contract.v1.json"
+CANONICAL_LOAD_PATH = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
+CANONICAL_STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+CANONICAL_RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json"
+CANONICAL_SHORT_VALIDATOR = ROOT / "scripts/validate-memory-os-short-stability-sample.py"
+CANONICAL_SOAK_RECONCILER = ROOT / "scripts/reconcile-memory-os-sustained-local-soak-status.py"
+CANONICAL_LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
+CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CONTRACT_PATH = CANONICAL_CONTRACT_PATH
+LOAD_PATH = CANONICAL_LOAD_PATH
+STATUS_PATH = CANONICAL_STATUS_PATH
+RESULT_PATH = CANONICAL_RESULT_PATH
+SHORT_VALIDATOR = CANONICAL_SHORT_VALIDATOR
+SOAK_RECONCILER = CANONICAL_SOAK_RECONCILER
+LOAD_VALIDATOR = CANONICAL_LOAD_VALIDATOR
+OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
 
 
 class ReconcileFailure(RuntimeError):
@@ -29,6 +37,26 @@ class ReconcileFailure(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise ReconcileFailure(message)
+
+
+def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
+    require(path == canonical, f"{label} authority drift")
+    require(canonical.is_file(), f"canonical {label} missing")
+    require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
+
+
+def enforce_runtime_authorities() -> None:
+    for path, canonical, label in (
+        (CONTRACT_PATH, CANONICAL_CONTRACT_PATH, "short stability contract"),
+        (LOAD_PATH, CANONICAL_LOAD_PATH, "load contract"),
+        (STATUS_PATH, CANONICAL_STATUS_PATH, "production status"),
+        (RESULT_PATH, CANONICAL_RESULT_PATH, "short stability result"),
+        (SHORT_VALIDATOR, CANONICAL_SHORT_VALIDATOR, "short stability validator"),
+        (SOAK_RECONCILER, CANONICAL_SOAK_RECONCILER, "sustained soak reconciler"),
+        (LOAD_VALIDATOR, CANONICAL_LOAD_VALIDATOR, "load validator"),
+        (OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, "operability validator"),
+    ):
+        require_exact_authority(path, canonical, label)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -50,6 +78,7 @@ def append_once(items: list[Any], value: Any) -> bool:
 
 
 def run_validator(path: Path, label: str, *args: str) -> None:
+    enforce_runtime_authorities()
     completed = subprocess.run(
         [sys.executable, str(path), *args],
         cwd=ROOT,
@@ -61,6 +90,7 @@ def run_validator(path: Path, label: str, *args: str) -> None:
 def write_and_validate_transactionally(
     contract: dict[str, Any], load_contract: dict[str, Any], status: dict[str, Any], expected_sha: str
 ) -> None:
+    enforce_runtime_authorities()
     paths = (CONTRACT_PATH, LOAD_PATH, STATUS_PATH)
     original_bytes = {path: path.read_bytes() for path in paths}
     try:
@@ -76,9 +106,6 @@ def write_and_validate_transactionally(
             json.dumps(status, indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",
         )
-        # LOCAL_LONG_SOAK is the canonical authority for repeated 60-minute local
-        # soak state. Re-run that existing reconciler after the short sample so a
-        # later short CI sample cannot downgrade or re-add completed soak gaps.
         run_validator(SOAK_RECONCILER, "sustained local soak authority reconcile")
         run_validator(SHORT_VALIDATOR, "post-write short stability validator", "--require-reconciled")
         run_validator(LOAD_VALIDATOR, "post-write load validator")
@@ -90,6 +117,7 @@ def write_and_validate_transactionally(
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     expected_sha = os.getenv("EXPECTED_COMMIT_SHA", "")
     require(expected_sha, "EXPECTED_COMMIT_SHA is required")
     run_validator(SHORT_VALIDATOR, "short stability result validation", "--expected-commit-sha", expected_sha)
