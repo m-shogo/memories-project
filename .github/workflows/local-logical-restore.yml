@@ -8,7 +8,6 @@ on:
       - ".github/workflows/local-logical-restore.yml"
       - "contracts/operations/local-logical-restore-contract.v1.json"
       - "contracts/operations/migration-lifecycle-contract.v1.json"
-      - "contracts/operations/production-operability-status.json"
       - "infra/postgresql/security/**"
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/run-memory-os-local-logical-restore.sh"
