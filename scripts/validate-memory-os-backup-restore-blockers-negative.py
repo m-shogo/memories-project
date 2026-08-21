@@ -187,6 +187,42 @@ def validate_runtime_authority_identity(normalizer, coherent) -> None:
     finally:
         normalizer.OPERABILITY_VALIDATOR = real_normalizer_operability
 
+    normalizer_paths = {
+        "STATUS_PATH": normalizer.STATUS_PATH,
+        "INDEX_PATH": normalizer.INDEX_PATH,
+        "LOGICAL_RESULT": normalizer.LOGICAL_RESULT,
+        "OBJECT_RESULT": normalizer.OBJECT_RESULT,
+    }
+    try:
+        normalizer.STATUS_PATH = normalizer.INDEX_PATH
+        expect_rejected(
+            "canonical normalizer rejects production status substitution",
+            normalizer.validate_runtime_authority,
+        )
+        normalizer.STATUS_PATH = normalizer_paths["STATUS_PATH"]
+        normalizer.INDEX_PATH = normalizer.STATUS_PATH
+        expect_rejected(
+            "canonical normalizer rejects local foundation index substitution",
+            normalizer.validate_runtime_authority,
+        )
+        normalizer.INDEX_PATH = normalizer_paths["INDEX_PATH"]
+        normalizer.LOGICAL_RESULT = normalizer.OBJECT_RESULT
+        expect_rejected(
+            "canonical normalizer rejects logical restore result substitution",
+            normalizer.validate_runtime_authority,
+        )
+        normalizer.LOGICAL_RESULT = normalizer_paths["LOGICAL_RESULT"]
+        normalizer.OBJECT_RESULT = normalizer.LOGICAL_RESULT
+        expect_rejected(
+            "canonical normalizer rejects object restore result substitution",
+            normalizer.validate_runtime_authority,
+        )
+    finally:
+        normalizer.STATUS_PATH = normalizer_paths["STATUS_PATH"]
+        normalizer.INDEX_PATH = normalizer_paths["INDEX_PATH"]
+        normalizer.LOGICAL_RESULT = normalizer_paths["LOGICAL_RESULT"]
+        normalizer.OBJECT_RESULT = normalizer_paths["OBJECT_RESULT"]
+
     real_coherent_validator = coherent.VALIDATOR
     coherent.VALIDATOR = coherent.BACKUP_VALIDATOR
     try:
@@ -362,6 +398,7 @@ def main() -> int:
     print("Memory OS backup/restore canonical blocker negative suite PASS")
     print("canonical blocker count: 6")
     print("canonical local/coherent validator identities: enforced")
+    print("canonical normalizer status/index/result identities: enforced")
     print("canonical coherent status/index/result identities: enforced")
     print("canonical normalizer repair behavior: disabled")
     print("canonical normalizer post-write rollback: enforced")
