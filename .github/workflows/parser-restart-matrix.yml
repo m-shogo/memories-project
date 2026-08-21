@@ -13,6 +13,19 @@ on:
       - "scripts/validate-memory-os-operability.py"
       - "scripts/reconcile-memory-os-parser-restart-matrix.py"
       - "scripts/reconcile-memory-os-chaos-authority.py"
+  pull_request:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/parser-restart-matrix.yml"
+      - "contracts/operations/parser-restart-matrix-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "services/import-api/internal/parsersup/**"
+      - "scripts/validate-memory-os-parser-restart-matrix.py"
+      - "scripts/validate-memory-os-parser-restart-reconcile-negative.py"
+      - "scripts/validate-memory-os-operability.py"
+      - "scripts/reconcile-memory-os-parser-restart-matrix.py"
+      - "scripts/reconcile-memory-os-chaos-authority.py"
   schedule:
     - cron: "43 19 * * *"
   workflow_dispatch:
@@ -21,11 +34,53 @@ permissions:
   contents: write
 
 concurrency:
-  group: parser-restart-matrix-so
+  group: parser-restart-matrix-${{ github.event_name }}-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact pull request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: services/import-api/go.sum
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate parser restart authority read-only
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          test -z "$(git status --porcelain)"
+          python -m py_compile \
+            scripts/validate-memory-os-parser-restart-matrix.py \
+            scripts/validate-memory-os-parser-restart-reconcile-negative.py \
+            scripts/validate-memory-os-operability.py \
+            scripts/reconcile-memory-os-parser-restart-matrix.py \
+            scripts/reconcile-memory-os-chaos-authority.py
+          test -z "$(gofmt -l services/import-api/internal/parsersup/restart_matrix_drill_linux_test.go)"
+          python scripts/validate-memory-os-parser-restart-matrix.py
+          python scripts/validate-memory-os-parser-restart-reconcile-negative.py
+          python scripts/reconcile-memory-os-parser-restart-matrix.py
+          python scripts/validate-memory-os-parser-restart-matrix.py
+          python scripts/validate-memory-os-operability.py
+          git diff --exit-code -- contracts/operations/production-operability-status.json
+
   execute:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
