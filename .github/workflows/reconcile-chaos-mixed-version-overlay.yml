@@ -5,9 +5,12 @@ on:
     paths:
       - ".github/workflows/reconcile-chaos-mixed-version-overlay.yml"
       - "scripts/reconcile-memory-os-chaos-mixed-version-overlay.py"
+      - "scripts/validate-memory-os-chaos-mixed-version-overlay-negative.py"
+      - "scripts/validate-memory-os-mixed-version-apply.py"
       - "scripts/validate-memory-os-chaos-failure-drills-v2.py"
       - "scripts/validate-memory-os-version-compatibility-execution-evidence.py"
       - "scripts/validate-memory-os-operability.py"
+      - "contracts/operations/mixed-version-apply-contract.v1.json"
       - "contracts/operations/version-compatibility-execution-evidence.v1.json"
       - "contracts/operations/production-operability-status.json"
       - "docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json"
@@ -17,9 +20,12 @@ on:
     paths:
       - ".github/workflows/reconcile-chaos-mixed-version-overlay.yml"
       - "scripts/reconcile-memory-os-chaos-mixed-version-overlay.py"
+      - "scripts/validate-memory-os-chaos-mixed-version-overlay-negative.py"
+      - "scripts/validate-memory-os-mixed-version-apply.py"
       - "scripts/validate-memory-os-chaos-failure-drills-v2.py"
       - "scripts/validate-memory-os-version-compatibility-execution-evidence.py"
       - "scripts/validate-memory-os-operability.py"
+      - "contracts/operations/mixed-version-apply-contract.v1.json"
       - "contracts/operations/version-compatibility-execution-evidence.v1.json"
       - "contracts/operations/production-operability-status.json"
       - "docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json"
@@ -62,10 +68,15 @@ jobs:
           set -euo pipefail
           python -m py_compile \
             scripts/reconcile-memory-os-chaos-mixed-version-overlay.py \
+            scripts/validate-memory-os-chaos-mixed-version-overlay-negative.py \
+            scripts/validate-memory-os-mixed-version-apply.py \
             scripts/validate-memory-os-chaos-failure-drills-v2.py \
             scripts/validate-memory-os-version-compatibility-execution-evidence.py \
             scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-mixed-version-apply.py
+          python scripts/validate-memory-os-chaos-mixed-version-overlay-negative.py
           python scripts/reconcile-memory-os-chaos-mixed-version-overlay.py
+          python scripts/validate-memory-os-mixed-version-apply.py
           python scripts/validate-memory-os-chaos-failure-drills-v2.py
           python scripts/validate-memory-os-version-compatibility-execution-evidence.py
           python scripts/validate-memory-os-operability.py
