@@ -14,12 +14,14 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/parser-inflight-cancellation-results.sample.v1.json"
-STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+CANONICAL_RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/parser-inflight-cancellation-results.sample.v1.json"
+CANONICAL_STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 CANONICAL_RECONCILER_PATH = ROOT / "scripts/reconcile-memory-os-chaos-authority.py"
 CANONICAL_OVERLAY_PATH = ROOT / "scripts/reconcile-memory-os-chaos-inflight-overlay.py"
 CANONICAL_INFLIGHT_VALIDATOR = ROOT / "scripts/validate-memory-os-parser-inflight-cancellation.py"
 CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+RESULT_PATH = CANONICAL_RESULT_PATH
+STATUS_PATH = CANONICAL_STATUS_PATH
 CANONICAL_RECONCILER = CANONICAL_RECONCILER_PATH
 CANONICAL_OVERLAY = CANONICAL_OVERLAY_PATH
 INFLIGHT_VALIDATOR = CANONICAL_INFLIGHT_VALIDATOR
@@ -70,6 +72,33 @@ def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
     require(path == canonical, f"{label} authority drift")
     require(canonical.is_file(), f"canonical {label} missing")
     require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
+
+
+def require_external_fixture(path: Path, label: str) -> None:
+    require(path.is_file(), f"{label} fixture missing")
+    require(not path.is_symlink(), f"{label} fixture cannot be a symlink")
+    try:
+        path.resolve(strict=True).relative_to(ROOT.resolve())
+    except ValueError:
+        return
+    except (FileNotFoundError, OSError, RuntimeError) as exc:
+        raise ReconcileFailure(f"cannot resolve {label} fixture") from exc
+    raise ReconcileFailure(f"{label} fixture must remain outside repository")
+
+
+def enforce_data_authorities() -> None:
+    canonical_result = RESULT_PATH == CANONICAL_RESULT_PATH
+    canonical_status = STATUS_PATH == CANONICAL_STATUS_PATH
+    require(
+        canonical_result is canonical_status,
+        "in-flight fixture boundary must replace result and status together",
+    )
+    if canonical_result:
+        require_exact_authority(RESULT_PATH, CANONICAL_RESULT_PATH, "in-flight result")
+        require_exact_authority(STATUS_PATH, CANONICAL_STATUS_PATH, "production operability status")
+        return
+    require_external_fixture(RESULT_PATH, "in-flight result")
+    require_external_fixture(STATUS_PATH, "production operability status")
 
 
 def validate_executable_authorities() -> None:
@@ -152,6 +181,7 @@ def validate_authority_chain(source_sha: str) -> None:
 
 
 def main() -> int:
+    enforce_data_authorities()
     result = load(RESULT_PATH)
     source_sha = result.get("commitSha")
     require(isinstance(source_sha, str) and SHA_RE.fullmatch(source_sha) is not None,
