@@ -8,20 +8,59 @@ on:
       - ".github/workflows/reconcile-live-object-stage-diagnostics.yml"
       - "scripts/reconcile-memory-os-live-object-stage-diagnostics.py"
       - "services/import-api/internal/httpserver/live_object_load_test.go"
+  pull_request:
+    paths:
+      - ".github/workflows/reconcile-live-object-stage-diagnostics.yml"
+      - "scripts/reconcile-memory-os-live-object-stage-diagnostics.py"
+      - "services/import-api/internal/httpserver/live_object_load_test.go"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: reconcile-live-object-stage-diagnostics-so
+  group: reconcile-live-object-stage-diagnostics-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact pull request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache: false
+
+      - name: Validate diagnostic source read-only
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          test -z "$(git status --porcelain)"
+          python -m py_compile scripts/reconcile-memory-os-live-object-stage-diagnostics.py
+          python scripts/reconcile-memory-os-live-object-stage-diagnostics.py
+          gofmt -w services/import-api/internal/httpserver/live_object_load_test.go
+          test -z "$(gofmt -l services/import-api/internal/httpserver/live_object_load_test.go)"
+          git diff --exit-code
+
   reconcile:
     if: >-
-      github.event_name != 'push' ||
-      !contains(github.event.head_commit.message, 'test(load): classify MinIO lifecycle failures')
+      github.event_name != 'pull_request' &&
+      (github.event_name != 'push' ||
+      !contains(github.event.head_commit.message, 'test(load): classify MinIO lifecycle failures'))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
