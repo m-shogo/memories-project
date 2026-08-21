@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove metrics authority reconciles roll back on post-write failure."""
+"""Prove metrics authority reconciles reject substitution and roll back post-write failure."""
 
 from __future__ import annotations
 
@@ -43,6 +43,33 @@ def controlled_failure(module: ModuleType):
     def fail_after_write() -> None:
         raise module.ReconcileFailure("controlled post-write validator failure")
     return fail_after_write
+
+
+def expect_rejection(callback, expected: str, name: str) -> None:
+    try:
+        callback()
+    except Exception as exc:
+        require(expected in str(exc), f"{name}: unexpected authority rejection: {exc}")
+    else:
+        raise NegativeFailure(f"{name}: authority substitution was incorrectly accepted: {expected}")
+
+
+def run_identity_case(
+    name: str,
+    module: ModuleType,
+    substitutions: tuple[tuple[str, Path, str], ...],
+) -> None:
+    original_metrics = METRICS.read_bytes()
+    original_status = STATUS.read_bytes()
+    for attr, substitute, expected in substitutions:
+        original = getattr(module, attr)
+        try:
+            setattr(module, attr, substitute)
+            expect_rejection(module.enforce_runtime_authorities, expected, name)
+        finally:
+            setattr(module, attr, original)
+    require(METRICS.read_bytes() == original_metrics, f"{name}: metrics changed after authority rejection")
+    require(STATUS.read_bytes() == original_status, f"{name}: status changed after authority rejection")
 
 
 def run_case(name: str, module: ModuleType) -> None:
@@ -167,13 +194,40 @@ def main() -> int:
         "metrics_alerting_reconcile",
         "scripts/reconcile-memory-os-metrics-alerting.py",
     )
+
+    run_identity_case(
+        "operations",
+        operations,
+        (
+            ("METRICS_PATH", ROOT / "README.md", "metrics contract authority drift"),
+            ("DASHBOARD_PATH", ROOT / "README.md", "metrics dashboard contract authority drift"),
+            ("RETENTION_PATH", ROOT / "README.md", "metrics retention contract authority drift"),
+            ("STATUS_PATH", ROOT / "SECURITY.md", "production operability status authority drift"),
+            ("METRICS_VALIDATOR", alerting.CANONICAL_ALERTING_VALIDATOR, "metrics validator authority drift"),
+            ("OPERATIONS_VALIDATOR", alerting.CANONICAL_ALERTING_VALIDATOR, "metrics operations validator authority drift"),
+            ("OPERABILITY_VALIDATOR", alerting.CANONICAL_ALERTING_VALIDATOR, "operability validator authority drift"),
+        ),
+    )
+    run_identity_case(
+        "alerting",
+        alerting,
+        (
+            ("METRICS_PATH", ROOT / "README.md", "metrics contract authority drift"),
+            ("ALERTING_PATH", ROOT / "README.md", "metrics alerting contract authority drift"),
+            ("STATUS_PATH", ROOT / "SECURITY.md", "production operability status authority drift"),
+            ("METRICS_VALIDATOR", operations.CANONICAL_OPERATIONS_VALIDATOR, "metrics validator authority drift"),
+            ("ALERTING_VALIDATOR", operations.CANONICAL_OPERATIONS_VALIDATOR, "metrics alerting validator authority drift"),
+            ("OPERABILITY_VALIDATOR", operations.CANONICAL_OPERATIONS_VALIDATOR, "operability validator authority drift"),
+        ),
+    )
+
     run_metrics_case("primary", primary)
     run_status_case("scrape", scrape)
     run_source_delegation_case("operations", operations)
     run_case("operations", operations)
     run_source_delegation_case("alerting", alerting)
     run_case("alerting", alerting)
-    print("PASS: metrics source delegation and primary/scrape/operations/alerting rollback are fail-closed")
+    print("PASS: metrics authority identity, source delegation and primary/scrape/operations/alerting rollback are fail-closed")
     return 0
 
 
