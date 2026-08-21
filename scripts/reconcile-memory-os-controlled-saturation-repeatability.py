@@ -10,14 +10,22 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/controlled-saturation-repeatability-contract.v1.json"
-RESULT = ROOT / "docs/fixtures/memory-os-operability/controlled-saturation-repeatability-results.v1.json"
-VALIDATOR = ROOT / "scripts/validate-memory-os-controlled-saturation-repeatability.py"
-LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
-LOAD = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
-STATUS = ROOT / "contracts/operations/production-operability-status.json"
-WORKFLOW = ROOT / ".github/workflows/controlled-saturation-repeatability.yml"
+CANONICAL_CONTRACT = ROOT / "contracts/operations/controlled-saturation-repeatability-contract.v1.json"
+CANONICAL_RESULT = ROOT / "docs/fixtures/memory-os-operability/controlled-saturation-repeatability-results.v1.json"
+CANONICAL_VALIDATOR = ROOT / "scripts/validate-memory-os-controlled-saturation-repeatability.py"
+CANONICAL_LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
+CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CANONICAL_LOAD = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
+CANONICAL_STATUS = ROOT / "contracts/operations/production-operability-status.json"
+CANONICAL_WORKFLOW = ROOT / ".github/workflows/controlled-saturation-repeatability.yml"
+CONTRACT = CANONICAL_CONTRACT
+RESULT = CANONICAL_RESULT
+VALIDATOR = CANONICAL_VALIDATOR
+LOAD_VALIDATOR = CANONICAL_LOAD_VALIDATOR
+OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
+LOAD = CANONICAL_LOAD
+STATUS = CANONICAL_STATUS
+WORKFLOW = CANONICAL_WORKFLOW
 TRANSACTION_PATHS = (CONTRACT, LOAD, STATUS)
 
 EVIDENCE = (
@@ -42,6 +50,26 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
+    require(path == canonical, f"{label} authority drift")
+    require(canonical.is_file(), f"canonical {label} missing")
+    require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
+
+
+def enforce_runtime_authorities() -> None:
+    for path, canonical, label in (
+        (CONTRACT, CANONICAL_CONTRACT, "repeatability contract"),
+        (RESULT, CANONICAL_RESULT, "repeatability result"),
+        (VALIDATOR, CANONICAL_VALIDATOR, "repeatability validator"),
+        (LOAD_VALIDATOR, CANONICAL_LOAD_VALIDATOR, "load validator"),
+        (OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, "operability validator"),
+        (LOAD, CANONICAL_LOAD, "load contract"),
+        (STATUS, CANONICAL_STATUS, "production status"),
+        (WORKFLOW, CANONICAL_WORKFLOW, "repeatability workflow"),
+    ):
+        require_exact_authority(path, canonical, label)
+
+
 def load(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
@@ -58,11 +86,13 @@ def append_once(values: list[Any], value: str) -> None:
 
 
 def run_post_write_validators() -> None:
+    enforce_runtime_authorities()
     for validator in (VALIDATOR, LOAD_VALIDATOR, OPERABILITY_VALIDATOR):
         subprocess.run([sys.executable, str(validator)], cwd=ROOT, check=True)
 
 
 def write_transactionally(contract: dict[str, Any], load_contract: dict[str, Any], status: dict[str, Any]) -> None:
+    enforce_runtime_authorities()
     originals = {path: path.read_bytes() for path in TRANSACTION_PATHS}
     try:
         write(CONTRACT, contract)
@@ -76,6 +106,7 @@ def write_transactionally(contract: dict[str, Any], load_contract: dict[str, Any
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, check=True)
     result = load(RESULT)
     repeatable = result.get("repeatableLocalDegradationSignalObserved") is True
