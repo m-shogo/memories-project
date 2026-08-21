@@ -7,15 +7,12 @@ on:
     paths:
       - ".github/workflows/local-object-version-restore.yml"
       - "contracts/operations/local-object-version-restore-contract.v1.json"
-      - "contracts/operations/production-operability-status.json"
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/run-memory-os-local-object-version-restore.py"
       - "scripts/validate-memory-os-local-object-version-restore.py"
       - "scripts/validate-memory-os-local-object-version-restore-authority-negative.py"
       - "scripts/validate-memory-os-local-object-version-restore-reconcile-negative.py"
       - "scripts/reconcile-memory-os-local-object-version-restore.py"
-      - "scripts/validate-memory-os-backup-restore.py"
-      - "scripts/validate-memory-os-operability.py"
   pull_request:
     paths:
       - ".github/workflows/local-object-version-restore.yml"
