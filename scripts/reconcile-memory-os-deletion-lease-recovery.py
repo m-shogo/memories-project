@@ -29,9 +29,15 @@ def load(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _require_exact_path(label: str, actual: Path, expected: Path) -> None:
+def _require_exact_path(label: str, actual: Path, expected: Path, *, must_exist: bool = True) -> None:
     if actual != expected:
         raise ReconcileFailure(f"{label} path is not canonical")
+    if actual.is_symlink():
+        raise ReconcileFailure(f"{label} authority may not be a symlink")
+    if not actual.exists():
+        if must_exist:
+            raise ReconcileFailure(f"{label} authority is unreadable")
+        return
     try:
         actual_resolved = actual.resolve(strict=True)
         expected_resolved = expected.resolve(strict=True)
@@ -47,7 +53,7 @@ def validate_authority_identity() -> None:
     if ROOT != CANONICAL_ROOT or ROOT.resolve() != CANONICAL_ROOT.resolve():
         raise ReconcileFailure("repository root authority is not canonical")
     _require_exact_path("lease recovery contract", CONTRACT_PATH, CANONICAL_CONTRACT_PATH)
-    _require_exact_path("lease recovery result", RESULT_PATH, CANONICAL_RESULT_PATH)
+    _require_exact_path("lease recovery result", RESULT_PATH, CANONICAL_RESULT_PATH, must_exist=False)
     _require_exact_path("lease recovery validator", VALIDATOR, CANONICAL_VALIDATOR)
 
 
