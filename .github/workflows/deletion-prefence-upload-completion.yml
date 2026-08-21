@@ -9,6 +9,7 @@ on:
       - "contracts/operations/deletion-prefence-upload-completion-contract.v1.json"
       - "scripts/validate-memory-os-deletion-prefence-upload-completion.py"
       - "scripts/reconcile-memory-os-deletion-prefence-upload-completion.py"
+      - "scripts/validate-memory-os-deletion-prefence-upload-completion-reconcile-negative.py"
       - "services/import-api/internal/httpserver/deletion_prefence_upload_completion_test.go"
       - "services/import-api/internal/httpserver/server_live_test.go"
       - "services/import-api/internal/httpserver/live_object_load_test.go"
@@ -104,13 +105,16 @@ jobs:
           log=/tmp/memory-os-prefence-upload-completion.log
           : > "$log"
           result=docs/fixtures/memory-os-operability/deletion-prefence-upload-completion-results.sample.v1.json
-          rm -f "$result"
           code=0
           echo "STAGE: python-and-contract" >> "$log"
           python -m py_compile \
             scripts/validate-memory-os-deletion-prefence-upload-completion.py \
             scripts/reconcile-memory-os-deletion-prefence-upload-completion.py \
+            scripts/validate-memory-os-deletion-prefence-upload-completion-reconcile-negative.py \
             >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-deletion-prefence-upload-completion-reconcile-negative.py >> "$log" 2>&1 || code=$?
+          fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-deletion-prefence-upload-completion.py >> "$log" 2>&1 || code=$?
           fi
@@ -120,6 +124,7 @@ jobs:
               >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
+            rm -f "$result"
             echo "STAGE: live-proof" >> "$log"
             (
               cd services/import-api
