@@ -12,6 +12,7 @@ on:
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/run-memory-os-local-logical-restore.sh"
       - "scripts/validate-memory-os-local-logical-restore.py"
+      - "scripts/validate-memory-os-local-logical-restore-reconcile-negative.py"
       - "scripts/reconcile-memory-os-local-logical-restore.py"
   schedule:
     - cron: "41 18 * * 2"
@@ -79,8 +80,11 @@ jobs:
           python -m py_compile \
             scripts/memory_os_backup_restore_blockers.py \
             scripts/validate-memory-os-local-logical-restore.py \
-            scripts/reconcile-memory-os-local-logical-restore.py
+            scripts/validate-memory-os-local-logical-restore-reconcile-negative.py \
+            scripts/reconcile-memory-os-local-logical-restore.py \
+            scripts/validate-memory-os-operability.py
           python scripts/validate-memory-os-local-logical-restore.py
+          python scripts/validate-memory-os-local-logical-restore-reconcile-negative.py
 
       - name: Execute restore drill and write bounded diagnostic
         id: drill
