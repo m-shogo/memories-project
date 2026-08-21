@@ -140,6 +140,75 @@ def validate_inflight_source_delegation(current: dict) -> None:
         raise RuntimeError(f"full in-flight source validation did not precede mutation: {full_calls}")
 
 
+def validate_inflight_overlay_transaction(current: dict) -> None:
+    overlay = load_module(INFLIGHT_OVERLAY, "memory_os_chaos_inflight_transaction")
+    original_status = overlay.STATUS_PATH
+    try:
+        overlay.STATUS_PATH = ROOT / "README.md"
+        try:
+            overlay.enforce_status_authority()
+        except overlay.ReconcileFailure as exc:
+            if "fixture must remain outside repository" not in str(exc):
+                raise RuntimeError(f"unexpected in-flight overlay status rejection: {exc}") from exc
+        else:
+            raise RuntimeError("in-flight overlay accepted repository-contained status substitution")
+    finally:
+        overlay.STATUS_PATH = original_status
+
+    with tempfile.TemporaryDirectory(prefix="memory-os-inflight-overlay-transaction-") as tmp:
+        root = Path(tmp)
+        temp_status = root / "status.json"
+        candidate = copy.deepcopy(current)
+        gate = next(
+            item for item in candidate["areas"]
+            if isinstance(item, dict) and item.get("id") == "OPS-P0-009"
+        )
+        existing = gate.get("existingEvidence")
+        if not isinstance(existing, list):
+            raise RuntimeError("OPS-P0-009 existingEvidence missing for overlay transaction proof")
+        marker = "synthetic in-flight overlay transaction marker"
+        while marker in existing:
+            existing.remove(marker)
+        original_bytes = json.dumps(candidate, indent=2, ensure_ascii=False).encode("utf-8") + b"\n"
+        temp_status.write_bytes(original_bytes)
+
+        original_status = overlay.STATUS_PATH
+        original_normalize = overlay.normalize
+        original_post = overlay.run_post_write_validators
+        try:
+            overlay.STATUS_PATH = temp_status
+
+            def force_change(value: dict) -> dict:
+                updated = copy.deepcopy(value)
+                updated_gate = next(
+                    item for item in updated["areas"]
+                    if isinstance(item, dict) and item.get("id") == "OPS-P0-009"
+                )
+                updated_gate["existingEvidence"].append(marker)
+                return updated
+
+            overlay.normalize = force_change
+
+            def reject_post() -> None:
+                raise overlay.ReconcileFailure("synthetic overlay post-write rejection")
+
+            overlay.run_post_write_validators = reject_post
+            try:
+                overlay.main()
+            except overlay.ReconcileFailure as exc:
+                if "synthetic overlay post-write rejection" not in str(exc):
+                    raise RuntimeError(f"unexpected overlay transaction rejection: {exc}") from exc
+            else:
+                raise RuntimeError("in-flight overlay accepted post-write aggregate rejection")
+        finally:
+            overlay.STATUS_PATH = original_status
+            overlay.normalize = original_normalize
+            overlay.run_post_write_validators = original_post
+
+        if temp_status.read_bytes() != original_bytes:
+            raise RuntimeError("in-flight overlay did not roll back Production Status")
+
+
 def validate_direct_v1_transaction(current: dict) -> None:
     module = load_module(V1_RECONCILER, "memory_os_direct_v1_transaction")
     result = module.load(module.RESULT_PATH)
@@ -208,6 +277,22 @@ def validate_direct_v1_transaction(current: dict) -> None:
 
 def validate_direct_inflight_transaction(current: dict) -> None:
     module = load_module(INFLIGHT_RECONCILER, "memory_os_direct_inflight_transaction")
+    canonical_result = module.RESULT_PATH
+    canonical_status = module.STATUS_PATH
+    try:
+        module.RESULT_PATH = ROOT / "README.md"
+        module.STATUS_PATH = ROOT / "SECURITY.md"
+        try:
+            module.main()
+        except module.ReconcileFailure as exc:
+            if "fixture must remain outside repository" not in str(exc):
+                raise RuntimeError(f"unexpected direct in-flight data rejection: {exc}") from exc
+        else:
+            raise RuntimeError("direct in-flight reconcile accepted repository-contained data substitution")
+    finally:
+        module.RESULT_PATH = canonical_result
+        module.STATUS_PATH = canonical_status
+
     result = module.load(module.RESULT_PATH)
     source_sha = result.get("commitSha")
     if not isinstance(source_sha, str):
@@ -276,6 +361,7 @@ def main() -> int:
     current = json.loads(STATUS.read_text(encoding="utf-8"))
     validate_canonical_source_delegation(canonical, current)
     validate_inflight_source_delegation(current)
+    validate_inflight_overlay_transaction(current)
     validate_direct_v1_transaction(current)
     validate_direct_inflight_transaction(current)
 
@@ -323,7 +409,7 @@ def main() -> int:
             if reconciled.get("productionDecision") != "NO_GO":
                 raise RuntimeError(f"scenario reconcile changed production decision: {path.name}")
 
-    print("PASS: chaos reconcile delegates canonical sources, rolls back direct v1/in-flight authority and preserves stronger missing-evidence authority")
+    print("PASS: chaos reconcile pins data/source authority, rolls back overlay/direct projections and preserves stronger missing-evidence authority")
     return 0
 
 
