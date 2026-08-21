@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Negative proof for database commit outage authority transaction."""
+"""Negative proof for database commit outage authority identity and transaction."""
 
 from __future__ import annotations
 
@@ -23,8 +23,31 @@ def load_module():
     return module
 
 
+def expect_authority_rejection(module, attr: str, replacement: Path) -> None:
+    original = getattr(module, attr)
+    setattr(module, attr, replacement)
+    try:
+        try:
+            module.enforce_runtime_authorities()
+        except module.ReconcileFailure:
+            pass
+        else:
+            raise RuntimeError(f"database outage {attr} substitution must be rejected")
+    finally:
+        setattr(module, attr, original)
+
+
 def main() -> int:
     module = load_module()
+    original_status = module.STATUS_PATH.read_bytes()
+
+    expect_authority_rejection(module, "RESULT_PATH", module.STATUS_PATH)
+    expect_authority_rejection(module, "STATUS_PATH", module.RESULT_PATH)
+    expect_authority_rejection(module, "DATABASE_VALIDATOR", module.OPERABILITY_VALIDATOR)
+    expect_authority_rejection(module, "OPERABILITY_VALIDATOR", module.DATABASE_VALIDATOR)
+    if module.STATUS_PATH.read_bytes() != original_status:
+        raise RuntimeError("database outage authority substitution changed canonical Production Status")
+
     source_sha = "0" * 40
     with tempfile.TemporaryDirectory(prefix="memory-os-database-outage-negative-") as tmp:
         root = Path(tmp)
@@ -57,6 +80,9 @@ def main() -> int:
         module.RESULT_PATH = result_path
         module.STATUS_PATH = status_path
         module.source_is_ancestor = lambda _sha: True
+        # This isolated fixture intentionally replaces canonical data paths so
+        # the transaction can be tested without touching repository authority.
+        module.enforce_runtime_authorities = lambda: None
 
         calls: list[str] = []
 
@@ -79,7 +105,7 @@ def main() -> int:
         if status_path.read_bytes() != original_bytes:
             raise RuntimeError("database outage reconcile did not roll back Production Status")
 
-    print("PASS: database outage reconcile delegates canonical authority and rolls back after aggregate rejection")
+    print("PASS: database outage exact authority and reconcile rollback are fail-closed")
     return 0
 
 
