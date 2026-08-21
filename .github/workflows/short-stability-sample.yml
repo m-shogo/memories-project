@@ -1,6 +1,22 @@
 name: Short Stability Sample
 
 on:
+  pull_request:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/short-stability-sample.yml"
+      - "services/import-api/internal/httpserver/short_stability_sample_test.go"
+      - "services/import-api/internal/httpserver/live_load_test.go"
+      - "services/import-api/internal/httpserver/server_live_test.go"
+      - "infra/postgresql/security/**"
+      - "contracts/operations/short-stability-sample-contract.v1.json"
+      - "contracts/operations/load-test-scenario-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "scripts/validate-memory-os-short-stability-sample.py"
+      - "scripts/reconcile-memory-os-short-stability-status.py"
+      - "scripts/validate-memory-os-load.py"
+      - "scripts/validate-memory-os-operability.py"
   push:
     branches:
       - so
@@ -21,16 +37,59 @@ permissions:
   contents: write
 
 concurrency:
-  group: short-stability-sample-so
+  group: short-stability-sample-${{ github.event_name }}-so
   cancel-in-progress: true
 
 jobs:
+  authority:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact pull request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate read-only authority boundary
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+          test -z "$(git status --porcelain)"
+          python -m py_compile \
+            scripts/validate-memory-os-short-stability-sample.py \
+            scripts/reconcile-memory-os-short-stability-status.py \
+            scripts/validate-memory-os-load.py \
+            scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-short-stability-sample.py
+          python scripts/validate-memory-os-load.py
+          python scripts/validate-memory-os-operability.py
+          python scripts/reconcile-memory-os-short-stability-status.py
+          python scripts/validate-memory-os-short-stability-sample.py --require-reconciled
+          python scripts/validate-memory-os-load.py
+          python scripts/validate-memory-os-operability.py
+          git diff --exit-code -- \
+            contracts/operations/short-stability-sample-contract.v1.json \
+            contracts/operations/load-test-scenario-contract.v1.json \
+            contracts/operations/production-operability-status.json
+
   sample:
     if: >-
-      github.event_name != 'push' ||
-      (!contains(github.event.head_commit.message, 'test(load): record short stability result') &&
-       !contains(github.event.head_commit.message, 'docs(ops): register short stability evidence') &&
-       !contains(github.event.head_commit.message, 'test(load): record short stability diagnostic'))
+      github.event_name != 'pull_request' &&
+      (github.event_name != 'push' ||
+       (!contains(github.event.head_commit.message, 'test(load): record short stability result') &&
+        !contains(github.event.head_commit.message, 'docs(ops): register short stability evidence') &&
+        !contains(github.event.head_commit.message, 'test(load): record short stability diagnostic')))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
