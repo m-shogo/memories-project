@@ -74,7 +74,15 @@ jobs:
           python scripts/validate-memory-os-short-stability-sample.py
           python scripts/validate-memory-os-load.py
           python scripts/validate-memory-os-operability.py
-          python scripts/reconcile-memory-os-short-stability-status.py
+          RECORDED_RESULT_SHA="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          value = json.loads(Path('docs/fixtures/memory-os-operability/short-stability-sample-results.sample.v1.json').read_text())
+          print(value['commitSha'])
+          PY
+          )"
+          test -n "$RECORDED_RESULT_SHA"
+          EXPECTED_COMMIT_SHA="$RECORDED_RESULT_SHA" python scripts/reconcile-memory-os-short-stability-status.py
           python scripts/validate-memory-os-short-stability-sample.py --require-reconciled
           python scripts/validate-memory-os-load.py
           python scripts/validate-memory-os-operability.py
