@@ -54,6 +54,9 @@ def load(path: Path) -> dict[str, Any]:
 
 def validate_runtime_authority() -> None:
     for path, expected, label in (
+        (STATUS, ROOT / "contracts/operations/production-operability-status.json", "production status"),
+        (INDEX, ROOT / "contracts/operations/backup-local-foundation-evidence.v1.json", "backup local foundation index"),
+        (RESULT, ROOT / "docs/fixtures/memory-os-operability/local-coherent-recovery-set-results.sample.v1.json", "coherent recovery result"),
         (VALIDATOR, ROOT / "scripts/validate-memory-os-local-coherent-recovery-set.py", "coherent restore validator"),
         (BACKUP_VALIDATOR, ROOT / "scripts/validate-memory-os-backup-restore.py", "backup restore validator"),
         (OPERABILITY_VALIDATOR, ROOT / "scripts/validate-memory-os-operability.py", "operability validator"),
