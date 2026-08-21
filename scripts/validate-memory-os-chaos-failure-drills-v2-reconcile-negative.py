@@ -21,9 +21,30 @@ def load_module():
     return module
 
 
+def expect_reconcile_failure(module, expected: str) -> None:
+    try:
+        module.main()
+    except module.ReconcileFailure as exc:
+        if expected not in str(exc):
+            raise RuntimeError(f"unexpected v2 reconcile rejection: {exc}") from exc
+    else:
+        raise RuntimeError(f"v2 chaos reconcile accepted invalid authority: {expected}")
+
+
 def main() -> int:
     module = load_module()
     source_sha = "0" * 40
+
+    canonical_result = module.RESULT_PATH
+    canonical_status = module.STATUS_PATH
+    try:
+        module.RESULT_PATH = ROOT / "README.md"
+        module.STATUS_PATH = ROOT / "SECURITY.md"
+        expect_reconcile_failure(module, "fixture must remain outside repository")
+    finally:
+        module.RESULT_PATH = canonical_result
+        module.STATUS_PATH = canonical_status
+
     with tempfile.TemporaryDirectory(prefix="memory-os-chaos-v2-negative-") as tmp:
         root = Path(tmp)
         result_path = root / "result.json"
@@ -58,20 +79,14 @@ def main() -> int:
                 raise module.ReconcileFailure("synthetic post-write aggregate rejection")
 
         module.validate_authority_chain = reject_after_write
-        try:
-            module.main()
-        except module.ReconcileFailure as exc:
-            if "synthetic post-write aggregate rejection" not in str(exc):
-                raise RuntimeError(f"unexpected v2 reconcile rejection: {exc}") from exc
-        else:
-            raise RuntimeError("v2 chaos reconcile accepted post-write aggregate rejection")
+        expect_reconcile_failure(module, "synthetic post-write aggregate rejection")
 
         if calls != [source_sha, source_sha]:
             raise RuntimeError(f"v2 authority validation order drift: {calls}")
         if status_path.read_bytes() != original_bytes:
             raise RuntimeError("v2 chaos reconcile did not roll back Production Status")
 
-    print("PASS: v2 chaos reconcile delegates canonical authority and rolls back after aggregate rejection")
+    print("PASS: v2 chaos reconcile pins data authority and rolls back after aggregate rejection")
     return 0
 
 
