@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove repeatability reconciliation cannot leave partial derived authority writes."""
+"""Prove repeatability reconciliation pins authorities and cannot leave partial writes."""
 
 from __future__ import annotations
 
@@ -23,6 +23,36 @@ def assert_unchanged(protected, before, label: str) -> None:
     for path in protected:
         if path.read_bytes() != before[path]:
             raise RuntimeError(f"partial authority write after {label}: {path.relative_to(ROOT)}")
+
+
+def expect_authority_rejection(module, attr: str, replacement: Path) -> None:
+    original = getattr(module, attr)
+    setattr(module, attr, replacement)
+    try:
+        try:
+            module.enforce_runtime_authorities()
+        except module.Fail:
+            pass
+        else:
+            raise RuntimeError(f"{attr} substitution must be rejected")
+    finally:
+        setattr(module, attr, original)
+
+
+def run_authority_substitutions(module) -> None:
+    substitutions = {
+        "CONTRACT": module.LOAD,
+        "RESULT": module.CONTRACT,
+        "VALIDATOR": module.LOAD_VALIDATOR,
+        "LOAD_VALIDATOR": module.VALIDATOR,
+        "OPERABILITY_VALIDATOR": module.LOAD_VALIDATOR,
+        "LOAD": module.CONTRACT,
+        "STATUS": module.LOAD,
+        "WORKFLOW": module.VALIDATOR,
+    }
+    for attr, replacement in substitutions.items():
+        expect_authority_rejection(module, attr, replacement)
+    module.enforce_runtime_authorities()
 
 
 def run_prewrite_failure(module) -> None:
@@ -80,10 +110,11 @@ def run_postwrite_failure(module) -> None:
 
 def main() -> int:
     module = load_module()
+    run_authority_substitutions(module)
     run_prewrite_failure(module)
     run_postwrite_failure(module)
     print("Memory OS controlled saturation repeatability reconcile negative PASS")
-    print("pre-write and post-write failures leave CONTRACT/LOAD/STATUS byte-for-byte unchanged")
+    print("authority substitution plus pre-write/post-write failures are fail-closed")
     return 0
 
 
