@@ -20,8 +20,31 @@ def load_module():
     return module
 
 
+def expect_rejection(callback, expected: str) -> None:
+    try:
+        callback()
+    except Exception as exc:
+        if expected not in str(exc):
+            raise RuntimeError(f"unexpected process-group authority rejection: {exc}") from exc
+    else:
+        raise RuntimeError(f"process-group reconciler accepted invalid authority: {expected}")
+
+
 def main() -> int:
     module = load_module()
+
+    for attr, substitute, expected in (
+        ("CONTRACT_PATH", ROOT / "README.md", "process-group contract authority drift"),
+        ("RESULT_PATH", ROOT / "README.md", "process-group result authority drift"),
+        ("STATUS_PATH", ROOT / "SECURITY.md", "production operability status authority drift"),
+    ):
+        original = getattr(module, attr)
+        try:
+            setattr(module, attr, substitute)
+            expect_rejection(module.enforce_data_authorities, expected)
+        finally:
+            setattr(module, attr, original)
+
     original_contract = module.CONTRACT_PATH.read_bytes()
     original_status = module.STATUS_PATH.read_bytes()
     contract = copy.deepcopy(module.load(module.CONTRACT_PATH))
@@ -42,7 +65,6 @@ def main() -> int:
 
     module.run_authority_validators = fail_post_validation
     try:
-        # First prove that direct authority validation is part of the reconcile path.
         module.run_authority_validators(source_sha)
         try:
             module.commit_candidate(contract, status, source_sha)
@@ -61,7 +83,7 @@ def main() -> int:
     if module.STATUS_PATH.read_bytes() != original_status:
         raise RuntimeError("production status changed after rejected transaction")
 
-    print("PASS: process-group reconcile delegates canonical authority and rolls back after post-write failure")
+    print("PASS: process-group reconcile pins data/canonical authority and rolls back after post-write failure")
     return 0
 
 
