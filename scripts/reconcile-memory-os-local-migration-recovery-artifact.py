@@ -15,6 +15,8 @@ CONTRACT_PATH = ROOT / "contracts/operations/local-migration-recovery-artifact-c
 REGISTRY_PATH = ROOT / "contracts/operations/migration-evidence-registry.v1.json"
 REGISTRY_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-migration-evidence-registry.py"
 VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-local-migration-recovery-artifact.py"
+LIFECYCLE_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-migration-lifecycle.py"
+OPERABILITY_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-operability.py"
 RECONCILE_PATH = ROOT / "scripts/reconcile-memory-os-local-migration-recovery-artifact.py"
 RUNNER_PATH = ROOT / "scripts/run-memory-os-local-migration-recovery-artifact.sh"
 WORKFLOW_PATH = ROOT / ".github/workflows/local-migration-recovery-artifact.yml"
@@ -50,8 +52,53 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
+def validate_runtime_authority() -> None:
+    for path, expected, label in (
+        (
+            VALIDATOR_PATH,
+            ROOT / "scripts/validate-memory-os-local-migration-recovery-artifact.py",
+            "local migration recovery-artifact validator",
+        ),
+        (
+            REGISTRY_VALIDATOR_PATH,
+            ROOT / "scripts/validate-memory-os-migration-evidence-registry.py",
+            "migration evidence registry validator",
+        ),
+        (
+            LIFECYCLE_VALIDATOR_PATH,
+            ROOT / "scripts/validate-memory-os-migration-lifecycle.py",
+            "migration lifecycle validator",
+        ),
+        (
+            OPERABILITY_VALIDATOR_PATH,
+            ROOT / "scripts/validate-memory-os-operability.py",
+            "operability validator",
+        ),
+    ):
+        require(path == expected, f"canonical {label} identity drift")
+        require(path.is_file(), f"canonical {label} missing")
+        require(not path.is_symlink(), f"canonical {label} must not be a symlink")
+        try:
+            require(path.resolve(strict=True) == expected, f"canonical {label} path drift")
+        except OSError as exc:
+            raise Fail(f"cannot resolve canonical {label}") from exc
+
+
+def run_validator(path: Path, *args: str) -> None:
+    completed = subprocess.run(
+        [sys.executable, str(path), *args],
+        cwd=ROOT,
+        check=False,
+    )
+    require(
+        type(completed.returncode) is int and completed.returncode == 0,
+        f"canonical validator rejected local migration recovery authority: {path.name}",
+    )
+
+
 def main() -> int:
     args = parse_args()
+    validate_runtime_authority()
     result_path = EVIDENCE_ROOT / f"{args.run_id}.json"
     require(result_path.is_file(), f"recovery artifact result missing: {result_path.relative_to(ROOT)}")
     result = load(result_path)
@@ -59,20 +106,15 @@ def main() -> int:
     source_sha = result.get("commitSha")
     require(isinstance(source_sha, str), "result commitSha missing")
 
-    completed = subprocess.run(
-        ["python", str(VALIDATOR_PATH), "--path", str(result_path),
-         "--expected-commit-sha", source_sha, "--require-result"],
-        cwd=ROOT,
-        check=False,
+    run_validator(
+        VALIDATOR_PATH,
+        "--path", str(result_path),
+        "--expected-commit-sha", source_sha,
+        "--require-result",
     )
-    require(completed.returncode == 0, "exact-source recovery artifact result validation failed")
-
-    completed = subprocess.run(
-        ["python", str(REGISTRY_VALIDATOR_PATH)],
-        cwd=ROOT,
-        check=False,
-    )
-    require(completed.returncode == 0, "canonical migration evidence registry validation failed")
+    run_validator(REGISTRY_VALIDATOR_PATH)
+    run_validator(LIFECYCLE_VALIDATOR_PATH)
+    run_validator(OPERABILITY_VALIDATOR_PATH)
 
     registry = load(REGISTRY_PATH)
     records = registry.get("records")
@@ -118,7 +160,20 @@ def main() -> int:
     ):
         require(path.is_file(), f"local recovery artifact evidence missing: {path.relative_to(ROOT)}")
         append_once(refs, str(path.relative_to(ROOT)))
-    CONTRACT_PATH.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    original_contract = CONTRACT_PATH.read_bytes()
+    CONTRACT_PATH.write_text(
+        json.dumps(contract, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    try:
+        run_validator(VALIDATOR_PATH)
+        run_validator(REGISTRY_VALIDATOR_PATH)
+        run_validator(LIFECYCLE_VALIDATOR_PATH)
+        run_validator(OPERABILITY_VALIDATOR_PATH)
+    except Exception:
+        CONTRACT_PATH.write_bytes(original_contract)
+        raise
 
     print("Memory OS local migration recovery-artifact reconciliation PASS")
     print(f"run: {args.run_id}")
