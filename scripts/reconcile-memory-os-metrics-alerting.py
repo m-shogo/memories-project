@@ -11,9 +11,18 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-METRICS_PATH = ROOT / "contracts/operations/metrics-contract.v1.json"
-ALERTING_PATH = ROOT / "contracts/operations/metrics-alerting-contract.v1.json"
-STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+CANONICAL_METRICS_PATH = ROOT / "contracts/operations/metrics-contract.v1.json"
+CANONICAL_ALERTING_PATH = ROOT / "contracts/operations/metrics-alerting-contract.v1.json"
+CANONICAL_STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+CANONICAL_METRICS_VALIDATOR = ROOT / "scripts/validate-memory-os-metrics.py"
+CANONICAL_ALERTING_VALIDATOR = ROOT / "scripts/validate-memory-os-metrics-alerting.py"
+CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+METRICS_PATH = CANONICAL_METRICS_PATH
+ALERTING_PATH = CANONICAL_ALERTING_PATH
+STATUS_PATH = CANONICAL_STATUS_PATH
+METRICS_VALIDATOR = CANONICAL_METRICS_VALIDATOR
+ALERTING_VALIDATOR = CANONICAL_ALERTING_VALIDATOR
+OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
 
 OLD_GAP = "alert routing, on-call and runbooks"
 NEW_EXISTING = (
@@ -51,6 +60,29 @@ def require(condition: bool, message: str) -> None:
         raise ReconcileFailure(message)
 
 
+def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
+    require(path == canonical, f"{label} authority drift")
+    require(canonical.is_file(), f"canonical {label} missing")
+    require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
+    try:
+        resolved = canonical.resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError) as exc:
+        raise ReconcileFailure(f"canonical {label} cannot be resolved") from exc
+    require(resolved == canonical, f"canonical {label} escaped repository path")
+
+
+def enforce_runtime_authorities() -> None:
+    for path, canonical, label in (
+        (METRICS_PATH, CANONICAL_METRICS_PATH, "metrics contract"),
+        (ALERTING_PATH, CANONICAL_ALERTING_PATH, "metrics alerting contract"),
+        (STATUS_PATH, CANONICAL_STATUS_PATH, "production operability status"),
+        (METRICS_VALIDATOR, CANONICAL_METRICS_VALIDATOR, "metrics validator"),
+        (ALERTING_VALIDATOR, CANONICAL_ALERTING_VALIDATOR, "metrics alerting validator"),
+        (OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, "operability validator"),
+    ):
+        require_exact_authority(path, canonical, label)
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -69,33 +101,28 @@ def append_once(items: list[Any], value: str) -> bool:
     return True
 
 
-def validate_source_authority() -> None:
+def run_validator(path: Path) -> None:
+    enforce_runtime_authorities()
     result = subprocess.run(
-        [sys.executable, "scripts/validate-memory-os-metrics-alerting.py"],
+        [sys.executable, str(path)],
         cwd=ROOT,
         check=False,
     )
-    require(
-        result.returncode == 0,
-        "source validator failed: scripts/validate-memory-os-metrics-alerting.py",
-    )
+    require(type(result.returncode) is int and result.returncode == 0,
+            f"validator failed: {path.relative_to(ROOT)}")
+
+
+def validate_source_authority() -> None:
+    run_validator(ALERTING_VALIDATOR)
 
 
 def validate_written_authority() -> None:
-    for script in (
-        "scripts/validate-memory-os-metrics.py",
-        "scripts/validate-memory-os-metrics-alerting.py",
-        "scripts/validate-memory-os-operability.py",
-    ):
-        result = subprocess.run(
-            [sys.executable, script],
-            cwd=ROOT,
-            check=False,
-        )
-        require(result.returncode == 0, f"post-write validator failed: {script}")
+    for path in (METRICS_VALIDATOR, ALERTING_VALIDATOR, OPERABILITY_VALIDATOR):
+        run_validator(path)
 
 
 def write_transactionally(metrics: dict[str, Any], status: dict[str, Any]) -> None:
+    enforce_runtime_authorities()
     original_metrics = METRICS_PATH.read_bytes()
     original_status = STATUS_PATH.read_bytes()
     try:
@@ -115,6 +142,7 @@ def write_transactionally(metrics: dict[str, Any], status: dict[str, Any]) -> No
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     validate_source_authority()
     metrics = load(METRICS_PATH)
     alerting = load(ALERTING_PATH)
@@ -225,6 +253,7 @@ def main() -> int:
             "production decision changed unexpectedly")
 
     if not changed:
+        validate_written_authority()
         print("Metrics alerting authority already reconciled")
         return 0
 
