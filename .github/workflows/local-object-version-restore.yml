@@ -10,6 +10,7 @@ on:
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/run-memory-os-local-object-version-restore.py"
       - "scripts/validate-memory-os-local-object-version-restore.py"
+      - "scripts/validate-memory-os-local-object-version-restore-reconcile-negative.py"
       - "scripts/reconcile-memory-os-local-object-version-restore.py"
   schedule:
     - cron: "53 18 * * 2"
@@ -78,8 +79,12 @@ jobs:
             scripts/memory_os_backup_restore_blockers.py \
             scripts/run-memory-os-local-object-version-restore.py \
             scripts/validate-memory-os-local-object-version-restore.py \
-            scripts/reconcile-memory-os-local-object-version-restore.py
+            scripts/validate-memory-os-local-object-version-restore-reconcile-negative.py \
+            scripts/reconcile-memory-os-local-object-version-restore.py \
+            scripts/validate-memory-os-backup-restore.py \
+            scripts/validate-memory-os-operability.py
           python scripts/validate-memory-os-local-object-version-restore.py
+          python scripts/validate-memory-os-local-object-version-restore-reconcile-negative.py
 
       - name: Execute object restore drill and write bounded diagnostic
         id: drill
