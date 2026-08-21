@@ -9,6 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-rate-limit-local-multiprocess-shared-store.py"
+VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py"
 
 
 class Fail(RuntimeError):
@@ -20,12 +21,9 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
-def load_module():
-    spec = importlib.util.spec_from_file_location(
-        "memory_os_rate_limit_local_shared_store_reconcile_negative_target",
-        RECONCILER,
-    )
-    require(spec is not None and spec.loader is not None, "cannot load local shared-store reconciler")
+def load_module(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load module: {path.name}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -52,6 +50,46 @@ def authority_identity_negative(module) -> None:
         )
     finally:
         module.OPERABILITY_VALIDATOR = real_operability
+
+
+def validator_semantic_negatives(module) -> None:
+    real_load = module.load
+    contract = copy.deepcopy(real_load(module.CONTRACT))
+    result = copy.deepcopy(real_load(module.RESULT))
+
+    substituted_contract = copy.deepcopy(contract)
+    substituted_contract["validator"] = "scripts/validate-memory-os-rate-limit.py"
+
+    def load_substituted_contract(path: Path):
+        if path == module.CONTRACT:
+            return copy.deepcopy(substituted_contract)
+        return real_load(path)
+
+    module.load = load_substituted_contract
+    try:
+        expect_rejected(
+            "contract cannot substitute a repository-contained validator",
+            module.main,
+        )
+    finally:
+        module.load = real_load
+
+    detached_result = copy.deepcopy(result)
+    detached_result["sourceCommitSha"] = "0" * 40
+
+    def load_detached_result(path: Path):
+        if path == module.RESULT:
+            return copy.deepcopy(detached_result)
+        return real_load(path)
+
+    module.load = load_detached_result
+    try:
+        expect_rejected(
+            "local rehearsal source commit must belong to current HEAD ancestry",
+            module.main,
+        )
+    finally:
+        module.load = real_load
 
 
 def rollback_negative(module) -> None:
@@ -119,12 +157,23 @@ def rollback_negative(module) -> None:
 
 
 def main() -> int:
-    module = load_module()
-    module.validate_runtime_authority()
-    authority_identity_negative(module)
-    rollback_negative(module)
+    reconciler = load_module(
+        RECONCILER,
+        "memory_os_rate_limit_local_shared_store_reconcile_negative_target",
+    )
+    validator = load_module(
+        VALIDATOR,
+        "memory_os_rate_limit_local_shared_store_validator_negative_target",
+    )
+    reconciler.validate_runtime_authority()
+    require(validator.main() == 0, "canonical local shared-store validator baseline failed")
+    authority_identity_negative(reconciler)
+    validator_semantic_negatives(validator)
+    rollback_negative(reconciler)
     print("Memory OS local multi-process shared-store reconcile negative suite PASS")
     print("canonical validator identity: enforced")
+    print("contract executable identity: enforced")
+    print("source commit ancestry: enforced")
     print("post-write aggregate rollback: enforced")
     print("production evidence: false")
     print("production decision: NO_GO")
