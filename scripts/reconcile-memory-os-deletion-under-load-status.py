@@ -12,13 +12,20 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT_PATH = ROOT / "contracts/operations/deletion-under-load-contract.v1.json"
-LOAD_PATH = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
-STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
-RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json"
-DELETION_VALIDATOR = ROOT / "scripts/validate-memory-os-deletion-under-load.py"
-LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CANONICAL_CONTRACT_PATH = ROOT / "contracts/operations/deletion-under-load-contract.v1.json"
+CANONICAL_LOAD_PATH = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
+CANONICAL_STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+CANONICAL_RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/deletion-under-load-results.sample.v1.json"
+CANONICAL_DELETION_VALIDATOR = ROOT / "scripts/validate-memory-os-deletion-under-load.py"
+CANONICAL_LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
+CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CONTRACT_PATH = CANONICAL_CONTRACT_PATH
+LOAD_PATH = CANONICAL_LOAD_PATH
+STATUS_PATH = CANONICAL_STATUS_PATH
+RESULT_PATH = CANONICAL_RESULT_PATH
+DELETION_VALIDATOR = CANONICAL_DELETION_VALIDATOR
+LOAD_VALIDATOR = CANONICAL_LOAD_VALIDATOR
+OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
 LEGACY_DELETION_GAP = (
     "request-linearization proof for operations already in flight before the deletion fence plus "
     "multi-account worker saturation, production topology and independently reviewed deletion-load thresholds"
@@ -44,6 +51,25 @@ def require(condition: bool, message: str) -> None:
         raise ReconcileFailure(message)
 
 
+def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
+    require(path == canonical, f"{label} authority drift")
+    require(canonical.is_file(), f"canonical {label} missing")
+    require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
+
+
+def enforce_runtime_authorities() -> None:
+    for path, canonical, label in (
+        (CONTRACT_PATH, CANONICAL_CONTRACT_PATH, "deletion-under-load contract"),
+        (LOAD_PATH, CANONICAL_LOAD_PATH, "load contract"),
+        (STATUS_PATH, CANONICAL_STATUS_PATH, "production status"),
+        (RESULT_PATH, CANONICAL_RESULT_PATH, "deletion-under-load result"),
+        (DELETION_VALIDATOR, CANONICAL_DELETION_VALIDATOR, "deletion-under-load validator"),
+        (LOAD_VALIDATOR, CANONICAL_LOAD_VALIDATOR, "load validator"),
+        (OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, "operability validator"),
+    ):
+        require_exact_authority(path, canonical, label)
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -63,7 +89,7 @@ def append_once(items: list[Any], value: Any) -> bool:
 
 
 def run_validator(path: Path, label: str, *args: str) -> None:
-    require(path.is_file(), f"canonical {label} validator missing")
+    enforce_runtime_authorities()
     completed = subprocess.run(
         [sys.executable, str(path), *args],
         cwd=ROOT,
@@ -95,6 +121,7 @@ def write_and_validate_transactionally(
     load_contract: dict[str, Any],
     status: dict[str, Any],
 ) -> None:
+    enforce_runtime_authorities()
     originals = {
         CONTRACT_PATH: CONTRACT_PATH.read_bytes(),
         LOAD_PATH: LOAD_PATH.read_bytes(),
@@ -123,6 +150,7 @@ def write_and_validate_transactionally(
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     expected_sha = os.getenv("EXPECTED_COMMIT_SHA", "")
     require(expected_sha, "EXPECTED_COMMIT_SHA is required")
     run_validator(DELETION_VALIDATOR, "deletion-under-load", "--expected-commit-sha", expected_sha)
