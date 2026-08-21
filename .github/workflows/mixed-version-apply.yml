@@ -19,6 +19,7 @@ on:
       - "scripts/run-memory-os-mixed-version-apply-drill.sh"
       - "scripts/validate-memory-os-mixed-version-apply.py"
       - "scripts/reconcile-memory-os-mixed-version-apply.py"
+      - "scripts/validate-memory-os-mixed-version-apply-reconcile-negative.py"
   push:
     branches:
       - so
@@ -39,6 +40,7 @@ on:
       - "scripts/run-memory-os-mixed-version-apply-drill.sh"
       - "scripts/validate-memory-os-mixed-version-apply.py"
       - "scripts/reconcile-memory-os-mixed-version-apply.py"
+      - "scripts/validate-memory-os-mixed-version-apply-reconcile-negative.py"
   schedule:
     - cron: "13 19 * * 4"
   workflow_dispatch:
@@ -109,7 +111,8 @@ jobs:
           bash -n scripts/run-memory-os-mixed-version-apply-drill.sh
           python -m py_compile \
             scripts/validate-memory-os-mixed-version-apply.py \
-            scripts/reconcile-memory-os-mixed-version-apply.py
+            scripts/reconcile-memory-os-mixed-version-apply.py \
+            scripts/validate-memory-os-mixed-version-apply-reconcile-negative.py
           test -z "$(gofmt -l services/import-api/cmd/memory-os-mixed-version-fixture/main.go)"
 
       - name: Start local MinIO
@@ -131,6 +134,7 @@ jobs:
       - name: Validate static compatibility contract
         run: |
           python scripts/validate-memory-os-mixed-version-apply.py
+          python scripts/validate-memory-os-mixed-version-apply-reconcile-negative.py
           python scripts/validate-memory-os-version-compatibility.py
 
       - name: Execute bidirectional persisted Apply drill
