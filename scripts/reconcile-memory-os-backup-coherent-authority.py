@@ -20,6 +20,8 @@ STATUS = ROOT / "contracts/operations/production-operability-status.json"
 INDEX = ROOT / "contracts/operations/backup-local-foundation-evidence.v1.json"
 RESULT = ROOT / "docs/fixtures/memory-os-operability/local-coherent-recovery-set-results.sample.v1.json"
 VALIDATOR = ROOT / "scripts/validate-memory-os-local-coherent-recovery-set.py"
+BACKUP_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 
 EVIDENCE = (
@@ -48,6 +50,30 @@ def load(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
     return value
+
+
+def validate_runtime_authority() -> None:
+    for path, label in (
+        (VALIDATOR, "coherent restore validator"),
+        (BACKUP_VALIDATOR, "backup restore validator"),
+        (OPERABILITY_VALIDATOR, "operability validator"),
+    ):
+        require(path.is_file(), f"canonical {label} missing")
+        require(not path.is_symlink(), f"canonical {label} must not be a symlink")
+        try:
+            require(path.resolve(strict=True) == path, f"canonical {label} path drift")
+        except OSError as exc:
+            raise Fail(f"cannot resolve canonical {label}") from exc
+
+
+def run_validator(path: Path) -> None:
+    completed = subprocess.run(
+        [sys.executable, str(path)],
+        cwd=ROOT,
+        check=False,
+    )
+    require(type(completed.returncode) is int and completed.returncode == 0,
+            f"canonical validator rejected coherent backup authority: {path.name}")
 
 
 def source_is_ancestor(value: Any) -> bool:
@@ -127,7 +153,9 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
-    subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, check=True)
+
+    validate_runtime_authority()
+    run_validator(VALIDATOR)
     current = load(STATUS)
     candidate = normalized(copy.deepcopy(current))
     candidate["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
@@ -141,7 +169,14 @@ def main() -> int:
         print("Memory OS coherent backup authority check PASS")
         return 0
     if changed:
+        original_bytes = STATUS.read_bytes()
         STATUS.write_text(json.dumps(candidate, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        try:
+            run_validator(BACKUP_VALIDATOR)
+            run_validator(OPERABILITY_VALIDATOR)
+        except Exception:
+            STATUS.write_bytes(original_bytes)
+            raise
         print("Registered local coherent recovery-set evidence in OPS-P0-007")
     else:
         print("Coherent recovery-set authority already normalized")
