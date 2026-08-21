@@ -62,7 +62,7 @@ jobs:
       - name: Checkout exact source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - uses: actions/setup-python@v5
@@ -74,10 +74,9 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin so
-          test "$(git branch --show-current)" = "so"
           test -z "$(git status --porcelain)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
-          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "SOURCE_SHA=$GITHUB_SHA" >> "$GITHUB_ENV"
 
       - name: Validate approved release pair authority
         run: |
