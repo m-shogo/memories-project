@@ -103,14 +103,16 @@ def run_validator(path: Path) -> None:
     )
 
 
-def validate_current_authority() -> None:
-    validate_runtime_authority()
+def validate_projected_authority() -> None:
     for path in validator_paths():
         run_validator(path)
 
 
 def main() -> int:
-    validate_current_authority()
+    # Exact executable identity is a source authority. Full validators also read
+    # the derived production status, so they run after deterministic projection
+    # (or on a no-op current projection) rather than blocking legitimate repair.
+    validate_runtime_authority()
     contract = load(CONTRACT_PATH)
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "backup readiness must be an object")
@@ -173,6 +175,7 @@ def main() -> int:
             "production decision changed unexpectedly")
 
     if not changed:
+        validate_projected_authority()
         print("Backup/restore policy foundation already reconciled")
         return 0
 
@@ -183,8 +186,7 @@ def main() -> int:
         encoding="utf-8",
     )
     try:
-        for path in validator_paths():
-            run_validator(path)
+        validate_projected_authority()
     except Exception:
         STATUS_PATH.write_bytes(original_status)
         raise
