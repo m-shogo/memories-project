@@ -52,6 +52,8 @@ jobs:
        !contains(github.event.head_commit.message, 'test(soak): record sustained local soak diagnostic'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      authority_sha: ${{ steps.reconcile.outputs.authority_sha }}
     services:
       postgres:
         image: postgres:16-alpine
@@ -158,6 +160,7 @@ jobs:
           exit 0
 
       - name: Reconcile foundation implementation
+        id: reconcile
         if: steps.smoke.outputs.exit_code == '0'
         run: |
           set -euo pipefail
@@ -186,6 +189,7 @@ jobs:
             }
             git push origin HEAD:so
           fi
+          echo "authority_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Record privacy-safe smoke diagnostic
         if: steps.smoke.outputs.exit_code != '0'
@@ -258,10 +262,10 @@ jobs:
           --health-retries 30
 
     steps:
-      - name: Checkout current so after foundation reconciliation
+      - name: Checkout exact validated foundation authority
         uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ needs.foundation-smoke.outputs.authority_sha }}
           fetch-depth: 0
 
       - name: Set up Go
@@ -278,9 +282,10 @@ jobs:
       - name: Capture exact long-run source
         run: |
           set -euo pipefail
-          git fetch origin so
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
-          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          expected="${{ needs.foundation-smoke.outputs.authority_sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          echo "SOURCE_SHA=$expected" >> "$GITHUB_ENV"
           echo "SOAK_RUN_ID=gha-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
           echo "SOAK_RESULT_PATH=/tmp/sustained-local-soak-result.json" >> "$GITHUB_ENV"
 
