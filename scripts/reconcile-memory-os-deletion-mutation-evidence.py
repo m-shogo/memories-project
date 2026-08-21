@@ -10,14 +10,22 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-MUTATION_CONTRACT = ROOT / "contracts/operations/deletion-prefence-mutation-linearization-contract.v1.json"
-MUTATION_RESULT = ROOT / "docs/fixtures/memory-os-operability/deletion-prefence-mutation-linearization-results.sample.v1.json"
-LOAD_PATH = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
-STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
-MUTATION_VALIDATOR = ROOT / "scripts/validate-memory-os-deletion-prefence-mutation-linearization.py"
-LOAD_INDEX_VALIDATOR = ROOT / "scripts/validate-memory-os-load-evidence-index.py"
-LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+MUTATION_CONTRACT_REL = Path("contracts/operations/deletion-prefence-mutation-linearization-contract.v1.json")
+MUTATION_RESULT_REL = Path("docs/fixtures/memory-os-operability/deletion-prefence-mutation-linearization-results.sample.v1.json")
+LOAD_REL = Path("contracts/operations/load-test-scenario-contract.v1.json")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+MUTATION_VALIDATOR_REL = Path("scripts/validate-memory-os-deletion-prefence-mutation-linearization.py")
+LOAD_INDEX_VALIDATOR_REL = Path("scripts/validate-memory-os-load-evidence-index.py")
+LOAD_VALIDATOR_REL = Path("scripts/validate-memory-os-load.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+MUTATION_CONTRACT = ROOT / MUTATION_CONTRACT_REL
+MUTATION_RESULT = ROOT / MUTATION_RESULT_REL
+LOAD_PATH = ROOT / LOAD_REL
+STATUS_PATH = ROOT / STATUS_REL
+MUTATION_VALIDATOR = ROOT / MUTATION_VALIDATOR_REL
+LOAD_INDEX_VALIDATOR = ROOT / LOAD_INDEX_VALIDATOR_REL
+LOAD_VALIDATOR = ROOT / LOAD_VALIDATOR_REL
+OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
 
 REFS = (
     "contracts/operations/deletion-prefence-mutation-linearization-contract.v1.json",
@@ -36,6 +44,32 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def require_exact_repo_file(path: Path, expected_relative: Path, label: str) -> None:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{label} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{label} authority drift",
+    )
+
+
+def enforce_runtime_authorities() -> None:
+    for path, relative, label in (
+        (MUTATION_CONTRACT, MUTATION_CONTRACT_REL, "mutation proof contract"),
+        (MUTATION_RESULT, MUTATION_RESULT_REL, "mutation proof result"),
+        (LOAD_PATH, LOAD_REL, "load contract"),
+        (STATUS_PATH, STATUS_REL, "production operability status"),
+        (MUTATION_VALIDATOR, MUTATION_VALIDATOR_REL, "mutation proof validator"),
+        (LOAD_INDEX_VALIDATOR, LOAD_INDEX_VALIDATOR_REL, "load evidence-index validator"),
+        (LOAD_VALIDATOR, LOAD_VALIDATOR_REL, "load validator"),
+        (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+    ):
+        require_exact_repo_file(path, relative, label)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -63,6 +97,7 @@ def append_unique(values: list[Any], value: Any) -> None:
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     run_validator(MUTATION_VALIDATOR, "--require-result")
 
     proof = load(MUTATION_CONTRACT)
