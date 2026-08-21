@@ -75,9 +75,9 @@ def rollback_negative(module) -> None:
 
     def fake_run_validator(path: Path) -> None:
         calls.append(path)
-        # Five successful pre-write validators, then fail at aggregate Operability
-        # on the fourth post-write validator before Entry Docs can run.
-        if len(calls) == 9 and path == module.OPERABILITY_VALIDATOR_PATH:
+        # Deterministic projection must be repairable first. Reject only after
+        # the candidate status exists, at aggregate Operability validation.
+        if len(calls) == 4 and path == module.OPERABILITY_VALIDATOR_PATH:
             raise module.ReconcileFailure("synthetic aggregate operability rejection")
 
     module.load = stale_status_load
@@ -88,11 +88,6 @@ def rollback_negative(module) -> None:
             module.main,
         )
         expected = [
-            module.BACKUP_VALIDATOR_PATH,
-            module.LOCAL_LOGICAL_VALIDATOR_PATH,
-            module.LOCAL_OBJECT_VALIDATOR_PATH,
-            module.OPERABILITY_VALIDATOR_PATH,
-            module.ENTRY_DOCS_VALIDATOR_PATH,
             module.BACKUP_VALIDATOR_PATH,
             module.LOCAL_LOGICAL_VALIDATOR_PATH,
             module.LOCAL_OBJECT_VALIDATOR_PATH,
@@ -115,6 +110,7 @@ def main() -> int:
     rollback_negative(reconciler)
     print("Memory OS backup/restore policy reconcile negative suite PASS")
     print("canonical validator identity: enforced")
+    print("deterministic drift repair before full validation: enforced")
     print("post-write aggregate rollback: enforced")
     print("canonical production blockers: unchanged")
     print("production decision: NO_GO")
