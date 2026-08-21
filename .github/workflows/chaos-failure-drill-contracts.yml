@@ -6,9 +6,12 @@ on:
       - ".github/workflows/chaos-failure-drill-contracts.yml"
       - ".github/workflows/chaos-failure-drills.yml"
       - "contracts/operations/chaos-failure-drill-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "services/import-api/internal/httpserver/interruption_drill_test.go"
       - "services/import-api/internal/parsersup/restart_drill_linux_test.go"
       - "scripts/validate-memory-os-chaos-failure-drills.py"
+      - "scripts/validate-memory-os-chaos-failure-drills-reconcile-negative.py"
+      - "scripts/validate-memory-os-operability.py"
       - "scripts/reconcile-memory-os-chaos-failure-drills.py"
   push:
     branches:
@@ -17,9 +20,12 @@ on:
       - ".github/workflows/chaos-failure-drill-contracts.yml"
       - ".github/workflows/chaos-failure-drills.yml"
       - "contracts/operations/chaos-failure-drill-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "services/import-api/internal/httpserver/interruption_drill_test.go"
       - "services/import-api/internal/parsersup/restart_drill_linux_test.go"
       - "scripts/validate-memory-os-chaos-failure-drills.py"
+      - "scripts/validate-memory-os-chaos-failure-drills-reconcile-negative.py"
+      - "scripts/validate-memory-os-operability.py"
       - "scripts/reconcile-memory-os-chaos-failure-drills.py"
   workflow_dispatch:
 
@@ -53,11 +59,18 @@ jobs:
         run: |
           python -m py_compile \
             scripts/validate-memory-os-chaos-failure-drills.py \
+            scripts/validate-memory-os-chaos-failure-drills-reconcile-negative.py \
+            scripts/validate-memory-os-operability.py \
             scripts/reconcile-memory-os-chaos-failure-drills.py
+          python scripts/validate-memory-os-chaos-failure-drills-reconcile-negative.py
           test -z "$(gofmt -l \
             services/import-api/internal/httpserver/interruption_drill_test.go \
             services/import-api/internal/parsersup/restart_drill_linux_test.go)"
           python scripts/validate-memory-os-chaos-failure-drills.py
+          python scripts/reconcile-memory-os-chaos-failure-drills.py
+          python scripts/validate-memory-os-chaos-failure-drills.py
+          python scripts/validate-memory-os-operability.py
+          git diff --exit-code -- contracts/operations/production-operability-status.json
 
       - name: Execute targeted CI boundary drills
         working-directory: services/import-api
