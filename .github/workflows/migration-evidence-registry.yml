@@ -18,6 +18,7 @@ on:
       - "scripts/memory_os_migration_recovery_point.py"
       - "scripts/run-memory-os-local-migration-recovery-artifact.sh"
       - "scripts/validate-memory-os-local-migration-recovery-artifact.py"
+      - "scripts/validate-memory-os-local-migration-recovery-artifact-reconcile-negative.py"
       - "scripts/reconcile-memory-os-local-migration-recovery-artifact.py"
       - "scripts/reconcile-memory-os-migration-recovery-result-orphans.py"
       - "scripts/register-memory-os-migration-rehearsal-evidence.py"
@@ -47,6 +48,7 @@ on:
       - "scripts/memory_os_migration_recovery_point.py"
       - "scripts/run-memory-os-local-migration-recovery-artifact.sh"
       - "scripts/validate-memory-os-local-migration-recovery-artifact.py"
+      - "scripts/validate-memory-os-local-migration-recovery-artifact-reconcile-negative.py"
       - "scripts/reconcile-memory-os-local-migration-recovery-artifact.py"
       - "scripts/reconcile-memory-os-migration-recovery-result-orphans.py"
       - "scripts/register-memory-os-migration-rehearsal-evidence.py"
@@ -90,6 +92,7 @@ jobs:
           python -m py_compile \
             scripts/memory_os_migration_recovery_point.py \
             scripts/validate-memory-os-local-migration-recovery-artifact.py \
+            scripts/validate-memory-os-local-migration-recovery-artifact-reconcile-negative.py \
             scripts/reconcile-memory-os-local-migration-recovery-artifact.py \
             scripts/reconcile-memory-os-migration-recovery-result-orphans.py \
             scripts/register-memory-os-migration-rehearsal-evidence.py \
@@ -158,6 +161,10 @@ jobs:
           if [[ "$code" == "0" ]]; then
             echo "STAGE: local-artifact-static-validation" >> "$log"
             python scripts/validate-memory-os-local-migration-recovery-artifact.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: local-artifact-reconcile-negatives" >> "$log"
+            python scripts/validate-memory-os-local-migration-recovery-artifact-reconcile-negative.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             echo "STAGE: committed-result-ledger-consistency" >> "$log"
