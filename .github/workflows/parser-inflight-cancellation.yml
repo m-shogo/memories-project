@@ -28,10 +28,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout latest so
+      - name: Checkout exact source
         uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Go
@@ -47,9 +47,8 @@ jobs:
 
       - name: Confirm exact clean source
         run: |
-          test "$(git branch --show-current)" = "so"
           test -z "$(git status --porcelain)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
 
       - name: Compile validator and check formatting
         run: |
