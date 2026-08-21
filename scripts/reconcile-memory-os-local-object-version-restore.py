@@ -68,6 +68,21 @@ def append_once(items: list[Any], value: str) -> bool:
 def validate_runtime_authority() -> None:
     for path, expected, label in (
         (
+            CONTRACT_PATH,
+            ROOT / "contracts/operations/local-object-version-restore-contract.v1.json",
+            "local object-version restore contract",
+        ),
+        (
+            RESULT_PATH,
+            ROOT / "docs/fixtures/memory-os-operability/local-object-version-restore-results.sample.v1.json",
+            "local object-version restore result",
+        ),
+        (
+            STATUS_PATH,
+            ROOT / "contracts/operations/production-operability-status.json",
+            "production operability status",
+        ),
+        (
             VALIDATOR_PATH,
             ROOT / "scripts/validate-memory-os-local-object-version-restore.py",
             "local object-version restore validator",
