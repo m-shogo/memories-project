@@ -13,6 +13,7 @@ on:
       - "contracts/operations/load-test-scenario-contract.v1.json"
       - "contracts/operations/production-operability-status.json"
       - "scripts/validate-memory-os-capacity-ramp.py"
+      - "scripts/validate-memory-os-capacity-ramp-authority-negative.py"
       - "scripts/reconcile-memory-os-capacity-ramp-status.py"
       - "scripts/validate-memory-os-short-stability-sample.py"
       - "scripts/validate-memory-os-short-stability-reconcile-negative.py"
@@ -36,6 +37,7 @@ on:
       - "contracts/operations/load-test-scenario-contract.v1.json"
       - "contracts/operations/production-operability-status.json"
       - "scripts/validate-memory-os-capacity-ramp.py"
+      - "scripts/validate-memory-os-capacity-ramp-authority-negative.py"
       - "scripts/reconcile-memory-os-capacity-ramp-status.py"
       - "scripts/validate-memory-os-short-stability-sample.py"
       - "scripts/validate-memory-os-short-stability-reconcile-negative.py"
@@ -100,6 +102,7 @@ jobs:
           echo "STAGE: compile" >> "$log"
           python -m py_compile \
             scripts/validate-memory-os-capacity-ramp.py \
+            scripts/validate-memory-os-capacity-ramp-authority-negative.py \
             scripts/reconcile-memory-os-capacity-ramp-status.py \
             scripts/validate-memory-os-short-stability-sample.py \
             scripts/validate-memory-os-short-stability-reconcile-negative.py \
@@ -110,6 +113,11 @@ jobs:
             scripts/validate-memory-os-load.py \
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
+
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: capacity-authority-negative" >> "$log"
+            python scripts/validate-memory-os-capacity-ramp-authority-negative.py >> "$log" 2>&1 || code=$?
+          fi
 
           if [[ "$code" == "0" ]]; then
             echo "STAGE: load-foundation-ordering-negative" >> "$log"
