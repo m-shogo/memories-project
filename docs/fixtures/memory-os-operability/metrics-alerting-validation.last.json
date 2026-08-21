@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v2",
   "workflow": "reconcile-metrics-authority",
-  "sourceCommitSha": "4acf35b0a343fd667b197900756eff2504b0dc03",
+  "sourceCommitSha": "260c7cb25e9912f2e82680b57b5e74661df7e222",
   "result": "PASS",
   "exitCode": 0,
   "steps": [
@@ -13,7 +13,7 @@
     {
       "command": "python scripts/validate-memory-os-metrics-reconcile-rollback-negative.py",
       "exitCode": 0,
-      "output": "PASS: metrics source delegation and primary/scrape/operations/alerting rollback are fail-closed\n"
+      "output": "PASS: metrics authority identity, source delegation and primary/scrape/operations/alerting rollback are fail-closed\n"
     },
     {
       "command": "python scripts/reconcile-memory-os-metrics-contract.py",
