@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,12 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/rate-limit-local-multiprocess-shared-store-contract.v1.json"
 RESULT = ROOT / "docs/fixtures/memory-os-operability/rate-limit-local-multiprocess-shared-store-results.v1.json"
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
+EXPECTED_REFS = {
+    "runner": "services/import-api/internal/ratelimit/shared_store_multiprocess_test.go",
+    "validator": "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py",
+    "reconcile": "scripts/reconcile-memory-os-rate-limit-local-multiprocess-shared-store.py",
+    "workflow": ".github/workflows/rate-limit-local-multiprocess-shared-store.yml",
+}
 
 
 class Fail(RuntimeError):
@@ -33,12 +40,35 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def require_canonical_ref(contract: dict[str, Any], field: str) -> Path:
+    expected_ref = EXPECTED_REFS[field]
+    ref = contract.get(field)
+    require(ref == expected_ref, f"canonical contract artifact identity drift: {field}")
+    path = ROOT / expected_ref
+    require(path.is_file(), f"canonical contract artifact missing: {field}")
+    require(not path.is_symlink(), f"canonical contract artifact must not be symlink: {field}")
+    try:
+        require(path.resolve(strict=True) == path, f"canonical contract artifact path drift: {field}")
+    except OSError as exc:
+        raise Fail(f"cannot resolve canonical contract artifact: {field}") from exc
+    return path
+
+
+def source_is_ancestor(source: str) -> bool:
+    return subprocess.run(
+        ["git", "merge-base", "--is-ancestor", source, "HEAD"],
+        cwd=ROOT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    ).returncode == 0
+
+
 def main() -> int:
     contract = load(CONTRACT)
+    require(contract.get("contractId") == "memory-os.operability.rate-limit-local-multiprocess-shared-store.v1", "contract id drift")
     require(contract.get("schemaVersion") == "memory-os-rate-limit-local-multiprocess-shared-store.v1", "contract schema drift")
-    for field in ("runner", "validator", "reconcile", "workflow"):
-        ref = contract.get(field)
-        require(isinstance(ref, str) and ref and (ROOT / ref).is_file(), f"contract artifact missing: {field}")
+    resolved_refs = {field: require_canonical_ref(contract, field) for field in EXPECTED_REFS}
     require(contract.get("result") == str(RESULT.relative_to(ROOT)), "result path drift")
     require(contract.get("test") == "TestLocalSharedStoreCrossProcessBudgetRestartAndOutage", "test binding drift")
     assertions = contract.get("requiredAssertions")
@@ -57,7 +87,7 @@ def main() -> int:
     promotion = contract.get("promotionRules")
     require(isinstance(promotion, dict) and promotion and all(value is False for value in promotion.values()), "local rehearsal promotion must remain forbidden")
 
-    runner = (ROOT / contract["runner"]).read_text(encoding="utf-8")
+    runner = resolved_refs["runner"].read_text(encoding="utf-8")
     for token in (
         "exec.Command(os.Args[0]",
         "MEMORY_OS_RATE_LIMIT_CHILD=1",
@@ -88,6 +118,7 @@ def main() -> int:
     require(result.get("schemaVersion") == contract.get("resultsSchemaVersion"), "result schema drift")
     source = result.get("sourceCommitSha")
     require(isinstance(source, str) and SHA40.fullmatch(source), "sourceCommitSha invalid")
+    require(source_is_ancestor(source), "sourceCommitSha must be an ancestor of current HEAD")
     require(result.get("classification") == "LOCAL_MULTI_PROCESS_SHARED_STORE_REHEARSAL", "result classification drift")
     require(result.get("dependencyMode") == "TEST_ONLY_LOOPBACK_HTTP_BROKER_MEMORY_STORE", "result dependency mode drift")
     require(result.get("result") == "PASS", "result must be PASS")
