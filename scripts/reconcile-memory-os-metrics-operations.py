@@ -11,10 +11,20 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-METRICS_PATH = ROOT / "contracts/operations/metrics-contract.v1.json"
-DASHBOARD_PATH = ROOT / "contracts/operations/metrics-dashboard-contract.v1.json"
-RETENTION_PATH = ROOT / "contracts/operations/metrics-retention-error-budget-contract.v1.json"
-STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+CANONICAL_METRICS_PATH = ROOT / "contracts/operations/metrics-contract.v1.json"
+CANONICAL_DASHBOARD_PATH = ROOT / "contracts/operations/metrics-dashboard-contract.v1.json"
+CANONICAL_RETENTION_PATH = ROOT / "contracts/operations/metrics-retention-error-budget-contract.v1.json"
+CANONICAL_STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+CANONICAL_METRICS_VALIDATOR = ROOT / "scripts/validate-memory-os-metrics.py"
+CANONICAL_OPERATIONS_VALIDATOR = ROOT / "scripts/validate-memory-os-metrics-operations.py"
+CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+METRICS_PATH = CANONICAL_METRICS_PATH
+DASHBOARD_PATH = CANONICAL_DASHBOARD_PATH
+RETENTION_PATH = CANONICAL_RETENTION_PATH
+STATUS_PATH = CANONICAL_STATUS_PATH
+METRICS_VALIDATOR = CANONICAL_METRICS_VALIDATOR
+OPERATIONS_VALIDATOR = CANONICAL_OPERATIONS_VALIDATOR
+OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
 
 OLD_DASHBOARD_GAP = (
     "dashboards and load-calibrated histogram buckets and SLO targets "
@@ -58,6 +68,30 @@ def require(condition: bool, message: str) -> None:
         raise ReconcileFailure(message)
 
 
+def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
+    require(path == canonical, f"{label} authority drift")
+    require(canonical.is_file(), f"canonical {label} missing")
+    require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
+    try:
+        resolved = canonical.resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError) as exc:
+        raise ReconcileFailure(f"canonical {label} cannot be resolved") from exc
+    require(resolved == canonical, f"canonical {label} escaped repository path")
+
+
+def enforce_runtime_authorities() -> None:
+    for path, canonical, label in (
+        (METRICS_PATH, CANONICAL_METRICS_PATH, "metrics contract"),
+        (DASHBOARD_PATH, CANONICAL_DASHBOARD_PATH, "metrics dashboard contract"),
+        (RETENTION_PATH, CANONICAL_RETENTION_PATH, "metrics retention contract"),
+        (STATUS_PATH, CANONICAL_STATUS_PATH, "production operability status"),
+        (METRICS_VALIDATOR, CANONICAL_METRICS_VALIDATOR, "metrics validator"),
+        (OPERATIONS_VALIDATOR, CANONICAL_OPERATIONS_VALIDATOR, "metrics operations validator"),
+        (OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, "operability validator"),
+    ):
+        require_exact_authority(path, canonical, label)
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -76,33 +110,28 @@ def append_once(items: list[Any], value: str) -> bool:
     return True
 
 
-def validate_source_authority() -> None:
+def run_validator(path: Path) -> None:
+    enforce_runtime_authorities()
     result = subprocess.run(
-        [sys.executable, "scripts/validate-memory-os-metrics-operations.py"],
+        [sys.executable, str(path)],
         cwd=ROOT,
         check=False,
     )
-    require(
-        result.returncode == 0,
-        "source validator failed: scripts/validate-memory-os-metrics-operations.py",
-    )
+    require(type(result.returncode) is int and result.returncode == 0,
+            f"validator failed: {path.relative_to(ROOT)}")
+
+
+def validate_source_authority() -> None:
+    run_validator(OPERATIONS_VALIDATOR)
 
 
 def validate_written_authority() -> None:
-    for script in (
-        "scripts/validate-memory-os-metrics.py",
-        "scripts/validate-memory-os-metrics-operations.py",
-        "scripts/validate-memory-os-operability.py",
-    ):
-        result = subprocess.run(
-            [sys.executable, script],
-            cwd=ROOT,
-            check=False,
-        )
-        require(result.returncode == 0, f"post-write validator failed: {script}")
+    for path in (METRICS_VALIDATOR, OPERATIONS_VALIDATOR, OPERABILITY_VALIDATOR):
+        run_validator(path)
 
 
 def write_transactionally(metrics: dict[str, Any], status: dict[str, Any]) -> None:
+    enforce_runtime_authorities()
     original_metrics = METRICS_PATH.read_bytes()
     original_status = STATUS_PATH.read_bytes()
     try:
@@ -122,6 +151,7 @@ def write_transactionally(metrics: dict[str, Any], status: dict[str, Any]) -> No
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     validate_source_authority()
     metrics = load(METRICS_PATH)
     dashboards = load(DASHBOARD_PATH)
@@ -220,6 +250,7 @@ def main() -> int:
             "production decision changed unexpectedly")
 
     if not changed:
+        validate_written_authority()
         print("Metrics operations authority already reconciled")
         return 0
 
