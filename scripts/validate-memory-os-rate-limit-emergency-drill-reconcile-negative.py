@@ -27,6 +27,16 @@ def load_module(path: Path, name: str):
     return module
 
 
+def expect_rejection(callback, expected: str) -> None:
+    try:
+        callback()
+    except Exception as exc:
+        if expected not in str(exc):
+            raise AssertionError(f"unexpected authority rejection: {exc}") from exc
+    else:
+        raise AssertionError(f"authority substitution was incorrectly accepted: {expected}")
+
+
 def git(*args: str, env: dict[str, str] | None = None) -> str:
     completed = subprocess.run(
         ["git", *args],
@@ -73,6 +83,30 @@ def prove_lineage_rejection() -> None:
         raise AssertionError("detached emergency drill source was incorrectly accepted")
     if git("rev-parse", "HEAD") != current_head:
         raise AssertionError("lineage negative changed the current branch ref")
+
+
+def prove_reconciler_authority_identity() -> None:
+    reconciler = load_module(
+        RECONCILER_PATH,
+        "memory_os_rate_limit_emergency_authority_identity_negative",
+    )
+    substitutions = (
+        ("CONTRACT_PATH", ROOT / "README.md", "emergency drill contract authority drift"),
+        ("RESULT_PATH", ROOT / "README.md", "emergency drill result authority drift"),
+        ("OPERATIONS_PATH", ROOT / "README.md", "rate-limit operations contract authority drift"),
+        ("STATUS_PATH", ROOT / "SECURITY.md", "production operability status authority drift"),
+        ("VALIDATOR_PATH", EVALUATOR_PATH, "emergency drill validator authority drift"),
+        ("OPERATIONS_VALIDATOR", VALIDATOR_PATH, "rate-limit operations validator authority drift"),
+        ("RATE_LIMIT_VALIDATOR", VALIDATOR_PATH, "rate-limit validator authority drift"),
+        ("OPERABILITY_VALIDATOR", VALIDATOR_PATH, "operability validator authority drift"),
+    )
+    for attr, substitute, expected in substitutions:
+        original = getattr(reconciler, attr)
+        try:
+            setattr(reconciler, attr, substitute)
+            expect_rejection(reconciler.enforce_runtime_authorities, expected)
+        finally:
+            setattr(reconciler, attr, original)
 
 
 def prove_evaluator_authority_boundaries() -> None:
@@ -293,11 +327,13 @@ def prove_transactional_rollback() -> None:
 
 def main() -> int:
     prove_lineage_rejection()
+    prove_reconciler_authority_identity()
     prove_evaluator_authority_boundaries()
     prove_runner_foundation_delegation()
     prove_aggregate_validator_delegation()
     prove_transactional_rollback()
     print("PASS: detached emergency drill sources are rejected")
+    print("PASS: emergency reconcile pins canonical data and validator authorities")
     print("PASS: emergency evaluator validator authority and exact exit semantics are fail-closed")
     print("PASS: emergency evaluator validates the exact record used for state evaluation")
     print("PASS: emergency evaluator rejects record drift during authority validation")
