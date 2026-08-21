@@ -3,8 +3,10 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +14,9 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/rate-limit-local-multiprocess-shared-store-contract.v1.json"
 RESULT = ROOT / "docs/fixtures/memory-os-operability/rate-limit-local-multiprocess-shared-store-results.v1.json"
 VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py"
+RATE_LIMIT_OPERATIONS_VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit-operations.py"
+RATE_LIMIT_VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 REFS = (
     "contracts/operations/rate-limit-local-multiprocess-shared-store-contract.v1.json",
@@ -43,33 +48,60 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
-def main() -> int:
-    contract = load(CONTRACT)
+def validate_runtime_authority() -> None:
+    for path, expected, label in (
+        (VALIDATOR, ROOT / "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py", "local shared-store validator"),
+        (RATE_LIMIT_OPERATIONS_VALIDATOR, ROOT / "scripts/validate-memory-os-rate-limit-operations.py", "rate-limit operations validator"),
+        (RATE_LIMIT_VALIDATOR, ROOT / "scripts/validate-memory-os-rate-limit.py", "rate-limit validator"),
+        (OPERABILITY_VALIDATOR, ROOT / "scripts/validate-memory-os-operability.py", "operability validator"),
+    ):
+        require(path == expected, f"canonical {label} identity drift")
+        require(path.is_file(), f"canonical {label} missing")
+        require(not path.is_symlink(), f"canonical {label} must not be a symlink")
+        try:
+            require(path.resolve(strict=True) == expected, f"canonical {label} path drift")
+        except OSError as exc:
+            raise Fail(f"cannot resolve canonical {label}") from exc
+
+
+def run_validator(path: Path) -> None:
+    completed = subprocess.run([sys.executable, str(path)], cwd=ROOT, check=False)
+    require(type(completed.returncode) is int and completed.returncode == 0,
+            f"canonical validator rejected local shared-store authority: {path.name}")
+
+
+def normalized_contract(current: dict[str, Any], result_present: bool) -> dict[str, Any]:
+    contract = copy.deepcopy(current)
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "readiness missing")
-    result_present = RESULT.is_file()
+    runner = contract.get("runner")
+    workflow = contract.get("workflow")
+    require(isinstance(runner, str) and runner, "runner authority missing")
+    require(isinstance(workflow, str) and workflow, "workflow authority missing")
     readiness["contractDefined"] = True
-    readiness["runnerImplemented"] = (ROOT / contract["runner"]).is_file()
+    readiness["runnerImplemented"] = (ROOT / runner).is_file()
     readiness["validatorImplemented"] = VALIDATOR.is_file()
-    readiness["automaticWorkflowImplemented"] = (ROOT / contract["workflow"]).is_file()
+    readiness["automaticWorkflowImplemented"] = (ROOT / workflow).is_file()
     readiness["exactSourcePassCommitted"] = result_present
     readiness["localCrossProcessStoreSemanticsProven"] = result_present
     readiness["distributedSharedStoreImplemented"] = False
     readiness["productionEquivalentRuntimeEvidence"] = False
     readiness["productionReady"] = False
-    CONTRACT.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return contract
 
-    subprocess.run(["python", str(VALIDATOR)], cwd=ROOT, check=True)
 
-    status = load(STATUS)
+def normalized_status(current: dict[str, Any], result_present: bool) -> dict[str, Any]:
+    status = copy.deepcopy(current)
     require(status.get("productionDecision") == "NO_GO", "productionDecision must remain NO_GO")
     gate = next((row for row in status.get("areas", []) if isinstance(row, dict) and row.get("id") == "OPS-P0-005"), None)
     require(isinstance(gate, dict), "OPS-P0-005 missing")
-    require(gate.get("status") == "PARTIAL" and gate.get("blocking") is True, "OPS-P0-005 must remain blocking PARTIAL")
+    require(gate.get("status") == "PARTIAL" and gate.get("blocking") is True,
+            "OPS-P0-005 must remain blocking PARTIAL")
     existing = gate.get("existingEvidence")
     missing = gate.get("missingEvidence")
     refs = gate.get("evidenceRefs")
-    require(isinstance(existing, list) and isinstance(missing, list) and isinstance(refs, list), "OPS-P0-005 authority arrays missing")
+    require(isinstance(existing, list) and isinstance(missing, list) and isinstance(refs, list),
+            "OPS-P0-005 authority arrays missing")
     existing[:] = [item for item in existing if not (isinstance(item, str) and item.startswith(EVIDENCE_PREFIX))]
     if result_present:
         append_once(existing, (
@@ -94,7 +126,32 @@ def main() -> int:
         "production emergency control plane",
     ):
         require(phrase in joined, f"OPS-P0-005 production blocker must remain: {phrase}")
+    require(status.get("productionDecision") == "NO_GO", "productionDecision changed unexpectedly")
+    return status
+
+
+def main() -> int:
+    validate_runtime_authority()
+    result_present = RESULT.is_file()
+    contract = normalized_contract(load(CONTRACT), result_present)
+    status = normalized_status(load(STATUS), result_present)
+
+    original_contract = CONTRACT.read_bytes()
+    original_status = STATUS.read_bytes()
+    CONTRACT.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    try:
+        for validator in (
+            VALIDATOR,
+            RATE_LIMIT_OPERATIONS_VALIDATOR,
+            RATE_LIMIT_VALIDATOR,
+            OPERABILITY_VALIDATOR,
+        ):
+            run_validator(validator)
+    except Exception:
+        CONTRACT.write_bytes(original_contract)
+        STATUS.write_bytes(original_status)
+        raise
 
     print("Memory OS local multi-process shared-store reconciliation PASS")
     print(f"exact-source result committed: {str(result_present).lower()}")
