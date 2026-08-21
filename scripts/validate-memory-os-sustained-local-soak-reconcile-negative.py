@@ -41,7 +41,13 @@ def main() -> int:
     expect_authority_rejection(module, "CONTRACT_PATH", module.LOAD_PATH)
     expect_authority_rejection(module, "LOAD_PATH", module.STATUS_PATH)
     expect_authority_rejection(module, "STATUS_PATH", module.CONTRACT_PATH)
+    expect_authority_rejection(module, "RESULT_DIR", module.ROOT / "docs")
+    expect_authority_rejection(module, "AGGREGATE_PATH", module.CONTRACT_PATH)
+    expect_authority_rejection(module, "REVIEW_PATH", module.LOAD_PATH)
+    expect_authority_rejection(module, "AGGREGATE_VALIDATOR", module.SOAK_VALIDATOR)
+    expect_authority_rejection(module, "INDEPENDENT_REVIEW_VALIDATOR", module.LOAD_VALIDATOR)
     expect_authority_rejection(module, "SOAK_VALIDATOR", module.LOAD_VALIDATOR)
+    expect_authority_rejection(module, "LOAD_VALIDATOR", module.SOAK_VALIDATOR)
     expect_authority_rejection(module, "OPERABILITY_VALIDATOR", module.SOAK_VALIDATOR)
 
     for path in paths:
