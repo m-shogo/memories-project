@@ -12,6 +12,19 @@ on:
       - "services/import-api/internal/parsersup/inflight_cancellation_drill_linux_test.go"
       - "scripts/validate-memory-os-parser-inflight-cancellation.py"
       - "scripts/reconcile-memory-os-parser-inflight-cancellation.py"
+  pull_request:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/parser-inflight-cancellation.yml"
+      - "contracts/operations/parser-inflight-cancellation-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "services/import-api/internal/parsersup/supervisor_linux.go"
+      - "services/import-api/internal/parsersup/worker.go"
+      - "services/import-api/internal/parsersup/inflight_cancellation_drill_linux_test.go"
+      - "scripts/validate-memory-os-parser-inflight-cancellation.py"
+      - "scripts/validate-memory-os-operability.py"
+      - "scripts/reconcile-memory-os-parser-inflight-cancellation.py"
   schedule:
     - cron: "41 20 * * *"
   workflow_dispatch:
@@ -20,11 +33,53 @@ permissions:
   contents: write
 
 concurrency:
-  group: parser-inflight-cancellation-so
+  group: parser-inflight-cancellation-${{ github.event_name }}-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact pull request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: services/import-api/go.sum
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate parser cancellation authority read-only
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          test -z "$(git status --porcelain)"
+          python -m py_compile \
+            scripts/validate-memory-os-parser-inflight-cancellation.py \
+            scripts/validate-memory-os-operability.py \
+            scripts/reconcile-memory-os-parser-inflight-cancellation.py
+          test -z "$(gofmt -l \
+            services/import-api/internal/parsersup/supervisor_linux.go \
+            services/import-api/internal/parsersup/worker.go \
+            services/import-api/internal/parsersup/inflight_cancellation_drill_linux_test.go)"
+          python scripts/validate-memory-os-parser-inflight-cancellation.py
+          python scripts/reconcile-memory-os-parser-inflight-cancellation.py
+          python scripts/validate-memory-os-parser-inflight-cancellation.py
+          python scripts/validate-memory-os-operability.py
+          git diff --exit-code -- contracts/operations/production-operability-status.json
+
   execute:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
