@@ -27,6 +27,8 @@ STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 INDEX_PATH = ROOT / "contracts/operations/backup-local-foundation-evidence.v1.json"
 LOGICAL_RESULT = ROOT / "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json"
 OBJECT_RESULT = ROOT / "docs/fixtures/memory-os-operability/local-object-version-restore-results.sample.v1.json"
+BACKUP_VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 POLICY_EVIDENCE = (
@@ -115,6 +117,29 @@ def append_all(items: list[str], values: tuple[str, ...]) -> None:
     for value in values:
         if value not in items:
             items.append(value)
+
+
+def validate_runtime_authority() -> None:
+    for path, label in (
+        (BACKUP_VALIDATOR, "backup restore validator"),
+        (OPERABILITY_VALIDATOR, "operability validator"),
+    ):
+        require(path.is_file(), f"canonical {label} missing")
+        require(not path.is_symlink(), f"canonical {label} must not be a symlink")
+        try:
+            require(path.resolve(strict=True) == path, f"canonical {label} path drift")
+        except OSError as exc:
+            raise ReconcileFailure(f"cannot resolve canonical {label}") from exc
+
+
+def run_validator(path: Path) -> None:
+    completed = subprocess.run(
+        [sys.executable, str(path)],
+        cwd=ROOT,
+        check=False,
+    )
+    require(type(completed.returncode) is int and completed.returncode == 0,
+            f"canonical validator rejected reconciled backup authority: {path.name}")
 
 
 def validate_logical(result: dict[str, Any]) -> None:
@@ -234,6 +259,7 @@ def main() -> int:
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
 
+    validate_runtime_authority()
     current = load(STATUS_PATH)
     candidate = normalize(copy.deepcopy(current))
     candidate["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
@@ -250,10 +276,19 @@ def main() -> int:
     if not changed:
         print("Memory OS backup authority already normalized")
         return 0
+
+    original_bytes = STATUS_PATH.read_bytes()
     STATUS_PATH.write_text(
         json.dumps(candidate, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
+    try:
+        run_validator(BACKUP_VALIDATOR)
+        run_validator(OPERABILITY_VALIDATOR)
+    except Exception:
+        STATUS_PATH.write_bytes(original_bytes)
+        raise
+
     print("Normalized OPS-P0-007 local foundations; canonical production blockers unchanged")
     return 0
 
