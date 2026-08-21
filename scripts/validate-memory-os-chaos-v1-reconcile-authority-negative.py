@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reject repo-contained executable substitutions in chaos scenario reconcilers."""
+"""Reject repo-contained executable and data substitutions in chaos scenario reconcilers."""
 
 from __future__ import annotations
 
@@ -36,6 +36,21 @@ def expect_rejection(callback, expected: str) -> None:
             raise RuntimeError(f"unexpected authority rejection: {exc}") from exc
     else:
         raise RuntimeError(f"chaos reconciler accepted substituted authority: {expected}")
+
+
+def validate_data_authority(module) -> None:
+    guard = getattr(module, "enforce_data_authorities", None)
+    if not callable(guard):
+        return
+    original_result = module.RESULT_PATH
+    original_status = module.STATUS_PATH
+    try:
+        module.RESULT_PATH = ROOT / "README.md"
+        module.STATUS_PATH = ROOT / "SECURITY.md"
+        expect_rejection(guard, "fixture must remain outside repository")
+    finally:
+        module.RESULT_PATH = original_result
+        module.STATUS_PATH = original_status
 
 
 def validate_module(
@@ -78,6 +93,8 @@ def validate_module(
     finally:
         module.CANONICAL_RECONCILER = original_reconciler
 
+    validate_data_authority(module)
+
 
 def validate_inflight(module) -> None:
     substitutions = (
@@ -93,6 +110,7 @@ def validate_inflight(module) -> None:
             expect_rejection(module.validate_executable_authorities, expected)
         finally:
             setattr(module, attr, original)
+    validate_data_authority(module)
 
 
 def validate_process_group(module) -> None:
@@ -126,22 +144,25 @@ def main() -> int:
         if not path.is_file():
             raise RuntimeError(f"authority fixture missing: {path.name}")
 
+    v1 = load_module(V1_RECONCILER, "memory_os_chaos_v1_authority_negative")
     validate_module(
-        load_module(V1_RECONCILER, "memory_os_chaos_v1_authority_negative"),
+        v1,
         validator_attr="V1_VALIDATOR",
         validator_substitute=V2_VALIDATOR,
         validator_error="v1 failure-drill validator authority drift",
         reconciler_substitute=V2_VALIDATOR,
     )
+    v2 = load_module(V2_RECONCILER, "memory_os_chaos_v2_authority_negative")
     validate_module(
-        load_module(V2_RECONCILER, "memory_os_chaos_v2_authority_negative"),
+        v2,
         validator_attr="V2_VALIDATOR",
         validator_substitute=V1_VALIDATOR,
         validator_error="v2 failure-drill validator authority drift",
         reconciler_substitute=V1_VALIDATOR,
     )
+    parser = load_module(PARSER_RECONCILER, "memory_os_parser_restart_authority_negative")
     validate_module(
-        load_module(PARSER_RECONCILER, "memory_os_parser_restart_authority_negative"),
+        parser,
         validator_attr="PARSER_VALIDATOR",
         validator_substitute=V1_VALIDATOR,
         validator_error="parser restart validator authority drift",
@@ -154,7 +175,7 @@ def main() -> int:
         load_module(PROCESS_GROUP_RECONCILER, "memory_os_process_group_authority_negative")
     )
 
-    print("PASS: chaos scenario reconcile executable substitutions are rejected")
+    print("PASS: chaos scenario reconcile executable/data substitutions are rejected")
     return 0
 
 
