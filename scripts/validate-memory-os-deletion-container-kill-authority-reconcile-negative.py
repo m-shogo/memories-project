@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-"""Prove container-kill authority reconcile rolls back every canonical write on post-write validation failure."""
+"""Prove container-kill authority identity and reconcile rollback remain fail-closed."""
 
 from __future__ import annotations
 
 import importlib.util
-import subprocess
-import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,35 +21,51 @@ def load_module():
     return module
 
 
+def expect_rejection(fn, needle: str) -> None:
+    try:
+        fn()
+    except Exception as exc:  # noqa: BLE001 - negative authority boundary.
+        if needle not in str(exc):
+            raise SystemExit(f"unexpected rejection: {exc}") from exc
+        return
+    raise SystemExit(f"expected rejection containing: {needle}")
+
+
 def main() -> int:
     original_load = LOAD_CONTRACT.read_bytes()
     original_status = STATUS.read_bytes()
     module = load_module()
 
-    with tempfile.TemporaryDirectory(prefix="memory-os-container-kill-rollback-") as temp_dir:
-        failing_validator = Path(temp_dir) / "fail-operability.py"
-        failing_validator.write_text("raise SystemExit('synthetic post-write operability failure')\n", encoding="utf-8")
-        module.OPERABILITY_VALIDATOR = failing_validator
+    original_proof_validator = module.PROOF_VALIDATOR
+    try:
+        module.PROOF_VALIDATOR = module.LOAD_VALIDATOR
+        expect_rejection(module.require_canonical_authorities, "proof validator authority substitution")
+        if LOAD_CONTRACT.read_bytes() != original_load or STATUS.read_bytes() != original_status:
+            raise SystemExit("authority substitution mutated canonical data")
+    finally:
+        module.PROOF_VALIDATOR = original_proof_validator
 
-        rejected = False
-        try:
-            module.main()
-        except (subprocess.CalledProcessError, SystemExit):
-            rejected = True
+    original_normalize = module.normalize_and_validate_authority
+    try:
+        def reject_after_write() -> None:
+            raise module.ReconcileFailure("synthetic post-write aggregate failure")
 
+        module.normalize_and_validate_authority = reject_after_write
+        expect_rejection(module.main, "synthetic post-write aggregate failure")
         load_after = LOAD_CONTRACT.read_bytes()
         status_after = STATUS.read_bytes()
-        LOAD_CONTRACT.write_bytes(original_load)
-        STATUS.write_bytes(original_status)
-
-        if not rejected:
-            raise SystemExit("container-kill reconcile unexpectedly accepted synthetic post-write validation failure")
         if load_after != original_load:
             raise SystemExit("container-kill reconcile failed to roll back load authority")
         if status_after != original_status:
             raise SystemExit("container-kill reconcile failed to roll back production status")
+    finally:
+        module.normalize_and_validate_authority = original_normalize
+        if LOAD_CONTRACT.read_bytes() != original_load:
+            LOAD_CONTRACT.write_bytes(original_load)
+        if STATUS.read_bytes() != original_status:
+            STATUS.write_bytes(original_status)
 
-    print("PASS: container-kill reconcile post-write failure rolls back all canonical authority")
+    print("PASS: container-kill authority identity and post-write rollback are fail-closed")
     return 0
 
 
