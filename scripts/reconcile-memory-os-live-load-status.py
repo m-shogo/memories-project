@@ -69,6 +69,68 @@ def require(condition: bool, message: str) -> None:
         raise ReconcileFailure(message)
 
 
+def canonical_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def require_exact_authority(actual: Path, relative: str, label: str) -> None:
+    root = canonical_root()
+    expected = root / relative
+    require(actual == expected, f"canonical {label} authority drift")
+    require(expected.is_file(), f"canonical {label} authority missing")
+    current = expected
+    while current != root:
+        require(not current.is_symlink(), f"canonical {label} authority must be symlink-free")
+        current = current.parent
+
+
+def validate_authority_identity() -> None:
+    require(ROOT == canonical_root(), "canonical live-load repository root authority drift")
+    for actual, relative, label in (
+        (
+            STATUS_PATH,
+            "contracts/operations/production-operability-status.json",
+            "production status",
+        ),
+        (
+            LOAD_CONTRACT_PATH,
+            "contracts/operations/load-test-scenario-contract.v1.json",
+            "load contract",
+        ),
+        (
+            POSTGRES_RESULT,
+            "docs/fixtures/memory-os-operability/live-postgres-load-results.sample.v1.json",
+            "PostgreSQL live-load result",
+        ),
+        (
+            OBJECT_RESULT,
+            "docs/fixtures/memory-os-operability/live-object-load-results.sample.v1.json",
+            "MinIO live-object-load result",
+        ),
+        (
+            POSTGRES_VALIDATOR,
+            "scripts/validate-memory-os-live-load.py",
+            "PostgreSQL live-load validator",
+        ),
+        (
+            OBJECT_VALIDATOR,
+            "scripts/validate-memory-os-live-object-load.py",
+            "MinIO live-object-load validator",
+        ),
+        (
+            LOAD_VALIDATOR,
+            "scripts/validate-memory-os-load.py",
+            "load validator",
+        ),
+        (
+            OPERABILITY_VALIDATOR,
+            "scripts/validate-memory-os-operability.py",
+            "operability validator",
+        ),
+    ):
+        require_exact_authority(actual, relative, label)
+
+
 def run_validator(validator: Path, label: str, env: dict[str, str] | None = None) -> None:
     require(validator.is_file(), f"canonical {label} validator missing")
     completed = subprocess.run(
@@ -116,6 +178,8 @@ def result_is_pass(document: dict[str, Any], expected_sha: str) -> bool:
 
 
 def main() -> int:
+    validate_authority_identity()
+
     expected_sha = os.environ.get("EXPECTED_COMMIT_SHA", "")
     require(len(expected_sha) == 40, "EXPECTED_COMMIT_SHA must be a full commit SHA")
 
