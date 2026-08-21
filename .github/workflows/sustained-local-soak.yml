@@ -385,8 +385,12 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          authority_source_sha="$(git rev-parse HEAD)"
           git fetch origin so
-          git reset --hard origin/so
+          test "$(git rev-parse origin/so)" = "$authority_source_sha" || {
+            echo "so advanced before sustained-soak aggregate reconciliation; refusing stale deterministic authority computation."
+            exit 75
+          }
           python scripts/update-memory-os-sustained-local-soak-aggregate.py
           python scripts/validate-memory-os-sustained-local-soak-aggregate.py
           python scripts/reconcile-memory-os-sustained-local-soak-status.py
@@ -404,7 +408,11 @@ jobs:
           git add -u docs/fixtures/memory-os-operability/sustained-local-soak-diagnostic.last.json 2>/dev/null || true
           if ! git diff --cached --quiet; then
             git commit -m "docs(ops): reconcile sustained local soak runs"
-            git pull --rebase origin so
+            git fetch origin so
+            test "$(git rev-parse origin/so)" = "$authority_source_sha" || {
+              echo "so advanced after sustained-soak aggregate validation; refusing stale deterministic authority publication."
+              exit 75
+            }
             git push origin HEAD:so
           fi
 
@@ -412,8 +420,7 @@ jobs:
         if: steps.long_soak.outputs.exit_code != '0'
         run: |
           set -euo pipefail
-          git fetch origin so
-          git reset --hard origin/so
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           python - <<'PY'
           import json
           import os
@@ -450,7 +457,11 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --cached --quiet; then
             git commit -m "test(soak): record sustained local soak diagnostic"
-            git pull --rebase origin so
+            git fetch origin so
+            test "$(git rev-parse origin/so)" = "$SOURCE_SHA" || {
+              echo "so advanced after failed sustained soak; refusing stale diagnostic publication."
+              exit 75
+            }
             git push origin HEAD:so
           fi
 
