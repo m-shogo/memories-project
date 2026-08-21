@@ -10,10 +10,16 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-METRICS_PATH = ROOT / "contracts/operations/metrics-contract.v1.json"
-SCRAPE_PATH = ROOT / "contracts/operations/metrics-scrape-contract.v1.json"
-SCRAPE_VALIDATOR = ROOT / "scripts/validate-memory-os-metrics-scrape.py"
-METRICS_VALIDATOR = ROOT / "scripts/validate-memory-os-metrics.py"
+CANONICAL_METRICS_PATH = ROOT / "contracts/operations/metrics-contract.v1.json"
+CANONICAL_SCRAPE_PATH = ROOT / "contracts/operations/metrics-scrape-contract.v1.json"
+CANONICAL_SCRAPE_VALIDATOR = ROOT / "scripts/validate-memory-os-metrics-scrape.py"
+CANONICAL_METRICS_VALIDATOR = ROOT / "scripts/validate-memory-os-metrics.py"
+CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+METRICS_PATH = CANONICAL_METRICS_PATH
+SCRAPE_PATH = CANONICAL_SCRAPE_PATH
+SCRAPE_VALIDATOR = CANONICAL_SCRAPE_VALIDATOR
+METRICS_VALIDATOR = CANONICAL_METRICS_VALIDATOR
+OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
 
 NEW_DESCRIPTION = (
     "Machine-readable runtime metrics contract for the import-api boundary. "
@@ -55,6 +61,28 @@ def require(condition: bool, message: str) -> None:
         raise ReconcileFailure(message)
 
 
+def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
+    require(path == canonical, f"{label} authority drift")
+    require(canonical.is_file(), f"canonical {label} missing")
+    require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
+    try:
+        resolved = canonical.resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError) as exc:
+        raise ReconcileFailure(f"canonical {label} cannot be resolved") from exc
+    require(resolved == canonical, f"canonical {label} escaped repository path")
+
+
+def enforce_runtime_authorities() -> None:
+    for path, canonical, label in (
+        (METRICS_PATH, CANONICAL_METRICS_PATH, "metrics contract"),
+        (SCRAPE_PATH, CANONICAL_SCRAPE_PATH, "metrics scrape contract"),
+        (SCRAPE_VALIDATOR, CANONICAL_SCRAPE_VALIDATOR, "metrics scrape validator"),
+        (METRICS_VALIDATOR, CANONICAL_METRICS_VALIDATOR, "metrics validator"),
+        (OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, "operability validator"),
+    ):
+        require_exact_authority(path, canonical, label)
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -67,6 +95,7 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_validator(path: Path, name: str):
+    enforce_runtime_authorities()
     spec = importlib.util.spec_from_file_location(name, path)
     require(spec is not None and spec.loader is not None, f"cannot load validator: {path.relative_to(ROOT)}")
     module = importlib.util.module_from_spec(spec)
@@ -75,6 +104,7 @@ def load_validator(path: Path, name: str):
 
 
 def require_validator_success(path: Path, name: str) -> None:
+    enforce_runtime_authorities()
     result = load_validator(path, name).main()
     require(
         not isinstance(result, bool) and isinstance(result, int) and result == 0,
@@ -89,9 +119,11 @@ def validate_source_authority() -> None:
 def validate_written_authority() -> None:
     require_validator_success(METRICS_VALIDATOR, "memory_os_metrics_validator")
     require_validator_success(SCRAPE_VALIDATOR, "memory_os_metrics_scrape_validator_postwrite")
+    require_validator_success(OPERABILITY_VALIDATOR, "memory_os_operability_validator")
 
 
 def write_transactionally(metrics: dict[str, Any]) -> None:
+    enforce_runtime_authorities()
     original = METRICS_PATH.read_bytes()
     METRICS_PATH.write_text(
         json.dumps(metrics, indent=2, ensure_ascii=False) + "\n",
@@ -105,6 +137,7 @@ def write_transactionally(metrics: dict[str, Any]) -> None:
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     validate_source_authority()
 
     metrics = load(METRICS_PATH)
@@ -165,6 +198,7 @@ def main() -> int:
                 f"unproven metrics readiness cannot be true: {field}")
 
     if not changed:
+        validate_written_authority()
         print("Primary metrics contract already reconciled")
         return 0
 
