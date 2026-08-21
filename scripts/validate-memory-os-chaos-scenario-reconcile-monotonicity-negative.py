@@ -32,6 +32,23 @@ def load_module(path: Path, name: str):
     return module
 
 
+def copy_result_fixture(module, root: Path) -> tuple[Path | None, Path | None]:
+    result_path = getattr(module, "RESULT_PATH", None)
+    if not isinstance(result_path, Path):
+        return None, None
+    if not result_path.is_file():
+        return result_path, None
+    temp_result = root / "result.json"
+    temp_result.write_bytes(result_path.read_bytes())
+    module.RESULT_PATH = temp_result
+    return result_path, temp_result
+
+
+def restore_result_fixture(module, original: Path | None) -> None:
+    if original is not None:
+        module.RESULT_PATH = original
+
+
 def validate_canonical_source_delegation(canonical, current: dict) -> None:
     original_runner = canonical.run_canonical_validator
     calls: list[str] = []
@@ -147,11 +164,13 @@ def validate_direct_v1_transaction(current: dict) -> None:
             existing.remove(item)
 
     with tempfile.TemporaryDirectory(prefix="memory-os-v1-chaos-transaction-") as tmp:
-        temp_status = Path(tmp) / "status.json"
+        root = Path(tmp)
+        temp_status = root / "status.json"
         original_bytes = json.dumps(candidate, indent=2, ensure_ascii=False).encode("utf-8") + b"\n"
         temp_status.write_bytes(original_bytes)
 
         original_status = module.STATUS_PATH
+        original_result, _ = copy_result_fixture(module, root)
         original_ancestor = module.source_is_ancestor
         original_normalizer = module.load_canonical_normalizer
         original_chain = module.validate_authority_chain
@@ -176,6 +195,7 @@ def validate_direct_v1_transaction(current: dict) -> None:
                 raise RuntimeError("direct v1 reconcile accepted post-write authority rejection")
         finally:
             module.STATUS_PATH = original_status
+            restore_result_fixture(module, original_result)
             module.source_is_ancestor = original_ancestor
             module.load_canonical_normalizer = original_normalizer
             module.validate_authority_chain = original_chain
@@ -209,11 +229,13 @@ def validate_direct_inflight_transaction(current: dict) -> None:
             existing.remove(item)
 
     with tempfile.TemporaryDirectory(prefix="memory-os-inflight-transaction-") as tmp:
-        temp_status = Path(tmp) / "status.json"
+        root = Path(tmp)
+        temp_status = root / "status.json"
         original_bytes = json.dumps(candidate, indent=2, ensure_ascii=False).encode("utf-8") + b"\n"
         temp_status.write_bytes(original_bytes)
 
         original_status = module.STATUS_PATH
+        original_result, _ = copy_result_fixture(module, root)
         original_ancestor = module.source_is_ancestor
         original_normalizer = module.load_normalizer
         original_chain = module.validate_authority_chain
@@ -238,6 +260,7 @@ def validate_direct_inflight_transaction(current: dict) -> None:
                 raise RuntimeError("direct in-flight reconcile accepted post-write authority rejection")
         finally:
             module.STATUS_PATH = original_status
+            restore_result_fixture(module, original_result)
             module.source_is_ancestor = original_ancestor
             module.load_normalizer = original_normalizer
             module.validate_authority_chain = original_chain
@@ -270,17 +293,20 @@ def main() -> int:
     for index, path in enumerate(SCENARIOS):
         module = load_module(path, f"memory_os_chaos_scenario_{index}")
         with tempfile.TemporaryDirectory(prefix="memory-os-chaos-monotonicity-") as tmp:
-            temp_status = Path(tmp) / "status.json"
+            root = Path(tmp)
+            temp_status = root / "status.json"
             temp_status.write_text(
                 json.dumps(copy.deepcopy(current), indent=2, ensure_ascii=False) + "\n",
                 encoding="utf-8",
             )
             original_status = module.STATUS_PATH
+            original_result, _ = copy_result_fixture(module, root)
             module.STATUS_PATH = temp_status
             try:
                 result = module.main()
             finally:
                 module.STATUS_PATH = original_status
+                restore_result_fixture(module, original_result)
             if result != 0:
                 raise RuntimeError(f"scenario reconcile returned nonzero: {path.name}")
             reconciled = json.loads(temp_status.read_text(encoding="utf-8"))
