@@ -84,14 +84,15 @@ def main() -> int:
     expect_authority_rejection(reconciler, "CONTRACT_PATH", reconciler.RESULT_PATH)
     expect_authority_rejection(reconciler, "RESULT_PATH", reconciler.CONTRACT_PATH)
     expect_authority_rejection(reconciler, "VALIDATOR_PATH", reconciler.CONTRACT_PATH)
-    reconciler.enforce_runtime_authorities()
 
-    real_validator = reconciler.load_validator()
     original_contract = reconciler.CONTRACT_PATH.read_bytes()
     original_result = reconciler.RESULT_PATH.read_bytes() if reconciler.RESULT_PATH.exists() else None
     contract = json.loads(original_contract.decode("utf-8"))
     expected = "0" * 40
     reconciler.RESULT_PATH.write_text(json.dumps(synthetic_result(contract, expected), indent=2) + "\n", encoding="utf-8")
+
+    reconciler.enforce_runtime_authorities()
+    real_validator = reconciler.load_validator()
 
     class Fail(RuntimeError):
         pass
