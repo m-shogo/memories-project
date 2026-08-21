@@ -17,21 +17,75 @@ on:
       - "scripts/register-memory-os-migration-rehearsal-evidence.py"
       - "scripts/validate-memory-os-migration-evidence-registry.py"
       - "scripts/reconcile-memory-os-migration-evidence-registry.py"
+  pull_request:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/local-migration-recovery-artifact.yml"
+      - "contracts/operations/local-migration-recovery-artifact-contract.v1.json"
+      - "contracts/operations/migration-evidence-registry-contract.v1.json"
+      - "contracts/operations/migration-lifecycle-contract.v1.json"
+      - "infra/postgresql/security/**"
+      - "scripts/run-memory-os-local-migration-recovery-artifact.sh"
+      - "scripts/validate-memory-os-local-migration-recovery-artifact.py"
+      - "scripts/reconcile-memory-os-local-migration-recovery-artifact.py"
+      - "scripts/memory_os_migration_recovery_point.py"
+      - "scripts/register-memory-os-migration-rehearsal-evidence.py"
+      - "scripts/validate-memory-os-migration-evidence-registry.py"
+      - "scripts/reconcile-memory-os-migration-evidence-registry.py"
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: local-migration-recovery-artifact-so
+  group: local-migration-recovery-artifact-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact pull request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate migration recovery authority read-only
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/memory_os_migration_recovery_point.py \
+            scripts/validate-memory-os-local-migration-recovery-artifact.py \
+            scripts/reconcile-memory-os-local-migration-recovery-artifact.py \
+            scripts/register-memory-os-migration-rehearsal-evidence.py \
+            scripts/validate-memory-os-migration-evidence-registry.py \
+            scripts/reconcile-memory-os-migration-evidence-registry.py \
+            scripts/validate-memory-os-migration-lifecycle.py \
+            scripts/validate-memory-os-operability.py
+          bash -n scripts/run-memory-os-local-migration-recovery-artifact.sh
+          python scripts/validate-memory-os-local-migration-recovery-artifact.py
+          python scripts/validate-memory-os-migration-evidence-registry.py
+          python scripts/validate-memory-os-migration-lifecycle.py
+          python scripts/validate-memory-os-operability.py
+          test -z "$(git status --porcelain)"
+
   rehearse:
     if: >-
-      github.event_name != 'push' ||
-      (!contains(github.event.head_commit.message, 'test(migration): record local recovery artifact rehearsal') &&
-       !contains(github.event.head_commit.message, 'docs(migration): register local recovery artifact rehearsal'))
+      github.event_name != 'pull_request' &&
+      (github.event_name != 'push' ||
+       (!contains(github.event.head_commit.message, 'test(migration): record local recovery artifact rehearsal') &&
+        !contains(github.event.head_commit.message, 'docs(migration): register local recovery artifact rehearsal')))
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
