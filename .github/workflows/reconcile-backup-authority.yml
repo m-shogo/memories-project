@@ -1,6 +1,33 @@
 name: Reconcile Backup Authority
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/reconcile-backup-authority.yml"
+      - "contracts/operations/backup-local-foundation-evidence.v1.json"
+      - "contracts/operations/backup-restore-contract.v1.json"
+      - "contracts/operations/local-apple-replay-restore-contract.v1.json"
+      - "contracts/operations/local-coherent-recovery-set-contract.v1.json"
+      - "contracts/operations/local-logical-restore-contract.v1.json"
+      - "contracts/operations/local-object-version-restore-contract.v1.json"
+      - "contracts/operations/migration-lifecycle-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "docs/fixtures/memory-os-operability/local-apple-replay-restore-results.sample.v1.json"
+      - "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json"
+      - "docs/fixtures/memory-os-operability/local-object-version-restore-results.sample.v1.json"
+      - "docs/fixtures/memory-os-operability/local-coherent-recovery-set-results.sample.v1.json"
+      - "scripts/memory_os_backup_restore_blockers.py"
+      - "scripts/validate-memory-os-backup-local-foundations.py"
+      - "scripts/validate-memory-os-backup-restore.py"
+      - "scripts/validate-memory-os-backup-restore-blockers-negative.py"
+      - "scripts/validate-memory-os-local-apple-replay-restore.py"
+      - "scripts/validate-memory-os-local-logical-restore.py"
+      - "scripts/validate-memory-os-local-object-version-restore.py"
+      - "scripts/validate-memory-os-local-coherent-recovery-set.py"
+      - "scripts/validate-memory-os-operability.py"
+      - "scripts/reconcile-memory-os-backup-authority.py"
+      - "scripts/reconcile-memory-os-backup-coherent-authority.py"
+      - "scripts/reconcile-memory-os-backup-semantic-overlay.py"
   push:
     branches:
       - so
@@ -38,7 +65,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: reconcile-backup-authority-so
+  group: reconcile-backup-authority-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -46,10 +73,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout latest so
+      - name: Checkout exact authority source
         uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -60,10 +87,14 @@ jobs:
       - name: Confirm exact clean authority source
         run: |
           set -euo pipefail
-          git fetch origin so
-          test "$(git branch --show-current)" = "so"
           test -z "$(git status --porcelain)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          else
+            git fetch origin so
+            test "$(git branch --show-current)" = "so"
+            test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+          fi
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Validate local foundation source inputs
@@ -120,7 +151,12 @@ jobs:
       - name: Validate operability authority
         run: python scripts/validate-memory-os-operability.py
 
+      - name: Reject uncommitted PR authority drift
+        if: github.event_name == 'pull_request'
+        run: git diff --exit-code -- contracts/operations/production-operability-status.json
+
       - name: Commit normalized backup authority
+        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
 
