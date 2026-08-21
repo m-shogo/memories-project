@@ -14,6 +14,7 @@ from typing import Any
 from memory_os_backup_restore_blockers import require_canonical_gaps
 
 ROOT = Path(__file__).resolve().parents[1]
+ROOT_REAL = ROOT.resolve()
 CONTRACT_PATH = ROOT / "contracts/operations/local-coherent-recovery-set-contract.v1.json"
 MIGRATION_PATH = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
@@ -36,6 +37,27 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def require_repo_regular_file(path: Path, label: str) -> None:
+    try:
+        relative = path.relative_to(ROOT)
+    except ValueError as exc:
+        raise Fail(f"{label} escapes repository root") from exc
+    require(relative != Path("."), f"{label} cannot resolve to repository root")
+    current = ROOT
+    for part in relative.parts:
+        current = current / part
+        require(not current.is_symlink(), f"{label} uses symlink component: {relative.as_posix()}")
+    try:
+        resolved = path.resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError) as exc:
+        raise Fail(f"{label} is missing or unreadable: {relative.as_posix()}") from exc
+    try:
+        resolved.relative_to(ROOT_REAL)
+    except ValueError as exc:
+        raise Fail(f"{label} resolves outside repository root: {relative.as_posix()}") from exc
+    require(resolved.is_file(), f"{label} must be a regular file: {relative.as_posix()}")
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -123,6 +145,13 @@ def validate_result(result: dict[str, Any], expected_sha: str | None, migration_
 
 
 def main() -> int:
+    for path, label in (
+        (CONTRACT_PATH, "coherent recovery contract"),
+        (MIGRATION_PATH, "migration lifecycle authority"),
+        (STATUS_PATH, "production operability status"),
+    ):
+        require_repo_regular_file(path, label)
+
     contract = load(CONTRACT_PATH)
     migration = load(MIGRATION_PATH)
     require(contract.get("schemaVersion") == "memory-os-local-coherent-recovery-set.v1", "contract schema drift")
@@ -150,7 +179,7 @@ def main() -> int:
     refs = contract.get("evidenceRefs")
     require(isinstance(refs, list) and set(refs) == EXPECTED_REFS and len(refs) == len(set(refs)), "evidenceRefs drift")
     for ref in refs:
-        require((ROOT / ref).is_file(), f"evidence artifact missing: {ref}")
+        require_repo_regular_file(ROOT / ref, f"coherent recovery evidence ref {ref}")
 
     runner = (ROOT / contract["runner"]).read_text(encoding="utf-8")
     for snippet in (
@@ -170,7 +199,7 @@ def main() -> int:
     require(isinstance(migrations, list) and migrations, "canonical migrations missing")
     migration_count = len(migrations)
     for filename in migrations:
-        require((ROOT / "infra/postgresql/security" / filename).is_file(), f"migration missing: {filename}")
+        require_repo_regular_file(ROOT / "infra/postgresql/security" / filename, f"migration {filename}")
 
     readiness = contract.get("readiness")
     require(isinstance(readiness, dict), "readiness missing")
@@ -186,6 +215,7 @@ def main() -> int:
         require(SHA40.fullmatch(expected_sha) is not None, "EXPECTED_COMMIT_SHA invalid")
         require(RESULT_PATH.is_file(), "exact-source coherent recovery result missing")
     if RESULT_PATH.is_file():
+        require_repo_regular_file(RESULT_PATH, "coherent recovery result")
         validate_result(load(RESULT_PATH), expected_sha, migration_count)
 
     status = load(STATUS_PATH)
