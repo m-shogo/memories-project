@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,18 @@ READINESS_NORMALIZER = ROOT / "scripts/reconcile-memory-os-load-readiness-note.p
 MISSING_EVIDENCE_NORMALIZER = ROOT / "scripts/reconcile-memory-os-load-missing-evidence.py"
 LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
 OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+
+CANONICAL_AUTHORITIES = {
+    "proof contract": ROOT / "contracts/operations/deletion-worker-container-kill-recovery-contract.v1.json",
+    "proof result": ROOT / "docs/fixtures/memory-os-operability/deletion-worker-container-kill-recovery-results.sample.v1.json",
+    "proof validator": ROOT / "scripts/validate-memory-os-deletion-worker-container-kill-recovery.py",
+    "load contract": ROOT / "contracts/operations/load-test-scenario-contract.v1.json",
+    "production status": ROOT / "contracts/operations/production-operability-status.json",
+    "readiness normalizer": ROOT / "scripts/reconcile-memory-os-load-readiness-note.py",
+    "missing-evidence normalizer": ROOT / "scripts/reconcile-memory-os-load-missing-evidence.py",
+    "load validator": ROOT / "scripts/validate-memory-os-load.py",
+    "operability validator": ROOT / "scripts/validate-memory-os-operability.py",
+}
 
 PROOF_REFS = [
     "contracts/operations/deletion-worker-container-kill-recovery-contract.v1.json",
@@ -41,6 +54,15 @@ CHAOS_EVIDENCE = (
 )
 
 
+class ReconcileFailure(RuntimeError):
+    pass
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ReconcileFailure(message)
+
+
 def load(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -61,15 +83,35 @@ def replace_if_present(values: list[Any], old: str, new: str) -> None:
             return
 
 
+def require_canonical_authorities() -> None:
+    actual = {
+        "proof contract": PROOF_CONTRACT,
+        "proof result": PROOF_RESULT,
+        "proof validator": PROOF_VALIDATOR,
+        "load contract": LOAD_CONTRACT,
+        "production status": STATUS,
+        "readiness normalizer": READINESS_NORMALIZER,
+        "missing-evidence normalizer": MISSING_EVIDENCE_NORMALIZER,
+        "load validator": LOAD_VALIDATOR,
+        "operability validator": OPERABILITY_VALIDATOR,
+    }
+    for label, expected in CANONICAL_AUTHORITIES.items():
+        path = actual[label]
+        require(path == expected, f"{label} authority substitution")
+        require(path.is_file(), f"{label} authority missing")
+        require(path.resolve() == expected, f"{label} authority escapes canonical path")
+
+
 def normalize_and_validate_authority() -> None:
-    subprocess.run(["python", str(READINESS_NORMALIZER)], cwd=ROOT, check=True)
-    subprocess.run(["python", str(MISSING_EVIDENCE_NORMALIZER)], cwd=ROOT, check=True)
-    subprocess.run(["python", str(LOAD_VALIDATOR)], cwd=ROOT, check=True)
-    subprocess.run(["python", str(OPERABILITY_VALIDATOR)], cwd=ROOT, check=True)
+    subprocess.run([sys.executable, str(READINESS_NORMALIZER)], cwd=ROOT, check=True)
+    subprocess.run([sys.executable, str(MISSING_EVIDENCE_NORMALIZER)], cwd=ROOT, check=True)
+    subprocess.run([sys.executable, str(LOAD_VALIDATOR)], cwd=ROOT, check=True)
+    subprocess.run([sys.executable, str(OPERABILITY_VALIDATOR)], cwd=ROOT, check=True)
 
 
 def main() -> int:
-    subprocess.run(["python", str(PROOF_VALIDATOR), "--require-result"], cwd=ROOT, check=True)
+    require_canonical_authorities()
+    subprocess.run([sys.executable, str(PROOF_VALIDATOR), "--require-result"], cwd=ROOT, check=True)
     contract = load(PROOF_CONTRACT)
     result = load(PROOF_RESULT)
     readiness = contract.get("readiness", {})
