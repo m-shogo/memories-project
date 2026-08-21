@@ -77,6 +77,7 @@ jobs:
             scripts/validate-memory-os-backup-local-foundations.py \
             scripts/validate-memory-os-backup-restore.py \
             scripts/validate-memory-os-backup-restore-blockers-negative.py \
+            scripts/validate-memory-os-operability.py \
             scripts/reconcile-memory-os-backup-authority.py \
             scripts/reconcile-memory-os-backup-coherent-authority.py \
             scripts/reconcile-memory-os-backup-semantic-overlay.py
