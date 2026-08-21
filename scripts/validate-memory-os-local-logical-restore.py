@@ -6,11 +6,13 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+ROOT_REAL = ROOT.resolve()
 CONTRACT_PATH = ROOT / "contracts/operations/local-logical-restore-contract.v1.json"
 MIGRATION_PATH = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
@@ -36,6 +38,27 @@ def require(condition: bool, message: str) -> None:
         raise ValidationFailure(message)
 
 
+def require_repo_regular_file(path: Path, label: str) -> None:
+    try:
+        relative = path.relative_to(ROOT)
+    except ValueError as exc:
+        raise ValidationFailure(f"{label} escapes repository root") from exc
+    require(relative != Path("."), f"{label} cannot resolve to repository root")
+    current = ROOT
+    for part in relative.parts:
+        current = current / part
+        require(not current.is_symlink(), f"{label} uses symlink component: {relative.as_posix()}")
+    try:
+        resolved = path.resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError) as exc:
+        raise ValidationFailure(f"{label} is missing or unreadable: {relative.as_posix()}") from exc
+    try:
+        resolved.relative_to(ROOT_REAL)
+    except ValueError as exc:
+        raise ValidationFailure(f"{label} resolves outside repository root: {relative.as_posix()}") from exc
+    require(resolved.is_file(), f"{label} must be a regular file: {relative.as_posix()}")
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -47,6 +70,21 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def source_is_ancestor(value: Any) -> bool:
+    if not isinstance(value, str) or SHA_RE.fullmatch(value) is None:
+        return False
+    try:
+        return subprocess.run(
+            ["git", "merge-base", "--is-ancestor", value, "HEAD"],
+            cwd=ROOT,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ).returncode == 0
+    except OSError:
+        return False
+
+
 def validate_result(result: dict[str, Any], expected_sha: str | None,
                     migration_count: int, sql_test_count: int) -> None:
     require(result.get("schemaVersion") == "memory-os-local-logical-restore-results.v1",
@@ -54,6 +92,8 @@ def validate_result(result: dict[str, Any], expected_sha: str | None,
     commit_sha = result.get("commitSha")
     require(isinstance(commit_sha, str) and SHA_RE.fullmatch(commit_sha) is not None,
             "logical restore result requires a full source commit SHA")
+    require(source_is_ancestor(commit_sha),
+            "logical restore result source is not an ancestor of current HEAD")
     if expected_sha:
         require(commit_sha == expected_sha,
                 f"logical restore result SHA {commit_sha} != expected {expected_sha}")
@@ -136,6 +176,13 @@ def validate_result(result: dict[str, Any], expected_sha: str | None,
 
 
 def main() -> int:
+    for path, label in (
+        (CONTRACT_PATH, "logical restore contract"),
+        (MIGRATION_PATH, "migration lifecycle authority"),
+        (STATUS_PATH, "production operability status"),
+    ):
+        require_repo_regular_file(path, label)
+
     contract = load(CONTRACT_PATH)
     migration = load(MIGRATION_PATH)
     require(contract.get("schemaVersion") == "memory-os-local-logical-restore.v1",
@@ -209,11 +256,10 @@ def main() -> int:
     sql_tests: list[Path] = []
     for filename in migration_sequence:
         migration_file = ROOT / "infra/postgresql/security" / filename
-        require(migration_file.is_file(), f"canonical migration missing: {filename}")
+        require_repo_regular_file(migration_file, f"canonical migration {filename}")
         test_filename = "test_" + MIGRATION_PREFIX_RE.sub("", filename)
         test_file = ROOT / "infra/postgresql/security" / test_filename
-        require(test_file.is_file(),
-                f"canonical SQL test missing for migration {filename}: {test_filename}")
+        require_repo_regular_file(test_file, f"canonical SQL test {test_filename}")
         sql_tests.append(test_file)
     require(len(sql_tests) == migration_count,
             "canonical SQL test count must match migration count")
@@ -221,7 +267,7 @@ def main() -> int:
             "test helper bootstrap must execute first")
 
     runner_path = ROOT / contract["runner"]
-    require(runner_path.is_file(), "logical restore runner missing")
+    require_repo_regular_file(runner_path, "logical restore runner")
     runner = runner_path.read_text(encoding="utf-8")
     for snippet in (
         "MEMORY_OS_ALLOW_EPHEMERAL_DATABASE_DROP",
@@ -269,7 +315,7 @@ def main() -> int:
             "logical restore evidenceRefs invalid")
     require(set(refs) == EXPECTED_EVIDENCE, f"evidenceRefs drift: {refs}")
     for ref in refs:
-        require((ROOT / ref).is_file(), f"evidence path missing: {ref}")
+        require_repo_regular_file(ROOT / ref, f"logical restore evidence ref {ref}")
 
     expected_sha = os.environ.get("EXPECTED_COMMIT_SHA")
     if expected_sha:
@@ -277,6 +323,7 @@ def main() -> int:
                 "EXPECTED_COMMIT_SHA must be a full SHA")
         require(RESULT_PATH.is_file(), "exact-source logical restore result is missing")
     if RESULT_PATH.is_file():
+        require_repo_regular_file(RESULT_PATH, "logical restore result")
         validate_result(load(RESULT_PATH), expected_sha, migration_count, len(sql_tests))
 
     status = load(STATUS_PATH)
