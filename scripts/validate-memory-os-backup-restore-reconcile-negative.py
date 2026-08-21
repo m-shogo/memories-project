@@ -51,6 +51,26 @@ def authority_identity_negative(module) -> None:
         module.OPERABILITY_VALIDATOR_PATH = original
 
 
+def data_authority_identity_negative(module) -> None:
+    original_contract = module.CONTRACT_PATH
+    original_status = module.STATUS_PATH
+    try:
+        module.CONTRACT_PATH = original_status
+        expect_rejected(
+            "repository-contained backup contract substitution",
+            module.validate_runtime_authority,
+        )
+        module.CONTRACT_PATH = original_contract
+        module.STATUS_PATH = original_contract
+        expect_rejected(
+            "repository-contained production status substitution",
+            module.validate_runtime_authority,
+        )
+    finally:
+        module.CONTRACT_PATH = original_contract
+        module.STATUS_PATH = original_status
+
+
 def rollback_negative(module) -> None:
     original_status = module.STATUS_PATH.read_bytes()
     real_load = module.load
@@ -107,9 +127,11 @@ def main() -> int:
     reconciler = load_module(RECONCILER, "memory_os_backup_restore_reconcile_negative_target")
     reconciler.validate_runtime_authority()
     authority_identity_negative(reconciler)
+    data_authority_identity_negative(reconciler)
     rollback_negative(reconciler)
     print("Memory OS backup/restore policy reconcile negative suite PASS")
     print("canonical validator identity: enforced")
+    print("canonical contract/status identity: enforced")
     print("deterministic drift repair before full validation: enforced")
     print("post-write aggregate rollback: enforced")
     print("canonical production blockers: unchanged")
