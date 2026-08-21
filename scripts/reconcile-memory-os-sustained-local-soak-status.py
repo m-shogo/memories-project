@@ -10,18 +10,30 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT_PATH = ROOT / "contracts/operations/sustained-local-soak-contract.v1.json"
-LOAD_PATH = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
-STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
-RESULT_DIR = ROOT / "docs/fixtures/memory-os-operability"
+CANONICAL_CONTRACT_PATH = ROOT / "contracts/operations/sustained-local-soak-contract.v1.json"
+CANONICAL_LOAD_PATH = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
+CANONICAL_STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+CANONICAL_RESULT_DIR = ROOT / "docs/fixtures/memory-os-operability"
+CANONICAL_AGGREGATE_PATH = CANONICAL_RESULT_DIR / "sustained-local-soak-results.aggregate.v1.json"
+CANONICAL_REVIEW_PATH = CANONICAL_RESULT_DIR / "sustained-local-soak-trend-review.v1.json"
+CANONICAL_AGGREGATE_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak-aggregate.py"
+CANONICAL_INDEPENDENT_REVIEW_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-soak-independent-review.py"
+CANONICAL_SOAK_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak.py"
+CANONICAL_LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
+CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+
+CONTRACT_PATH = CANONICAL_CONTRACT_PATH
+LOAD_PATH = CANONICAL_LOAD_PATH
+STATUS_PATH = CANONICAL_STATUS_PATH
+RESULT_DIR = CANONICAL_RESULT_DIR
 RESULT_GLOB = "sustained-local-soak-results.run-*.v1.json"
-AGGREGATE_PATH = RESULT_DIR / "sustained-local-soak-results.aggregate.v1.json"
-REVIEW_PATH = RESULT_DIR / "sustained-local-soak-trend-review.v1.json"
-AGGREGATE_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak-aggregate.py"
-INDEPENDENT_REVIEW_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-soak-independent-review.py"
-SOAK_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak.py"
-LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+AGGREGATE_PATH = CANONICAL_AGGREGATE_PATH
+REVIEW_PATH = CANONICAL_REVIEW_PATH
+AGGREGATE_VALIDATOR = CANONICAL_AGGREGATE_VALIDATOR
+INDEPENDENT_REVIEW_VALIDATOR = CANONICAL_INDEPENDENT_REVIEW_VALIDATOR
+SOAK_VALIDATOR = CANONICAL_SOAK_VALIDATOR
+LOAD_VALIDATOR = CANONICAL_LOAD_VALIDATOR
+OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
 
 FOUNDATION_REFS = (
     "contracts/operations/sustained-local-soak-contract.v1.json",
@@ -72,6 +84,43 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def require_exact_file(path: Path, expected: Path, label: str) -> None:
+    require(path == expected, f"{label} authority substitution")
+    require(path.is_file() and not path.is_symlink(), f"{label} canonical file missing or symlinked")
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError as exc:
+        raise Fail(f"{label} canonical authority cannot be resolved") from exc
+    require(resolved == expected, f"{label} canonical authority escaped repository path")
+
+
+def require_exact_optional_file(path: Path, expected: Path, label: str) -> None:
+    require(path == expected, f"{label} authority substitution")
+    require(path.parent.resolve(strict=True) == expected.parent, f"{label} canonical parent escaped repository path")
+    if path.exists():
+        require(path.is_file() and not path.is_symlink(), f"{label} canonical file is not a regular file")
+        require(path.resolve(strict=True) == expected, f"{label} canonical authority escaped repository path")
+
+
+def enforce_runtime_authorities() -> None:
+    require(RESULT_DIR == CANONICAL_RESULT_DIR, "result directory authority substitution")
+    require(RESULT_DIR.is_dir() and not RESULT_DIR.is_symlink(), "canonical result directory missing or symlinked")
+    require(RESULT_DIR.resolve(strict=True) == CANONICAL_RESULT_DIR, "canonical result directory escaped repository path")
+    for path, expected, label in (
+        (CONTRACT_PATH, CANONICAL_CONTRACT_PATH, "sustained soak contract"),
+        (LOAD_PATH, CANONICAL_LOAD_PATH, "load contract"),
+        (STATUS_PATH, CANONICAL_STATUS_PATH, "production status"),
+        (AGGREGATE_VALIDATOR, CANONICAL_AGGREGATE_VALIDATOR, "aggregate validator"),
+        (INDEPENDENT_REVIEW_VALIDATOR, CANONICAL_INDEPENDENT_REVIEW_VALIDATOR, "independent review validator"),
+        (SOAK_VALIDATOR, CANONICAL_SOAK_VALIDATOR, "sustained soak validator"),
+        (LOAD_VALIDATOR, CANONICAL_LOAD_VALIDATOR, "load validator"),
+        (OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, "operability validator"),
+    ):
+        require_exact_file(path, expected, label)
+    require_exact_optional_file(AGGREGATE_PATH, CANONICAL_AGGREGATE_PATH, "sustained soak aggregate")
+    require_exact_optional_file(REVIEW_PATH, CANONICAL_REVIEW_PATH, "sustained soak trend review")
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -136,6 +185,7 @@ def write_and_validate_transactionally(
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     run_validator(INDEPENDENT_REVIEW_VALIDATOR, "sustained-soak independent review authority validator")
 
     contract = load(CONTRACT_PATH)
