@@ -7,20 +7,71 @@ on:
     paths:
       - ".github/workflows/reconcile-mixed-version-apply-harness.yml"
       - "scripts/run-memory-os-mixed-version-apply-drill.sh"
+  pull_request:
+    paths:
+      - ".github/workflows/reconcile-mixed-version-apply-harness.yml"
+      - "scripts/run-memory-os-mixed-version-apply-drill.sh"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: reconcile-mixed-version-apply-harness-so
+  group: reconcile-mixed-version-apply-harness-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact pull request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Validate exact harness authority read-only
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          test -z "$(git status --porcelain)"
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("scripts/run-memory-os-mixed-version-apply-drill.sh")
+          text = path.read_text(encoding="utf-8")
+          insecure = (
+              "CREATE FUNCTION memory_os.test_block_apply_memory_insert()\n"
+              "RETURNS trigger\n"
+              "LANGUAGE plpgsql\n"
+              "AS $$\n"
+          )
+          secure = (
+              "CREATE FUNCTION memory_os.test_block_apply_memory_insert()\n"
+              "RETURNS trigger\n"
+              "LANGUAGE plpgsql\n"
+              "SECURITY DEFINER\n"
+              "SET search_path = pg_catalog, memory_os\n"
+              "AS $$\n"
+          )
+          if text.count(secure) == 1 and text.count(insecure) == 0:
+              print("Termination test trigger authority is already secure.")
+          elif text.count(insecure) == 1 and text.count(secure) == 0:
+              path.write_text(text.replace(insecure, secure), encoding="utf-8")
+              print("Reconciled termination test trigger authority.")
+          else:
+              raise SystemExit("termination test trigger definition drift")
+          PY
+          bash -n scripts/run-memory-os-mixed-version-apply-drill.sh
+          git diff --exit-code
+
   reconcile:
     if: >-
-      github.event_name != 'push' ||
-      !contains(github.event.head_commit.message, 'fix(compat): secure termination test trigger')
+      github.event_name != 'pull_request' &&
+      (github.event_name != 'push' ||
+      !contains(github.event.head_commit.message, 'fix(compat): secure termination test trigger'))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
