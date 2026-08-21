@@ -13,10 +13,14 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/database-commit-outage-results.sample.v1.json"
-STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
-DATABASE_VALIDATOR = ROOT / "scripts/validate-memory-os-database-commit-outage.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CANONICAL_RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/database-commit-outage-results.sample.v1.json"
+CANONICAL_STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+CANONICAL_DATABASE_VALIDATOR = ROOT / "scripts/validate-memory-os-database-commit-outage.py"
+CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+RESULT_PATH = CANONICAL_RESULT_PATH
+STATUS_PATH = CANONICAL_STATUS_PATH
+DATABASE_VALIDATOR = CANONICAL_DATABASE_VALIDATOR
+OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 OLD_MISSING = "database loss or failover drill"
@@ -49,6 +53,27 @@ def require(condition: bool, message: str) -> None:
         raise ReconcileFailure(message)
 
 
+def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
+    require(path == canonical, f"{label} authority substitution")
+    require(canonical.is_file(), f"canonical {label} missing")
+    require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
+    try:
+        resolved = canonical.resolve(strict=True)
+    except OSError as exc:
+        raise ReconcileFailure(f"canonical {label} cannot be resolved") from exc
+    require(resolved == canonical, f"canonical {label} escaped repository path")
+
+
+def enforce_runtime_authorities() -> None:
+    for path, canonical, label in (
+        (RESULT_PATH, CANONICAL_RESULT_PATH, "database outage result"),
+        (STATUS_PATH, CANONICAL_STATUS_PATH, "production status"),
+        (DATABASE_VALIDATOR, CANONICAL_DATABASE_VALIDATOR, "database outage validator"),
+        (OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, "operability validator"),
+    ):
+        require_exact_authority(path, canonical, label)
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -74,6 +99,7 @@ def source_is_ancestor(source_sha: str) -> bool:
 
 
 def run_validator(path: Path, *, expected_sha: str | None = None) -> None:
+    enforce_runtime_authorities()
     require(path.is_file(), f"canonical validator missing: {path.relative_to(ROOT)}")
     require(not path.is_symlink(), f"canonical validator cannot be a symlink: {path.relative_to(ROOT)}")
     env = os.environ.copy()
@@ -93,11 +119,13 @@ def run_validator(path: Path, *, expected_sha: str | None = None) -> None:
 
 
 def validate_authority_chain(source_sha: str) -> None:
+    enforce_runtime_authorities()
     run_validator(DATABASE_VALIDATOR, expected_sha=source_sha)
     run_validator(OPERABILITY_VALIDATOR)
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     result = load(RESULT_PATH)
     source_sha = result.get("commitSha")
     require(isinstance(source_sha, str) and SHA_RE.fullmatch(source_sha) is not None,
