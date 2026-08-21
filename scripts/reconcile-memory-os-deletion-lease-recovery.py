@@ -53,7 +53,7 @@ def validate_authority_identity() -> None:
     if ROOT != CANONICAL_ROOT or ROOT.resolve() != CANONICAL_ROOT.resolve():
         raise ReconcileFailure("repository root authority is not canonical")
     _require_exact_path("lease recovery contract", CONTRACT_PATH, CANONICAL_CONTRACT_PATH)
-    _require_exact_path("lease recovery result", RESULT_PATH, CANONICAL_RESULT_PATH, must_exist=False)
+    _require_exact_path("lease recovery result", RESULT_PATH, CANONICAL_RESULT_PATH)
     _require_exact_path("lease recovery validator", VALIDATOR, CANONICAL_VALIDATOR)
 
 
