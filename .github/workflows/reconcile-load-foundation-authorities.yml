@@ -16,6 +16,7 @@ on:
       - "scripts/validate-memory-os-capacity-ramp-authority-negative.py"
       - "scripts/reconcile-memory-os-capacity-ramp-status.py"
       - "scripts/validate-memory-os-short-stability-sample.py"
+      - "scripts/validate-memory-os-short-stability-authority-negative.py"
       - "scripts/validate-memory-os-short-stability-reconcile-negative.py"
       - "scripts/reconcile-memory-os-short-stability-status.py"
       - "scripts/reconcile-memory-os-sustained-local-soak-status.py"
@@ -40,6 +41,7 @@ on:
       - "scripts/validate-memory-os-capacity-ramp-authority-negative.py"
       - "scripts/reconcile-memory-os-capacity-ramp-status.py"
       - "scripts/validate-memory-os-short-stability-sample.py"
+      - "scripts/validate-memory-os-short-stability-authority-negative.py"
       - "scripts/validate-memory-os-short-stability-reconcile-negative.py"
       - "scripts/reconcile-memory-os-short-stability-status.py"
       - "scripts/reconcile-memory-os-sustained-local-soak-status.py"
@@ -105,6 +107,7 @@ jobs:
             scripts/validate-memory-os-capacity-ramp-authority-negative.py \
             scripts/reconcile-memory-os-capacity-ramp-status.py \
             scripts/validate-memory-os-short-stability-sample.py \
+            scripts/validate-memory-os-short-stability-authority-negative.py \
             scripts/validate-memory-os-short-stability-reconcile-negative.py \
             scripts/reconcile-memory-os-short-stability-status.py \
             scripts/reconcile-memory-os-sustained-local-soak-status.py \
@@ -117,6 +120,11 @@ jobs:
           if [[ "$code" == "0" ]]; then
             echo "STAGE: capacity-authority-negative" >> "$log"
             python scripts/validate-memory-os-capacity-ramp-authority-negative.py >> "$log" 2>&1 || code=$?
+          fi
+
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: short-stability-authority-negative" >> "$log"
+            python scripts/validate-memory-os-short-stability-authority-negative.py >> "$log" 2>&1 || code=$?
           fi
 
           if [[ "$code" == "0" ]]; then
