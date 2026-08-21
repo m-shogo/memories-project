@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-"""Prove upload-completion proof reconcile rolls back after canonical rejection."""
+"""Prove upload-completion proof reconcile authority identity and rollback are fail-closed."""
 
 from __future__ import annotations
 
 import importlib.util
 import json
-import os
-import subprocess
 import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-deletion-prefence-upload-completion.py"
+ALTERNATE_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+ALTERNATE_CONTRACT = ROOT / "contracts/operations/production-operability-status.json"
+ALTERNATE_RESULT = ROOT / "docs/fixtures/memory-os-operability/deletion-lease-recovery-results.sample.v1.json"
 SOURCE_SHA = "1" * 40
 
 
@@ -28,87 +29,66 @@ def write_json(path: Path, value: dict) -> None:
     path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
 
 
-def main() -> int:
-    module = load_module()
+def expect_identity_rejection(module, attribute: str, replacement: Path, original_contract: bytes) -> None:
+    original = getattr(module, attribute)
+    setattr(module, attribute, replacement)
+    try:
+        try:
+            module.validate_authority_identity()
+        except module.Fail:
+            pass
+        else:
+            raise AssertionError(f"{attribute} substitution was accepted")
+        if module.CANONICAL_CONTRACT_PATH.read_bytes() != original_contract:
+            raise AssertionError(f"{attribute} rejection mutated canonical contract")
+    finally:
+        setattr(module, attribute, original)
+
+
+def expect_post_write_rollback(module) -> None:
     with tempfile.TemporaryDirectory(prefix="memory-os-upload-completion-proof-") as tmp:
         root = Path(tmp)
         contract = root / "contract.json"
-        result = root / "result.json"
-        validator = root / "validator.py"
-        write_json(
-            contract,
-            {
-                "readiness": {},
-                "evidenceBoundary": {
-                    "realMinioHeadCovered": True,
-                    "postHeadFenceCovered": True,
-                    "hostFailureCovered": False,
-                    "productionEvidence": False,
-                    "productionEquivalentDependencies": False,
-                },
-            },
-        )
-        write_json(
-            result,
-            {
-                "commitSha": SOURCE_SHA,
-                "scenario": {
-                    "result": "PASS",
-                    "integrityResult": "PASS",
-                    "issuedAndUploadedBeforeFence": 16,
-                    "realHeadCompletedBeforeFence": 16,
-                    "completionUnauthorizedAfterFence": 16,
-                    "unexpectedStatusCount": 0,
-                    "transportErrors": 0,
-                    "preWorkerConsumedAuthorizationRows": 0,
-                    "preWorkerQuarantineRows": 0,
-                    "finalOwnedRowCount": 0,
-                    "preWorkerIssuedAuthorizationRows": 16,
-                    "workerReceiptCount": 1,
-                    "erasedObjectVersions": 16,
-                    "finalAccountState": "deleted",
-                    "finalAccountEpoch": 2,
-                },
-            },
-        )
-
-        module.ROOT = root
-        module.CONTRACT_PATH = contract
-        module.RESULT_PATH = result
-        module.VALIDATOR = validator
+        write_json(contract, {"readiness": {"productionReady": False}})
         before = contract.read_bytes()
-        previous = os.environ.get("EXPECTED_COMMIT_SHA")
-        os.environ["EXPECTED_COMMIT_SHA"] = SOURCE_SHA
+        candidate = {"readiness": {"productionReady": False, "exactSourceResultCommitted": True}}
 
-        calls: list[list[str]] = []
+        original_contract_path = module.CONTRACT_PATH
+        original_run_validator = module.run_validator
+        original_atomic_write = module.atomic_write_bytes
+        module.CONTRACT_PATH = contract
 
-        def fake_run(command, *, cwd, check):
-            calls.append(list(command))
-            if cwd != root or check is not True:
-                raise AssertionError("validator invocation lost fail-closed execution options")
-            raise subprocess.CalledProcessError(1, command)
+        def reject_post_write(_expected: str) -> None:
+            raise RuntimeError("synthetic upload-completion post-write validation failure")
 
-        module.subprocess.run = fake_run
+        module.run_validator = reject_post_write
         try:
             try:
-                module.main()
-            except subprocess.CalledProcessError:
-                pass
+                module.write_contract_transactionally(candidate, SOURCE_SHA)
+            except RuntimeError as exc:
+                if "synthetic upload-completion post-write validation failure" not in str(exc):
+                    raise
             else:
-                raise AssertionError("canonical validator rejection must fail proof reconcile")
+                raise AssertionError("post-write validator rejection was accepted")
+            if contract.read_bytes() != before:
+                raise AssertionError("proof contract changed after rejected reconcile")
         finally:
-            if previous is None:
-                os.environ.pop("EXPECTED_COMMIT_SHA", None)
-            else:
-                os.environ["EXPECTED_COMMIT_SHA"] = previous
+            module.CONTRACT_PATH = original_contract_path
+            module.run_validator = original_run_validator
+            module.atomic_write_bytes = original_atomic_write
 
-        if contract.read_bytes() != before:
-            raise AssertionError("proof contract changed after rejected reconcile")
-        expected = ["python", str(validator), "--require-result", "--expected-commit-sha", SOURCE_SHA]
-        if calls != [expected]:
-            raise AssertionError(f"validator invocation drift: {calls!r}")
 
-    print("PASS: upload-completion proof reconcile rolls back after canonical rejection")
+def main() -> int:
+    module = load_module()
+    original_contract = module.CANONICAL_CONTRACT_PATH.read_bytes()
+
+    module.validate_authority_identity()
+    expect_identity_rejection(module, "VALIDATOR", ALTERNATE_VALIDATOR, original_contract)
+    expect_identity_rejection(module, "CONTRACT_PATH", ALTERNATE_CONTRACT, original_contract)
+    expect_identity_rejection(module, "RESULT_PATH", ALTERNATE_RESULT, original_contract)
+    expect_post_write_rollback(module)
+
+    print("PASS: upload-completion proof reconcile authority and rollback are fail-closed")
     return 0
 
 
