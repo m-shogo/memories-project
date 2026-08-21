@@ -21,6 +21,7 @@ on:
       - "scripts/reconcile-memory-os-short-stability-status.py"
       - "scripts/reconcile-memory-os-sustained-local-soak-status.py"
       - "scripts/validate-memory-os-deletion-under-load.py"
+      - "scripts/validate-memory-os-deletion-under-load-authority-negative.py"
       - "scripts/reconcile-memory-os-deletion-under-load-status.py"
       - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-operability.py"
@@ -46,6 +47,7 @@ on:
       - "scripts/reconcile-memory-os-short-stability-status.py"
       - "scripts/reconcile-memory-os-sustained-local-soak-status.py"
       - "scripts/validate-memory-os-deletion-under-load.py"
+      - "scripts/validate-memory-os-deletion-under-load-authority-negative.py"
       - "scripts/reconcile-memory-os-deletion-under-load-status.py"
       - "scripts/validate-memory-os-load.py"
       - "scripts/validate-memory-os-operability.py"
@@ -112,6 +114,7 @@ jobs:
             scripts/reconcile-memory-os-short-stability-status.py \
             scripts/reconcile-memory-os-sustained-local-soak-status.py \
             scripts/validate-memory-os-deletion-under-load.py \
+            scripts/validate-memory-os-deletion-under-load-authority-negative.py \
             scripts/reconcile-memory-os-deletion-under-load-status.py \
             scripts/validate-memory-os-load.py \
             scripts/validate-memory-os-operability.py \
@@ -125,6 +128,11 @@ jobs:
           if [[ "$code" == "0" ]]; then
             echo "STAGE: short-stability-authority-negative" >> "$log"
             python scripts/validate-memory-os-short-stability-authority-negative.py >> "$log" 2>&1 || code=$?
+          fi
+
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: deletion-load-authority-negative" >> "$log"
+            python scripts/validate-memory-os-deletion-under-load-authority-negative.py >> "$log" 2>&1 || code=$?
           fi
 
           if [[ "$code" == "0" ]]; then
