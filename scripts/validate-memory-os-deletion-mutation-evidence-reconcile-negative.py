@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove deletion mutation evidence reconcile rolls back after aggregate rejection."""
+"""Prove deletion mutation evidence reconcile pins authorities and rolls back aggregate rejection."""
 
 from __future__ import annotations
 
@@ -26,8 +26,36 @@ def write_json(path: Path, value: dict) -> None:
     path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
 
 
+def expect_authority_rejection(module, attr: str, replacement: Path) -> None:
+    original = getattr(module, attr)
+    setattr(module, attr, replacement)
+    try:
+        try:
+            module.enforce_runtime_authorities()
+        except module.Fail:
+            pass
+        else:
+            raise AssertionError(f"{attr} substitution must be rejected")
+    finally:
+        setattr(module, attr, original)
+
+
 def main() -> int:
     module = load_module()
+    substitutions = {
+        "MUTATION_CONTRACT": module.LOAD_PATH,
+        "MUTATION_RESULT": module.MUTATION_CONTRACT,
+        "LOAD_PATH": module.MUTATION_CONTRACT,
+        "STATUS_PATH": module.LOAD_PATH,
+        "MUTATION_VALIDATOR": module.LOAD_VALIDATOR,
+        "LOAD_INDEX_VALIDATOR": module.LOAD_VALIDATOR,
+        "LOAD_VALIDATOR": module.MUTATION_VALIDATOR,
+        "OPERABILITY_VALIDATOR": module.LOAD_VALIDATOR,
+    }
+    for attr, replacement in substitutions.items():
+        expect_authority_rejection(module, attr, replacement)
+    module.enforce_runtime_authorities()
+
     with tempfile.TemporaryDirectory(prefix="memory-os-mutation-reconcile-") as tmp:
         root = Path(tmp)
         proof_contract = root / "proof-contract.json"
@@ -101,6 +129,7 @@ def main() -> int:
         module.LOAD_INDEX_VALIDATOR = load_index_validator
         module.LOAD_VALIDATOR = load_validator
         module.OPERABILITY_VALIDATOR = operability_validator
+        module.enforce_runtime_authorities = lambda: None
 
         calls: list[str] = []
 
@@ -137,7 +166,7 @@ def main() -> int:
         if calls != expected:
             raise AssertionError(f"validator order drift: {calls!r} != {expected!r}")
 
-    print("PASS: deletion mutation evidence reconcile rolls back after aggregate rejection")
+    print("PASS: deletion mutation authority identity and aggregate rollback are fail-closed")
     return 0
 
 
