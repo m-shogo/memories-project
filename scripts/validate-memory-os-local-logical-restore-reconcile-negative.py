@@ -53,6 +53,34 @@ def authority_identity_negative(module) -> None:
         module.OPERABILITY_VALIDATOR_PATH = real_operability
 
 
+def data_authority_identity_negative(module) -> None:
+    original_contract = module.CONTRACT_PATH
+    original_result = module.RESULT_PATH
+    original_status = module.STATUS_PATH
+    try:
+        module.CONTRACT_PATH = original_status
+        expect_rejected(
+            "repository-contained local logical restore contract substitution",
+            module.validate_runtime_authority,
+        )
+        module.CONTRACT_PATH = original_contract
+        module.RESULT_PATH = original_contract
+        expect_rejected(
+            "repository-contained local logical restore result substitution",
+            module.validate_runtime_authority,
+        )
+        module.RESULT_PATH = original_result
+        module.STATUS_PATH = original_contract
+        expect_rejected(
+            "repository-contained production status substitution",
+            module.validate_runtime_authority,
+        )
+    finally:
+        module.CONTRACT_PATH = original_contract
+        module.RESULT_PATH = original_result
+        module.STATUS_PATH = original_status
+
+
 def rollback_negative(module) -> None:
     original_status = module.STATUS_PATH.read_bytes()
     real_load = module.load
@@ -121,9 +149,11 @@ def main() -> int:
     )
     reconciler.validate_runtime_authority()
     authority_identity_negative(reconciler)
+    data_authority_identity_negative(reconciler)
     rollback_negative(reconciler)
     print("Memory OS local logical restore reconcile negative suite PASS")
     print("canonical validator identity: enforced")
+    print("canonical contract/result/status identity: enforced")
     print("post-write aggregate rollback: enforced")
     print("production evidence: false")
     print("production decision: NO_GO")
