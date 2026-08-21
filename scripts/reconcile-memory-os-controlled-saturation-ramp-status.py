@@ -11,10 +11,24 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTROLLED_CONTRACT = ROOT / "contracts/operations/controlled-saturation-ramp-contract.v1.json"
-LOAD_CONTRACT = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
-STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
-RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.sample.v1.json"
+CANONICAL_CONTROLLED_CONTRACT = ROOT / "contracts/operations/controlled-saturation-ramp-contract.v1.json"
+CANONICAL_LOAD_CONTRACT = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
+CANONICAL_STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+CANONICAL_RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/controlled-saturation-ramp-results.sample.v1.json"
+CANONICAL_CONTROLLED_VALIDATOR = ROOT / "scripts/validate-memory-os-controlled-saturation-ramp.py"
+CANONICAL_LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
+CANONICAL_LOAD_INDEX_VALIDATOR = ROOT / "scripts/validate-memory-os-load-evidence-index.py"
+CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CANONICAL_WORKFLOW = ROOT / ".github/workflows/controlled-saturation-ramp.yml"
+CONTROLLED_CONTRACT = CANONICAL_CONTROLLED_CONTRACT
+LOAD_CONTRACT = CANONICAL_LOAD_CONTRACT
+STATUS_PATH = CANONICAL_STATUS_PATH
+RESULT_PATH = CANONICAL_RESULT_PATH
+CONTROLLED_VALIDATOR = CANONICAL_CONTROLLED_VALIDATOR
+LOAD_VALIDATOR = CANONICAL_LOAD_VALIDATOR
+LOAD_INDEX_VALIDATOR = CANONICAL_LOAD_INDEX_VALIDATOR
+OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
+WORKFLOW = CANONICAL_WORKFLOW
 SCENARIO_ID = "signed-upload-controlled-saturation-ramp-local-dependencies"
 EVIDENCE_REFS = (
     "contracts/operations/controlled-saturation-ramp-contract.v1.json",
@@ -25,6 +39,32 @@ EVIDENCE_REFS = (
     ".github/workflows/controlled-saturation-ramp.yml",
 )
 TRANSACTION_PATHS = (CONTROLLED_CONTRACT, LOAD_CONTRACT, STATUS_PATH)
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise SystemExit(message)
+
+
+def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
+    require(path == canonical, f"{label} authority drift")
+    require(canonical.is_file(), f"canonical {label} missing")
+    require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
+
+
+def enforce_runtime_authorities() -> None:
+    for path, canonical, label in (
+        (CONTROLLED_CONTRACT, CANONICAL_CONTROLLED_CONTRACT, "controlled saturation contract"),
+        (LOAD_CONTRACT, CANONICAL_LOAD_CONTRACT, "load contract"),
+        (STATUS_PATH, CANONICAL_STATUS_PATH, "production status"),
+        (RESULT_PATH, CANONICAL_RESULT_PATH, "controlled saturation result"),
+        (CONTROLLED_VALIDATOR, CANONICAL_CONTROLLED_VALIDATOR, "controlled saturation validator"),
+        (LOAD_VALIDATOR, CANONICAL_LOAD_VALIDATOR, "load validator"),
+        (LOAD_INDEX_VALIDATOR, CANONICAL_LOAD_INDEX_VALIDATOR, "load index validator"),
+        (OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, "operability validator"),
+        (WORKFLOW, CANONICAL_WORKFLOW, "controlled saturation workflow"),
+    ):
+        require_exact_authority(path, canonical, label)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -57,18 +97,25 @@ def find_scenario(values: list[Any], scenario_id: str) -> dict[str, Any] | None:
     return None
 
 
+def validate_source_authority(expected_sha: str) -> None:
+    enforce_runtime_authorities()
+    env = os.environ.copy()
+    env["EXPECTED_COMMIT_SHA"] = expected_sha
+    subprocess.run(
+        [sys.executable, str(CONTROLLED_VALIDATOR), "--expected-commit-sha", expected_sha],
+        cwd=ROOT,
+        env=env,
+        check=True,
+    )
+
+
 def validate_post_write(expected_sha: str) -> None:
+    enforce_runtime_authorities()
     commands = (
-        [
-            sys.executable,
-            "scripts/validate-memory-os-controlled-saturation-ramp.py",
-            "--expected-commit-sha",
-            expected_sha,
-            "--require-reconciled",
-        ],
-        [sys.executable, "scripts/validate-memory-os-load.py"],
-        [sys.executable, "scripts/validate-memory-os-load-evidence-index.py"],
-        [sys.executable, "scripts/validate-memory-os-operability.py"],
+        [sys.executable, str(CONTROLLED_VALIDATOR), "--expected-commit-sha", expected_sha, "--require-reconciled"],
+        [sys.executable, str(LOAD_VALIDATOR)],
+        [sys.executable, str(LOAD_INDEX_VALIDATOR)],
+        [sys.executable, str(OPERABILITY_VALIDATOR)],
     )
     env = os.environ.copy()
     env["EXPECTED_COMMIT_SHA"] = expected_sha
@@ -79,6 +126,7 @@ def validate_post_write(expected_sha: str) -> None:
 def write_transactionally(
     controlled: dict[str, Any], load_contract: dict[str, Any], status: dict[str, Any], expected_sha: str
 ) -> None:
+    enforce_runtime_authorities()
     originals = {path: path.read_bytes() for path in TRANSACTION_PATHS}
     try:
         write(CONTROLLED_CONTRACT, controlled)
@@ -92,10 +140,12 @@ def write_transactionally(
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     expected_sha = os.environ.get("EXPECTED_COMMIT_SHA", "")
     if len(expected_sha) != 40:
         raise SystemExit("EXPECTED_COMMIT_SHA must be a full commit SHA")
 
+    validate_source_authority(expected_sha)
     result = load(RESULT_PATH)
     if result.get("commitSha") != expected_sha:
         raise SystemExit("controlled saturation result is stale for expected source")
