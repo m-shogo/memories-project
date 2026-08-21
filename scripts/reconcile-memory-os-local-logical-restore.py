@@ -7,6 +7,7 @@ import datetime as dt
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "contracts/operations/local-logical-restore-contract.v1.json"
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-local-logical-restore.py"
+OPERABILITY_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-operability.py"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 NEW_EXISTING = (
@@ -62,10 +65,44 @@ def append_once(items: list[Any], value: str) -> bool:
     return True
 
 
+def validate_runtime_authority() -> None:
+    for path, expected, label in (
+        (
+            VALIDATOR_PATH,
+            ROOT / "scripts/validate-memory-os-local-logical-restore.py",
+            "local logical restore validator",
+        ),
+        (
+            OPERABILITY_VALIDATOR_PATH,
+            ROOT / "scripts/validate-memory-os-operability.py",
+            "operability validator",
+        ),
+    ):
+        require(path == expected, f"canonical {label} identity drift")
+        require(path.is_file(), f"canonical {label} missing")
+        require(not path.is_symlink(), f"canonical {label} must not be a symlink")
+        try:
+            require(path.resolve(strict=True) == expected, f"canonical {label} path drift")
+        except OSError as exc:
+            raise ReconcileFailure(f"cannot resolve canonical {label}") from exc
+
+
+def run_validator(path: Path) -> None:
+    completed = subprocess.run([sys.executable, str(path)], cwd=ROOT, check=False)
+    require(
+        type(completed.returncode) is int and completed.returncode == 0,
+        f"canonical validator rejected local logical restore authority: {path.name}",
+    )
+
+
 def main() -> int:
     expected_sha = os.environ.get("EXPECTED_COMMIT_SHA", "")
     require(SHA_RE.fullmatch(expected_sha) is not None,
             "EXPECTED_COMMIT_SHA must be a full commit SHA")
+    validate_runtime_authority()
+    run_validator(VALIDATOR_PATH)
+    run_validator(OPERABILITY_VALIDATOR_PATH)
+
     contract = load(CONTRACT_PATH)
     result = load(RESULT_PATH)
     require(contract.get("schemaVersion") == "memory-os-local-logical-restore.v1",
@@ -128,10 +165,18 @@ def main() -> int:
         return 0
 
     status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
+    original_status = STATUS_PATH.read_bytes()
     STATUS_PATH.write_text(
         json.dumps(status, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
+    try:
+        run_validator(VALIDATOR_PATH)
+        run_validator(OPERABILITY_VALIDATOR_PATH)
+    except Exception:
+        STATUS_PATH.write_bytes(original_status)
+        raise
+
     print("Registered exact-source local logical restore PASS; canonical production blockers unchanged")
     return 0
 
