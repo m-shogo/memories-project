@@ -9,6 +9,7 @@ on:
       - "contracts/operations/deletion-prefence-linearization-contract.v1.json"
       - "scripts/validate-memory-os-deletion-prefence-linearization.py"
       - "scripts/reconcile-memory-os-deletion-prefence-linearization.py"
+      - "scripts/validate-memory-os-deletion-prefence-linearization-reconcile-negative.py"
       - "services/import-api/internal/httpserver/deletion_prefence_linearization_test.go"
       - "services/import-api/internal/httpserver/server_live_test.go"
       - "services/import-api/internal/httpserver/server.go"
@@ -106,7 +107,11 @@ jobs:
           python -m py_compile \
             scripts/validate-memory-os-deletion-prefence-linearization.py \
             scripts/reconcile-memory-os-deletion-prefence-linearization.py \
+            scripts/validate-memory-os-deletion-prefence-linearization-reconcile-negative.py \
             >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-deletion-prefence-linearization-reconcile-negative.py >> "$log" 2>&1 || code=$?
+          fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-deletion-prefence-linearization.py >> "$log" 2>&1 || code=$?
           fi
