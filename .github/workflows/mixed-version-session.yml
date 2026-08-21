@@ -12,6 +12,7 @@ on:
       - "scripts/run-memory-os-mixed-version-session-drill.sh"
       - "scripts/validate-memory-os-mixed-version-session.py"
       - "scripts/reconcile-memory-os-mixed-version-session.py"
+      - "scripts/validate-memory-os-mixed-version-session-reconcile-negative.py"
   push:
     branches:
       - so
@@ -25,6 +26,7 @@ on:
       - "scripts/run-memory-os-mixed-version-session-drill.sh"
       - "scripts/validate-memory-os-mixed-version-session.py"
       - "scripts/reconcile-memory-os-mixed-version-session.py"
+      - "scripts/validate-memory-os-mixed-version-session-reconcile-negative.py"
   schedule:
     - cron: "41 18 * * 3"
   workflow_dispatch:
@@ -92,7 +94,8 @@ jobs:
           bash -n scripts/run-memory-os-mixed-version-session-drill.sh
           python -m py_compile \
             scripts/validate-memory-os-mixed-version-session.py \
-            scripts/reconcile-memory-os-mixed-version-session.py
+            scripts/reconcile-memory-os-mixed-version-session.py \
+            scripts/validate-memory-os-mixed-version-session-reconcile-negative.py
 
       - name: Start local MinIO
         run: |
@@ -113,6 +116,7 @@ jobs:
       - name: Validate static compatibility contract
         run: |
           python scripts/validate-memory-os-mixed-version-session.py
+          python scripts/validate-memory-os-mixed-version-session-reconcile-negative.py
           python scripts/validate-memory-os-version-compatibility.py
 
       - name: Execute pinned old-current two-process drill
