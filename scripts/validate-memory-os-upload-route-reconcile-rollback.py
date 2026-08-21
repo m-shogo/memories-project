@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove upload-route reconcile rollback restores the exact pre-write snapshot."""
+"""Prove upload-route reconcile rollback and canonical validator delegation."""
 
 from __future__ import annotations
 
@@ -49,7 +49,55 @@ def main() -> int:
         require(existing.read_bytes() == original, "existing authority was not restored byte-for-byte")
         require(not created.exists(), "new partial authority was not removed during rollback")
 
-    print("PASS: upload-route reconcile rollback restores exact prior authority bytes")
+    expected = [
+        module.METRICS_VALIDATOR,
+        module.RATE_LIMIT_VALIDATOR,
+        module.OBSERVABILITY_VALIDATOR,
+        module.OPERABILITY_VALIDATOR,
+    ]
+    calls: list[Path] = []
+
+    class Result:
+        def __init__(self, returncode):
+            self.returncode = returncode
+
+    def passing_run(command, *, cwd, check):
+        require(cwd == module.ROOT, "validator did not run from repository root")
+        require(check is False, "validator subprocess must return its explicit status")
+        calls.append(Path(command[1]))
+        return Result(0)
+
+    module.subprocess.run = passing_run
+    module.validate_canonical_authorities()
+    require(calls == expected, "canonical aggregate validators ran in the wrong order")
+
+    calls.clear()
+
+    def failing_run(command, *, cwd, check):
+        calls.append(Path(command[1]))
+        return Result(1 if len(calls) == 2 else 0)
+
+    module.subprocess.run = failing_run
+    try:
+        module.validate_canonical_authorities()
+    except module.ReconcileFailure as exc:
+        require("validate-memory-os-rate-limit.py" in str(exc), "wrong validator failure was reported")
+    else:
+        raise Fail("canonical validator rejection was accepted")
+    require(calls == expected[:2], "validator chain continued after fail-closed rejection")
+
+    def boolean_run(command, *, cwd, check):
+        return Result(False)
+
+    module.subprocess.run = boolean_run
+    try:
+        module.validate_canonical_authorities()
+    except module.ReconcileFailure:
+        pass
+    else:
+        raise Fail("boolean validator exit status was accepted as integer zero")
+
+    print("PASS: upload-route reconcile rollback and canonical validator delegation are fail-closed")
     return 0
 
 
