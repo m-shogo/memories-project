@@ -10,14 +10,28 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 EXECUTION = ROOT / "contracts/operations/version-compatibility-execution-evidence.v1.json"
-EXECUTION_VALIDATOR = ROOT / "scripts/validate-memory-os-version-compatibility-execution-evidence.py"
 RESULT = ROOT / "docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
+MIXED_VERSION_VALIDATOR = ROOT / "scripts/validate-memory-os-mixed-version-apply.py"
+EXECUTION_VALIDATOR = ROOT / "scripts/validate-memory-os-version-compatibility-execution-evidence.py"
+CHAOS_VALIDATOR = ROOT / "scripts/validate-memory-os-chaos-failure-drills-v2.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+
+CANONICAL_AUTHORITIES = {
+    "execution": ROOT / "contracts/operations/version-compatibility-execution-evidence.v1.json",
+    "result": ROOT / "docs/fixtures/memory-os-operability/mixed-version-apply-results.sample.v1.json",
+    "status": ROOT / "contracts/operations/production-operability-status.json",
+    "mixed-version validator": ROOT / "scripts/validate-memory-os-mixed-version-apply.py",
+    "execution validator": ROOT / "scripts/validate-memory-os-version-compatibility-execution-evidence.py",
+    "chaos validator": ROOT / "scripts/validate-memory-os-chaos-failure-drills-v2.py",
+    "operability validator": ROOT / "scripts/validate-memory-os-operability.py",
+}
 
 EVIDENCE = (
     "historical-candidate/current mixed-version Apply failure recovery is executed locally: the historical process is terminated during an in-progress Apply, its uncommitted Apply/memory rows remain zero, and the current process retries the same operation to exactly one durable mutation with no in-progress residue or duplicate materialization; this remains candidate/local evidence, not an approved-release production-shaped failure drill"
@@ -53,8 +67,45 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
+def require_canonical_authorities() -> None:
+    actual = {
+        "execution": EXECUTION,
+        "result": RESULT,
+        "status": STATUS,
+        "mixed-version validator": MIXED_VERSION_VALIDATOR,
+        "execution validator": EXECUTION_VALIDATOR,
+        "chaos validator": CHAOS_VALIDATOR,
+        "operability validator": OPERABILITY_VALIDATOR,
+    }
+    for label, expected in CANONICAL_AUTHORITIES.items():
+        path = actual[label]
+        require(path == expected, f"{label} authority substitution")
+        require(path.is_file(), f"{label} authority missing")
+        require(path.resolve() == expected, f"{label} authority escapes canonical path")
+
+
+def run_validator(path: Path) -> None:
+    try:
+        subprocess.run([sys.executable, str(path)], cwd=ROOT, check=True)
+    except subprocess.CalledProcessError as exc:
+        raise Fail(f"validator rejected authority: {path.relative_to(ROOT)}") from exc
+
+
+def validate_source_authority() -> None:
+    require_canonical_authorities()
+    run_validator(MIXED_VERSION_VALIDATOR)
+    run_validator(EXECUTION_VALIDATOR)
+
+
+def validate_post_write_authority() -> None:
+    run_validator(MIXED_VERSION_VALIDATOR)
+    run_validator(EXECUTION_VALIDATOR)
+    run_validator(CHAOS_VALIDATOR)
+    run_validator(OPERABILITY_VALIDATOR)
+
+
 def main() -> int:
-    subprocess.run(["python", str(EXECUTION_VALIDATOR)], cwd=ROOT, check=True)
+    validate_source_authority()
     execution = load(EXECUTION)
     readiness = execution.get("readiness")
     boundary = execution.get("releaseAuthorityBoundary")
@@ -83,6 +134,7 @@ def main() -> int:
     }.items():
         require(assertions.get(field) == expected, f"mixed-version failure assertion drift: {field}")
 
+    original_status = STATUS.read_bytes()
     status = load(STATUS)
     require(status.get("productionDecision") == "NO_GO", "productionDecision must remain NO_GO")
     gate = next((row for row in status.get("areas", []) if isinstance(row, dict) and row.get("id") == "OPS-P0-009"), None)
@@ -107,7 +159,13 @@ def main() -> int:
     gate["missingEvidence"] = normalized
     for ref in REFS:
         append_once(refs, ref)
-    STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    try:
+        STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        validate_post_write_authority()
+    except Exception:
+        STATUS.write_bytes(original_status)
+        raise
 
     print("Memory OS chaos mixed-version overlay reconciliation PASS")
     print("candidate/local Apply SIGKILL recovery: proven")
