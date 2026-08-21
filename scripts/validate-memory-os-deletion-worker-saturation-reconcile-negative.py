@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove deletion-worker saturation reconcile rolls back post-write validator failures."""
+"""Prove deletion-worker saturation authority identity and rollback are fail-closed."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-RECONCILER_PATH = ROOT / "scripts" / "reconcile-memory-os-deletion-worker-saturation.py"
+RECONCILER_PATH = ROOT / "scripts/reconcile-memory-os-deletion-worker-saturation.py"
 
 
 def load_module(path: Path, name: str):
@@ -65,8 +65,27 @@ def synthetic_result(contract: dict, expected: str) -> dict:
     }
 
 
+def expect_authority_rejection(reconciler, attr: str, replacement: Path) -> None:
+    original = getattr(reconciler, attr)
+    setattr(reconciler, attr, replacement)
+    try:
+        try:
+            reconciler.enforce_runtime_authorities()
+        except reconciler.Fail:
+            pass
+        else:
+            raise AssertionError(f"{attr} substitution must be rejected")
+    finally:
+        setattr(reconciler, attr, original)
+
+
 def main() -> int:
     reconciler = load_module(RECONCILER_PATH, "memory_os_deletion_worker_saturation_reconciler_negative")
+    expect_authority_rejection(reconciler, "CONTRACT_PATH", reconciler.RESULT_PATH)
+    expect_authority_rejection(reconciler, "RESULT_PATH", reconciler.CONTRACT_PATH)
+    expect_authority_rejection(reconciler, "VALIDATOR_PATH", reconciler.CONTRACT_PATH)
+    reconciler.enforce_runtime_authorities()
+
     real_validator = reconciler.load_validator()
     original_contract = reconciler.CONTRACT_PATH.read_bytes()
     original_result = reconciler.RESULT_PATH.read_bytes() if reconciler.RESULT_PATH.exists() else None
@@ -115,7 +134,7 @@ def main() -> int:
         else:
             os.environ["EXPECTED_COMMIT_SHA"] = old_expected
 
-    print("PASS: deletion-worker saturation reconcile rollback is fail-closed")
+    print("PASS: deletion-worker saturation authority identity and reconcile rollback are fail-closed")
     return 0
 
 
