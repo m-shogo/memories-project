@@ -197,6 +197,32 @@ def validate_runtime_authority_identity(normalizer, coherent) -> None:
     finally:
         coherent.VALIDATOR = real_coherent_validator
 
+    real_status = coherent.STATUS
+    real_index = coherent.INDEX
+    real_result = coherent.RESULT
+    try:
+        coherent.STATUS = real_index
+        expect_rejected(
+            "coherent authority rejects production status substitution",
+            coherent.validate_runtime_authority,
+        )
+        coherent.STATUS = real_status
+        coherent.INDEX = real_status
+        expect_rejected(
+            "coherent authority rejects local foundation index substitution",
+            coherent.validate_runtime_authority,
+        )
+        coherent.INDEX = real_index
+        coherent.RESULT = real_status
+        expect_rejected(
+            "coherent authority rejects recovery result substitution",
+            coherent.validate_runtime_authority,
+        )
+    finally:
+        coherent.STATUS = real_status
+        coherent.INDEX = real_index
+        coherent.RESULT = real_result
+
 
 def main() -> int:
     module = load_module(
@@ -336,6 +362,7 @@ def main() -> int:
     print("Memory OS backup/restore canonical blocker negative suite PASS")
     print("canonical blocker count: 6")
     print("canonical local/coherent validator identities: enforced")
+    print("canonical coherent status/index/result identities: enforced")
     print("canonical normalizer repair behavior: disabled")
     print("canonical normalizer post-write rollback: enforced")
     print("semantic authority repair behavior: disabled")
