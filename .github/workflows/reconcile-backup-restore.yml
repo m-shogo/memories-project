@@ -1,6 +1,22 @@
 name: Reconcile Backup Restore Policy
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/reconcile-backup-restore.yml"
+      - "contracts/operations/backup-restore-contract.v1.json"
+      - "contracts/operations/local-logical-restore-contract.v1.json"
+      - "contracts/operations/local-object-version-restore-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "docs/runbooks/memory-os-backup-restore.md"
+      - "scripts/memory_os_backup_restore_blockers.py"
+      - "scripts/validate-memory-os-backup-restore.py"
+      - "scripts/validate-memory-os-backup-restore-reconcile-negative.py"
+      - "scripts/reconcile-memory-os-backup-restore.py"
+      - "scripts/validate-memory-os-local-logical-restore.py"
+      - "scripts/validate-memory-os-local-object-version-restore.py"
+      - "scripts/validate-memory-os-operability.py"
+      - "scripts/validate-memory-os-entry-docs.py"
   push:
     branches:
       - so
@@ -9,9 +25,11 @@ on:
       - "contracts/operations/backup-restore-contract.v1.json"
       - "contracts/operations/local-logical-restore-contract.v1.json"
       - "contracts/operations/local-object-version-restore-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
       - "docs/runbooks/memory-os-backup-restore.md"
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/validate-memory-os-backup-restore.py"
+      - "scripts/validate-memory-os-backup-restore-reconcile-negative.py"
       - "scripts/reconcile-memory-os-backup-restore.py"
       - "scripts/validate-memory-os-local-logical-restore.py"
       - "scripts/validate-memory-os-local-object-version-restore.py"
@@ -23,7 +41,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: reconcile-backup-restore-so
+  group: reconcile-backup-restore-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -31,10 +49,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Checkout latest so
+      - name: Checkout exact validation head
         uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -44,16 +62,22 @@ jobs:
 
       - name: Confirm exact source state
         run: |
-          test "$(git branch --show-current)" = "so"
+          set -euo pipefail
           test -z "$(git status --porcelain)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
-          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          SOURCE_SHA="$(git rev-parse HEAD)"
+          echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            git fetch origin so
+            test "$(git branch --show-current)" = "so"
+            test "$(git rev-parse origin/so)" = "$SOURCE_SHA"
+          fi
 
       - name: Compile backup authority tools
         run: |
           python -m py_compile \
             scripts/memory_os_backup_restore_blockers.py \
             scripts/validate-memory-os-backup-restore.py \
+            scripts/validate-memory-os-backup-restore-reconcile-negative.py \
             scripts/reconcile-memory-os-backup-restore.py \
             scripts/validate-memory-os-local-logical-restore.py \
             scripts/validate-memory-os-local-object-version-restore.py \
@@ -62,6 +86,7 @@ jobs:
 
       - name: Reconcile then validate status authority
         run: |
+          python scripts/validate-memory-os-backup-restore-reconcile-negative.py
           python scripts/reconcile-memory-os-backup-restore.py
           python scripts/validate-memory-os-backup-restore.py
           python scripts/validate-memory-os-local-logical-restore.py
@@ -69,7 +94,12 @@ jobs:
           python scripts/validate-memory-os-operability.py
           python scripts/validate-memory-os-entry-docs.py
 
+      - name: Require reconciled authority in pull requests
+        if: github.event_name == 'pull_request'
+        run: git diff --exit-code -- contracts/operations/production-operability-status.json
+
       - name: Commit reconciled status
+        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
 
@@ -78,6 +108,7 @@ jobs:
             git reset --hard origin/so
             SOURCE_SHA="$(git rev-parse HEAD)"
             export SOURCE_SHA
+            python scripts/validate-memory-os-backup-restore-reconcile-negative.py
             python scripts/reconcile-memory-os-backup-restore.py
             python scripts/validate-memory-os-backup-restore.py
             python scripts/validate-memory-os-local-logical-restore.py
