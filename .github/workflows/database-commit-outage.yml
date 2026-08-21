@@ -14,6 +14,21 @@ on:
       - "scripts/validate-memory-os-database-commit-outage.py"
       - "scripts/validate-memory-os-database-commit-outage-reconcile-negative.py"
       - "scripts/reconcile-memory-os-database-commit-outage.py"
+  pull_request:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/database-commit-outage.yml"
+      - "contracts/operations/database-commit-outage-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "services/import-api/internal/importflow/database_outage_drill_linux_test.go"
+      - "services/import-api/internal/importflow/resume.go"
+      - "services/import-api/internal/importflow/flow.go"
+      - "services/import-api/internal/previewcommit/committer.go"
+      - "scripts/validate-memory-os-database-commit-outage.py"
+      - "scripts/validate-memory-os-database-commit-outage-reconcile-negative.py"
+      - "scripts/validate-memory-os-operability.py"
+      - "scripts/reconcile-memory-os-database-commit-outage.py"
   schedule:
     - cron: "7 20 * * *"
   workflow_dispatch:
@@ -22,11 +37,54 @@ permissions:
   contents: write
 
 concurrency:
-  group: database-commit-outage-so
+  group: database-commit-outage-${{ github.event_name }}-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact pull request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: services/import-api/go.sum
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate database outage authority read-only
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          test -z "$(git status --porcelain)"
+          python -m py_compile \
+            scripts/validate-memory-os-database-commit-outage.py \
+            scripts/validate-memory-os-database-commit-outage-reconcile-negative.py \
+            scripts/validate-memory-os-operability.py \
+            scripts/reconcile-memory-os-database-commit-outage.py
+          python scripts/validate-memory-os-database-commit-outage-reconcile-negative.py
+          test -z "$(gofmt -l \
+            services/import-api/internal/importflow/database_outage_drill_linux_test.go \
+            services/import-api/internal/importflow/resume.go)"
+          python scripts/validate-memory-os-database-commit-outage.py
+          python scripts/reconcile-memory-os-database-commit-outage.py
+          python scripts/validate-memory-os-database-commit-outage.py
+          python scripts/validate-memory-os-operability.py
+          git diff --exit-code -- contracts/operations/production-operability-status.json
+
   execute:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
