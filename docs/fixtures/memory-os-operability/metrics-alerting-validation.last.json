@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v2",
   "workflow": "reconcile-metrics-authority",
-  "sourceCommitSha": "260c7cb25e9912f2e82680b57b5e74661df7e222",
+  "sourceCommitSha": "91b422863e39ff490689983fe72206d801ea1d9e",
   "result": "PASS",
   "exitCode": 0,
   "steps": [
@@ -18,7 +18,7 @@
     {
       "command": "python scripts/reconcile-memory-os-metrics-contract.py",
       "exitCode": 0,
-      "output": "Memory OS metrics scrape validation PASS\nPrometheus exporter: implemented\nauthenticated scrape handler: implemented\nHTTP server mount seam: supported, production unmounted\nOPS-P0-004 status: PARTIAL\nproduction decision: NO_GO\nMemory OS metrics contract validation PASS\nmetrics: 28  slis: 17  slos: 3  alerts: 7\nnegative cases rejected: 14\nOPS-P0-004 status: PARTIAL\nMemory OS metrics scrape validation PASS\nPrometheus exporter: implemented\nauthenticated scrape handler: implemented\nHTTP server mount seam: supported, production unmounted\nOPS-P0-004 status: PARTIAL\nproduction decision: NO_GO\nRegistered exporter foundation in primary metrics contract\n"
+      "output": "Memory OS metrics scrape validation PASS\nPrometheus exporter: implemented\nauthenticated scrape handler: implemented\nHTTP server mount seam: supported, production unmounted\nOPS-P0-004 status: PARTIAL\nproduction decision: NO_GO\nMemory OS metrics contract validation PASS\nmetrics: 28  slis: 17  slos: 3  alerts: 7\nnegative cases rejected: 14\nOPS-P0-004 status: PARTIAL\nMemory OS metrics scrape validation PASS\nPrometheus exporter: implemented\nauthenticated scrape handler: implemented\nHTTP server mount seam: supported, production unmounted\nOPS-P0-004 status: PARTIAL\nproduction decision: NO_GO\nMemory OS production-operability validation PASS\nready gates: 0/10\nproduction decision: NO_GO\nRegistered exporter foundation in primary metrics contract\n"
     },
     {
       "command": "python scripts/reconcile-memory-os-metrics-scrape-status.py",
