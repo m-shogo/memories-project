@@ -19,21 +19,86 @@ on:
       - "scripts/validate-memory-os-rate-limit-operation-evidence.py"
       - "scripts/reconcile-memory-os-rate-limit-operation-evidence.py"
       - "scripts/validate-memory-os-rate-limit-operations.py"
+  pull_request:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/rate-limit-emergency-drill.yml"
+      - "contracts/operations/rate-limit-emergency-drill-contract.v1.json"
+      - "contracts/operations/rate-limit-operation-evidence-contract.v1.json"
+      - "contracts/operations/rate-limit-operations-contract.v1.json"
+      - "contracts/operations/rate-limit-policy-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "scripts/run-memory-os-rate-limit-emergency-drill.py"
+      - "scripts/validate-memory-os-rate-limit-emergency-drill.py"
+      - "scripts/validate-memory-os-rate-limit-emergency-drill-reconcile-negative.py"
+      - "scripts/reconcile-memory-os-rate-limit-emergency-drill.py"
+      - "scripts/evaluate-memory-os-rate-limit-emergency-state.py"
+      - "scripts/create-memory-os-rate-limit-operation-evidence.py"
+      - "scripts/validate-memory-os-rate-limit-operation-evidence.py"
+      - "scripts/reconcile-memory-os-rate-limit-operation-evidence.py"
+      - "scripts/validate-memory-os-rate-limit-operations.py"
+      - "scripts/validate-memory-os-rate-limit.py"
+      - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: rate-limit-emergency-decision-drill-so
+  group: rate-limit-emergency-decision-drill-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact pull-request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate emergency authority read-only
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          test -z "$(git status --porcelain)"
+          python -m py_compile \
+            scripts/run-memory-os-rate-limit-emergency-drill.py \
+            scripts/validate-memory-os-rate-limit-emergency-drill.py \
+            scripts/validate-memory-os-rate-limit-emergency-drill-reconcile-negative.py \
+            scripts/reconcile-memory-os-rate-limit-emergency-drill.py \
+            scripts/evaluate-memory-os-rate-limit-emergency-state.py \
+            scripts/create-memory-os-rate-limit-operation-evidence.py \
+            scripts/validate-memory-os-rate-limit-operation-evidence.py \
+            scripts/reconcile-memory-os-rate-limit-operation-evidence.py \
+            scripts/validate-memory-os-rate-limit-operations.py \
+            scripts/validate-memory-os-rate-limit.py \
+            scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-rate-limit-operation-evidence.py
+          python scripts/validate-memory-os-rate-limit-emergency-drill.py
+          python scripts/validate-memory-os-rate-limit-emergency-drill-reconcile-negative.py
+          python scripts/validate-memory-os-rate-limit-operations.py
+          python scripts/validate-memory-os-rate-limit.py
+          python scripts/validate-memory-os-operability.py
+          test -z "$(git status --porcelain)"
+
   drill:
     if: >-
-      github.event_name != 'push' ||
-      (!contains(github.event.head_commit.message, 'test(rate-limit): record emergency decision drill result') &&
-       !contains(github.event.head_commit.message, 'docs(rate-limit): register emergency decision drill'))
+      github.event_name != 'pull_request' &&
+      (github.event_name != 'push' ||
+       (!contains(github.event.head_commit.message, 'test(rate-limit): record emergency decision drill result') &&
+        !contains(github.event.head_commit.message, 'docs(rate-limit): register emergency decision drill')))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
