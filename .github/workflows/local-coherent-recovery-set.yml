@@ -13,17 +13,58 @@ on:
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/run-memory-os-local-coherent-recovery-set.py"
       - "scripts/validate-memory-os-local-coherent-recovery-set.py"
+      - "scripts/validate-memory-os-local-coherent-recovery-set-authority-negative.py"
+  pull_request:
+    paths:
+      - ".github/workflows/local-coherent-recovery-set.yml"
+      - "contracts/operations/local-coherent-recovery-set-contract.v1.json"
+      - "contracts/operations/migration-lifecycle-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
+      - "infra/postgresql/security/**"
+      - "scripts/memory_os_backup_restore_blockers.py"
+      - "scripts/run-memory-os-local-coherent-recovery-set.py"
+      - "scripts/validate-memory-os-local-coherent-recovery-set.py"
+      - "scripts/validate-memory-os-local-coherent-recovery-set-authority-negative.py"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: local-coherent-recovery-set-so
+  group: local-coherent-recovery-set-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  static-authority:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact pull request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate coherent recovery authority read-only
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          python -m py_compile \
+            scripts/memory_os_backup_restore_blockers.py \
+            scripts/run-memory-os-local-coherent-recovery-set.py \
+            scripts/validate-memory-os-local-coherent-recovery-set.py \
+            scripts/validate-memory-os-local-coherent-recovery-set-authority-negative.py
+          python scripts/validate-memory-os-local-coherent-recovery-set.py
+          python scripts/validate-memory-os-local-coherent-recovery-set-authority-negative.py
+          git diff --exit-code
+
   coherent-recovery:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -97,8 +138,10 @@ jobs:
           python -m py_compile \
             scripts/memory_os_backup_restore_blockers.py \
             scripts/run-memory-os-local-coherent-recovery-set.py \
-            scripts/validate-memory-os-local-coherent-recovery-set.py
+            scripts/validate-memory-os-local-coherent-recovery-set.py \
+            scripts/validate-memory-os-local-coherent-recovery-set-authority-negative.py
           python scripts/validate-memory-os-local-coherent-recovery-set.py
+          python scripts/validate-memory-os-local-coherent-recovery-set-authority-negative.py
 
       - name: Execute coherent recovery drill
         id: drill
