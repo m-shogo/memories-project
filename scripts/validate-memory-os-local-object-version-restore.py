@@ -6,11 +6,13 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+ROOT_REAL = ROOT.resolve()
 CONTRACT_PATH = ROOT / "contracts/operations/local-object-version-restore-contract.v1.json"
 STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
 RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/local-object-version-restore-results.sample.v1.json"
@@ -34,6 +36,27 @@ def require(condition: bool, message: str) -> None:
         raise ValidationFailure(message)
 
 
+def require_repo_regular_file(path: Path, label: str) -> None:
+    try:
+        relative = path.relative_to(ROOT)
+    except ValueError as exc:
+        raise ValidationFailure(f"{label} escapes repository root") from exc
+    require(relative != Path("."), f"{label} cannot resolve to repository root")
+    current = ROOT
+    for part in relative.parts:
+        current = current / part
+        require(not current.is_symlink(), f"{label} uses symlink component: {relative.as_posix()}")
+    try:
+        resolved = path.resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError) as exc:
+        raise ValidationFailure(f"{label} is missing or unreadable: {relative.as_posix()}") from exc
+    try:
+        resolved.relative_to(ROOT_REAL)
+    except ValueError as exc:
+        raise ValidationFailure(f"{label} resolves outside repository root: {relative.as_posix()}") from exc
+    require(resolved.is_file(), f"{label} must be a regular file: {relative.as_posix()}")
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -45,6 +68,21 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def source_is_ancestor(value: Any) -> bool:
+    if not isinstance(value, str) or SHA_RE.fullmatch(value) is None:
+        return False
+    try:
+        return subprocess.run(
+            ["git", "merge-base", "--is-ancestor", value, "HEAD"],
+            cwd=ROOT,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ).returncode == 0
+    except OSError:
+        return False
+
+
 def validate_result(result: dict[str, Any], expected_sha: str | None) -> None:
     require(result.get("schemaVersion") ==
             "memory-os-local-object-version-restore-results.v1",
@@ -52,6 +90,8 @@ def validate_result(result: dict[str, Any], expected_sha: str | None) -> None:
     commit_sha = result.get("commitSha")
     require(isinstance(commit_sha, str) and SHA_RE.fullmatch(commit_sha) is not None,
             "object restore result requires a full source SHA")
+    require(source_is_ancestor(commit_sha),
+            "object restore result source is not an ancestor of current HEAD")
     if expected_sha:
         require(commit_sha == expected_sha,
                 f"object restore result SHA {commit_sha} != expected {expected_sha}")
@@ -129,9 +169,6 @@ def validate_result(result: dict[str, Any], expected_sha: str | None) -> None:
     ):
         require(phrase in joined, f"result limitation omitted: {phrase}")
 
-    # containsSecrets is an explicit safe boolean and must not trigger a broad
-    # substring scan for "secret". Reject only raw credential field names,
-    # known local credential values, endpoints and provider identifiers.
     serialized = json.dumps(result, ensure_ascii=False).lower()
     for forbidden in (
         "minioadmin", "aws_access_key_id", "aws_secret_access_key",
@@ -145,6 +182,12 @@ def validate_result(result: dict[str, Any], expected_sha: str | None) -> None:
 
 
 def main() -> int:
+    for path, label in (
+        (CONTRACT_PATH, "object restore contract"),
+        (STATUS_PATH, "production operability status"),
+    ):
+        require_repo_regular_file(path, label)
+
     contract = load(CONTRACT_PATH)
     require(contract.get("schemaVersion") ==
             "memory-os-local-object-version-restore.v1",
@@ -200,7 +243,7 @@ def main() -> int:
         require(privacy.get(field) is True, f"privacy.{field} must be true")
 
     runner_path = ROOT / contract["runner"]
-    require(runner_path.is_file(), "object restore runner missing")
+    require_repo_regular_file(runner_path, "object restore runner")
     runner = runner_path.read_text(encoding="utf-8")
     for snippet in (
         "MEMORY_OS_ALLOW_EPHEMERAL_OBJECT_DELETE",
@@ -243,7 +286,7 @@ def main() -> int:
             "object restore evidenceRefs invalid")
     require(set(refs) == EXPECTED_EVIDENCE, f"evidenceRefs drift: {refs}")
     for ref in refs:
-        require((ROOT / ref).is_file(), f"evidence path missing: {ref}")
+        require_repo_regular_file(ROOT / ref, f"object restore evidence ref {ref}")
 
     expected_sha = os.environ.get("EXPECTED_COMMIT_SHA")
     if expected_sha:
@@ -251,6 +294,7 @@ def main() -> int:
                 "EXPECTED_COMMIT_SHA must be a full SHA")
         require(RESULT_PATH.is_file(), "exact-source object restore result is missing")
     if RESULT_PATH.is_file():
+        require_repo_regular_file(RESULT_PATH, "object restore result")
         validate_result(load(RESULT_PATH), expected_sha)
 
     status = load(STATUS_PATH)
