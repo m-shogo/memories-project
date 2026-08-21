@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v2",
   "workflow": "local-object-version-restore-drill",
-  "sourceCommitSha": "f3743bc9cbe9ad640f58b614968bd96f572182aa",
+  "sourceCommitSha": "69423d165f899354ec42b28cf5bbec16a4ea5072",
   "drillResult": "PASS",
   "drillExitCode": 0,
   "validationResult": "PASS",
