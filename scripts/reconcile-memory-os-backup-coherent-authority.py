@@ -53,15 +53,16 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def validate_runtime_authority() -> None:
-    for path, label in (
-        (VALIDATOR, "coherent restore validator"),
-        (BACKUP_VALIDATOR, "backup restore validator"),
-        (OPERABILITY_VALIDATOR, "operability validator"),
+    for path, expected, label in (
+        (VALIDATOR, ROOT / "scripts/validate-memory-os-local-coherent-recovery-set.py", "coherent restore validator"),
+        (BACKUP_VALIDATOR, ROOT / "scripts/validate-memory-os-backup-restore.py", "backup restore validator"),
+        (OPERABILITY_VALIDATOR, ROOT / "scripts/validate-memory-os-operability.py", "operability validator"),
     ):
+        require(path == expected, f"canonical {label} identity drift")
         require(path.is_file(), f"canonical {label} missing")
         require(not path.is_symlink(), f"canonical {label} must not be a symlink")
         try:
-            require(path.resolve(strict=True) == path, f"canonical {label} path drift")
+            require(path.resolve(strict=True) == expected, f"canonical {label} path drift")
         except OSError as exc:
             raise Fail(f"cannot resolve canonical {label}") from exc
 
@@ -141,8 +142,6 @@ def normalized(status: dict[str, Any]) -> dict[str, Any]:
     gate["existingEvidence"] = existing
     gate["evidenceRefs"] = refs
 
-    # Local coherence is evidence-only. It must never normalize, rewrite, remove,
-    # split, merge, or otherwise reinterpret the canonical production blockers.
     require_canonical_gaps(gate.get("missingEvidence"), Fail)
     require(gate.get("status") != "READY", "local coherence cannot make OPS-P0-007 READY")
     require(status.get("productionDecision") == "NO_GO", "production decision changed unexpectedly")
