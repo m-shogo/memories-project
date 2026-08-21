@@ -11,14 +11,22 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT_PATH = ROOT / "contracts/operations/rate-limit-emergency-drill-contract.v1.json"
-RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/rate-limit-emergency-drill-results.sample.v1.json"
-OPERATIONS_PATH = ROOT / "contracts/operations/rate-limit-operations-contract.v1.json"
-STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
-VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-rate-limit-emergency-drill.py"
-OPERATIONS_VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit-operations.py"
-RATE_LIMIT_VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CANONICAL_CONTRACT_PATH = ROOT / "contracts/operations/rate-limit-emergency-drill-contract.v1.json"
+CANONICAL_RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/rate-limit-emergency-drill-results.sample.v1.json"
+CANONICAL_OPERATIONS_PATH = ROOT / "contracts/operations/rate-limit-operations-contract.v1.json"
+CANONICAL_STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
+CANONICAL_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-rate-limit-emergency-drill.py"
+CANONICAL_OPERATIONS_VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit-operations.py"
+CANONICAL_RATE_LIMIT_VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit.py"
+CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CONTRACT_PATH = CANONICAL_CONTRACT_PATH
+RESULT_PATH = CANONICAL_RESULT_PATH
+OPERATIONS_PATH = CANONICAL_OPERATIONS_PATH
+STATUS_PATH = CANONICAL_STATUS_PATH
+VALIDATOR_PATH = CANONICAL_VALIDATOR_PATH
+OPERATIONS_VALIDATOR = CANONICAL_OPERATIONS_VALIDATOR
+RATE_LIMIT_VALIDATOR = CANONICAL_RATE_LIMIT_VALIDATOR
+OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
 WORKFLOW_PATH = ".github/workflows/rate-limit-emergency-drill.yml"
 NEW_REFS = (
     "contracts/operations/rate-limit-emergency-drill-contract.v1.json",
@@ -43,6 +51,31 @@ def require(condition: bool, message: str) -> None:
         raise ReconcileFailure(message)
 
 
+def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
+    require(path == canonical, f"{label} authority drift")
+    require(canonical.is_file(), f"canonical {label} missing")
+    require(not canonical.is_symlink(), f"canonical {label} cannot be a symlink")
+    try:
+        resolved = canonical.resolve(strict=True)
+    except (FileNotFoundError, OSError, RuntimeError) as exc:
+        raise ReconcileFailure(f"canonical {label} cannot be resolved") from exc
+    require(resolved == canonical, f"canonical {label} escaped repository path")
+
+
+def enforce_runtime_authorities() -> None:
+    for path, canonical, label in (
+        (CONTRACT_PATH, CANONICAL_CONTRACT_PATH, "emergency drill contract"),
+        (RESULT_PATH, CANONICAL_RESULT_PATH, "emergency drill result"),
+        (OPERATIONS_PATH, CANONICAL_OPERATIONS_PATH, "rate-limit operations contract"),
+        (STATUS_PATH, CANONICAL_STATUS_PATH, "production operability status"),
+        (VALIDATOR_PATH, CANONICAL_VALIDATOR_PATH, "emergency drill validator"),
+        (OPERATIONS_VALIDATOR, CANONICAL_OPERATIONS_VALIDATOR, "rate-limit operations validator"),
+        (RATE_LIMIT_VALIDATOR, CANONICAL_RATE_LIMIT_VALIDATOR, "rate-limit validator"),
+        (OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, "operability validator"),
+    ):
+        require_exact_authority(path, canonical, label)
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -62,6 +95,7 @@ def append_once(items: list[Any], value: str) -> bool:
 
 
 def run_validator(path: Path, *args: str) -> None:
+    enforce_runtime_authorities()
     completed = subprocess.run(
         [sys.executable, str(path), *args],
         cwd=ROOT,
@@ -70,11 +104,12 @@ def run_validator(path: Path, *args: str) -> None:
         stderr=subprocess.STDOUT,
         check=False,
     )
-    require(completed.returncode == 0,
+    require(type(completed.returncode) is int and completed.returncode == 0,
             f"post-write validation failed for {path.name}:\n{completed.stdout[-4000:]}")
 
 
 def validate_written_authority(source_sha: str) -> None:
+    enforce_runtime_authorities()
     run_validator(
         VALIDATOR_PATH,
         "--expected-commit-sha", source_sha,
@@ -87,6 +122,7 @@ def validate_written_authority(source_sha: str) -> None:
 
 
 def transactional_write(contract: dict[str, Any], status: dict[str, Any], source_sha: str) -> None:
+    enforce_runtime_authorities()
     originals = {
         CONTRACT_PATH: CONTRACT_PATH.read_bytes(),
         STATUS_PATH: STATUS_PATH.read_bytes(),
@@ -101,13 +137,14 @@ def transactional_write(contract: dict[str, Any], status: dict[str, Any], source
             encoding="utf-8",
         )
         validate_written_authority(source_sha)
-    except Exception:
+    except BaseException:
         for path, original in originals.items():
             path.write_bytes(original)
         raise
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     contract = load(CONTRACT_PATH)
     result = load(RESULT_PATH)
     operations = load(OPERATIONS_PATH)
@@ -203,6 +240,7 @@ def main() -> int:
                 f"required OPS-P0-005 gap disappeared: {required_gap}")
 
     if not changed:
+        validate_written_authority(source_sha)
         print("Rate-limit emergency decision drill authority already reconciled")
         return 0
 
