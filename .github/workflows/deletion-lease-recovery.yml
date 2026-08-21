@@ -9,6 +9,7 @@ on:
       - "contracts/operations/deletion-lease-recovery-contract.v1.json"
       - "scripts/validate-memory-os-deletion-lease-recovery.py"
       - "scripts/reconcile-memory-os-deletion-lease-recovery.py"
+      - "scripts/validate-memory-os-deletion-lease-recovery-reconcile-negative.py"
       - "services/import-api/internal/httpserver/deletion_lease_recovery_test.go"
       - "services/import-api/internal/httpserver/deletion_prefence_upload_completion_test.go"
       - "services/import-api/internal/httpserver/server_live_test.go"
@@ -108,7 +109,11 @@ jobs:
           python -m py_compile \
             scripts/validate-memory-os-deletion-lease-recovery.py \
             scripts/reconcile-memory-os-deletion-lease-recovery.py \
+            scripts/validate-memory-os-deletion-lease-recovery-reconcile-negative.py \
             >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-deletion-lease-recovery-reconcile-negative.py >> "$log" 2>&1 || code=$?
+          fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-deletion-lease-recovery.py >> "$log" 2>&1 || code=$?
           fi
