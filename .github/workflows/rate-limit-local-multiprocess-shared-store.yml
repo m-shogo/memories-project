@@ -1,6 +1,19 @@
 name: Rate Limit Local Multi Process Shared Store
 
 on:
+  pull_request:
+    paths:
+      - ".github/workflows/rate-limit-local-multiprocess-shared-store.yml"
+      - "contracts/operations/rate-limit-local-multiprocess-shared-store-contract.v1.json"
+      - "services/import-api/internal/ratelimit/limiter.go"
+      - "services/import-api/internal/ratelimit/enforce.go"
+      - "services/import-api/internal/ratelimit/shared_store_multiprocess_test.go"
+      - "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py"
+      - "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-reconcile-negative.py"
+      - "scripts/reconcile-memory-os-rate-limit-local-multiprocess-shared-store.py"
+      - "scripts/validate-memory-os-rate-limit-operations.py"
+      - "scripts/validate-memory-os-rate-limit.py"
+      - "scripts/validate-memory-os-operability.py"
   push:
     branches:
       - so
@@ -11,14 +24,18 @@ on:
       - "services/import-api/internal/ratelimit/enforce.go"
       - "services/import-api/internal/ratelimit/shared_store_multiprocess_test.go"
       - "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py"
+      - "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-reconcile-negative.py"
       - "scripts/reconcile-memory-os-rate-limit-local-multiprocess-shared-store.py"
+      - "scripts/validate-memory-os-rate-limit-operations.py"
+      - "scripts/validate-memory-os-rate-limit.py"
+      - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: rate-limit-local-multiprocess-shared-store-so
+  group: rate-limit-local-multiprocess-shared-store-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -28,7 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
@@ -37,14 +54,32 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Capture source commit
-        run: echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-      - name: Compile evidence tools
+      - name: Capture exact source commit
+        run: |
+          set -euo pipefail
+          SOURCE_SHA="$(git rev-parse HEAD)"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            test "$SOURCE_SHA" = "${{ github.event.pull_request.head.sha }}"
+          else
+            test "$SOURCE_SHA" = "${{ github.sha }}"
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              echo "Branch advanced before local shared-store rehearsal; refusing stale source."
+              exit 75
+            fi
+          fi
+          echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
+      - name: Compile and validate evidence authority
         run: |
           set -euo pipefail
           python -m py_compile \
             scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py \
-            scripts/reconcile-memory-os-rate-limit-local-multiprocess-shared-store.py
+            scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-reconcile-negative.py \
+            scripts/reconcile-memory-os-rate-limit-local-multiprocess-shared-store.py \
+            scripts/validate-memory-os-rate-limit-operations.py \
+            scripts/validate-memory-os-rate-limit.py \
+            scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-reconcile-negative.py
       - name: Execute cross-process shared-store rehearsal
         working-directory: services/import-api
         run: |
@@ -100,23 +135,32 @@ jobs:
           python scripts/reconcile-memory-os-rate-limit-local-multiprocess-shared-store.py
           python scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py
           python scripts/validate-memory-os-rate-limit-operations.py
+          python scripts/validate-memory-os-rate-limit.py
           python scripts/validate-memory-os-operability.py
       - name: Commit exact-source rehearsal authority
+        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Branch advanced after local shared-store rehearsal; refusing stale evidence."
+            exit 75
+          fi
           git add \
             docs/fixtures/memory-os-operability/rate-limit-local-multiprocess-shared-store-results.v1.json \
             contracts/operations/rate-limit-local-multiprocess-shared-store-contract.v1.json \
             contracts/operations/production-operability-status.json
-          if ! git diff --cached --quiet; then
-            git diff --cached --check
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "test(rate-limit): record local multi-process shared-store rehearsal"
-            for attempt in 1 2 3 4; do
-              git pull --rebase origin so
-              if git push origin HEAD:so; then exit 0; fi
-              sleep 2
-            done
-            exit 1
+          if git diff --cached --quiet; then
+            echo "Local shared-store authority is already current."
+            exit 0
           fi
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "test(rate-limit): record local multi-process shared-store rehearsal"
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Branch advanced before local shared-store publication; refusing stale evidence."
+            exit 75
+          fi
+          git push origin HEAD:so
