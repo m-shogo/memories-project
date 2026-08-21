@@ -121,6 +121,10 @@ def append_all(items: list[str], values: tuple[str, ...]) -> None:
 
 def validate_runtime_authority() -> None:
     for path, expected, label in (
+        (STATUS_PATH, ROOT / "contracts/operations/production-operability-status.json", "production status"),
+        (INDEX_PATH, ROOT / "contracts/operations/backup-local-foundation-evidence.v1.json", "backup local foundation index"),
+        (LOGICAL_RESULT, ROOT / "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json", "local logical restore result"),
+        (OBJECT_RESULT, ROOT / "docs/fixtures/memory-os-operability/local-object-version-restore-results.sample.v1.json", "local object restore result"),
         (BACKUP_VALIDATOR, ROOT / "scripts/validate-memory-os-backup-restore.py", "backup restore validator"),
         (OPERABILITY_VALIDATOR, ROOT / "scripts/validate-memory-os-operability.py", "operability validator"),
     ):
