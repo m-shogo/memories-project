@@ -76,6 +76,21 @@ def validator_paths() -> tuple[Path, ...]:
 
 
 def validate_runtime_authority() -> None:
+    expected_data = {
+        CONTRACT_PATH: ROOT / "contracts/operations/backup-restore-contract.v1.json",
+        STATUS_PATH: ROOT / "contracts/operations/production-operability-status.json",
+    }
+    require(len(expected_data) == 2, "canonical backup data authority set drift")
+    for path, canonical in expected_data.items():
+        require(path == canonical, f"canonical data authority identity drift: {canonical.name}")
+        require(path.is_file(), f"canonical data authority missing: {canonical.name}")
+        require(not path.is_symlink(), f"canonical data authority must not be a symlink: {canonical.name}")
+        try:
+            require(path.resolve(strict=True) == canonical,
+                    f"canonical data authority path drift: {canonical.name}")
+        except OSError as exc:
+            raise ReconcileFailure(f"cannot resolve canonical data authority: {canonical.name}") from exc
+
     expected = {
         BACKUP_VALIDATOR_PATH: ROOT / "scripts/validate-memory-os-backup-restore.py",
         LOCAL_LOGICAL_VALIDATOR_PATH: ROOT / "scripts/validate-memory-os-local-logical-restore.py",
@@ -109,7 +124,7 @@ def validate_projected_authority() -> None:
 
 
 def main() -> int:
-    # Exact executable identity is a source authority. Full validators also read
+    # Exact executable and data-path identity are source authorities. Full validators also read
     # the derived production status, so they run after deterministic projection
     # (or on a no-op current projection) rather than blocking legitimate repair.
     validate_runtime_authority()
