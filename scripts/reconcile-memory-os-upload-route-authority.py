@@ -10,6 +10,7 @@ idempotent exact replacements and preserves historical fixture evidence.
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -18,6 +19,10 @@ OBSERVABILITY = ROOT / "services/import-api/internal/httpserver/observability.go
 SERVER = ROOT / "services/import-api/internal/httpserver/server.go"
 LIVE_TEST = ROOT / "services/import-api/internal/httpserver/server_live_test.go"
 ROUTE_TEST = ROOT / "services/import-api/internal/httpserver/route_authority_test.go"
+METRICS_VALIDATOR = ROOT / "scripts/validate-memory-os-metrics.py"
+RATE_LIMIT_VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit.py"
+OBSERVABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-observability.py"
+OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 
 OLD_LABEL = "POST /v1/import-jobs/{jobId}/upload-authorizations/{id}/complete"
 NEW_LABEL = "POST /v1/upload-authorizations/{id}/complete"
@@ -62,8 +67,6 @@ func knownAPIRouteShape(path string) bool {
 \t\treturn true
 \tcase len(segments) == 4 && segments[0] == "v1" &&
 \t\tsegments[1] == "import-jobs" && segments[3] == "uploads":
-\t\t// Explicit unsupported legacy tombstone; authentication still runs,
-\t\t// then the protected mux returns 404 without issuing an upload.
 \t\treturn true
 \tdefault:
 \t\treturn false
@@ -166,13 +169,7 @@ def replace_once(value: str, old: str, new: str, label: str) -> tuple[str, bool]
 
 
 def current_authority_files() -> list[Path]:
-    roots = [
-        ROOT / "contracts",
-        ROOT / "scripts",
-        ROOT / "services/import-api",
-        ROOT / ".github/workflows",
-        ROOT / "docs",
-    ]
+    roots = [ROOT / "contracts", ROOT / "scripts", ROOT / "services/import-api", ROOT / ".github/workflows", ROOT / "docs"]
     allowed_suffixes = {".go", ".json", ".py", ".yml", ".yaml", ".md"}
     files: list[Path] = []
     for root in roots:
@@ -182,9 +179,7 @@ def current_authority_files() -> list[Path]:
             if not path.is_file() or path.suffix not in allowed_suffixes:
                 continue
             relative = path.relative_to(ROOT)
-            if relative.parts[:2] == ("docs", "fixtures"):
-                continue
-            if relative.parts[:2] == ("docs", "evidence"):
+            if relative.parts[:2] == ("docs", "fixtures") or relative.parts[:2] == ("docs", "evidence"):
                 continue
             if path == Path(__file__).resolve():
                 continue
@@ -195,10 +190,7 @@ def current_authority_files() -> list[Path]:
 def snapshot_authority_files() -> None:
     global ROLLBACK_SNAPSHOT
     paths = set(current_authority_files()) | {OBSERVABILITY, SERVER, LIVE_TEST, ROUTE_TEST}
-    ROLLBACK_SNAPSHOT = {
-        path: path.read_bytes() if path.exists() else None
-        for path in paths
-    }
+    ROLLBACK_SNAPSHOT = {path: path.read_bytes() if path.exists() else None for path in paths}
 
 
 def rollback_authority_files() -> None:
@@ -212,14 +204,20 @@ def rollback_authority_files() -> None:
         path.write_bytes(original)
 
 
+def validate_canonical_authorities() -> None:
+    for validator in (METRICS_VALIDATOR, RATE_LIMIT_VALIDATOR, OBSERVABILITY_VALIDATOR, OPERABILITY_VALIDATOR):
+        require(validator.is_file() and not validator.is_symlink(), f"invalid canonical validator: {validator.relative_to(ROOT)}")
+        result = subprocess.run([sys.executable, str(validator)], cwd=ROOT, check=False)
+        require(type(result.returncode) is int and result.returncode == 0,
+                f"canonical validator failed: {validator.relative_to(ROOT)}")
+
+
 def main() -> int:
     snapshot_authority_files()
     changed: list[str] = []
 
     observability = read(OBSERVABILITY)
-    observability, did_change = replace_once(
-        observability, OLD_ROUTE_BLOCK, NEW_ROUTE_BLOCK, "routeTemplate completion authority"
-    )
+    observability, did_change = replace_once(observability, OLD_ROUTE_BLOCK, NEW_ROUTE_BLOCK, "routeTemplate completion authority")
     if did_change:
         changed.append(str(OBSERVABILITY.relative_to(ROOT)))
     if "func knownAPIRouteShape(path string) bool" not in observability:
@@ -244,8 +242,7 @@ def main() -> int:
 
     live_test = read(LIVE_TEST)
     replacements = {
-        '"/v1/import-jobs/" + jobID + "/uploads"':
-            '"/v1/import-jobs/" + jobID + "/upload-authorizations"',
+        '"/v1/import-jobs/" + jobID + "/uploads"': '"/v1/import-jobs/" + jobID + "/upload-authorizations"',
         '"declaredContentType": "text/csv"': '"contentType": "text/csv"',
     }
     live_changed = False
@@ -253,8 +250,7 @@ def main() -> int:
         if old in live_test:
             live_test = live_test.replace(old, new)
             live_changed = True
-    require('"/v1/import-jobs/" + jobID + "/uploads"' not in live_test,
-            "stale deletion probe remains")
+    require('"/v1/import-jobs/" + jobID + "/uploads"' not in live_test, "stale deletion probe remains")
     if live_changed:
         changed.append(str(LIVE_TEST.relative_to(ROOT)))
     write_if_changed(LIVE_TEST, live_test)
@@ -273,12 +269,11 @@ def main() -> int:
             changed.append(relative)
 
     require(NEW_ROUTE_BLOCK in read(OBSERVABILITY), "direct completion route template missing")
-    require("func knownAPIRouteShape(path string) bool" in read(OBSERVABILITY),
-            "route-shape authority missing")
-    require("if !knownAPIRouteShape(request.URL.Path)" in read(SERVER),
-            "server does not use route-shape authority")
-    require(NEW_LABEL in read(ROOT / "contracts/operations/metrics-contract.v1.json"),
-            "metrics route authority was not updated")
+    require("func knownAPIRouteShape(path string) bool" in read(OBSERVABILITY), "route-shape authority missing")
+    require("if !knownAPIRouteShape(request.URL.Path)" in read(SERVER), "server does not use route-shape authority")
+    require(NEW_LABEL in read(ROOT / "contracts/operations/metrics-contract.v1.json"), "metrics route authority was not updated")
+
+    validate_canonical_authorities()
 
     print("Memory OS upload route authority reconcile PASS")
     if changed:
