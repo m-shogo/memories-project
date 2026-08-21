@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove mixed-version candidate reconcile rolls back aggregate validator failures."""
+"""Prove mixed-version candidate authority identity and aggregate rollback are fail-closed."""
 
 from __future__ import annotations
 
@@ -23,10 +23,35 @@ def load_module(path: Path, name: str) -> Any:
     return module
 
 
+def expect_authority_rejection(reconciler: Any, attr: str, replacement: Path) -> None:
+    original = getattr(reconciler, attr)
+    setattr(reconciler, attr, replacement)
+    try:
+        try:
+            reconciler.enforce_runtime_authorities()
+        except reconciler.ReconcileFailure:
+            pass
+        else:
+            raise RuntimeError(f"candidate {attr} substitution must be rejected")
+    finally:
+        setattr(reconciler, attr, original)
+
+
 def main() -> int:
     reconciler = load_module(RECONCILER, "mixed_version_candidate_reconcile_rollback_negative")
     contract_before = CONTRACT.read_bytes()
     status_before = STATUS.read_bytes()
+
+    expect_authority_rejection(reconciler, "CONTRACT_PATH", reconciler.STATUS_PATH)
+    expect_authority_rejection(reconciler, "RESULT_PATH", reconciler.CONTRACT_PATH)
+    expect_authority_rejection(reconciler, "REJECTION_PATH", reconciler.RESULT_PATH)
+    expect_authority_rejection(reconciler, "STATUS_PATH", reconciler.CONTRACT_PATH)
+    expect_authority_rejection(reconciler, "CANDIDATE_VALIDATOR", reconciler.VERSION_VALIDATOR)
+    expect_authority_rejection(reconciler, "VERSION_VALIDATOR", reconciler.OPERABILITY_VALIDATOR)
+    expect_authority_rejection(reconciler, "OPERABILITY_VALIDATOR", reconciler.CANDIDATE_VALIDATOR)
+    if CONTRACT.read_bytes() != contract_before or STATUS.read_bytes() != status_before:
+        raise RuntimeError("candidate authority substitution changed canonical bytes")
+
     contract = json.loads(contract_before.decode("utf-8"))
     readiness = contract.get("readiness")
     if not isinstance(readiness, dict):
@@ -77,7 +102,7 @@ def main() -> int:
         CONTRACT.write_bytes(contract_before)
         STATUS.write_bytes(status_before)
 
-    print("PASS: mixed-version candidate reconcile rolls back aggregate validator rejection")
+    print("PASS: mixed-version candidate authority identity and reconcile rollback are fail-closed")
     print("production readiness: false")
     print("production decision: NO_GO")
     return 0
