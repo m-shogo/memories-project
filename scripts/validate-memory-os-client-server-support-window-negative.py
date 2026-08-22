@@ -84,6 +84,47 @@ def verify_support_reconcile_authority_identity() -> None:
     reconciler.enforce_runtime_authorities()
 
 
+def verify_support_reconcile_rollback() -> None:
+    reconciler = load_module(SUPPORT_RECONCILER_PATH, "memory_os_support_window_reconcile_rollback_negative")
+    originals = {
+        reconciler.CONTRACT: reconciler.CONTRACT.read_bytes(),
+        reconciler.STATUS: reconciler.STATUS.read_bytes(),
+    }
+    observed_operability_failure = False
+    original_run_validator = reconciler.run_validator
+
+    def controlled_validator(path: Path, label: str) -> None:
+        nonlocal observed_operability_failure
+        if label == "post-write operability validator":
+            observed_operability_failure = True
+            raise reconciler.Fail("synthetic post-write operability validation failure")
+
+    reconciler.run_validator = controlled_validator
+    try:
+        try:
+            reconciler.main()
+        except reconciler.Fail as exc:
+            require(
+                "synthetic post-write operability validation failure" in str(exc),
+                f"unexpected support-window reconcile rollback failure: {exc}",
+            )
+        else:
+            raise NegativeFailure(
+                "support-window reconcile unexpectedly succeeded after synthetic post-write aggregate failure"
+            )
+        require(observed_operability_failure, "synthetic post-write operability failure was not reached")
+        for path, payload in originals.items():
+            require(
+                path.read_bytes() == payload,
+                f"support-window reconcile rollback changed canonical authority: {path.relative_to(ROOT)}",
+            )
+    finally:
+        reconciler.run_validator = original_run_validator
+        for path, payload in originals.items():
+            if path.read_bytes() != payload:
+                path.write_bytes(payload)
+
+
 def verify_client_reconcile_authority_identity() -> None:
     reconciler = load_module(CLIENT_RECONCILER_PATH, "memory_os_client_reconcile_authority_negative")
     reconciler.enforce_runtime_authorities()
@@ -283,6 +324,7 @@ def main() -> int:
     skew_base = load(SKEW)
     validator.main()
     verify_support_reconcile_authority_identity()
+    verify_support_reconcile_rollback()
     verify_client_reconcile_authority_identity()
     verify_inventory_only_intermediate_state(validator)
     verify_client_reconcile_preserves_admitted_skew()
