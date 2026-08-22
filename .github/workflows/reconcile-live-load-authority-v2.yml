@@ -53,7 +53,7 @@ jobs:
       - name: Checkout exact authority source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -68,9 +68,7 @@ jobs:
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
           else
-            git fetch origin so
-            test "$(git branch --show-current)" = "so"
-            test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+            test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           fi
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
