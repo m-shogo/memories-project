@@ -2,31 +2,33 @@
   "schemaVersion": "memory-os-sustained-local-soak-trend-review.v1",
   "classification": "LOCAL_LONG_SOAK_DESCRIPTIVE_CROSS_RUN_REVIEW",
   "scenarioId": "mixed-import-lifecycle-local-long-soak",
-  "reviewedRunCount": 6,
+  "reviewedRunCount": 7,
   "reviewedRunIds": [
     "gha-31157909318-1-a",
     "gha-31157909318-1-b",
     "gha-31833538490-1",
     "gha-32010573115-1-a",
     "gha-32010573115-1-b",
-    "gha-32174904406-1"
+    "gha-32174904406-1",
+    "gha-32516837927-1"
   ],
   "reviewedSourceCommitShas": [
     "171ba6971db3a6325701ffcb2e8130fa898c27ba",
     "3d88029888e07e10e4cc31d660c66ae7de1ffe0a",
     "950a1ce60cb30f8415cd605fb2d799e7f7ba5ed0",
-    "9dd97a9571e58a08a1d8ee43a9f378a505a09c15"
+    "9dd97a9571e58a08a1d8ee43a9f378a505a09c15",
+    "e4c6c09532d2a4fe043f6c4f545e149e84dbe803"
   ],
   "minimumIndependentRunsSatisfied": true,
   "allReviewedRunsPassedPerRunValidator": true,
   "allReviewedRunsPostRecoveryProbePassed": true,
   "latestPair": {
-    "runA": "gha-32010573115-1-b",
-    "runB": "gha-32174904406-1",
-    "rssSlopeDeltaBytesPerMinute": 18835.866890443674,
-    "heapAllocSlopeDeltaBytesPerMinute": -76.28469418438385,
-    "heapInuseSlopeDeltaBytesPerMinute": 154.67629007280266,
-    "goroutineSlopeDeltaPerMinute": -8.480144460575566e-17
+    "runA": "gha-32174904406-1",
+    "runB": "gha-32516837927-1",
+    "rssSlopeDeltaBytesPerMinute": 2047.9988874450682,
+    "heapAllocSlopeDeltaBytesPerMinute": 22.76927857930059,
+    "heapInuseSlopeDeltaBytesPerMinute": 429.6510136975976,
+    "goroutineSlopeDeltaPerMinute": 8.480144460575566e-17
   },
   "runTrends": [
     {
@@ -310,6 +312,54 @@
       "scanQueueTrend": {
         "oldestPendingSecondsPerMinute": 60.00000872595357,
         "pendingPerMinute": 1.60000069631903
+      },
+      "deletionBacklogTrend": {
+        "pendingPerMinute": 0,
+        "stuckPerMinute": 0
+      },
+      "postRunRecoveryProbePassed": true
+    },
+    {
+      "runId": "gha-32516837927-1",
+      "sourceCommitSha": "e4c6c09532d2a4fe043f6c4f545e149e84dbe803",
+      "durationSeconds": 3600.104326127,
+      "rssSlopeBytesPerMinute": 25907.90718635158,
+      "heapAllocSlopeBytesPerMinute": 2035.4189228594744,
+      "heapInuseSlopeBytesPerMinute": 5619.828902048629,
+      "goroutineSlopePerMinute": 0.0,
+      "latencyTrendBySurface": {
+        "deletionWorker": {
+          "p95MsPerMinute": 0.19933358087495578,
+          "p99MsPerMinute": 0.19933358087495578
+        },
+        "parserSupervisor": {
+          "p95MsPerMinute": -0.7584991217008112,
+          "p99MsPerMinute": -0.7584991217008112
+        },
+        "previewRead": {
+          "p95MsPerMinute": -0.12051808554021831,
+          "p99MsPerMinute": -0.14996493092413973
+        },
+        "signedUploadLifecycle": {
+          "p95MsPerMinute": -0.10218741370840104,
+          "p99MsPerMinute": -0.10218741370840104
+        }
+      },
+      "errorRateTrendBySurface": {
+        "deletionWorker": 0,
+        "parserSupervisor": 0,
+        "previewRead": 0,
+        "signedUploadLifecycle": 0
+      },
+      "dbConnectionTrend": {
+        "acquireDurationMsPerMinute": 99.99925378568047,
+        "acquiredConnsPerMinute": 0,
+        "emptyAcquireCountPerMinute": 37.209106814614294,
+        "totalConnsPerMinute": 0
+      },
+      "scanQueueTrend": {
+        "oldestPendingSecondsPerMinute": 60.00001880912945,
+        "pendingPerMinute": 1.6000006844203485
       },
       "deletionBacklogTrend": {
         "pendingPerMinute": 0,
