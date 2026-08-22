@@ -77,10 +77,14 @@ def prove_reconcile_runtime_authorities() -> None:
     reconciler = load_module(RECONCILER, "memory_os_typed_non_resurrection_reconcile_authority_negative")
     before = {path: path.read_bytes() for path in (REGISTRY, GEN_REGISTRY, CONTRACT, STATUS)}
     cases = (
+        ("typed contract substitution", "typed non-resurrection contract", "CONTRACT", reconciler.STATUS),
+        ("typed registry substitution", "typed non-resurrection registry", "REGISTRY", reconciler.GEN_REGISTRY),
+        ("generation registry substitution", "generation evidence registry", "GEN_REGISTRY", reconciler.REGISTRY),
         ("typed writer substitution", "typed non-resurrection writer", "TYPED_WRITER", reconciler.GEN_WRITER),
         ("generation writer substitution", "generation evidence writer", "GEN_WRITER", reconciler.TYPED_WRITER),
         ("typed validator substitution", "typed non-resurrection validator", "VALIDATOR", reconciler.OPERABILITY_VALIDATOR),
         ("operability validator substitution", "operability validator", "OPERABILITY_VALIDATOR", reconciler.VALIDATOR),
+        ("production status substitution", "production operability status", "STATUS", reconciler.CONTRACT),
     )
     for name, field, attribute, replacement in cases:
         expect_direct_authority_rejected(
@@ -91,7 +95,7 @@ def prove_reconcile_runtime_authorities() -> None:
             replacement=replacement,
             before=before,
         )
-    print(f"PASS boundary: direct typed writer/validator substitutions rejected: {len(cases)}")
+    print(f"PASS boundary: direct typed data/writer/validator substitutions rejected: {len(cases)}")
 
 
 def prove_reconcile_operability_rollback() -> None:
@@ -106,25 +110,34 @@ def prove_reconcile_operability_rollback() -> None:
             shutil.copyfile(source, target)
             paths[attr] = target
 
-        pass_validator = tmp / "pass-validator.py"
-        pass_validator.write_text("#!/usr/bin/env python3\nraise SystemExit(0)\n", encoding="utf-8")
-        fail_validator = tmp / "fail-validator.py"
-        fail_validator.write_text("#!/usr/bin/env python3\nraise SystemExit(47)\n", encoding="utf-8")
-
         originals: dict[str, Any] = {attr: getattr(reconciler, attr) for attr in paths}
-        originals["VALIDATOR"] = reconciler.VALIDATOR
-        originals["OPERABILITY_VALIDATOR"] = reconciler.OPERABILITY_VALIDATOR
+        originals["enforce_runtime_authorities"] = reconciler.enforce_runtime_authorities
+        originals["run_post_validator"] = reconciler.run_post_validator
         before = {attr: path.read_bytes() for attr, path in paths.items()}
+        observed: list[str] = []
+
+        def fail_only_aggregate_post_reconcile(path: Path, expected_relative: Path, label: str) -> None:
+            observed.append(label)
+            if len(observed) == 1:
+                require(label == "typed non-resurrection validator", "typed validator was not first post-write validator")
+                return
+            require(len(observed) == 2, "unexpected extra typed post-write validator invocation")
+            require(label == "operability validator", "operability validator was not second post-write validator")
+            raise reconciler.Fail("synthetic typed aggregate operability rejection")
+
         try:
+            # Production direct invocation is canonical-only. Fixture substitution
+            # is enabled solely inside this harness to prove transactional rollback.
+            reconciler.enforce_runtime_authorities = lambda: None
             for attr, path in paths.items():
                 setattr(reconciler, attr, path)
-            reconciler.VALIDATOR = pass_validator
-            reconciler.OPERABILITY_VALIDATOR = fail_validator
+            reconciler.run_post_validator = fail_only_aggregate_post_reconcile
             expect_domain_fail(
                 "typed recovery operability aggregate failure",
                 reconciler.main,
                 reconciler.Fail,
             )
+            require(observed == ["typed non-resurrection validator", "operability validator"], "typed post-write validator order drift")
             for attr, path in paths.items():
                 require(path.read_bytes() == before[attr], f"{attr} drift after operability rollback")
         finally:
@@ -227,7 +240,7 @@ def main() -> int:
 
     print("Typed unreadable/escaped-authority negative suite PASS")
     print("canonical typed contract/registry/generation registry containment: enforced")
-    print("direct typed writer/validator substitutions accepted: false")
+    print("direct typed data/writer/validator substitutions accepted: false")
     print("typed append lock authority substitution accepted: false")
     print("typed operability failure leaves partial authority: false")
     return 0
