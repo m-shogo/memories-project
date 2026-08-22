@@ -15,11 +15,13 @@ CANONICAL_SCRAPE_PATH = ROOT / "contracts/operations/metrics-scrape-contract.v1.
 CANONICAL_SCRAPE_VALIDATOR = ROOT / "scripts/validate-memory-os-metrics-scrape.py"
 CANONICAL_METRICS_VALIDATOR = ROOT / "scripts/validate-memory-os-metrics.py"
 CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CANONICAL_ENTRY_DOCS_VALIDATOR = ROOT / "scripts/validate-memory-os-entry-docs.py"
 METRICS_PATH = CANONICAL_METRICS_PATH
 SCRAPE_PATH = CANONICAL_SCRAPE_PATH
 SCRAPE_VALIDATOR = CANONICAL_SCRAPE_VALIDATOR
 METRICS_VALIDATOR = CANONICAL_METRICS_VALIDATOR
 OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
+ENTRY_DOCS_VALIDATOR = CANONICAL_ENTRY_DOCS_VALIDATOR
 
 NEW_DESCRIPTION = (
     "Machine-readable runtime metrics contract for the import-api boundary. "
@@ -79,6 +81,7 @@ def enforce_runtime_authorities() -> None:
         (SCRAPE_VALIDATOR, CANONICAL_SCRAPE_VALIDATOR, "metrics scrape validator"),
         (METRICS_VALIDATOR, CANONICAL_METRICS_VALIDATOR, "metrics validator"),
         (OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, "operability validator"),
+        (ENTRY_DOCS_VALIDATOR, CANONICAL_ENTRY_DOCS_VALIDATOR, "entry docs validator"),
     ):
         require_exact_authority(path, canonical, label)
 
@@ -120,6 +123,7 @@ def validate_written_authority() -> None:
     require_validator_success(METRICS_VALIDATOR, "memory_os_metrics_validator")
     require_validator_success(SCRAPE_VALIDATOR, "memory_os_metrics_scrape_validator_postwrite")
     require_validator_success(OPERABILITY_VALIDATOR, "memory_os_operability_validator")
+    require_validator_success(ENTRY_DOCS_VALIDATOR, "memory_os_entry_docs_validator")
 
 
 def write_transactionally(metrics: dict[str, Any]) -> None:
@@ -170,8 +174,6 @@ def main() -> int:
     if readiness.get("exporterImplemented") is not True:
         readiness["exporterImplemented"] = True
         changed = True
-    # This field means a deliberately deployed production scrape endpoint, not
-    # merely a reusable handler/mount seam.
     require(readiness.get("scrapeEndpointExposed") is False,
             "production scrape endpoint must remain unexposed")
     if readiness.get("note") != NEW_NOTE:
@@ -186,9 +188,6 @@ def main() -> int:
             refs.append(ref)
             changed = True
 
-    # Dashboard and retention definitions may be registered by the independent
-    # operations reconcile. This scrape reconcile guards only still-unproven
-    # deployment/routing/calibration claims and must remain composable.
     for field in (
         "scrapeEndpointExposed",
         "alertRoutingConfigured",
