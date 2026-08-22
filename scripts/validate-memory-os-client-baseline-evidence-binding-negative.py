@@ -179,6 +179,64 @@ def prove_append_rollback(writer: Any) -> None:
             REGISTRY.write_bytes(original)
 
 
+def prove_reconcile_authority_substitution() -> None:
+    reconciler = load_module(RECONCILER, "memory_os_client_baseline_reconciler_authority_negative")
+    authority_names = (
+        "CONTRACT",
+        "REGISTRY",
+        "SUPPORT",
+        "RELEASES",
+        "RELEASE_PAIRS",
+        "SKEW",
+        "STATUS",
+        "WRITER",
+        "PAIR_WRITER",
+        "VALIDATOR",
+        "SUPPORT_VALIDATOR",
+        "OPERABILITY_VALIDATOR",
+        "WORKFLOW",
+        "RUNBOOK",
+    )
+    originals = {name: getattr(reconciler, name) for name in authority_names}
+    replacements = {
+        "CONTRACT": originals["REGISTRY"],
+        "REGISTRY": originals["CONTRACT"],
+        "SUPPORT": originals["CONTRACT"],
+        "RELEASES": originals["RELEASE_PAIRS"],
+        "RELEASE_PAIRS": originals["RELEASES"],
+        "SKEW": originals["REGISTRY"],
+        "STATUS": originals["CONTRACT"],
+        "WRITER": originals["PAIR_WRITER"],
+        "PAIR_WRITER": originals["WRITER"],
+        "VALIDATOR": originals["SUPPORT_VALIDATOR"],
+        "SUPPORT_VALIDATOR": originals["VALIDATOR"],
+        "OPERABILITY_VALIDATOR": originals["VALIDATOR"],
+        "WORKFLOW": originals["RUNBOOK"],
+        "RUNBOOK": originals["WORKFLOW"],
+    }
+    canonical_contract = originals["CONTRACT"]
+    canonical_status = originals["STATUS"]
+    contract_before = canonical_contract.read_bytes()
+    status_before = canonical_status.read_bytes()
+
+    for name in authority_names:
+        setattr(reconciler, name, replacements[name])
+        try:
+            try:
+                reconciler.enforce_runtime_authorities()
+            except reconciler.Fail as exc:
+                require("authority drift" in str(exc),
+                        f"unexpected {name} authority rejection: {exc}")
+            else:
+                raise RuntimeError(f"client baseline reconciler accepted substituted authority: {name}")
+            require(canonical_contract.read_bytes() == contract_before,
+                    f"rejected {name} substitution mutated canonical client baseline contract")
+            require(canonical_status.read_bytes() == status_before,
+                    f"rejected {name} substitution mutated canonical production status")
+        finally:
+            setattr(reconciler, name, originals[name])
+
+
 def prove_reconcile_rollback() -> None:
     reconciler = load_module(RECONCILER, "memory_os_client_baseline_reconciler_negative")
     paths = (reconciler.CONTRACT, reconciler.SUPPORT, reconciler.STATUS)
@@ -243,6 +301,7 @@ def main() -> int:
 
     prove_contract_rollback_guard(writer)
     prove_append_rollback(writer)
+    prove_reconcile_authority_substitution()
     prove_reconcile_rollback()
 
     require(EVIDENCE.read_bytes() == original, "client evidence fixture was not restored")
@@ -252,7 +311,7 @@ def main() -> int:
     )
     require(status.returncode == 0 and status.stdout.strip() == "",
             "negative suite left working-tree changes")
-    print("PASS: client baseline historical semantics, evidence binding, append rollback and reconcile rollback are fail-closed")
+    print("PASS: client baseline historical semantics, evidence binding, authority identity, append rollback and reconcile rollback are fail-closed")
     return 0
 
 
