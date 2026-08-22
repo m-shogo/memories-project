@@ -45,6 +45,18 @@ def main() -> int:
         finally:
             setattr(module, attr, original)
 
+    source_sha = "0" * 40
+    for attr, substitute, expected in (
+        ("PROCESS_GROUP_VALIDATOR", ROOT / "scripts/validate-memory-os-operability.py", "process-group validator authority drift"),
+        ("OPERABILITY_VALIDATOR", ROOT / "scripts/validate-memory-os-parser-process-group-reaping.py", "operability validator authority drift"),
+    ):
+        original = getattr(module, attr)
+        try:
+            setattr(module, attr, substitute)
+            expect_rejection(lambda: module.run_authority_validators(source_sha), expected)
+        finally:
+            setattr(module, attr, original)
+
     original_contract = module.CONTRACT_PATH.read_bytes()
     original_status = module.STATUS_PATH.read_bytes()
     contract = copy.deepcopy(module.load(module.CONTRACT_PATH))
@@ -54,7 +66,6 @@ def main() -> int:
         raise RuntimeError("process-group readiness missing")
     readiness["productionReady"] = True
 
-    source_sha = "0" * 40
     original_runner = module.run_authority_validators
     calls: list[str] = []
 
@@ -83,7 +94,7 @@ def main() -> int:
     if module.STATUS_PATH.read_bytes() != original_status:
         raise RuntimeError("production status changed after rejected transaction")
 
-    print("PASS: process-group reconcile pins data/canonical authority and rolls back after post-write failure")
+    print("PASS: process-group reconcile pins data/executable authority and rolls back after post-write failure")
     return 0
 
 
