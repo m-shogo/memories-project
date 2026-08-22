@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove parser artifact reconcile rejects executable/path authority substitution."""
+"""Prove parser artifact reconcile rejects authority substitution and no-op validator bypass."""
 
 from __future__ import annotations
 
@@ -65,6 +65,47 @@ def expect_substitution_rejection(
         STATUS_PATH.write_bytes(original_status)
 
 
+def expect_noop_validator_rejection(reconciler: Any) -> None:
+    original_contract = CONTRACT_PATH.read_bytes()
+    original_status = STATUS_PATH.read_bytes()
+    original_runner = reconciler.run_canonical_validators
+
+    class SyntheticAggregateFailure(RuntimeError):
+        pass
+
+    try:
+        # Converge only inside this negative harness, then prove an already-current
+        # direct reconcile still invokes the complete canonical validator chain.
+        reconciler.main()
+        converged_contract = CONTRACT_PATH.read_bytes()
+        converged_status = STATUS_PATH.read_bytes()
+
+        def reject_noop_validation() -> None:
+            raise SyntheticAggregateFailure("synthetic no-op aggregate rejection")
+
+        reconciler.run_canonical_validators = reject_noop_validation
+        try:
+            reconciler.main()
+        except SyntheticAggregateFailure:
+            pass
+        else:
+            raise NegativeFailure(
+                "parser reconciler skipped canonical validators on already-current authority"
+            )
+        require(
+            CONTRACT_PATH.read_bytes() == converged_contract,
+            "parser contract mutated after no-op aggregate rejection",
+        )
+        require(
+            STATUS_PATH.read_bytes() == converged_status,
+            "production status mutated after no-op aggregate rejection",
+        )
+    finally:
+        reconciler.run_canonical_validators = original_runner
+        CONTRACT_PATH.write_bytes(original_contract)
+        STATUS_PATH.write_bytes(original_status)
+
+
 def main() -> int:
     reconciler = load_reconciler()
     reconciler.enforce_runtime_authorities()
@@ -78,7 +119,8 @@ def main() -> int:
     )
     for attribute, substitute, label in cases:
         expect_substitution_rejection(reconciler, attribute, substitute, label)
-    print("PASS: parser reconcile rejects executable and canonical path authority substitutions")
+    expect_noop_validator_rejection(reconciler)
+    print("PASS: parser reconcile rejects authority substitutions and no-op validator bypass")
     return 0
 
 
