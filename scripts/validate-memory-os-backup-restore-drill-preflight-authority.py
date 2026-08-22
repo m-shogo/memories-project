@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail closed if restore-drill preflight executable authorities drift."""
+"""Fail closed if restore-drill preflight data or executable authorities drift."""
 
 from __future__ import annotations
 
@@ -9,6 +9,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight.py"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-drill-preflight.py"
+EXPECTED_CONTRACT = ROOT / "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
+EXPECTED_GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+EXPECTED_OBJECTIVES = ROOT / "contracts/operations/recovery-objectives-registry.v1.json"
+EXPECTED_DRILL_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
+EXPECTED_STATUS = ROOT / "contracts/operations/production-operability-status.json"
+EXPECTED_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 EXPECTED_ELIGIBILITY_HELPER = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
 EXPECTED_GEN_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-generation.py"
 EXPECTED_OBJECTIVE_VALIDATOR = ROOT / "scripts/validate-memory-os-recovery-objectives.py"
@@ -26,10 +32,11 @@ def require(condition: bool, message: str) -> None:
 
 def canonical_repo_file(path: Path, field: str) -> Path:
     try:
-        relative = path.resolve(strict=True).relative_to(ROOT.resolve())
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"{field} missing or escapes repository") from exc
-    require(relative.parts and ".." not in relative.parts and path.is_file(), f"{field} must be canonical repository file")
+    require(lexical == resolved and path.is_file(), f"{field} must be canonical repository file")
     return path
 
 
@@ -40,6 +47,12 @@ def load_module(path: Path, name: str, field: str):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def require_module_authority(module: object, name: str, expected: Path, field: str) -> None:
+    actual = getattr(module, name, None)
+    require(actual == expected, f"{field} authority drift: {name}")
+    canonical_repo_file(actual, f"{field} {name}")
 
 
 def main() -> int:
@@ -53,15 +66,25 @@ def main() -> int:
         "DRILL_VALIDATOR": EXPECTED_DRILL_VALIDATOR,
     }
     for name, expected in expected_validator_authorities.items():
-        actual = getattr(validator, name, None)
-        require(actual == expected, f"restore drill preflight validator authority drift: {name}")
-        canonical_repo_file(actual, f"restore drill preflight validator {name}")
+        require_module_authority(validator, name, expected, "restore drill preflight validator")
 
-    actual_validator_module = getattr(reconciler, "VALIDATOR_MODULE", None)
-    require(actual_validator_module == VALIDATOR, "restore drill preflight reconciler validator authority drift")
-    canonical_repo_file(actual_validator_module, "restore drill preflight reconciler validator")
+    expected_reconciler_authorities = {
+        "CONTRACT": EXPECTED_CONTRACT,
+        "GEN_REGISTRY": EXPECTED_GEN_REGISTRY,
+        "OBJECTIVES": EXPECTED_OBJECTIVES,
+        "DRILL_REGISTRY": EXPECTED_DRILL_REGISTRY,
+        "VALIDATOR_MODULE": VALIDATOR,
+        "OPERABILITY_VALIDATOR": EXPECTED_OPERABILITY_VALIDATOR,
+        "STATUS": EXPECTED_STATUS,
+    }
+    for name, expected in expected_reconciler_authorities.items():
+        require_module_authority(reconciler, name, expected, "restore drill preflight reconciler")
 
-    print("PASS: restore drill preflight executable authorities are canonical")
+    print("PASS: restore drill preflight data/executable authorities are canonical")
+    print(f"validator executable authorities checked: {len(expected_validator_authorities)}")
+    print(f"reconciler data/executable authorities checked: {len(expected_reconciler_authorities)}")
+    print("production evidence created: false")
+    print("production decision changed: false")
     return 0
 
 
