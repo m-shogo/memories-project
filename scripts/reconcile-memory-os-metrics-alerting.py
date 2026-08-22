@@ -17,12 +17,14 @@ CANONICAL_STATUS_PATH = ROOT / "contracts/operations/production-operability-stat
 CANONICAL_METRICS_VALIDATOR = ROOT / "scripts/validate-memory-os-metrics.py"
 CANONICAL_ALERTING_VALIDATOR = ROOT / "scripts/validate-memory-os-metrics-alerting.py"
 CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CANONICAL_ENTRY_DOCS_VALIDATOR = ROOT / "scripts/validate-memory-os-entry-docs.py"
 METRICS_PATH = CANONICAL_METRICS_PATH
 ALERTING_PATH = CANONICAL_ALERTING_PATH
 STATUS_PATH = CANONICAL_STATUS_PATH
 METRICS_VALIDATOR = CANONICAL_METRICS_VALIDATOR
 ALERTING_VALIDATOR = CANONICAL_ALERTING_VALIDATOR
 OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
+ENTRY_DOCS_VALIDATOR = CANONICAL_ENTRY_DOCS_VALIDATOR
 
 OLD_GAP = "alert routing, on-call and runbooks"
 NEW_EXISTING = (
@@ -79,6 +81,7 @@ def enforce_runtime_authorities() -> None:
         (METRICS_VALIDATOR, CANONICAL_METRICS_VALIDATOR, "metrics validator"),
         (ALERTING_VALIDATOR, CANONICAL_ALERTING_VALIDATOR, "metrics alerting validator"),
         (OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, "operability validator"),
+        (ENTRY_DOCS_VALIDATOR, CANONICAL_ENTRY_DOCS_VALIDATOR, "entry docs validator"),
     ):
         require_exact_authority(path, canonical, label)
 
@@ -117,7 +120,12 @@ def validate_source_authority() -> None:
 
 
 def validate_written_authority() -> None:
-    for path in (METRICS_VALIDATOR, ALERTING_VALIDATOR, OPERABILITY_VALIDATOR):
+    for path in (
+        METRICS_VALIDATOR,
+        ALERTING_VALIDATOR,
+        OPERABILITY_VALIDATOR,
+        ENTRY_DOCS_VALIDATOR,
+    ):
         run_validator(path)
 
 
