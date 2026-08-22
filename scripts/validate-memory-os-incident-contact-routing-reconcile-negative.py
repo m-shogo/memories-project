@@ -119,12 +119,14 @@ def expect_validator_rejected(label: str) -> None:
 def expect_reconciler_authority_rejected(contract_bytes: bytes, status_bytes: bytes) -> None:
     reconciler = load_reconciler()
     substitutions = (
+        ("CONTRACT", reconciler.STATUS, "contact routing contract authority drift"),
         ("REGISTRY", reconciler.STATUS, "contact routing registry authority drift"),
         ("WRITER", reconciler.VALIDATOR, "contact routing writer authority drift"),
         ("VALIDATOR", reconciler.OPERABILITY_VALIDATOR, "contact routing validator authority drift"),
         ("INCIDENT_RESPONSE_VALIDATOR", reconciler.OPERABILITY_VALIDATOR, "incident response validator authority drift"),
         ("OPERABILITY_VALIDATOR", reconciler.INCIDENT_RESPONSE_VALIDATOR, "operability validator authority drift"),
         ("WORKFLOW", ROOT / ".github/workflows/incident-control-exercise.yml", "contact routing workflow authority drift"),
+        ("STATUS", reconciler.CONTRACT, "production operability status authority drift"),
     )
     for field, substitute, expected_message in substitutions:
         original = getattr(reconciler, field)
