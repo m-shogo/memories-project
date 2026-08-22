@@ -117,6 +117,8 @@ def expect_validator_rejected(label: str) -> None:
 def expect_reconciler_authority_rejected(contract_bytes: bytes, status_bytes: bytes) -> None:
     reconciler = load_reconciler()
     substitutions = (
+        ("CONTRACT", reconciler.STATUS, "observability stack contract authority drift"),
+        ("REGISTRY", reconciler.STATUS, "observability stack registry authority drift"),
         ("WRITER", reconciler.VALIDATOR, "observability stack writer authority drift"),
         ("VALIDATOR", reconciler.OPERABILITY_VALIDATOR, "observability stack validator authority drift"),
         ("OBSERVABILITY_VALIDATOR", reconciler.ACCESS_VALIDATOR, "observability validator authority drift"),
@@ -126,6 +128,7 @@ def expect_reconciler_authority_rejected(contract_bytes: bytes, status_bytes: by
         ("METRICS_ALERTING_VALIDATOR", reconciler.METRICS_VALIDATOR, "metrics alerting validator authority drift"),
         ("OPERABILITY_VALIDATOR", reconciler.METRICS_VALIDATOR, "operability validator authority drift"),
         ("WORKFLOW", ROOT / ".github/workflows/incident-contact-routing-admission.yml", "observability stack workflow authority drift"),
+        ("STATUS", reconciler.CONTRACT, "production operability status authority drift"),
     )
     for field, substitute, expected_message in substitutions:
         original = getattr(reconciler, field)
@@ -312,7 +315,7 @@ def main() -> int:
     expect_aggregate_post_write_rollback(contract_bytes, status_bytes)
 
     print("PASS: observability stack registry/source-binding/review/lock corruption is rejected without mutation")
-    print("PASS: observability stack reconciler rejects all canonical executable authority substitutions without mutation")
+    print("PASS: observability stack reconciler rejects all canonical executable/data authority substitutions without mutation")
     print("PASS: observability stack direct append rolls back on post-append validation failure")
     print("PASS: observability stack post-write and aggregate validation failures roll back contract and status")
     print("generic repository JSON accepted as independent review: false")
