@@ -22,6 +22,7 @@ VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-rollback-rehearsal-gate.py"
 RELEASE_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-release-baseline-registry.py"
 VERSION_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-version-compatibility.py"
 OPERABILITY_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-operability.py"
+WORKFLOW_PATH = ROOT / ".github/workflows/rollback-rehearsal-gate.yml"
 
 STATIC_EXISTING = (
     "fail-closed rollback rehearsal admission authority requiring distinct approved source and rollback-target releases before any isolated rehearsal request can be recorded",
@@ -52,6 +53,36 @@ class ReconcileFailure(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise ReconcileFailure(message)
+
+
+def require_exact_repo_file(path: Path, relative: str, field: str) -> None:
+    expected = ROOT / relative
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise ReconcileFailure(f"{field} missing or escapes repository") from exc
+    require(
+        path == expected and lexical == Path(relative) and resolved == Path(relative)
+        and path.is_file() and not path.is_symlink(),
+        f"{field} authority drift",
+    )
+
+
+def enforce_runtime_authorities() -> None:
+    for path, relative, field in (
+        (CONTRACT_PATH, "contracts/operations/rollback-rehearsal-gate-contract.v1.json", "rollback gate contract"),
+        (RELEASE_REGISTRY_PATH, "contracts/operations/release-baseline-registry.v1.json", "release baseline registry"),
+        (REHEARSAL_REGISTRY_PATH, "contracts/operations/rollback-rehearsal-registry.v1.json", "rollback rehearsal registry"),
+        (STATUS_PATH, "contracts/operations/production-operability-status.json", "production operability status"),
+        (WRITER_PATH, "scripts/request-memory-os-rollback-rehearsal.py", "rollback rehearsal writer"),
+        (VALIDATOR_PATH, "scripts/validate-memory-os-rollback-rehearsal-gate.py", "rollback rehearsal validator"),
+        (RELEASE_VALIDATOR_PATH, "scripts/validate-memory-os-release-baseline-registry.py", "release baseline validator"),
+        (VERSION_VALIDATOR_PATH, "scripts/validate-memory-os-version-compatibility.py", "version compatibility validator"),
+        (OPERABILITY_VALIDATOR_PATH, "scripts/validate-memory-os-operability.py", "operability validator"),
+        (WORKFLOW_PATH, ".github/workflows/rollback-rehearsal-gate.yml", "rollback rehearsal workflow"),
+    ):
+        require_exact_repo_file(path, relative, field)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -223,6 +254,7 @@ def reconcile_status(
 
 
 def run_canonical_validators() -> None:
+    enforce_runtime_authorities()
     for validator in (
         VALIDATOR_PATH,
         RELEASE_VALIDATOR_PATH,
@@ -256,6 +288,7 @@ def commit_authority_transaction(
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     contract = load(CONTRACT_PATH)
     releases = load(RELEASE_REGISTRY_PATH)
     rehearsals = load(REHEARSAL_REGISTRY_PATH)
@@ -275,6 +308,7 @@ def main() -> int:
     status_changed = reconcile_status(status, release_count, admissible_pairs, request_count)
 
     if not contract_changed and not status_changed:
+        run_canonical_validators()
         print("Rollback rehearsal admission authority already reconciled")
         return 0
     status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
