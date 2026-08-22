@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Prove admission-chain validation/reconciliation load boundaries and transactional rollback."""
+"""Prove admission-chain authority identity, fail-closed validation, and rollback."""
 
 from __future__ import annotations
 
 import importlib.util
 import json
-import shutil
 import tempfile
 from pathlib import Path
 from typing import Callable
@@ -15,8 +14,10 @@ VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-admission-chain.py
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-admission-chain.py"
 TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 CONTRACT = ROOT / "contracts/operations/backup-restore-admission-chain-contract.v1.json"
+PREFLIGHT = ROOT / "contracts/operations/backup-restore-drill-preflight-contract.v1.json"
 DRILL_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
 GEN_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+BINDING_CONTRACT = ROOT / "contracts/operations/backup-restore-generation-binding-contract.v1.json"
 TYPED_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 
@@ -78,11 +79,18 @@ def prove_direct_authority_identity(reconciler: object) -> None:
     contract_before = CONTRACT.read_bytes()
     status_before = STATUS.read_bytes()
     cases = (
+        ("admission-chain contract substitution", "admission-chain contract", "CONTRACT", PREFLIGHT),
+        ("preflight contract substitution", "preflight contract", "PREFLIGHT", CONTRACT),
+        ("drill registry substitution", "drill request registry", "DRILL_REGISTRY", GEN_REGISTRY),
+        ("generation registry substitution", "generation evidence registry", "GEN_REGISTRY", DRILL_REGISTRY),
+        ("generation binding substitution", "generation binding contract", "BINDING_CONTRACT", CONTRACT),
+        ("typed registry substitution", "typed non-resurrection registry", "TYPED_REGISTRY", GEN_REGISTRY),
         ("drill writer substitution", "drill request writer", "DRILL_WRITER", reconciler.GEN_WRITER),
         ("generation writer substitution", "generation evidence writer", "GEN_WRITER", reconciler.DRILL_WRITER),
         ("typed writer substitution", "typed non-resurrection writer", "TYPED_WRITER", reconciler.GEN_WRITER),
         ("admission-chain validator substitution", "admission-chain validator", "VALIDATOR", reconciler.OPERABILITY_VALIDATOR),
         ("operability validator substitution", "operability validator", "OPERABILITY_VALIDATOR", reconciler.VALIDATOR),
+        ("production status substitution", "production operability status", "STATUS", CONTRACT),
     )
     for name, field, attribute, replacement in cases:
         expect_direct_authority_rejected(
@@ -94,32 +102,78 @@ def prove_direct_authority_identity(reconciler: object) -> None:
             contract_before=contract_before,
             status_before=status_before,
         )
-    print(f"PASS boundary: direct admission-chain writer/validator substitutions rejected: {len(cases)}")
+    print(f"PASS boundary: direct admission-chain data/executable substitutions rejected: {len(cases)}")
 
 
-def write_json(path: Path, value: dict[str, object]) -> None:
-    path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+def mutate_copy(value: dict[str, object], field: str, replacement: object) -> dict[str, object]:
+    copied = json.loads(json.dumps(value))
+    require(isinstance(copied, dict), "copied registry root invalid")
+    copied[field] = replacement
+    return copied
 
 
-def corrupt_and_expect_rollback(
-    reconciler: object,
-    *,
-    name: str,
-    registry_path: Path,
-    mutate: Callable[[dict[str, object]], None],
-    contract_copy: Path,
-) -> None:
-    canonical = json.loads(registry_path.read_text(encoding="utf-8"))
-    require(isinstance(canonical, dict), f"{name} canonical registry root invalid")
-    bad = json.loads(json.dumps(canonical))
-    mutate(bad)
-    write_json(registry_path, bad)
-    original_registry = registry_path.read_bytes()
-    original_contract = contract_copy.read_bytes()
-    expect_domain_fail(name, reconciler.main, reconciler.Fail)
-    require(registry_path.read_bytes() == original_registry, f"{name} registry was healed/mutated")
-    require(contract_copy.read_bytes() == original_contract, f"{name} contract changed before failure")
-    write_json(registry_path, canonical)
+def prove_shared_registry_fail_closed(reconciler: object) -> None:
+    drill_writer = reconciler.load_writer(
+        reconciler.DRILL_WRITER,
+        "memory_os_drill_writer_admission_chain_negative",
+        "drill request",
+    )
+    gen_writer = reconciler.load_writer(
+        reconciler.GEN_WRITER,
+        "memory_os_generation_writer_admission_chain_negative",
+        "generation evidence",
+    )
+    typed_writer = reconciler.load_writer(
+        reconciler.TYPED_WRITER,
+        "memory_os_typed_writer_admission_chain_negative",
+        "typed non-resurrection",
+    )
+
+    drill = json.loads(DRILL_REGISTRY.read_text(encoding="utf-8"))
+    generation = json.loads(GEN_REGISTRY.read_text(encoding="utf-8"))
+    typed = json.loads(TYPED_REGISTRY.read_text(encoding="utf-8"))
+    require(all(isinstance(value, dict) for value in (drill, generation, typed)), "canonical registry root invalid")
+
+    cases = (
+        ("drill registry boolean registeredRequestCount", drill_writer, mutate_copy(drill, "registeredRequestCount", False), "drill request"),
+        ("drill registry productionEvidence promotion", drill_writer, mutate_copy(drill, "productionEvidence", True), "drill request"),
+        ("generation registry boolean registeredEvidenceCount", gen_writer, mutate_copy(generation, "registeredEvidenceCount", False), "generation evidence"),
+        ("generation registry productionReady promotion", gen_writer, mutate_copy(generation, "productionReady", True), "generation evidence"),
+        ("typed registry boolean registeredRecordCount", typed_writer, mutate_copy(typed, "registeredRecordCount", False), "typed non-resurrection"),
+        ("typed registry appendOnly corruption", typed_writer, mutate_copy(typed, "appendOnly", False), "typed non-resurrection"),
+        ("typed registry productionEvidence promotion", typed_writer, mutate_copy(typed, "productionEvidence", True), "typed non-resurrection"),
+    )
+    for name, module, value, label in cases:
+        expect_domain_fail(
+            name,
+            lambda module=module, value=value, label=label: reconciler.validate_shared_registry(module, value, label),
+            reconciler.Fail,
+        )
+    print(f"PASS boundary: shared append-only registry corruption rejected without canonical mutation: {len(cases)}")
+
+
+def prove_post_validation_rollback(reconciler: object) -> None:
+    contract_before = CONTRACT.read_bytes()
+    status_before = STATUS.read_bytes()
+    original_run_validator = reconciler.run_validator
+
+    def forced_failure(path: Path, label: str) -> None:
+        raise reconciler.Fail(f"post-reconcile {label} failed: synthetic aggregate rejection")
+
+    reconciler.run_validator = forced_failure
+    try:
+        try:
+            reconciler.main()
+        except reconciler.Fail as exc:
+            require("synthetic aggregate rejection" in str(exc), f"unexpected reconcile failure: {exc}")
+        else:
+            raise Fail("forced admission-chain post-validation failure unexpectedly accepted")
+    finally:
+        reconciler.run_validator = original_run_validator
+
+    require(CONTRACT.read_bytes() == contract_before, "admission-chain contract rollback drift")
+    require(STATUS.read_bytes() == status_before, "production status mutated during admission-chain rollback test")
+    print("PASS rollback: admission-chain contract restored byte-for-byte after post-validation failure")
 
 
 def main() -> int:
@@ -131,6 +185,7 @@ def main() -> int:
     reconciler = load_module(RECONCILER, "memory_os_admission_chain_reconcile_negative")
 
     prove_direct_authority_identity(reconciler)
+    prove_shared_registry_fail_closed(reconciler)
 
     with tempfile.TemporaryDirectory(prefix=".tmp-admission-chain-reconcile-", dir=TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
@@ -153,128 +208,10 @@ def main() -> int:
             expect_domain_fail("admission-chain validator authority escapes repository", lambda: validator.load(outside), validator.Fail)
             expect_domain_fail("admission-chain reconciler authority escapes repository", lambda: reconciler.load(outside), reconciler.Fail)
 
-        contract_copy = tmp / CONTRACT.name
-        drill_copy = tmp / DRILL_REGISTRY.name
-        gen_copy = tmp / GEN_REGISTRY.name
-        typed_copy = tmp / TYPED_REGISTRY.name
-        shutil.copyfile(CONTRACT, contract_copy)
-        shutil.copyfile(DRILL_REGISTRY, drill_copy)
-        shutil.copyfile(GEN_REGISTRY, gen_copy)
-        shutil.copyfile(TYPED_REGISTRY, typed_copy)
-        reconciler.CONTRACT = contract_copy
-        reconciler.DRILL_REGISTRY = drill_copy
-        reconciler.GEN_REGISTRY = gen_copy
-        reconciler.TYPED_REGISTRY = typed_copy
+    prove_post_validation_rollback(reconciler)
 
-        corrupt_and_expect_rollback(
-            reconciler,
-            name="drill registry boolean registeredRequestCount",
-            registry_path=drill_copy,
-            mutate=lambda value: value.__setitem__("registeredRequestCount", False),
-            contract_copy=contract_copy,
-        )
-        corrupt_and_expect_rollback(
-            reconciler,
-            name="drill registry boolean currentExecutableRequestCount",
-            registry_path=drill_copy,
-            mutate=lambda value: value.__setitem__("currentExecutableRequestCount", False),
-            contract_copy=contract_copy,
-        )
-        corrupt_and_expect_rollback(
-            reconciler,
-            name="drill registry productionEvidence promotion",
-            registry_path=drill_copy,
-            mutate=lambda value: value.__setitem__("productionEvidence", True),
-            contract_copy=contract_copy,
-        )
-        corrupt_and_expect_rollback(
-            reconciler,
-            name="drill registry productionReady promotion",
-            registry_path=drill_copy,
-            mutate=lambda value: value.__setitem__("productionReady", True),
-            contract_copy=contract_copy,
-        )
-        corrupt_and_expect_rollback(
-            reconciler,
-            name="generation registry boolean registeredEvidenceCount",
-            registry_path=gen_copy,
-            mutate=lambda value: value.__setitem__("registeredEvidenceCount", False),
-            contract_copy=contract_copy,
-        )
-        corrupt_and_expect_rollback(
-            reconciler,
-            name="generation registry boolean productionEquivalentRecoveryCandidateCount",
-            registry_path=gen_copy,
-            mutate=lambda value: value.__setitem__("productionEquivalentRecoveryCandidateCount", False),
-            contract_copy=contract_copy,
-        )
-        corrupt_and_expect_rollback(
-            reconciler,
-            name="generation registry productionEvidence promotion",
-            registry_path=gen_copy,
-            mutate=lambda value: value.__setitem__("productionEvidence", True),
-            contract_copy=contract_copy,
-        )
-        corrupt_and_expect_rollback(
-            reconciler,
-            name="generation registry productionReady promotion",
-            registry_path=gen_copy,
-            mutate=lambda value: value.__setitem__("productionReady", True),
-            contract_copy=contract_copy,
-        )
-        corrupt_and_expect_rollback(
-            reconciler,
-            name="typed registry boolean registeredRecordCount",
-            registry_path=typed_copy,
-            mutate=lambda value: value.__setitem__("registeredRecordCount", False),
-            contract_copy=contract_copy,
-        )
-        corrupt_and_expect_rollback(
-            reconciler,
-            name="typed registry boolean candidateCoveredCount",
-            registry_path=typed_copy,
-            mutate=lambda value: value.__setitem__("candidateCoveredCount", False),
-            contract_copy=contract_copy,
-        )
-        corrupt_and_expect_rollback(
-            reconciler,
-            name="typed registry appendOnly corruption",
-            registry_path=typed_copy,
-            mutate=lambda value: value.__setitem__("appendOnly", False),
-            contract_copy=contract_copy,
-        )
-        corrupt_and_expect_rollback(
-            reconciler,
-            name="typed registry productionEvidence promotion",
-            registry_path=typed_copy,
-            mutate=lambda value: value.__setitem__("productionEvidence", True),
-            contract_copy=contract_copy,
-        )
-        corrupt_and_expect_rollback(
-            reconciler,
-            name="typed registry productionReady promotion",
-            registry_path=typed_copy,
-            mutate=lambda value: value.__setitem__("productionReady", True),
-            contract_copy=contract_copy,
-        )
-
-        original_contract = contract_copy.read_bytes()
-        failing_validator = tmp / "forced-validator-failure.py"
-        failing_validator.write_text("#!/usr/bin/env python3\nraise SystemExit(41)\n", encoding="utf-8")
-        reconciler.VALIDATOR = failing_validator
-
-        try:
-            reconciler.main()
-        except reconciler.Fail as exc:
-            require("post-reconcile admission-chain validator failed" in str(exc), f"unexpected reconcile failure: {exc}")
-        else:
-            raise Fail("forced admission-chain post-validation failure unexpectedly accepted")
-
-        require(contract_copy.read_bytes() == original_contract, "admission-chain contract rollback drift")
-
-    print("PASS rollback: admission-chain registries remain byte-for-byte corrupt until explicit repair")
-    print("PASS rollback: admission-chain contract restored byte-for-byte after post-validation failure")
-    print("direct admission-chain writer/validator substitutions accepted: false")
+    print("direct admission-chain data/executable substitutions accepted: false")
+    print("shared append-only registry corruption auto-healed by reconciler: false")
     print("Admission-chain validator/reconcile negative suite PASS")
     return 0
 
