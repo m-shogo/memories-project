@@ -62,6 +62,7 @@ on:
       - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-negative.py"
+      - "scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-admission-chain.py"
       - "scripts/validate-memory-os-operability.py"
   push:
@@ -127,6 +128,7 @@ on:
       - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-negative.py"
+      - "scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-admission-chain.py"
       - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
@@ -227,6 +229,7 @@ jobs:
           scripts/reconcile-memory-os-backup-non-resurrection-authority.py
           scripts/validate-memory-os-backup-restore-admission-chain.py
           scripts/validate-memory-os-backup-restore-admission-chain-negative.py
+          scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py
           scripts/reconcile-memory-os-backup-restore-admission-chain.py
           scripts/validate-memory-os-operability.py
           EOF
@@ -276,6 +279,7 @@ jobs:
             scripts/reconcile-memory-os-backup-non-resurrection-authority.py \
             scripts/validate-memory-os-backup-restore-admission-chain.py \
             scripts/validate-memory-os-backup-restore-admission-chain-negative.py \
+            scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py \
             scripts/reconcile-memory-os-backup-restore-admission-chain.py \
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
@@ -291,6 +295,7 @@ jobs:
           if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-backup-restore-admission-chain.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-admission-chain.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-admission-chain-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-request.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py >> "$log" 2>&1 || code=$?; fi
@@ -334,6 +339,7 @@ jobs:
             python scripts/reconcile-memory-os-backup-restore-admission-chain.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-admission-chain.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-admission-chain-negative.py >> "$log" 2>&1
+            python scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-drill-request.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-generation-evidence.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py >> "$log" 2>&1
