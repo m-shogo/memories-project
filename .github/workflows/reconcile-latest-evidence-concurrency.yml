@@ -34,7 +34,7 @@ jobs:
       - name: Checkout exact concurrency authority source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - name: Confirm exact clean authority source
@@ -46,8 +46,7 @@ jobs:
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
           else
-            test "$(git branch --show-current)" = "so"
-            test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+            test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           fi
 
       - name: Validate latest-run concurrency authority
