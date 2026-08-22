@@ -67,7 +67,7 @@ jobs:
       - name: Checkout exact source with old commit history
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - name: Set up Go
@@ -82,14 +82,14 @@ jobs:
           python-version: "3.12"
 
       - name: Capture exact source state
+        env:
+          EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           test -z "$(git status --porcelain)"
+          test -n "$EXPECTED_SHA"
           SOURCE_SHA="$(git rev-parse HEAD)"
-          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
-            git fetch origin so
-            test "$(git rev-parse origin/so)" = "$SOURCE_SHA"
-          fi
+          test "$SOURCE_SHA" = "$EXPECTED_SHA"
           echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
           bash -n scripts/run-memory-os-mixed-version-session-drill.sh
           python -m py_compile \
