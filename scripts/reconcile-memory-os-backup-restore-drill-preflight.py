@@ -73,20 +73,16 @@ def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> 
 
 
 def enforce_runtime_authorities() -> None:
-    canonical_contract = CONTRACT == ROOT / CONTRACT_REL
-    canonical_status = STATUS == ROOT / STATUS_REL
-    require(
-        canonical_contract is canonical_status,
-        "preflight fixture boundary must replace contract and status together",
-    )
-    if canonical_contract:
-        require_exact_repo_file(CONTRACT, CONTRACT_REL, "preflight contract")
-        require_exact_repo_file(STATUS, STATUS_REL, "production operability status")
-    require_exact_repo_file(GEN_REGISTRY, GEN_REGISTRY_REL, "environment generation registry")
-    require_exact_repo_file(OBJECTIVES, OBJECTIVES_REL, "recovery objectives registry")
-    require_exact_repo_file(DRILL_REGISTRY, DRILL_REGISTRY_REL, "drill request registry")
-    require_exact_repo_file(VALIDATOR_MODULE, VALIDATOR_MODULE_REL, "preflight validator")
-    require_exact_repo_file(OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator")
+    for path, expected, field in (
+        (CONTRACT, CONTRACT_REL, "preflight contract"),
+        (GEN_REGISTRY, GEN_REGISTRY_REL, "environment generation registry"),
+        (OBJECTIVES, OBJECTIVES_REL, "recovery objectives registry"),
+        (DRILL_REGISTRY, DRILL_REGISTRY_REL, "drill request registry"),
+        (VALIDATOR_MODULE, VALIDATOR_MODULE_REL, "preflight validator"),
+        (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+        (STATUS, STATUS_REL, "production operability status"),
+    ):
+        require_exact_repo_file(path, expected, field)
 
 
 def read_text(path: Path) -> str:
@@ -243,7 +239,7 @@ def main() -> int:
     print(f"reviewed/current drill requests: {state['reviewedDrillRequestCount']}/{state['currentExecutableDrillRequestCount']}")
     print("preflight authority state canonicalized: true")
     print("upstream authority validated before reconcile mutation: true")
-    print("canonical reconciler executable authorities enforced: true")
+    print("canonical reconciler data/executable authorities enforced: true")
     print("preflight and aggregate operability validated inside transaction: true")
     print("failed post-validation leaves derived preflight/status mutation behind: false")
     print("registered generation inventory alone creates restore-planning authority: false")
