@@ -255,6 +255,79 @@ def expect_noop_aggregate_validation(reconciler) -> None:
             "foundation no-op reconcile mutated production status")
 
 
+def expect_canonical_noop_validation(reconciler) -> None:
+    original = reconciler.PATH.read_bytes()
+    document = json.loads(original.decode("utf-8"))
+    for key in ("supplementalCompatibilityEvidence", "foundationEvidenceRefs"):
+        document.pop(key, None)
+    support = document["supportPolicy"]
+    for key in (
+        "historicalCandidateAndCurrentTested",
+        "approvedCurrentAndPreviousReleaseTested",
+        "candidateOnlyEvidenceRef",
+    ):
+        support["backendRollingWindow"].pop(key, None)
+    for key in (
+        "postgresql17LogicalForwardUpgradeRehearsed",
+        "postgresql17InPlaceOrBlueGreenCutoverRehearsed",
+        "postgresql17PhysicalReplicationOrFailoverRehearsed",
+        "postgresql17ProductionSupported",
+        "logicalUpgradeEvidenceRef",
+    ):
+        support["database"].pop(key, None)
+    for key in (
+        "reviewedRegistryAuthorityImplemented",
+        "reviewedArtifactCount",
+        "rollbackRetainedArtifactCount",
+        "testHarnessApproved",
+        "registryRef",
+    ):
+        support["parserArtifacts"].pop(key, None)
+    readiness = document["readiness"]
+    for key in (
+        "historicalCandidateNewSchemaProven",
+        "historicalCandidateMixedProcessProven",
+        "historicalCandidatePersistedApplyProven",
+        "historicalCandidateConcurrentApplyRaceProven",
+        "historicalCandidateInFlightTerminationRecoveryProven",
+        "postgresql17LogicalForwardUpgradeProven",
+        "parserArtifactRegistryAuthorityDefined",
+        "reviewedParserArtifactAvailable",
+        "rollbackRehearsalAdmissionGateDefined",
+        "approvedRollbackPairAvailable",
+    ):
+        readiness.pop(key, None)
+    readiness["note"] = (
+        "Compatibility directions and release gates are explicit. Only the current backend "
+        "against a clean current PostgreSQL 16 schema is proven in the canonical release "
+        "matrix. Candidate-only, local-CI-only and empty-registry foundations are recorded "
+        "separately and cannot promote release compatibility; OPS-P0-008 stays PARTIAL."
+    )
+
+    observed: list[Path] = []
+    original_load = reconciler.load
+    original_validator = reconciler.run_canonical_validator
+    original_commit = reconciler.commit_transaction
+    reconciler.load = lambda: document
+    reconciler.run_canonical_validator = lambda: observed.append(reconciler.VALIDATOR_PATH)
+
+    def unexpected_commit(_document) -> None:
+        raise NegativeFailure("canonical no-op reconcile attempted a write")
+
+    reconciler.commit_transaction = unexpected_commit
+    try:
+        result = reconciler.main()
+    finally:
+        reconciler.load = original_load
+        reconciler.run_canonical_validator = original_validator
+        reconciler.commit_transaction = original_commit
+    require(result == 0, "canonical no-op reconcile did not succeed")
+    require(observed == [reconciler.VALIDATOR_PATH],
+            "canonical no-op reconcile bypassed its canonical validator")
+    require(reconciler.PATH.read_bytes() == original,
+            "canonical no-op reconcile mutated canonical compatibility authority")
+
+
 def expect_canonical_transaction_rollback(reconciler) -> None:
     path = reconciler.PATH
     original = path.read_bytes()
@@ -341,6 +414,7 @@ def main() -> int:
     expect_stale_empty_evidence_cleanup(reconciler)
     expect_aggregate_validator_chain(reconciler)
     expect_noop_aggregate_validation(reconciler)
+    expect_canonical_noop_validation(canonical_reconciler)
     expect_canonical_transaction_rollback(canonical_reconciler)
     expect_aggregate_transaction_rollback(reconciler)
 
