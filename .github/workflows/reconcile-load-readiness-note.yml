@@ -7,7 +7,9 @@ on:
       - "scripts/reconcile-memory-os-load-readiness-note.py"
       - "scripts/validate-memory-os-load-readiness-note-reconcile-negative.py"
       - "scripts/validate-memory-os-load.py"
+      - "scripts/validate-memory-os-operability.py"
       - "contracts/operations/load-test-scenario-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
   push:
     branches:
       - so
@@ -16,7 +18,9 @@ on:
       - "scripts/reconcile-memory-os-load-readiness-note.py"
       - "scripts/validate-memory-os-load-readiness-note-reconcile-negative.py"
       - "scripts/validate-memory-os-load.py"
+      - "scripts/validate-memory-os-operability.py"
       - "contracts/operations/load-test-scenario-contract.v1.json"
+      - "contracts/operations/production-operability-status.json"
   workflow_dispatch:
 
 permissions:
@@ -60,17 +64,19 @@ jobs:
           python -m py_compile \
             scripts/reconcile-memory-os-load-readiness-note.py \
             scripts/validate-memory-os-load-readiness-note-reconcile-negative.py \
-            scripts/validate-memory-os-load.py
+            scripts/validate-memory-os-load.py \
+            scripts/validate-memory-os-operability.py
           python scripts/validate-memory-os-load-readiness-note-reconcile-negative.py
           python scripts/reconcile-memory-os-load-readiness-note.py
           python scripts/validate-memory-os-load.py
+          python scripts/validate-memory-os-operability.py
 
       - name: Require deterministic authority on pull requests
         if: github.event_name == 'pull_request'
         run: |
           set -euo pipefail
           git diff --check
-          git diff --exit-code -- contracts/operations/load-test-scenario-contract.v1.json
+          git diff --exit-code -- contracts/operations/load-test-scenario-contract.v1.json contracts/operations/production-operability-status.json
 
       - name: Commit normalized note
         if: github.event_name != 'pull_request'
