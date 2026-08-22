@@ -79,25 +79,21 @@ def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> 
 
 
 def enforce_runtime_authorities() -> None:
-    canonical_contract = CONTRACT == ROOT / CONTRACT_REL
-    canonical_status = STATUS == ROOT / STATUS_REL
-    require(canonical_contract is canonical_status, "observability stack fixture boundary must replace contract and status together")
-    if canonical_contract:
-        for path, relative, field in (
-            (CONTRACT, CONTRACT_REL, "observability stack contract"),
-            (REGISTRY, REGISTRY_REL, "observability stack registry"),
-            (WRITER, WRITER_REL, "observability stack writer"),
-            (VALIDATOR, VALIDATOR_REL, "observability stack validator"),
-            (OBSERVABILITY_VALIDATOR, OBSERVABILITY_VALIDATOR_REL, "observability validator"),
-            (ACCESS_VALIDATOR, ACCESS_VALIDATOR_REL, "observability access validator"),
-            (METRICS_VALIDATOR, METRICS_VALIDATOR_REL, "metrics validator"),
-            (METRICS_OPERATIONS_VALIDATOR, METRICS_OPERATIONS_VALIDATOR_REL, "metrics operations validator"),
-            (METRICS_ALERTING_VALIDATOR, METRICS_ALERTING_VALIDATOR_REL, "metrics alerting validator"),
-            (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
-            (WORKFLOW, WORKFLOW_REL, "observability stack workflow"),
-            (STATUS, STATUS_REL, "production operability status"),
-        ):
-            require_exact_repo_file(path, relative, field)
+    for path, relative, field in (
+        (CONTRACT, CONTRACT_REL, "observability stack contract"),
+        (REGISTRY, REGISTRY_REL, "observability stack registry"),
+        (WRITER, WRITER_REL, "observability stack writer"),
+        (VALIDATOR, VALIDATOR_REL, "observability stack validator"),
+        (OBSERVABILITY_VALIDATOR, OBSERVABILITY_VALIDATOR_REL, "observability validator"),
+        (ACCESS_VALIDATOR, ACCESS_VALIDATOR_REL, "observability access validator"),
+        (METRICS_VALIDATOR, METRICS_VALIDATOR_REL, "metrics validator"),
+        (METRICS_OPERATIONS_VALIDATOR, METRICS_OPERATIONS_VALIDATOR_REL, "metrics operations validator"),
+        (METRICS_ALERTING_VALIDATOR, METRICS_ALERTING_VALIDATOR_REL, "metrics alerting validator"),
+        (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+        (WORKFLOW, WORKFLOW_REL, "observability stack workflow"),
+        (STATUS, STATUS_REL, "production operability status"),
+    ):
+        require_exact_repo_file(path, relative, field)
 
 
 def load(path: Path) -> dict[str, Any]:
