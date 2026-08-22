@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "backup-restore-drill-generation-eligibility-binding",
+  "sourceCommitSha": "444c87de0f3ec6d122d908ce1904abea2f7cc8bd",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "DRILL GENERATION BINDING RECONCILE NEGATIVE FAILED: request registry schema drift rejected at wrong boundary: drill generation binding contract authority drift\n",
+  "containsSecrets": false,
+  "requestCreated": false,
+  "generationCreated": false,
+  "restoreExecuted": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
