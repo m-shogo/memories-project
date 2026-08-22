@@ -78,7 +78,7 @@ jobs:
       - name: Checkout exact authority source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - name: Set up Go
@@ -95,14 +95,14 @@ jobs:
       - name: Confirm exact source state
         env:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EVENT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           test -z "$(git status --porcelain)"
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
           else
-            test "$(git branch --show-current)" = "so"
-            test "$(git rev-parse HEAD)" = "$(git rev-parse origin/so)"
+            test "$(git rev-parse HEAD)" = "$EVENT_SHA"
           fi
 
       - name: Validate Go scrape implementation
