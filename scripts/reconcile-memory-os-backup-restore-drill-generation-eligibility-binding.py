@@ -11,11 +11,18 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/backup-restore-drill-generation-eligibility-binding-contract.v1.json"
-DRILL_REGISTRY = ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json"
-DRILL_WRITER = ROOT / "scripts/request-memory-os-backup-restore-drill.py"
-ELIGIBILITY_HELPER = ROOT / "scripts/memory_os_environment_generation_eligibility.py"
-VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding.py"
+CONTRACT_REL = Path("contracts/operations/backup-restore-drill-generation-eligibility-binding-contract.v1.json")
+DRILL_REGISTRY_REL = Path("contracts/operations/backup-restore-drill-request-registry.v1.json")
+DRILL_WRITER_REL = Path("scripts/request-memory-os-backup-restore-drill.py")
+ELIGIBILITY_HELPER_REL = Path("scripts/memory_os_environment_generation_eligibility.py")
+VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+CONTRACT = ROOT / CONTRACT_REL
+DRILL_REGISTRY = ROOT / DRILL_REGISTRY_REL
+DRILL_WRITER = ROOT / DRILL_WRITER_REL
+ELIGIBILITY_HELPER = ROOT / ELIGIBILITY_HELPER_REL
+VALIDATOR = ROOT / VALIDATOR_REL
+OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
 
 
 class Fail(RuntimeError):
@@ -27,6 +34,31 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    for path, expected, field in (
+        (CONTRACT, CONTRACT_REL, "drill generation binding contract"),
+        (DRILL_REGISTRY, DRILL_REGISTRY_REL, "drill request registry"),
+        (DRILL_WRITER, DRILL_WRITER_REL, "drill request writer"),
+        (ELIGIBILITY_HELPER, ELIGIBILITY_HELPER_REL, "semantic generation eligibility helper"),
+        (VALIDATOR, VALIDATOR_REL, "drill generation binding validator"),
+        (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+    ):
+        require_exact_repo_file(path, expected, field)
+
+
 def load(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -36,7 +68,8 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def load_module(path: Path, name: str):
+def load_module(path: Path, expected_relative: Path, name: str, field: str):
+    require_exact_repo_file(path, expected_relative, field)
     spec = importlib.util.spec_from_file_location(name, path)
     require(spec is not None and spec.loader is not None, f"cannot load {path.name}")
     module = importlib.util.module_from_spec(spec)
@@ -44,15 +77,42 @@ def load_module(path: Path, name: str):
     return module
 
 
+def run_post_validator(path: Path, expected_relative: Path, field: str) -> None:
+    require_exact_repo_file(path, expected_relative, field)
+    completed = subprocess.run(
+        [sys.executable, str(path)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    require(
+        completed.returncode == 0,
+        f"post-reconcile {field} failed:\n{completed.stdout[-9000:]}{completed.stderr[-9000:]}",
+    )
+
+
 def main() -> int:
+    enforce_runtime_authorities()
     try:
         original_contract_text = CONTRACT.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         raise Fail(f"cannot read {CONTRACT.relative_to(ROOT)}: {exc}") from exc
     contract = load(CONTRACT)
     registry = load(DRILL_REGISTRY)
-    writer = load_module(DRILL_WRITER, "memory_os_drill_writer_binding_reconcile")
-    helper = load_module(ELIGIBILITY_HELPER, "memory_os_generation_eligibility_binding_reconcile")
+    writer = load_module(
+        DRILL_WRITER,
+        DRILL_WRITER_REL,
+        "memory_os_drill_writer_binding_reconcile",
+        "drill request writer",
+    )
+    helper = load_module(
+        ELIGIBILITY_HELPER,
+        ELIGIBILITY_HELPER_REL,
+        "memory_os_generation_eligibility_binding_reconcile",
+        "semantic generation eligibility helper",
+    )
     try:
         requests = writer.validate_registry_for_append(registry)
     except Exception as exc:
@@ -75,8 +135,8 @@ def main() -> int:
 
     try:
         CONTRACT.write_text(json.dumps(contract, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        completed = subprocess.run([sys.executable, str(VALIDATOR)], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-        require(completed.returncode == 0, f"post-reconcile binding validator failed:\n{completed.stdout[-9000:]}{completed.stderr[-9000:]}")
+        run_post_validator(VALIDATOR, VALIDATOR_REL, "drill generation binding validator")
+        run_post_validator(OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator")
     except Exception:
         try:
             CONTRACT.write_text(original_contract_text, encoding="utf-8")
@@ -88,6 +148,8 @@ def main() -> int:
     print(f"eligible directed restore pairs: {pair_count}")
     print(f"reviewed/current drill requests: {request_count}/{current_count}")
     print(f"historical auditable requests: {historical_count}")
+    print("canonical data/executable authorities enforced: true")
+    print("aggregate operability validation inside transaction: true")
     print("failed post-validation leaves semantic binding authority mutation behind: false")
     print("production evidence: false")
     print("production decision: NO_GO")
