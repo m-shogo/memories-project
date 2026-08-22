@@ -242,6 +242,7 @@ def main() -> int:
             ("METRICS_VALIDATOR", alerting.CANONICAL_ALERTING_VALIDATOR, "metrics validator authority drift"),
             ("OPERATIONS_VALIDATOR", alerting.CANONICAL_ALERTING_VALIDATOR, "metrics operations validator authority drift"),
             ("OPERABILITY_VALIDATOR", alerting.CANONICAL_ALERTING_VALIDATOR, "operability validator authority drift"),
+            ("ENTRY_DOCS_VALIDATOR", alerting.CANONICAL_ALERTING_VALIDATOR, "entry docs validator authority drift"),
         ),
     )
     run_identity_case(
@@ -254,6 +255,7 @@ def main() -> int:
             ("METRICS_VALIDATOR", operations.CANONICAL_OPERATIONS_VALIDATOR, "metrics validator authority drift"),
             ("ALERTING_VALIDATOR", operations.CANONICAL_OPERATIONS_VALIDATOR, "metrics alerting validator authority drift"),
             ("OPERABILITY_VALIDATOR", operations.CANONICAL_OPERATIONS_VALIDATOR, "operability validator authority drift"),
+            ("ENTRY_DOCS_VALIDATOR", operations.CANONICAL_OPERATIONS_VALIDATOR, "entry docs validator authority drift"),
         ),
     )
 
