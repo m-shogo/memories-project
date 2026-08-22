@@ -10,18 +10,22 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/production-shaped-failure-drill-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/production-shaped-failure-drill-registry.v1.json"
-WRITER = ROOT / "scripts/register-memory-os-production-shaped-failure-drill.py"
-VALIDATOR = ROOT / "scripts/validate-memory-os-production-shaped-failure-drills.py"
-WORKFLOW = ROOT / ".github/workflows/production-shaped-failure-drills.yml"
-STATUS = ROOT / "contracts/operations/production-operability-status.json"
-CHAOS_VALIDATOR = ROOT / "scripts/validate-memory-os-chaos-failure-drills-v2.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
-CANONICAL_WRITER = ROOT / "scripts/register-memory-os-production-shaped-failure-drill.py"
-CANONICAL_VALIDATOR = ROOT / "scripts/validate-memory-os-production-shaped-failure-drills.py"
-CANONICAL_CHAOS_VALIDATOR = ROOT / "scripts/validate-memory-os-chaos-failure-drills-v2.py"
-CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CONTRACT_REL = Path("contracts/operations/production-shaped-failure-drill-contract.v1.json")
+REGISTRY_REL = Path("contracts/operations/production-shaped-failure-drill-registry.v1.json")
+WRITER_REL = Path("scripts/register-memory-os-production-shaped-failure-drill.py")
+VALIDATOR_REL = Path("scripts/validate-memory-os-production-shaped-failure-drills.py")
+WORKFLOW_REL = Path(".github/workflows/production-shaped-failure-drills.yml")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+CHAOS_VALIDATOR_REL = Path("scripts/validate-memory-os-chaos-failure-drills-v2.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+CONTRACT = ROOT / CONTRACT_REL
+REGISTRY = ROOT / REGISTRY_REL
+WRITER = ROOT / WRITER_REL
+VALIDATOR = ROOT / VALIDATOR_REL
+WORKFLOW = ROOT / WORKFLOW_REL
+STATUS = ROOT / STATUS_REL
+CHAOS_VALIDATOR = ROOT / CHAOS_VALIDATOR_REL
+OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
 
 LEGACY_EMPTY_EVIDENCE = (
     "generation-bound production-shaped failure-drill admission is implemented for four required classes: multi-instance/node interruption, object-store outage/partition, PostgreSQL pool disruption/failover, and parser host/container restart with durable spool remount; local outage/process/container/candidate evidence cannot be relabeled, and the registry is currently empty"
@@ -48,24 +52,33 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
-def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
-    require(path == canonical, f"{label} authority drift")
+def require_exact_repo_file(path: Path, expected_relative: Path, label: str) -> None:
     try:
         lexical = path.relative_to(ROOT)
         resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"canonical {label} missing or escapes repository") from exc
-    require(lexical == resolved and path.is_file() and not path.is_symlink(), f"{label} authority drift")
+    require(
+        lexical == expected_relative
+        and resolved == expected_relative
+        and path.is_file()
+        and not path.is_symlink(),
+        f"{label} authority drift",
+    )
 
 
 def enforce_runtime_authorities() -> None:
-    for path, canonical, label in (
-        (WRITER, CANONICAL_WRITER, "failure-drill writer"),
-        (VALIDATOR, CANONICAL_VALIDATOR, "failure-drill validator"),
-        (CHAOS_VALIDATOR, CANONICAL_CHAOS_VALIDATOR, "chaos validator"),
-        (OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, "operability validator"),
+    for path, relative, label in (
+        (CONTRACT, CONTRACT_REL, "failure-drill contract"),
+        (REGISTRY, REGISTRY_REL, "failure-drill registry"),
+        (WRITER, WRITER_REL, "failure-drill writer"),
+        (VALIDATOR, VALIDATOR_REL, "failure-drill validator"),
+        (WORKFLOW, WORKFLOW_REL, "failure-drill workflow"),
+        (STATUS, STATUS_REL, "production operability status"),
+        (CHAOS_VALIDATOR, CHAOS_VALIDATOR_REL, "chaos validator"),
+        (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
     ):
-        require_exact_authority(path, canonical, label)
+        require_exact_repo_file(path, relative, label)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -141,8 +154,6 @@ def commit_outputs_transactionally(outputs: dict[Path, dict[str, Any]]) -> None:
 
 def main() -> int:
     enforce_runtime_authorities()
-    for path in (REGISTRY, WRITER, VALIDATOR, WORKFLOW, CHAOS_VALIDATOR, OPERABILITY_VALIDATOR):
-        require(path.is_file(), f"failure-drill admission missing: {path.relative_to(ROOT)}")
     registry = load(REGISTRY)
     drills = validate_registry_before_reconcile(registry)
     pe = sum(1 for row in drills if row.get("environmentClass") == "PRODUCTION_EQUIVALENT")
