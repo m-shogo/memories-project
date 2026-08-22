@@ -10,6 +10,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts/operations/production-shaped-failure-drill-contract.v1.json"
+REGISTRY = ROOT / "contracts/operations/production-shaped-failure-drill-registry.v1.json"
+WORKFLOW = ROOT / ".github/workflows/production-shaped-failure-drills.yml"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 RECONCILER = ROOT / "scripts/reconcile-memory-os-production-shaped-failure-drills.py"
 SUBSTITUTE = ROOT / "scripts/validate-memory-os-migration-evidence-registry.py"
@@ -31,10 +33,14 @@ def status_gate(status: dict[str, Any]) -> dict[str, Any]:
     return gate
 
 
-def prove_executable_authority(reconciler: Any, contract_before: bytes, status_before: bytes) -> None:
+def prove_authority_substitutions(reconciler: Any, contract_before: bytes, status_before: bytes) -> None:
     cases = (
+        ("CONTRACT", "failure-drill contract authority drift"),
+        ("REGISTRY", "failure-drill registry authority drift"),
         ("WRITER", "failure-drill writer authority drift"),
         ("VALIDATOR", "failure-drill validator authority drift"),
+        ("WORKFLOW", "failure-drill workflow authority drift"),
+        ("STATUS", "production operability status authority drift"),
         ("CHAOS_VALIDATOR", "chaos validator authority drift"),
         ("OPERABILITY_VALIDATOR", "operability validator authority drift"),
     )
@@ -48,11 +54,11 @@ def prove_executable_authority(reconciler: Any, contract_before: bytes, status_b
                 if expected not in str(exc):
                     raise RuntimeError(f"unexpected {attr} authority rejection: {exc}") from exc
             else:
-                raise RuntimeError(f"reconciler accepted substituted executable authority: {attr}")
+                raise RuntimeError(f"reconciler accepted substituted authority: {attr}")
             if CONTRACT.read_bytes() != contract_before:
-                raise RuntimeError(f"{attr}: executable rejection mutated failure-drill contract")
+                raise RuntimeError(f"{attr}: authority rejection mutated failure-drill contract")
             if STATUS.read_bytes() != status_before:
-                raise RuntimeError(f"{attr}: executable rejection mutated production status")
+                raise RuntimeError(f"{attr}: authority rejection mutated production status")
         finally:
             setattr(reconciler, attr, original)
 
@@ -149,7 +155,7 @@ def main() -> int:
     reconciler = load_module(RECONCILER, "failure_drill_reconcile_rollback_negative")
     contract_before = CONTRACT.read_bytes()
     status_before = STATUS.read_bytes()
-    prove_executable_authority(reconciler, contract_before, status_before)
+    prove_authority_substitutions(reconciler, contract_before, status_before)
     prove_corrupt_status_rollback(reconciler, contract_before, status_before)
     prove_aggregate_validator_rollback(reconciler, contract_before, status_before)
     prove_legacy_empty_evidence_is_monotonic(reconciler, contract_before, status_before)
