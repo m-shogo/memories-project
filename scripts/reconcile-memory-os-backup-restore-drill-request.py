@@ -89,27 +89,19 @@ def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> 
 
 
 def enforce_runtime_authorities() -> None:
-    mutable_authorities = (
-        CONTRACT == ROOT / CONTRACT_REL,
-        REGISTRY == ROOT / REGISTRY_REL,
-        OBJECTIVES_REGISTRY == ROOT / OBJECTIVES_REGISTRY_REL,
-        STATUS == ROOT / STATUS_REL,
-    )
-    require(
-        len(set(mutable_authorities)) == 1,
-        "drill request fixture boundary must replace contract, registry, objectives and status together",
-    )
-    if mutable_authorities[0]:
-        require_exact_repo_file(CONTRACT, CONTRACT_REL, "drill request contract")
-        require_exact_repo_file(REGISTRY, REGISTRY_REL, "drill request registry")
-        require_exact_repo_file(GEN_REGISTRY, GEN_REGISTRY_REL, "environment generation registry")
-        require_exact_repo_file(OBJECTIVES_REGISTRY, OBJECTIVES_REGISTRY_REL, "recovery objectives registry")
-        require_exact_repo_file(ELIGIBILITY_HELPER, ELIGIBILITY_HELPER_REL, "semantic generation eligibility helper")
-        require_exact_repo_file(OBJECTIVES_WRITER, OBJECTIVES_WRITER_REL, "recovery objectives writer")
-        require_exact_repo_file(WRITER, WRITER_REL, "drill request writer")
-        require_exact_repo_file(VALIDATOR, VALIDATOR_REL, "drill request validator")
-        require_exact_repo_file(OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator")
-        require_exact_repo_file(STATUS, STATUS_REL, "production operability status")
+    for path, expected, field in (
+        (CONTRACT, CONTRACT_REL, "drill request contract"),
+        (REGISTRY, REGISTRY_REL, "drill request registry"),
+        (GEN_REGISTRY, GEN_REGISTRY_REL, "environment generation registry"),
+        (OBJECTIVES_REGISTRY, OBJECTIVES_REGISTRY_REL, "recovery objectives registry"),
+        (ELIGIBILITY_HELPER, ELIGIBILITY_HELPER_REL, "semantic generation eligibility helper"),
+        (OBJECTIVES_WRITER, OBJECTIVES_WRITER_REL, "recovery objectives writer"),
+        (WRITER, WRITER_REL, "drill request writer"),
+        (VALIDATOR, VALIDATOR_REL, "drill request validator"),
+        (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+        (STATUS, STATUS_REL, "production operability status"),
+    ):
+        require_exact_repo_file(path, expected, field)
 
 
 def read_text(path: Path) -> str:
@@ -365,7 +357,7 @@ def main() -> int:
     print(f"registered planning requests: {request_count}")
     print(f"currently executable requests: {executable_count}")
     print(f"admission decision: {state['admissionDecision']}")
-    print("authority paths contained inside repository: true")
+    print("canonical data/executable authority paths enforced: true")
     print("invalid UTF-8 authority accepted: false")
     print("failed post-validation leaves registry/contract/status mutation behind: false")
     print("boolean generation/objective aggregate counts accepted: false")
