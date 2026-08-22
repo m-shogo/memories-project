@@ -295,6 +295,7 @@ def main() -> int:
     contract_before = load(CONTRACT_PATH)
     status_before = load(STATUS_PATH)
     if contract == contract_before and status == status_before:
+        run_canonical_validators()
         print("Parser artifact registry authority already reconciled")
         return 0
     status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
