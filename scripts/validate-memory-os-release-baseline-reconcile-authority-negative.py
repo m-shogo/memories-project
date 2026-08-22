@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Prove release baseline reconcile rejects executable/path authority substitution."""
+"""Prove release baseline reconcile rejects authority substitution and no-op validator bypass."""
 
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -65,6 +66,46 @@ def expect_substitution_rejection(
         STATUS_PATH.write_bytes(original_status)
 
 
+def prove_noop_runs_canonical_validators(reconciler: Any) -> None:
+    original_contract = CONTRACT_PATH.read_bytes()
+    original_status = STATUS_PATH.read_bytes()
+    original_contract_reconcile = reconciler.reconcile_contract_readiness
+    original_status_reconcile = reconciler.reconcile_status
+    original_runner = reconciler.run_canonical_validators
+    calls = 0
+
+    def unchanged_contract(*_: Any, **__: Any) -> bool:
+        return False
+
+    def unchanged_status(*_: Any, **__: Any) -> bool:
+        return False
+
+    def rejected_validator_chain() -> None:
+        nonlocal calls
+        calls += 1
+        raise subprocess.CalledProcessError(1, ["synthetic-release-validator"])
+
+    reconciler.reconcile_contract_readiness = unchanged_contract
+    reconciler.reconcile_status = unchanged_status
+    reconciler.run_canonical_validators = rejected_validator_chain
+    try:
+        try:
+            reconciler.main()
+        except subprocess.CalledProcessError:
+            pass
+        else:
+            raise NegativeFailure("release reconciler accepted no-op authority without canonical validators")
+        require(calls == 1, "no-op release reconciliation did not invoke canonical validator chain exactly once")
+        require(CONTRACT_PATH.read_bytes() == original_contract, "no-op validator rejection mutated release contract")
+        require(STATUS_PATH.read_bytes() == original_status, "no-op validator rejection mutated production status")
+    finally:
+        reconciler.reconcile_contract_readiness = original_contract_reconcile
+        reconciler.reconcile_status = original_status_reconcile
+        reconciler.run_canonical_validators = original_runner
+        CONTRACT_PATH.write_bytes(original_contract)
+        STATUS_PATH.write_bytes(original_status)
+
+
 def main() -> int:
     reconciler = load_reconciler()
     reconciler.enforce_runtime_authorities()
@@ -79,7 +120,8 @@ def main() -> int:
     )
     for attribute, substitute, label in cases:
         expect_substitution_rejection(reconciler, attribute, substitute, label)
-    print("PASS: release reconcile rejects executable and canonical path authority substitutions")
+    prove_noop_runs_canonical_validators(reconciler)
+    print("PASS: release reconcile rejects authority substitutions and validates canonical authority on no-op")
     return 0
 
 
