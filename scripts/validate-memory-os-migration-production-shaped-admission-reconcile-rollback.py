@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove migration production admission rejects executable substitution and rolls back aggregate failures."""
+"""Prove migration production admission rejects authority substitution and rolls back aggregate failures."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ CONTRACT = ROOT / "contracts/operations/migration-production-shaped-admission-co
 LIFECYCLE = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
 SUBSTITUTE = ROOT / "scripts/validate-memory-os-migration-evidence-registry.py"
+DATA_SUBSTITUTE = ROOT / "contracts/operations/migration-evidence-registry.v1.json"
 
 
 class Fail(RuntimeError):
@@ -59,6 +60,34 @@ def executable_substitution_rejected(module: ModuleType, originals: dict[Path, b
             setattr(module, attr, original)
 
 
+def data_authority_substitution_rejected(module: ModuleType, originals: dict[Path, bytes]) -> None:
+    cases = (
+        ("CONTRACT", "migration admission contract authority drift"),
+        ("REGISTRY", "migration admission registry authority drift"),
+        ("WORKFLOW", "migration admission workflow authority drift"),
+        ("RELEASES", "release baseline registry authority drift"),
+        ("RELEASE_CONTRACT", "release baseline contract authority drift"),
+        ("RELEASE_PAIRS", "release compatibility pair registry authority drift"),
+        ("GENERATIONS", "environment generation registry authority drift"),
+        ("LIFECYCLE", "migration lifecycle contract authority drift"),
+        ("STATUS", "production operability status authority drift"),
+    )
+    for attr, expected in cases:
+        original = getattr(module, attr)
+        try:
+            setattr(module, attr, DATA_SUBSTITUTE)
+            try:
+                module.enforce_runtime_authorities()
+            except module.Fail as exc:
+                require(expected in str(exc), f"unexpected {attr} substitution rejection: {exc}")
+            else:
+                raise Fail(f"migration reconciler accepted substituted data authority: {attr}")
+            for path, expected_bytes in originals.items():
+                require(path.read_bytes() == expected_bytes, f"{attr}: rejected data authority mutated {path.relative_to(ROOT)}")
+        finally:
+            setattr(module, attr, original)
+
+
 def aggregate_rollback_rejected(module: ModuleType, originals: dict[Path, bytes]) -> None:
     original_run = module.subprocess.run
 
@@ -91,8 +120,9 @@ def main() -> int:
     module = load_reconciler()
     originals = {path: path.read_bytes() for path in (CONTRACT, LIFECYCLE, STATUS)}
     executable_substitution_rejected(module, originals)
+    data_authority_substitution_rejected(module, originals)
     aggregate_rollback_rejected(module, originals)
-    print("PASS: migration production-shaped reconciler rejects executable substitution and rolls back contract, lifecycle, and status after aggregate validation failure")
+    print("PASS: migration production-shaped reconciler rejects executable/data authority substitution and rolls back contract, lifecycle, and status after aggregate validation failure")
     return 0
 
 
