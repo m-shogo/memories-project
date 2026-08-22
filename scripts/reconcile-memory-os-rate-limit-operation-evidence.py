@@ -20,6 +20,7 @@ EVIDENCE_VALIDATOR_REL = Path("scripts/validate-memory-os-rate-limit-operation-e
 OPERATIONS_VALIDATOR_REL = Path("scripts/validate-memory-os-rate-limit-operations.py")
 RATE_LIMIT_VALIDATOR_REL = Path("scripts/validate-memory-os-rate-limit.py")
 OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+ENTRY_DOCS_VALIDATOR_REL = Path("scripts/validate-memory-os-entry-docs.py")
 WORKFLOW_REL = Path(".github/workflows/rate-limit-operation-evidence.yml")
 EVIDENCE_PATH = ROOT / EVIDENCE_REL
 OPERATIONS_PATH = ROOT / OPERATIONS_REL
@@ -29,6 +30,7 @@ EVIDENCE_VALIDATOR = ROOT / EVIDENCE_VALIDATOR_REL
 OPERATIONS_VALIDATOR = ROOT / OPERATIONS_VALIDATOR_REL
 RATE_LIMIT_VALIDATOR = ROOT / RATE_LIMIT_VALIDATOR_REL
 OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
+ENTRY_DOCS_VALIDATOR = ROOT / ENTRY_DOCS_VALIDATOR_REL
 WORKFLOW_PATH = ROOT / WORKFLOW_REL
 
 OLD_GAP = (
@@ -82,6 +84,7 @@ def enforce_runtime_authorities() -> None:
         (OPERATIONS_VALIDATOR, OPERATIONS_VALIDATOR_REL, "rate-limit operations validator"),
         (RATE_LIMIT_VALIDATOR, RATE_LIMIT_VALIDATOR_REL, "rate-limit validator"),
         (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+        (ENTRY_DOCS_VALIDATOR, ENTRY_DOCS_VALIDATOR_REL, "entry docs validator"),
         (WORKFLOW_PATH, WORKFLOW_REL, "rate-limit operation workflow"),
     ):
         require_exact_repo_file(path, relative, field)
@@ -148,6 +151,7 @@ def validate_written_authority() -> None:
     run_validator(OPERATIONS_VALIDATOR, "rate-limit operation evidence post-write")
     run_validator(RATE_LIMIT_VALIDATOR, "rate-limit aggregate post-write")
     run_validator(OPERABILITY_VALIDATOR, "operability aggregate post-write")
+    run_validator(ENTRY_DOCS_VALIDATOR, "entry docs post-write")
 
 
 def transactional_write(operations: dict[str, Any], status: dict[str, Any]) -> None:
