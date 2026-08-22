@@ -116,35 +116,33 @@ def expect_validator_rejected(label: str) -> None:
 
 def expect_reconciler_authority_rejected(contract_bytes: bytes, status_bytes: bytes) -> None:
     reconciler = load_reconciler()
-    original_writer = reconciler.WRITER
-    reconciler.WRITER = reconciler.VALIDATOR
-    try:
+    substitutions = (
+        ("WRITER", reconciler.VALIDATOR, "observability stack writer authority drift"),
+        ("VALIDATOR", reconciler.OPERABILITY_VALIDATOR, "observability stack validator authority drift"),
+        ("OBSERVABILITY_VALIDATOR", reconciler.ACCESS_VALIDATOR, "observability validator authority drift"),
+        ("ACCESS_VALIDATOR", reconciler.METRICS_VALIDATOR, "observability access validator authority drift"),
+        ("METRICS_VALIDATOR", reconciler.METRICS_OPERATIONS_VALIDATOR, "metrics validator authority drift"),
+        ("METRICS_OPERATIONS_VALIDATOR", reconciler.METRICS_ALERTING_VALIDATOR, "metrics operations validator authority drift"),
+        ("METRICS_ALERTING_VALIDATOR", reconciler.METRICS_VALIDATOR, "metrics alerting validator authority drift"),
+        ("OPERABILITY_VALIDATOR", reconciler.METRICS_VALIDATOR, "operability validator authority drift"),
+        ("WORKFLOW", ROOT / ".github/workflows/incident-contact-routing-admission.yml", "observability stack workflow authority drift"),
+    )
+    for field, substitute, expected_message in substitutions:
+        original = getattr(reconciler, field)
         try:
-            reconciler.main()
-        except reconciler.Fail as exc:
-            if "observability stack writer authority drift" not in str(exc):
-                raise RuntimeError(f"writer substitution rejected at wrong boundary: {exc}") from exc
-        else:
-            raise RuntimeError("reconciler accepted observability writer executable substitution")
-        if CONTRACT.read_bytes() != contract_bytes or STATUS.read_bytes() != status_bytes:
-            raise RuntimeError("writer substitution mutated observability stack authority")
-    finally:
-        reconciler.WRITER = original_writer
-
-    original_operability = reconciler.OPERABILITY_VALIDATOR
-    reconciler.OPERABILITY_VALIDATOR = reconciler.METRICS_VALIDATOR
-    try:
-        try:
-            reconciler.main()
-        except reconciler.Fail as exc:
-            if "operability validator authority drift" not in str(exc):
-                raise RuntimeError(f"operability validator substitution rejected at wrong boundary: {exc}") from exc
-        else:
-            raise RuntimeError("reconciler accepted operability validator executable substitution")
-        if CONTRACT.read_bytes() != contract_bytes or STATUS.read_bytes() != status_bytes:
-            raise RuntimeError("validator substitution mutated observability stack authority")
-    finally:
-        reconciler.OPERABILITY_VALIDATOR = original_operability
+            setattr(reconciler, field, substitute)
+            try:
+                reconciler.main()
+            except reconciler.Fail as exc:
+                if expected_message not in str(exc):
+                    raise RuntimeError(f"{field} substitution rejected at wrong boundary: {exc}") from exc
+            else:
+                raise RuntimeError(f"reconciler accepted {field} authority substitution")
+            if CONTRACT.read_bytes() != contract_bytes or STATUS.read_bytes() != status_bytes:
+                raise RuntimeError(f"{field} substitution mutated observability stack authority")
+        finally:
+            setattr(reconciler, field, original)
+    reconciler.enforce_runtime_authorities()
 
 
 def create_descendant_commit() -> str:
@@ -314,7 +312,7 @@ def main() -> int:
     expect_aggregate_post_write_rollback(contract_bytes, status_bytes)
 
     print("PASS: observability stack registry/source-binding/review/lock corruption is rejected without mutation")
-    print("PASS: observability stack reconciler rejects canonical executable/registry substitution without mutation")
+    print("PASS: observability stack reconciler rejects all canonical executable authority substitutions without mutation")
     print("PASS: observability stack direct append rolls back on post-append validation failure")
     print("PASS: observability stack post-write and aggregate validation failures roll back contract and status")
     print("generic repository JSON accepted as independent review: false")
