@@ -30,7 +30,15 @@ def load_generator():
 
 def expect_runtime_authority_identity(module) -> None:
     module.enforce_runtime_authorities()
+    output_before = module.OUTPUT.read_bytes() if module.OUTPUT.exists() else None
     substitutions = (
+        ("RELEASES", ROOT / "contracts/operations/client-baseline-registry.v1.json"),
+        ("PAIRS", ROOT / "contracts/operations/release-baseline-registry.v1.json"),
+        ("CLIENTS", ROOT / "contracts/operations/parser-artifact-registry.v1.json"),
+        ("PARSERS", ROOT / "contracts/operations/client-baseline-registry.v1.json"),
+        ("FOUNDATIONS", ROOT / "contracts/operations/version-compatibility-execution-evidence.v1.json"),
+        ("EXECUTION", ROOT / "contracts/operations/version-compatibility-foundations.v1.json"),
+        ("OUTPUT", ROOT / "contracts/operations/version-compatibility-foundations.v1.json"),
         ("RELEASE_WRITER", ROOT / "scripts/request-memory-os-rollback-rehearsal.py"),
         ("PAIR_WRITER", ROOT / "scripts/register-memory-os-client-baseline.py"),
         ("CLIENT_WRITER", ROOT / "scripts/register-memory-os-parser-artifact.py"),
@@ -50,6 +58,15 @@ def expect_runtime_authority_identity(module) -> None:
             except SystemExit:
                 rejected = True
             require(rejected, f"compatibility gap generator accepted {field} authority substitution")
+            if output_before is None:
+                require(not original.exists() if field == "OUTPUT" else True,
+                        "rejected output substitution unexpectedly created canonical compatibility projection")
+            else:
+                require(module.OUTPUT_REL == Path("contracts/operations/compatibility-admission-gaps.v1.json"),
+                        "canonical compatibility output relative authority drifted during substitution test")
+                canonical_output = ROOT / module.OUTPUT_REL
+                require(canonical_output.read_bytes() == output_before,
+                        f"rejected {field} substitution mutated canonical compatibility projection")
         finally:
             setattr(module, field, original)
     module.enforce_runtime_authorities()
@@ -147,7 +164,7 @@ def main() -> int:
     require(module.non_negative_count(0, "validZero") == 0, "zero count should remain valid")
     expect_pair_authority_rejection(module)
     expect_projection_rollback(module)
-    print("PASS: compatibility admission counts, exact executable authority and projection rollback fail closed")
+    print("PASS: compatibility admission counts, exact data/executable authority and projection rollback fail closed")
     return 0
 
 
