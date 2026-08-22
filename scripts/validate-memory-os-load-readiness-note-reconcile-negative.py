@@ -9,7 +9,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-load-readiness-note.py"
 CANONICAL_LOAD = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
-LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
 
 
 def load_module():
@@ -26,6 +25,7 @@ def authority_substitution_rejected(module) -> None:
     substitutions = (
         ("LOAD_PATH", RECONCILER, "load contract authority drift"),
         ("LOAD_VALIDATOR", RECONCILER, "load validator authority drift"),
+        ("OPERABILITY_VALIDATOR", RECONCILER, "operability validator authority drift"),
     )
     for attr, substitute, expected in substitutions:
         current = getattr(module, attr)
@@ -44,11 +44,7 @@ def authority_substitution_rejected(module) -> None:
             setattr(module, attr, current)
 
 
-def main() -> int:
-    module = load_module()
-    original = CANONICAL_LOAD.read_bytes()
-    authority_substitution_rejected(module)
-
+def rejected_load_validator_rolls_back(module, original: bytes) -> None:
     calls = 0
     original_validate = module.validate_canonical_load
 
@@ -67,19 +63,63 @@ def main() -> int:
             if "synthetic post-write load authority rejection" not in str(exc):
                 raise RuntimeError(f"unexpected rejection: {exc}") from exc
         else:
-            raise RuntimeError("reconciler accepted synthetic post-write validator failure")
-
+            raise RuntimeError("reconciler accepted synthetic post-write load validator failure")
         if calls != 2:
-            raise RuntimeError(f"canonical validator call count drift: {calls}")
+            raise RuntimeError(f"canonical load validator call count drift: {calls}")
         if CANONICAL_LOAD.read_bytes() != original:
-            raise RuntimeError("load authority was not restored byte-for-byte after post-write rejection")
+            raise RuntimeError("load authority was not restored after post-write load rejection")
     finally:
         module.validate_canonical_load = original_validate
         CANONICAL_LOAD.write_bytes(original)
 
+
+def rejected_operability_validator_rolls_back(module, original: bytes) -> None:
+    load_calls = 0
+    operability_calls = 0
+    original_load_validate = module.validate_canonical_load
+    original_operability_validate = module.validate_canonical_operability
+
+    def controlled_load_validator() -> None:
+        nonlocal load_calls
+        load_calls += 1
+
+    def controlled_operability_validator() -> None:
+        nonlocal operability_calls
+        operability_calls += 1
+        raise SystemExit("synthetic post-write aggregate operability rejection")
+
+    module.validate_canonical_load = controlled_load_validator
+    module.validate_canonical_operability = controlled_operability_validator
+    try:
+        try:
+            module.main()
+        except SystemExit as exc:
+            if "synthetic post-write aggregate operability rejection" not in str(exc):
+                raise RuntimeError(f"unexpected aggregate rejection: {exc}") from exc
+        else:
+            raise RuntimeError("reconciler accepted synthetic post-write aggregate operability failure")
+        if load_calls != 2:
+            raise RuntimeError(f"canonical load validator call count drift during aggregate rejection: {load_calls}")
+        if operability_calls != 1:
+            raise RuntimeError(f"canonical operability validator call count drift: {operability_calls}")
+        if CANONICAL_LOAD.read_bytes() != original:
+            raise RuntimeError("load authority was not restored after aggregate operability rejection")
+    finally:
+        module.validate_canonical_load = original_load_validate
+        module.validate_canonical_operability = original_operability_validate
+        CANONICAL_LOAD.write_bytes(original)
+
+
+def main() -> int:
+    module = load_module()
+    original = CANONICAL_LOAD.read_bytes()
+    authority_substitution_rejected(module)
+    rejected_load_validator_rolls_back(module, original)
+    rejected_operability_validator_rolls_back(module, original)
+
     if CANONICAL_LOAD.read_bytes() != original:
         raise RuntimeError("canonical load authority was not restored")
-    print("PASS: load readiness-note reconcile pins canonical authority identity and rolls back rejected post-write authority")
+    print("PASS: load readiness-note reconcile pins canonical authority identity and rolls back load/aggregate rejection")
     return 0
 
 
