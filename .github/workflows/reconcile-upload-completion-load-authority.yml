@@ -45,7 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -53,11 +53,13 @@ jobs:
       - name: Capture exact source
         run: |
           set -euo pipefail
-          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
-            git fetch origin so
-            test "$(git rev-parse origin/so)" = "$(git rev-parse HEAD)"
+          test -z "$(git status --porcelain)"
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          else
+            test "$(git rev-parse HEAD)" = "${{ github.sha }}"
           fi
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - name: Reconcile exact-source local proof into canonical load authority
         run: |
           set -euo pipefail
