@@ -297,6 +297,7 @@ def main() -> int:
             "compatibility foundations changed readiness")
 
     if not changed:
+        run_canonical_validators()
         print("Compatibility foundation status already reconciled")
         return 0
     status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
