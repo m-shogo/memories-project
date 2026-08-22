@@ -37,6 +37,17 @@ CANONICAL_EXECUTABLES = {
     "release compatibility pair writer": ROOT / "scripts/register-memory-os-release-compatibility-pair.py",
     "environment generation writer": ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py",
 }
+CANONICAL_DATA_AUTHORITIES = {
+    "migration admission contract": ROOT / "contracts/operations/migration-production-shaped-admission-contract.v1.json",
+    "migration admission registry": ROOT / "contracts/operations/migration-production-shaped-admission-registry.v1.json",
+    "migration admission workflow": ROOT / ".github/workflows/migration-production-shaped-admission.yml",
+    "release baseline registry": ROOT / "contracts/operations/release-baseline-registry.v1.json",
+    "release baseline contract": ROOT / "contracts/operations/release-baseline-registry-contract.v1.json",
+    "release compatibility pair registry": ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json",
+    "environment generation registry": ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+    "migration lifecycle contract": ROOT / "contracts/operations/migration-lifecycle-contract.v1.json",
+    "production operability status": ROOT / "contracts/operations/production-operability-status.json",
+}
 
 EVIDENCE = (
     "production-shaped migration rehearsal admission is generation-bound and reuses the canonical append-only migration evidence ledger: admission additionally requires a registered environment generation, an approved predecessor/successor release pair, generation-consistent recovery evidence, mixed-version observation and independent security/operability review; the admission registry is currently empty"
@@ -66,8 +77,7 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def require_exact_executable(path: Path, label: str) -> None:
-    canonical = CANONICAL_EXECUTABLES[label]
+def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
     require(path == canonical, f"{label} authority drift")
     try:
         lexical = path.relative_to(ROOT)
@@ -75,6 +85,14 @@ def require_exact_executable(path: Path, label: str) -> None:
     except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
         raise Fail(f"canonical {label} missing or escapes repository") from exc
     require(lexical == resolved and path.is_file() and not path.is_symlink(), f"{label} authority drift")
+
+
+def require_exact_executable(path: Path, label: str) -> None:
+    require_exact_authority(path, CANONICAL_EXECUTABLES[label], label)
+
+
+def require_exact_data_authority(path: Path, label: str) -> None:
+    require_exact_authority(path, CANONICAL_DATA_AUTHORITIES[label], label)
 
 
 def enforce_runtime_authorities() -> None:
@@ -88,6 +106,18 @@ def enforce_runtime_authorities() -> None:
         (GENERATION_WRITER, "environment generation writer"),
     ):
         require_exact_executable(path, label)
+    for path, label in (
+        (CONTRACT, "migration admission contract"),
+        (REGISTRY, "migration admission registry"),
+        (WORKFLOW, "migration admission workflow"),
+        (RELEASES, "release baseline registry"),
+        (RELEASE_CONTRACT, "release baseline contract"),
+        (RELEASE_PAIRS, "release compatibility pair registry"),
+        (GENERATIONS, "environment generation registry"),
+        (LIFECYCLE, "migration lifecycle contract"),
+        (STATUS, "production operability status"),
+    ):
+        require_exact_data_authority(path, label)
 
 
 def load_module(path: Path, name: str, label: str) -> ModuleType:
@@ -114,22 +144,6 @@ def append_once(values: list[Any], value: str) -> None:
 
 def main() -> int:
     enforce_runtime_authorities()
-    for path in (
-        REGISTRY,
-        VALIDATOR,
-        LIFECYCLE_VALIDATOR,
-        OPERABILITY_VALIDATOR,
-        WRITER,
-        WORKFLOW,
-        RELEASES,
-        RELEASE_CONTRACT,
-        RELEASE_WRITER,
-        RELEASE_PAIRS,
-        RELEASE_PAIR_WRITER,
-        GENERATIONS,
-        GENERATION_WRITER,
-    ):
-        require(path.is_file(), f"migration production admission authority missing: {path.relative_to(ROOT)}")
     registry = load(REGISTRY)
     writer = load_writer()
     try:
