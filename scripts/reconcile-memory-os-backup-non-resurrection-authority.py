@@ -75,26 +75,17 @@ def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> 
     return path
 
 def enforce_runtime_authorities() -> None:
-    canonical_contract = CONTRACT == ROOT / CONTRACT_REL
-    canonical_registry = REGISTRY == ROOT / REGISTRY_REL
-    canonical_generation = GEN_REGISTRY == ROOT / GEN_REGISTRY_REL
-    canonical_status = STATUS == ROOT / STATUS_REL
-    require(
-        len({canonical_contract, canonical_registry, canonical_generation, canonical_status}) == 1,
-        "typed reconcile fixture boundary must replace typed registry, generation registry, contract and status together",
-    )
-    require_exact_repo_file(TYPED_WRITER, TYPED_WRITER_REL, "typed non-resurrection writer")
-    require_exact_repo_file(GEN_WRITER, GEN_WRITER_REL, "generation evidence writer")
-    if canonical_contract:
-        for path, expected, field in (
-            (CONTRACT, CONTRACT_REL, "typed non-resurrection contract"),
-            (REGISTRY, REGISTRY_REL, "typed non-resurrection registry"),
-            (GEN_REGISTRY, GEN_REGISTRY_REL, "generation evidence registry"),
-            (VALIDATOR, VALIDATOR_REL, "typed non-resurrection validator"),
-            (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
-            (STATUS, STATUS_REL, "production operability status"),
-        ):
-            require_exact_repo_file(path, expected, field)
+    for path, expected, field in (
+        (CONTRACT, CONTRACT_REL, "typed non-resurrection contract"),
+        (REGISTRY, REGISTRY_REL, "typed non-resurrection registry"),
+        (GEN_REGISTRY, GEN_REGISTRY_REL, "generation evidence registry"),
+        (TYPED_WRITER, TYPED_WRITER_REL, "typed non-resurrection writer"),
+        (GEN_WRITER, GEN_WRITER_REL, "generation evidence writer"),
+        (VALIDATOR, VALIDATOR_REL, "typed non-resurrection validator"),
+        (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+        (STATUS, STATUS_REL, "production operability status"),
+    ):
+        require_exact_repo_file(path, expected, field)
 
 def read_text(path: Path) -> str:
     relative = repo_relative(path)
@@ -140,10 +131,7 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 def run_post_validator(path: Path, expected_relative: Path, label: str) -> None:
-    if CONTRACT == ROOT / CONTRACT_REL:
-        require_exact_repo_file(path, expected_relative, label)
-    else:
-        require_repo_file(path, f"{label} missing")
+    require_exact_repo_file(path, expected_relative, label)
     completed = subprocess.run(
         [sys.executable, str(path)],
         cwd=ROOT,
@@ -268,7 +256,7 @@ def main() -> int:
         raise
 
     print("Memory OS backup/restore typed non-resurrection authority reconciliation PASS")
-    print("canonical typed/generation writer and validator authorities enforced: true")
+    print("canonical typed/generation data, writer and validator authorities enforced: true")
     print(f"pre-overlay eligible generation records: {len(base_candidate_ids)}")
     print(f"final production-equivalent recovery candidates: {len(final_candidate_ids)}")
     print(f"pending typed coverage: {len(pending_typed_ids)}")
