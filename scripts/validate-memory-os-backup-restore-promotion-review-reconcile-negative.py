@@ -9,7 +9,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-promotion-review.py"
-CANONICAL_CONTRACT = ROOT / "contracts/operations/backup-restore-promotion-review.v1.json"
+CANONICAL_CONTRACT = ROOT / "contracts/operations/backup-restore-promotion-review-contract.v1.json"
 CANONICAL_REGISTRY = ROOT / "contracts/operations/backup-restore-promotion-review-registry.v1.json"
 
 
