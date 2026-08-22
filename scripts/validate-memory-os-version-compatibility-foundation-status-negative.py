@@ -221,6 +221,40 @@ def expect_aggregate_validator_chain(reconciler) -> None:
             "foundation reconciler does not enforce foundation/operability validators in order")
 
 
+def expect_noop_aggregate_validation(reconciler) -> None:
+    original_foundation = reconciler.FOUNDATION_PATH.read_bytes()
+    original_status = reconciler.STATUS_PATH.read_bytes()
+    observed: list[Path] = []
+    original_run = reconciler.run_validator
+    original_reconcile = reconciler.reconcile_existing_evidence
+    original_append = reconciler.append_once
+    original_remove = reconciler.remove_value
+
+    def fake_run(path: Path, _label: str) -> None:
+        observed.append(path)
+
+    reconciler.run_validator = fake_run
+    reconciler.reconcile_existing_evidence = lambda _items, _counts: False
+    reconciler.append_once = lambda _items, _value: False
+    reconciler.remove_value = lambda _items, _value: False
+    try:
+        result = reconciler.main()
+    finally:
+        reconciler.run_validator = original_run
+        reconciler.reconcile_existing_evidence = original_reconcile
+        reconciler.append_once = original_append
+        reconciler.remove_value = original_remove
+    require(result == 0, "foundation no-op reconcile did not succeed")
+    require(
+        observed == [reconciler.FOUNDATION_VALIDATOR_PATH, reconciler.OPERABILITY_VALIDATOR_PATH],
+        "foundation no-op reconcile bypassed canonical aggregate validators",
+    )
+    require(reconciler.FOUNDATION_PATH.read_bytes() == original_foundation,
+            "foundation no-op reconcile mutated foundation authority")
+    require(reconciler.STATUS_PATH.read_bytes() == original_status,
+            "foundation no-op reconcile mutated production status")
+
+
 def expect_canonical_transaction_rollback(reconciler) -> None:
     path = reconciler.PATH
     original = path.read_bytes()
@@ -306,6 +340,7 @@ def main() -> int:
     expect_nonempty_source_inventory_allowed(validator, validator_mode=True)
     expect_stale_empty_evidence_cleanup(reconciler)
     expect_aggregate_validator_chain(reconciler)
+    expect_noop_aggregate_validation(reconciler)
     expect_canonical_transaction_rollback(canonical_reconciler)
     expect_aggregate_transaction_rollback(reconciler)
 
