@@ -67,21 +67,17 @@ def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> 
 
 
 def enforce_runtime_authorities() -> None:
-    canonical_contract = CONTRACT == ROOT / CONTRACT_REL
-    canonical_status = STATUS == ROOT / STATUS_REL
-    require(canonical_contract is canonical_status, "contact routing fixture boundary must replace contract and status together")
-    if canonical_contract:
-        for path, relative, field in (
-            (CONTRACT, CONTRACT_REL, "contact routing contract"),
-            (REGISTRY, REGISTRY_REL, "contact routing registry"),
-            (WRITER, WRITER_REL, "contact routing writer"),
-            (VALIDATOR, VALIDATOR_REL, "contact routing validator"),
-            (INCIDENT_RESPONSE_VALIDATOR, INCIDENT_RESPONSE_VALIDATOR_REL, "incident response validator"),
-            (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
-            (WORKFLOW, WORKFLOW_REL, "contact routing workflow"),
-            (STATUS, STATUS_REL, "production operability status"),
-        ):
-            require_exact_repo_file(path, relative, field)
+    for path, relative, field in (
+        (CONTRACT, CONTRACT_REL, "contact routing contract"),
+        (REGISTRY, REGISTRY_REL, "contact routing registry"),
+        (WRITER, WRITER_REL, "contact routing writer"),
+        (VALIDATOR, VALIDATOR_REL, "contact routing validator"),
+        (INCIDENT_RESPONSE_VALIDATOR, INCIDENT_RESPONSE_VALIDATOR_REL, "incident response validator"),
+        (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+        (WORKFLOW, WORKFLOW_REL, "contact routing workflow"),
+        (STATUS, STATUS_REL, "production operability status"),
+    ):
+        require_exact_repo_file(path, relative, field)
 
 
 def load(path: Path) -> dict[str, Any]:
