@@ -18,6 +18,7 @@ VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-rate-limit-distributed-runti
 RECONCILER_PATH = ROOT / "scripts/reconcile-memory-os-rate-limit-distributed-runtime.py"
 ALTERNATE_EXECUTABLE = ROOT / "scripts/validate-memory-os-rate-limit.py"
 ALTERNATE_LOCK = ROOT / "contracts/operations/.rate-limit-distributed-runtime-substitute.lock"
+ALTERNATE_WORKFLOW = ROOT / ".github/workflows/incident-contact-routing-admission.yml"
 
 
 def load_module(path: Path, name: str) -> Any:
@@ -74,9 +75,12 @@ def expect_direct_reconcile_rejected(reconciler: Any, name: str, expected: str, 
 def prove_executable_authority_rejection(validator: Any, writer: Any, reconciler: Any) -> None:
     original_lock = writer.LOCK
     original_generation_writer = writer.GEN_WRITER
+    original_reconciler_contract = reconciler.CONTRACT
+    original_reconciler_registry = reconciler.REGISTRY
     original_reconciler_validator = reconciler.VALIDATOR
     original_reconciler_status = reconciler.STATUS
     original_reconciler_operability = reconciler.OPERABILITY_VALIDATOR
+    original_reconciler_workflow = reconciler.WORKFLOW
     contract_before = CONTRACT.read_bytes()
     status_before = STATUS.read_bytes()
     try:
@@ -96,30 +100,27 @@ def prove_executable_authority_rejection(validator: Any, writer: Any, reconciler
         )
         writer.GEN_WRITER = original_generation_writer
 
-        reconciler.VALIDATOR = ALTERNATE_EXECUTABLE
-        expect_authority_rejected(
-            validator,
-            "reconciler validator substitution",
-            lambda: validator.validate_reconciler_authority(reconciler),
+        direct_substitutions = (
+            ("CONTRACT", STATUS, "distributed runtime contract authority drift"),
+            ("REGISTRY", STATUS, "distributed runtime registry authority drift"),
+            ("VALIDATOR", ALTERNATE_EXECUTABLE, "distributed runtime validator authority drift"),
+            ("OPERABILITY_VALIDATOR", reconciler.RATE_LIMIT_VALIDATOR, "operability validator authority drift"),
+            ("WORKFLOW", ALTERNATE_WORKFLOW, "distributed runtime workflow authority drift"),
+            ("STATUS", CONTRACT, "production operability status authority drift"),
         )
-        expect_direct_reconcile_rejected(
-            reconciler,
-            "reconciler validator substitution",
-            "distributed runtime validator authority drift",
-            contract_before,
-            status_before,
-        )
-        reconciler.VALIDATOR = original_reconciler_validator
-
-        reconciler.OPERABILITY_VALIDATOR = reconciler.RATE_LIMIT_VALIDATOR
-        expect_direct_reconcile_rejected(
-            reconciler,
-            "reconciler operability validator substitution",
-            "operability validator authority drift",
-            contract_before,
-            status_before,
-        )
-        reconciler.OPERABILITY_VALIDATOR = original_reconciler_operability
+        for field, substitute, expected in direct_substitutions:
+            original = getattr(reconciler, field)
+            try:
+                setattr(reconciler, field, substitute)
+                expect_direct_reconcile_rejected(
+                    reconciler,
+                    f"reconciler {field.lower()} substitution",
+                    expected,
+                    contract_before,
+                    status_before,
+                )
+            finally:
+                setattr(reconciler, field, original)
 
         reconciler.STATUS = CONTRACT
         expect_authority_rejected(
@@ -130,9 +131,12 @@ def prove_executable_authority_rejection(validator: Any, writer: Any, reconciler
     finally:
         writer.LOCK = original_lock
         writer.GEN_WRITER = original_generation_writer
+        reconciler.CONTRACT = original_reconciler_contract
+        reconciler.REGISTRY = original_reconciler_registry
         reconciler.VALIDATOR = original_reconciler_validator
         reconciler.STATUS = original_reconciler_status
         reconciler.OPERABILITY_VALIDATOR = original_reconciler_operability
+        reconciler.WORKFLOW = original_reconciler_workflow
         CONTRACT.write_bytes(contract_before)
         STATUS.write_bytes(status_before)
 
@@ -286,8 +290,8 @@ def main() -> int:
 
     print("PASS: distributed rate-limit runtime registry corruption, authority substitution, append rollback and reconcile partial writes are rejected")
     print(f"corruption cases: {len(cases)}")
-    print("executable authority substitution: rejected")
-    print("direct reconciler executable substitution: rejected")
+    print("executable/data authority substitution: rejected")
+    print("direct reconciler executable/data substitution: rejected")
     print("contract append lock substitution: rejected")
     print("writer post-append rollback: true")
     print("reconciler auto-heal: false")
