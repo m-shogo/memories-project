@@ -18,6 +18,7 @@ CANONICAL_STATUS_PATH = ROOT / "contracts/operations/production-operability-stat
 CANONICAL_METRICS_VALIDATOR = ROOT / "scripts/validate-memory-os-metrics.py"
 CANONICAL_OPERATIONS_VALIDATOR = ROOT / "scripts/validate-memory-os-metrics-operations.py"
 CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CANONICAL_ENTRY_DOCS_VALIDATOR = ROOT / "scripts/validate-memory-os-entry-docs.py"
 METRICS_PATH = CANONICAL_METRICS_PATH
 DASHBOARD_PATH = CANONICAL_DASHBOARD_PATH
 RETENTION_PATH = CANONICAL_RETENTION_PATH
@@ -25,6 +26,7 @@ STATUS_PATH = CANONICAL_STATUS_PATH
 METRICS_VALIDATOR = CANONICAL_METRICS_VALIDATOR
 OPERATIONS_VALIDATOR = CANONICAL_OPERATIONS_VALIDATOR
 OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
+ENTRY_DOCS_VALIDATOR = CANONICAL_ENTRY_DOCS_VALIDATOR
 
 OLD_DASHBOARD_GAP = (
     "dashboards and load-calibrated histogram buckets and SLO targets "
@@ -88,6 +90,7 @@ def enforce_runtime_authorities() -> None:
         (METRICS_VALIDATOR, CANONICAL_METRICS_VALIDATOR, "metrics validator"),
         (OPERATIONS_VALIDATOR, CANONICAL_OPERATIONS_VALIDATOR, "metrics operations validator"),
         (OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, "operability validator"),
+        (ENTRY_DOCS_VALIDATOR, CANONICAL_ENTRY_DOCS_VALIDATOR, "entry docs validator"),
     ):
         require_exact_authority(path, canonical, label)
 
@@ -126,7 +129,12 @@ def validate_source_authority() -> None:
 
 
 def validate_written_authority() -> None:
-    for path in (METRICS_VALIDATOR, OPERATIONS_VALIDATOR, OPERABILITY_VALIDATOR):
+    for path in (
+        METRICS_VALIDATOR,
+        OPERATIONS_VALIDATOR,
+        OPERABILITY_VALIDATOR,
+        ENTRY_DOCS_VALIDATOR,
+    ):
         run_validator(path)
 
 
