@@ -45,7 +45,7 @@ jobs:
       - name: Checkout exact source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || 'so' }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -54,9 +54,14 @@ jobs:
           python-version: "3.12"
 
       - name: Confirm clean source and compile tools
+        env:
+          EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         run: |
+          set -euo pipefail
           test -z "$(git status --porcelain)"
-          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          test -n "$EXPECTED_SHA"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          echo "SOURCE_SHA=$EXPECTED_SHA" >> "$GITHUB_ENV"
           bash -n scripts/run-memory-os-postgresql-major-upgrade.sh
           python -m py_compile \
             scripts/validate-memory-os-postgresql-major-upgrade.py \
