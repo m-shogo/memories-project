@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pin monotonicity and rollback for compatibility execution status reconciliation."""
+"""Pin monotonicity, authority identity and rollback for compatibility execution status reconciliation."""
 
 from __future__ import annotations
 
@@ -9,6 +9,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-version-compatibility-execution-status.py"
+STATUS = ROOT / "contracts/operations/production-operability-status.json"
+EXECUTION = ROOT / "contracts/operations/version-compatibility-execution-evidence.v1.json"
+VALIDATOR = ROOT / "scripts/validate-memory-os-version-compatibility-execution-evidence.py"
 
 
 class NegativeFailure(RuntimeError):
@@ -108,12 +111,40 @@ def expect_validator_order(module) -> None:
     )
 
 
+def expect_authority_substitution_rejected(status_bytes: bytes) -> None:
+    substitutions = (
+        ("EXECUTION", STATUS),
+        ("STATUS", EXECUTION),
+        ("VALIDATOR", STATUS),
+        ("CANONICAL_VALIDATOR", VALIDATOR),
+        ("FOUNDATION_VALIDATOR", VALIDATOR),
+        ("OPERABILITY_VALIDATOR", VALIDATOR),
+        ("WORKFLOW", VALIDATOR),
+    )
+    for index, (attribute, replacement) in enumerate(substitutions):
+        module = load_module(RECONCILER, f"version_compat_execution_authority_{index}")
+        setattr(module, attribute, replacement)
+        try:
+            module.main()
+        except module.Fail:
+            pass
+        else:
+            raise NegativeFailure(f"execution status reconciler accepted {attribute} substitution")
+        require(
+            STATUS.read_bytes() == status_bytes,
+            f"execution status reconciler mutated production authority after {attribute} substitution",
+        )
+
+
 def main() -> int:
+    original_status = STATUS.read_bytes()
     module = load_module(RECONCILER, "version_compatibility_execution_status_reconciler")
     expect_validator_order(module)
     expect_blocker_monotonicity(module)
     expect_post_write_rollback(module)
-    print("PASS: compatibility execution status preserves stronger blockers and rolls back aggregate failures")
+    expect_authority_substitution_rejected(original_status)
+    require(STATUS.read_bytes() == original_status, "execution status negative suite mutated production authority")
+    print("PASS: compatibility execution status pins canonical authorities, preserves stronger blockers and rolls back aggregate failures")
     return 0
 
 
