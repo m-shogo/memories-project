@@ -118,35 +118,30 @@ def expect_validator_rejected(label: str) -> None:
 
 def expect_reconciler_authority_rejected(contract_bytes: bytes, status_bytes: bytes) -> None:
     reconciler = load_reconciler()
-    original_writer = reconciler.WRITER
-    reconciler.WRITER = reconciler.VALIDATOR
-    try:
+    substitutions = (
+        ("REGISTRY", reconciler.STATUS, "contact routing registry authority drift"),
+        ("WRITER", reconciler.VALIDATOR, "contact routing writer authority drift"),
+        ("VALIDATOR", reconciler.OPERABILITY_VALIDATOR, "contact routing validator authority drift"),
+        ("INCIDENT_RESPONSE_VALIDATOR", reconciler.OPERABILITY_VALIDATOR, "incident response validator authority drift"),
+        ("OPERABILITY_VALIDATOR", reconciler.INCIDENT_RESPONSE_VALIDATOR, "operability validator authority drift"),
+        ("WORKFLOW", ROOT / ".github/workflows/incident-control-exercise.yml", "contact routing workflow authority drift"),
+    )
+    for field, substitute, expected_message in substitutions:
+        original = getattr(reconciler, field)
         try:
-            reconciler.main()
-        except reconciler.Fail as exc:
-            if "contact routing writer authority drift" not in str(exc):
-                raise RuntimeError(f"writer substitution rejected at wrong boundary: {exc}") from exc
-        else:
-            raise RuntimeError("contact routing reconciler accepted writer executable substitution")
-        if CONTRACT.read_bytes() != contract_bytes or STATUS.read_bytes() != status_bytes:
-            raise RuntimeError("writer substitution mutated contact routing authority")
-    finally:
-        reconciler.WRITER = original_writer
-
-    original_operability = reconciler.OPERABILITY_VALIDATOR
-    reconciler.OPERABILITY_VALIDATOR = reconciler.INCIDENT_RESPONSE_VALIDATOR
-    try:
-        try:
-            reconciler.main()
-        except reconciler.Fail as exc:
-            if "operability validator authority drift" not in str(exc):
-                raise RuntimeError(f"operability validator substitution rejected at wrong boundary: {exc}") from exc
-        else:
-            raise RuntimeError("contact routing reconciler accepted operability validator executable substitution")
-        if CONTRACT.read_bytes() != contract_bytes or STATUS.read_bytes() != status_bytes:
-            raise RuntimeError("validator substitution mutated contact routing authority")
-    finally:
-        reconciler.OPERABILITY_VALIDATOR = original_operability
+            setattr(reconciler, field, substitute)
+            try:
+                reconciler.main()
+            except reconciler.Fail as exc:
+                if expected_message not in str(exc):
+                    raise RuntimeError(f"{field} substitution rejected at wrong boundary: {exc}") from exc
+            else:
+                raise RuntimeError(f"contact routing reconciler accepted {field} authority substitution")
+            if CONTRACT.read_bytes() != contract_bytes or STATUS.read_bytes() != status_bytes:
+                raise RuntimeError(f"{field} substitution mutated contact routing authority")
+        finally:
+            setattr(reconciler, field, original)
+    reconciler.enforce_runtime_authorities()
 
 
 def create_descendant_commit() -> str:
@@ -336,7 +331,7 @@ def main() -> int:
     if OBS_REGISTRY.read_bytes() != observability_registry_bytes:
         raise RuntimeError("negative validation failed to restore observability stack registry")
     print("PASS: contact routing rejects local/upstream/review/lock authority corruption without mutation")
-    print("PASS: contact routing reconciler rejects canonical executable/registry substitution without mutation")
+    print("PASS: contact routing reconciler rejects all canonical executable/data authority substitutions without mutation")
     print("PASS: contact routing direct append rolls back on post-append validation failure")
     print("PASS: contact routing post-write and aggregate validation failures roll back contract and status")
     print("generic repository JSON accepted as privacy/operability review: false")
