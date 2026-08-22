@@ -312,6 +312,7 @@ def main() -> int:
     status_changed = reconcile_status(status, approved_count, rollback_eligible)
 
     if not contract_changed and not status_changed:
+        run_canonical_validators()
         print("Release baseline registry authority already reconciled")
         return 0
     status["asOf"] = dt.datetime.now(dt.timezone.utc).date().isoformat()
