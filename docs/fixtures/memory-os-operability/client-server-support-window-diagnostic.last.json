@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "client-server-support-window",
+  "result": "FAIL",
+  "sourceCommitSha": "423c6fcb6036c61cd71eedeffe3ab2735d617a7b",
+  "exitCode": 1,
+  "output": "Memory OS client/server support-window status reconciliation PASS\napproved backend releases: 0\napproved client baselines: 0\nadmissible skew pairs: 0\nruntime support window: false\nOPS-P0-008: PARTIAL\nproductionDecision: NO_GO\nMemory OS client/server support-window validation PASS\napproved backend releases: 0\napproved client baselines: 0\nadmissible skew pairs: 0\nclient/server skew evidence: false\nproduction evidence: false\nproduction decision: NO_GO\nCLIENT SERVER SUPPORT WINDOW NEGATIVE FAILED: rejected CONTRACT substitution mutated canonical client baseline contract\nMemory OS client/server support-window validation PASS\napproved backend releases: 0\napproved client baselines: 0\nadmissible skew pairs: 0\nclient/server skew evidence: false\nproduction evidence: false\nproduction decision: NO_GO\n",
+  "containsSecrets": false,
+  "clientServerSkewEvidence": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
