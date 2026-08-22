@@ -26,13 +26,21 @@ COUNT_FIELDS = (
 )
 
 
-def load_writer():
-    spec = importlib.util.spec_from_file_location("rollback_rehearsal_writer", WRITER)
+def load_module(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
-        raise RuntimeError("cannot load rollback rehearsal writer")
+        raise RuntimeError(f"cannot load module: {path.relative_to(ROOT)}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def load_writer():
+    return load_module(WRITER, "rollback_rehearsal_writer")
+
+
+def load_reconciler(name: str):
+    return load_module(RECONCILER, name)
 
 
 def rejected(candidate: dict, label: str) -> None:
@@ -96,6 +104,58 @@ def reconciler_repairs_derived_drift(base: dict, contract_bytes: bytes, status_b
         raise RuntimeError("rollback reconciler changed production status while repairing derived drift")
 
 
+def reconciler_rejects_authority_substitution(contract_bytes: bytes, status_bytes: bytes) -> None:
+    substitutions = (
+        ("CONTRACT_PATH", STATUS),
+        ("RELEASE_REGISTRY_PATH", CONTRACT),
+        ("REHEARSAL_REGISTRY_PATH", CONTRACT),
+        ("STATUS_PATH", CONTRACT),
+        ("WRITER_PATH", VALIDATOR),
+        ("VALIDATOR_PATH", WRITER),
+        ("RELEASE_VALIDATOR_PATH", VALIDATOR),
+        ("VERSION_VALIDATOR_PATH", VALIDATOR),
+        ("OPERABILITY_VALIDATOR_PATH", VALIDATOR),
+        ("WORKFLOW_PATH", VALIDATOR),
+    )
+    for index, (attribute, replacement) in enumerate(substitutions):
+        module = load_reconciler(f"rollback_reconcile_authority_{index}")
+        setattr(module, attribute, replacement)
+        try:
+            module.main()
+        except module.ReconcileFailure:
+            pass
+        else:
+            raise RuntimeError(f"rollback reconciler accepted {attribute} substitution")
+        if CONTRACT.read_bytes() != contract_bytes:
+            raise RuntimeError(f"rollback contract mutated after {attribute} substitution")
+        if STATUS.read_bytes() != status_bytes:
+            raise RuntimeError(f"production status mutated after {attribute} substitution")
+
+
+def reconciler_noop_requires_canonical_validators(contract_bytes: bytes, status_bytes: bytes) -> None:
+    module = load_reconciler("rollback_reconcile_noop_validation")
+    module.reconcile_contract = lambda *_args, **_kwargs: False
+    module.reconcile_status = lambda *_args, **_kwargs: False
+
+    class ExpectedNoopValidation(RuntimeError):
+        pass
+
+    def reject_if_called() -> None:
+        raise ExpectedNoopValidation("canonical validator chain reached")
+
+    module.run_canonical_validators = reject_if_called
+    try:
+        module.main()
+    except ExpectedNoopValidation:
+        pass
+    else:
+        raise RuntimeError("rollback reconciler skipped canonical validators on no-op authority")
+    if CONTRACT.read_bytes() != contract_bytes:
+        raise RuntimeError("rollback no-op validator probe mutated canonical contract")
+    if STATUS.read_bytes() != status_bytes:
+        raise RuntimeError("rollback no-op validator probe mutated production status")
+
+
 def main() -> int:
     original = CONTRACT.read_bytes()
     original_status = STATUS.read_bytes()
@@ -140,6 +200,8 @@ def main() -> int:
 
         CONTRACT.write_bytes(original)
         STATUS.write_bytes(original_status)
+        reconciler_rejects_authority_substitution(original, original_status)
+        reconciler_noop_requires_canonical_validators(original, original_status)
         reconciler_repairs_derived_drift(base, original, original_status)
     finally:
         CONTRACT.write_bytes(original)
@@ -149,7 +211,7 @@ def main() -> int:
         raise RuntimeError("rollback contract bytes changed after derived-state negative suite")
     if STATUS.read_bytes() != original_status:
         raise RuntimeError("production status bytes changed after derived-state negative suite")
-    print("PASS: rollback direct authority is strict while deterministic derived drift remains repairable")
+    print("PASS: rollback direct authority is strict, no-op validation is fail-closed, and deterministic derived drift remains repairable")
     return 0
 
 
