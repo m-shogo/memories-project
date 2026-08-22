@@ -19,6 +19,7 @@ WRITER = ROOT / "scripts/register-memory-os-release-compatibility-pair.py"
 VALIDATOR = ROOT / "scripts/validate-memory-os-release-compatibility-pair.py"
 REGISTRY = ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"
 LOCK = ROOT / "contracts/operations/.release-compatibility-pair.lock"
+RECONCILER = ROOT / "scripts/reconcile-memory-os-release-compatibility-pair.py"
 
 
 class Fail(RuntimeError):
@@ -36,15 +37,74 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def load_writer() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("memory_os_release_pair_writer_negative", WRITER)
-    require(spec is not None and spec.loader is not None, "cannot load release pair writer")
+def load_module(path: Path, name: str) -> ModuleType:
+    spec = importlib.util.spec_from_file_location(name, path)
+    require(spec is not None and spec.loader is not None, f"cannot load module: {path.relative_to(ROOT)}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    return module
+
+
+def load_writer() -> ModuleType:
+    module = load_module(WRITER, "memory_os_release_pair_writer_negative")
     require(getattr(module, "CONTRACT", None) == CONTRACT, "release pair writer contract authority drift")
     require(getattr(module, "REGISTRY", None) == REGISTRY, "release pair writer registry authority drift")
     require(getattr(module, "LOCK", None) == LOCK, "release pair writer append lock authority drift")
     return module
+
+
+def prove_reconcile_authority_substitution() -> None:
+    reconciler = load_module(RECONCILER, "memory_os_release_pair_reconciler_authority_negative")
+    reconciler.enforce_runtime_authorities()
+    authority_names = (
+        "CONTRACT",
+        "RELEASES",
+        "REGISTRY",
+        "EXECUTION",
+        "GAPS",
+        "STATUS",
+        "VALIDATOR",
+        "WRITER",
+        "INDEPENDENT_REVIEW_VALIDATOR",
+        "VERSION_EXECUTION_VALIDATOR",
+        "OPERABILITY_VALIDATOR",
+    )
+    originals = {name: getattr(reconciler, name) for name in authority_names}
+    replacements = {
+        "CONTRACT": originals["REGISTRY"],
+        "RELEASES": originals["REGISTRY"],
+        "REGISTRY": originals["RELEASES"],
+        "EXECUTION": originals["GAPS"],
+        "GAPS": originals["EXECUTION"],
+        "STATUS": originals["CONTRACT"],
+        "VALIDATOR": originals["OPERABILITY_VALIDATOR"],
+        "WRITER": originals["VALIDATOR"],
+        "INDEPENDENT_REVIEW_VALIDATOR": originals["VALIDATOR"],
+        "VERSION_EXECUTION_VALIDATOR": originals["OPERABILITY_VALIDATOR"],
+        "OPERABILITY_VALIDATOR": originals["VALIDATOR"],
+    }
+    canonical_contract = originals["CONTRACT"]
+    canonical_status = originals["STATUS"]
+    contract_before = canonical_contract.read_bytes()
+    status_before = canonical_status.read_bytes()
+
+    for name in authority_names:
+        setattr(reconciler, name, replacements[name])
+        try:
+            rejected = False
+            try:
+                reconciler.enforce_runtime_authorities()
+            except reconciler.Fail as exc:
+                require("authority" in str(exc), f"unexpected {name} authority rejection: {exc}")
+                rejected = True
+            require(rejected, f"release pair reconciler accepted substituted authority: {name}")
+            require(canonical_contract.read_bytes() == contract_before,
+                    f"rejected {name} substitution mutated canonical release pair contract")
+            require(canonical_status.read_bytes() == status_before,
+                    f"rejected {name} substitution mutated canonical production status")
+        finally:
+            setattr(reconciler, name, originals[name])
+    reconciler.enforce_runtime_authorities()
 
 
 def git(*args: str) -> str:
@@ -122,6 +182,7 @@ def synthetic_pair(writer: ModuleType) -> dict[str, Any]:
 
 
 def main() -> int:
+    prove_reconcile_authority_substitution()
     writer = load_writer()
     contract_bytes = CONTRACT.read_bytes()
     contract = json.loads(contract_bytes.decode("utf-8"))
@@ -244,7 +305,7 @@ def main() -> int:
 
     require(REGISTRY.read_bytes() == original_registry_bytes,
             "negative suite mutated canonical pair registry")
-    print("PASS: release compatibility pair authority rejects contract substitution, registry corruption, evidence drift, and restores the registry after post-append validation failure")
+    print("PASS: release compatibility pair authority rejects reconciler substitution, contract substitution, registry corruption, evidence drift, and restores the registry after post-append validation failure")
     return 0
 
 
