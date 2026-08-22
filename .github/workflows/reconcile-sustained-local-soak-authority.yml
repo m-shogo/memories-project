@@ -139,8 +139,6 @@ jobs:
             python scripts/validate-memory-os-sustained-soak-independent-review.py >> "$log" 2>&1 || code=$?
             python scripts/validate-memory-os-sustained-soak-independent-review-negative.py >> "$log" 2>&1 || code=$?
             python scripts/validate-memory-os-sustained-soak-human-evidence-path-negative.py >> "$log" 2>&1 || code=$?
-            python scripts/validate-memory-os-sustained-local-soak-reconcile-negative.py >> "$log" 2>&1 || code=$?
-            python scripts/validate-memory-os-local-long-soak-load-projection-negative.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             stage=pending-aggregate
@@ -160,6 +158,12 @@ jobs:
             echo "STAGE: reviewed-aggregate" >> "$log"
             python scripts/update-memory-os-sustained-local-soak-aggregate.py >> "$log" 2>&1 || code=$?
             python scripts/validate-memory-os-sustained-local-soak-aggregate.py --require-local-evidence >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            stage=post-aggregate-negative
+            echo "STAGE: post-aggregate-negative" >> "$log"
+            python scripts/validate-memory-os-sustained-local-soak-reconcile-negative.py >> "$log" 2>&1 || code=$?
+            python scripts/validate-memory-os-local-long-soak-load-projection-negative.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             stage=status-reconcile
