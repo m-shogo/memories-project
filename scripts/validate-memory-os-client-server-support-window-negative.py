@@ -16,6 +16,7 @@ VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-client-server-support-window
 SUPPORT_RECONCILER_PATH = ROOT / "scripts/reconcile-memory-os-client-server-support-window-status.py"
 CLIENT_RECONCILER_PATH = ROOT / "scripts/reconcile-memory-os-client-baseline-registry.py"
 CONTRACT = ROOT / "contracts/operations/client-server-support-window-contract.v1.json"
+CLIENT_CONTRACT = ROOT / "contracts/operations/client-baseline-registry-contract.v1.json"
 RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
 RELEASE_PAIRS = ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"
 CLIENTS = ROOT / "contracts/operations/client-baseline-registry.v1.json"
@@ -128,9 +129,9 @@ def verify_support_reconcile_rollback() -> None:
 def verify_client_reconcile_authority_identity() -> None:
     reconciler = load_module(CLIENT_RECONCILER_PATH, "memory_os_client_reconcile_authority_negative")
     reconciler.enforce_runtime_authorities()
-    contract_before = reconciler.CONTRACT.read_bytes()
-    support_before = reconciler.SUPPORT.read_bytes()
-    status_before = reconciler.STATUS.read_bytes()
+    contract_before = CLIENT_CONTRACT.read_bytes()
+    support_before = CONTRACT.read_bytes()
+    status_before = STATUS.read_bytes()
     substitutions = (
         ("CONTRACT", ROOT / "contracts/operations/client-server-support-window-contract.v1.json"),
         ("REGISTRY", ROOT / "contracts/operations/release-baseline-registry.v1.json"),
@@ -157,11 +158,11 @@ def verify_client_reconcile_authority_identity() -> None:
             except reconciler.Fail:
                 rejected = True
             require(rejected, f"client baseline reconciler accepted {field} authority substitution")
-            require(reconciler.CONTRACT.read_bytes() == contract_before,
+            require(CLIENT_CONTRACT.read_bytes() == contract_before,
                     f"rejected {field} substitution mutated canonical client baseline contract")
-            require(reconciler.SUPPORT.read_bytes() == support_before,
+            require(CONTRACT.read_bytes() == support_before,
                     f"rejected {field} substitution mutated canonical support-window contract")
-            require(reconciler.STATUS.read_bytes() == status_before,
+            require(STATUS.read_bytes() == status_before,
                     f"rejected {field} substitution mutated canonical production status")
         finally:
             setattr(reconciler, field, original)
