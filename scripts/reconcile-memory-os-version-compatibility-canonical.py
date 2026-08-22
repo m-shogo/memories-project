@@ -190,6 +190,7 @@ def main() -> int:
                 f"canonical readiness overclaim: {field}")
 
     if not changed:
+        run_canonical_validator()
         print("Canonical compatibility authority already conservative")
         return 0
     commit_transaction(document)
