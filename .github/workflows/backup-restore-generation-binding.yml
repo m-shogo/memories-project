@@ -45,6 +45,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-status-authority-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-status.py"
       - "scripts/validate-memory-os-backup-restore.py"
       - "scripts/validate-memory-os-operability.py"
@@ -94,6 +95,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding.py"
       - "scripts/validate-memory-os-backup-restore-generation-binding-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-status-authority-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-status.py"
       - "scripts/validate-memory-os-backup-restore.py"
       - "scripts/validate-memory-os-operability.py"
@@ -151,6 +153,7 @@ jobs:
             scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py \
             scripts/validate-memory-os-backup-restore-generation-binding.py \
             scripts/validate-memory-os-backup-restore-generation-binding-negative.py \
+            scripts/validate-memory-os-backup-restore-generation-status-authority-negative.py \
             scripts/reconcile-memory-os-backup-restore-generation-status.py \
             scripts/validate-memory-os-backup-restore.py \
             scripts/validate-memory-os-operability.py \
@@ -175,6 +178,9 @@ jobs:
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-backup-restore-generation-binding-negative.py >> "$log" 2>&1 || code=$?
+          fi
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-backup-restore-generation-status-authority-negative.py >> "$log" 2>&1 || code=$?
           fi
           if [[ "$code" == "0" ]]; then
             python scripts/reconcile-memory-os-backup-restore-generation-status.py >> "$log" 2>&1 || code=$?
@@ -210,6 +216,7 @@ jobs:
             python scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-generation-binding.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore-generation-binding-negative.py >> "$log" 2>&1
+            python scripts/validate-memory-os-backup-restore-generation-status-authority-negative.py >> "$log" 2>&1
             python scripts/reconcile-memory-os-backup-restore-generation-status.py >> "$log" 2>&1
             python scripts/validate-memory-os-backup-restore.py >> "$log" 2>&1
             python scripts/validate-memory-os-operability.py >> "$log" 2>&1
