@@ -89,29 +89,20 @@ def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> 
 
 
 def enforce_runtime_authorities() -> None:
-    canonical_contract = CONTRACT == ROOT / CONTRACT_REL
-    canonical_registry = REGISTRY == ROOT / REGISTRY_REL
-    canonical_binding = BINDING == ROOT / BINDING_REL
-    canonical_status = STATUS == ROOT / STATUS_REL
-    require(
-        len({canonical_contract, canonical_registry, canonical_binding, canonical_status}) == 1,
-        "generation evidence fixture boundary must replace contract, registry, binding and status together",
-    )
-    require_exact_repo_file(WRITER, WRITER_REL, "generation evidence writer")
-    if canonical_contract:
-        for path, expected, field in (
-            (CONTRACT, CONTRACT_REL, "generation evidence contract"),
-            (REGISTRY, REGISTRY_REL, "generation evidence registry"),
-            (GEN_REGISTRY, GEN_REGISTRY_REL, "environment generation registry"),
-            (OBJECTIVES_REGISTRY, OBJECTIVES_REGISTRY_REL, "recovery objectives registry"),
-            (DRILL_REGISTRY, DRILL_REGISTRY_REL, "drill request registry"),
-            (BINDING, BINDING_REL, "generation binding contract"),
-            (VALIDATOR, VALIDATOR_REL, "generation evidence validator"),
-            (BINDING_VALIDATOR, BINDING_VALIDATOR_REL, "generation binding validator"),
-            (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
-            (STATUS, STATUS_REL, "production operability status"),
-        ):
-            require_exact_repo_file(path, expected, field)
+    for path, expected, field in (
+        (CONTRACT, CONTRACT_REL, "generation evidence contract"),
+        (REGISTRY, REGISTRY_REL, "generation evidence registry"),
+        (GEN_REGISTRY, GEN_REGISTRY_REL, "environment generation registry"),
+        (OBJECTIVES_REGISTRY, OBJECTIVES_REGISTRY_REL, "recovery objectives registry"),
+        (DRILL_REGISTRY, DRILL_REGISTRY_REL, "drill request registry"),
+        (BINDING, BINDING_REL, "generation binding contract"),
+        (WRITER, WRITER_REL, "generation evidence writer"),
+        (VALIDATOR, VALIDATOR_REL, "generation evidence validator"),
+        (BINDING_VALIDATOR, BINDING_VALIDATOR_REL, "generation binding validator"),
+        (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+        (STATUS, STATUS_REL, "production operability status"),
+    ):
+        require_exact_repo_file(path, expected, field)
 
 
 def read_text(path: Path) -> str:
@@ -158,10 +149,7 @@ def append_once(values: list[Any], value: str) -> None:
 
 
 def run_post_validator(path: Path, expected_relative: Path, label: str) -> None:
-    if CONTRACT == ROOT / CONTRACT_REL:
-        require_exact_repo_file(path, expected_relative, label)
-    else:
-        require_repo_file(path, f"{label} missing")
+    require_exact_repo_file(path, expected_relative, label)
     completed = subprocess.run(
         [sys.executable, str(path)],
         cwd=ROOT,
@@ -349,7 +337,7 @@ def main() -> int:
         raise
 
     print("Memory OS drill-bound generation recovery authority reconciliation PASS")
-    print("canonical generation evidence writer/validator authorities enforced: true")
+    print("canonical generation evidence data/writer/validator authorities enforced: true")
     print(f"registered/current drill requests: {drill_count}/{current_drill_count}")
     print(f"registered/drill-bound recovery evidence: {count}/{bound_count}")
     print(f"production-equivalent recovery candidates: {candidate_count}")
