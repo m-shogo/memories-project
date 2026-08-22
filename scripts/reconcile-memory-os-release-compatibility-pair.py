@@ -12,17 +12,28 @@ from types import ModuleType
 from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/release-compatibility-pair-contract.v1.json"
-RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
-REGISTRY = ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"
-EXECUTION = ROOT / "contracts/operations/version-compatibility-execution-evidence.v1.json"
-GAPS = ROOT / "contracts/operations/compatibility-admission-gaps.v1.json"
-STATUS = ROOT / "contracts/operations/production-operability-status.json"
-VALIDATOR = ROOT / "scripts/validate-memory-os-release-compatibility-pair.py"
-WRITER = ROOT / "scripts/register-memory-os-release-compatibility-pair.py"
-INDEPENDENT_REVIEW_VALIDATOR = ROOT / "scripts/validate-memory-os-release-compatibility-pair-independent-review.py"
-VERSION_EXECUTION_VALIDATOR = ROOT / "scripts/validate-memory-os-version-compatibility-execution-evidence.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CONTRACT_REL = Path("contracts/operations/release-compatibility-pair-contract.v1.json")
+RELEASES_REL = Path("contracts/operations/release-baseline-registry.v1.json")
+REGISTRY_REL = Path("contracts/operations/release-compatibility-pair-registry.v1.json")
+EXECUTION_REL = Path("contracts/operations/version-compatibility-execution-evidence.v1.json")
+GAPS_REL = Path("contracts/operations/compatibility-admission-gaps.v1.json")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+VALIDATOR_REL = Path("scripts/validate-memory-os-release-compatibility-pair.py")
+WRITER_REL = Path("scripts/register-memory-os-release-compatibility-pair.py")
+INDEPENDENT_REVIEW_VALIDATOR_REL = Path("scripts/validate-memory-os-release-compatibility-pair-independent-review.py")
+VERSION_EXECUTION_VALIDATOR_REL = Path("scripts/validate-memory-os-version-compatibility-execution-evidence.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+CONTRACT = ROOT / CONTRACT_REL
+RELEASES = ROOT / RELEASES_REL
+REGISTRY = ROOT / REGISTRY_REL
+EXECUTION = ROOT / EXECUTION_REL
+GAPS = ROOT / GAPS_REL
+STATUS = ROOT / STATUS_REL
+VALIDATOR = ROOT / VALIDATOR_REL
+WRITER = ROOT / WRITER_REL
+INDEPENDENT_REVIEW_VALIDATOR = ROOT / INDEPENDENT_REVIEW_VALIDATOR_REL
+VERSION_EXECUTION_VALIDATOR = ROOT / VERSION_EXECUTION_VALIDATOR_REL
+OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
 REFS = (
     "contracts/operations/release-compatibility-pair-contract.v1.json",
     "contracts/operations/release-compatibility-pair-registry.v1.json",
@@ -48,6 +59,33 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> None:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} authority missing or escapes repository") from exc
+    require(lexical == expected_relative and resolved == expected_relative and path.is_file(),
+            f"{field} authority drift")
+
+
+def enforce_runtime_authorities() -> None:
+    for path, relative, field in (
+        (CONTRACT, CONTRACT_REL, "release pair contract"),
+        (RELEASES, RELEASES_REL, "release registry"),
+        (REGISTRY, REGISTRY_REL, "release pair registry"),
+        (EXECUTION, EXECUTION_REL, "compatibility execution evidence"),
+        (GAPS, GAPS_REL, "compatibility admission gaps"),
+        (STATUS, STATUS_REL, "production operability status"),
+        (VALIDATOR, VALIDATOR_REL, "release pair validator"),
+        (WRITER, WRITER_REL, "release pair writer"),
+        (INDEPENDENT_REVIEW_VALIDATOR, INDEPENDENT_REVIEW_VALIDATOR_REL, "independent review validator"),
+        (VERSION_EXECUTION_VALIDATOR, VERSION_EXECUTION_VALIDATOR_REL, "version execution validator"),
+        (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+    ):
+        require_exact_repo_file(path, relative, field)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -135,6 +173,7 @@ def commit_authority_transaction(
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     registry = load(REGISTRY)
     writer = load_module(WRITER, "memory_os_release_pair_writer_for_reconcile")
     try:
