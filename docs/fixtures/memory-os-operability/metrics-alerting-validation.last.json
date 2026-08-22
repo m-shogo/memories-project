@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v2",
   "workflow": "reconcile-metrics-authority",
-  "sourceCommitSha": "db298b2bf2c3392e097fa1a7a4cc40f3b19cdbb0",
+  "sourceCommitSha": "25a685ec223a6b076325e4863c4cb8f6f6d7821f",
   "result": "FAIL",
   "exitCode": 1,
   "steps": [
