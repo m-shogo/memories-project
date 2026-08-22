@@ -20,6 +20,7 @@ RELEASES = ROOT / "contracts/operations/release-baseline-registry.v1.json"
 RELEASE_PAIRS = ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"
 CLIENTS = ROOT / "contracts/operations/client-baseline-registry.v1.json"
 SKEW = ROOT / "contracts/operations/client-server-skew-registry.v1.json"
+STATUS = ROOT / "contracts/operations/production-operability-status.json"
 
 
 class NegativeFailure(RuntimeError):
@@ -52,13 +53,17 @@ def load(path: Path) -> dict[str, Any]:
 def verify_support_reconcile_authority_identity() -> None:
     reconciler = load_module(SUPPORT_RECONCILER_PATH, "memory_os_support_window_reconcile_authority_negative")
     reconciler.enforce_runtime_authorities()
+    contract_before = CONTRACT.read_bytes()
+    status_before = STATUS.read_bytes()
     substitutions = (
+        ("CONTRACT", ROOT / "contracts/operations/client-baseline-registry-contract.v1.json"),
         ("VALIDATOR", ROOT / "scripts/validate-memory-os-operability.py"),
         ("OPERABILITY_VALIDATOR", ROOT / "scripts/validate-memory-os-client-server-support-window.py"),
         ("WORKFLOW", ROOT / ".github/workflows/version-compatibility-foundations.yml"),
         ("RELEASES", ROOT / "contracts/operations/client-baseline-registry.v1.json"),
         ("CLIENTS", ROOT / "contracts/operations/release-baseline-registry.v1.json"),
         ("SKEW", ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"),
+        ("STATUS", ROOT / "contracts/operations/client-server-support-window-contract.v1.json"),
     )
     for field, substitute in substitutions:
         original = getattr(reconciler, field)
@@ -70,6 +75,10 @@ def verify_support_reconcile_authority_identity() -> None:
             except reconciler.Fail:
                 rejected = True
             require(rejected, f"support-window reconciler accepted {field} authority substitution")
+            require(CONTRACT.read_bytes() == contract_before,
+                    f"rejected {field} substitution mutated canonical support-window contract")
+            require(STATUS.read_bytes() == status_before,
+                    f"rejected {field} substitution mutated canonical production status")
         finally:
             setattr(reconciler, field, original)
     reconciler.enforce_runtime_authorities()
