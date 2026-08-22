@@ -84,15 +84,14 @@ def require_exact_repo_file(path: Path, expected_relative: Path, message: str) -
 
 
 def enforce_runtime_authorities() -> None:
-    canonical_contract = CONTRACT == ROOT / CONTRACT_REL
-    canonical_status = STATUS == ROOT / STATUS_REL
-    require(canonical_contract is canonical_status, "generation status fixture boundary must replace contract and status together")
-    if canonical_contract:
-        require_exact_repo_file(CONTRACT, CONTRACT_REL, "generation binding contract")
-        require_exact_repo_file(VALIDATOR, VALIDATOR_REL, "generation binding validator")
-        require_exact_repo_file(BACKUP_VALIDATOR, BACKUP_VALIDATOR_REL, "backup validator")
-        require_exact_repo_file(OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator")
-        require_exact_repo_file(STATUS, STATUS_REL, "production operability status")
+    for path, expected, field in (
+        (CONTRACT, CONTRACT_REL, "generation binding contract"),
+        (VALIDATOR, VALIDATOR_REL, "generation binding validator"),
+        (BACKUP_VALIDATOR, BACKUP_VALIDATOR_REL, "backup validator"),
+        (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+        (STATUS, STATUS_REL, "production operability status"),
+    ):
+        require_exact_repo_file(path, expected, field)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -110,21 +109,16 @@ def append_once(items: list[Any], value: str) -> None:
         items.append(value)
 
 
-def run_validator(path: Path, label: str) -> None:
-    relative = require_repo_file(path, f"{label} missing")
-    completed = subprocess.run(["python", str(ROOT / relative)], cwd=ROOT, check=False)
+def run_validator(path: Path, expected_relative: Path, label: str) -> None:
+    relative = require_exact_repo_file(path, expected_relative, label)
+    completed = subprocess.run([sys.executable, str(ROOT / relative)], cwd=ROOT, check=False)
     if completed.returncode != 0:
         raise Fail(f"{label} failed with exit code {completed.returncode}")
 
 
 def main() -> int:
     enforce_runtime_authorities()
-    require_repo_file(CONTRACT, "generation binding contract missing")
-    require_repo_file(VALIDATOR, "generation binding validator missing")
-    require_repo_file(BACKUP_VALIDATOR, "backup validator missing")
-    require_repo_file(OPERABILITY_VALIDATOR, "operability validator missing")
-    require_repo_file(STATUS, "production operability status missing")
-    run_validator(VALIDATOR, "generation binding validator")
+    run_validator(VALIDATOR, VALIDATOR_REL, "generation binding validator")
 
     contract = load(CONTRACT)
     boundary = contract.get("currentBoundary", {})
@@ -177,12 +171,11 @@ def main() -> int:
 
     require_canonical_gaps(backup.get("missingEvidence"), Fail)
     require(status.get("productionDecision") == "NO_GO", "productionDecision changed unexpectedly")
-
     original_status = STATUS.read_bytes()
     try:
         STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        run_validator(BACKUP_VALIDATOR, "backup validator")
-        run_validator(OPERABILITY_VALIDATOR, "operability validator")
+        run_validator(BACKUP_VALIDATOR, BACKUP_VALIDATOR_REL, "backup validator")
+        run_validator(OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator")
     except Exception:
         STATUS.write_bytes(original_status)
         raise
@@ -194,6 +187,7 @@ def main() -> int:
     print(f"candidate-level independent evidence review complete: {str(candidate_count > 0).lower()}")
     print("human production-promotion review completed: false")
     print("human production promotion authorized: false")
+    print("canonical generation-status data/executable authorities enforced: true")
     print("canonical backup/restore blockers rewritten by this layer: false")
     print("OPS-P0-007: incomplete")
     print("productionDecision: NO_GO")
