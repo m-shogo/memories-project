@@ -70,10 +70,16 @@ def expect_direct_authority_rejected(
         setattr(reconciler, attribute, original)
 
 
-def prove_executable_authority_rejection(reconciler: object) -> None:
+def prove_data_and_executable_authority_rejection(reconciler: object) -> None:
     contract_before = CANONICAL_CONTRACT.read_bytes()
     status_before = CANONICAL_STATUS.read_bytes()
     cases = (
+        (
+            "preflight contract substitution",
+            "preflight contract",
+            "CONTRACT",
+            reconciler.STATUS,
+        ),
         (
             "environment generation registry substitution",
             "environment generation registry",
@@ -104,6 +110,12 @@ def prove_executable_authority_rejection(reconciler: object) -> None:
             "OPERABILITY_VALIDATOR",
             reconciler.VALIDATOR_MODULE,
         ),
+        (
+            "production operability status substitution",
+            "production operability status",
+            "STATUS",
+            reconciler.CONTRACT,
+        ),
     )
     for name, field, attribute, replacement in cases:
         expect_direct_authority_rejected(
@@ -115,7 +127,7 @@ def prove_executable_authority_rejection(reconciler: object) -> None:
             contract_before,
             status_before,
         )
-    print(f"PASS boundary: direct preflight source/executable substitutions rejected: {len(cases)}")
+    print(f"PASS boundary: direct preflight data/executable substitutions rejected: {len(cases)}")
 
 
 def prove_transactional_rollback(reconciler: object, tmp: Path) -> None:
@@ -129,6 +141,7 @@ def prove_transactional_rollback(reconciler: object, tmp: Path) -> None:
     original_contract = reconciler.CONTRACT
     original_status = reconciler.STATUS
     original_run = reconciler.subprocess.run
+    original_enforcer = reconciler.enforce_runtime_authorities
     call_count = 0
 
     def fail_only_aggregate_post_reconcile(*args, **kwargs):
@@ -138,12 +151,17 @@ def prove_transactional_rollback(reconciler: object, tmp: Path) -> None:
             return SimpleNamespace(returncode=0, stdout="upstream/preflight authority validator pass", stderr="")
         return SimpleNamespace(returncode=1, stdout="forced post-reconcile operability validator failure", stderr="")
 
+    # Direct invocation is canonical-only. The negative suite bypasses only that
+    # production identity guard around internal repo-contained fixture copies so
+    # it can prove the write/validation rollback transaction independently.
+    reconciler.enforce_runtime_authorities = lambda: None
     reconciler.CONTRACT = contract
     reconciler.STATUS = status
     reconciler.subprocess.run = fail_only_aggregate_post_reconcile
     try:
         expect_domain_fail("forced aggregate operability validation failure", reconciler.main, reconciler.Fail)
     finally:
+        reconciler.enforce_runtime_authorities = original_enforcer
         reconciler.CONTRACT = original_contract
         reconciler.STATUS = original_status
         reconciler.subprocess.run = original_run
@@ -166,7 +184,7 @@ def main() -> int:
     validator = load_module(VALIDATOR, "memory_os_restore_drill_preflight_load_negative")
     reconciler = load_module(RECONCILER, "memory_os_restore_drill_preflight_reconcile_load_negative")
 
-    prove_executable_authority_rejection(reconciler)
+    prove_data_and_executable_authority_rejection(reconciler)
 
     with tempfile.TemporaryDirectory(prefix=".tmp-preflight-load-", dir=TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
@@ -187,7 +205,7 @@ def main() -> int:
     expect_domain_fail("preflight reconcile authority path escapes repository", lambda: reconciler.load(escaped), reconciler.Fail)
 
     print("Preflight unreadable-authority and reconcile rollback negative suite PASS")
-    print("direct reconciler source/executable authority substitutions accepted: false")
+    print("direct reconciler data/executable authority substitutions accepted: false")
     print("reconciler invalid UTF-8 authority leaked raw exception: false")
     print("reconciler unreadable directory authority leaked raw exception: false")
     print("reconciler escaped authority accepted: false")
