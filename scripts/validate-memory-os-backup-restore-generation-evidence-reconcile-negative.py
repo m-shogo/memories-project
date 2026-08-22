@@ -16,9 +16,13 @@ TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 CANONICAL = {
     "CONTRACT": ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json",
     "REGISTRY": ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
+    "GEN_REGISTRY": ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+    "OBJECTIVES_REGISTRY": ROOT / "contracts/operations/recovery-objectives-registry.v1.json",
+    "DRILL_REGISTRY": ROOT / "contracts/operations/backup-restore-drill-request-registry.v1.json",
     "BINDING": ROOT / "contracts/operations/backup-restore-generation-binding-contract.v1.json",
     "STATUS": ROOT / "contracts/operations/production-operability-status.json",
 }
+MUTATED = ("CONTRACT", "REGISTRY", "BINDING", "STATUS")
 
 
 class Fail(RuntimeError):
@@ -76,10 +80,17 @@ def expect_direct_authority_rejected(
 def prove_direct_authority_identity(reconciler: object) -> None:
     before = {path: path.read_bytes() for path in CANONICAL.values()}
     cases = (
+        ("generation evidence contract substitution", "generation evidence contract", "CONTRACT", reconciler.STATUS),
+        ("generation evidence registry substitution", "generation evidence registry", "REGISTRY", reconciler.BINDING),
+        ("environment generation registry substitution", "environment generation registry", "GEN_REGISTRY", reconciler.REGISTRY),
+        ("recovery objectives registry substitution", "recovery objectives registry", "OBJECTIVES_REGISTRY", reconciler.DRILL_REGISTRY),
+        ("drill request registry substitution", "drill request registry", "DRILL_REGISTRY", reconciler.OBJECTIVES_REGISTRY),
+        ("generation binding contract substitution", "generation binding contract", "BINDING", reconciler.CONTRACT),
         ("generation writer substitution", "generation evidence writer", "WRITER", reconciler.VALIDATOR),
         ("generation validator substitution", "generation evidence validator", "VALIDATOR", reconciler.OPERABILITY_VALIDATOR),
         ("generation binding validator substitution", "generation binding validator", "BINDING_VALIDATOR", reconciler.VALIDATOR),
         ("operability validator substitution", "operability validator", "OPERABILITY_VALIDATOR", reconciler.BINDING_VALIDATOR),
+        ("production status substitution", "production operability status", "STATUS", reconciler.CONTRACT),
     )
     for name, field, attribute, replacement in cases:
         expect_direct_authority_rejected(
@@ -90,7 +101,7 @@ def prove_direct_authority_identity(reconciler: object) -> None:
             replacement=replacement,
             before=before,
         )
-    print(f"PASS boundary: direct generation-evidence writer/validator substitutions rejected: {len(cases)}")
+    print(f"PASS boundary: direct generation-evidence data/writer/validator substitutions rejected: {len(cases)}")
 
 
 def main() -> int:
@@ -100,62 +111,80 @@ def main() -> int:
 
     prove_direct_authority_identity(reconciler)
 
-    with tempfile.TemporaryDirectory(prefix=".tmp-generation-evidence-reconcile-", dir=TMP_PARENT) as tmpdir:
-        tmp = Path(tmpdir)
-        originals: dict[Path, bytes] = {}
-        targets: dict[str, Path] = {}
-        for attr, source in CANONICAL.items():
-            target = tmp / source.name
-            shutil.copyfile(source, target)
-            setattr(reconciler, attr, target)
-            originals[target] = target.read_bytes()
-            targets[attr] = target
+    original_enforcer = reconciler.enforce_runtime_authorities
+    original_post_validator = reconciler.run_post_validator
+    original_paths = {attr: getattr(reconciler, attr) for attr in CANONICAL}
+    try:
+        # Production direct invocation remains canonical-only. Repo-contained
+        # fixtures are enabled solely inside this negative harness so append-only
+        # corruption and rollback can be proved without weakening runtime identity.
+        reconciler.enforce_runtime_authorities = lambda: None
+        with tempfile.TemporaryDirectory(prefix=".tmp-generation-evidence-reconcile-", dir=TMP_PARENT) as tmpdir:
+            tmp = Path(tmpdir)
+            originals: dict[Path, bytes] = {}
+            targets: dict[str, Path] = {}
+            for attr, source in CANONICAL.items():
+                target = tmp / source.name
+                shutil.copyfile(source, target)
+                setattr(reconciler, attr, target)
+                originals[target] = target.read_bytes()
+                targets[attr] = target
 
-        corruption_cases = (
-            ("registeredEvidenceCount drift", "registeredEvidenceCount", 1),
-            ("boolean drillRequestBoundEvidenceCount", "drillRequestBoundEvidenceCount", True),
-            ("completeGenerationBoundBackupCount drift", "completeGenerationBoundBackupCount", 1),
-            ("completeGenerationBoundRestoreCount drift", "completeGenerationBoundRestoreCount", 1),
-            ("boolean productionEquivalentRecoveryCandidateCount", "productionEquivalentRecoveryCandidateCount", True),
-            ("productionEvidence boundary drift", "productionEvidence", True),
-            ("productionReady boundary drift", "productionReady", True),
-        )
-        registry_path = targets["REGISTRY"]
-        for name, field, invalid_value in corruption_cases:
+            corruption_cases = (
+                ("registeredEvidenceCount drift", "registeredEvidenceCount", 1),
+                ("boolean drillRequestBoundEvidenceCount", "drillRequestBoundEvidenceCount", True),
+                ("completeGenerationBoundBackupCount drift", "completeGenerationBoundBackupCount", 1),
+                ("completeGenerationBoundRestoreCount drift", "completeGenerationBoundRestoreCount", 1),
+                ("boolean productionEquivalentRecoveryCandidateCount", "productionEquivalentRecoveryCandidateCount", True),
+                ("productionEvidence boundary drift", "productionEvidence", True),
+                ("productionReady boundary drift", "productionReady", True),
+            )
+            registry_path = targets["REGISTRY"]
+            for name, field, invalid_value in corruption_cases:
+                for path, expected in originals.items():
+                    path.write_bytes(expected)
+                payload = json.loads(registry_path.read_text(encoding="utf-8"))
+                payload[field] = invalid_value
+                registry_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+                before = {path: path.read_bytes() for path in originals}
+                expect_domain_fail(name, reconciler.main, reconciler.Fail)
+                for path, expected in before.items():
+                    require(path.read_bytes() == expected, f"reconcile auto-healed corrupt authority: {path.name} during {name}")
+
             for path, expected in originals.items():
                 path.write_bytes(expected)
-            payload = json.loads(registry_path.read_text(encoding="utf-8"))
-            payload[field] = invalid_value
-            registry_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-            before = {path: path.read_bytes() for path in originals}
-            expect_domain_fail(name, reconciler.main, reconciler.Fail)
-            for path, expected in before.items():
-                require(path.read_bytes() == expected, f"reconcile auto-healed corrupt authority: {path.name} during {name}")
 
-        for path, expected in originals.items():
-            path.write_bytes(expected)
+            observed: list[str] = []
 
-        pass_validator = tmp / "pass-validator.py"
-        pass_validator.write_text("#!/usr/bin/env python3\nraise SystemExit(0)\n", encoding="utf-8")
-        fail_validator = tmp / "forced-validator-failure.py"
-        fail_validator.write_text("#!/usr/bin/env python3\nraise SystemExit(23)\n", encoding="utf-8")
-        reconciler.BINDING_VALIDATOR = pass_validator
-        reconciler.VALIDATOR = pass_validator
-        reconciler.OPERABILITY_VALIDATOR = fail_validator
+            def fail_only_aggregate(path: Path, expected_relative: Path, label: str) -> None:
+                observed.append(label)
+                if len(observed) < 3:
+                    return
+                require(len(observed) == 3, "unexpected extra generation evidence post-validator invocation")
+                require(label == "operability validator", "operability validator was not final generation evidence validator")
+                raise reconciler.Fail("synthetic generation evidence aggregate operability rejection")
 
-        try:
-            reconciler.main()
-        except reconciler.Fail as exc:
-            require("operability validator failed" in str(exc), f"unexpected reconcile failure: {exc}")
-        else:
-            raise Fail("forced aggregate post-validation failure unexpectedly accepted")
+            reconciler.run_post_validator = fail_only_aggregate
+            try:
+                reconciler.main()
+            except reconciler.Fail as exc:
+                require("synthetic generation evidence aggregate operability rejection" in str(exc), f"unexpected reconcile failure: {exc}")
+            else:
+                raise Fail("forced aggregate post-validation failure unexpectedly accepted")
 
-        for path, expected in originals.items():
-            require(path.read_bytes() == expected, f"rollback drifted derived authority: {path.name}")
+            require(observed == ["generation binding validator", "generation evidence validator", "operability validator"], "generation evidence post-validator order drift")
+            for attr in MUTATED:
+                path = targets[attr]
+                require(path.read_bytes() == originals[path], f"rollback drifted derived authority: {path.name}")
+    finally:
+        reconciler.enforce_runtime_authorities = original_enforcer
+        reconciler.run_post_validator = original_post_validator
+        for attr, value in original_paths.items():
+            setattr(reconciler, attr, value)
 
     print("PASS reject: corrupt generation append-only authority is never auto-healed by reconcile")
     print("PASS rollback: generation evidence reconcile restores registry/contract/binding/status after aggregate validation failure")
-    print("direct generation-evidence writer/validator substitutions accepted: false")
+    print("direct generation-evidence data/writer/validator substitutions accepted: false")
     print("Generation evidence reconcile negative suite PASS")
     return 0
 
