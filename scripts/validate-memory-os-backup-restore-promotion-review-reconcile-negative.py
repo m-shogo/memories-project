@@ -9,6 +9,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-promotion-review.py"
+CANONICAL_CONTRACT = ROOT / "contracts/operations/backup-restore-promotion-review.v1.json"
+CANONICAL_REGISTRY = ROOT / "contracts/operations/backup-restore-promotion-review-registry.v1.json"
 
 
 class Fail(RuntimeError):
@@ -40,9 +42,9 @@ def expect_rejected(reconciler: Any, name: str, expected: str) -> None:
     raise Fail(f"{name} unexpectedly accepted")
 
 
-def assert_canonical_unchanged(reconciler: Any, original_contract: bytes, original_registry: bytes, name: str) -> None:
-    require(reconciler.CONTRACT.read_bytes() == original_contract, f"{name} changed promotion review contract")
-    require(reconciler.REGISTRY.read_bytes() == original_registry, f"{name} changed promotion review registry")
+def assert_canonical_unchanged(original_contract: bytes, original_registry: bytes, name: str) -> None:
+    require(CANONICAL_CONTRACT.read_bytes() == original_contract, f"{name} changed promotion review contract")
+    require(CANONICAL_REGISTRY.read_bytes() == original_registry, f"{name} changed promotion review registry")
 
 
 def expect_authority_substitution_rejected(
@@ -58,15 +60,15 @@ def expect_authority_substitution_rejected(
     setattr(reconciler, attribute, substitute)
     try:
         expect_rejected(reconciler, name, expected)
-        assert_canonical_unchanged(reconciler, original_contract, original_registry, name)
+        assert_canonical_unchanged(original_contract, original_registry, name)
     finally:
         setattr(reconciler, attribute, original)
 
 
 def main() -> int:
     reconciler = load_module(RECONCILER, "memory_os_promotion_review_reconcile_negative")
-    original_contract = reconciler.CONTRACT.read_bytes()
-    original_registry = reconciler.REGISTRY.read_bytes()
+    original_contract = CANONICAL_CONTRACT.read_bytes()
+    original_registry = CANONICAL_REGISTRY.read_bytes()
 
     expect_authority_substitution_rejected(
         reconciler,
@@ -166,13 +168,12 @@ def main() -> int:
             labels == ["promotion review validator", "aggregate operability validator"],
             f"unexpected validator order: {labels}",
         )
-        require(reconciler.CONTRACT.read_bytes() == original_contract, "promotion review contract changed after aggregate rejection")
-        require(reconciler.REGISTRY.read_bytes() == original_registry, "promotion review registry changed after aggregate rejection")
+        assert_canonical_unchanged(original_contract, original_registry, "aggregate operability rejection")
     finally:
         reconciler.run_validator = original_run_validator
         reconciler.write_text = original_write_text
-        reconciler.CONTRACT.write_bytes(original_contract)
-        reconciler.REGISTRY.write_bytes(original_registry)
+        CANONICAL_CONTRACT.write_bytes(original_contract)
+        CANONICAL_REGISTRY.write_bytes(original_registry)
 
     print("Memory OS backup/restore promotion review reconcile negative PASS")
     print("promotion contract substitution accepted: false")
