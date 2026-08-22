@@ -79,24 +79,19 @@ def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> 
 
 
 def enforce_runtime_authorities() -> None:
-    canonical_contract = CONTRACT == ROOT / CONTRACT_REL
-    if canonical_contract:
-        for path, expected, field in (
-            (CONTRACT, CONTRACT_REL, "admission-chain contract"),
-            (PREFLIGHT, PREFLIGHT_REL, "preflight contract"),
-            (DRILL_REGISTRY, DRILL_REGISTRY_REL, "drill request registry"),
-            (GEN_REGISTRY, GEN_REGISTRY_REL, "generation evidence registry"),
-            (BINDING_CONTRACT, BINDING_CONTRACT_REL, "generation binding contract"),
-            (TYPED_REGISTRY, TYPED_REGISTRY_REL, "typed non-resurrection registry"),
-            (VALIDATOR, VALIDATOR_REL, "admission-chain validator"),
-            (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
-            (STATUS, STATUS_REL, "production operability status"),
-        ):
-            require_exact_repo_file(path, expected, field)
     for path, expected, field in (
+        (CONTRACT, CONTRACT_REL, "admission-chain contract"),
+        (PREFLIGHT, PREFLIGHT_REL, "preflight contract"),
+        (DRILL_REGISTRY, DRILL_REGISTRY_REL, "drill request registry"),
+        (GEN_REGISTRY, GEN_REGISTRY_REL, "generation evidence registry"),
+        (BINDING_CONTRACT, BINDING_CONTRACT_REL, "generation binding contract"),
+        (TYPED_REGISTRY, TYPED_REGISTRY_REL, "typed non-resurrection registry"),
         (DRILL_WRITER, DRILL_WRITER_REL, "drill request writer"),
         (GEN_WRITER, GEN_WRITER_REL, "generation evidence writer"),
         (TYPED_WRITER, TYPED_WRITER_REL, "typed non-resurrection writer"),
+        (VALIDATOR, VALIDATOR_REL, "admission-chain validator"),
+        (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+        (STATUS, STATUS_REL, "production operability status"),
     ):
         require_exact_repo_file(path, expected, field)
 
@@ -166,13 +161,10 @@ def validate_shared_registry(module: Any, registry: dict[str, Any], label: str) 
 
 
 def run_validator(path: Path, label: str) -> None:
-    if CONTRACT == ROOT / CONTRACT_REL:
-        if path == VALIDATOR:
-            require_exact_repo_file(path, VALIDATOR_REL, f"{label} validator")
-        elif path == OPERABILITY_VALIDATOR:
-            require_exact_repo_file(path, OPERABILITY_VALIDATOR_REL, f"{label} validator")
-        else:
-            require_repo_file(path, f"{label} validator missing")
+    if path == VALIDATOR:
+        require_exact_repo_file(path, VALIDATOR_REL, f"{label} validator")
+    elif path == OPERABILITY_VALIDATOR:
+        require_exact_repo_file(path, OPERABILITY_VALIDATOR_REL, f"{label} validator")
     else:
         require_repo_file(path, f"{label} validator missing")
     completed = subprocess.run(
