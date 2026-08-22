@@ -117,16 +117,21 @@ def validate_current_authority() -> None:
             "canonical observability access authority is invalid before reconcile")
 
 
+def validate_written_authority() -> None:
+    enforce_runtime_authorities()
+    for validator in POST_WRITE_VALIDATORS:
+        completed = subprocess.run(["python", str(validator)], cwd=ROOT, check=False)
+        require(completed.returncode == 0,
+                f"reconciled observability access authority failed validation: {validator.name}")
+
+
 def commit_validated_pair(event: dict[str, Any], status: dict[str, Any]) -> None:
     original_event = EVENT_PATH.read_bytes()
     original_status = STATUS_PATH.read_bytes()
     try:
         EVENT_PATH.write_bytes(render(event))
         STATUS_PATH.write_bytes(render(status))
-        for validator in POST_WRITE_VALIDATORS:
-            completed = subprocess.run(["python", str(validator)], cwd=ROOT, check=False)
-            require(completed.returncode == 0,
-                    f"reconciled observability access authority failed validation: {validator.name}")
+        validate_written_authority()
     except BaseException:
         EVENT_PATH.write_bytes(original_event)
         STATUS_PATH.write_bytes(original_status)
@@ -240,6 +245,7 @@ def main() -> int:
             "production decision changed unexpectedly")
 
     if not changed:
+        validate_written_authority()
         print("Observability access authority already reconciled")
         return 0
 
