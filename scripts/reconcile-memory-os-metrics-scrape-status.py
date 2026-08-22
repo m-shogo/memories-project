@@ -15,10 +15,12 @@ CANONICAL_STATUS_PATH = ROOT / "contracts/operations/production-operability-stat
 CANONICAL_CONTRACT_PATH = ROOT / "contracts/operations/metrics-scrape-contract.v1.json"
 CANONICAL_SCRAPE_VALIDATOR = ROOT / "scripts/validate-memory-os-metrics-scrape.py"
 CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
+CANONICAL_ENTRY_DOCS_VALIDATOR = ROOT / "scripts/validate-memory-os-entry-docs.py"
 STATUS_PATH = CANONICAL_STATUS_PATH
 CONTRACT_PATH = CANONICAL_CONTRACT_PATH
 SCRAPE_VALIDATOR = CANONICAL_SCRAPE_VALIDATOR
 OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
+ENTRY_DOCS_VALIDATOR = CANONICAL_ENTRY_DOCS_VALIDATOR
 
 OLD_MISSING = "Prometheus/OTel exporter and an exposed scrape endpoint"
 NEW_EXISTING = (
@@ -68,6 +70,7 @@ def enforce_runtime_authorities() -> None:
         (CONTRACT_PATH, CANONICAL_CONTRACT_PATH, "metrics scrape contract"),
         (SCRAPE_VALIDATOR, CANONICAL_SCRAPE_VALIDATOR, "metrics scrape validator"),
         (OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, "operability validator"),
+        (ENTRY_DOCS_VALIDATOR, CANONICAL_ENTRY_DOCS_VALIDATOR, "entry docs validator"),
     ):
         require_exact_authority(path, canonical, label)
 
@@ -104,6 +107,7 @@ def require_validator_success(path: Path, name: str) -> None:
 def validate_written_authority() -> None:
     require_validator_success(SCRAPE_VALIDATOR, "memory_os_metrics_scrape_validator")
     require_validator_success(OPERABILITY_VALIDATOR, "memory_os_operability_validator")
+    require_validator_success(ENTRY_DOCS_VALIDATOR, "memory_os_entry_docs_validator")
 
 
 def write_transactionally(status: dict[str, Any]) -> None:
@@ -182,9 +186,6 @@ def main() -> int:
             refs.append(ref)
             changed = True
 
-    # Later independent reconciles refine the coarse dashboard, retention and
-    # alert gaps. Accept either wording while requiring each production concern
-    # to remain open. This makes repeated self-healing runs order-independent.
     required_gap_groups = (
         ("production metrics scrape secret provisioning",),
         ("external Prometheus/OTel scraper integration",),
