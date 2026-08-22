@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-parser-process-group-reaping-results.v1",
-  "commitSha": "93f0924e92e254abaae4ef2d633d96bd2374be63",
-  "generatedAt": "2026-08-22T02:15:47.696551Z",
+  "commitSha": "2260f72a8b73e2d4bc199b9ca5b97875c6270145",
+  "generatedAt": "2026-08-22T02:23:14.102401Z",
   "environment": {
     "mode": "GITHUB_ACTIONS_UBUNTU_LINUX",
     "productionEvidence": false,
@@ -11,7 +11,7 @@
   "result": "PASS",
   "integrityResult": "PASS",
   "exitCode": 0,
-  "durationSeconds": 0.455604,
+  "durationSeconds": 0.600419,
   "assertions": {
     "workerFrameObservedBeforeCancel": true,
     "trackedProcessCountBeforeCancel": 2,
