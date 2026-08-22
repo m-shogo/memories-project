@@ -15,6 +15,7 @@ CANONICAL_VALIDATOR = ROOT / "scripts/validate-memory-os-version-compatibility.p
 FOUNDATION_VALIDATOR = ROOT / "scripts/validate-memory-os-version-compatibility-foundations.py"
 OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 STATUS = ROOT / "contracts/operations/production-operability-status.json"
+WORKFLOW = ROOT / ".github/workflows/version-compatibility-execution-evidence.yml"
 
 EXECUTION_EVIDENCE = (
     "supplemental executed-compatibility authority proves historical-candidate/current session interoperability, bidirectional persisted Apply replay, "
@@ -41,6 +42,33 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def require_exact_repo_file(path: Path, relative: str, field: str) -> None:
+    expected = ROOT / relative
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        path == expected and lexical == Path(relative) and resolved == Path(relative)
+        and path.is_file() and not path.is_symlink(),
+        f"{field} authority drift",
+    )
+
+
+def enforce_runtime_authorities() -> None:
+    for path, relative, field in (
+        (EXECUTION, "contracts/operations/version-compatibility-execution-evidence.v1.json", "compatibility execution evidence"),
+        (STATUS, "contracts/operations/production-operability-status.json", "production operability status"),
+        (VALIDATOR, "scripts/validate-memory-os-version-compatibility-execution-evidence.py", "execution evidence validator"),
+        (CANONICAL_VALIDATOR, "scripts/validate-memory-os-version-compatibility.py", "canonical compatibility validator"),
+        (FOUNDATION_VALIDATOR, "scripts/validate-memory-os-version-compatibility-foundations.py", "compatibility foundation validator"),
+        (OPERABILITY_VALIDATOR, "scripts/validate-memory-os-operability.py", "operability validator"),
+        (WORKFLOW, ".github/workflows/version-compatibility-execution-evidence.yml", "execution evidence workflow"),
+    ):
+        require_exact_repo_file(path, relative, field)
+
+
 def load(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
@@ -53,6 +81,7 @@ def append_once(items: list[Any], value: str) -> None:
 
 
 def run_validator(path: Path, label: str) -> None:
+    enforce_runtime_authorities()
     completed = subprocess.run(
         ["python", str(path)],
         cwd=ROOT,
@@ -67,6 +96,7 @@ def run_validator(path: Path, label: str) -> None:
 
 
 def run_post_write_validators() -> None:
+    enforce_runtime_authorities()
     run_validator(CANONICAL_VALIDATOR, "canonical version compatibility validator")
     run_validator(FOUNDATION_VALIDATOR, "compatibility foundation validator")
     run_validator(OPERABILITY_VALIDATOR, "operability validator")
@@ -77,6 +107,7 @@ def commit_status_transaction(
     *,
     validator_runner: Callable[[], None] = run_post_write_validators,
 ) -> None:
+    enforce_runtime_authorities()
     original = STATUS.read_bytes()
     STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     try:
@@ -114,6 +145,7 @@ def reconcile_execution_projection(status: dict[str, Any]) -> dict[str, Any]:
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     run_validator(VALIDATOR, "version compatibility execution evidence validator")
     execution = load(EXECUTION)
     release = execution.get("releaseAuthorityBoundary", {})
