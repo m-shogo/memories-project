@@ -219,6 +219,7 @@ def main() -> int:
             ("SCRAPE_VALIDATOR", operations.CANONICAL_OPERATIONS_VALIDATOR, "metrics scrape validator authority drift"),
             ("METRICS_VALIDATOR", operations.CANONICAL_OPERATIONS_VALIDATOR, "metrics validator authority drift"),
             ("OPERABILITY_VALIDATOR", operations.CANONICAL_OPERATIONS_VALIDATOR, "operability validator authority drift"),
+            ("ENTRY_DOCS_VALIDATOR", operations.CANONICAL_OPERATIONS_VALIDATOR, "entry docs validator authority drift"),
         ),
     )
     run_identity_case(
@@ -229,6 +230,7 @@ def main() -> int:
             ("CONTRACT_PATH", ROOT / "README.md", "metrics scrape contract authority drift"),
             ("SCRAPE_VALIDATOR", operations.CANONICAL_OPERATIONS_VALIDATOR, "metrics scrape validator authority drift"),
             ("OPERABILITY_VALIDATOR", operations.CANONICAL_OPERATIONS_VALIDATOR, "operability validator authority drift"),
+            ("ENTRY_DOCS_VALIDATOR", operations.CANONICAL_OPERATIONS_VALIDATOR, "entry docs validator authority drift"),
         ),
     )
     run_identity_case(
@@ -262,12 +264,21 @@ def main() -> int:
     run_validator_order_case(
         "primary",
         primary,
-        [primary.METRICS_VALIDATOR, primary.SCRAPE_VALIDATOR, primary.OPERABILITY_VALIDATOR],
+        [
+            primary.METRICS_VALIDATOR,
+            primary.SCRAPE_VALIDATOR,
+            primary.OPERABILITY_VALIDATOR,
+            primary.ENTRY_DOCS_VALIDATOR,
+        ],
     )
     run_validator_order_case(
         "scrape",
         scrape,
-        [scrape.SCRAPE_VALIDATOR, scrape.OPERABILITY_VALIDATOR],
+        [
+            scrape.SCRAPE_VALIDATOR,
+            scrape.OPERABILITY_VALIDATOR,
+            scrape.ENTRY_DOCS_VALIDATOR,
+        ],
     )
     run_metrics_case("primary", primary)
     run_status_case("scrape", scrape)
