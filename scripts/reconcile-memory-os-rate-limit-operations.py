@@ -244,6 +244,7 @@ def main() -> int:
             "production decision changed unexpectedly")
 
     if not changed:
+        validate_written_authority()
         print("Rate-limit operations authority already reconciled")
         return 0
 
