@@ -128,13 +128,21 @@ def verify_support_reconcile_rollback() -> None:
 def verify_client_reconcile_authority_identity() -> None:
     reconciler = load_module(CLIENT_RECONCILER_PATH, "memory_os_client_reconcile_authority_negative")
     reconciler.enforce_runtime_authorities()
+    contract_before = reconciler.CONTRACT.read_bytes()
+    support_before = reconciler.SUPPORT.read_bytes()
+    status_before = reconciler.STATUS.read_bytes()
     substitutions = (
+        ("CONTRACT", ROOT / "contracts/operations/client-server-support-window-contract.v1.json"),
+        ("REGISTRY", ROOT / "contracts/operations/release-baseline-registry.v1.json"),
+        ("SUPPORT", ROOT / "contracts/operations/client-baseline-registry-contract.v1.json"),
+        ("STATUS", ROOT / "contracts/operations/client-server-support-window-contract.v1.json"),
         ("WRITER", ROOT / "scripts/register-memory-os-parser-artifact.py"),
         ("PAIR_WRITER", ROOT / "scripts/register-memory-os-client-baseline.py"),
         ("VALIDATOR", ROOT / "scripts/validate-memory-os-operability.py"),
         ("SUPPORT_VALIDATOR", ROOT / "scripts/validate-memory-os-client-baseline-registry.py"),
         ("OPERABILITY_VALIDATOR", ROOT / "scripts/validate-memory-os-client-server-support-window.py"),
         ("WORKFLOW", ROOT / ".github/workflows/client-server-support-window.yml"),
+        ("RUNBOOK", ROOT / ".github/workflows/client-baseline-registry.yml"),
         ("RELEASES", ROOT / "contracts/operations/client-baseline-registry.v1.json"),
         ("RELEASE_PAIRS", ROOT / "contracts/operations/release-baseline-registry.v1.json"),
         ("SKEW", ROOT / "contracts/operations/release-compatibility-pair-registry.v1.json"),
@@ -149,9 +157,57 @@ def verify_client_reconcile_authority_identity() -> None:
             except reconciler.Fail:
                 rejected = True
             require(rejected, f"client baseline reconciler accepted {field} authority substitution")
+            require(reconciler.CONTRACT.read_bytes() == contract_before,
+                    f"rejected {field} substitution mutated canonical client baseline contract")
+            require(reconciler.SUPPORT.read_bytes() == support_before,
+                    f"rejected {field} substitution mutated canonical support-window contract")
+            require(reconciler.STATUS.read_bytes() == status_before,
+                    f"rejected {field} substitution mutated canonical production status")
         finally:
             setattr(reconciler, field, original)
     reconciler.enforce_runtime_authorities()
+
+
+def verify_client_reconcile_rollback() -> None:
+    reconciler = load_module(CLIENT_RECONCILER_PATH, "memory_os_client_reconcile_rollback_negative")
+    originals = {
+        reconciler.CONTRACT: reconciler.CONTRACT.read_bytes(),
+        reconciler.SUPPORT: reconciler.SUPPORT.read_bytes(),
+        reconciler.STATUS: reconciler.STATUS.read_bytes(),
+    }
+    observed_operability_failure = False
+    original_run_validator = reconciler.run_validator
+
+    def controlled_validator(path: Path, label: str) -> None:
+        nonlocal observed_operability_failure
+        if label == "post-write operability validator":
+            observed_operability_failure = True
+            raise reconciler.Fail("synthetic client baseline post-write operability validation failure")
+
+    reconciler.run_validator = controlled_validator
+    try:
+        try:
+            reconciler.main()
+        except reconciler.Fail as exc:
+            require(
+                "synthetic client baseline post-write operability validation failure" in str(exc),
+                f"unexpected client baseline reconcile rollback failure: {exc}",
+            )
+        else:
+            raise NegativeFailure(
+                "client baseline reconcile unexpectedly succeeded after synthetic post-write aggregate failure"
+            )
+        require(observed_operability_failure, "synthetic client baseline post-write operability failure was not reached")
+        for path, payload in originals.items():
+            require(
+                path.read_bytes() == payload,
+                f"client baseline reconcile rollback changed canonical authority: {path.relative_to(ROOT)}",
+            )
+    finally:
+        reconciler.run_validator = original_run_validator
+        for path, payload in originals.items():
+            if path.read_bytes() != payload:
+                path.write_bytes(payload)
 
 
 def expect_rejection(validator: Any, path: Path, base: dict[str, Any], label: str,
@@ -326,6 +382,7 @@ def main() -> int:
     verify_support_reconcile_authority_identity()
     verify_support_reconcile_rollback()
     verify_client_reconcile_authority_identity()
+    verify_client_reconcile_rollback()
     verify_inventory_only_intermediate_state(validator)
     verify_client_reconcile_preserves_admitted_skew()
     verify_client_reconcile_allows_approved_pair_progression()
