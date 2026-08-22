@@ -5,14 +5,17 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 CANONICAL_LOAD_PATH = ROOT / "contracts/operations/load-test-scenario-contract.v1.json"
 CANONICAL_LOAD_VALIDATOR = ROOT / "scripts/validate-memory-os-load.py"
+CANONICAL_OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
 LOAD_PATH = CANONICAL_LOAD_PATH
 LOAD_VALIDATOR = CANONICAL_LOAD_VALIDATOR
+OPERABILITY_VALIDATOR = CANONICAL_OPERABILITY_VALIDATOR
 
 REQUIRED_TRUE = (
     "previewPreFenceInFlightLinearizationProven",
@@ -43,6 +46,7 @@ def require_exact_authority(path: Path, canonical: Path, label: str) -> None:
 def validate_authorities() -> None:
     require_exact_authority(LOAD_PATH, CANONICAL_LOAD_PATH, "load contract")
     require_exact_authority(LOAD_VALIDATOR, CANONICAL_LOAD_VALIDATOR, "load validator")
+    require_exact_authority(OPERABILITY_VALIDATOR, CANONICAL_OPERABILITY_VALIDATOR, "operability validator")
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -64,6 +68,11 @@ def validate_canonical_load() -> None:
     result = load_validator_module().main()
     if isinstance(result, bool) or not isinstance(result, int) or result != 0:
         raise SystemExit(f"canonical load validator rejected authority: {result!r}")
+
+
+def validate_canonical_operability() -> None:
+    validate_authorities()
+    subprocess.run(["python", str(OPERABILITY_VALIDATOR)], cwd=ROOT, check=True)
 
 
 def main() -> int:
@@ -122,6 +131,7 @@ def main() -> int:
     LOAD_PATH.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
     try:
         validate_canonical_load()
+        validate_canonical_operability()
     except BaseException:
         LOAD_PATH.write_bytes(original_bytes)
         raise
