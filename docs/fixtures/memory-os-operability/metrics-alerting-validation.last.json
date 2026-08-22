@@ -1,9 +1,9 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v2",
   "workflow": "reconcile-metrics-authority",
-  "sourceCommitSha": "25a685ec223a6b076325e4863c4cb8f6f6d7821f",
-  "result": "FAIL",
-  "exitCode": 1,
+  "sourceCommitSha": "64960c6a98f82700975b1677d0287d679a6a92e3",
+  "result": "PASS",
+  "exitCode": 0,
   "steps": [
     {
       "command": "python scripts/validate-memory-os-metrics-alerting.py",
@@ -12,8 +12,58 @@
     },
     {
       "command": "python scripts/validate-memory-os-metrics-reconcile-rollback-negative.py",
-      "exitCode": 1,
-      "output": "METRICS RECONCILE ROLLBACK NEGATIVE FAILED: primary: validator order drift: [PosixPath('/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-metrics.py'), PosixPath('/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-metrics-scrape.py'), PosixPath('/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-operability.py'), PosixPath('/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-entry-docs.py')] != [PosixPath('/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-metrics.py'), PosixPath('/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-metrics-scrape.py'), PosixPath('/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-operability.py')]\n"
+      "exitCode": 0,
+      "output": "PASS: metrics primary/scrape/operations/alerting authority identity, validator order, source delegation and rollback are fail-closed\n"
+    },
+    {
+      "command": "python scripts/reconcile-memory-os-metrics-contract.py",
+      "exitCode": 0,
+      "output": "Memory OS metrics scrape validation PASS\nPrometheus exporter: implemented\nauthenticated scrape handler: implemented\nHTTP server mount seam: supported, production unmounted\nOPS-P0-004 status: PARTIAL\nproduction decision: NO_GO\nMemory OS metrics contract validation PASS\nmetrics: 28  slis: 17  slos: 3  alerts: 7\nnegative cases rejected: 14\nOPS-P0-004 status: PARTIAL\nMemory OS metrics scrape validation PASS\nPrometheus exporter: implemented\nauthenticated scrape handler: implemented\nHTTP server mount seam: supported, production unmounted\nOPS-P0-004 status: PARTIAL\nproduction decision: NO_GO\nMemory OS production-operability validation PASS\nready gates: 0/10\nproduction decision: NO_GO\nMemory OS entrypoint document validation PASS\nentrypoints: 5\nRegistered exporter foundation in primary metrics contract\n"
+    },
+    {
+      "command": "python scripts/reconcile-memory-os-metrics-scrape-status.py",
+      "exitCode": 0,
+      "output": "Memory OS metrics scrape validation PASS\nPrometheus exporter: implemented\nauthenticated scrape handler: implemented\nHTTP server mount seam: supported, production unmounted\nOPS-P0-004 status: PARTIAL\nproduction decision: NO_GO\nMemory OS production-operability validation PASS\nready gates: 0/10\nproduction decision: NO_GO\nMemory OS entrypoint document validation PASS\nentrypoints: 5\nMemory OS metrics scrape validation PASS\nPrometheus exporter: implemented\nauthenticated scrape handler: implemented\nHTTP server mount seam: supported, production unmounted\nOPS-P0-004 status: PARTIAL\nproduction decision: NO_GO\nMemory OS production-operability validation PASS\nready gates: 0/10\nproduction decision: NO_GO\nMemory OS entrypoint document validation PASS\nentrypoints: 5\nMetrics scrape status already reconciled\n"
+    },
+    {
+      "command": "python scripts/reconcile-memory-os-metrics-operations.py",
+      "exitCode": 0,
+      "output": "Memory OS metrics operations validation PASS\ndashboards: 4  panels: 22\nretention tiers: 3  eligible SLIs: 6\nconfiguration state: NOT_CONFIGURED\nproduction decision: NO_GO\nMemory OS metrics contract validation PASS\nmetrics: 28  slis: 17  slos: 3  alerts: 7\nnegative cases rejected: 14\nOPS-P0-004 status: PARTIAL\nMemory OS metrics operations validation PASS\ndashboards: 4  panels: 22\nretention tiers: 3  eligible SLIs: 6\nconfiguration state: NOT_CONFIGURED\nproduction decision: NO_GO\nMemory OS production-operability validation PASS\nready gates: 0/10\nproduction decision: NO_GO\nMemory OS entrypoint document validation PASS\nentrypoints: 5\nRegistered dashboard, retention and error-budget definitions; OPS-P0-004 remains PARTIAL\n"
+    },
+    {
+      "command": "python scripts/reconcile-memory-os-metrics-alerting.py",
+      "exitCode": 0,
+      "output": "Memory OS metrics alerting validation PASS\nalert rules: 7\nrouting: NOT_CONFIGURED\nproduction decision: NO_GO\nMemory OS metrics contract validation PASS\nmetrics: 28  slis: 17  slos: 3  alerts: 7\nnegative cases rejected: 14\nOPS-P0-004 status: PARTIAL\nMemory OS metrics alerting validation PASS\nalert rules: 7\nrouting: NOT_CONFIGURED\nproduction decision: NO_GO\nMemory OS production-operability validation PASS\nready gates: 0/10\nproduction decision: NO_GO\nMemory OS entrypoint document validation PASS\nentrypoints: 5\nRegistered alert rules and runbooks; routing remains NOT_CONFIGURED and OPS-P0-004 remains PARTIAL\n"
+    },
+    {
+      "command": "python scripts/validate-memory-os-metrics.py",
+      "exitCode": 0,
+      "output": "Memory OS metrics contract validation PASS\nmetrics: 28  slis: 17  slos: 3  alerts: 7\nnegative cases rejected: 14\nOPS-P0-004 status: PARTIAL\n"
+    },
+    {
+      "command": "python scripts/validate-memory-os-metrics-scrape.py",
+      "exitCode": 0,
+      "output": "Memory OS metrics scrape validation PASS\nPrometheus exporter: implemented\nauthenticated scrape handler: implemented\nHTTP server mount seam: supported, production unmounted\nOPS-P0-004 status: PARTIAL\nproduction decision: NO_GO\n"
+    },
+    {
+      "command": "python scripts/validate-memory-os-metrics-operations.py",
+      "exitCode": 0,
+      "output": "Memory OS metrics operations validation PASS\ndashboards: 4  panels: 22\nretention tiers: 3  eligible SLIs: 6\nconfiguration state: NOT_CONFIGURED\nproduction decision: NO_GO\n"
+    },
+    {
+      "command": "python scripts/validate-memory-os-metrics-alerting.py",
+      "exitCode": 0,
+      "output": "Memory OS metrics alerting validation PASS\nalert rules: 7\nrouting: NOT_CONFIGURED\nproduction decision: NO_GO\n"
+    },
+    {
+      "command": "python scripts/validate-memory-os-operability.py",
+      "exitCode": 0,
+      "output": "Memory OS production-operability validation PASS\nready gates: 0/10\nproduction decision: NO_GO\n"
+    },
+    {
+      "command": "python scripts/validate-memory-os-entry-docs.py",
+      "exitCode": 0,
+      "output": "Memory OS entrypoint document validation PASS\nentrypoints: 5\n"
     }
   ],
   "containsSecrets": false,
