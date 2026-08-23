@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -103,16 +105,34 @@ def run_validator(path: Path) -> None:
         raise SystemExit(f"canonical compatibility validator failed: {path.name}")
 
 
+def atomic_replace_output_bytes(payload: bytes) -> None:
+    descriptor, temp_name = tempfile.mkstemp(
+        prefix=f".{OUTPUT.name}.", suffix=".tmp", dir=OUTPUT.parent
+    )
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, OUTPUT)
+    finally:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
+
+
 def write_validated_output(document: dict[str, Any]) -> None:
     original = OUTPUT.read_bytes() if OUTPUT.exists() else None
+    payload = (json.dumps(document, indent=2) + "\n").encode("utf-8")
     try:
-        OUTPUT.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+        atomic_replace_output_bytes(payload)
         run_validator(OPERABILITY_VALIDATOR)
     except BaseException:
         if original is None:
             OUTPUT.unlink(missing_ok=True)
         else:
-            OUTPUT.write_bytes(original)
+            atomic_replace_output_bytes(original)
         raise
 
 
