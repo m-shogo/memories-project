@@ -1,0 +1,74 @@
+name: Backup Restore Permission Boundary Negative
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/backup-restore-admission-chain.yml"
+      - ".github/workflows/backup-restore-drill-request.yml"
+      - ".github/workflows/backup-restore-generation-evidence.yml"
+      - ".github/workflows/backup-restore-permission-boundary-negative.yml"
+      - "scripts/validate-memory-os-backup-restore-admission-chain-permission-negative.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request-permission-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-permission-negative.py"
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/backup-restore-admission-chain.yml"
+      - ".github/workflows/backup-restore-drill-request.yml"
+      - ".github/workflows/backup-restore-generation-evidence.yml"
+      - ".github/workflows/backup-restore-permission-boundary-negative.yml"
+      - "scripts/validate-memory-os-backup-restore-admission-chain-permission-negative.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request-permission-negative.py"
+      - "scripts/validate-memory-os-backup-restore-generation-evidence-permission-negative.py"
+
+permissions:
+  contents: read
+
+jobs:
+  permission-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Require exact clean source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+          else
+            test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          fi
+
+      - name: Compile backup/restore permission negatives
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/validate-memory-os-backup-restore-admission-chain-permission-negative.py \
+            scripts/validate-memory-os-backup-restore-drill-request-permission-negative.py \
+            scripts/validate-memory-os-backup-restore-generation-evidence-permission-negative.py
+
+      - name: Enforce end-to-end admission permission boundary
+        run: python scripts/validate-memory-os-backup-restore-admission-chain-permission-negative.py
+
+      - name: Enforce drill-request planning permission boundary
+        run: python scripts/validate-memory-os-backup-restore-drill-request-permission-negative.py
+
+      - name: Enforce generation-evidence permission boundary
+        run: python scripts/validate-memory-os-backup-restore-generation-evidence-permission-negative.py
+
+      - name: Prove read-only permission gate
+        run: test -z "$(git status --porcelain)"
