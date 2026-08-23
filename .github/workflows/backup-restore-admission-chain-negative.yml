@@ -36,6 +36,8 @@ on:
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
       - "scripts/reconcile-memory-os-backup-restore-admission-chain.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-negative.py"
+      - "scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py"
+      - "scripts/validate-memory-os-operability.py"
   push:
     branches:
       - so
@@ -73,6 +75,8 @@ on:
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
       - "scripts/reconcile-memory-os-backup-restore-admission-chain.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-negative.py"
+      - "scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py"
+      - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
 
 permissions:
@@ -117,12 +121,18 @@ jobs:
             scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
             scripts/validate-memory-os-backup-restore-admission-chain.py \
             scripts/reconcile-memory-os-backup-restore-admission-chain.py \
-            scripts/validate-memory-os-backup-restore-admission-chain-negative.py
+            scripts/validate-memory-os-backup-restore-admission-chain-negative.py \
+            scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py \
+            scripts/validate-memory-os-operability.py
       - name: Revalidate semantic preflight authority
         run: python scripts/validate-memory-os-backup-restore-drill-preflight.py
       - name: Validate canonical chain
         run: python scripts/validate-memory-os-backup-restore-admission-chain.py
       - name: Prove fail-closed chain mutations
         run: python scripts/validate-memory-os-backup-restore-admission-chain-negative.py
+      - name: Prove fail-closed chain reconcile authority and rollback
+        run: python scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py
+      - name: Validate aggregate operability remains fail-closed
+        run: python scripts/validate-memory-os-operability.py
       - name: Verify read-only negative suite
         run: test -z "$(git status --porcelain)"
