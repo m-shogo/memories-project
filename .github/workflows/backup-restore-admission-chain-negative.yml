@@ -27,8 +27,12 @@ on:
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/reconcile-memory-os-production-equivalent-generation-status.py"
+      - "scripts/validate-memory-os-production-equivalent-generation-reconcile-negative.py"
       - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-recovery-objectives.py"
+      - "scripts/reconcile-memory-os-recovery-objectives.py"
+      - "scripts/validate-memory-os-recovery-objectives-reconcile-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-request.py"
       - "scripts/reconcile-memory-os-backup-restore-drill-request.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py"
@@ -78,8 +82,12 @@ on:
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/reconcile-memory-os-production-equivalent-generation-status.py"
+      - "scripts/validate-memory-os-production-equivalent-generation-reconcile-negative.py"
       - "scripts/register-memory-os-recovery-objectives.py"
       - "scripts/validate-memory-os-recovery-objectives.py"
+      - "scripts/reconcile-memory-os-recovery-objectives.py"
+      - "scripts/validate-memory-os-recovery-objectives-reconcile-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-request.py"
       - "scripts/reconcile-memory-os-backup-restore-drill-request.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py"
@@ -137,8 +145,12 @@ jobs:
             scripts/register-memory-os-production-equivalent-environment-generation.py \
             scripts/validate-memory-os-production-equivalent-environment-record.py \
             scripts/validate-memory-os-production-equivalent-environment-generation.py \
+            scripts/reconcile-memory-os-production-equivalent-generation-status.py \
+            scripts/validate-memory-os-production-equivalent-generation-reconcile-negative.py \
             scripts/register-memory-os-recovery-objectives.py \
             scripts/validate-memory-os-recovery-objectives.py \
+            scripts/reconcile-memory-os-recovery-objectives.py \
+            scripts/validate-memory-os-recovery-objectives-reconcile-negative.py \
             scripts/validate-memory-os-backup-restore-drill-request.py \
             scripts/reconcile-memory-os-backup-restore-drill-request.py \
             scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py \
@@ -160,6 +172,10 @@ jobs:
             scripts/validate-memory-os-backup-restore-admission-chain-negative.py \
             scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py \
             scripts/validate-memory-os-operability.py
+      - name: Prove environment generation reconcile authority and rollback
+        run: python scripts/validate-memory-os-production-equivalent-generation-reconcile-negative.py
+      - name: Prove recovery objective reconcile authority and rollback
+        run: python scripts/validate-memory-os-recovery-objectives-reconcile-negative.py
       - name: Revalidate semantic preflight authority
         run: python scripts/validate-memory-os-backup-restore-drill-preflight.py
       - name: Prove preflight evidence ordering is deterministic
