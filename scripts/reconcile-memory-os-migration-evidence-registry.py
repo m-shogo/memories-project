@@ -11,21 +11,42 @@ from types import ModuleType
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-REGISTRY_CONTRACT = ROOT / "contracts/operations/migration-evidence-registry-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/migration-evidence-registry.v1.json"
-WRITER = ROOT / "scripts/register-memory-os-migration-rehearsal-evidence.py"
-REGISTRY_VALIDATOR = ROOT / "scripts/validate-memory-os-migration-evidence-registry.py"
-RECOVERY_VALIDATOR = ROOT / "scripts/memory_os_migration_recovery_point.py"
-ARTIFACT_CONTRACT = ROOT / "contracts/operations/local-migration-recovery-artifact-contract.v1.json"
-ARTIFACT_RUNNER = ROOT / "scripts/run-memory-os-local-migration-recovery-artifact.sh"
-ARTIFACT_VALIDATOR = ROOT / "scripts/validate-memory-os-local-migration-recovery-artifact.py"
-ARTIFACT_EVIDENCE_ROOT = ROOT / "docs/evidence/migrations/recovery"
-LOCAL_RESTORE = ROOT / "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json"
-WORKFLOW = ROOT / ".github/workflows/migration-evidence-registry.yml"
-LIFECYCLE = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
-LIFECYCLE_VALIDATOR = ROOT / "scripts/validate-memory-os-migration-lifecycle.py"
-OPERABILITY_VALIDATOR = ROOT / "scripts/validate-memory-os-operability.py"
-STATUS = ROOT / "contracts/operations/production-operability-status.json"
+REGISTRY_CONTRACT_REL = Path("contracts/operations/migration-evidence-registry-contract.v1.json")
+REGISTRY_REL = Path("contracts/operations/migration-evidence-registry.v1.json")
+WRITER_REL = Path("scripts/register-memory-os-migration-rehearsal-evidence.py")
+REGISTRY_VALIDATOR_REL = Path("scripts/validate-memory-os-migration-evidence-registry.py")
+RECOVERY_VALIDATOR_REL = Path("scripts/memory_os_migration_recovery_point.py")
+ARTIFACT_CONTRACT_REL = Path("contracts/operations/local-migration-recovery-artifact-contract.v1.json")
+ARTIFACT_RUNNER_REL = Path("scripts/run-memory-os-local-migration-recovery-artifact.sh")
+ARTIFACT_VALIDATOR_REL = Path("scripts/validate-memory-os-local-migration-recovery-artifact.py")
+ARTIFACT_EVIDENCE_ROOT_REL = Path("docs/evidence/migrations/recovery")
+LOCAL_RESTORE_REL = Path("docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json")
+WORKFLOW_REL = Path(".github/workflows/migration-evidence-registry.yml")
+LIFECYCLE_REL = Path("contracts/operations/migration-lifecycle-contract.v1.json")
+LIFECYCLE_VALIDATOR_REL = Path("scripts/validate-memory-os-migration-lifecycle.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+REGISTRY_CONTRACT = ROOT / REGISTRY_CONTRACT_REL
+REGISTRY = ROOT / REGISTRY_REL
+WRITER = ROOT / WRITER_REL
+REGISTRY_VALIDATOR = ROOT / REGISTRY_VALIDATOR_REL
+RECOVERY_VALIDATOR = ROOT / RECOVERY_VALIDATOR_REL
+ARTIFACT_CONTRACT = ROOT / ARTIFACT_CONTRACT_REL
+ARTIFACT_RUNNER = ROOT / ARTIFACT_RUNNER_REL
+ARTIFACT_VALIDATOR = ROOT / ARTIFACT_VALIDATOR_REL
+ARTIFACT_EVIDENCE_ROOT = ROOT / ARTIFACT_EVIDENCE_ROOT_REL
+LOCAL_RESTORE = ROOT / LOCAL_RESTORE_REL
+WORKFLOW = ROOT / WORKFLOW_REL
+LIFECYCLE = ROOT / LIFECYCLE_REL
+LIFECYCLE_VALIDATOR = ROOT / LIFECYCLE_VALIDATOR_REL
+OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
+STATUS = ROOT / STATUS_REL
+EXPECTED_POST_WRITE_VALIDATORS = (
+    REGISTRY_VALIDATOR,
+    LIFECYCLE_VALIDATOR,
+    OPERABILITY_VALIDATOR,
+)
+POST_WRITE_VALIDATORS = EXPECTED_POST_WRITE_VALIDATORS
 
 FOUNDATION_EVIDENCE = (
     "append-only privacy-safe migration rehearsal evidence registry is implemented with exact source/canonical sequence binding, typed SHA-256 recovery-artifact references, a separately validated local logical-restore capability authority, and a per-run actual-artifact restore evidence requirement; arbitrary repository files or digest-only claims cannot satisfy recovery evidence and registrations remain non-production"
@@ -61,6 +82,61 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def require_exact_repo_directory(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_dir(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    require(
+        POST_WRITE_VALIDATORS == EXPECTED_POST_WRITE_VALIDATORS,
+        "migration evidence post-write validator chain authority drift",
+    )
+    for path, expected, field in (
+        (REGISTRY_CONTRACT, REGISTRY_CONTRACT_REL, "migration evidence registry contract"),
+        (REGISTRY, REGISTRY_REL, "migration evidence registry"),
+        (WRITER, WRITER_REL, "migration rehearsal writer"),
+        (REGISTRY_VALIDATOR, REGISTRY_VALIDATOR_REL, "migration evidence registry validator"),
+        (RECOVERY_VALIDATOR, RECOVERY_VALIDATOR_REL, "migration recovery-point validator"),
+        (ARTIFACT_CONTRACT, ARTIFACT_CONTRACT_REL, "local migration recovery artifact contract"),
+        (ARTIFACT_RUNNER, ARTIFACT_RUNNER_REL, "local migration recovery artifact runner"),
+        (ARTIFACT_VALIDATOR, ARTIFACT_VALIDATOR_REL, "local migration recovery artifact validator"),
+        (LOCAL_RESTORE, LOCAL_RESTORE_REL, "local logical restore result"),
+        (WORKFLOW, WORKFLOW_REL, "migration evidence workflow"),
+        (LIFECYCLE, LIFECYCLE_REL, "migration lifecycle contract"),
+        (LIFECYCLE_VALIDATOR, LIFECYCLE_VALIDATOR_REL, "migration lifecycle validator"),
+        (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+        (STATUS, STATUS_REL, "production operability status"),
+    ):
+        require_exact_repo_file(path, expected, field)
+    require_exact_repo_directory(
+        ARTIFACT_EVIDENCE_ROOT,
+        ARTIFACT_EVIDENCE_ROOT_REL,
+        "migration recovery evidence root",
+    )
+
+
 def load(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
@@ -68,6 +144,7 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_writer() -> ModuleType:
+    enforce_runtime_authorities()
     spec = importlib.util.spec_from_file_location("memory_os_migration_rehearsal_writer_reconcile", WRITER)
     require(spec is not None and spec.loader is not None, "cannot load migration rehearsal writer")
     module = importlib.util.module_from_spec(spec)
@@ -89,13 +166,14 @@ def passing(record: dict[str, Any]) -> bool:
 
 
 def commit_outputs_transactionally(outputs: dict[Path, dict[str, Any]]) -> None:
+    enforce_runtime_authorities()
     originals = {path: path.read_bytes() for path in outputs}
     try:
         for path, value in outputs.items():
             write(path, value)
-        subprocess.run(["python", str(REGISTRY_VALIDATOR)], cwd=ROOT, check=True)
-        subprocess.run(["python", str(LIFECYCLE_VALIDATOR)], cwd=ROOT, check=True)
-        subprocess.run(["python", str(OPERABILITY_VALIDATOR)], cwd=ROOT, check=True)
+        for validator in POST_WRITE_VALIDATORS:
+            enforce_runtime_authorities()
+            subprocess.run(["python", str(validator)], cwd=ROOT, check=True)
     except Exception as exc:
         for path, data in originals.items():
             path.write_bytes(data)
@@ -103,13 +181,7 @@ def commit_outputs_transactionally(outputs: dict[Path, dict[str, Any]]) -> None:
 
 
 def main() -> int:
-    for path in (
-        REGISTRY, WRITER, REGISTRY_VALIDATOR, RECOVERY_VALIDATOR,
-        ARTIFACT_CONTRACT, ARTIFACT_RUNNER, ARTIFACT_VALIDATOR, ARTIFACT_EVIDENCE_ROOT,
-        LOCAL_RESTORE, WORKFLOW, LIFECYCLE_VALIDATOR, OPERABILITY_VALIDATOR,
-    ):
-        require(path.exists(), f"migration evidence foundation missing: {path.relative_to(ROOT)}")
-
+    enforce_runtime_authorities()
     registry = load(REGISTRY)
     contract = load(REGISTRY_CONTRACT)
     writer = load_writer()
@@ -227,6 +299,8 @@ def main() -> int:
     })
 
     print("Memory OS migration evidence registry reconciliation PASS")
+    print("canonical migration evidence data/executable authorities enforced: true")
+    print("canonical post-write validator chain enforced: true")
     print(f"registered rehearsals: {count}")
     print(f"local passing actual-artifact rehearsals: {local_passing}")
     print("typed recovery artifact reference: implemented")
