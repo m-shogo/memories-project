@@ -32,6 +32,40 @@ def load_module():
     return module
 
 
+def verify_runtime_authority_identity(reconciler, original_contract: bytes, original_result: bytes, original_status: bytes) -> None:
+    reconciler.enforce_runtime_authorities()
+    substitutions = (
+        ("CONTRACT_PATH", ROOT / "README.md"),
+        ("RESULT_PATH", ROOT / "README.md"),
+        ("STATUS_PATH", CONTRACT_PATH),
+        ("VALIDATOR_PATH", ROOT / "scripts/validate-memory-os-operability.py"),
+        ("INCIDENT_RESPONSE_VALIDATOR", ROOT / "scripts/validate-memory-os-incident-tabletop.py"),
+        ("TABLETOP_VALIDATOR", ROOT / "scripts/validate-memory-os-incident-response.py"),
+        ("OPERABILITY_VALIDATOR", ROOT / "scripts/validate-memory-os-incident-response.py"),
+        ("WORKFLOW_PATH", ROOT / ".github/workflows/incident-control-exercise.yml"),
+    )
+    for field, substitute in substitutions:
+        original = getattr(reconciler, field)
+        try:
+            setattr(reconciler, field, substitute)
+            try:
+                reconciler.enforce_runtime_authorities()
+            except reconciler.ReconcileFailure:
+                pass
+            else:
+                raise RuntimeError(f"reconciler accepted {field} authority substitution")
+        finally:
+            setattr(reconciler, field, original)
+
+    reconciler.enforce_runtime_authorities()
+    if CONTRACT_PATH.read_bytes() != original_contract:
+        raise RuntimeError("authority substitution mutated incident control contract")
+    if RESULT_PATH.read_bytes() != original_result:
+        raise RuntimeError("authority substitution mutated incident control result")
+    if STATUS_PATH.read_bytes() != original_status:
+        raise RuntimeError("authority substitution mutated production operability status")
+
+
 def expect_result_rejected(reconciler, result, contract, label: str) -> None:
     try:
         reconciler.validate_result(result, contract)
@@ -48,6 +82,13 @@ def main() -> int:
     contract = json.loads(original_contract_bytes.decode("utf-8"))
     status = json.loads(original_status_bytes.decode("utf-8"))
     result = json.loads(original_result_bytes.decode("utf-8"))
+
+    verify_runtime_authority_identity(
+        reconciler,
+        original_contract_bytes,
+        original_result_bytes,
+        original_status_bytes,
+    )
 
     for field in UNPROVEN_READINESS:
         candidate = copy.deepcopy(contract)
@@ -94,6 +135,7 @@ def main() -> int:
     if STATUS_PATH.read_bytes() != original_status_bytes:
         raise RuntimeError("negative validation mutated production operability status")
 
+    print("PASS: incident authority reconcile rejects data/executable authority substitution")
     print("PASS: incident authority reconcile rejects unsafe input and rolls back post-write validation failures")
     return 0
 
