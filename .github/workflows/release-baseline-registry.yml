@@ -8,6 +8,7 @@ on:
       - "contracts/operations/release-baseline-registry.v1.json"
       - "docs/evidence/releases/README.md"
       - "scripts/register-memory-os-release-baseline.py"
+      - "scripts/validate-memory-os-release-baseline-writer-authority-negative.py"
       - "scripts/validate-memory-os-release-baseline-registry.py"
       - "scripts/validate-memory-os-release-baseline-registry-negative.py"
       - "scripts/validate-memory-os-release-baseline-evidence-binding.py"
@@ -25,6 +26,7 @@ on:
       - "contracts/operations/release-baseline-registry.v1.json"
       - "docs/evidence/releases/README.md"
       - "scripts/register-memory-os-release-baseline.py"
+      - "scripts/validate-memory-os-release-baseline-writer-authority-negative.py"
       - "scripts/validate-memory-os-release-baseline-registry.py"
       - "scripts/validate-memory-os-release-baseline-registry-negative.py"
       - "scripts/validate-memory-os-release-baseline-evidence-binding.py"
@@ -72,6 +74,7 @@ jobs:
           test -z "$(git status --porcelain)"
           python -m py_compile \
             scripts/register-memory-os-release-baseline.py \
+            scripts/validate-memory-os-release-baseline-writer-authority-negative.py \
             scripts/validate-memory-os-release-baseline-registry.py \
             scripts/validate-memory-os-release-baseline-registry-negative.py \
             scripts/validate-memory-os-release-baseline-evidence-binding.py \
@@ -80,6 +83,9 @@ jobs:
             scripts/reconcile-memory-os-release-baseline-registry.py \
             scripts/validate-memory-os-version-compatibility.py \
             scripts/validate-memory-os-operability.py
+
+      - name: Validate release writer authority boundary
+        run: python scripts/validate-memory-os-release-baseline-writer-authority-negative.py
 
       - name: Prove invalid registration cannot mutate authority
         run: |
@@ -218,6 +224,7 @@ jobs:
           test -z "$(git status --porcelain)"
           python -m py_compile \
             scripts/register-memory-os-release-baseline.py \
+            scripts/validate-memory-os-release-baseline-writer-authority-negative.py \
             scripts/validate-memory-os-release-baseline-registry.py \
             scripts/validate-memory-os-release-baseline-registry-negative.py \
             scripts/validate-memory-os-release-baseline-evidence-binding.py \
@@ -226,6 +233,9 @@ jobs:
             scripts/reconcile-memory-os-release-baseline-registry.py \
             scripts/validate-memory-os-version-compatibility.py \
             scripts/validate-memory-os-operability.py
+
+      - name: Validate release writer authority boundary
+        run: python scripts/validate-memory-os-release-baseline-writer-authority-negative.py
 
       - name: Prove invalid registration cannot mutate authority
         run: |
