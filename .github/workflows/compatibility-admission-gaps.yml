@@ -62,33 +62,35 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: compatibility-admission-gaps-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
-  update:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Confirm exact clean authority source
-        env:
-          EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      - name: Confirm exact clean PR source
         run: |
           set -euo pipefail
-          test -n "$EXPECTED_SHA"
+          expected="${{ github.event.pull_request.head.sha }}"
+          test -n "$expected"
           test -z "$(git status --porcelain)"
-          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
-      - name: Regenerate compatibility admission gaps
+          test "$(git rev-parse HEAD)" = "$expected"
+      - name: Regenerate compatibility admission gaps read-only
         run: |
           set -euo pipefail
           python -m py_compile \
@@ -112,24 +114,71 @@ jobs:
           python scripts/validate-memory-os-client-server-support-window.py
           python scripts/validate-memory-os-operability.py
       - name: Require deterministic authority on pull requests
-        if: github.event_name == 'pull_request'
         run: |
           git diff --check
           git diff --exit-code -- contracts/operations/compatibility-admission-gaps.v1.json
-      - name: Commit deterministic next-admission authority
-        if: github.event_name != 'pull_request'
+
+  update:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Confirm exact clean authority source
         run: |
           set -euo pipefail
-          source_sha="$(git rev-parse HEAD)"
+          test -n "$GITHUB_SHA"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "SOURCE_SHA=$GITHUB_SHA" >> "$GITHUB_ENV"
+      - name: Regenerate compatibility admission gaps
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/update-memory-os-compatibility-admission-gaps.py \
+            scripts/validate-memory-os-compatibility-admission-gaps-negative.py \
+            scripts/register-memory-os-release-baseline.py \
+            scripts/register-memory-os-release-compatibility-pair.py \
+            scripts/validate-memory-os-release-compatibility-pair.py \
+            scripts/reconcile-memory-os-release-compatibility-pair.py \
+            scripts/validate-memory-os-release-compatibility-pair-independent-review.py \
+            scripts/register-memory-os-client-baseline.py \
+            scripts/register-memory-os-parser-artifact.py \
+            scripts/validate-memory-os-version-compatibility-foundations.py \
+            scripts/validate-memory-os-version-compatibility-execution-evidence.py \
+            scripts/validate-memory-os-client-server-support-window.py \
+            scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-compatibility-admission-gaps-negative.py
+          python scripts/update-memory-os-compatibility-admission-gaps.py
+          python scripts/validate-memory-os-release-compatibility-pair.py
+          python scripts/validate-memory-os-version-compatibility-execution-evidence.py
+          python scripts/validate-memory-os-client-server-support-window.py
+          python scripts/validate-memory-os-operability.py
+      - name: Commit deterministic next-admission authority
+        run: |
+          set -euo pipefail
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Compatibility admission-gap source is stale: validated $SOURCE_SHA but so is $(git rev-parse origin/so)" >&2
+            exit 75
+          fi
           git add contracts/operations/compatibility-admission-gaps.v1.json
           if ! git diff --cached --quiet; then
             git diff --cached --check
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "docs(compat): refresh compatibility admission gaps"
-            remote_sha="$(git ls-remote origin refs/heads/so | awk '{print $1}')"
-            if [[ "$remote_sha" != "$source_sha" ]]; then
-              echo "Compatibility admission-gap source is stale: validated $source_sha but so is $remote_sha" >&2
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              echo "Compatibility admission-gap source advanced after validation; refusing stale authority replay" >&2
               exit 75
             fi
             git push origin HEAD:so
