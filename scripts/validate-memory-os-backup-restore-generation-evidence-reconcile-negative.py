@@ -104,12 +104,42 @@ def prove_direct_authority_identity(reconciler: object) -> None:
     print(f"PASS boundary: direct generation-evidence data/writer/validator substitutions rejected: {len(cases)}")
 
 
+def prove_atomic_write_failure(reconciler: object) -> None:
+    before = {path: path.read_bytes() for path in CANONICAL.values()}
+    original_replace = reconciler.os.replace
+
+    def reject_replace(source: str | Path, destination: str | Path) -> None:
+        raise OSError("synthetic atomic replace rejection")
+
+    reconciler.os.replace = reject_replace
+    try:
+        target = CANONICAL["CONTRACT"]
+        try:
+            reconciler.write_text(target, before[target].decode("utf-8") + " ")
+        except reconciler.Fail as exc:
+            require("cannot atomically write" in str(exc), f"atomic write rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("synthetic generation-evidence atomic replace failure unexpectedly accepted")
+    finally:
+        reconciler.os.replace = original_replace
+
+    for path, expected in before.items():
+        require(path.read_bytes() == expected, f"atomic replace rejection mutated canonical authority: {path.name}")
+    leftovers: list[Path] = []
+    for attr in MUTATED:
+        path = CANONICAL[attr]
+        leftovers.extend(path.parent.glob(f".{path.name}.*.tmp"))
+    require(not leftovers, f"atomic replace rejection left temporary generation-evidence authority files: {leftovers}")
+    print("PASS boundary: failed atomic generation-evidence write preserves canonical bytes and cleans temporary files")
+
+
 def main() -> int:
     require(RECONCILER.is_file(), "generation evidence reconciler missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
     reconciler = load_reconciler()
 
     prove_direct_authority_identity(reconciler)
+    prove_atomic_write_failure(reconciler)
 
     original_enforcer = reconciler.enforce_runtime_authorities
     original_post_validator = reconciler.run_post_validator
@@ -185,6 +215,7 @@ def main() -> int:
     print("PASS reject: corrupt generation append-only authority is never auto-healed by reconcile")
     print("PASS rollback: generation evidence reconcile restores registry/contract/binding/status after aggregate validation failure")
     print("direct generation-evidence data/writer/validator substitutions accepted: false")
+    print("non-atomic generation-evidence authority write accepted: false")
     print("Generation evidence reconcile negative suite PASS")
     return 0
 
