@@ -13,6 +13,8 @@ on:
       - "contracts/operations/backup-restore-generation-binding-contract.v1.json"
       - "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
       - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+      - "contracts/operations/backup-restore-promotion-review-contract.v1.json"
+      - "contracts/operations/backup-restore-promotion-review-registry.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
@@ -51,6 +53,9 @@ on:
       - "scripts/reconcile-memory-os-backup-restore-generation-status.py"
       - "scripts/validate-memory-os-backup-restore-generation-status-reconcile-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-status-ordering-negative.py"
+      - "scripts/reconcile-memory-os-backup-restore-promotion-review.py"
+      - "scripts/validate-memory-os-backup-restore-promotion-review.py"
+      - "scripts/validate-memory-os-backup-restore-promotion-review-reconcile-negative.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
       - "scripts/reconcile-memory-os-backup-restore-admission-chain.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-negative.py"
@@ -70,6 +75,8 @@ on:
       - "contracts/operations/backup-restore-generation-binding-contract.v1.json"
       - "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
       - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+      - "contracts/operations/backup-restore-promotion-review-contract.v1.json"
+      - "contracts/operations/backup-restore-promotion-review-registry.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
@@ -108,6 +115,9 @@ on:
       - "scripts/reconcile-memory-os-backup-restore-generation-status.py"
       - "scripts/validate-memory-os-backup-restore-generation-status-reconcile-negative.py"
       - "scripts/validate-memory-os-backup-restore-generation-status-ordering-negative.py"
+      - "scripts/reconcile-memory-os-backup-restore-promotion-review.py"
+      - "scripts/validate-memory-os-backup-restore-promotion-review.py"
+      - "scripts/validate-memory-os-backup-restore-promotion-review-reconcile-negative.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
       - "scripts/reconcile-memory-os-backup-restore-admission-chain.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-negative.py"
@@ -173,6 +183,9 @@ jobs:
             scripts/reconcile-memory-os-backup-restore-generation-status.py \
             scripts/validate-memory-os-backup-restore-generation-status-reconcile-negative.py \
             scripts/validate-memory-os-backup-restore-generation-status-ordering-negative.py \
+            scripts/reconcile-memory-os-backup-restore-promotion-review.py \
+            scripts/validate-memory-os-backup-restore-promotion-review.py \
+            scripts/validate-memory-os-backup-restore-promotion-review-reconcile-negative.py \
             scripts/validate-memory-os-backup-restore-admission-chain.py \
             scripts/reconcile-memory-os-backup-restore-admission-chain.py \
             scripts/validate-memory-os-backup-restore-admission-chain-negative.py \
@@ -202,6 +215,10 @@ jobs:
         run: python scripts/validate-memory-os-backup-restore-generation-status-reconcile-negative.py
       - name: Prove generation binding status ordering is deterministic
         run: python scripts/validate-memory-os-backup-restore-generation-status-ordering-negative.py
+      - name: Validate human promotion review authority
+        run: python scripts/validate-memory-os-backup-restore-promotion-review.py
+      - name: Prove human promotion review reconcile authority and rollback
+        run: python scripts/validate-memory-os-backup-restore-promotion-review-reconcile-negative.py
       - name: Validate canonical chain
         run: python scripts/validate-memory-os-backup-restore-admission-chain.py
       - name: Prove fail-closed chain mutations
