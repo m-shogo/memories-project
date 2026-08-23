@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -132,8 +134,24 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def atomic_replace_bytes(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, path)
+    finally:
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
+
+
 def write(path: Path, value: dict[str, Any]) -> None:
-    path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+    atomic_replace_bytes(path, (json.dumps(value, indent=2) + "\n").encode("utf-8"))
 
 
 def append_unique(values: list[Any], value: Any) -> None:
@@ -180,7 +198,7 @@ def write_and_validate_transactionally(
         run_validator(OPERABILITY_VALIDATOR, "post-write operability validator")
     except Exception:
         for path in paths:
-            path.write_bytes(original_bytes[path])
+            atomic_replace_bytes(path, original_bytes[path])
         raise
 
 
