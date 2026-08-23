@@ -1,0 +1,73 @@
+name: Operability Admission Inventory PR
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/operability-admission-inventory-pr.yml"
+      - ".github/workflows/operability-admission-inventory.yml"
+      - "contracts/operations/**"
+      - "docs/evidence/backup-restore/**"
+      - "docs/evidence/recovery-objectives/approvals/**"
+      - "docs/evidence/sustained-soak/**"
+      - "docs/fixtures/memory-os-operability/**"
+      - "docs/runbooks/memory-os-production-equivalent-backup-restore-drill.md"
+      - "scripts/generate-memory-os-operability-admission-inventory.py"
+      - "scripts/validate-memory-os-operability-admission-inventory*.py"
+      - "scripts/memory_os_backup_restore_blockers.py"
+      - "scripts/memory_os_environment_generation_eligibility.py"
+      - "scripts/register-memory-os-backup-restore-*.py"
+      - "scripts/register-memory-os-recovery-objectives.py"
+      - "scripts/register-memory-os-production-equivalent-environment-generation.py"
+      - "scripts/reconcile-memory-os-backup-restore-*.py"
+      - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
+      - "scripts/validate-memory-os-backup-restore-*.py"
+      - "scripts/validate-memory-os-recovery-objectives*.py"
+      - "scripts/validate-memory-os-sustained-*.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: operability-admission-inventory-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Confirm exact clean PR authority source
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+      - name: Validate operability admission inventory authority
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/generate-memory-os-operability-admission-inventory.py \
+            scripts/validate-memory-os-operability-admission-inventory.py \
+            scripts/validate-memory-os-operability-admission-inventory-source-authorities.py \
+            scripts/validate-memory-os-operability-admission-inventory-registry-negative.py \
+            scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py \
+            scripts/validate-memory-os-operability-status-hygiene.py
+          python scripts/validate-memory-os-operability-admission-inventory-source-authorities.py
+          python scripts/generate-memory-os-operability-admission-inventory.py
+          python scripts/validate-memory-os-operability-admission-inventory.py
+          python scripts/validate-memory-os-operability-admission-inventory-registry-negative.py
+          python scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py
+          python scripts/validate-memory-os-operability-status-hygiene.py
+      - name: Require read-only deterministic authority
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code
