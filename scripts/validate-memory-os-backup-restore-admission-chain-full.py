@@ -4,8 +4,8 @@
 This runner centralizes the validation order shared by pull-request read-only
 validation and non-PR derived-authority publication. It never creates a
 production generation, recovery objective, drill request/evidence, credentials,
-or traffic. The only reconcile step is the existing deterministic admission-chain
-projection, which remains fail-closed and keeps productionDecision=NO_GO.
+or traffic. The only reconcile steps are deterministic derived-authority
+projections; productionDecision remains NO_GO.
 """
 
 from __future__ import annotations
@@ -31,6 +31,9 @@ STEPS: tuple[tuple[str, str], ...] = (
     ("scripts/validate-memory-os-backup-restore-preflight-generation-eligibility-consistency-negative.py", "preflight semantic eligibility negative"),
     ("scripts/validate-memory-os-backup-restore-drill-request-negative.py", "reviewed drill request semantic negative"),
     ("scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py", "reviewed drill request reconcile negative"),
+    ("scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding-reconcile-negative.py", "reviewed request semantic-generation binding reconcile negative"),
+    ("scripts/reconcile-memory-os-backup-restore-drill-generation-eligibility-binding.py", "reviewed request semantic-generation binding reconcile"),
+    ("scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding.py", "reviewed request semantic-generation binding authority"),
     ("scripts/validate-memory-os-backup-restore-generation-evidence-contract-path-negative.py", "generation evidence contract-path negative"),
     ("scripts/validate-memory-os-backup-restore-generation-evidence-negative.py", "generation evidence semantic negative"),
     ("scripts/validate-memory-os-backup-restore-semantic-generation-negative.py", "generation evidence semantic-generation negative"),
