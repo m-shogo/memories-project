@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-sustained-local-soak-status.py"
 WORKFLOW = ROOT / ".github/workflows/reconcile-sustained-local-soak-authority.yml"
+MAIN_WORKFLOW = ROOT / ".github/workflows/sustained-local-soak.yml"
 
 
 def load_reconciler():
@@ -34,10 +35,10 @@ def expect_authority_rejection(module, attr: str, replacement: Path) -> None:
         setattr(module, attr, original)
 
 
-def validate_atomic_authority_diagnostic() -> None:
-    if not WORKFLOW.is_file():
-        raise AssertionError("sustained soak authority workflow missing")
-    text = WORKFLOW.read_text(encoding="utf-8")
+def validate_atomic_diagnostic_workflow(path: Path, label: str) -> None:
+    if not path.is_file():
+        raise AssertionError(f"{label} workflow missing")
+    text = path.read_text(encoding="utf-8")
     required = (
         "tempfile.mkstemp(",
         "dir=path.parent",
@@ -48,14 +49,45 @@ def validate_atomic_authority_diagnostic() -> None:
     )
     missing = [fragment for fragment in required if fragment not in text]
     if missing:
-        raise AssertionError(f"sustained soak authority diagnostic is not crash-safe: missing {missing}")
+        raise AssertionError(f"{label} diagnostic is not crash-safe: missing {missing}")
     if "path.write_text(json.dumps(value" in text:
-        raise AssertionError("sustained soak authority diagnostic regressed to direct write_text")
+        raise AssertionError(f"{label} diagnostic regressed to direct write_text")
+
+
+def validate_atomic_reconciler_writer(module) -> None:
+    path = module.CONTRACT_PATH
+    original = path.read_bytes()
+    temp_glob = f".{path.name}.*.tmp"
+    before = {candidate.name for candidate in path.parent.glob(temp_glob)}
+    real_replace = module.os.replace
+
+    def fail_replace(_source, _destination) -> None:
+        raise OSError("synthetic atomic replace failure")
+
+    module.os.replace = fail_replace
+    try:
+        try:
+            module.atomic_replace_bytes(path, original + b"\n")
+        except OSError as exc:
+            if "synthetic atomic replace failure" not in str(exc):
+                raise AssertionError(f"unexpected atomic write failure: {exc}") from exc
+        else:
+            raise AssertionError("atomic writer unexpectedly succeeded after replace failure")
+    finally:
+        module.os.replace = real_replace
+
+    if path.read_bytes() != original:
+        raise AssertionError("atomic replace failure changed canonical sustained-soak contract")
+    after = {candidate.name for candidate in path.parent.glob(temp_glob)}
+    if after != before:
+        raise AssertionError("atomic replace failure leaked temporary sustained-soak authority")
 
 
 def main() -> int:
     module = load_reconciler()
-    validate_atomic_authority_diagnostic()
+    validate_atomic_diagnostic_workflow(WORKFLOW, "sustained soak authority")
+    validate_atomic_diagnostic_workflow(MAIN_WORKFLOW, "sustained soak execution")
+    validate_atomic_reconciler_writer(module)
     paths = (module.CONTRACT_PATH, module.LOAD_PATH, module.STATUS_PATH)
     original = {path: path.read_bytes() for path in paths}
 
@@ -104,9 +136,10 @@ def main() -> int:
         module.run_validator = real_run_validator
         for path in paths:
             if path.read_bytes() != original[path]:
-                path.write_bytes(original[path])
+                module.atomic_replace_bytes(path, original[path])
 
-    print("PASS: sustained local soak authority diagnostic is atomic and crash-safe")
+    print("PASS: sustained local soak execution and authority diagnostics are atomic and crash-safe")
+    print("PASS: sustained local soak reconciler atomic replacement failure preserves canonical authority")
     print("PASS: sustained local soak authority identity and reconcile rollback are fail-closed")
     print("production evidence generated: false")
     print("production decision changed: false")
