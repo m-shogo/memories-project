@@ -298,6 +298,34 @@ def expect_generator_backup_derived_authority_rejected(generator: Any) -> None:
     print("PASS generator reject: canonical backup derived authority validation cannot be bypassed")
 
 
+def expect_generator_authority_substitutions_rejected(generator: Any) -> None:
+    canonical_output = ROOT / "contracts/operations/operability-admission-inventory.v1.json"
+    canonical_status = ROOT / "contracts/operations/production-operability-status.json"
+    canonical_validator = ROOT / "scripts/validate-memory-os-operability-admission-inventory.py"
+    output_before = canonical_output.read_bytes()
+    status_before = canonical_status.read_bytes()
+    cases = (
+        ("OUTPUT", canonical_status, "inventory output"),
+        ("STATUS", canonical_output, "production status"),
+        ("INVENTORY_VALIDATOR", VALIDATOR, "inventory validator"),
+    )
+    for attribute, replacement, label in cases:
+        original = getattr(generator, attribute)
+        setattr(generator, attribute, replacement)
+        rejected = False
+        try:
+            generator.main()
+        except SystemExit as exc:
+            require(exc.code not in (None, 0), f"generator exited successfully after {label} substitution")
+            rejected = True
+        finally:
+            setattr(generator, attribute, original)
+        require(rejected, f"generator accepted non-canonical {label} authority")
+        require(canonical_output.read_bytes() == output_before, f"{label} substitution mutated canonical inventory")
+        require(canonical_status.read_bytes() == status_before, f"{label} substitution mutated canonical production status")
+        print(f"PASS generator authority reject: {label} substitution")
+
+
 def expect_generator_post_write_validation_rollback(generator: Any) -> None:
     inventory_before = generator.OUTPUT.read_bytes()
     original = generator.validate_generated_inventory
@@ -371,6 +399,7 @@ def main() -> int:
     generator.main()
     require(generator.OUTPUT.read_bytes() == inventory_before, "canonical inventory generator is not byte-deterministic")
     print("PASS baseline: canonical append-only authorities accepted without inventory drift")
+    expect_generator_authority_substitutions_rejected(generator)
     expect_generator_post_write_validation_rollback(generator)
     expect_untracked_tabletop_rejected(validator, generator)
     expect_generator_load_authority_rejected(generator)
@@ -456,6 +485,7 @@ def main() -> int:
     require(not ROGUE_TABLETOP.exists(), "negative suite left rogue tabletop fixture behind")
     require(not PATH_ALIAS.exists() and not PATH_ALIAS_TARGET.exists(), "negative suite left standalone path alias fixture behind")
     print("Memory OS operability inventory append-only authority negative suite PASS")
+    print("generator output/status/validator substitution accepted: false")
     print("canonical registry corruption accepted by source-authority validator: false")
     print("non-OPS source corruption accepted by standalone inventory validator: false")
     print("boolean false source-validator success accepted by standalone inventory validator: false")
