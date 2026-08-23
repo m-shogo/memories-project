@@ -88,6 +88,25 @@ def require_canonical_runtime_authority(path: Path, canonical: Path, field: str)
         canonical_repo_file(path, field)
 
 
+def require_cli_authorities() -> None:
+    """Pin the actual append entrypoint to canonical production-planning authorities."""
+    authorities = (
+        (CONTRACT, CANONICAL_CONTRACT, "restore drill request contract"),
+        (REGISTRY, CANONICAL_REGISTRY, "restore drill request registry"),
+        (GEN_REGISTRY, CANONICAL_GEN_REGISTRY, "environment generation registry"),
+        (OBJECTIVES_REGISTRY, CANONICAL_OBJECTIVES_REGISTRY, "recovery objectives registry"),
+        (ELIGIBILITY_HELPER, ROOT / "scripts/memory_os_environment_generation_eligibility.py", "environment generation eligibility helper"),
+        (OBJECTIVES_WRITER, ROOT / "scripts/register-memory-os-recovery-objectives.py", "recovery objectives writer"),
+    )
+    require(ROOT == CANONICAL_ROOT, "drill request CLI repository root authority drift")
+    for actual, canonical, field in authorities:
+        require(actual == canonical, f"{field} must use canonical authority")
+        canonical_repo_file(actual, field)
+    canonical_lock = ROOT / "contracts/operations/.backup-restore-drill-request.lock"
+    require(LOCK == canonical_lock, "restore drill request lock must use canonical authority")
+    require(LOCK.parent == CANONICAL_REGISTRY.parent, "restore drill request lock must share canonical registry directory")
+
+
 def canonical_request_sha256(record: dict[str, Any]) -> str:
     encoded = json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
@@ -454,6 +473,7 @@ def write_registry_transactionally(value: dict[str, Any]) -> None:
 
 
 def main() -> int:
+    require_cli_authorities()
     parser = argparse.ArgumentParser()
     parser.add_argument("--request", required=True)
     args = parser.parse_args()
@@ -465,10 +485,6 @@ def main() -> int:
     else:
         raise Fail("drill request input must be external to repository")
     require(git("status", "--porcelain") == "", "working tree must be clean")
-    require_canonical_runtime_authority(CONTRACT, CANONICAL_CONTRACT, "restore drill request contract")
-    require_canonical_runtime_authority(REGISTRY, CANONICAL_REGISTRY, "restore drill request registry")
-    require_canonical_runtime_authority(GEN_REGISTRY, CANONICAL_GEN_REGISTRY, "environment generation registry")
-    require_canonical_runtime_authority(OBJECTIVES_REGISTRY, CANONICAL_OBJECTIVES_REGISTRY, "recovery objectives registry")
     record = load(input_path)
     validate_request(record, require_current=True)
 
