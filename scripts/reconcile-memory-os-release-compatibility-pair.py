@@ -114,6 +114,18 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
+def replace_prefixed_once(values: list[Any], prefix: str, value: str) -> None:
+    matches = [
+        index for index, item in enumerate(values)
+        if isinstance(item, str) and item.startswith(prefix)
+    ]
+    require(len(matches) <= 1, f"duplicate deterministic authority prefix: {prefix}")
+    if matches:
+        values[matches[0]] = value
+    else:
+        values.append(value)
+
+
 def gap_unsatisfied(gap: dict[str, Any]) -> bool:
     current = gap.get("current")
     if isinstance(current, bool):
@@ -245,8 +257,7 @@ def main() -> int:
     missing = gate.get("missingEvidence")
     refs = gate.get("evidenceRefs")
     require(isinstance(existing, list) and isinstance(missing, list) and isinstance(refs, list), "OPS-P0-008 authority arrays missing")
-    existing[:] = [item for item in existing if not (isinstance(item, str) and item.startswith(EVIDENCE_PREFIX))]
-    append_once(existing, (
+    replace_prefixed_once(existing, EVIDENCE_PREFIX, (
         f"{EVIDENCE_PREFIX} approved releases={release_count}, approved predecessor/successor rollback pairs={pair_count}; pair admission revalidates the canonical source-bound approved-release registry, requires two distinct approved release baselines, ELIGIBLE predecessor rollback status, committed digest-bound rolling/rollback/persisted-route/database/artifact evidence, and exactly two typed pair-bound Security/Operability APPROVED reviews from distinct reviewers; candidate/local execution remains separate non-release authority and productionEvidence/productionReady remain false"
     ))
     if pair_count > 0:
