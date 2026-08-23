@@ -48,21 +48,82 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-compatibility-pair-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  validate:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout exact PR source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify exact clean PR source
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+
+      - name: Validate approved release pair authority read-only
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/register-memory-os-release-baseline.py \
+            scripts/register-memory-os-release-compatibility-pair.py \
+            scripts/validate-memory-os-release-compatibility-pair.py \
+            scripts/validate-memory-os-release-compatibility-pair-negative.py \
+            scripts/validate-memory-os-release-compatibility-pair-reconcile-negative.py \
+            scripts/validate-memory-os-release-compatibility-pair-independent-review.py \
+            scripts/validate-memory-os-release-compatibility-pair-independent-review-negative.py \
+            scripts/reconcile-memory-os-release-compatibility-pair.py \
+            scripts/validate-memory-os-version-compatibility-execution-evidence.py \
+            scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-release-compatibility-pair-negative.py
+          python scripts/validate-memory-os-release-compatibility-pair-reconcile-negative.py
+          python scripts/validate-memory-os-release-compatibility-pair-independent-review-negative.py
+          python scripts/validate-memory-os-release-compatibility-pair.py
+          python scripts/reconcile-memory-os-release-compatibility-pair.py
+          python scripts/validate-memory-os-release-compatibility-pair.py
+          python scripts/validate-memory-os-release-compatibility-pair-independent-review.py
+          python scripts/validate-memory-os-version-compatibility-execution-evidence.py
+          python scripts/validate-memory-os-operability.py
+
+      - name: Require deterministic pair authority
+        run: |
+          git diff --check
+          git diff --exit-code -- \
+            contracts/operations/release-compatibility-pair-contract.v1.json \
+            contracts/operations/version-compatibility-execution-evidence.v1.json \
+            contracts/operations/compatibility-admission-gaps.v1.json \
+            contracts/operations/production-operability-status.json
+
+  validate-and-publish:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
       - name: Checkout exact source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - uses: actions/setup-python@v5
@@ -70,7 +131,6 @@ jobs:
           python-version: "3.12"
 
       - name: Capture exact pair authority source
-        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           git fetch origin so
@@ -102,17 +162,7 @@ jobs:
           python scripts/validate-memory-os-version-compatibility-execution-evidence.py
           python scripts/validate-memory-os-operability.py
 
-      - name: Require deterministic pair authority in pull requests
-        if: github.event_name == 'pull_request'
-        run: |
-          git diff --exit-code -- \
-            contracts/operations/release-compatibility-pair-contract.v1.json \
-            contracts/operations/version-compatibility-execution-evidence.v1.json \
-            contracts/operations/compatibility-admission-gaps.v1.json \
-            contracts/operations/production-operability-status.json
-
       - name: Commit bounded release-pair authority
-        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           git fetch origin so
@@ -141,7 +191,6 @@ jobs:
           fi
 
       - name: Re-read committed pair authority
-        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           git fetch origin so
