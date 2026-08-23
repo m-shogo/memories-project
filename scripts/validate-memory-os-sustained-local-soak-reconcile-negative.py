@@ -8,17 +8,26 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-sustained-local-soak-status.py"
+AGGREGATE_UPDATER = ROOT / "scripts/update-memory-os-sustained-local-soak-aggregate.py"
 WORKFLOW = ROOT / ".github/workflows/reconcile-sustained-local-soak-authority.yml"
 MAIN_WORKFLOW = ROOT / ".github/workflows/sustained-local-soak.yml"
 
 
-def load_reconciler():
-    spec = importlib.util.spec_from_file_location("memory_os_sustained_local_soak_reconciler", RECONCILER)
+def load_module(path: Path, name: str):
+    spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
-        raise RuntimeError("unable to load sustained local soak reconciler")
+        raise RuntimeError(f"unable to load {path.relative_to(ROOT)}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def load_reconciler():
+    return load_module(RECONCILER, "memory_os_sustained_local_soak_reconciler")
+
+
+def load_aggregate_updater():
+    return load_module(AGGREGATE_UPDATER, "memory_os_sustained_local_soak_aggregate_updater")
 
 
 def expect_authority_rejection(module, attr: str, replacement: Path) -> None:
@@ -54,8 +63,7 @@ def validate_atomic_diagnostic_workflow(path: Path, label: str) -> None:
         raise AssertionError(f"{label} diagnostic regressed to direct write_text")
 
 
-def validate_atomic_reconciler_writer(module) -> None:
-    path = module.CONTRACT_PATH
+def validate_atomic_writer(module, path: Path, label: str) -> None:
     original = path.read_bytes()
     temp_glob = f".{path.name}.*.tmp"
     before = {candidate.name for candidate in path.parent.glob(temp_glob)}
@@ -72,22 +80,32 @@ def validate_atomic_reconciler_writer(module) -> None:
             if "synthetic atomic replace failure" not in str(exc):
                 raise AssertionError(f"unexpected atomic write failure: {exc}") from exc
         else:
-            raise AssertionError("atomic writer unexpectedly succeeded after replace failure")
+            raise AssertionError(f"{label} atomic writer unexpectedly succeeded after replace failure")
     finally:
         module.os.replace = real_replace
 
     if path.read_bytes() != original:
-        raise AssertionError("atomic replace failure changed canonical sustained-soak contract")
+        raise AssertionError(f"atomic replace failure changed canonical {label}")
     after = {candidate.name for candidate in path.parent.glob(temp_glob)}
     if after != before:
-        raise AssertionError("atomic replace failure leaked temporary sustained-soak authority")
+        raise AssertionError(f"atomic replace failure leaked temporary {label} authority")
 
 
 def main() -> int:
     module = load_reconciler()
+    updater = load_aggregate_updater()
     validate_atomic_diagnostic_workflow(WORKFLOW, "sustained soak authority")
     validate_atomic_diagnostic_workflow(MAIN_WORKFLOW, "sustained soak execution")
-    validate_atomic_reconciler_writer(module)
+    validate_atomic_writer(module, module.CONTRACT_PATH, "sustained-soak contract")
+    validate_atomic_writer(updater, updater.AGGREGATE_PATH, "sustained-soak aggregate")
+
+    expect_authority_rejection(updater, "RESULT_DIR", updater.ROOT / "docs")
+    expect_authority_rejection(updater, "AGGREGATE_PATH", updater.CONTRACT_PATH)
+    expect_authority_rejection(updater, "REVIEW_PATH", updater.CONTRACT_PATH)
+    expect_authority_rejection(updater, "CONTRACT_PATH", updater.AGGREGATE_PATH)
+    expect_authority_rejection(updater, "RESULT_VALIDATOR", updater.REVIEW_VALIDATOR)
+    expect_authority_rejection(updater, "REVIEW_VALIDATOR", updater.RESULT_VALIDATOR)
+
     paths = (module.CONTRACT_PATH, module.LOAD_PATH, module.STATUS_PATH)
     original = {path: path.read_bytes() for path in paths}
 
@@ -139,8 +157,9 @@ def main() -> int:
                 module.atomic_replace_bytes(path, original[path])
 
     print("PASS: sustained local soak execution and authority diagnostics are atomic and crash-safe")
-    print("PASS: sustained local soak reconciler atomic replacement failure preserves canonical authority")
-    print("PASS: sustained local soak authority identity and reconcile rollback are fail-closed")
+    print("PASS: sustained local soak reconciler and aggregate updater reject authority substitution")
+    print("PASS: sustained local soak atomic replacement failure preserves canonical authority")
+    print("PASS: sustained local soak reconcile rollback is fail-closed")
     print("production evidence generated: false")
     print("production decision changed: false")
     return 0
