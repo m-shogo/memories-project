@@ -37,6 +37,8 @@ on:
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-reconcile-negative.py"
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
+      - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
+      - "scripts/validate-memory-os-backup-non-resurrection-ordering-negative.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
       - "scripts/reconcile-memory-os-backup-restore-admission-chain.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-negative.py"
@@ -80,6 +82,8 @@ on:
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
       - "scripts/validate-memory-os-backup-restore-generation-evidence-reconcile-negative.py"
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
+      - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
+      - "scripts/validate-memory-os-backup-non-resurrection-ordering-negative.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain.py"
       - "scripts/reconcile-memory-os-backup-restore-admission-chain.py"
       - "scripts/validate-memory-os-backup-restore-admission-chain-negative.py"
@@ -131,6 +135,8 @@ jobs:
             scripts/reconcile-memory-os-backup-restore-generation-evidence.py \
             scripts/validate-memory-os-backup-restore-generation-evidence-reconcile-negative.py \
             scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
+            scripts/reconcile-memory-os-backup-non-resurrection-authority.py \
+            scripts/validate-memory-os-backup-non-resurrection-ordering-negative.py \
             scripts/validate-memory-os-backup-restore-admission-chain.py \
             scripts/reconcile-memory-os-backup-restore-admission-chain.py \
             scripts/validate-memory-os-backup-restore-admission-chain-negative.py \
@@ -142,6 +148,8 @@ jobs:
         run: python scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py
       - name: Prove generation evidence reconcile authority and rollback
         run: python scripts/validate-memory-os-backup-restore-generation-evidence-reconcile-negative.py
+      - name: Prove typed non-resurrection evidence ordering is deterministic
+        run: python scripts/validate-memory-os-backup-non-resurrection-ordering-negative.py
       - name: Validate canonical chain
         run: python scripts/validate-memory-os-backup-restore-admission-chain.py
       - name: Prove fail-closed chain mutations
