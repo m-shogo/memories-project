@@ -15,6 +15,7 @@ on:
       - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
       - "contracts/operations/backup-restore-promotion-review-contract.v1.json"
       - "contracts/operations/backup-restore-promotion-review-registry.v1.json"
+      - "contracts/operations/ops-p0-007-admission-snapshot.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
@@ -26,6 +27,9 @@ on:
       - "docs/evidence/backup-restore/**"
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/memory_os_environment_generation_eligibility.py"
+      - "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py"
+      - "scripts/validate-memory-os-ops-p0-007-admission-snapshot.py"
+      - "scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
@@ -77,6 +81,7 @@ on:
       - "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
       - "contracts/operations/backup-restore-promotion-review-contract.v1.json"
       - "contracts/operations/backup-restore-promotion-review-registry.v1.json"
+      - "contracts/operations/ops-p0-007-admission-snapshot.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
       - "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
       - "contracts/operations/production-equivalent-environment-record.v1.schema.json"
@@ -88,6 +93,9 @@ on:
       - "docs/evidence/backup-restore/**"
       - "scripts/memory_os_backup_restore_blockers.py"
       - "scripts/memory_os_environment_generation_eligibility.py"
+      - "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py"
+      - "scripts/validate-memory-os-ops-p0-007-admission-snapshot.py"
+      - "scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
@@ -156,6 +164,9 @@ jobs:
           python -m py_compile \
             scripts/memory_os_backup_restore_blockers.py \
             scripts/memory_os_environment_generation_eligibility.py \
+            scripts/generate-memory-os-ops-p0-007-admission-snapshot.py \
+            scripts/validate-memory-os-ops-p0-007-admission-snapshot.py \
+            scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py \
             scripts/register-memory-os-production-equivalent-environment-generation.py \
             scripts/validate-memory-os-production-equivalent-environment-record.py \
             scripts/validate-memory-os-production-equivalent-environment-generation.py \
@@ -191,6 +202,12 @@ jobs:
             scripts/validate-memory-os-backup-restore-admission-chain-negative.py \
             scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py \
             scripts/validate-memory-os-operability.py
+      - name: Generate strict OPS-P0-007 admission snapshot
+        run: python scripts/generate-memory-os-ops-p0-007-admission-snapshot.py
+      - name: Validate strict OPS-P0-007 admission snapshot
+        run: python scripts/validate-memory-os-ops-p0-007-admission-snapshot.py
+      - name: Prove strict OPS-P0-007 snapshot authority and rollback
+        run: python scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py
       - name: Prove environment generation reconcile authority and rollback
         run: python scripts/validate-memory-os-production-equivalent-generation-reconcile-negative.py
       - name: Prove recovery objective reconcile authority and rollback
