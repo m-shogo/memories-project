@@ -73,11 +73,14 @@ def main() -> int:
 
     module.enforce_runtime_authorities()
     validator = module.load_validator()
+    if validator.CONTRACT.resolve() != CANONICAL_CONTRACT.resolve():
+        raise AssertionError("writer imported validator with non-canonical contract authority")
     if validator.REGISTRY.resolve() != CANONICAL_REGISTRY.resolve():
         raise AssertionError("writer imported validator with non-canonical registry authority")
 
     print("PASS: sustained-soak independent-review writer rejects data/executable/lock authority substitution")
     print("PASS: paired contract/registry substitution cannot bypass canonical authority checks")
+    print("PASS: imported validator remains bound to canonical contract and registry authorities")
     print("PASS: authority rejection preserves canonical append-only review authority")
     print("human review evidence generated: false")
     print("leak proof promoted: false")
