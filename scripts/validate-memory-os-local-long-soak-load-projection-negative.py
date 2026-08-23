@@ -90,6 +90,34 @@ def authority_substitution_rejected() -> None:
             setattr(module, attr, original)
 
 
+def atomic_replacement_failure_rejected() -> None:
+    original_bytes = CANONICAL_LOAD.read_bytes()
+    temp_glob = f".{CANONICAL_LOAD.name}.*.tmp"
+    before = {path.name for path in CANONICAL_LOAD.parent.glob(temp_glob)}
+    real_replace = module.os.replace
+
+    def reject_replace(_source, _destination) -> None:
+        raise OSError("synthetic load projection atomic replace failure")
+
+    module.os.replace = reject_replace
+    try:
+        try:
+            module.atomic_replace_bytes(CANONICAL_LOAD, original_bytes + b"\n")
+        except OSError as exc:
+            if "synthetic load projection atomic replace failure" not in str(exc):
+                raise AssertionError(f"unexpected atomic replacement rejection: {exc}") from exc
+        else:
+            raise AssertionError("load projection atomic replacement unexpectedly succeeded")
+    finally:
+        module.os.replace = real_replace
+
+    if CANONICAL_LOAD.read_bytes() != original_bytes:
+        raise AssertionError("atomic replacement failure changed canonical load authority")
+    after = {path.name for path in CANONICAL_LOAD.parent.glob(temp_glob)}
+    if after != before:
+        raise AssertionError("atomic replacement failure leaked temporary load authority")
+
+
 def transaction_rollback_rejected() -> None:
     original_bytes = CANONICAL_LOAD.read_bytes()
     original_source_validator = module.validate_source_authority
@@ -113,7 +141,8 @@ def transaction_rollback_rejected() -> None:
     finally:
         module.validate_source_authority = original_source_validator
         module.validate_projected_load_authority = original_load_validator
-        CANONICAL_LOAD.write_bytes(original_bytes)
+        if CANONICAL_LOAD.read_bytes() != original_bytes:
+            module.atomic_replace_bytes(CANONICAL_LOAD, original_bytes)
 
 
 def main() -> int:
@@ -169,11 +198,13 @@ def main() -> int:
     expect_legacy_reject("run metadata removed", lambda row: row.pop("runMetadata"))
 
     authority_substitution_rejected()
+    atomic_replacement_failure_rejected()
     transaction_rollback_rejected()
 
     print("Memory OS local long-soak load projection negative suite PASS")
     print("canonical scenario ID binding enforced: true")
     print("canonical source/load authority identity enforced: true")
+    print("crash-safe atomic load replacement enforced: true")
     print("post-write load validation rollback enforced: true")
     print("aggregate external scenario corruption accepted: false")
     print("legacy LOCAL_LONG_SOAK alias may be removed only when non-production: true")
