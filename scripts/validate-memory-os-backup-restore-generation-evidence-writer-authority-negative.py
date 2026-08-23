@@ -130,6 +130,7 @@ def repo_temp_module(prefix: str, overrides: dict[str, str]) -> Path:
     }
     values.update(overrides)
     lines = [
+        "import argparse",
         "from pathlib import Path",
         "ROOT = Path(__file__).resolve().parents[1]",
     ]
@@ -140,6 +141,12 @@ def repo_temp_module(prefix: str, overrides: dict[str, str]) -> Path:
             "def canonical_repo_file(path, field):",
             "    path.resolve(strict=True).relative_to(ROOT.resolve())",
             "    return path",
+            "def require_cli_authorities():",
+            "    return None",
+            "def main():",
+            "    require_cli_authorities()",
+            "    argparse.ArgumentParser()",
+            "    return 0",
         ]
     )
     fd, raw_path = tempfile.mkstemp(prefix=prefix, suffix=".py", dir=ROOT / "scripts")
