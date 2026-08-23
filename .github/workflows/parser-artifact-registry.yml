@@ -44,24 +44,168 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: parser-artifact-registry-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
-  validate:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact PR source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Confirm exact clean PR source and compile tools
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+          python -m py_compile \
+            scripts/register-memory-os-parser-artifact.py \
+            scripts/register-memory-os-release-baseline.py \
+            scripts/validate-memory-os-parser-artifact-registry.py \
+            scripts/validate-memory-os-parser-artifact-registry-authority-negative.py \
+            scripts/validate-memory-os-parser-artifact-reconcile-authority-negative.py \
+            scripts/reconcile-memory-os-parser-artifact-registry.py \
+            scripts/validate-memory-os-version-compatibility.py \
+            scripts/validate-memory-os-operability.py
+
+      - name: Validate reviewed artifact authority
+        run: python scripts/validate-memory-os-parser-artifact-registry.py
+
+      - name: Validate parser registry corruption negatives
+        run: python scripts/validate-memory-os-parser-artifact-registry-authority-negative.py
+
+      - name: Validate parser reconcile authority negatives
+        run: python scripts/validate-memory-os-parser-artifact-reconcile-authority-negative.py
+
+      - name: Prove invalid and unapproved artifacts cannot mutate authority
+        run: |
+          registry="contracts/operations/parser-artifact-registry.v1.json"
+          lock="contracts/operations/.parser-artifact-registry.lock"
+          before="$(sha256sum "$registry" | awk '{print $1}')"
+          incomplete="$RUNNER_TEMP/incomplete-parser-artifact.json"
+          unapproved="$RUNNER_TEMP/unapproved-parser-artifact.json"
+          artifact="$RUNNER_TEMP/exact-parser-artifact.bin"
+          printf '{}\n' > "$incomplete"
+          printf 'synthetic reviewed artifact bytes for fail-closed CI\n' > "$artifact"
+
+          if python scripts/register-memory-os-parser-artifact.py \
+              --record "$incomplete" --artifact "$artifact" \
+              --confirm "WRONG CONFIRMATION"; then
+            echo "writer accepted an incorrect confirmation" >&2
+            exit 1
+          fi
+          test "$(sha256sum "$registry" | awk '{print $1}')" = "$before"
+          test ! -e "$lock"
+
+          if python scripts/register-memory-os-parser-artifact.py \
+              --record "$incomplete" --artifact "$artifact" \
+              --confirm "REGISTER REVIEWED PARSER ARTIFACT"; then
+            echo "writer accepted an incomplete record" >&2
+            exit 1
+          fi
+          test "$(sha256sum "$registry" | awk '{print $1}')" = "$before"
+          test ! -e "$lock"
+
+          ARTIFACT="$artifact" OUT="$unapproved" python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          artifact = Path(os.environ["ARTIFACT"])
+          record = {
+              "schemaVersion": "memory-os-parser-artifact-record.v1",
+              "artifactId": "par_generic_csv_unapproved_ci",
+              "adapterId": "generic-csv",
+              "adapterVersion": "1.0.0",
+              "artifactSha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
+              "artifactSizeBytes": artifact.stat().st_size,
+              "artifactFormat": "ELF_EXECUTABLE",
+              "targetOs": "linux",
+              "targetArch": "amd64",
+              "protocolVersion": "memory-os-parser-frame-v1",
+              "registeredAt": "2099-12-31T00:00:00Z",
+              "reviewClass": "REVIEWED_PARSER_ARTIFACT",
+              "approvers": [
+                  {"role": "SECURITY_REVIEWER", "approverRef": "apr_security_ci31"},
+                  {"role": "RUNTIME_REVIEWER", "approverRef": "apr_runtime_ci32"},
+                  {"role": "RELEASE_OWNER", "approverRef": "apr_release_ci33"},
+              ],
+              "buildProvenanceRef": "contracts/operations/parser-artifact-registry-contract.v1.json",
+              "securityReviewRef": "contracts/operations/production-operability-status.json",
+              "retentionEvidenceRef": "contracts/operations/backup-restore-contract.v1.json",
+              "replayEvidenceRefs": [
+                  "docs/fixtures/memory-os-operability/parser-restart-matrix-results.sample.v1.json"
+              ],
+              "compatibleReleaseIds": ["rel_20991231_unapproved"],
+              "rollbackRetentionState": {
+                  "state": "RETENTION_PENDING",
+                  "immutableLocationVerified": False,
+                  "verificationEvidenceRef": None,
+              },
+              "openRisks": [],
+          }
+          Path(os.environ["OUT"]).write_text(
+              json.dumps(record, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+
+          if python scripts/register-memory-os-parser-artifact.py \
+              --record "$unapproved" --artifact "$artifact" \
+              --confirm "REGISTER REVIEWED PARSER ARTIFACT"; then
+            echo "writer registered an artifact for an unapproved release" >&2
+            exit 1
+          fi
+          test "$(sha256sum "$registry" | awk '{print $1}')" = "$before"
+          test ! -e "$lock"
+          test -z "$(git status --porcelain)"
+
+      - name: Reconcile parser registry into operability status
+        run: |
+          python scripts/reconcile-memory-os-parser-artifact-registry.py
+          python scripts/validate-memory-os-parser-artifact-registry.py
+          python scripts/validate-memory-os-version-compatibility.py
+          python scripts/validate-memory-os-operability.py
+
+      - name: Reject auto-healed authority drift
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --exit-code -- \
+            contracts/operations/parser-artifact-registry-contract.v1.json \
+            contracts/operations/production-operability-status.json
+
+  validate-and-publish:
     if: >-
-      github.event_name != 'push' ||
-      !contains(github.event.head_commit.message, 'docs(parser): register artifact registry authority')
+      github.event_name != 'pull_request' &&
+      (github.event_name != 'push' || !contains(github.event.head_commit.message, 'docs(parser): register artifact registry authority'))
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout exact source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -70,7 +214,6 @@ jobs:
           python-version: "3.12"
 
       - name: Capture exact parser authority source
-        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           git fetch origin so
@@ -191,17 +334,8 @@ jobs:
           python scripts/validate-memory-os-version-compatibility.py
           python scripts/validate-memory-os-operability.py
 
-      - name: Reject auto-healed authority drift on pull requests
-        if: github.event_name == 'pull_request'
-        run: |
-          set -euo pipefail
-          git diff --check
-          git diff --exit-code -- \
-            contracts/operations/parser-artifact-registry-contract.v1.json \
-            contracts/operations/production-operability-status.json
-
       - name: Commit parser artifact authority
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        if: github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
           git fetch origin so
@@ -228,7 +362,7 @@ jobs:
           fi
 
       - name: Re-read authority and run aggregate checks
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        if: github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
           git fetch origin so
