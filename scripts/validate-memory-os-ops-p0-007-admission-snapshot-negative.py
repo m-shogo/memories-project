@@ -111,6 +111,36 @@ def run_generator_post_write_rollback() -> None:
         raise Fail("post-write snapshot validation failure did not restore original snapshot bytes")
 
 
+def run_generator_atomic_write_failure() -> None:
+    snapshot_before = SNAPSHOT.read_bytes()
+    status_before = STATUS.read_bytes()
+    module = load_generator_module()
+    original_replace = module.os.replace
+
+    def reject_replace(source: str | Path, destination: str | Path) -> None:
+        raise OSError("synthetic strict snapshot atomic replace rejection")
+
+    module.os.replace = reject_replace
+    try:
+        try:
+            module.atomic_write_text(SNAPSHOT, snapshot_before.decode("utf-8") + " ")
+        except SystemExit as exc:
+            if "cannot atomically write contracts/operations/ops-p0-007-admission-snapshot.v1.json" not in str(exc):
+                raise Fail(f"atomic strict snapshot write rejected at wrong boundary: {exc}") from exc
+        else:
+            raise Fail("synthetic strict snapshot atomic replace failure unexpectedly accepted")
+    finally:
+        module.os.replace = original_replace
+
+    if SNAPSHOT.read_bytes() != snapshot_before:
+        raise Fail("atomic replace rejection mutated canonical strict snapshot")
+    if STATUS.read_bytes() != status_before:
+        raise Fail("atomic replace rejection mutated canonical production status")
+    leftovers = list(SNAPSHOT.parent.glob(f".{SNAPSHOT.name}.*.tmp"))
+    if leftovers:
+        raise Fail(f"atomic replace rejection left temporary strict snapshot authority files: {leftovers}")
+
+
 def run_generator_authority_substitution() -> None:
     before = SNAPSHOT.read_bytes()
     module = load_generator_module()
@@ -281,6 +311,7 @@ def main() -> int:
 
     try:
         run_validator(True, "clean baseline")
+        run_generator_atomic_write_failure()
         run_generator_post_write_rollback()
         run_generator_authority_substitution()
         run_source_symlink_escape(originals)
@@ -317,6 +348,7 @@ def main() -> int:
     print("snapshot unknown/missing field drift rejected: true")
     print("snapshot boolean count drift rejected: true")
     print("snapshot downstream requirement/next-action drift rejected: true")
+    print("failed atomic snapshot replace preserves canonical bytes and removes temporary files: true")
     print("post-write snapshot validator failure restores original snapshot bytes: true")
     print("canonical authority files preserved byte-for-byte: true")
     print("rejected generator attempts leave snapshot byte-for-byte unchanged: true")
