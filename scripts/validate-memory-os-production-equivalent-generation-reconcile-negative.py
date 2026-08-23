@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Prove environment-generation reconciliation load boundaries and transactional rollback."""
+"""Prove environment-generation reconciliation authority identity, ordering and rollback."""
 
 from __future__ import annotations
 
 import importlib.util
 import json
-import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -36,10 +35,12 @@ def load_reconciler():
     return module
 
 
-def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[BaseException]) -> None:
+def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[BaseException], expected: str | None = None) -> None:
     try:
         action()
-    except fail_type:
+    except fail_type as exc:
+        if expected is not None:
+            require(expected in str(exc), f"{name} rejected at wrong boundary: {exc}")
         print(f"PASS reject: {name}")
         return
     except Exception as exc:
@@ -47,10 +48,40 @@ def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[
     raise Fail(f"negative case unexpectedly accepted: {name}")
 
 
+def assert_canonical_unchanged(contract_bytes: bytes, registry_bytes: bytes, status_bytes: bytes, label: str) -> None:
+    require(CONTRACT.read_bytes() == contract_bytes, f"{label} changed canonical generation contract")
+    require(REGISTRY.read_bytes() == registry_bytes, f"{label} changed canonical generation registry")
+    require(STATUS.read_bytes() == status_bytes, f"{label} changed canonical production status")
+
+
 def main() -> int:
     require(RECONCILER.is_file(), "environment generation reconciler missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
     reconciler = load_reconciler()
+
+    canonical_contract = CONTRACT.read_bytes()
+    canonical_registry = REGISTRY.read_bytes()
+    canonical_status = STATUS.read_bytes()
+
+    substitutions = (
+        ("CONTRACT", reconciler.REGISTRY, "environment generation contract authority drift"),
+        ("REGISTRY", reconciler.CONTRACT, "environment generation registry authority drift"),
+        ("GEN_SCHEMA", reconciler.CONTRACT, "environment generation record schema authority drift"),
+        ("ENV_VALIDATOR", reconciler.VALIDATOR, "environment semantic validator authority drift"),
+        ("WRITER", reconciler.VALIDATOR, "environment generation writer authority drift"),
+        ("VALIDATOR", reconciler.OPERABILITY_VALIDATOR, "environment generation validator authority drift"),
+        ("OPERABILITY_VALIDATOR", reconciler.VALIDATOR, "operability validator authority drift"),
+        ("NEGATIVE", reconciler.VALIDATOR, "environment generation negative suite authority drift"),
+        ("STATUS", reconciler.CONTRACT, "production operability status authority drift"),
+    )
+    for attribute, replacement, expected in substitutions:
+        original = getattr(reconciler, attribute)
+        setattr(reconciler, attribute, replacement)
+        try:
+            expect_domain_fail(f"{attribute.lower()} substitution", reconciler.main, reconciler.Fail, expected)
+            assert_canonical_unchanged(canonical_contract, canonical_registry, canonical_status, attribute.lower())
+        finally:
+            setattr(reconciler, attribute, original)
 
     with tempfile.TemporaryDirectory(prefix=".tmp-environment-generation-reconcile-", dir=TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
@@ -71,79 +102,75 @@ def main() -> int:
         expect_domain_fail("absolute current environment ref", lambda: reconciler.canonical_repo_ref(absolute_ref, "invalid ref"), reconciler.Fail)
         expect_domain_fail("parent traversal current environment ref", lambda: reconciler.canonical_repo_ref("scripts/../README.md", "invalid ref"), reconciler.Fail)
 
-        contract_copy = tmp / CONTRACT.name
-        registry_copy = tmp / REGISTRY.name
-        status_copy = tmp / STATUS.name
-        shutil.copyfile(CONTRACT, contract_copy)
-        shutil.copyfile(REGISTRY, registry_copy)
-        shutil.copyfile(STATUS, status_copy)
-        reconciler.CONTRACT = contract_copy
-        reconciler.REGISTRY = registry_copy
-        reconciler.STATUS = status_copy
-        original_contract = contract_copy.read_bytes()
-        original_registry = registry_copy.read_bytes()
-        original_status = status_copy.read_bytes()
-        canonical_registry: dict[str, Any] = json.loads(original_registry.decode("utf-8"))
-
-        corruption_cases: tuple[tuple[str, Callable[[dict[str, Any]], None]], ...] = (
-            ("registry schema drift", lambda value: value.__setitem__("schemaVersion", "broken")),
-            ("registry class drift", lambda value: value.__setitem__("registryClass", "BROKEN")),
-            ("append-only disabled", lambda value: value.__setitem__("appendOnly", False)),
-            ("production evidence promoted", lambda value: value.__setitem__("productionEvidence", True)),
-            ("registered generation boolean count", lambda value: value.__setitem__("registeredGenerationCount", True)),
-            ("registered generation count drift", lambda value: value.__setitem__("registeredGenerationCount", 1)),
-            ("empty registry current pointer drift", lambda value: value.__setitem__("currentGenerationId", "pegen_invalid_current")),
-        )
-        for name, mutate in corruption_cases:
-            corrupted = json.loads(json.dumps(canonical_registry))
-            mutate(corrupted)
-            registry_copy.write_text(json.dumps(corrupted, indent=2) + "\n", encoding="utf-8")
-            try:
-                reconciler.main()
-            except reconciler.Fail as exc:
-                require("generation registry append-only authority invalid" in str(exc), f"{name} rejected at wrong boundary: {exc}")
-            except Exception as exc:
-                raise Fail(f"{name} leaked non-domain exception: {type(exc).__name__}: {exc}") from exc
-            else:
-                raise Fail(f"corrupt generation registry unexpectedly reconciled: {name}")
-            require(contract_copy.read_bytes() == original_contract, f"{name} mutated generation contract")
-            require(status_copy.read_bytes() == original_status, f"{name} mutated operability status")
-            print(f"PASS reject before reconcile: {name}")
-        registry_copy.write_bytes(original_registry)
-
-        observed_commands: list[list[str]] = []
-
-        def aggregate_failure_after_generation_success(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
-            command = [str(item) for item in (args[0] if args else [])]
-            observed_commands.append(command)
-            if len(observed_commands) == 1:
-                require(command[-1] == str(reconciler.VALIDATOR), "generation validator was not first post-write validator")
-                return subprocess.CompletedProcess(args=command, returncode=0, stdout="synthetic generation validator success\n", stderr="")
-            require(len(observed_commands) == 2, "unexpected extra generation post-write validator invocation")
-            require(command[-1] == str(reconciler.OPERABILITY_VALIDATOR), "operability validator was not second post-write validator")
-            return subprocess.CompletedProcess(args=command, returncode=31, stdout="synthetic operability failure\n", stderr="")
-
-        real_run = reconciler.subprocess.run
-        reconciler.subprocess.run = aggregate_failure_after_generation_success
+    writer = reconciler.load_writer()
+    canonical_registry_obj: dict[str, Any] = json.loads(canonical_registry.decode("utf-8"))
+    corruption_cases: tuple[tuple[str, Callable[[dict[str, Any]], None]], ...] = (
+        ("registry schema drift", lambda value: value.__setitem__("schemaVersion", "broken")),
+        ("registry class drift", lambda value: value.__setitem__("registryClass", "BROKEN")),
+        ("append-only disabled", lambda value: value.__setitem__("appendOnly", False)),
+        ("production evidence promoted", lambda value: value.__setitem__("productionEvidence", True)),
+        ("registered generation boolean count", lambda value: value.__setitem__("registeredGenerationCount", True)),
+        ("registered generation count drift", lambda value: value.__setitem__("registeredGenerationCount", 1)),
+        ("empty registry current pointer drift", lambda value: value.__setitem__("currentGenerationId", "pegen_invalid_current")),
+    )
+    for name, mutate in corruption_cases:
+        corrupted = json.loads(json.dumps(canonical_registry_obj))
+        mutate(corrupted)
         try:
-            try:
-                reconciler.main()
-            except reconciler.Fail as exc:
-                require("operability validator failed" in str(exc), f"unexpected reconcile failure: {exc}")
-            else:
-                raise Fail("forced operability post-validation failure unexpectedly accepted")
-        finally:
-            reconciler.subprocess.run = real_run
+            writer.validate_registry_for_append(corrupted)
+        except Exception:
+            print(f"PASS reject before reconcile: {name}")
+        else:
+            raise Fail(f"corrupt generation registry unexpectedly accepted: {name}")
+        assert_canonical_unchanged(canonical_contract, canonical_registry, canonical_status, name)
 
-        require(len(observed_commands) == 2, "generation and operability validators were not both invoked")
-        require(contract_copy.read_bytes() == original_contract, "generation contract rollback drift")
-        require(registry_copy.read_bytes() == original_registry, "generation registry mutation drift")
-        require(status_copy.read_bytes() == original_status, "operability status rollback drift")
+    prefix = reconciler.EVIDENCE_PREFIX
+    old = prefix + " old"
+    new = prefix + " new"
+    values = ["before", old, "after"]
+    reconciler.replace_single_prefixed(values, prefix, new)
+    require(values == ["before", new, "after"], "environment generation evidence moved during replacement")
+    values = [old, prefix + " duplicate"]
+    expect_domain_fail(
+        "duplicate environment generation evidence prefix",
+        lambda: reconciler.replace_single_prefixed(values, prefix, new),
+        reconciler.Fail,
+        "duplicate authority evidence prefix",
+    )
+    require(values == [old, prefix + " duplicate"], "duplicate generation evidence rejection mutated ordering")
+    print("PASS preserve: environment generation evidence ordering is deterministic")
+
+    observed: list[str] = []
+    original_run_validator = reconciler.run_validator
+
+    def fail_after_generation_validator(path: Path, expected_relative: Path, label: str) -> None:
+        observed.append(label)
+        if path == reconciler.OPERABILITY_VALIDATOR:
+            raise reconciler.Fail("operability validator failed: synthetic aggregate failure")
+        return None
+
+    reconciler.run_validator = fail_after_generation_validator
+    try:
+        expect_domain_fail(
+            "post-write aggregate operability failure",
+            reconciler.main,
+            reconciler.Fail,
+            "operability validator failed",
+        )
+    finally:
+        reconciler.run_validator = original_run_validator
+
+    require(observed == ["generation validator", "operability validator"], f"post-write validator order drift: {observed}")
+    assert_canonical_unchanged(canonical_contract, canonical_registry, canonical_status, "aggregate rollback")
 
     print("PASS rollback: environment generation contract/registry/status preserved byte-for-byte")
-    print("generation validator succeeds before aggregate failure: true")
+    print("canonical generation data/executable substitutions accepted: false")
+    print("generation evidence reordering accepted: false")
     print("aggregate operability failure triggers rollback: true")
     print("Environment generation reconcile negative suite PASS")
+    print("production generation created: false")
+    print("production evidence: false")
+    print("production decision: NO_GO")
     return 0
 
 
