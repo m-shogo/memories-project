@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 STEPS: tuple[tuple[str, str], ...] = (
     ("scripts/validate-memory-os-backup-restore-admission-chain-workflow-permissions.py", "admission-chain workflow permission boundary"),
+    ("scripts/validate-memory-os-backup-restore-admission-chain-workflow-permissions-negative.py", "admission-chain workflow permission negative"),
     ("scripts/validate-memory-os-production-equivalent-environment-generation.py", "environment generation authority"),
     ("scripts/validate-memory-os-production-equivalent-environment-generation-negative.py", "environment generation semantic negative"),
     ("scripts/validate-memory-os-production-equivalent-generation-reconcile-negative.py", "environment generation reconcile negative"),
