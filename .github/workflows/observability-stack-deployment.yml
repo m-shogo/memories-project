@@ -15,6 +15,7 @@ on:
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/register-memory-os-observability-stack-deployment.py"
+      - "scripts/validate-memory-os-observability-stack-writer-authority-negative.py"
       - "scripts/validate-memory-os-observability-stack-deployment.py"
       - "scripts/reconcile-memory-os-observability-stack-deployment.py"
       - "scripts/validate-memory-os-observability-stack-reconcile-negative.py"
@@ -41,6 +42,7 @@ on:
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/register-memory-os-observability-stack-deployment.py"
+      - "scripts/validate-memory-os-observability-stack-writer-authority-negative.py"
       - "scripts/validate-memory-os-observability-stack-deployment.py"
       - "scripts/reconcile-memory-os-observability-stack-deployment.py"
       - "scripts/validate-memory-os-observability-stack-reconcile-negative.py"
@@ -89,6 +91,7 @@ jobs:
             scripts/register-memory-os-production-equivalent-environment-generation.py \
             scripts/validate-memory-os-production-equivalent-environment-record.py \
             scripts/register-memory-os-observability-stack-deployment.py \
+            scripts/validate-memory-os-observability-stack-writer-authority-negative.py \
             scripts/validate-memory-os-observability-stack-deployment.py \
             scripts/reconcile-memory-os-observability-stack-deployment.py \
             scripts/validate-memory-os-observability-stack-reconcile-negative.py \
@@ -99,6 +102,7 @@ jobs:
             scripts/validate-memory-os-metrics-operations.py \
             scripts/validate-memory-os-metrics-alerting.py \
             scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-observability-stack-writer-authority-negative.py
           python scripts/validate-memory-os-observability-stack-generation-authority-negative.py
           python scripts/validate-memory-os-observability-stack-reconcile-negative.py
           python scripts/reconcile-memory-os-observability-stack-deployment.py
@@ -146,6 +150,7 @@ jobs:
             scripts/register-memory-os-production-equivalent-environment-generation.py \
             scripts/validate-memory-os-production-equivalent-environment-record.py \
             scripts/register-memory-os-observability-stack-deployment.py \
+            scripts/validate-memory-os-observability-stack-writer-authority-negative.py \
             scripts/validate-memory-os-observability-stack-deployment.py \
             scripts/reconcile-memory-os-observability-stack-deployment.py \
             scripts/validate-memory-os-observability-stack-reconcile-negative.py \
@@ -157,6 +162,7 @@ jobs:
             scripts/validate-memory-os-metrics-alerting.py \
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-observability-stack-writer-authority-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-observability-stack-generation-authority-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-observability-stack-reconcile-negative.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-observability-stack-deployment.py >> "$log" 2>&1 || code=$?; fi
