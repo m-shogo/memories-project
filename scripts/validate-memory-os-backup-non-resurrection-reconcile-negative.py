@@ -111,11 +111,18 @@ def prove_post_write_aggregate_rollback() -> None:
     reconciler = load_reconciler("memory_os_typed_non_resurrection_aggregate_rollback")
     before = canonical_bytes()
     original_post_validator = reconciler.run_post_validator
+    observed: list[tuple[Path, Path, str]] = []
 
     def fail_operability(path: Path, expected_relative: Path, label: str) -> None:
-        if label == "operability validator":
+        observed.append((path, expected_relative, label))
+        if path == reconciler.OPERABILITY_VALIDATOR:
             raise reconciler.Fail("synthetic aggregate operability rejection")
-        original_post_validator(path, expected_relative, label)
+        require(
+            path == reconciler.VALIDATOR
+            and expected_relative == reconciler.VALIDATOR_REL
+            and label == "typed non-resurrection validator",
+            f"unexpected first typed non-resurrection post-validator: {(path, expected_relative, label)}",
+        )
 
     reconciler.run_post_validator = fail_operability
     try:
@@ -124,7 +131,19 @@ def prove_post_write_aggregate_rollback() -> None:
         require("synthetic aggregate operability rejection" in str(exc), "unexpected aggregate rejection")
     else:
         raise Fail("synthetic aggregate operability rejection unexpectedly accepted")
+    finally:
+        reconciler.run_post_validator = original_post_validator
+
+    require(
+        observed
+        == [
+            (reconciler.VALIDATOR, reconciler.VALIDATOR_REL, "typed non-resurrection validator"),
+            (reconciler.OPERABILITY_VALIDATOR, reconciler.OPERABILITY_VALIDATOR_REL, "operability validator"),
+        ],
+        f"typed non-resurrection post-validator order drift: {observed}",
+    )
     require_unchanged(before, "aggregate rejection")
+    print("PASS boundary: post-write validator order is typed non-resurrection then aggregate Operability")
     print("PASS rollback: aggregate rejection byte-restores typed, generation and status authorities")
 
 
