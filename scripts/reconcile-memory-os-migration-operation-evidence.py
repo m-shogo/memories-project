@@ -31,11 +31,12 @@ OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
 WORKFLOW_PATH = ROOT / WORKFLOW_REL
 LIB_PATH = ROOT / LIB_REL
 WRITER_PATH = ROOT / WRITER_REL
-POST_WRITE_VALIDATORS = (
+EXPECTED_POST_WRITE_VALIDATORS = (
     OPERATION_VALIDATOR,
     LIFECYCLE_VALIDATOR,
     OPERABILITY_VALIDATOR,
 )
+POST_WRITE_VALIDATORS = EXPECTED_POST_WRITE_VALIDATORS
 
 EVIDENCE_REFS = (
     "contracts/operations/migration-operation-evidence-contract.v1.json",
@@ -88,6 +89,10 @@ def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> 
 
 
 def enforce_runtime_authorities() -> None:
+    require(
+        POST_WRITE_VALIDATORS == EXPECTED_POST_WRITE_VALIDATORS,
+        "migration operation post-write validator chain authority drift",
+    )
     for path, relative, field in (
         (CONTRACT_PATH, CONTRACT_REL, "migration operation contract"),
         (LIFECYCLE_PATH, LIFECYCLE_REL, "migration lifecycle contract"),
