@@ -21,16 +21,26 @@ from types import ModuleType
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-RESULT_ROOT = ROOT / "docs/evidence/migrations/recovery"
-REGISTRY = ROOT / "contracts/operations/migration-evidence-registry.v1.json"
-REGISTRY_CONTRACT = ROOT / "contracts/operations/migration-evidence-registry-contract.v1.json"
-LIFECYCLE = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
-STATUS = ROOT / "contracts/operations/production-operability-status.json"
-LOCAL_CONTRACT = ROOT / "contracts/operations/local-migration-recovery-artifact-contract.v1.json"
-WRITER = ROOT / "scripts/register-memory-os-migration-rehearsal-evidence.py"
-RESULT_VALIDATOR = ROOT / "scripts/validate-memory-os-local-migration-recovery-artifact.py"
-LOCAL_RECONCILER = ROOT / "scripts/reconcile-memory-os-local-migration-recovery-artifact.py"
-GLOBAL_RECONCILER = ROOT / "scripts/reconcile-memory-os-migration-evidence-registry.py"
+RESULT_ROOT_REL = Path("docs/evidence/migrations/recovery")
+REGISTRY_REL = Path("contracts/operations/migration-evidence-registry.v1.json")
+REGISTRY_CONTRACT_REL = Path("contracts/operations/migration-evidence-registry-contract.v1.json")
+LIFECYCLE_REL = Path("contracts/operations/migration-lifecycle-contract.v1.json")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+LOCAL_CONTRACT_REL = Path("contracts/operations/local-migration-recovery-artifact-contract.v1.json")
+WRITER_REL = Path("scripts/register-memory-os-migration-rehearsal-evidence.py")
+RESULT_VALIDATOR_REL = Path("scripts/validate-memory-os-local-migration-recovery-artifact.py")
+LOCAL_RECONCILER_REL = Path("scripts/reconcile-memory-os-local-migration-recovery-artifact.py")
+GLOBAL_RECONCILER_REL = Path("scripts/reconcile-memory-os-migration-evidence-registry.py")
+RESULT_ROOT = ROOT / RESULT_ROOT_REL
+REGISTRY = ROOT / REGISTRY_REL
+REGISTRY_CONTRACT = ROOT / REGISTRY_CONTRACT_REL
+LIFECYCLE = ROOT / LIFECYCLE_REL
+STATUS = ROOT / STATUS_REL
+LOCAL_CONTRACT = ROOT / LOCAL_CONTRACT_REL
+WRITER = ROOT / WRITER_REL
+RESULT_VALIDATOR = ROOT / RESULT_VALIDATOR_REL
+LOCAL_RECONCILER = ROOT / LOCAL_RECONCILER_REL
+GLOBAL_RECONCILER = ROOT / GLOBAL_RECONCILER_REL
 CREATION_SUBJECT = "test(migration): record local recovery artifact rehearsal"
 
 
@@ -41,6 +51,48 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def require_exact_repo_directory(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_dir(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    require_exact_repo_directory(RESULT_ROOT, RESULT_ROOT_REL, "migration recovery result root")
+    for path, expected, field in (
+        (REGISTRY, REGISTRY_REL, "migration evidence registry"),
+        (REGISTRY_CONTRACT, REGISTRY_CONTRACT_REL, "migration evidence registry contract"),
+        (LIFECYCLE, LIFECYCLE_REL, "migration lifecycle contract"),
+        (STATUS, STATUS_REL, "production operability status"),
+        (LOCAL_CONTRACT, LOCAL_CONTRACT_REL, "local migration recovery artifact contract"),
+        (WRITER, WRITER_REL, "migration rehearsal writer"),
+        (RESULT_VALIDATOR, RESULT_VALIDATOR_REL, "local migration recovery result validator"),
+        (LOCAL_RECONCILER, LOCAL_RECONCILER_REL, "local migration recovery reconciler"),
+        (GLOBAL_RECONCILER, GLOBAL_RECONCILER_REL, "migration evidence registry reconciler"),
+    ):
+        require_exact_repo_file(path, expected, field)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -71,6 +123,7 @@ def git_bytes(*args: str) -> bytes:
 
 
 def load_writer() -> ModuleType:
+    enforce_runtime_authorities()
     spec = importlib.util.spec_from_file_location("memory_os_migration_writer_for_orphan_reconcile", WRITER)
     require(spec is not None and spec.loader is not None, "cannot load canonical migration rehearsal writer")
     module = importlib.util.module_from_spec(spec)
@@ -91,6 +144,7 @@ def parse_utc(value: Any, field: str) -> dt.datetime:
 
 
 def committed_creation(path: Path) -> tuple[int, str]:
+    enforce_runtime_authorities()
     relative = str(path.relative_to(ROOT))
     require(not path.is_symlink(), f"recovery result cannot be symlink: {relative}")
     require(path.resolve().is_relative_to(RESULT_ROOT.resolve()), f"recovery result escaped evidence root: {relative}")
@@ -107,6 +161,7 @@ def committed_creation(path: Path) -> tuple[int, str]:
 
 
 def validate_result(path: Path, value: dict[str, Any]) -> tuple[int, str]:
+    enforce_runtime_authorities()
     run_id = value.get("migrationRunId")
     require(isinstance(run_id, str) and path.name == f"{run_id}.json", "recovery result run ID/path mismatch")
     require(value.get("schemaVersion") == "memory-os-local-migration-recovery-artifact.v1", "recovery result schema drift")
@@ -134,6 +189,7 @@ def validate_result(path: Path, value: dict[str, Any]) -> tuple[int, str]:
 
 
 def build_record(result_path: Path, result: dict[str, Any]) -> dict[str, Any]:
+    enforce_runtime_authorities()
     lifecycle = load(LIFECYCLE)
     local_contract = load(LOCAL_CONTRACT)
     canonical = lifecycle.get("migrationSequence")
@@ -185,6 +241,7 @@ def build_record(result_path: Path, result: dict[str, Any]) -> dict[str, Any]:
 
 
 def find_orphans(registry: dict[str, Any]) -> list[tuple[int, Path, dict[str, Any]]]:
+    enforce_runtime_authorities()
     records = registry.get("records")
     require(isinstance(records, list), "migration evidence registry records missing")
     registered = {
@@ -204,6 +261,7 @@ def find_orphans(registry: dict[str, Any]) -> list[tuple[int, Path, dict[str, An
 
 
 def reconcile(orphans: list[tuple[int, Path, dict[str, Any]]], writer: ModuleType) -> None:
+    enforce_runtime_authorities()
     require(git("status", "--porcelain") == "", "working tree must be clean before orphan reconciliation")
     registry = load(REGISTRY)
     contract = load(REGISTRY_CONTRACT)
@@ -245,6 +303,7 @@ def reconcile(orphans: list[tuple[int, Path, dict[str, Any]]], writer: ModuleTyp
     lock_fd = writer.acquire_lock()
     try:
         writer.write_registry_transactionally(registry, previous_registry, contract)
+        enforce_runtime_authorities()
         completed = subprocess.run(
             ["python", str(GLOBAL_RECONCILER)],
             cwd=ROOT,
@@ -255,6 +314,7 @@ def reconcile(orphans: list[tuple[int, Path, dict[str, Any]]], writer: ModuleTyp
         )
         require(completed.returncode == 0, f"migration ledger authority reconcile failed: {completed.stdout.strip()}")
         for run_id in new_run_ids:
+            enforce_runtime_authorities()
             completed = subprocess.run(
                 ["python", str(LOCAL_RECONCILER), "--run-id", run_id],
                 cwd=ROOT,
@@ -278,11 +338,13 @@ def reconcile(orphans: list[tuple[int, Path, dict[str, Any]]], writer: ModuleTyp
     print("Reconciled committed local migration recovery result orphans:")
     for run_id in new_run_ids:
         print(f"- {run_id}")
+    print("canonical orphan rescue data/executable authorities enforced: true")
     print("productionEvidence: false")
     print("productionReady: false")
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check-only", action="store_true")
     args = parser.parse_args()
