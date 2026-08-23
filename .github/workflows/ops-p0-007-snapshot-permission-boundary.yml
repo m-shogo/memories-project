@@ -1,0 +1,43 @@
+name: OPS P0 007 Snapshot Permission Boundary
+
+on:
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/ops-p0-007-admission-snapshot.yml"
+      - ".github/workflows/ops-p0-007-admission-snapshot-pr.yml"
+      - ".github/workflows/ops-p0-007-snapshot-permission-boundary.yml"
+      - "scripts/validate-memory-os-ops-p0-007-admission-snapshot-workflow-permissions-negative.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ops-p0-007-snapshot-permission-boundary-so
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify exact source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test -z "$(git status --porcelain)"
+      - name: Prove strict snapshot permission boundary
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/validate-memory-os-ops-p0-007-admission-snapshot-workflow-permissions-negative.py
+          python scripts/validate-memory-os-ops-p0-007-admission-snapshot-workflow-permissions-negative.py
+      - name: Verify read-only execution
+        run: test -z "$(git status --porcelain)"
