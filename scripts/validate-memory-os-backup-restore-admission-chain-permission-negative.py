@@ -43,7 +43,8 @@ def main() -> int:
     require("git rev-parse origin/so" in publish, "admission-chain publisher must retain stale-source CAS")
     require("revalidate_latest_chain" in publish, "admission-chain publisher must retain bounded latest-so full revalidation")
     require("os.replace(tmp_name, path)" in publish, "admission-chain failure diagnostic must retain atomic replacement")
-    require("productionDecision" in publish and "NO_GO" in publish, "admission-chain failure diagnostic must retain NO_GO boundary")
+    require("'productionEvidence': False" in publish, "admission-chain failure diagnostic must remain non-production evidence")
+    require("'productionReady': False" in publish, "admission-chain failure diagnostic must not claim production readiness")
 
     print("PASS: end-to-end admission PR validation is exact-head and read-only")
     print("PASS: admission publication is non-PR-only with job-scoped write authority")
