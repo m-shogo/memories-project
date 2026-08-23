@@ -76,20 +76,78 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: backup-restore-drill-preflight-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
-  validate:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify exact clean preflight PR source
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha }}"
+          test -n "$expected"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$expected"
+      - name: Validate restore drill preflight read-only
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/memory_os_backup_restore_blockers.py \
+            scripts/memory_os_environment_generation_eligibility.py \
+            scripts/register-memory-os-production-equivalent-environment-generation.py \
+            scripts/validate-memory-os-production-equivalent-environment-generation.py \
+            scripts/validate-memory-os-production-equivalent-environment-generation-negative.py \
+            scripts/validate-memory-os-production-equivalent-environment-generation-source-binding-negative.py \
+            scripts/validate-memory-os-production-equivalent-environment-generation-lineage-negative.py \
+            scripts/register-memory-os-recovery-objectives.py \
+            scripts/validate-memory-os-recovery-objectives.py \
+            scripts/validate-memory-os-recovery-objectives-negative.py \
+            scripts/request-memory-os-backup-restore-drill.py \
+            scripts/validate-memory-os-backup-restore-drill-request.py \
+            scripts/validate-memory-os-backup-restore-drill-request-negative.py \
+            scripts/validate-memory-os-backup-restore-drill-preflight.py \
+            scripts/validate-memory-os-backup-restore-drill-preflight-authority.py \
+            scripts/validate-memory-os-backup-restore-drill-preflight-negative.py \
+            scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py \
+            scripts/reconcile-memory-os-backup-restore-drill-preflight.py \
+            scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-backup-restore-drill-preflight-authority.py
+          python scripts/validate-memory-os-backup-restore-drill-preflight-negative.py
+          python scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py
+          python scripts/reconcile-memory-os-backup-restore-drill-preflight.py
+          python scripts/validate-memory-os-backup-restore-drill-preflight.py
+          python scripts/validate-memory-os-operability.py
+          git diff --check
+          git diff --exit-code -- \
+            contracts/operations/backup-restore-drill-preflight-contract.v1.json \
+            contracts/operations/production-operability-status.json
+
+  validate-and-publish:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -98,11 +156,7 @@ jobs:
         run: |
           set -euo pipefail
           test -z "$(git status --porcelain)"
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
-          else
-            test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          fi
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - name: Reconcile and validate restore drill preflight
         id: preflight
@@ -132,36 +186,17 @@ jobs:
             scripts/reconcile-memory-os-backup-restore-drill-preflight.py \
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
-          if [[ "$code" == "0" ]]; then
-            python scripts/validate-memory-os-backup-restore-drill-preflight-authority.py >> "$log" 2>&1 || code=$?
-          fi
-          if [[ "$code" == "0" ]]; then
-            python scripts/validate-memory-os-backup-restore-drill-preflight-negative.py >> "$log" 2>&1 || code=$?
-          fi
-          if [[ "$code" == "0" ]]; then
-            python scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py >> "$log" 2>&1 || code=$?
-          fi
-          if [[ "$code" == "0" ]]; then
-            python scripts/reconcile-memory-os-backup-restore-drill-preflight.py >> "$log" 2>&1 || code=$?
-          fi
-          if [[ "$code" == "0" ]]; then
-            python scripts/validate-memory-os-backup-restore-drill-preflight.py >> "$log" 2>&1 || code=$?
-          fi
-          if [[ "$code" == "0" ]]; then
-            python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?
-          fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-preflight-authority.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-preflight-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-preflight-load-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-backup-restore-drill-preflight.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-backup-restore-drill-preflight.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?; fi
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
-      - name: Reject stale preflight authority on pull requests
-        if: steps.preflight.outputs.exit_code == '0' && github.event_name == 'pull_request'
-        run: |
-          set -euo pipefail
-          git diff --exit-code -- \
-            contracts/operations/backup-restore-drill-preflight-contract.v1.json \
-            contracts/operations/production-operability-status.json
       - name: Commit bounded preflight authority
-        if: steps.preflight.outputs.exit_code == '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        if: steps.preflight.outputs.exit_code == '0' && github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
           log=/tmp/backup-restore-drill-preflight.log
@@ -225,7 +260,7 @@ jobs:
           done
           exit 75
       - name: Record privacy-safe preflight diagnostic
-        if: steps.preflight.outputs.exit_code != '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        if: steps.preflight.outputs.exit_code != '0' && github.ref == 'refs/heads/so'
         env:
           PREFLIGHT_EXIT_CODE: ${{ steps.preflight.outputs.exit_code }}
         run: |
