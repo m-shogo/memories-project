@@ -71,6 +71,7 @@ def main() -> int:
     original_contract = reconciler.CONTRACT
     original_status = reconciler.STATUS
     original_runner = reconciler.run_validator
+    original_write = reconciler.write_text
     try:
         with tempfile.TemporaryDirectory(prefix=".tmp-generation-status-authority-", dir=TMP_PARENT) as tmpdir:
             tmp = Path(tmpdir)
@@ -80,13 +81,20 @@ def main() -> int:
             shutil.copyfile(STATUS, status_copy)
             status_before = status_copy.read_bytes()
             observed: list[str] = []
+            status_write_observed = False
+
+            def track_write(path: Path, text: str) -> None:
+                nonlocal status_write_observed
+                if path == status_copy:
+                    status_write_observed = True
+                original_write(path, text)
 
             def fail_only_aggregate(path: Path, expected_relative: Path, label: str) -> None:
                 observed.append(label)
                 if label == "generation binding validator":
-                    require(status_copy.read_bytes() == status_before, "generation binding validator ran after status mutation")
+                    require(not status_write_observed, "generation binding validator ran after status write")
                     return
-                require(status_copy.read_bytes() != status_before, f"{label} ran before status mutation")
+                require(status_write_observed, f"{label} ran before status write")
                 if label == "backup validator":
                     return
                 require(label == "operability validator", f"unexpected generation status validator: {label}")
@@ -94,11 +102,14 @@ def main() -> int:
 
             # Direct production invocation is canonical-only. This harness bypasses
             # only the identity guard around repo-contained copies to prove the
-            # status write plus backup/operability validation transaction.
+            # status write plus backup/operability validation transaction. The
+            # authority may already be byte-current, so observe the atomic write
+            # helper rather than requiring a byte-different intermediate state.
             reconciler.enforce_runtime_authorities = lambda: None
             reconciler.CONTRACT = contract_copy
             reconciler.STATUS = status_copy
             reconciler.run_validator = fail_only_aggregate
+            reconciler.write_text = track_write
             try:
                 reconciler.main()
             except reconciler.Fail as exc:
@@ -110,16 +121,19 @@ def main() -> int:
                 observed == ["generation binding validator", "backup validator", "operability validator"],
                 "generation status validator order drift",
             )
+            require(status_write_observed, "generation status transaction did not invoke atomic status writer")
             require(status_copy.read_bytes() == status_before, "failed aggregate validation left production status mutation behind")
     finally:
         reconciler.enforce_runtime_authorities = original_enforcer
         reconciler.CONTRACT = original_contract
         reconciler.STATUS = original_status
         reconciler.run_validator = original_runner
+        reconciler.write_text = original_write
 
     print("PASS rollback: generation status restored byte-for-byte after aggregate operability rejection")
     print("generation binding validator remains pre-write: true")
     print("backup and operability validators remain post-write: true")
+    print("byte-current status still exercises atomic write boundary: true")
     print("canonical blockers rewritten: false")
     print("production evidence created: false")
     print("production decision: NO_GO")
