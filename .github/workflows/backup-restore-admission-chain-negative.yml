@@ -30,6 +30,11 @@ on:
       - "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py"
       - "scripts/validate-memory-os-ops-p0-007-admission-snapshot.py"
       - "scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py"
+      - "scripts/generate-memory-os-operability-admission-inventory.py"
+      - "scripts/validate-memory-os-operability-admission-inventory.py"
+      - "scripts/validate-memory-os-operability-admission-inventory-source-authorities.py"
+      - "scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py"
+      - "scripts/validate-memory-os-operability-admission-inventory-registry-negative.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
@@ -96,6 +101,11 @@ on:
       - "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py"
       - "scripts/validate-memory-os-ops-p0-007-admission-snapshot.py"
       - "scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py"
+      - "scripts/generate-memory-os-operability-admission-inventory.py"
+      - "scripts/validate-memory-os-operability-admission-inventory.py"
+      - "scripts/validate-memory-os-operability-admission-inventory-source-authorities.py"
+      - "scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py"
+      - "scripts/validate-memory-os-operability-admission-inventory-registry-negative.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
       - "scripts/validate-memory-os-production-equivalent-environment-record.py"
       - "scripts/validate-memory-os-production-equivalent-environment-generation.py"
@@ -167,6 +177,11 @@ jobs:
             scripts/generate-memory-os-ops-p0-007-admission-snapshot.py \
             scripts/validate-memory-os-ops-p0-007-admission-snapshot.py \
             scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py \
+            scripts/generate-memory-os-operability-admission-inventory.py \
+            scripts/validate-memory-os-operability-admission-inventory.py \
+            scripts/validate-memory-os-operability-admission-inventory-source-authorities.py \
+            scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py \
+            scripts/validate-memory-os-operability-admission-inventory-registry-negative.py \
             scripts/register-memory-os-production-equivalent-environment-generation.py \
             scripts/validate-memory-os-production-equivalent-environment-record.py \
             scripts/validate-memory-os-production-equivalent-environment-generation.py \
@@ -208,6 +223,16 @@ jobs:
         run: python scripts/validate-memory-os-ops-p0-007-admission-snapshot.py
       - name: Prove strict OPS-P0-007 snapshot authority and rollback
         run: python scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py
+      - name: Generate operability admission inventory
+        run: python scripts/generate-memory-os-operability-admission-inventory.py
+      - name: Validate operability admission inventory
+        run: python scripts/validate-memory-os-operability-admission-inventory.py
+      - name: Prove inventory source authorities
+        run: python scripts/validate-memory-os-operability-admission-inventory-source-authorities.py
+      - name: Prove inventory promotion remains fail-closed
+        run: python scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py
+      - name: Prove inventory registries remain fail-closed
+        run: python scripts/validate-memory-os-operability-admission-inventory-registry-negative.py
       - name: Prove environment generation reconcile authority and rollback
         run: python scripts/validate-memory-os-production-equivalent-generation-reconcile-negative.py
       - name: Prove recovery objective reconcile authority and rollback
