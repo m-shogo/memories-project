@@ -106,6 +106,27 @@ def require_canonical_runtime_authorities() -> None:
         canonical_repo_directory(APPROVAL_DIR, "recovery objective approval authority directory")
 
 
+def require_actual_cli_authorities() -> None:
+    """Pin the real approval append entrypoint while preserving isolated helper fixtures."""
+    require(ROOT == CANONICAL_ROOT, "recovery objective writer root authority must remain canonical")
+    require(CONTRACT == CANONICAL_CONTRACT, "recovery objective contract must remain canonical for CLI registration")
+    require(REGISTRY == CANONICAL_REGISTRY, "recovery objective registry must remain canonical for CLI registration")
+    require(APPROVAL_DIR == CANONICAL_APPROVAL_DIR, "recovery objective approval directory must remain canonical for CLI registration")
+    require(LOCK == CANONICAL_LOCK, "recovery objective lock authority must remain canonical for CLI registration")
+    canonical_repo_file(CONTRACT, "recovery objective contract")
+    canonical_repo_file(REGISTRY, "recovery objective registry")
+    canonical_repo_directory(APPROVAL_DIR, "recovery objective approval authority directory")
+    try:
+        relative_parent = LOCK.parent.relative_to(ROOT)
+        resolved_parent = LOCK.parent.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail("recovery objective lock parent missing or escapes repository") from exc
+    require(
+        relative_parent == resolved_parent and LOCK.parent.is_dir(),
+        "recovery objective lock parent must resolve to the canonical repository directory",
+    )
+
+
 def parse_utc_timestamp(value: Any, field: str) -> datetime:
     require(isinstance(value, str) and value.endswith("Z"), f"{field} must be UTC RFC3339 ending in Z")
     try:
@@ -326,6 +347,7 @@ def main() -> int:
         pass
     else:
         raise Fail("input objectives record must be outside repository")
+    require_actual_cli_authorities()
     require_canonical_runtime_authorities()
     record = load(path)
     validate_record(record)
