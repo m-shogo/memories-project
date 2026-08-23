@@ -22,12 +22,13 @@ CANONICAL_REGISTRY = ROOT / "contracts/operations/production-equivalent-environm
 CANONICAL_ENV_SCHEMA = ROOT / "contracts/operations/production-equivalent-environment-record.v1.schema.json"
 CANONICAL_GEN_SCHEMA = ROOT / "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json"
 CANONICAL_ENV_VALIDATOR = ROOT / "scripts/validate-memory-os-production-equivalent-environment-record.py"
+CANONICAL_LOCK = ROOT / "contracts/operations/.production-equivalent-environment-generation.lock"
 CONTRACT = CANONICAL_CONTRACT
 REGISTRY = CANONICAL_REGISTRY
 ENV_SCHEMA = CANONICAL_ENV_SCHEMA
 GEN_SCHEMA = CANONICAL_GEN_SCHEMA
 ENV_VALIDATOR = CANONICAL_ENV_VALIDATOR
-LOCK = ROOT / "contracts/operations/.production-equivalent-environment-generation.lock"
+LOCK = CANONICAL_LOCK
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
 ENV_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{2,63}$")
@@ -98,6 +99,31 @@ def require_canonical_runtime_authorities() -> None:
             contract.get("bindingRules", {}).get("appendMustRevalidateCanonicalRegistryAndRollbackOnFailure") is True,
             "environment generation transactional append authority drift",
         )
+
+
+def require_actual_cli_authorities() -> None:
+    """Pin the real CLI append path while preserving isolated helper-level fixture tests."""
+    require(ROOT == CANONICAL_ROOT, "environment generation writer root authority must remain canonical")
+    authorities = (
+        (CONTRACT, CANONICAL_CONTRACT, "environment generation contract"),
+        (REGISTRY, CANONICAL_REGISTRY, "environment generation registry"),
+        (ENV_SCHEMA, CANONICAL_ENV_SCHEMA, "environment record schema"),
+        (GEN_SCHEMA, CANONICAL_GEN_SCHEMA, "generation record schema"),
+        (ENV_VALIDATOR, CANONICAL_ENV_VALIDATOR, "environment record semantic validator"),
+    )
+    for path, canonical, field in authorities:
+        require(path == canonical, f"{field} must remain canonical for CLI registration")
+        canonical_repo_file(path, field)
+    require(LOCK == CANONICAL_LOCK, "environment generation lock authority must remain canonical for CLI registration")
+    try:
+        relative_parent = LOCK.parent.relative_to(ROOT)
+        resolved_parent = LOCK.parent.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail("environment generation lock parent missing or escapes repository") from exc
+    require(
+        relative_parent == resolved_parent and LOCK.parent.is_dir(),
+        "environment generation lock parent must resolve to the canonical repository directory",
+    )
 
 
 def load_environment_validator():
@@ -354,6 +380,7 @@ def main() -> int:
     else:
         raise Fail("input generation record must be outside repository")
     require(git("status", "--porcelain") == "", "working tree must be clean")
+    require_actual_cli_authorities()
     require_canonical_runtime_authorities()
     record = load(input_path)
     preflight_eligible = validate_record(record)
