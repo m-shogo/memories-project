@@ -16,13 +16,20 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/production-shaped-failure-drill-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/production-shaped-failure-drill-registry.v1.json"
-GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
-GEN_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
-VALIDATOR = ROOT / "scripts/validate-memory-os-production-shaped-failure-drills.py"
-LOCK = ROOT / "contracts/operations/.production-shaped-failure-drill.lock"
-REVIEW_ROOT = Path("docs/evidence/production-shaped-failure-drills/independent-reviews")
+CANONICAL_CONTRACT = ROOT / "contracts/operations/production-shaped-failure-drill-contract.v1.json"
+CANONICAL_REGISTRY = ROOT / "contracts/operations/production-shaped-failure-drill-registry.v1.json"
+CANONICAL_GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+CANONICAL_GEN_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
+CANONICAL_VALIDATOR = ROOT / "scripts/validate-memory-os-production-shaped-failure-drills.py"
+CANONICAL_LOCK = ROOT / "contracts/operations/.production-shaped-failure-drill.lock"
+CANONICAL_REVIEW_ROOT = Path("docs/evidence/production-shaped-failure-drills/independent-reviews")
+CONTRACT = CANONICAL_CONTRACT
+REGISTRY = CANONICAL_REGISTRY
+GEN_REGISTRY = CANONICAL_GEN_REGISTRY
+GEN_WRITER = CANONICAL_GEN_WRITER
+VALIDATOR = CANONICAL_VALIDATOR
+LOCK = CANONICAL_LOCK
+REVIEW_ROOT = CANONICAL_REVIEW_ROOT
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
 DRILL_ID = re.compile(r"^fdr_[a-z0-9][a-z0-9_-]{7,63}$")
@@ -54,6 +61,33 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def require_actual_cli_authorities() -> None:
+    for label, actual, canonical in (
+        ("contract", CONTRACT, CANONICAL_CONTRACT),
+        ("registry", REGISTRY, CANONICAL_REGISTRY),
+        ("generation registry", GEN_REGISTRY, CANONICAL_GEN_REGISTRY),
+        ("generation writer", GEN_WRITER, CANONICAL_GEN_WRITER),
+        ("validator", VALIDATOR, CANONICAL_VALIDATOR),
+    ):
+        require(actual == canonical, f"failure-drill CLI {label} authority substitution rejected")
+        require(not actual.is_symlink(), f"failure-drill CLI {label} authority must be symlink-free")
+        require(actual.resolve(strict=True) == canonical.resolve(strict=True), f"failure-drill CLI {label} authority drift")
+    require(LOCK == CANONICAL_LOCK, "failure-drill CLI lock authority substitution rejected")
+    require(not LOCK.is_symlink(), "failure-drill CLI lock authority must be symlink-free")
+    require(
+        LOCK.parent.resolve(strict=True) == CANONICAL_LOCK.parent.resolve(strict=True),
+        "failure-drill CLI lock parent authority drift",
+    )
+    require(REVIEW_ROOT == CANONICAL_REVIEW_ROOT, "failure-drill CLI independent-review namespace substitution rejected")
+    review_path = ROOT / REVIEW_ROOT
+    canonical_review_path = ROOT / CANONICAL_REVIEW_ROOT
+    require(not review_path.is_symlink(), "failure-drill CLI independent-review namespace must be symlink-free")
+    require(
+        review_path.resolve(strict=True) == canonical_review_path.resolve(strict=True),
+        "failure-drill CLI independent-review namespace drift",
+    )
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -357,6 +391,7 @@ def append_registry_transactionally(registry: dict[str, Any], original_bytes: by
 
 
 def main() -> int:
+    require_actual_cli_authorities()
     parser = argparse.ArgumentParser()
     parser.add_argument("--record", required=True)
     parser.add_argument("--confirm", default="")
