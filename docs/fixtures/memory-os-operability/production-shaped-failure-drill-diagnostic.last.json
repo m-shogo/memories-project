@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "production-shaped-failure-drills",
+  "result": "FAIL",
+  "exitCode": 1,
+  "sourceCommitSha": "c32ba9b5ed8a4f28f8b385b8f8b46cbc7da02f4d",
+  "output": "Traceback (most recent call last):\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-production-shaped-failure-drill-writer-authority-negative.py\", line 76, in <module>\n    raise SystemExit(main())\n                     ^^^^^^\n  File \"/home/runner/work/memories-project/memories-project/scripts/validate-memory-os-production-shaped-failure-drill-writer-authority-negative.py\", line 65, in main\n    writer.require_actual_cli_authorities()\n  File \"/home/runner/work/memories-project/memories-project/scripts/register-memory-os-production-shaped-failure-drill.py\", line 88, in require_actual_cli_authorities\n    review_path.resolve(strict=True) == canonical_review_path.resolve(strict=True),\n    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.14/x64/lib/python3.12/pathlib.py\", line 1240, in resolve\n    s = self._flavour.realpath(self, strict=strict)\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen posixpath>\", line 424, in realpath\n  File \"<frozen posixpath>\", line 468, in _joinrealpath\nFileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/memories-project/memories-project/docs/evidence/production-shaped-failure-drills'\n",
+  "containsSecrets": false,
+  "registeredDrillCount": 0,
+  "productionEvidence": false,
+  "productionReady": false
+}
