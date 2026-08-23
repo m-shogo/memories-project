@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Prove recovery-objective reconciliation authority identity, load boundaries and transactional rollback."""
+"""Prove recovery-objective reconciliation authority identity, ordering and transactional rollback."""
 
 from __future__ import annotations
 
 import importlib.util
-import shutil
 import tempfile
 from pathlib import Path
 from typing import Callable
@@ -46,55 +45,67 @@ def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[
     raise Fail(f"negative case unexpectedly accepted: {name}")
 
 
+def assert_canonical_unchanged(contract_bytes: bytes, status_bytes: bytes, label: str) -> None:
+    require(CONTRACT.read_bytes() == contract_bytes, f"{label} changed canonical recovery objective contract")
+    require(STATUS.read_bytes() == status_bytes, f"{label} changed canonical production status")
+
+
 def main() -> int:
     require(RECONCILER.is_file(), "recovery objective reconciler missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
     reconciler = load_reconciler()
 
-    canonical_contract = reconciler.CONTRACT.read_bytes()
-    canonical_status = reconciler.STATUS.read_bytes()
+    canonical_contract = CONTRACT.read_bytes()
+    canonical_status = STATUS.read_bytes()
 
-    original_writer = reconciler.WRITER
-    reconciler.WRITER = reconciler.VALIDATOR
+    substitutions = (
+        ("CONTRACT", reconciler.REGISTRY, "recovery objective contract authority drift"),
+        ("REGISTRY", reconciler.CONTRACT, "recovery objective registry authority drift"),
+        ("WRITER", reconciler.VALIDATOR, "recovery objective writer authority drift"),
+        ("VALIDATOR", reconciler.OPERABILITY_VALIDATOR, "recovery objective validator authority drift"),
+        ("OPERABILITY_VALIDATOR", reconciler.VALIDATOR, "operability validator authority drift"),
+        ("STATUS", reconciler.CONTRACT, "production operability status authority drift"),
+    )
+    for attribute, replacement, expected in substitutions:
+        original = getattr(reconciler, attribute)
+        setattr(reconciler, attribute, replacement)
+        try:
+            expect_domain_fail(f"{attribute.lower()} substitution", reconciler.main, reconciler.Fail, expected)
+            assert_canonical_unchanged(canonical_contract, canonical_status, attribute.lower())
+        finally:
+            setattr(reconciler, attribute, original)
+
+    original_contract_path = reconciler.CONTRACT
+    original_status_path = reconciler.STATUS
+    reconciler.CONTRACT = reconciler.REGISTRY
+    reconciler.STATUS = reconciler.REGISTRY
     try:
         expect_domain_fail(
-            "recovery objective writer executable substitution",
+            "paired contract/status fixture substitution",
             reconciler.main,
             reconciler.Fail,
-            "recovery objective writer authority drift",
+            "recovery objective contract authority drift",
         )
-        require(reconciler.CONTRACT.read_bytes() == canonical_contract, "writer substitution changed recovery objective contract")
-        require(reconciler.STATUS.read_bytes() == canonical_status, "writer substitution changed production status")
+        assert_canonical_unchanged(canonical_contract, canonical_status, "paired fixture substitution")
     finally:
-        reconciler.WRITER = original_writer
+        reconciler.CONTRACT = original_contract_path
+        reconciler.STATUS = original_status_path
 
-    original_validator_path = reconciler.VALIDATOR
-    reconciler.VALIDATOR = reconciler.OPERABILITY_VALIDATOR
-    try:
-        expect_domain_fail(
-            "recovery objective validator executable substitution",
-            reconciler.main,
-            reconciler.Fail,
-            "recovery objective validator authority drift",
-        )
-        require(reconciler.CONTRACT.read_bytes() == canonical_contract, "validator substitution changed recovery objective contract")
-        require(reconciler.STATUS.read_bytes() == canonical_status, "validator substitution changed production status")
-    finally:
-        reconciler.VALIDATOR = original_validator_path
-
-    original_registry = reconciler.REGISTRY
-    reconciler.REGISTRY = reconciler.CONTRACT
-    try:
-        expect_domain_fail(
-            "recovery objective registry substitution",
-            reconciler.main,
-            reconciler.Fail,
-            "recovery objective registry authority drift",
-        )
-        require(reconciler.CONTRACT.read_bytes() == canonical_contract, "registry substitution changed recovery objective contract")
-        require(reconciler.STATUS.read_bytes() == canonical_status, "registry substitution changed production status")
-    finally:
-        reconciler.REGISTRY = original_registry
+    prefix = reconciler.EVIDENCE_PREFIX
+    old = prefix + " old"
+    new = prefix + " new"
+    values = ["before", old, "after"]
+    reconciler.replace_single_prefixed(values, prefix, new)
+    require(values == ["before", new, "after"], "recovery objective evidence moved during replacement")
+    values = [old, prefix + " duplicate"]
+    expect_domain_fail(
+        "duplicate recovery objective status evidence",
+        lambda: reconciler.replace_single_prefixed(values, prefix, new),
+        reconciler.Fail,
+        "duplicate authority evidence prefix",
+    )
+    require(values == [old, prefix + " duplicate"], "duplicate evidence rejection mutated status ordering")
+    print("PASS preserve: recovery objective evidence ordering is deterministic")
 
     with tempfile.TemporaryDirectory(prefix=".tmp-recovery-objective-reconcile-", dir=TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
@@ -111,37 +122,33 @@ def main() -> int:
             outside.write_text("{}\n", encoding="utf-8")
             expect_domain_fail("objective authority escapes repository", lambda: reconciler.load(outside), reconciler.Fail)
 
-        contract_copy = tmp / CONTRACT.name
-        status_copy = tmp / STATUS.name
-        shutil.copyfile(CONTRACT, contract_copy)
-        shutil.copyfile(STATUS, status_copy)
-        reconciler.CONTRACT = contract_copy
-        reconciler.STATUS = status_copy
-        original_contract = contract_copy.read_bytes()
-        original_status = status_copy.read_bytes()
+    original_run_validator = reconciler.run_validator
 
-        passing_validator = tmp / "passing-objective-validator.py"
-        passing_validator.write_text("#!/usr/bin/env python3\nraise SystemExit(0)\n", encoding="utf-8")
-        failing_operability = tmp / "forced-operability-failure.py"
-        failing_operability.write_text("#!/usr/bin/env python3\nraise SystemExit(37)\n", encoding="utf-8")
-        reconciler.VALIDATOR = passing_validator
-        reconciler.OPERABILITY_VALIDATOR = failing_operability
+    def fail_aggregate_validator(path: Path, label: str) -> None:
+        if path == reconciler.OPERABILITY_VALIDATOR:
+            raise reconciler.Fail("post-reconcile aggregate operability validator failed: forced negative")
+        return None
 
-        try:
-            reconciler.main()
-        except reconciler.Fail as exc:
-            require("aggregate operability validator failed" in str(exc), f"unexpected reconcile failure: {exc}")
-        else:
-            raise Fail("forced aggregate operability failure unexpectedly accepted")
+    reconciler.run_validator = fail_aggregate_validator
+    try:
+        expect_domain_fail(
+            "post-write aggregate operability rejection",
+            reconciler.main,
+            reconciler.Fail,
+            "aggregate operability validator failed",
+        )
+    finally:
+        reconciler.run_validator = original_run_validator
 
-        require(contract_copy.read_bytes() == original_contract, "objective contract rollback drift")
-        require(status_copy.read_bytes() == original_status, "objective operability status rollback drift")
-
+    assert_canonical_unchanged(canonical_contract, canonical_status, "aggregate rollback")
     print("PASS rollback: aggregate operability rejection restores recovery objective contract/status byte-for-byte")
-    print("recovery objective writer substitution accepted: false")
-    print("recovery objective validator substitution accepted: false")
-    print("recovery objective registry substitution accepted: false")
+    print("paired recovery objective fixture substitution accepted: false")
+    print("recovery objective data/executable substitution accepted: false")
+    print("recovery objective evidence reordering accepted: false")
     print("Recovery objective reconcile negative suite PASS")
+    print("objective created or defaulted: false")
+    print("production evidence: false")
+    print("production decision: NO_GO")
     return 0
 
 
