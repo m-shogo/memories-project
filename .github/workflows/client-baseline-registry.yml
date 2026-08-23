@@ -17,6 +17,7 @@ on:
       - "scripts/register-memory-os-release-compatibility-pair.py"
       - "scripts/validate-memory-os-release-compatibility-pair-independent-review.py"
       - "scripts/validate-memory-os-client-baseline-registry.py"
+      - "scripts/validate-memory-os-client-baseline-writer-authority-negative.py"
       - "scripts/validate-memory-os-client-baseline-lineage-negative.py"
       - "scripts/validate-memory-os-client-baseline-evidence-binding-negative.py"
       - "scripts/reconcile-memory-os-client-baseline-registry.py"
@@ -42,6 +43,7 @@ on:
       - "scripts/register-memory-os-release-compatibility-pair.py"
       - "scripts/validate-memory-os-release-compatibility-pair-independent-review.py"
       - "scripts/validate-memory-os-client-baseline-registry.py"
+      - "scripts/validate-memory-os-client-baseline-writer-authority-negative.py"
       - "scripts/validate-memory-os-client-baseline-lineage-negative.py"
       - "scripts/validate-memory-os-client-baseline-evidence-binding-negative.py"
       - "scripts/reconcile-memory-os-client-baseline-registry.py"
@@ -93,6 +95,7 @@ jobs:
             scripts/register-memory-os-release-compatibility-pair.py \
             scripts/validate-memory-os-release-compatibility-pair-independent-review.py \
             scripts/validate-memory-os-client-baseline-registry.py \
+            scripts/validate-memory-os-client-baseline-writer-authority-negative.py \
             scripts/validate-memory-os-client-baseline-lineage-negative.py \
             scripts/validate-memory-os-client-baseline-evidence-binding-negative.py \
             scripts/reconcile-memory-os-client-baseline-registry.py \
@@ -100,6 +103,10 @@ jobs:
             scripts/update-memory-os-compatibility-admission-gaps.py \
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: writer-authority-negative" >> "$log"
+            python scripts/validate-memory-os-client-baseline-writer-authority-negative.py >> "$log" 2>&1 || code=$?
+          fi
           if [[ "$code" == "0" ]]; then
             echo "STAGE: source-lineage-negative" >> "$log"
             python scripts/validate-memory-os-client-baseline-lineage-negative.py >> "$log" 2>&1 || code=$?
@@ -176,6 +183,7 @@ jobs:
             scripts/register-memory-os-release-compatibility-pair.py \
             scripts/validate-memory-os-release-compatibility-pair-independent-review.py \
             scripts/validate-memory-os-client-baseline-registry.py \
+            scripts/validate-memory-os-client-baseline-writer-authority-negative.py \
             scripts/validate-memory-os-client-baseline-lineage-negative.py \
             scripts/validate-memory-os-client-baseline-evidence-binding-negative.py \
             scripts/reconcile-memory-os-client-baseline-registry.py \
@@ -183,6 +191,10 @@ jobs:
             scripts/update-memory-os-compatibility-admission-gaps.py \
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            echo "STAGE: writer-authority-negative" >> "$log"
+            python scripts/validate-memory-os-client-baseline-writer-authority-negative.py >> "$log" 2>&1 || code=$?
+          fi
           if [[ "$code" == "0" ]]; then
             echo "STAGE: source-lineage-negative" >> "$log"
             python scripts/validate-memory-os-client-baseline-lineage-negative.py >> "$log" 2>&1 || code=$?
@@ -254,7 +266,7 @@ jobs:
             exit 75
           fi
           python - <<'PY'
-          import json, os, re
+          import json, os, re, tempfile
           from pathlib import Path
           text = Path('/tmp/client-baseline-authority.log').read_text(encoding='utf-8', errors='replace')
           for pattern, replacement in (
@@ -268,6 +280,7 @@ jobs:
               'workflow': 'client-baseline-registry',
               'result': 'FAIL',
               'exitCode': int(os.environ['AUTHORITY_EXIT_CODE']),
+              'sourceCommitSha': os.environ['SOURCE_SHA'],
               'output': text[-12000:],
               'containsSecrets': False,
               'approvedClientBaselineCount': 0,
@@ -277,7 +290,19 @@ jobs:
           }
           path = Path('docs/fixtures/memory-os-operability/client-baseline-registry-diagnostic.last.json')
           path.parent.mkdir(parents=True, exist_ok=True)
-          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          payload = (json.dumps(value, indent=2) + '\n').encode('utf-8')
+          fd, temp_name = tempfile.mkstemp(prefix=f'.{path.name}.', suffix='.tmp', dir=path.parent)
+          try:
+              with os.fdopen(fd, 'wb') as handle:
+                  handle.write(payload)
+                  handle.flush()
+                  os.fsync(handle.fileno())
+              os.replace(temp_name, path)
+          finally:
+              try:
+                  os.unlink(temp_name)
+              except FileNotFoundError:
+                  pass
           PY
           git add docs/fixtures/memory-os-operability/client-baseline-registry-diagnostic.last.json
           git config user.name "github-actions[bot]"
