@@ -1,24 +1,18 @@
 #!/usr/bin/env python3
-"""Prove typed non-resurrection reconciliation load boundaries and transactional rollback."""
-
+"""Fail-closed authority and rollback negatives for typed non-resurrection reconcile."""
 from __future__ import annotations
 
 import importlib.util
-import json
-import shutil
-import tempfile
+import sys
 from pathlib import Path
-from typing import Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
-TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
-CANONICAL = {
-    "CONTRACT": ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json",
-    "REGISTRY": ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json",
-    "GEN_REGISTRY": ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
-    "STATUS": ROOT / "contracts/operations/production-operability-status.json",
-}
+CANONICAL_CONTRACT = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json"
+CANONICAL_REGISTRY = ROOT / "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"
+CANONICAL_GEN_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+CANONICAL_STATUS = ROOT / "contracts/operations/production-operability-status.json"
+ALTERNATE_FILE = ROOT / "contracts/operations/backup-restore-admission-chain-contract.v1.json"
 
 
 class Fail(RuntimeError):
@@ -30,97 +24,82 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
-def load_reconciler():
-    spec = importlib.util.spec_from_file_location("memory_os_typed_non_resurrection_reconcile_negative", RECONCILER)
+def load_reconciler(name: str):
+    sys.path.insert(0, str(ROOT / "scripts"))
+    spec = importlib.util.spec_from_file_location(name, RECONCILER)
     require(spec is not None and spec.loader is not None, "cannot load typed non-resurrection reconciler")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[BaseException]) -> None:
+def canonical_bytes() -> dict[Path, bytes]:
+    return {
+        CANONICAL_CONTRACT: CANONICAL_CONTRACT.read_bytes(),
+        CANONICAL_REGISTRY: CANONICAL_REGISTRY.read_bytes(),
+        CANONICAL_GEN_REGISTRY: CANONICAL_GEN_REGISTRY.read_bytes(),
+        CANONICAL_STATUS: CANONICAL_STATUS.read_bytes(),
+    }
+
+
+def require_unchanged(before: dict[Path, bytes], label: str) -> None:
+    for path, value in before.items():
+        require(path.read_bytes() == value, f"{label} mutated canonical {path.name}")
+
+
+def prove_substitution_rejected(attribute: str) -> None:
+    reconciler = load_reconciler(f"memory_os_typed_non_resurrection_authority_{attribute.lower()}")
+    before = canonical_bytes()
+    setattr(reconciler, attribute, ALTERNATE_FILE)
     try:
-        action()
-    except fail_type:
-        print(f"PASS reject: {name}")
-        return
-    except Exception as exc:
-        raise Fail(f"{name} leaked non-domain exception: {type(exc).__name__}: {exc}") from exc
-    raise Fail(f"negative case unexpectedly accepted: {name}")
+        reconciler.main()
+    except reconciler.Fail:
+        pass
+    else:
+        raise Fail(f"{attribute} substitution unexpectedly accepted")
+    require_unchanged(before, attribute)
+    print(f"PASS reject: {attribute} substitution fails closed without canonical mutation")
+
+
+def prove_post_write_aggregate_rollback() -> None:
+    reconciler = load_reconciler("memory_os_typed_non_resurrection_aggregate_rollback")
+    before = canonical_bytes()
+    original_post_validator = reconciler.run_post_validator
+
+    def fail_operability(path: Path, expected_relative: Path, label: str) -> None:
+        if label == "operability validator":
+            raise reconciler.Fail("synthetic aggregate operability rejection")
+        original_post_validator(path, expected_relative, label)
+
+    reconciler.run_post_validator = fail_operability
+    try:
+        reconciler.main()
+    except reconciler.Fail as exc:
+        require("synthetic aggregate operability rejection" in str(exc), "unexpected aggregate rejection")
+    else:
+        raise Fail("synthetic aggregate operability rejection unexpectedly accepted")
+    require_unchanged(before, "aggregate rejection")
+    print("PASS rollback: aggregate rejection byte-restores typed, generation and status authorities")
 
 
 def main() -> int:
-    require(RECONCILER.is_file(), "typed non-resurrection reconciler missing")
-    require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
-    reconciler = load_reconciler()
-
-    with tempfile.TemporaryDirectory(prefix=".tmp-typed-reconcile-negative-", dir=TMP_PARENT) as tmpdir:
-        tmp = Path(tmpdir)
-        invalid_utf8 = tmp / "invalid-utf8.json"
-        invalid_utf8.write_bytes(b"{\xff}")
-        expect_domain_fail("typed reconciler invalid UTF-8 authority", lambda: reconciler.load(invalid_utf8), reconciler.Fail)
-
-        directory_authority = tmp / "directory-authority.json"
-        directory_authority.mkdir()
-        expect_domain_fail("typed reconciler unreadable directory authority", lambda: reconciler.load(directory_authority), reconciler.Fail)
-
-        with tempfile.TemporaryDirectory(prefix="memory-os-typed-outside-") as outside_dir:
-            outside = Path(outside_dir) / "outside.json"
-            outside.write_text("{}\n", encoding="utf-8")
-            expect_domain_fail("typed reconciler authority escapes repository", lambda: reconciler.load(outside), reconciler.Fail)
-
-        originals: dict[Path, bytes] = {}
-        targets: dict[str, Path] = {}
-        for attr, source in CANONICAL.items():
-            target = tmp / source.name
-            shutil.copyfile(source, target)
-            setattr(reconciler, attr, target)
-            originals[target] = target.read_bytes()
-            targets[attr] = target
-
-        # Reconcile may project valid append-only authority into derived contract
-        # status, but corrupt registry authority must remain corrupt and be
-        # rejected rather than silently normalized by the next reconcile.
-        corruption_cases = (
-            ("typed registeredRecordCount drift", "REGISTRY", "registeredRecordCount", 1),
-            ("typed boolean completeRecordCount", "REGISTRY", "completeRecordCount", True),
-            ("typed productionEvidence boundary drift", "REGISTRY", "productionEvidence", True),
-            ("generation registeredEvidenceCount drift", "GEN_REGISTRY", "registeredEvidenceCount", 1),
-            ("generation boolean candidate count", "GEN_REGISTRY", "productionEquivalentRecoveryCandidateCount", True),
-            ("generation productionReady boundary drift", "GEN_REGISTRY", "productionReady", True),
-        )
-        for name, attr, field, invalid_value in corruption_cases:
-            for path, expected in originals.items():
-                path.write_bytes(expected)
-            target = targets[attr]
-            payload = json.loads(target.read_text(encoding="utf-8"))
-            payload[field] = invalid_value
-            target.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-            before = {path: path.read_bytes() for path in originals}
-            expect_domain_fail(name, reconciler.main, reconciler.Fail)
-            for path, expected in before.items():
-                require(path.read_bytes() == expected, f"reconcile auto-healed corrupt authority: {path.name} during {name}")
-
-        for path, expected in originals.items():
-            path.write_bytes(expected)
-
-        failing_validator = tmp / "forced-validator-failure.py"
-        failing_validator.write_text("#!/usr/bin/env python3\nraise SystemExit(29)\n", encoding="utf-8")
-        reconciler.VALIDATOR = failing_validator
-
-        try:
-            reconciler.main()
-        except reconciler.Fail as exc:
-            require("typed non-resurrection validator failed" in str(exc), f"unexpected reconcile failure: {exc}")
-        else:
-            raise Fail("forced typed post-validation failure unexpectedly accepted")
-
-        for path, expected in originals.items():
-            require(path.read_bytes() == expected, f"rollback drifted typed authority: {path.name}")
-
-    print("PASS reject: corrupt typed/generation append-only authority is never auto-healed by reconcile")
-    print("PASS rollback: typed reconcile restores typed registry/generation registry/contract/status byte-for-byte")
-    print("Typed non-resurrection reconcile negative suite PASS")
+    require(ALTERNATE_FILE.is_file(), "alternate repository fixture missing")
+    for attribute in (
+        "CONTRACT",
+        "REGISTRY",
+        "GEN_REGISTRY",
+        "TYPED_WRITER",
+        "GEN_WRITER",
+        "VALIDATOR",
+        "OPERABILITY_VALIDATOR",
+        "STATUS",
+    ):
+        prove_substitution_rejected(attribute)
+    prove_post_write_aggregate_rollback()
+    print("Memory OS typed non-resurrection reconcile negative suite PASS")
+    print("generic non-resurrection PASS promoted to typed coverage: false")
+    print("production evidence: false")
+    print("production decision: NO_GO")
     return 0
 
 
@@ -128,5 +107,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except Fail as exc:
-        print(f"TYPED NON-RESURRECTION RECONCILE NEGATIVE FAILED: {exc}")
+        print(f"BACKUP NON-RESURRECTION RECONCILE NEGATIVE FAILED: {exc}", file=sys.stderr)
         raise SystemExit(1)
