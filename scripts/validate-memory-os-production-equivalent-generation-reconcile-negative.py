@@ -54,6 +54,35 @@ def assert_canonical_unchanged(contract_bytes: bytes, registry_bytes: bytes, sta
     require(STATUS.read_bytes() == status_bytes, f"{label} changed canonical production status")
 
 
+def prove_atomic_write_failure(
+    reconciler: object,
+    canonical_contract: bytes,
+    canonical_registry: bytes,
+    canonical_status: bytes,
+) -> None:
+    original_replace = reconciler.os.replace
+
+    def reject_replace(source: str | Path, destination: str | Path) -> None:
+        raise OSError("synthetic atomic replace rejection")
+
+    reconciler.os.replace = reject_replace
+    try:
+        expect_domain_fail(
+            "environment generation atomic replace rejection",
+            lambda: reconciler.write_text(CONTRACT, canonical_contract.decode("utf-8") + " "),
+            reconciler.Fail,
+            "cannot atomically write",
+        )
+    finally:
+        reconciler.os.replace = original_replace
+
+    assert_canonical_unchanged(canonical_contract, canonical_registry, canonical_status, "atomic replace rejection")
+    contract_leftovers = list(CONTRACT.parent.glob(f".{CONTRACT.name}.*.tmp"))
+    status_leftovers = list(STATUS.parent.glob(f".{STATUS.name}.*.tmp"))
+    require(not contract_leftovers and not status_leftovers, "atomic write rejection left temporary generation authority files")
+    print("PASS boundary: failed atomic environment-generation write preserves canonical bytes and cleans temporary files")
+
+
 def main() -> int:
     require(RECONCILER.is_file(), "environment generation reconciler missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
@@ -140,6 +169,8 @@ def main() -> int:
     require(values == [old, prefix + " duplicate"], "duplicate generation evidence rejection mutated ordering")
     print("PASS preserve: environment generation evidence ordering is deterministic")
 
+    prove_atomic_write_failure(reconciler, canonical_contract, canonical_registry, canonical_status)
+
     observed: list[str] = []
     original_run_validator = reconciler.run_validator
 
@@ -166,6 +197,7 @@ def main() -> int:
     print("PASS rollback: environment generation contract/registry/status preserved byte-for-byte")
     print("canonical generation data/executable substitutions accepted: false")
     print("generation evidence reordering accepted: false")
+    print("non-atomic environment generation authority write accepted: false")
     print("aggregate operability failure triggers rollback: true")
     print("Environment generation reconcile negative suite PASS")
     print("production generation created: false")
