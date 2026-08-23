@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import json
 import subprocess
 import sys
@@ -72,6 +73,39 @@ def load_writer():
     return module
 
 
+def require_writer_cli_authority_boundary(writer) -> None:
+    main_source = inspect.getsource(writer.main)
+    guard_index = main_source.find("require_cli_authorities()")
+    parser_index = main_source.find("argparse.ArgumentParser")
+    require(guard_index >= 0, "promotion review CLI does not enforce canonical authority guard")
+    require(parser_index >= 0 and guard_index < parser_index, "promotion review CLI authority guard must run before argument parsing")
+
+    substitutions = {
+        "CONTRACT": INVENTORY,
+        "REGISTRY": GEN_REGISTRY,
+        "GEN_REGISTRY": TYPED_REGISTRY,
+        "GEN_WRITER": NEGATIVE,
+        "EVIDENCE_ROOT": ROOT / "docs/evidence/recovery-objectives/approvals",
+        "LOCK": CONTRACT,
+    }
+    for name, alternate in substitutions.items():
+        original = getattr(writer, name)
+        setattr(writer, name, alternate)
+        try:
+            try:
+                writer.require_cli_authorities()
+            except writer.Fail:
+                pass
+            else:
+                raise Fail(f"promotion review CLI accepted substituted authority: {name}")
+        finally:
+            setattr(writer, name, original)
+    try:
+        writer.require_cli_authorities()
+    except writer.Fail as exc:
+        raise Fail(f"canonical promotion review CLI authority rejected: {exc}") from exc
+
+
 def inventory_area(inventory: dict[str, Any], area_id: str) -> dict[str, Any]:
     rows = inventory.get("areas")
     require(isinstance(rows, list), "operability inventory areas missing")
@@ -97,6 +131,7 @@ def main() -> int:
     writer_lock = getattr(writer, "LOCK", None)
     require(writer_lock == EXPECTED_LOCK, "promotion review writer append lock authority drift")
     require(writer_lock.parent == REGISTRY.parent, "promotion review append lock must share registry authority directory")
+    require_writer_cli_authority_boundary(writer)
     writer.canonical_repo_file(CONTRACT, "promotion review contract")
     writer.canonical_repo_file(REGISTRY, "promotion review registry")
     writer.canonical_repo_file(GEN_REGISTRY, "generation recovery evidence registry")
@@ -199,6 +234,7 @@ def main() -> int:
     print("rationale payload digest binding required: true")
     print("promotion review candidate writer identity canonical: true")
     print("promotion review append lock authority canonical: true")
+    print("promotion review CLI authority substitutions accepted: false")
     print("operability inventory current human review source: promotion-review registry")
     print("review changes production traffic: false")
     print("review creates production ready: false")
