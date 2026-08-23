@@ -8,7 +8,9 @@ on:
       - "contracts/operations/sustained-soak-independent-review-registry.v1.json"
       - "scripts/register-memory-os-sustained-soak-independent-review.py"
       - "scripts/validate-memory-os-sustained-soak-independent-review.py"
+      - "scripts/validate-memory-os-sustained-soak-independent-review-negative.py"
       - "scripts/validate-memory-os-sustained-soak-independent-review-writer-authority-negative.py"
+      - "scripts/validate-memory-os-sustained-local-soak-result.py"
   push:
     branches:
       - so
@@ -18,7 +20,9 @@ on:
       - "contracts/operations/sustained-soak-independent-review-registry.v1.json"
       - "scripts/register-memory-os-sustained-soak-independent-review.py"
       - "scripts/validate-memory-os-sustained-soak-independent-review.py"
+      - "scripts/validate-memory-os-sustained-soak-independent-review-negative.py"
       - "scripts/validate-memory-os-sustained-soak-independent-review-writer-authority-negative.py"
+      - "scripts/validate-memory-os-sustained-local-soak-result.py"
   workflow_dispatch:
 
 permissions:
@@ -62,8 +66,11 @@ jobs:
           python -m py_compile \
             scripts/register-memory-os-sustained-soak-independent-review.py \
             scripts/validate-memory-os-sustained-soak-independent-review.py \
-            scripts/validate-memory-os-sustained-soak-independent-review-writer-authority-negative.py
+            scripts/validate-memory-os-sustained-soak-independent-review-negative.py \
+            scripts/validate-memory-os-sustained-soak-independent-review-writer-authority-negative.py \
+            scripts/validate-memory-os-sustained-local-soak-result.py
           python scripts/validate-memory-os-sustained-soak-independent-review.py
+          python scripts/validate-memory-os-sustained-soak-independent-review-negative.py
           python scripts/validate-memory-os-sustained-soak-independent-review-writer-authority-negative.py
           git diff --check
           test -z "$(git status --porcelain)"
