@@ -40,20 +40,69 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: recovery-objectives-admission-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
-  validate:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify exact clean recovery objective PR source
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+      - name: Validate explicit recovery objectives authority read-only
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/memory_os_backup_restore_blockers.py \
+            scripts/register-memory-os-recovery-objectives.py \
+            scripts/validate-memory-os-recovery-objectives.py \
+            scripts/validate-memory-os-recovery-objectives-negative.py \
+            scripts/validate-memory-os-recovery-objectives-digest-negative.py \
+            scripts/validate-memory-os-recovery-objectives-append-rollback-negative.py \
+            scripts/validate-memory-os-recovery-objectives-reconcile-negative.py \
+            scripts/reconcile-memory-os-recovery-objectives.py \
+            scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-recovery-objectives-negative.py
+          python scripts/validate-memory-os-recovery-objectives-digest-negative.py
+          python scripts/validate-memory-os-recovery-objectives-append-rollback-negative.py
+          python scripts/validate-memory-os-recovery-objectives-reconcile-negative.py
+          python scripts/reconcile-memory-os-recovery-objectives.py
+          python scripts/validate-memory-os-recovery-objectives.py
+          python scripts/validate-memory-os-operability.py
+          git diff --check
+          git diff --exit-code -- \
+            contracts/operations/recovery-objectives-admission-contract.v1.json \
+            contracts/operations/production-operability-status.json
+
+  validate-and-publish:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -61,7 +110,7 @@ jobs:
       - name: Capture exact recovery objective authority source
         run: |
           set -euo pipefail
-          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          expected="${{ github.sha }}"
           test -n "$expected"
           test "$(git rev-parse HEAD)" = "$expected"
           test -z "$(git status --porcelain)"
@@ -94,15 +143,8 @@ jobs:
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
-      - name: Reject stale recovery objective authority on pull requests
-        if: steps.validation.outputs.exit_code == '0' && github.event_name == 'pull_request'
-        run: |
-          set -euo pipefail
-          git diff --exit-code -- \
-            contracts/operations/recovery-objectives-admission-contract.v1.json \
-            contracts/operations/production-operability-status.json
       - name: Commit bounded objective authority
-        if: steps.validation.outputs.exit_code == '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        if: steps.validation.outputs.exit_code == '0' && github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
           git fetch origin so
@@ -128,7 +170,7 @@ jobs:
             git push origin HEAD:so
           fi
       - name: Record privacy-safe recovery objective diagnostic
-        if: steps.validation.outputs.exit_code != '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        if: steps.validation.outputs.exit_code != '0' && github.ref == 'refs/heads/so'
         env:
           VALIDATION_EXIT_CODE: ${{ steps.validation.outputs.exit_code }}
         run: |
