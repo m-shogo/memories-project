@@ -5,18 +5,25 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT_PATH = ROOT / "contracts/operations/sustained-local-soak-contract.v1.json"
-RESULT_DIR = ROOT / "docs/fixtures/memory-os-operability"
+CANONICAL_CONTRACT_PATH = ROOT / "contracts/operations/sustained-local-soak-contract.v1.json"
+CANONICAL_RESULT_DIR = ROOT / "docs/fixtures/memory-os-operability"
+CANONICAL_RESULT_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak-result.py"
+CANONICAL_REVIEW_PATH = CANONICAL_RESULT_DIR / "sustained-local-soak-trend-review.v1.json"
+
+CONTRACT_PATH = CANONICAL_CONTRACT_PATH
+RESULT_DIR = CANONICAL_RESULT_DIR
 RESULT_GLOB = "sustained-local-soak-results.run-*.v1.json"
-RESULT_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak-result.py"
-REVIEW_PATH = RESULT_DIR / "sustained-local-soak-trend-review.v1.json"
+RESULT_VALIDATOR = CANONICAL_RESULT_VALIDATOR
+REVIEW_PATH = CANONICAL_REVIEW_PATH
 TIMESTAMP_DURATION_TOLERANCE_SECONDS = 2.0
 GENERATION_LAG_LIMIT_SECONDS = 120.0
 
@@ -28,6 +35,49 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def require_exact_file(path: Path, expected: Path, label: str) -> None:
+    require(path == expected, f"{label} authority substitution")
+    require(path.is_file() and not path.is_symlink(), f"{label} canonical file missing or symlinked")
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError as exc:
+        raise Fail(f"{label} canonical authority cannot be resolved") from exc
+    require(resolved == expected, f"{label} canonical authority escaped repository path")
+
+
+def require_exact_optional_file(path: Path, expected: Path, label: str) -> None:
+    require(path == expected, f"{label} authority substitution")
+    require(path.parent.resolve(strict=True) == expected.parent, f"{label} canonical parent escaped repository path")
+    if path.exists():
+        require(path.is_file() and not path.is_symlink(), f"{label} canonical file is not a regular file")
+        require(path.resolve(strict=True) == expected, f"{label} canonical authority escaped repository path")
+
+
+def enforce_runtime_authorities() -> None:
+    require(RESULT_DIR == CANONICAL_RESULT_DIR, "result directory authority substitution")
+    require(RESULT_DIR.is_dir() and not RESULT_DIR.is_symlink(), "canonical result directory missing or symlinked")
+    require(RESULT_DIR.resolve(strict=True) == CANONICAL_RESULT_DIR, "canonical result directory escaped repository path")
+    require_exact_file(CONTRACT_PATH, CANONICAL_CONTRACT_PATH, "sustained soak contract")
+    require_exact_file(RESULT_VALIDATOR, CANONICAL_RESULT_VALIDATOR, "result validator")
+    require_exact_optional_file(REVIEW_PATH, CANONICAL_REVIEW_PATH, "sustained soak trend review")
+
+
+def atomic_replace_bytes(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, path)
+    finally:
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -127,6 +177,7 @@ def pair_delta(a: dict[str, Any], b: dict[str, Any], field: str) -> float:
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     contract = load(CONTRACT_PATH)
     paths = sorted(RESULT_DIR.glob(RESULT_GLOB))
     minimum_runs = int(contract.get("minimumIndependentRuns", 2))
@@ -177,7 +228,7 @@ def main() -> int:
         "productionReady": False,
         "decision": "DESCRIPTIVE_LOCAL_REPEATABILITY_REVIEW_COMPLETE_NO_LEAK_OR_PRODUCTION_CONCLUSION",
     }
-    REVIEW_PATH.write_text(json.dumps(review, indent=2) + "\n", encoding="utf-8")
+    atomic_replace_bytes(REVIEW_PATH, (json.dumps(review, indent=2) + "\n").encode("utf-8"))
     print("Memory OS sustained local soak descriptive trend review created")
     print(f"reviewed runs: {len(runs)}")
     print("run chronology bound to UTC timestamps and measured duration: true")
