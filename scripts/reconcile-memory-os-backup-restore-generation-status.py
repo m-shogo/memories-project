@@ -10,8 +10,10 @@ here and are never rewritten by this generation-binding layer.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -105,6 +107,35 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
+def write_text(path: Path, text: str) -> None:
+    relative = repo_relative(path)
+    require(path.parent.is_dir(), f"authority parent missing: {relative.parent}")
+    temp_name: str | None = None
+    try:
+        fd, temp_name = tempfile.mkstemp(
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            dir=path.parent,
+            text=True,
+        )
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, path)
+        temp_name = None
+    except OSError as exc:
+        raise Fail(f"cannot atomically write {relative}: {exc}") from exc
+    finally:
+        if temp_name is not None:
+            try:
+                os.unlink(temp_name)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
+
+
 def append_once(items: list[Any], value: str) -> None:
     if value not in items:
         items.append(value)
@@ -181,11 +212,11 @@ def main() -> int:
     require(status.get("productionDecision") == "NO_GO", "productionDecision changed unexpectedly")
     original_status = STATUS.read_bytes()
     try:
-        STATUS.write_text(json.dumps(status, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        write_text(STATUS, json.dumps(status, indent=2, ensure_ascii=False) + "\n")
         run_validator(BACKUP_VALIDATOR, BACKUP_VALIDATOR_REL, "backup validator")
         run_validator(OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator")
     except Exception:
-        STATUS.write_bytes(original_status)
+        write_text(STATUS, original_status.decode("utf-8"))
         raise
 
     print("Memory OS backup/restore generation status reconciliation PASS")
@@ -196,6 +227,7 @@ def main() -> int:
     print("human production-promotion review completed: false")
     print("human production promotion authorized: false")
     print("canonical generation-status data/executable authorities enforced: true")
+    print("generation status write uses atomic same-directory replace: true")
     print("canonical backup/restore blockers rewritten by this layer: false")
     print("OPS-P0-007: incomplete")
     print("productionDecision: NO_GO")
