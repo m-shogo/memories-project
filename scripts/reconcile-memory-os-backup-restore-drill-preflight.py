@@ -128,6 +128,15 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
+def replace_single_prefixed(values: list[Any], prefix: str, value: str) -> None:
+    matches = [index for index, item in enumerate(values) if isinstance(item, str) and item.startswith(prefix)]
+    require(len(matches) <= 1, f"duplicate authority evidence prefix: {prefix}")
+    if matches:
+        values[matches[0]] = value
+    else:
+        values.append(value)
+
+
 def run_post_reconcile_validator(path: Path, label: str) -> None:
     if path == VALIDATOR_MODULE:
         relative = require_exact_repo_file(path, VALIDATOR_MODULE_REL, f"{label} validator")
@@ -160,9 +169,6 @@ def main() -> int:
     status = load(STATUS)
     validator = load_validator_module()
 
-    # Validate every upstream append-only authority before deriving or mutating
-    # preflight state. Reconcile must never turn corrupt source authority into a
-    # canonical-looking derived contract, even transiently before rollback.
     validator.run_validator(validator.GEN_VALIDATOR, "environment generation")
     validator.run_validator(validator.OBJECTIVE_VALIDATOR, "recovery objectives")
     validator.run_validator(validator.DRILL_VALIDATOR, "restore drill request")
@@ -207,12 +213,10 @@ def main() -> int:
     missing = gate.get("missingEvidence")
     require(isinstance(existing, list) and isinstance(refs, list) and isinstance(missing, list), "OPS-P0-007 authority arrays missing")
     require_canonical_gaps(missing, Fail)
-    existing[:] = [item for item in existing if not (isinstance(item, str) and item.startswith(EVIDENCE_PREFIX))]
     blockers = state["blockingPrerequisites"]
     blocker_text = ",".join(blockers) if blockers else "none"
-    append_once(existing, (
-        f"{EVIDENCE_PREFIX} registered/preflight-eligible generations={state['registeredGenerationCount']}/{state['preflightEligibleGenerationCount']}, unsuperseded/preflight-eligible unsuperseded generations={state['unsupersededGenerationCount']}/{state['unsupersededPreflightEligibleGenerationCount']}, distinct semantic preflight-eligible unsuperseded environments={state['distinctUnsupersededPreflightEligibleEnvironmentCount']}, eligible directed source-target pairs={state['eligibleDirectedSourceTargetPairCount']}, approved recovery objectives={state['approvedRecoveryObjectiveCount']}, reviewed/current drill requests={state['reviewedDrillRequestCount']}/{state['currentExecutableDrillRequestCount']}, blocking prerequisites={state['blockingPrerequisiteCount']}[{blocker_text}], decision={state['preflightDecision']}; registered generation inventory alone never creates restore-planning authority; READY authorizes only external reviewed request submission, never prerequisite/request creation, backup/restore execution, production traffic or promotion"
-    ))
+    evidence = f"{EVIDENCE_PREFIX} registered/preflight-eligible generations={state['registeredGenerationCount']}/{state['preflightEligibleGenerationCount']}, unsuperseded/preflight-eligible unsuperseded generations={state['unsupersededGenerationCount']}/{state['unsupersededPreflightEligibleGenerationCount']}, distinct semantic preflight-eligible unsuperseded environments={state['distinctUnsupersededPreflightEligibleEnvironmentCount']}, eligible directed source-target pairs={state['eligibleDirectedSourceTargetPairCount']}, approved recovery objectives={state['approvedRecoveryObjectiveCount']}, reviewed/current drill requests={state['reviewedDrillRequestCount']}/{state['currentExecutableDrillRequestCount']}, blocking prerequisites={state['blockingPrerequisiteCount']}[{blocker_text}], decision={state['preflightDecision']}; registered generation inventory alone never creates restore-planning authority; READY authorizes only external reviewed request submission, never prerequisite/request creation, backup/restore execution, production traffic or promotion"
+    replace_single_prefixed(existing, EVIDENCE_PREFIX, evidence)
     for ref in REFS:
         require_repo_file(ROOT / ref, f"preflight evidence ref missing: {ref}")
         append_once(refs, ref)
