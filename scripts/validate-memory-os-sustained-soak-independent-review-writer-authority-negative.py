@@ -11,6 +11,7 @@ WRITER = ROOT / "scripts/register-memory-os-sustained-soak-independent-review.py
 CANONICAL_CONTRACT = ROOT / "contracts/operations/sustained-soak-independent-review-contract.v1.json"
 CANONICAL_REGISTRY = ROOT / "contracts/operations/sustained-soak-independent-review-registry.v1.json"
 CANONICAL_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-soak-independent-review.py"
+CANONICAL_RESULT_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak-result.py"
 CANONICAL_LOCK = ROOT / "contracts/operations/.sustained-soak-independent-review.lock"
 
 
@@ -77,10 +78,12 @@ def main() -> int:
         raise AssertionError("writer imported validator with non-canonical contract authority")
     if validator.REGISTRY.resolve() != CANONICAL_REGISTRY.resolve():
         raise AssertionError("writer imported validator with non-canonical registry authority")
+    if validator.RESULT_VALIDATOR.resolve() != CANONICAL_RESULT_VALIDATOR.resolve():
+        raise AssertionError("writer imported validator with non-canonical per-run result validator authority")
 
     print("PASS: sustained-soak independent-review writer rejects data/executable/lock authority substitution")
     print("PASS: paired contract/registry substitution cannot bypass canonical authority checks")
-    print("PASS: imported validator remains bound to canonical contract and registry authorities")
+    print("PASS: imported validator remains bound to canonical contract, registry and per-run result authorities")
     print("PASS: authority rejection preserves canonical append-only review authority")
     print("human review evidence generated: false")
     print("leak proof promoted: false")
