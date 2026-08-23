@@ -57,6 +57,18 @@ def verify_runtime_authority_identity(reconciler, original_contract: bytes, orig
         finally:
             setattr(reconciler, field, original)
 
+    original_chain = reconciler.POST_WRITE_VALIDATORS
+    try:
+        reconciler.POST_WRITE_VALIDATORS = (reconciler.VALIDATOR_PATH,)
+        try:
+            reconciler.enforce_runtime_authorities()
+        except reconciler.ReconcileFailure:
+            pass
+        else:
+            raise RuntimeError("reconciler accepted validator-chain authority substitution")
+    finally:
+        reconciler.POST_WRITE_VALIDATORS = original_chain
+
     reconciler.enforce_runtime_authorities()
     if CONTRACT_PATH.read_bytes() != original_contract:
         raise RuntimeError("authority substitution mutated incident control contract")
@@ -116,9 +128,6 @@ def main() -> int:
     malformed["environment"]["syntheticScenariosOnly"] = False
     expect_result_rejected(reconciler, malformed, contract, "synthetic scenario boundary")
 
-    # Exercise the actual write boundary: pre-state is canonical, candidate bytes are
-    # written, canonical validation fails on an unproven readiness promotion, and the
-    # reconciler must restore both canonical files byte-for-byte.
     rollback_contract = copy.deepcopy(contract)
     rollback_contract["readiness"]["productionReady"] = True
     try:
@@ -136,6 +145,7 @@ def main() -> int:
         raise RuntimeError("negative validation mutated production operability status")
 
     print("PASS: incident authority reconcile rejects data/executable authority substitution")
+    print("PASS: incident authority reconcile rejects validator-chain substitution")
     print("PASS: incident authority reconcile rejects unsafe input and rolls back post-write validation failures")
     return 0
 
