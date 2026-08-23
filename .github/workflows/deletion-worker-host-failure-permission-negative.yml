@@ -1,0 +1,49 @@
+name: Deletion Host Failure Permission Negative
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/deletion-worker-host-failure-admission.yml"
+      - ".github/workflows/deletion-worker-host-failure-permission-negative.yml"
+      - "scripts/validate-memory-os-deletion-worker-host-failure-permission-negative.py"
+  push:
+    branches:
+      - so
+    paths:
+      - ".github/workflows/deletion-worker-host-failure-admission.yml"
+      - ".github/workflows/deletion-worker-host-failure-permission-negative.yml"
+      - "scripts/validate-memory-os-deletion-worker-host-failure-permission-negative.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deletion-host-failure-permission-negative-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Require exact clean source
+        run: |
+          set -euo pipefail
+          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate host-failure permission boundary
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/validate-memory-os-deletion-worker-host-failure-permission-negative.py
+          python scripts/validate-memory-os-deletion-worker-host-failure-permission-negative.py
+          test -z "$(git status --porcelain)"
