@@ -46,26 +46,73 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: production-shaped-failure-drills-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
-  validate:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Verify exact clean PR source
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Reconcile and validate drill admission read-only
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/register-memory-os-production-equivalent-environment-generation.py \
+            scripts/validate-memory-os-production-equivalent-environment-record.py \
+            scripts/register-memory-os-production-shaped-failure-drill.py \
+            scripts/validate-memory-os-production-shaped-failure-drills.py \
+            scripts/validate-memory-os-production-shaped-failure-drill-registry-negative.py \
+            scripts/validate-memory-os-production-shaped-failure-drill-reconcile-rollback-negative.py \
+            scripts/validate-memory-os-chaos-failure-drills-v2.py \
+            scripts/validate-memory-os-operability.py \
+            scripts/reconcile-memory-os-production-shaped-failure-drills.py
+          python scripts/validate-memory-os-production-shaped-failure-drill-registry-negative.py
+          python scripts/validate-memory-os-production-shaped-failure-drill-reconcile-rollback-negative.py
+          python scripts/reconcile-memory-os-production-shaped-failure-drills.py
+          python scripts/validate-memory-os-chaos-failure-drills-v2.py
+          python scripts/validate-memory-os-operability.py
+          git diff --check
+          git diff --exit-code -- \
+            contracts/operations/production-shaped-failure-drill-contract.v1.json \
+            contracts/operations/production-operability-status.json
+
+  validate-and-publish:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - name: Capture exact validation source
         id: source
         run: |
           set -euo pipefail
-          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          expected="${{ github.sha }}"
           test -n "$expected"
           test "$(git rev-parse HEAD)" = "$expected"
           test -z "$(git status --porcelain)"
@@ -91,15 +138,9 @@ jobs:
             scripts/validate-memory-os-operability.py \
             scripts/reconcile-memory-os-production-shaped-failure-drills.py \
             >> "$log" 2>&1 || code=$?
-          if [[ "$code" == "0" ]]; then
-            python scripts/validate-memory-os-production-shaped-failure-drill-registry-negative.py >> "$log" 2>&1 || code=$?
-          fi
-          if [[ "$code" == "0" ]]; then
-            python scripts/validate-memory-os-production-shaped-failure-drill-reconcile-rollback-negative.py >> "$log" 2>&1 || code=$?
-          fi
-          if [[ "$code" == "0" ]]; then
-            python scripts/reconcile-memory-os-production-shaped-failure-drills.py >> "$log" 2>&1 || code=$?
-          fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-shaped-failure-drill-registry-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/validate-memory-os-production-shaped-failure-drill-reconcile-rollback-negative.py >> "$log" 2>&1 || code=$?; fi
+          if [[ "$code" == "0" ]]; then python scripts/reconcile-memory-os-production-shaped-failure-drills.py >> "$log" 2>&1 || code=$?; fi
           if [[ "$code" == "0" ]]; then
             python scripts/validate-memory-os-chaos-failure-drills-v2.py >> "$log" 2>&1 || code=$?
             python scripts/validate-memory-os-operability.py >> "$log" 2>&1 || code=$?
@@ -107,15 +148,8 @@ jobs:
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
-      - name: Enforce deterministic PR authority
-        if: github.event_name == 'pull_request' && steps.drills.outputs.exit_code == '0'
-        run: |
-          git diff --check
-          git diff --exit-code -- \
-            contracts/operations/production-shaped-failure-drill-contract.v1.json \
-            contracts/operations/production-operability-status.json
       - name: Commit bounded drill admission authority
-        if: github.event_name != 'pull_request' && steps.drills.outputs.exit_code == '0'
+        if: steps.drills.outputs.exit_code == '0'
         env:
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
         run: |
@@ -140,7 +174,7 @@ jobs:
           }
           git push origin HEAD:so
       - name: Record privacy-safe diagnostic
-        if: github.event_name != 'pull_request' && steps.drills.outputs.exit_code != '0'
+        if: steps.drills.outputs.exit_code != '0'
         env:
           DRILL_EXIT_CODE: ${{ steps.drills.outputs.exit_code }}
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
