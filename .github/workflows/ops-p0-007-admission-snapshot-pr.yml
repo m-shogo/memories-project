@@ -31,6 +31,7 @@ on:
       - "scripts/generate-memory-os-ops-p0-007-admission-snapshot.py"
       - "scripts/validate-memory-os-ops-p0-007-admission-snapshot.py"
       - "scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py"
+      - "scripts/validate-memory-os-ops-p0-007-admission-snapshot-workflow-permissions-negative.py"
 
 permissions:
   contents: read
@@ -72,10 +73,12 @@ jobs:
             scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
             scripts/generate-memory-os-ops-p0-007-admission-snapshot.py \
             scripts/validate-memory-os-ops-p0-007-admission-snapshot.py \
-            scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py
+            scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py \
+            scripts/validate-memory-os-ops-p0-007-admission-snapshot-workflow-permissions-negative.py
           python scripts/generate-memory-os-ops-p0-007-admission-snapshot.py
           python scripts/validate-memory-os-ops-p0-007-admission-snapshot.py
           python scripts/validate-memory-os-ops-p0-007-admission-snapshot-negative.py
+          python scripts/validate-memory-os-ops-p0-007-admission-snapshot-workflow-permissions-negative.py
       - name: Reject deterministic snapshot drift
         run: |
           set -euo pipefail
