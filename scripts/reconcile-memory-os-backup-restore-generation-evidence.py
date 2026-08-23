@@ -148,6 +148,15 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
+def replace_single_prefixed(values: list[Any], prefix: str, value: str) -> None:
+    matches = [index for index, item in enumerate(values) if isinstance(item, str) and item.startswith(prefix)]
+    require(len(matches) <= 1, f"duplicate authority evidence prefix: {prefix}")
+    if matches:
+        values[matches[0]] = value
+    else:
+        values.append(value)
+
+
 def run_post_validator(path: Path, expected_relative: Path, label: str) -> None:
     require_exact_repo_file(path, expected_relative, label)
     completed = subprocess.run(
@@ -311,10 +320,10 @@ def main() -> int:
     missing = gate.get("missingEvidence")
     require(isinstance(existing, list) and isinstance(refs, list) and isinstance(missing, list), "OPS-P0-007 authority arrays missing")
     require_canonical_gaps(missing, Fail)
-    existing[:] = [item for item in existing if not (isinstance(item, str) and item.startswith(EVIDENCE_PREFIX))]
-    append_once(existing, (
+    evidence = (
         f"{EVIDENCE_PREFIX} registered environment generations={generation_count}, approved recovery objectives={objective_count}, reviewed/current restore drill requests={drill_count}/{current_drill_count}, recovery records={count}, drill-request-bound records={bound_count}, complete generation-bound restores={restore_count}, production-equivalent recovery candidates={candidate_count}; candidate-level independent evidence review={str(candidate_count > 0).lower()}, human production-promotion review/authorization=false/false; immutable history is preserved after request supersession but current candidate derivation is recomputed fail-closed from the current request/objective/typed-evidence state, while productionEvidence and productionReady remain false"
-    ))
+    )
+    replace_single_prefixed(existing, EVIDENCE_PREFIX, evidence)
     for ref in REFS:
         require_repo_file(ROOT / ref, f"generation recovery evidence ref missing: {ref}")
         append_once(refs, ref)
