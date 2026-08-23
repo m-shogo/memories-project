@@ -10,6 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER_PATH = ROOT / "scripts/reconcile-memory-os-operability-evidence-ownership.py"
+WORKFLOW = ROOT / ".github/workflows/operability-evidence-ownership.yml"
 
 
 def load_module():
@@ -25,6 +26,27 @@ def load_module():
 
 def load_json(path: Path):
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def validate_atomic_diagnostic_publication() -> None:
+    if not WORKFLOW.is_file():
+        raise RuntimeError("evidence ownership workflow missing")
+    text = WORKFLOW.read_text(encoding="utf-8")
+    required = (
+        "tempfile.mkstemp(",
+        "dir=path.parent",
+        "handle.flush()",
+        "os.fsync(handle.fileno())",
+        "os.replace(tmp_name, path)",
+        "os.unlink(tmp_name)",
+    )
+    missing = [fragment for fragment in required if fragment not in text]
+    if missing:
+        raise RuntimeError(
+            f"evidence ownership diagnostic publication is not crash-safe: missing {missing}"
+        )
+    if "path.write_text(json.dumps(value" in text:
+        raise RuntimeError("evidence ownership diagnostic publication regressed to direct write_text")
 
 
 def expect_authority_identity(reconciler) -> None:
@@ -138,11 +160,13 @@ def prove_transaction_rollback(reconciler) -> None:
 
 def main() -> int:
     reconciler = load_module()
+    validate_atomic_diagnostic_publication()
     expect_authority_identity(reconciler)
     prove_validator_chain(reconciler)
     prove_noop_validation(reconciler)
     prove_transaction_rollback(reconciler)
 
+    print("PASS: evidence ownership diagnostic publication is atomic and crash-safe")
     print("PASS: evidence ownership data/executable authorities reject substitution")
     print("PASS: no-op reconciliation still validates ownership and aggregate operability")
     print("PASS: post-write aggregate failure restores ownership contract byte-for-byte")
