@@ -17,11 +17,16 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT_PATH = ROOT / "contracts/operations/parser-artifact-registry-contract.v1.json"
-REGISTRY_PATH = ROOT / "contracts/operations/parser-artifact-registry.v1.json"
-RELEASE_REGISTRY_PATH = ROOT / "contracts/operations/release-baseline-registry.v1.json"
-RELEASE_WRITER_PATH = ROOT / "scripts/register-memory-os-release-baseline.py"
-LOCK_PATH = ROOT / "contracts/operations/.parser-artifact-registry.lock"
+CANONICAL_CONTRACT_PATH = ROOT / "contracts/operations/parser-artifact-registry-contract.v1.json"
+CANONICAL_REGISTRY_PATH = ROOT / "contracts/operations/parser-artifact-registry.v1.json"
+CANONICAL_RELEASE_REGISTRY_PATH = ROOT / "contracts/operations/release-baseline-registry.v1.json"
+CANONICAL_RELEASE_WRITER_PATH = ROOT / "scripts/register-memory-os-release-baseline.py"
+CANONICAL_LOCK_PATH = ROOT / "contracts/operations/.parser-artifact-registry.lock"
+CONTRACT_PATH = CANONICAL_CONTRACT_PATH
+REGISTRY_PATH = CANONICAL_REGISTRY_PATH
+RELEASE_REGISTRY_PATH = CANONICAL_RELEASE_REGISTRY_PATH
+RELEASE_WRITER_PATH = CANONICAL_RELEASE_WRITER_PATH
+LOCK_PATH = CANONICAL_LOCK_PATH
 CONFIRMATION = "REGISTER REVIEWED PARSER ARTIFACT"
 DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 ARTIFACT_ID_RE = re.compile(r"^par_[a-z0-9][a-z0-9._-]{7,95}$")
@@ -70,6 +75,24 @@ class RegistrationFailure(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise RegistrationFailure(message)
+
+
+def require_actual_cli_authorities() -> None:
+    for label, actual, canonical in (
+        ("contract", CONTRACT_PATH, CANONICAL_CONTRACT_PATH),
+        ("registry", REGISTRY_PATH, CANONICAL_REGISTRY_PATH),
+        ("release registry", RELEASE_REGISTRY_PATH, CANONICAL_RELEASE_REGISTRY_PATH),
+        ("release writer", RELEASE_WRITER_PATH, CANONICAL_RELEASE_WRITER_PATH),
+    ):
+        require(actual == canonical, f"parser artifact CLI {label} authority substitution rejected")
+        require(not actual.is_symlink(), f"parser artifact CLI {label} authority must be symlink-free")
+        require(actual.resolve(strict=True) == canonical.resolve(strict=True), f"parser artifact CLI {label} authority drift")
+    require(LOCK_PATH == CANONICAL_LOCK_PATH, "parser artifact CLI lock authority substitution rejected")
+    require(not LOCK_PATH.is_symlink(), "parser artifact CLI lock authority must be symlink-free")
+    require(
+        LOCK_PATH.parent.resolve(strict=True) == CANONICAL_LOCK_PATH.parent.resolve(strict=True),
+        "parser artifact CLI lock parent authority drift",
+    )
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -420,6 +443,7 @@ def append_registry_transactionally(registry: dict[str, Any], original_bytes: by
 
 
 def main() -> int:
+    require_actual_cli_authorities()
     parser = argparse.ArgumentParser()
     parser.add_argument("--record", required=True,
                         help="JSON record outside the repository working tree")
