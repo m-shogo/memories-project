@@ -53,6 +53,7 @@ def main() -> int:
         outside = Path(temp_dir) / "outside-authority.json"
         outside.write_text("{}\n", encoding="utf-8")
         substitutions = (
+            ("CANONICAL_VALIDATOR", ROOT / "scripts/validate-memory-os-incident-tabletop.py"),
             ("TABLETOP_CONTRACT", writer.CANONICAL_TABLETOP_CONTRACT),
             ("INCIDENT_POLICY", writer.CANONICAL_INCIDENT_POLICY),
             ("PLAN", writer.CANONICAL_PLAN),
@@ -74,7 +75,7 @@ def main() -> int:
 
     writer.require_actual_cli_authorities()
     print("Memory OS human tabletop writer authority negative suite PASS")
-    print("writer CLI contract/policy/plan/ledger substitution accepted: false")
+    print("writer CLI validator/contract/policy/plan/ledger substitution accepted: false")
     print("human tabletop evidence generated: false")
     print("production evidence generated: false")
     return 0
