@@ -9,9 +9,11 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-migration-evidence-registry.py"
+ORPHAN_RECONCILER = ROOT / "scripts/reconcile-memory-os-migration-recovery-result-orphans.py"
 CANONICAL_REGISTRY = ROOT / "contracts/operations/migration-evidence-registry.v1.json"
 CANONICAL_CONTRACT = ROOT / "contracts/operations/migration-evidence-registry-contract.v1.json"
 CANONICAL_LIFECYCLE = ROOT / "contracts/operations/migration-lifecycle-contract.v1.json"
+CANONICAL_LOCAL_CONTRACT = ROOT / "contracts/operations/local-migration-recovery-artifact-contract.v1.json"
 CANONICAL_STATUS = ROOT / "contracts/operations/production-operability-status.json"
 
 
@@ -37,7 +39,13 @@ def require_canonical_bytes_unchanged(before: dict[Path, bytes], label: str) -> 
         require(path.read_bytes() == payload, f"{label} substitution mutated {path.relative_to(ROOT)}")
 
 
-def expect_path_substitution_rejected(module: Any, attribute: str, replacement: Path, label: str, before: dict[Path, bytes]) -> None:
+def expect_path_substitution_rejected(
+    module: Any,
+    attribute: str,
+    replacement: Path,
+    label: str,
+    before: dict[Path, bytes],
+) -> None:
     original = getattr(module, attribute)
     setattr(module, attribute, replacement)
     try:
@@ -48,7 +56,7 @@ def expect_path_substitution_rejected(module: Any, attribute: str, replacement: 
             require("authority drift" in str(exc) or "missing or escapes repository" in str(exc),
                     f"unexpected {label} rejection: {exc}")
             rejected = True
-        require(rejected, f"migration evidence reconciler accepted non-canonical {label}")
+        require(rejected, f"reconciler accepted non-canonical {label}")
     finally:
         setattr(module, attribute, original)
     require_canonical_bytes_unchanged(before, label)
@@ -71,14 +79,8 @@ def expect_validator_chain_substitution_rejected(module: Any, before: dict[Path,
     require_canonical_bytes_unchanged(before, "validator-chain")
 
 
-def main() -> int:
+def prove_registry_reconcile_authorities(before: dict[Path, bytes]) -> None:
     module = load_module(RECONCILER, "migration_evidence_registry_reconcile_authority_negative")
-    before = {
-        CANONICAL_REGISTRY: CANONICAL_REGISTRY.read_bytes(),
-        CANONICAL_CONTRACT: CANONICAL_CONTRACT.read_bytes(),
-        CANONICAL_LIFECYCLE: CANONICAL_LIFECYCLE.read_bytes(),
-        CANONICAL_STATUS: CANONICAL_STATUS.read_bytes(),
-    }
     replacement_file = ROOT / "README.md"
     replacement_directory = ROOT / "scripts"
     cases = (
@@ -99,10 +101,43 @@ def main() -> int:
         ("STATUS", replacement_file, "production status"),
     )
     for attribute, replacement, label in cases:
+        expect_path_substitution_rejected(module, attribute, replacement, f"registry {label}", before)
+        print(f"PASS authority reject: registry {label}")
+    expect_validator_chain_substitution_rejected(module, before)
+    print("PASS authority reject: registry post-write validator chain")
+
+
+def prove_orphan_rescue_authorities(before: dict[Path, bytes]) -> None:
+    module = load_module(ORPHAN_RECONCILER, "migration_recovery_orphan_reconcile_authority_negative")
+    replacement_file = ROOT / "README.md"
+    replacement_directory = ROOT / "scripts"
+    cases = (
+        ("RESULT_ROOT", replacement_directory, "orphan result root"),
+        ("REGISTRY", replacement_file, "orphan registry"),
+        ("REGISTRY_CONTRACT", replacement_file, "orphan registry contract"),
+        ("LIFECYCLE", replacement_file, "orphan lifecycle contract"),
+        ("STATUS", replacement_file, "orphan production status"),
+        ("LOCAL_CONTRACT", replacement_file, "orphan local recovery contract"),
+        ("WRITER", replacement_file, "orphan writer"),
+        ("RESULT_VALIDATOR", replacement_file, "orphan result validator"),
+        ("LOCAL_RECONCILER", replacement_file, "orphan local reconciler"),
+        ("GLOBAL_RECONCILER", replacement_file, "orphan global reconciler"),
+    )
+    for attribute, replacement, label in cases:
         expect_path_substitution_rejected(module, attribute, replacement, label, before)
         print(f"PASS authority reject: {label}")
-    expect_validator_chain_substitution_rejected(module, before)
-    print("PASS authority reject: post-write validator chain")
+
+
+def main() -> int:
+    before = {
+        CANONICAL_REGISTRY: CANONICAL_REGISTRY.read_bytes(),
+        CANONICAL_CONTRACT: CANONICAL_CONTRACT.read_bytes(),
+        CANONICAL_LIFECYCLE: CANONICAL_LIFECYCLE.read_bytes(),
+        CANONICAL_LOCAL_CONTRACT: CANONICAL_LOCAL_CONTRACT.read_bytes(),
+        CANONICAL_STATUS: CANONICAL_STATUS.read_bytes(),
+    }
+    prove_registry_reconcile_authorities(before)
+    prove_orphan_rescue_authorities(before)
     print("Memory OS migration evidence reconcile authority negative PASS")
     return 0
 
