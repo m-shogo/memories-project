@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
+WORKFLOW = ROOT / ".github/workflows/backup-restore-non-resurrection-admission.yml"
 POST_SOURCE_REF = "docs/evidence/backup-restore/non-resurrection/source-binding-negative.json"
 POST_SOURCE_PATH = ROOT / POST_SOURCE_REF
 
@@ -48,6 +49,25 @@ def expect_rejected(writer, source_commit: str, ref: str, field: str) -> None:
         print(f"PASS reject: {field}")
         return
     raise Fail(f"post-source evidence unexpectedly accepted: {field}")
+
+
+def validate_atomic_diagnostic_publication() -> None:
+    require(WORKFLOW.is_file(), "typed admission workflow missing")
+    text = WORKFLOW.read_text(encoding="utf-8")
+    required = (
+        "tempfile.mkstemp(",
+        "dir=path.parent",
+        "handle.flush()",
+        "os.fsync(handle.fileno())",
+        "os.replace(tmp_name, path)",
+        "os.unlink(tmp_name)",
+    )
+    missing = [fragment for fragment in required if fragment not in text]
+    require(not missing, f"typed admission diagnostic publication is not crash-safe: missing {missing}")
+    require(
+        "path.write_text(json.dumps(value" not in text,
+        "typed admission diagnostic publication regressed to direct write_text",
+    )
 
 
 def validate_historical_generation_delegation(writer) -> None:
@@ -120,10 +140,12 @@ def main() -> int:
         POST_SOURCE_PATH.unlink(missing_ok=True)
 
     validate_historical_generation_delegation(writer)
+    validate_atomic_diagnostic_publication()
 
     print("Memory OS backup/restore non-resurrection source-binding negative suite PASS")
     print("post-source typed evidence accepted: false")
     print("historical generation semantic validation delegated: true")
+    print("crash-safe typed-admission failure diagnostic required: true")
     print("canonical registries mutated: false")
     print("production evidence: false")
     print("production decision: NO_GO")
