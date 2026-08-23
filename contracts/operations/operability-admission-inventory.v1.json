@@ -93,7 +93,7 @@
       "nextGate": "local repeated 60-minute soak and descriptive trend review are complete; next require independent leak/stability criteria plus generation-bound production-equivalent capacity, dependency and host-failure evidence",
       "status": "PARTIAL",
       "blocking": true,
-      "missingEvidenceCount": 10,
+      "missingEvidenceCount": 11,
       "productionEvidence": false,
       "productionReady": false
     },
