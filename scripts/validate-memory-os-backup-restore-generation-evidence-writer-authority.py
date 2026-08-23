@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import json
 import sys
 from pathlib import Path
@@ -76,6 +77,23 @@ def require_authority(writer: Any, name: str, expected: Path, label: str) -> Non
     canonical_repo_file(actual, label)
 
 
+def require_cli_guard(writer: Any) -> None:
+    guard = getattr(writer, "require_cli_authorities", None)
+    require(callable(guard), "generation-evidence writer CLI canonical authority guard missing")
+    main_source = inspect.getsource(writer.main)
+    guard_index = main_source.find("require_cli_authorities()")
+    parser_index = main_source.find("argparse.ArgumentParser")
+    require(guard_index >= 0, "generation-evidence writer CLI does not invoke canonical authority guard")
+    require(
+        parser_index >= 0 and guard_index < parser_index,
+        "generation-evidence writer CLI authority guard must run before argument parsing",
+    )
+    try:
+        guard()
+    except writer.Fail as exc:
+        raise Fail(f"canonical generation-evidence writer CLI authority rejected: {exc}") from exc
+
+
 def require_atomic_diagnostic_publication() -> None:
     require(WORKFLOW.is_file(), "generation-evidence workflow missing")
     text = WORKFLOW.read_text(encoding="utf-8")
@@ -111,6 +129,7 @@ def run_review_validator(path: Path, module_name: str, label: str) -> None:
 def main() -> int:
     writer = load_writer()
     contract = load_contract()
+    require_cli_guard(writer)
 
     for name, expected, label in (
         ("CONTRACT", EXPECTED_CONTRACT, "contract"),
@@ -174,6 +193,7 @@ def main() -> int:
     require_atomic_diagnostic_publication()
 
     print("Memory OS generation-evidence executable/data authority validation PASS")
+    print("generation-evidence CLI authority guard required: true")
     print("environment-generation authority substitution accepted: false")
     print("recovery-objectives authority substitution accepted: false")
     print("drill-request authority substitution accepted: false")
