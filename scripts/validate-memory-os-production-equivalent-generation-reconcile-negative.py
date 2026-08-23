@@ -12,6 +12,7 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-production-equivalent-generation-status.py"
+WORKFLOW = ROOT / ".github/workflows/production-equivalent-environment-generation.yml"
 TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 CONTRACT = ROOT / "contracts/operations/production-equivalent-environment-generation-contract.v1.json"
 REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
@@ -54,6 +55,25 @@ def assert_canonical_unchanged(contract_bytes: bytes, registry_bytes: bytes, sta
     require(STATUS.read_bytes() == status_bytes, f"{label} changed canonical production status")
 
 
+def validate_atomic_diagnostic_publication() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    required_fragments = (
+        "tempfile.mkstemp(",
+        "dir=path.parent",
+        "handle.flush()",
+        "os.fsync(handle.fileno())",
+        "os.replace(tmp_name, path)",
+        "os.unlink(tmp_name)",
+    )
+    missing = [fragment for fragment in required_fragments if fragment not in text]
+    require(not missing, f"environment generation diagnostic publication is not crash-safe: missing {missing}")
+    require(
+        "path.write_text(json.dumps(value" not in text,
+        "environment generation diagnostic publication regressed to direct write_text",
+    )
+    print("PASS boundary: environment generation failure diagnostic publication is crash-safe")
+
+
 def prove_atomic_write_failure(
     reconciler: object,
     canonical_contract: bytes,
@@ -85,12 +105,14 @@ def prove_atomic_write_failure(
 
 def main() -> int:
     require(RECONCILER.is_file(), "environment generation reconciler missing")
+    require(WORKFLOW.is_file(), "environment generation workflow missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
     reconciler = load_reconciler()
 
     canonical_contract = CONTRACT.read_bytes()
     canonical_registry = REGISTRY.read_bytes()
     canonical_status = STATUS.read_bytes()
+    validate_atomic_diagnostic_publication()
 
     substitutions = (
         ("CONTRACT", reconciler.REGISTRY, "environment generation contract authority drift"),
@@ -198,6 +220,7 @@ def main() -> int:
     print("canonical generation data/executable substitutions accepted: false")
     print("generation evidence reordering accepted: false")
     print("non-atomic environment generation authority write accepted: false")
+    print("non-atomic environment generation diagnostic write accepted: false")
     print("aggregate operability failure triggers rollback: true")
     print("Environment generation reconcile negative suite PASS")
     print("production generation created: false")
