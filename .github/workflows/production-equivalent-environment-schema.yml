@@ -22,11 +22,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: so
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Capture exact clean schema source
+        run: |
+          set -euo pipefail
+          test -n "${{ github.sha }}"
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          test -z "$(git status --porcelain)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
       - name: Install pinned JSON Schema validator
         run: python -m pip install --disable-pip-version-check "jsonschema==4.25.1"
       - name: Validate fail-closed environment admission
@@ -40,13 +47,18 @@ jobs:
       - name: Record validation checkpoint
         run: |
           set -euo pipefail
+          git fetch origin so
+          if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+            echo "Environment schema source advanced before checkpoint publication; refusing stale validation checkpoint."
+            exit 75
+          fi
           python - <<'PY'
           import json
           import os
           from pathlib import Path
           value = {
               'schemaVersion': 'memory-os-production-equivalent-environment-schema-validation.v1',
-              'sourceCommitSha': os.environ['GITHUB_SHA'],
+              'sourceCommitSha': os.environ['SOURCE_SHA'],
               'schemaDraft': '2020-12',
               'safePlannedFixtureAccepted': True,
               'unsafeEquivalencePromotionRejected': True,
@@ -64,7 +76,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git diff --cached --quiet; then
+            git diff --cached --check
             git commit -m "test(load): record environment admission validation"
-            git pull --rebase origin so
+            git fetch origin so
+            if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then
+              echo "Environment schema source advanced after checkpoint capture; refusing stale validation checkpoint."
+              exit 75
+            fi
             git push origin HEAD:so
           fi
