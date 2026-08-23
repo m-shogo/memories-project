@@ -36,20 +36,62 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: production-equivalent-environment-review-independence-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: false
 
 jobs:
-  validate:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify exact clean review-independence PR source
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha }}"
+          test -n "$expected"
+          test "$(git rev-parse HEAD)" = "$expected"
+          test -z "$(git status --porcelain)"
+      - name: Validate independent review separation read-only
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/register-memory-os-production-equivalent-environment-generation.py \
+            scripts/validate-memory-os-production-equivalent-environment-record.py \
+            scripts/memory_os_environment_generation_eligibility.py \
+            scripts/validate-memory-os-production-equivalent-environment-review-independence.py \
+            scripts/validate-memory-os-production-equivalent-environment-review-independence-negative.py \
+            scripts/validate-memory-os-production-equivalent-environment-review-independence-reconcile-negative.py \
+            scripts/reconcile-memory-os-production-equivalent-environment-review-independence.py
+          python scripts/validate-memory-os-production-equivalent-environment-review-independence-negative.py
+          python scripts/validate-memory-os-production-equivalent-environment-review-independence-reconcile-negative.py
+          python scripts/reconcile-memory-os-production-equivalent-environment-review-independence.py
+          python scripts/validate-memory-os-production-equivalent-environment-review-independence.py
+          git diff --check
+          git diff --exit-code -- contracts/operations/production-equivalent-environment-review-independence-contract.v1.json
+
+  validate-and-publish:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -57,7 +99,7 @@ jobs:
       - name: Capture exact review-independence authority source
         run: |
           set -euo pipefail
-          expected="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          expected="${{ github.sha }}"
           test -n "$expected"
           test "$(git rev-parse HEAD)" = "$expected"
           test -z "$(git status --porcelain)"
@@ -85,13 +127,8 @@ jobs:
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           cat "$log"
           exit 0
-      - name: Reject stale review-independence authority on pull requests
-        if: steps.validation.outputs.exit_code == '0' && github.event_name == 'pull_request'
-        run: |
-          set -euo pipefail
-          git diff --exit-code -- contracts/operations/production-equivalent-environment-review-independence-contract.v1.json
       - name: Commit bounded review-independence authority
-        if: steps.validation.outputs.exit_code == '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        if: steps.validation.outputs.exit_code == '0' && github.ref == 'refs/heads/so'
         run: |
           set -euo pipefail
           log=/tmp/production-equivalent-environment-review-independence.log
@@ -151,7 +188,7 @@ jobs:
           done
           exit 75
       - name: Record privacy-safe review-independence diagnostic
-        if: steps.validation.outputs.exit_code != '0' && github.event_name != 'pull_request' && github.ref == 'refs/heads/so'
+        if: steps.validation.outputs.exit_code != '0' && github.ref == 'refs/heads/so'
         env:
           VALIDATION_EXIT_CODE: ${{ steps.validation.outputs.exit_code }}
         run: |
