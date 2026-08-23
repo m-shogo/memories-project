@@ -35,6 +35,7 @@ EVIDENCE = (
     "evidence cannot be relabeled, cross-generation restores require material-delta review, candidate-level independent evidence review remains required, "
     "and human production-promotion review remains a separate non-automatic decision"
 )
+EVIDENCE_PREFIX = "future production-equivalent restore promotion is generation-bound:"
 REFS = (
     "contracts/operations/backup-restore-generation-binding-contract.v1.json",
     "scripts/validate-memory-os-backup-restore-generation-binding.py",
@@ -109,6 +110,15 @@ def append_once(items: list[Any], value: str) -> None:
         items.append(value)
 
 
+def replace_single_prefixed(values: list[Any], prefix: str, value: str) -> None:
+    matches = [index for index, item in enumerate(values) if isinstance(item, str) and item.startswith(prefix)]
+    require(len(matches) <= 1, f"duplicate authority evidence prefix: {prefix}")
+    if matches:
+        values[matches[0]] = value
+    else:
+        values.append(value)
+
+
 def run_validator(path: Path, expected_relative: Path, label: str) -> None:
     relative = require_exact_repo_file(path, expected_relative, label)
     completed = subprocess.run([sys.executable, str(ROOT / relative)], cwd=ROOT, check=False)
@@ -159,9 +169,7 @@ def main() -> int:
     existing = backup.get("existingEvidence")
     refs = backup.get("evidenceRefs")
     require(isinstance(existing, list) and isinstance(refs, list), "OPS-P0-007 authority arrays missing")
-    prefix = "future production-equivalent restore promotion is generation-bound:"
-    existing[:] = [item for item in existing if not (isinstance(item, str) and item.startswith(prefix))]
-    append_once(existing, EVIDENCE)
+    replace_single_prefixed(existing, EVIDENCE_PREFIX, EVIDENCE)
     for ref in REFS:
         ref_path = Path(ref)
         require(not ref_path.is_absolute() and ".." not in ref_path.parts, f"restore-generation ref must be canonical repository-relative path: {ref}")
