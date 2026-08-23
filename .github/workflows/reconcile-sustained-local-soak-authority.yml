@@ -64,25 +64,107 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: reconcile-sustained-local-soak-authority-${{ github.event.pull_request.number || 'so' }}
   cancel-in-progress: true
 
 jobs:
+  validate-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact pull request authority source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Require exact clean pull request source
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
+          test -z "$(git status --porcelain)"
+
+      - name: Rebuild and validate repeated-run authority read-only
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            scripts/validate-memory-os-sustained-local-soak.py \
+            scripts/register-memory-os-sustained-soak-independent-review.py \
+            scripts/validate-memory-os-sustained-soak-independent-review.py \
+            scripts/validate-memory-os-sustained-soak-independent-review-negative.py \
+            scripts/validate-memory-os-sustained-soak-human-evidence-path-negative.py \
+            scripts/validate-memory-os-sustained-local-soak-result.py \
+            scripts/update-memory-os-sustained-local-soak-aggregate.py \
+            scripts/review-memory-os-sustained-local-soak-trends.py \
+            scripts/validate-memory-os-sustained-local-soak-trend-review.py \
+            scripts/validate-memory-os-sustained-local-soak-aggregate.py \
+            scripts/reconcile-memory-os-sustained-local-soak-status.py \
+            scripts/validate-memory-os-sustained-local-soak-reconcile-negative.py \
+            scripts/reconcile-memory-os-local-long-soak-load-projection.py \
+            scripts/validate-memory-os-local-long-soak-load-projection-negative.py \
+            scripts/validate-memory-os-load-evidence-index.py \
+            scripts/validate-memory-os-load.py \
+            scripts/validate-memory-os-operability.py
+          python scripts/validate-memory-os-sustained-local-soak.py
+          python scripts/validate-memory-os-sustained-soak-independent-review.py
+          python scripts/validate-memory-os-sustained-soak-independent-review-negative.py
+          python scripts/validate-memory-os-sustained-soak-human-evidence-path-negative.py
+          rm -f docs/fixtures/memory-os-operability/sustained-local-soak-trend-review.v1.json
+          python scripts/update-memory-os-sustained-local-soak-aggregate.py
+          python scripts/validate-memory-os-sustained-local-soak-aggregate.py
+          python scripts/review-memory-os-sustained-local-soak-trends.py
+          python scripts/validate-memory-os-sustained-local-soak-trend-review.py
+          python scripts/update-memory-os-sustained-local-soak-aggregate.py
+          python scripts/validate-memory-os-sustained-local-soak-aggregate.py --require-local-evidence
+          python scripts/validate-memory-os-sustained-local-soak-reconcile-negative.py
+          python scripts/validate-memory-os-local-long-soak-load-projection-negative.py
+          python scripts/reconcile-memory-os-sustained-local-soak-status.py
+          python scripts/reconcile-memory-os-local-long-soak-load-projection.py
+          python scripts/validate-memory-os-local-long-soak-load-projection-negative.py
+          python scripts/validate-memory-os-sustained-local-soak.py
+          python scripts/validate-memory-os-sustained-soak-independent-review.py
+          python scripts/validate-memory-os-sustained-soak-independent-review-negative.py
+          python scripts/validate-memory-os-sustained-soak-human-evidence-path-negative.py
+          python scripts/validate-memory-os-sustained-local-soak-aggregate.py --require-local-evidence
+          python scripts/validate-memory-os-load-evidence-index.py
+          python scripts/validate-memory-os-load.py
+          python scripts/validate-memory-os-operability.py
+          git diff --check
+          git diff --exit-code -- \
+            docs/fixtures/memory-os-operability/sustained-local-soak-results.aggregate.v1.json \
+            docs/fixtures/memory-os-operability/sustained-local-soak-trend-review.v1.json \
+            contracts/operations/sustained-local-soak-contract.v1.json \
+            contracts/operations/load-test-scenario-contract.v1.json \
+            contracts/operations/production-operability-status.json
+
   reconcile:
     if: >-
-      github.event_name != 'push' ||
-      (!contains(github.event.head_commit.message, 'docs(soak): register repeated local soak authority') &&
-       !contains(github.event.head_commit.message, 'test(soak): record repeated local soak authority diagnostic'))
+      github.event_name != 'pull_request' &&
+      (github.event_name != 'push' ||
+       (!contains(github.event.head_commit.message, 'docs(soak): register repeated local soak authority') &&
+        !contains(github.event.head_commit.message, 'test(soak): record repeated local soak authority diagnostic')))
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout exact authority source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -91,16 +173,10 @@ jobs:
           python-version: "3.12"
 
       - name: Capture exact authority source
-        env:
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           test -z "$(git status --porcelain)"
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"
-          else
-            test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          fi
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Rebuild and validate repeated-run authority
@@ -185,20 +261,8 @@ jobs:
           cat "$log"
           exit 0
 
-      - name: Require deterministic authority on pull requests
-        if: github.event_name == 'pull_request' && steps.authority.outputs.exit_code == '0'
-        run: |
-          set -euo pipefail
-          git diff --check
-          git diff --exit-code -- \
-            docs/fixtures/memory-os-operability/sustained-local-soak-results.aggregate.v1.json \
-            docs/fixtures/memory-os-operability/sustained-local-soak-trend-review.v1.json \
-            contracts/operations/sustained-local-soak-contract.v1.json \
-            contracts/operations/load-test-scenario-contract.v1.json \
-            contracts/operations/production-operability-status.json
-
       - name: Commit repeated local soak authority
-        if: github.event_name != 'pull_request' && steps.authority.outputs.exit_code == '0'
+        if: steps.authority.outputs.exit_code == '0'
         run: |
           set -euo pipefail
           git fetch origin so
@@ -234,7 +298,7 @@ jobs:
           exit 1
 
       - name: Record privacy-safe diagnostic
-        if: github.event_name != 'pull_request' && steps.authority.outputs.exit_code != '0'
+        if: steps.authority.outputs.exit_code != '0'
         env:
           EXIT_CODE: ${{ steps.authority.outputs.exit_code }}
           FAILURE_STAGE: ${{ steps.authority.outputs.failure_stage }}
