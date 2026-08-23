@@ -16,14 +16,23 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/rate-limit-distributed-runtime-admission-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json"
-POLICY = ROOT / "contracts/operations/rate-limit-policy-contract.v1.json"
-GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
-GEN_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
-VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit-distributed-runtime.py"
-LOCK = ROOT / "contracts/operations/.rate-limit-distributed-runtime.lock"
-REVIEW_ROOT = Path("docs/evidence/rate-limit-distributed-runtime/independent-reviews")
+CANONICAL_ROOT = ROOT
+CANONICAL_CONTRACT = ROOT / "contracts/operations/rate-limit-distributed-runtime-admission-contract.v1.json"
+CANONICAL_REGISTRY = ROOT / "contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json"
+CANONICAL_POLICY = ROOT / "contracts/operations/rate-limit-policy-contract.v1.json"
+CANONICAL_GEN_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
+CANONICAL_GEN_WRITER = ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py"
+CANONICAL_VALIDATOR = ROOT / "scripts/validate-memory-os-rate-limit-distributed-runtime.py"
+CANONICAL_LOCK = ROOT / "contracts/operations/.rate-limit-distributed-runtime.lock"
+CANONICAL_REVIEW_ROOT = Path("docs/evidence/rate-limit-distributed-runtime/independent-reviews")
+CONTRACT = CANONICAL_CONTRACT
+REGISTRY = CANONICAL_REGISTRY
+POLICY = CANONICAL_POLICY
+GEN_REGISTRY = CANONICAL_GEN_REGISTRY
+GEN_WRITER = CANONICAL_GEN_WRITER
+VALIDATOR = CANONICAL_VALIDATOR
+LOCK = CANONICAL_LOCK
+REVIEW_ROOT = CANONICAL_REVIEW_ROOT
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
 RUNTIME_ID = re.compile(r"^rlrt_[a-z0-9][a-z0-9_-]{7,63}$")
@@ -55,6 +64,51 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def canonical_repo_file(path: Path, field: str) -> Path:
+    try:
+        relative = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail(f"{field} missing or escapes repository") from exc
+    require(relative.parts and ".." not in relative.parts, f"{field} must be repository-contained")
+    require(relative == resolved and path.is_file(), f"{field} must resolve to its canonical repository file")
+    return path
+
+
+def require_actual_cli_authorities() -> None:
+    """Pin the real append path while preserving helper-level fixture tests."""
+    require(ROOT == CANONICAL_ROOT, "distributed runtime writer root authority must remain canonical")
+    authorities = (
+        (CONTRACT, CANONICAL_CONTRACT, "distributed runtime contract"),
+        (REGISTRY, CANONICAL_REGISTRY, "distributed runtime registry"),
+        (POLICY, CANONICAL_POLICY, "rate-limit policy contract"),
+        (GEN_REGISTRY, CANONICAL_GEN_REGISTRY, "environment generation registry"),
+        (GEN_WRITER, CANONICAL_GEN_WRITER, "environment generation writer"),
+        (VALIDATOR, CANONICAL_VALIDATOR, "distributed runtime validator"),
+    )
+    for path, canonical, field in authorities:
+        require(path == canonical, f"{field} must remain canonical for CLI registration")
+        canonical_repo_file(path, field)
+    require(LOCK == CANONICAL_LOCK, "distributed runtime lock authority must remain canonical for CLI registration")
+    try:
+        relative_parent = LOCK.parent.relative_to(ROOT)
+        resolved_parent = LOCK.parent.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail("distributed runtime lock parent missing or escapes repository") from exc
+    require(relative_parent == resolved_parent and LOCK.parent.is_dir(),
+            "distributed runtime lock parent must resolve to the canonical repository directory")
+    require(REVIEW_ROOT == CANONICAL_REVIEW_ROOT,
+            "distributed runtime independent review namespace must remain canonical for CLI registration")
+    review_dir = ROOT / REVIEW_ROOT
+    try:
+        relative_review = review_dir.relative_to(ROOT)
+        resolved_review = review_dir.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail("distributed runtime review namespace missing or escapes repository") from exc
+    require(relative_review == resolved_review and review_dir.is_dir(),
+            "distributed runtime review namespace must resolve to the canonical repository directory")
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -318,6 +372,7 @@ def main() -> int:
     else:
         raise Fail("input record must be outside repository")
     require(git("status", "--porcelain") == "", "working tree must be clean")
+    require_actual_cli_authorities()
     record = load(record_path)
     validate_record(record, args.confirm)
 
