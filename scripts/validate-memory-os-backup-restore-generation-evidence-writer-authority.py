@@ -11,6 +11,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
+WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-evidence.yml"
 EXPECTED_CONTRACT = ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json"
 EXPECTED_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
 EXPECTED_GENERATION_REGISTRY = ROOT / "contracts/operations/production-equivalent-environment-generation-registry.v1.json"
@@ -73,6 +74,25 @@ def require_authority(writer: Any, name: str, expected: Path, label: str) -> Non
     canonical_repo_file = getattr(writer, "canonical_repo_file", None)
     require(callable(canonical_repo_file), "canonical repository authority guard missing")
     canonical_repo_file(actual, label)
+
+
+def require_atomic_diagnostic_publication() -> None:
+    require(WORKFLOW.is_file(), "generation-evidence workflow missing")
+    text = WORKFLOW.read_text(encoding="utf-8")
+    required = (
+        "tempfile.mkstemp(",
+        "dir=path.parent",
+        "handle.flush()",
+        "os.fsync(handle.fileno())",
+        "os.replace(tmp_name, path)",
+        "os.unlink(tmp_name)",
+    )
+    missing = [fragment for fragment in required if fragment not in text]
+    require(not missing, f"generation-evidence diagnostic publication is not crash-safe: missing {missing}")
+    require(
+        "path.write_text(json.dumps(value" not in text,
+        "generation-evidence diagnostic publication regressed to direct write_text",
+    )
 
 
 def run_review_validator(path: Path, module_name: str, label: str) -> None:
@@ -151,6 +171,7 @@ def main() -> int:
         "memory_os_generation_material_delta_review_negative_authority",
         "generation material-delta review negative validator",
     )
+    require_atomic_diagnostic_publication()
 
     print("Memory OS generation-evidence executable/data authority validation PASS")
     print("environment-generation authority substitution accepted: false")
@@ -161,6 +182,7 @@ def main() -> int:
     print("generic repository review refs create candidate eligibility: false")
     print("material-delta review authority substitution accepted: false")
     print("append lock authority substitution accepted: false")
+    print("crash-safe generation-evidence failure diagnostic required: true")
     print("production evidence: false")
     print("production decision: NO_GO")
     return 0
