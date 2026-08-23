@@ -65,74 +65,46 @@ def expect_authority_substitution_rejected(
         setattr(reconciler, attribute, original)
 
 
+def prove_atomic_write_failure(reconciler: Any, original_contract: bytes, original_registry: bytes) -> None:
+    original_replace = reconciler.os.replace
+
+    def reject_replace(source: str | Path, destination: str | Path) -> None:
+        raise OSError("synthetic atomic replace rejection")
+
+    reconciler.os.replace = reject_replace
+    try:
+        try:
+            reconciler.write_text(CANONICAL_CONTRACT, original_contract.decode("utf-8") + " ")
+        except reconciler.Fail as exc:
+            require("cannot atomically write" in str(exc), f"atomic write rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("synthetic promotion-review atomic replace failure unexpectedly accepted")
+    finally:
+        reconciler.os.replace = original_replace
+
+    assert_canonical_unchanged(original_contract, original_registry, "atomic replace rejection")
+    leftovers = (
+        list(CANONICAL_CONTRACT.parent.glob(f".{CANONICAL_CONTRACT.name}.*.tmp"))
+        + list(CANONICAL_REGISTRY.parent.glob(f".{CANONICAL_REGISTRY.name}.*.tmp"))
+    )
+    require(not leftovers, f"atomic replace rejection left temporary promotion-review authority files: {leftovers}")
+    print("PASS boundary: failed atomic promotion-review write preserves canonical bytes and cleans temporary files")
+
+
 def main() -> int:
     reconciler = load_module(RECONCILER, "memory_os_promotion_review_reconcile_negative")
     original_contract = CANONICAL_CONTRACT.read_bytes()
     original_registry = CANONICAL_REGISTRY.read_bytes()
 
-    expect_authority_substitution_rejected(
-        reconciler,
-        "CONTRACT",
-        reconciler.REGISTRY,
-        "promotion review contract substitution",
-        "promotion review contract authority drift",
-        original_contract,
-        original_registry,
-    )
-    expect_authority_substitution_rejected(
-        reconciler,
-        "REGISTRY",
-        reconciler.GEN_REGISTRY,
-        "promotion review registry substitution",
-        "promotion review registry authority drift",
-        original_contract,
-        original_registry,
-    )
-    expect_authority_substitution_rejected(
-        reconciler,
-        "GEN_REGISTRY",
-        reconciler.REGISTRY,
-        "generation evidence registry substitution",
-        "generation evidence registry authority drift",
-        original_contract,
-        original_registry,
-    )
-    expect_authority_substitution_rejected(
-        reconciler,
-        "WRITER",
-        reconciler.VALIDATOR,
-        "promotion review writer executable substitution",
-        "promotion review writer authority drift",
-        original_contract,
-        original_registry,
-    )
-    expect_authority_substitution_rejected(
-        reconciler,
-        "VALIDATOR",
-        reconciler.OPERABILITY_VALIDATOR,
-        "promotion review validator executable substitution",
-        "promotion review validator authority drift",
-        original_contract,
-        original_registry,
-    )
-    expect_authority_substitution_rejected(
-        reconciler,
-        "OPERABILITY_VALIDATOR",
-        reconciler.VALIDATOR,
-        "operability validator executable substitution",
-        "operability validator authority drift",
-        original_contract,
-        original_registry,
-    )
-    expect_authority_substitution_rejected(
-        reconciler,
-        "STATUS",
-        reconciler.CONTRACT,
-        "production operability status substitution",
-        "production operability status authority drift",
-        original_contract,
-        original_registry,
-    )
+    expect_authority_substitution_rejected(reconciler, "CONTRACT", reconciler.REGISTRY, "promotion review contract substitution", "promotion review contract authority drift", original_contract, original_registry)
+    expect_authority_substitution_rejected(reconciler, "REGISTRY", reconciler.GEN_REGISTRY, "promotion review registry substitution", "promotion review registry authority drift", original_contract, original_registry)
+    expect_authority_substitution_rejected(reconciler, "GEN_REGISTRY", reconciler.REGISTRY, "generation evidence registry substitution", "generation evidence registry authority drift", original_contract, original_registry)
+    expect_authority_substitution_rejected(reconciler, "WRITER", reconciler.VALIDATOR, "promotion review writer executable substitution", "promotion review writer authority drift", original_contract, original_registry)
+    expect_authority_substitution_rejected(reconciler, "VALIDATOR", reconciler.OPERABILITY_VALIDATOR, "promotion review validator executable substitution", "promotion review validator authority drift", original_contract, original_registry)
+    expect_authority_substitution_rejected(reconciler, "OPERABILITY_VALIDATOR", reconciler.VALIDATOR, "operability validator executable substitution", "operability validator authority drift", original_contract, original_registry)
+    expect_authority_substitution_rejected(reconciler, "STATUS", reconciler.CONTRACT, "production operability status substitution", "production operability status authority drift", original_contract, original_registry)
+
+    prove_atomic_write_failure(reconciler, original_contract, original_registry)
 
     original_run_validator = reconciler.run_validator
     original_write_text = reconciler.write_text
@@ -164,10 +136,7 @@ def main() -> int:
             raise Fail("aggregate operability rejection unexpectedly accepted")
 
         require(injected_contract_write, "transaction did not reach contract write before aggregate rejection")
-        require(
-            labels == ["promotion review validator", "aggregate operability validator"],
-            f"unexpected validator order: {labels}",
-        )
+        require(labels == ["promotion review validator", "aggregate operability validator"], f"unexpected validator order: {labels}")
         assert_canonical_unchanged(original_contract, original_registry, "aggregate operability rejection")
     finally:
         reconciler.run_validator = original_run_validator
@@ -183,8 +152,10 @@ def main() -> int:
     print("promotion validator executable substitution accepted: false")
     print("operability validator executable substitution accepted: false")
     print("production operability status substitution accepted: false")
+    print("non-atomic promotion-review authority write accepted: false")
     print("promotion validator ran before aggregate operability validator: true")
     print("aggregate operability rejection rolled back promotion registry/contract: true")
+    print("automatic human promotion authorization created: false")
     print("production evidence created: false")
     print("production traffic changed: false")
     print("production decision: NO_GO")
