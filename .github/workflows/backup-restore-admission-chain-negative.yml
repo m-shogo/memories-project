@@ -46,6 +46,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-evidence-ordering-negative.py"
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
+      - "scripts/validate-memory-os-backup-non-resurrection-reconcile-negative.py"
       - "scripts/validate-memory-os-backup-non-resurrection-ordering-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-status.py"
       - "scripts/validate-memory-os-backup-restore-generation-status-reconcile-negative.py"
@@ -102,6 +103,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-generation-evidence-ordering-negative.py"
       - "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
       - "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
+      - "scripts/validate-memory-os-backup-non-resurrection-reconcile-negative.py"
       - "scripts/validate-memory-os-backup-non-resurrection-ordering-negative.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-status.py"
       - "scripts/validate-memory-os-backup-restore-generation-status-reconcile-negative.py"
@@ -166,6 +168,7 @@ jobs:
             scripts/validate-memory-os-backup-restore-generation-evidence-ordering-negative.py \
             scripts/register-memory-os-backup-restore-non-resurrection-evidence.py \
             scripts/reconcile-memory-os-backup-non-resurrection-authority.py \
+            scripts/validate-memory-os-backup-non-resurrection-reconcile-negative.py \
             scripts/validate-memory-os-backup-non-resurrection-ordering-negative.py \
             scripts/reconcile-memory-os-backup-restore-generation-status.py \
             scripts/validate-memory-os-backup-restore-generation-status-reconcile-negative.py \
@@ -191,6 +194,8 @@ jobs:
         run: python scripts/validate-memory-os-backup-restore-generation-evidence-reconcile-negative.py
       - name: Prove generation evidence ordering is deterministic
         run: python scripts/validate-memory-os-backup-restore-generation-evidence-ordering-negative.py
+      - name: Prove typed non-resurrection reconcile authority and rollback
+        run: python scripts/validate-memory-os-backup-non-resurrection-reconcile-negative.py
       - name: Prove typed non-resurrection evidence ordering is deterministic
         run: python scripts/validate-memory-os-backup-non-resurrection-ordering-negative.py
       - name: Prove generation binding status reconcile authority and rollback
