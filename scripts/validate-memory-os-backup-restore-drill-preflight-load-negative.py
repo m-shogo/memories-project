@@ -74,60 +74,42 @@ def prove_data_and_executable_authority_rejection(reconciler: object) -> None:
     contract_before = CANONICAL_CONTRACT.read_bytes()
     status_before = CANONICAL_STATUS.read_bytes()
     cases = (
-        (
-            "preflight contract substitution",
-            "preflight contract",
-            "CONTRACT",
-            reconciler.STATUS,
-        ),
-        (
-            "environment generation registry substitution",
-            "environment generation registry",
-            "GEN_REGISTRY",
-            reconciler.OBJECTIVES,
-        ),
-        (
-            "recovery objectives registry substitution",
-            "recovery objectives registry",
-            "OBJECTIVES",
-            reconciler.DRILL_REGISTRY,
-        ),
-        (
-            "drill request registry substitution",
-            "drill request registry",
-            "DRILL_REGISTRY",
-            reconciler.GEN_REGISTRY,
-        ),
-        (
-            "preflight validator substitution",
-            "preflight validator",
-            "VALIDATOR_MODULE",
-            reconciler.OPERABILITY_VALIDATOR,
-        ),
-        (
-            "operability validator substitution",
-            "operability validator",
-            "OPERABILITY_VALIDATOR",
-            reconciler.VALIDATOR_MODULE,
-        ),
-        (
-            "production operability status substitution",
-            "production operability status",
-            "STATUS",
-            reconciler.CONTRACT,
-        ),
+        ("preflight contract substitution", "preflight contract", "CONTRACT", reconciler.STATUS),
+        ("environment generation registry substitution", "environment generation registry", "GEN_REGISTRY", reconciler.OBJECTIVES),
+        ("recovery objectives registry substitution", "recovery objectives registry", "OBJECTIVES", reconciler.DRILL_REGISTRY),
+        ("drill request registry substitution", "drill request registry", "DRILL_REGISTRY", reconciler.GEN_REGISTRY),
+        ("preflight validator substitution", "preflight validator", "VALIDATOR_MODULE", reconciler.OPERABILITY_VALIDATOR),
+        ("operability validator substitution", "operability validator", "OPERABILITY_VALIDATOR", reconciler.VALIDATOR_MODULE),
+        ("production operability status substitution", "production operability status", "STATUS", reconciler.CONTRACT),
     )
     for name, field, attribute, replacement in cases:
-        expect_direct_authority_rejected(
-            reconciler,
-            name,
-            field,
-            attribute,
-            replacement,
-            contract_before,
-            status_before,
-        )
+        expect_direct_authority_rejected(reconciler, name, field, attribute, replacement, contract_before, status_before)
     print(f"PASS boundary: direct preflight data/executable substitutions rejected: {len(cases)}")
+
+
+def prove_atomic_write_failure(reconciler: object) -> None:
+    contract_before = CANONICAL_CONTRACT.read_bytes()
+    status_before = CANONICAL_STATUS.read_bytes()
+    original_replace = reconciler.os.replace
+
+    def reject_replace(source: str | Path, destination: str | Path) -> None:
+        raise OSError("synthetic atomic replace rejection")
+
+    reconciler.os.replace = reject_replace
+    try:
+        expect_domain_fail(
+            "preflight atomic replace rejection",
+            lambda: reconciler.write_text(CANONICAL_CONTRACT, contract_before.decode("utf-8") + " "),
+            reconciler.Fail,
+        )
+    finally:
+        reconciler.os.replace = original_replace
+
+    require(CANONICAL_CONTRACT.read_bytes() == contract_before, "atomic replace rejection mutated canonical preflight contract")
+    require(CANONICAL_STATUS.read_bytes() == status_before, "atomic replace rejection mutated canonical production status")
+    leftovers = list(CANONICAL_CONTRACT.parent.glob(f".{CANONICAL_CONTRACT.name}.*.tmp")) + list(CANONICAL_STATUS.parent.glob(f".{CANONICAL_STATUS.name}.*.tmp"))
+    require(not leftovers, f"atomic replace rejection left temporary preflight authority files: {leftovers}")
+    print("PASS boundary: failed atomic preflight write preserves canonical bytes and cleans temporary files")
 
 
 def prove_transactional_rollback(reconciler: object, tmp: Path) -> None:
@@ -162,9 +144,6 @@ def prove_transactional_rollback(reconciler: object, tmp: Path) -> None:
             return SimpleNamespace(returncode=0, stdout="upstream/preflight authority validator pass", stderr="")
         return SimpleNamespace(returncode=1, stdout="forced post-reconcile operability validator failure", stderr="")
 
-    # Direct invocation is canonical-only. The negative suite bypasses only that
-    # production identity guard around internal repo-contained fixture copies so
-    # it can prove the write/validation rollback transaction independently.
     reconciler.enforce_runtime_authorities = lambda: None
     reconciler.CONTRACT = contract
     reconciler.STATUS = status
@@ -196,6 +175,7 @@ def main() -> int:
     reconciler = load_module(RECONCILER, "memory_os_restore_drill_preflight_reconcile_load_negative")
 
     prove_data_and_executable_authority_rejection(reconciler)
+    prove_atomic_write_failure(reconciler)
 
     with tempfile.TemporaryDirectory(prefix=".tmp-preflight-load-", dir=TMP_PARENT) as tmpdir:
         tmp = Path(tmpdir)
@@ -221,6 +201,7 @@ def main() -> int:
     print("reconciler unreadable directory authority leaked raw exception: false")
     print("reconciler escaped authority accepted: false")
     print("upstream append-only authorities validated before derived mutation: true")
+    print("preflight/status non-atomic writes accepted: false")
     print("preflight and operability validators execute inside reconcile transaction: true")
     print("failed aggregate post-validation leaves derived authority mutation behind: false")
     print("production evidence created: false")
