@@ -111,6 +111,42 @@ def run_generator_post_write_rollback() -> None:
         raise Fail("post-write snapshot validation failure did not restore original snapshot bytes")
 
 
+def run_generator_authority_substitution() -> None:
+    before = SNAPSHOT.read_bytes()
+    module = load_generator_module()
+    substitutions = (
+        ("OUTPUT", module.OBJECTIVES),
+        ("ELIGIBILITY_HELPER", module.OBJECTIVE_WRITER),
+        ("BLOCKER_HELPER", module.OBJECTIVE_WRITER),
+        ("SNAPSHOT_VALIDATOR", module.OBJECTIVE_WRITER),
+        ("OBJECTIVES", module.DRILL_REQUESTS),
+        ("DRILL_REQUESTS", module.OBJECTIVES),
+        ("GEN_EVIDENCE", module.TYPED),
+        ("TYPED", module.GEN_EVIDENCE),
+        ("STATUS", module.OBJECTIVES),
+        ("OBJECTIVE_WRITER", module.DRILL_REQUEST_WRITER),
+        ("DRILL_REQUEST_WRITER", module.OBJECTIVE_WRITER),
+        ("GEN_EVIDENCE_WRITER", module.TYPED_WRITER),
+        ("TYPED_WRITER", module.GEN_EVIDENCE_WRITER),
+    )
+    for field, substitute in substitutions:
+        original = getattr(module, field)
+        try:
+            setattr(module, field, substitute)
+            try:
+                module.enforce_runtime_authorities()
+            except SystemExit as exc:
+                if "strict snapshot authority" not in str(exc):
+                    raise Fail(f"{field} substitution rejected outside authority boundary: {exc}") from exc
+            else:
+                raise Fail(f"strict snapshot generator accepted {field} authority substitution")
+        finally:
+            setattr(module, field, original)
+    module.enforce_runtime_authorities()
+    if SNAPSHOT.read_bytes() != before:
+        raise Fail("strict snapshot authority substitution mutated deterministic snapshot")
+
+
 def mutate_field(field: str, value: Any) -> Callable[[dict[str, Any]], None]:
     def apply(registry: dict[str, Any]) -> None:
         registry[field] = value
@@ -164,7 +200,7 @@ def run_source_symlink_escape(originals: dict[Path, bytes]) -> None:
     OBJECTIVES.symlink_to(external)
     try:
         run_validator(False, "objective source symlink escape")
-        run_generator_rejects("generator objective source symlink escape", "generated strict snapshot invalid")
+        run_generator_rejects("generator objective source symlink escape", "strict snapshot authority")
     finally:
         if OBJECTIVES.is_symlink():
             OBJECTIVES.unlink()
@@ -182,7 +218,7 @@ def run_module_symlink_escape(originals: dict[Path, bytes]) -> None:
         run_validator(False, "objective writer module symlink escape")
         run_generator_rejects(
             "generator objective writer module symlink escape",
-            "cannot resolve canonical authority module",
+            "strict snapshot authority",
         )
     finally:
         if OBJECTIVE_WRITER.is_symlink():
@@ -246,6 +282,7 @@ def main() -> int:
     try:
         run_validator(True, "clean baseline")
         run_generator_post_write_rollback()
+        run_generator_authority_substitution()
         run_source_symlink_escape(originals)
         run_module_symlink_escape(originals)
         for label, path, mutate in cases:
@@ -274,6 +311,7 @@ def main() -> int:
     print("Memory OS OPS-P0-007 strict admission snapshot negative validation PASS")
     print(f"controlled validator corruption cases rejected: {len(cases)}")
     print(f"controlled generator corruption cases rejected: {len(generator_cases)}")
+    print("strict snapshot generator data/executable authority substitutions rejected: true")
     print("snapshot source symlink escape rejected by validator and generator: true")
     print("snapshot executable module symlink escape rejected by validator and generator: true")
     print("snapshot unknown/missing field drift rejected: true")
