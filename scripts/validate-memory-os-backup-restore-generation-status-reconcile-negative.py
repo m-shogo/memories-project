@@ -47,6 +47,33 @@ def prove_substitution_rejected(attribute: str) -> None:
     print(f"PASS reject: {attribute} substitution fails closed without canonical mutation")
 
 
+def prove_atomic_write_failure() -> None:
+    reconciler = load_reconciler("memory_os_generation_status_atomic_write")
+    original_status = CANONICAL_STATUS.read_bytes()
+    original_contract = CANONICAL_CONTRACT.read_bytes()
+    original_replace = reconciler.os.replace
+
+    def reject_replace(source: str | Path, destination: str | Path) -> None:
+        raise OSError("synthetic atomic replace rejection")
+
+    reconciler.os.replace = reject_replace
+    try:
+        try:
+            reconciler.write_text(CANONICAL_STATUS, original_status.decode("utf-8") + " ")
+        except reconciler.Fail as exc:
+            require("cannot atomically write" in str(exc), f"atomic write rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("synthetic generation-status atomic replace failure unexpectedly accepted")
+    finally:
+        reconciler.os.replace = original_replace
+
+    require(CANONICAL_STATUS.read_bytes() == original_status, "atomic replace rejection mutated canonical status")
+    require(CANONICAL_CONTRACT.read_bytes() == original_contract, "atomic replace rejection mutated generation binding contract")
+    leftovers = list(CANONICAL_STATUS.parent.glob(f".{CANONICAL_STATUS.name}.*.tmp"))
+    require(not leftovers, f"atomic replace rejection left temporary generation-status authority files: {leftovers}")
+    print("PASS boundary: failed atomic generation-status write preserves canonical bytes and cleans temporary files")
+
+
 def prove_post_write_aggregate_rollback() -> None:
     reconciler = load_reconciler("memory_os_generation_status_aggregate_rollback")
     original_status = CANONICAL_STATUS.read_bytes()
@@ -93,8 +120,10 @@ def main() -> int:
     require(ALTERNATE_FILE.is_file(), "alternate repository fixture missing")
     for attribute in ("CONTRACT", "VALIDATOR", "BACKUP_VALIDATOR", "OPERABILITY_VALIDATOR", "STATUS"):
         prove_substitution_rejected(attribute)
+    prove_atomic_write_failure()
     prove_post_write_aggregate_rollback()
     print("Memory OS backup/restore generation status reconcile negative suite PASS")
+    print("non-atomic generation-status authority write accepted: false")
     print("generation created: false")
     print("recovery objective created: false")
     print("production evidence: false")
