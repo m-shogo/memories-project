@@ -32,6 +32,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-drill-request.py"
       - "scripts/reconcile-memory-os-backup-restore-drill-request.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request-ordering-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
@@ -78,6 +79,7 @@ on:
       - "scripts/validate-memory-os-backup-restore-drill-request.py"
       - "scripts/reconcile-memory-os-backup-restore-drill-request.py"
       - "scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py"
+      - "scripts/validate-memory-os-backup-restore-drill-request-ordering-negative.py"
       - "scripts/validate-memory-os-backup-restore-drill-preflight.py"
       - "scripts/register-memory-os-backup-restore-generation-evidence.py"
       - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
@@ -132,6 +134,7 @@ jobs:
             scripts/validate-memory-os-backup-restore-drill-request.py \
             scripts/reconcile-memory-os-backup-restore-drill-request.py \
             scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py \
+            scripts/validate-memory-os-backup-restore-drill-request-ordering-negative.py \
             scripts/validate-memory-os-backup-restore-drill-preflight.py \
             scripts/register-memory-os-backup-restore-generation-evidence.py \
             scripts/reconcile-memory-os-backup-restore-generation-evidence.py \
@@ -149,6 +152,8 @@ jobs:
         run: python scripts/validate-memory-os-backup-restore-drill-preflight.py
       - name: Prove drill request reconcile authority and rollback
         run: python scripts/validate-memory-os-backup-restore-drill-request-reconcile-negative.py
+      - name: Prove drill request ordering is deterministic
+        run: python scripts/validate-memory-os-backup-restore-drill-request-ordering-negative.py
       - name: Prove generation evidence reconcile authority and rollback
         run: python scripts/validate-memory-os-backup-restore-generation-evidence-reconcile-negative.py
       - name: Prove generation evidence ordering is deterministic
