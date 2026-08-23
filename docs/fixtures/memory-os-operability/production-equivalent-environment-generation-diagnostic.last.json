@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "memory-os-validator-diagnostic.v1",
+  "workflow": "production-equivalent-environment-generation",
+  "sourceCommitSha": "01e34188562cd554419269e6cf5b9bd33db6e7f2",
+  "result": "FAIL",
+  "exitCode": 1,
+  "output": "Memory OS production-equivalent generation status reconciliation PASS\ngeneration registry entries: 0\npreflight-eligible generations: 0\ncurrent generation: none\ncurrent production-equivalent dependencies: false\ncanonical environment generation data/executable authorities enforced: true\nregistration implies preflight eligibility: false\ncross-generation evidence reuse: forbidden\nfailed aggregate validation leaves generation/status mutation behind: false\naggregate operability validation is inside reconciliation transaction: true\nOPS-P0-006: PARTIAL\nproductionDecision: NO_GO\nPASS reject: invalid UTF-8 generation authority\nPASS reject: unreadable generation authority directory\nPASS reject: generation authority escapes repository\nPASS reject: absolute current environment ref\nPASS reject: parent traversal current environment ref\nENVIRONMENT GENERATION RECONCILE NEGATIVE FAILED: registry schema drift rejected at wrong boundary: environment generation contract authority drift\n",
+  "containsSecrets": false,
+  "generationCreated": false,
+  "preflightEligibilityFabricated": false,
+  "productionEvidence": false,
+  "productionReady": false
+}
