@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -106,10 +108,31 @@ def read_text(path: Path) -> str:
 
 def write_text(path: Path, text: str) -> None:
     relative = repo_relative(path)
+    require(path.parent.is_dir(), f"authority parent missing: {relative.parent}")
+    temp_name: str | None = None
     try:
-        path.write_text(text, encoding="utf-8")
+        fd, temp_name = tempfile.mkstemp(
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            dir=path.parent,
+            text=True,
+        )
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, path)
+        temp_name = None
     except OSError as exc:
-        raise Fail(f"cannot write {relative}: {exc}") from exc
+        raise Fail(f"cannot atomically write {relative}: {exc}") from exc
+    finally:
+        if temp_name is not None:
+            try:
+                os.unlink(temp_name)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -341,6 +364,7 @@ def main() -> int:
     print("boolean aggregate counts accepted by reconciler: false")
     print("authority reads and executable refs repository-contained: true")
     print("invalid UTF-8 authority accepted: false")
+    print("admission-chain contract writes use atomic same-directory replace: true")
     print("failed chain/operability post-validation leaves derived contract mutation behind: false")
     print(f"candidate-level independent evidence review completed: {str(candidate_count > 0).lower()}")
     print("human production-promotion review completed: false")
