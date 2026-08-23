@@ -156,24 +156,36 @@ def prove_post_validation_rollback(reconciler: object) -> None:
     contract_before = CONTRACT.read_bytes()
     status_before = STATUS.read_bytes()
     original_run_validator = reconciler.run_validator
+    calls: list[tuple[Path, str]] = []
 
-    def forced_failure(path: Path, label: str) -> None:
-        raise reconciler.Fail(f"post-reconcile {label} failed: synthetic aggregate rejection")
+    def fail_at_aggregate(path: Path, label: str) -> None:
+        calls.append((path, label))
+        if path == reconciler.OPERABILITY_VALIDATOR:
+            raise reconciler.Fail(f"post-reconcile {label} failed: synthetic aggregate rejection")
 
-    reconciler.run_validator = forced_failure
+    reconciler.run_validator = fail_at_aggregate
     try:
         try:
             reconciler.main()
         except reconciler.Fail as exc:
             require("synthetic aggregate rejection" in str(exc), f"unexpected reconcile failure: {exc}")
         else:
-            raise Fail("forced admission-chain post-validation failure unexpectedly accepted")
+            raise Fail("forced admission-chain aggregate post-validation failure unexpectedly accepted")
     finally:
         reconciler.run_validator = original_run_validator
 
+    require(
+        calls
+        == [
+            (reconciler.VALIDATOR, "admission-chain validator"),
+            (reconciler.OPERABILITY_VALIDATOR, "operability validator"),
+        ],
+        f"admission-chain post-write validator order drift: {calls}",
+    )
     require(CONTRACT.read_bytes() == contract_before, "admission-chain contract rollback drift")
     require(STATUS.read_bytes() == status_before, "production status mutated during admission-chain rollback test")
-    print("PASS rollback: admission-chain contract restored byte-for-byte after post-validation failure")
+    print("PASS rollback: aggregate Operability rejection restores admission-chain contract byte-for-byte")
+    print("PASS boundary: post-write validator order is admission-chain then aggregate Operability")
 
 
 def main() -> int:
