@@ -19,10 +19,14 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT_PATH = ROOT / "contracts/operations/sustained-soak-independent-review-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/sustained-soak-independent-review-registry.v1.json"
-VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-sustained-soak-independent-review.py"
-LOCK_PATH = ROOT / "contracts/operations/.sustained-soak-independent-review.lock"
+CANONICAL_CONTRACT_PATH = ROOT / "contracts/operations/sustained-soak-independent-review-contract.v1.json"
+CANONICAL_REGISTRY = ROOT / "contracts/operations/sustained-soak-independent-review-registry.v1.json"
+CANONICAL_VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-sustained-soak-independent-review.py"
+CANONICAL_LOCK_PATH = ROOT / "contracts/operations/.sustained-soak-independent-review.lock"
+CONTRACT_PATH = CANONICAL_CONTRACT_PATH
+REGISTRY = CANONICAL_REGISTRY
+VALIDATOR_PATH = CANONICAL_VALIDATOR_PATH
+LOCK_PATH = CANONICAL_LOCK_PATH
 CANONICAL_LOCK_REF = "contracts/operations/.sustained-soak-independent-review.lock"
 
 
@@ -33,6 +37,27 @@ class Fail(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Fail(message)
+
+
+def require_exact_file(path: Path, expected: Path, label: str) -> None:
+    require(path == expected, f"{label} authority substitution")
+    require(path.is_file() and not path.is_symlink(), f"{label} canonical file missing or symlinked")
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError as exc:
+        raise Fail(f"{label} canonical authority cannot be resolved") from exc
+    require(resolved == expected, f"{label} canonical authority escaped repository path")
+
+
+def enforce_runtime_authorities() -> None:
+    require_exact_file(CONTRACT_PATH, CANONICAL_CONTRACT_PATH, "sustained-soak review contract")
+    require_exact_file(REGISTRY, CANONICAL_REGISTRY, "sustained-soak review registry")
+    require_exact_file(VALIDATOR_PATH, CANONICAL_VALIDATOR_PATH, "sustained-soak review validator")
+    require(LOCK_PATH == CANONICAL_LOCK_PATH, "sustained-soak append lock authority substitution")
+    require(LOCK_PATH.parent.resolve(strict=True) == CANONICAL_LOCK_PATH.parent, "sustained-soak append lock parent escaped repository path")
+    if LOCK_PATH.exists():
+        require(not LOCK_PATH.is_symlink(), "sustained-soak append lock must not be symlinked")
+        require(LOCK_PATH.resolve(strict=True) == CANONICAL_LOCK_PATH, "sustained-soak append lock escaped repository path")
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -47,14 +72,17 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_validator() -> Any:
+    enforce_runtime_authorities()
     spec = importlib.util.spec_from_file_location("memory_os_sustained_soak_review_validator", VALIDATOR_PATH)
     require(spec is not None and spec.loader is not None, "unable to import sustained-soak independent review validator")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    require(module.REGISTRY.resolve() == CANONICAL_REGISTRY.resolve(), "sustained-soak review validator registry authority drift")
     return module
 
 
 def validate_lock_authority() -> None:
+    enforce_runtime_authorities()
     contract = load(CONTRACT_PATH)
     lock_ref = contract.get("appendLockPath")
     require(lock_ref == CANONICAL_LOCK_REF, "sustained-soak append lock contract authority drift")
@@ -125,6 +153,7 @@ def append_record(registry: dict[str, Any], kind: str, record: dict[str, Any]) -
 
 
 def validate_candidate(candidate: dict[str, Any]) -> Path:
+    enforce_runtime_authorities()
     validator = load_validator()
     handle = tempfile.NamedTemporaryFile(
         mode="w",
@@ -167,6 +196,7 @@ def validate_registry_for_append(registry: dict[str, Any]) -> None:
 
 
 def atomic_restore(payload: bytes) -> None:
+    enforce_runtime_authorities()
     descriptor, temp_name = tempfile.mkstemp(
         prefix=".sustained-soak-independent-review-rollback-",
         suffix=".tmp",
@@ -187,6 +217,7 @@ def atomic_restore(payload: bytes) -> None:
 
 def replace_registry_transactionally(candidate_path: Path) -> None:
     """Install a validated candidate and rollback if canonical revalidation fails."""
+    enforce_runtime_authorities()
     try:
         original = REGISTRY.read_bytes()
     except OSError as exc:
@@ -210,6 +241,7 @@ def main() -> int:
     parser.add_argument("--record", required=True, type=Path, help="Externally supplied typed JSON record. This command does not create it.")
     args = parser.parse_args()
 
+    enforce_runtime_authorities()
     require(args.record.resolve() != REGISTRY.resolve(), "record input must not be the canonical registry")
     record = load(args.record)
     validate_lock_authority()
