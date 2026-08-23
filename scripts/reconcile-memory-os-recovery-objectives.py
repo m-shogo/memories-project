@@ -72,16 +72,15 @@ def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> 
 
 
 def enforce_runtime_authorities() -> None:
-    canonical_contract = CONTRACT == ROOT / CONTRACT_REL
-    canonical_status = STATUS == ROOT / STATUS_REL
-    require(canonical_contract is canonical_status, "recovery objective fixture boundary must replace contract and status together")
-    if canonical_contract:
-        require_exact_repo_file(CONTRACT, CONTRACT_REL, "recovery objective contract")
-        require_exact_repo_file(REGISTRY, REGISTRY_REL, "recovery objective registry")
-        require_exact_repo_file(WRITER, WRITER_REL, "recovery objective writer")
-        require_exact_repo_file(VALIDATOR, VALIDATOR_REL, "recovery objective validator")
-        require_exact_repo_file(OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator")
-        require_exact_repo_file(STATUS, STATUS_REL, "production operability status")
+    for path, expected, field in (
+        (CONTRACT, CONTRACT_REL, "recovery objective contract"),
+        (REGISTRY, REGISTRY_REL, "recovery objective registry"),
+        (WRITER, WRITER_REL, "recovery objective writer"),
+        (VALIDATOR, VALIDATOR_REL, "recovery objective validator"),
+        (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+        (STATUS, STATUS_REL, "production operability status"),
+    ):
+        require_exact_repo_file(path, expected, field)
 
 
 def read_text(path: Path) -> str:
@@ -111,10 +110,7 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_writer():
-    if CONTRACT == ROOT / CONTRACT_REL and STATUS == ROOT / STATUS_REL:
-        require_exact_repo_file(WRITER, WRITER_REL, "recovery objective writer")
-    else:
-        require_repo_file(WRITER, "recovery objective writer missing")
+    require_exact_repo_file(WRITER, WRITER_REL, "recovery objective writer")
     spec = importlib.util.spec_from_file_location("memory_os_recovery_objectives_reconcile_writer", WRITER)
     require(spec is not None and spec.loader is not None, "cannot load recovery objective writer")
     try:
@@ -130,8 +126,22 @@ def append_once(values: list[Any], value: str) -> None:
         values.append(value)
 
 
+def replace_single_prefixed(values: list[Any], prefix: str, value: str) -> None:
+    matches = [index for index, item in enumerate(values) if isinstance(item, str) and item.startswith(prefix)]
+    require(len(matches) <= 1, f"duplicate authority evidence prefix: {prefix}")
+    if matches:
+        values[matches[0]] = value
+    else:
+        values.append(value)
+
+
 def run_validator(path: Path, label: str) -> None:
-    relative = require_repo_file(path, f"{label} missing")
+    if path == VALIDATOR:
+        relative = require_exact_repo_file(path, VALIDATOR_REL, "recovery objective validator")
+    elif path == OPERABILITY_VALIDATOR:
+        relative = require_exact_repo_file(path, OPERABILITY_VALIDATOR_REL, "operability validator")
+    else:
+        raise Fail(f"unexpected recovery objective validator authority: {path}")
     completed = subprocess.run(
         [sys.executable, str(ROOT / relative)],
         cwd=ROOT,
@@ -155,11 +165,6 @@ def main() -> int:
     status = load(STATUS)
     writer = load_writer()
 
-    # Reconciliation may update derived contract/status projections only from
-    # an already-valid append-only human approval registry. Reuse the direct
-    # writer validator before reading or projecting counters so schema,
-    # production-boundary, duplicate/supersession, and current-pointer
-    # corruption can never be normalized by reconcile.
     try:
         rows = writer.validate_registry_for_append(registry)
     except RuntimeError as exc:
@@ -195,12 +200,11 @@ def main() -> int:
     refs = gate.get("evidenceRefs")
     require(isinstance(existing, list) and isinstance(missing, list) and isinstance(refs, list), "OPS-P0-007 evidence arrays missing")
     require_canonical_gaps(missing, Fail)
-    existing[:] = [item for item in existing if not (isinstance(item, str) and item.startswith(EVIDENCE_PREFIX))]
     if count == 0:
         evidence = f"{EVIDENCE_PREFIX} approval registry exists but contains 0 records, so RPO/RTO/object-database skew remain intentionally undefined and restore evidence is forbidden from inventing targets"
     else:
         evidence = f"{EVIDENCE_PREFIX} {count} reviewed objective record(s) exist and current objectiveId={current_id}; measured restore evidence must bind this exact objective and satisfy its RPO/RTO/skew targets, while objective approval itself is not production evidence"
-    append_once(existing, evidence)
+    replace_single_prefixed(existing, EVIDENCE_PREFIX, evidence)
     for ref in REFS:
         require_repo_file(ROOT / ref, f"recovery objective authority ref missing: {ref}")
         append_once(refs, ref)
@@ -222,6 +226,7 @@ def main() -> int:
     print("Memory OS recovery objectives reconciliation PASS")
     print(f"approved objective records: {count}")
     print(f"current objective: {current_id or 'none'}")
+    print("canonical recovery objective data/executable authorities enforced: true")
     print("corrupt append-only objective registry auto-healed by reconcile: false")
     print("failed post-validation leaves objective/status mutation behind: false")
     print("aggregate operability validated inside transaction: true")
