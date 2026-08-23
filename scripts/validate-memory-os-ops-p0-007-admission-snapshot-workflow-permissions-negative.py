@@ -20,6 +20,23 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def validate_atomic_diagnostic_publication(publish: str) -> None:
+    required_fragments = (
+        "tempfile.mkstemp(",
+        "dir=path.parent",
+        "handle.flush()",
+        "os.fsync(handle.fileno())",
+        "os.replace(tmp_name, path)",
+        "os.unlink(tmp_name)",
+    )
+    missing = [fragment for fragment in required_fragments if fragment not in publish]
+    require(not missing, f"strict snapshot diagnostic publication is not crash-safe: missing {missing}")
+    require(
+        "path.write_text(json.dumps(value" not in publish,
+        "strict snapshot diagnostic publication regressed to direct write_text",
+    )
+
+
 def main() -> int:
     pr = PR_WORKFLOW.read_text(encoding="utf-8")
     publish = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
@@ -41,11 +58,13 @@ def main() -> int:
     require("refusing stale strict snapshot" in publish, "strict snapshot publication workflow must fail closed on stale authority")
     require("refusing stale diagnostic" in publish, "strict snapshot publication workflow must fail closed on stale diagnostics")
     require("revalidate_latest_snapshot" in publish, "strict snapshot publication workflow must retain bounded full revalidation")
+    validate_atomic_diagnostic_publication(publish)
 
     print("Memory OS OPS-P0-007 strict snapshot workflow permission negative PASS")
     print("pull request write token exposed: false")
     print("pull request authority publication allowed: false")
     print("exact-source publication CAS required: true")
+    print("crash-safe diagnostic publication required: true")
     print("production evidence created: false")
     print("production ready: false")
     print("production decision: NO_GO")
