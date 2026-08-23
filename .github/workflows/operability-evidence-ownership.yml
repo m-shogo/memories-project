@@ -11,6 +11,7 @@ on:
       - "contracts/operations/production-operability-status.json"
       - "scripts/validate-memory-os-operability-evidence-ownership.py"
       - "scripts/reconcile-memory-os-operability-evidence-ownership.py"
+      - "scripts/validate-memory-os-operability-evidence-ownership-reconcile-negative.py"
       - "scripts/validate-memory-os-operability.py"
   workflow_dispatch:
 
@@ -50,8 +51,12 @@ jobs:
           python -m py_compile \
             scripts/validate-memory-os-operability-evidence-ownership.py \
             scripts/reconcile-memory-os-operability-evidence-ownership.py \
+            scripts/validate-memory-os-operability-evidence-ownership-reconcile-negative.py \
             scripts/validate-memory-os-operability.py \
             >> "$log" 2>&1 || code=$?
+          if [[ "$code" == "0" ]]; then
+            python scripts/validate-memory-os-operability-evidence-ownership-reconcile-negative.py >> "$log" 2>&1 || code=$?
+          fi
           if [[ "$code" == "0" ]]; then
             python scripts/reconcile-memory-os-operability-evidence-ownership.py >> "$log" 2>&1 || code=$?
           fi
