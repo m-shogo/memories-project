@@ -72,6 +72,35 @@ def expect_direct_authority_rejected(
         restore()
 
 
+def prove_atomic_write_failure(reconciler: Any, contract_before: bytes, registry_before: bytes, status_before: bytes) -> None:
+    original_replace = reconciler.os.replace
+
+    def reject_replace(source: str | Path, destination: str | Path) -> None:
+        raise OSError("synthetic atomic replace rejection")
+
+    reconciler.os.replace = reject_replace
+    try:
+        try:
+            reconciler.write_text(CONTRACT, contract_before.decode("utf-8") + " ")
+        except reconciler.Fail as exc:
+            require("cannot atomically write" in str(exc), f"atomic write rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("synthetic atomic replace failure unexpectedly accepted")
+    finally:
+        reconciler.os.replace = original_replace
+
+    require(CONTRACT.read_bytes() == contract_before, "atomic replace rejection mutated canonical drill-request contract")
+    require(REGISTRY.read_bytes() == registry_before, "atomic replace rejection mutated canonical drill-request registry")
+    require(STATUS.read_bytes() == status_before, "atomic replace rejection mutated canonical production status")
+    leftovers = (
+        list(CONTRACT.parent.glob(f".{CONTRACT.name}.*.tmp"))
+        + list(REGISTRY.parent.glob(f".{REGISTRY.name}.*.tmp"))
+        + list(STATUS.parent.glob(f".{STATUS.name}.*.tmp"))
+    )
+    require(not leftovers, f"atomic replace rejection left temporary drill-request authority files: {leftovers}")
+    print("PASS boundary: failed atomic drill-request write preserves canonical bytes and cleans temporary files")
+
+
 def main() -> int:
     require(RECONCILER.is_file(), "drill request reconciler missing")
     for path in (CONTRACT, REGISTRY, GEN_REGISTRY, OBJECTIVES, STATUS):
@@ -118,6 +147,8 @@ def main() -> int:
             canonical_registry,
             canonical_status,
         )
+
+    prove_atomic_write_failure(reconciler, canonical_contract, canonical_registry, canonical_status)
 
     original_enforcer = reconciler.enforce_runtime_authorities
     try:
@@ -240,6 +271,7 @@ def main() -> int:
     print(f"direct reconciler data/executable authority substitutions rejected: {len(authority_cases)}")
     print("corrupt recovery objective authority rejected before derived writes: true")
     print("shared objective authority corruption cases: 6")
+    print("non-atomic drill-request authority write accepted: false")
     print("drill request validator succeeds before aggregate failure: true")
     print("aggregate operability failure observed after all authority writes: true")
     print("contract byte-for-byte rollback: true")
