@@ -4,19 +4,82 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-RESULT_DIR = ROOT / "docs/fixtures/memory-os-operability"
+CANONICAL_RESULT_DIR = ROOT / "docs/fixtures/memory-os-operability"
+CANONICAL_AGGREGATE_PATH = CANONICAL_RESULT_DIR / "sustained-local-soak-results.aggregate.v1.json"
+CANONICAL_REVIEW_PATH = CANONICAL_RESULT_DIR / "sustained-local-soak-trend-review.v1.json"
+CANONICAL_CONTRACT_PATH = ROOT / "contracts/operations/sustained-local-soak-contract.v1.json"
+CANONICAL_RESULT_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak-result.py"
+CANONICAL_REVIEW_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak-trend-review.py"
+
+RESULT_DIR = CANONICAL_RESULT_DIR
 RESULT_GLOB = "sustained-local-soak-results.run-*.v1.json"
-AGGREGATE_PATH = RESULT_DIR / "sustained-local-soak-results.aggregate.v1.json"
-REVIEW_PATH = RESULT_DIR / "sustained-local-soak-trend-review.v1.json"
-CONTRACT_PATH = ROOT / "contracts/operations/sustained-local-soak-contract.v1.json"
-RESULT_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak-result.py"
-REVIEW_VALIDATOR = ROOT / "scripts/validate-memory-os-sustained-local-soak-trend-review.py"
+AGGREGATE_PATH = CANONICAL_AGGREGATE_PATH
+REVIEW_PATH = CANONICAL_REVIEW_PATH
+CONTRACT_PATH = CANONICAL_CONTRACT_PATH
+RESULT_VALIDATOR = CANONICAL_RESULT_VALIDATOR
+REVIEW_VALIDATOR = CANONICAL_REVIEW_VALIDATOR
+
+
+class Fail(RuntimeError):
+    pass
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise Fail(message)
+
+
+def require_exact_file(path: Path, expected: Path, label: str) -> None:
+    require(path == expected, f"{label} authority substitution")
+    require(path.is_file() and not path.is_symlink(), f"{label} canonical file missing or symlinked")
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError as exc:
+        raise Fail(f"{label} canonical authority cannot be resolved") from exc
+    require(resolved == expected, f"{label} canonical authority escaped repository path")
+
+
+def require_exact_optional_file(path: Path, expected: Path, label: str) -> None:
+    require(path == expected, f"{label} authority substitution")
+    require(path.parent.resolve(strict=True) == expected.parent, f"{label} canonical parent escaped repository path")
+    if path.exists():
+        require(path.is_file() and not path.is_symlink(), f"{label} canonical file is not a regular file")
+        require(path.resolve(strict=True) == expected, f"{label} canonical authority escaped repository path")
+
+
+def enforce_runtime_authorities() -> None:
+    require(RESULT_DIR == CANONICAL_RESULT_DIR, "result directory authority substitution")
+    require(RESULT_DIR.is_dir() and not RESULT_DIR.is_symlink(), "canonical result directory missing or symlinked")
+    require(RESULT_DIR.resolve(strict=True) == CANONICAL_RESULT_DIR, "canonical result directory escaped repository path")
+    require_exact_file(CONTRACT_PATH, CANONICAL_CONTRACT_PATH, "sustained soak contract")
+    require_exact_file(RESULT_VALIDATOR, CANONICAL_RESULT_VALIDATOR, "result validator")
+    require_exact_file(REVIEW_VALIDATOR, CANONICAL_REVIEW_VALIDATOR, "review validator")
+    require_exact_optional_file(AGGREGATE_PATH, CANONICAL_AGGREGATE_PATH, "sustained soak aggregate")
+    require_exact_optional_file(REVIEW_PATH, CANONICAL_REVIEW_PATH, "sustained soak trend review")
+
+
+def atomic_replace_bytes(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, path)
+    finally:
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -42,6 +105,7 @@ def validate(path: Path, validator: Path) -> None:
 
 
 def main() -> int:
+    enforce_runtime_authorities()
     contract = load(CONTRACT_PATH)
     paths = sorted(RESULT_DIR.glob(RESULT_GLOB))
     if not paths:
@@ -140,7 +204,7 @@ def main() -> int:
         "operationalThresholdApproved": False,
         "productionReady": False,
     }
-    AGGREGATE_PATH.write_text(json.dumps(aggregate, indent=2) + "\n", encoding="utf-8")
+    atomic_replace_bytes(AGGREGATE_PATH, (json.dumps(aggregate, indent=2) + "\n").encode("utf-8"))
     print("Memory OS sustained local soak aggregate updated")
     print(f"run count: {len(paths)}")
     print(f"minimum independent runs satisfied: {str(enough_runs).lower()}")
@@ -153,4 +217,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except Fail as exc:
+        print(f"SUSTAINED LOCAL SOAK AGGREGATE UPDATE FAILED: {exc}", file=sys.stderr)
+        raise SystemExit(1)
