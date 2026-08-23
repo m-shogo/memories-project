@@ -15,12 +15,18 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "contracts/operations/backup-restore-promotion-review-contract.v1.json"
-REGISTRY = ROOT / "contracts/operations/backup-restore-promotion-review-registry.v1.json"
-GEN_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
-GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
-EVIDENCE_ROOT = ROOT / "docs/evidence/backup-restore"
-LOCK = ROOT / "contracts/operations/.backup-restore-promotion-review.lock"
+CANONICAL_CONTRACT = ROOT / "contracts/operations/backup-restore-promotion-review-contract.v1.json"
+CONTRACT = CANONICAL_CONTRACT
+CANONICAL_REGISTRY = ROOT / "contracts/operations/backup-restore-promotion-review-registry.v1.json"
+REGISTRY = CANONICAL_REGISTRY
+CANONICAL_GEN_REGISTRY = ROOT / "contracts/operations/backup-restore-generation-evidence-registry.v1.json"
+GEN_REGISTRY = CANONICAL_GEN_REGISTRY
+CANONICAL_GEN_WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
+GEN_WRITER = CANONICAL_GEN_WRITER
+CANONICAL_EVIDENCE_ROOT = ROOT / "docs/evidence/backup-restore"
+EVIDENCE_ROOT = CANONICAL_EVIDENCE_ROOT
+CANONICAL_LOCK = ROOT / "contracts/operations/.backup-restore-promotion-review.lock"
+LOCK = CANONICAL_LOCK
 DECISION_ID = re.compile(r"^brpr_[a-z0-9][a-z0-9_-]{7,63}$")
 EVIDENCE_ID = re.compile(r"^brge_[a-z0-9][a-z0-9_-]{7,63}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -70,6 +76,27 @@ def canonical_repo_file(path: Path, field: str) -> Path:
     require(relative.parts and ".." not in relative.parts, f"{field} must be repository-contained")
     require(relative == resolved and path.is_file(), f"{field} must resolve to its canonical repository file")
     return path
+
+
+def require_cli_authorities() -> None:
+    """Pin the human promotion append entrypoint to canonical review authorities."""
+    for actual, canonical, field in (
+        (CONTRACT, CANONICAL_CONTRACT, "promotion review contract"),
+        (REGISTRY, CANONICAL_REGISTRY, "promotion review registry"),
+        (GEN_REGISTRY, CANONICAL_GEN_REGISTRY, "generation recovery evidence registry"),
+        (GEN_WRITER, CANONICAL_GEN_WRITER, "generation recovery writer"),
+    ):
+        require(actual == canonical, f"{field} must use canonical authority")
+        canonical_repo_file(actual, field)
+    require(EVIDENCE_ROOT == CANONICAL_EVIDENCE_ROOT, "promotion review evidence root must use canonical authority")
+    try:
+        relative = EVIDENCE_ROOT.relative_to(ROOT)
+        resolved = EVIDENCE_ROOT.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise Fail("promotion review evidence root missing or escapes repository") from exc
+    require(relative == resolved and EVIDENCE_ROOT.is_dir(), "promotion review evidence root must resolve to canonical repository directory")
+    require(LOCK == CANONICAL_LOCK, "promotion review append lock must use canonical authority")
+    require(LOCK.parent == CANONICAL_REGISTRY.parent, "promotion review append lock must share canonical registry directory")
 
 
 def load_generation_writer():
@@ -368,6 +395,7 @@ def write_registry_transactionally(value: dict[str, Any]) -> None:
 
 
 def main() -> int:
+    require_cli_authorities()
     parser = argparse.ArgumentParser()
     parser.add_argument("--record", required=True)
     args = parser.parse_args()
