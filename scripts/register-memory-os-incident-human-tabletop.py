@@ -14,11 +14,16 @@ from types import ModuleType
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+CANONICAL_ROOT = ROOT
 CANONICAL_VALIDATOR = ROOT / "scripts/validate-memory-os-incident-tabletop.py"
-TABLETOP_CONTRACT = ROOT / "contracts/operations/incident-tabletop-record-contract.v1.json"
-INCIDENT_POLICY = ROOT / "contracts/operations/incident-response-contract.v1.json"
-PLAN = ROOT / "docs/fixtures/memory-os-operability/incident-tabletop-plan.v1.json"
-LEDGER = ROOT / "docs/evidence/incident-tabletops"
+CANONICAL_TABLETOP_CONTRACT = ROOT / "contracts/operations/incident-tabletop-record-contract.v1.json"
+CANONICAL_INCIDENT_POLICY = ROOT / "contracts/operations/incident-response-contract.v1.json"
+CANONICAL_PLAN = ROOT / "docs/fixtures/memory-os-operability/incident-tabletop-plan.v1.json"
+CANONICAL_LEDGER = ROOT / "docs/evidence/incident-tabletops"
+TABLETOP_CONTRACT = CANONICAL_TABLETOP_CONTRACT
+INCIDENT_POLICY = CANONICAL_INCIDENT_POLICY
+PLAN = CANONICAL_PLAN
+LEDGER = CANONICAL_LEDGER
 ACTOR = re.compile(r"^actor_[a-z0-9][a-z0-9_-]{5,63}$")
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 
@@ -32,6 +37,39 @@ def require(condition: bool, message: str) -> None:
         raise WriterFailure(message)
 
 
+def canonical_repo_file(path: Path, field: str) -> Path:
+    try:
+        relative = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise WriterFailure(f"{field} missing or escapes repository") from exc
+    require(relative.parts and ".." not in relative.parts, f"{field} must be repository-contained")
+    require(relative == resolved and path.is_file(), f"{field} must resolve to its canonical repository file")
+    return path
+
+
+def require_actual_cli_authorities() -> None:
+    """Pin the actual append entrypoint while preserving helper-level fixture tests."""
+    require(ROOT == CANONICAL_ROOT, "human tabletop writer root authority must remain canonical")
+    authorities = (
+        (CANONICAL_VALIDATOR, ROOT / "scripts/validate-memory-os-incident-tabletop.py", "human tabletop validator"),
+        (TABLETOP_CONTRACT, CANONICAL_TABLETOP_CONTRACT, "human tabletop contract"),
+        (INCIDENT_POLICY, CANONICAL_INCIDENT_POLICY, "incident response policy"),
+        (PLAN, CANONICAL_PLAN, "human tabletop plan"),
+    )
+    for path, canonical, field in authorities:
+        require(path == canonical, f"{field} must remain canonical for CLI registration")
+        canonical_repo_file(path, field)
+    require(LEDGER == CANONICAL_LEDGER, "human tabletop ledger authority must remain canonical for CLI registration")
+    try:
+        relative = LEDGER.relative_to(ROOT)
+        resolved = LEDGER.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise WriterFailure("human tabletop ledger missing or escapes repository") from exc
+    require(relative == resolved and LEDGER.is_dir(),
+            "human tabletop ledger must resolve to its canonical repository directory")
+
+
 def load(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     require(isinstance(value, dict), f"root must be object: {path}")
@@ -39,6 +77,7 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_validator() -> ModuleType:
+    require_actual_cli_authorities()
     spec = importlib.util.spec_from_file_location("memory_os_incident_tabletop", CANONICAL_VALIDATOR)
     require(spec is not None and spec.loader is not None, "cannot load canonical tabletop validator")
     module = importlib.util.module_from_spec(spec)
@@ -122,6 +161,7 @@ def main() -> int:
     parser.add_argument("--record", required=True)
     parser.add_argument("--validate-only", action="store_true")
     args = parser.parse_args()
+    require_actual_cli_authorities()
     record_path = Path(args.record).resolve()
     if not args.validate_only:
         try:
@@ -136,7 +176,6 @@ def main() -> int:
         print(f"Validated human tabletop completion: {scenario_id}")
         return 0
 
-    LEDGER.mkdir(parents=True, exist_ok=True)
     target = LEDGER / f"{scenario_id}.json"
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     try:
