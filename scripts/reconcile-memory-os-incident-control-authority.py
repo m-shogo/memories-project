@@ -15,15 +15,27 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACT_PATH = ROOT / "contracts/operations/incident-control-exercise-contract.v1.json"
-RESULT_PATH = ROOT / "docs/fixtures/memory-os-operability/incident-control-exercise-results.sample.v1.json"
-STATUS_PATH = ROOT / "contracts/operations/production-operability-status.json"
-VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-incident-control-exercise.py"
+CONTRACT_REL = Path("contracts/operations/incident-control-exercise-contract.v1.json")
+RESULT_REL = Path("docs/fixtures/memory-os-operability/incident-control-exercise-results.sample.v1.json")
+STATUS_REL = Path("contracts/operations/production-operability-status.json")
+VALIDATOR_REL = Path("scripts/validate-memory-os-incident-control-exercise.py")
+INCIDENT_RESPONSE_VALIDATOR_REL = Path("scripts/validate-memory-os-incident-response.py")
+TABLETOP_VALIDATOR_REL = Path("scripts/validate-memory-os-incident-tabletop.py")
+OPERABILITY_VALIDATOR_REL = Path("scripts/validate-memory-os-operability.py")
+WORKFLOW_REL = Path(".github/workflows/reconcile-incident-control-authority.yml")
+CONTRACT_PATH = ROOT / CONTRACT_REL
+RESULT_PATH = ROOT / RESULT_REL
+STATUS_PATH = ROOT / STATUS_REL
+VALIDATOR_PATH = ROOT / VALIDATOR_REL
+INCIDENT_RESPONSE_VALIDATOR = ROOT / INCIDENT_RESPONSE_VALIDATOR_REL
+TABLETOP_VALIDATOR = ROOT / TABLETOP_VALIDATOR_REL
+OPERABILITY_VALIDATOR = ROOT / OPERABILITY_VALIDATOR_REL
+WORKFLOW_PATH = ROOT / WORKFLOW_REL
 POST_WRITE_VALIDATORS = (
     VALIDATOR_PATH,
-    ROOT / "scripts/validate-memory-os-incident-response.py",
-    ROOT / "scripts/validate-memory-os-incident-tabletop.py",
-    ROOT / "scripts/validate-memory-os-operability.py",
+    INCIDENT_RESPONSE_VALIDATOR,
+    TABLETOP_VALIDATOR,
+    OPERABILITY_VALIDATOR,
 )
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
@@ -53,6 +65,33 @@ class ReconcileFailure(RuntimeError):
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise ReconcileFailure(message)
+
+
+def require_exact_repo_file(path: Path, expected_relative: Path, field: str) -> Path:
+    try:
+        lexical = path.relative_to(ROOT)
+        resolved = path.resolve(strict=True).relative_to(ROOT.resolve())
+    except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+        raise ReconcileFailure(f"{field} missing or escapes repository") from exc
+    require(
+        lexical == expected_relative and resolved == expected_relative and path.is_file(),
+        f"{field} authority drift",
+    )
+    return path
+
+
+def enforce_runtime_authorities() -> None:
+    for path, relative, field in (
+        (CONTRACT_PATH, CONTRACT_REL, "incident control contract"),
+        (RESULT_PATH, RESULT_REL, "incident control result"),
+        (STATUS_PATH, STATUS_REL, "production operability status"),
+        (VALIDATOR_PATH, VALIDATOR_REL, "incident control validator"),
+        (INCIDENT_RESPONSE_VALIDATOR, INCIDENT_RESPONSE_VALIDATOR_REL, "incident response validator"),
+        (TABLETOP_VALIDATOR, TABLETOP_VALIDATOR_REL, "incident tabletop validator"),
+        (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator"),
+        (WORKFLOW_PATH, WORKFLOW_REL, "incident control authority workflow"),
+    ):
+        require_exact_repo_file(path, relative, field)
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -94,7 +133,7 @@ def unique(values: list[Any]) -> list[Any]:
 
 
 def load_canonical_validator() -> Any:
-    require(VALIDATOR_PATH.is_file(), "canonical incident validator missing")
+    enforce_runtime_authorities()
     spec = importlib.util.spec_from_file_location("memory_os_incident_control_validator", VALIDATOR_PATH)
     require(spec is not None and spec.loader is not None,
             "canonical incident validator cannot be loaded")
@@ -126,14 +165,15 @@ def validate_result(result: dict[str, Any], contract: dict[str, Any]) -> None:
 
 
 def validate_current_authority() -> None:
+    enforce_runtime_authorities()
     for validator in POST_WRITE_VALIDATORS:
-        require(validator.is_file(), f"canonical incident validator missing: {validator.relative_to(ROOT)}")
         completed = subprocess.run(["python", str(validator)], cwd=ROOT, check=False)
         require(completed.returncode == 0,
                 f"canonical incident authority invalid before reconcile: {validator.name}")
 
 
 def commit_validated_pair(contract: dict[str, Any], status: dict[str, Any]) -> None:
+    enforce_runtime_authorities()
     original_contract = CONTRACT_PATH.read_bytes()
     original_status = STATUS_PATH.read_bytes()
     try:
