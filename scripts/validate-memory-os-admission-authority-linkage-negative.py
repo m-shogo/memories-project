@@ -11,6 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR_PATH = ROOT / "scripts/validate-memory-os-admission-authority-linkage.py"
+WORKFLOW_PATH = ROOT / ".github/workflows/admission-authority-linkage.yml"
 
 
 def load_validator():
@@ -42,6 +43,23 @@ def expect_slot_fail(module, value: str, *, contains: str) -> None:
         raise AssertionError(f"unsafe authority file slot unexpectedly accepted: {value}")
 
 
+def validate_atomic_diagnostic_publication() -> None:
+    text = WORKFLOW_PATH.read_text(encoding="utf-8")
+    required_fragments = (
+        "tempfile.mkstemp(",
+        "dir=path.parent",
+        "handle.flush()",
+        "os.fsync(handle.fileno())",
+        "os.replace(tmp_name, path)",
+        "os.unlink(tmp_name)",
+    )
+    missing = [fragment for fragment in required_fragments if fragment not in text]
+    if missing:
+        raise AssertionError(f"linkage diagnostic publication is not crash-safe: missing {missing}")
+    if "path.write_text(json.dumps(value" in text:
+        raise AssertionError("linkage diagnostic publication regressed to direct write_text")
+
+
 def main() -> int:
     module = load_validator()
     required_contracts = {
@@ -65,6 +83,7 @@ def main() -> int:
     missing = sorted(required_file_keys - module.FILE_KEYS)
     if missing:
         raise AssertionError(f"high-impact admission linkage keys are not covered: {missing}")
+    validate_atomic_diagnostic_publication()
     fixture = ROOT / f".tmp-admission-authority-linkage-negative-{os.getpid()}"
     external_root = Path(tempfile.mkdtemp(prefix="memory-os-linkage-negative-"))
     try:
@@ -125,7 +144,7 @@ def main() -> int:
             contains="symlinked admission authority file slot",
         )
 
-        print("PASS: admission authority release/pair/generation coverage, root aliases, symlinks, repository escapes and append-lock escapes are rejected")
+        print("PASS: admission authority paths and atomic diagnostic publication remain fail-closed")
         return 0
     finally:
         shutil.rmtree(fixture, ignore_errors=True)
