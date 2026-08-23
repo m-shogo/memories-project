@@ -92,6 +92,30 @@ def require_canonical_runtime_authority(path: Path, canonical: Path, field: str)
         canonical_repo_file(path, field)
 
 
+def require_cli_authorities() -> None:
+    """Pin actual generation-evidence append to canonical upstream and review authorities."""
+    for actual, canonical, field in (
+        (CONTRACT, ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json", "generation evidence contract"),
+        (REGISTRY, CANONICAL_REGISTRY, "generation evidence registry"),
+        (GEN_REGISTRY, CANONICAL_GEN_REGISTRY, "environment generation registry"),
+        (GEN_WRITER, ROOT / "scripts/register-memory-os-production-equivalent-environment-generation.py", "environment generation writer"),
+        (OBJECTIVES_REGISTRY, CANONICAL_OBJECTIVES_REGISTRY, "recovery objectives registry"),
+        (OBJECTIVES_WRITER, ROOT / "scripts/register-memory-os-recovery-objectives.py", "recovery objectives writer"),
+        (DRILL_REQUEST_CONTRACT, CANONICAL_DRILL_REQUEST_CONTRACT, "restore drill request contract"),
+        (DRILL_REQUEST_REGISTRY, CANONICAL_DRILL_REQUEST_REGISTRY, "restore drill request registry"),
+        (DRILL_REQUEST_WRITER, ROOT / "scripts/request-memory-os-backup-restore-drill.py", "restore drill request writer"),
+        (NON_RESURRECTION_CONTRACT, CANONICAL_NON_RESURRECTION_CONTRACT, "typed non-resurrection contract"),
+        (NON_RESURRECTION_REGISTRY, CANONICAL_NON_RESURRECTION_REGISTRY, "typed non-resurrection registry"),
+        (NON_RESURRECTION_WRITER, ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py", "typed non-resurrection writer"),
+        (INDEPENDENT_REVIEW_VALIDATOR, ROOT / "scripts/validate-memory-os-backup-restore-generation-independent-review.py", "generation independent-review validator"),
+    ):
+        require(actual == canonical, f"{field} must use canonical authority")
+        canonical_repo_file(actual, field)
+    canonical_lock = ROOT / "contracts/operations/.backup-restore-generation-evidence.lock"
+    require(LOCK == canonical_lock, "generation evidence append lock must use canonical authority")
+    require(LOCK.parent == CANONICAL_REGISTRY.parent, "generation evidence append lock must share canonical registry directory")
+
+
 def git(*args: str) -> str:
     completed = subprocess.run(["git", *args], cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     require(completed.returncode == 0, f"git {' '.join(args)} failed")
@@ -644,6 +668,7 @@ def write_registry_transactionally(value: dict[str, Any]) -> None:
 
 
 def main() -> int:
+    require_cli_authorities()
     parser = argparse.ArgumentParser()
     parser.add_argument("--record", required=True)
     args = parser.parse_args()
