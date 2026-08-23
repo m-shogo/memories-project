@@ -33,6 +33,7 @@ on:
       - "scripts/generate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-operability-admission-inventory-source-authorities.py"
+      - "scripts/validate-memory-os-operability-admission-inventory-atomic-replacement-negative.py"
       - "scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py"
       - "scripts/validate-memory-os-operability-admission-inventory-registry-negative.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
@@ -104,6 +105,7 @@ on:
       - "scripts/generate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-operability-admission-inventory.py"
       - "scripts/validate-memory-os-operability-admission-inventory-source-authorities.py"
+      - "scripts/validate-memory-os-operability-admission-inventory-atomic-replacement-negative.py"
       - "scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py"
       - "scripts/validate-memory-os-operability-admission-inventory-registry-negative.py"
       - "scripts/register-memory-os-production-equivalent-environment-generation.py"
@@ -180,6 +182,7 @@ jobs:
             scripts/generate-memory-os-operability-admission-inventory.py \
             scripts/validate-memory-os-operability-admission-inventory.py \
             scripts/validate-memory-os-operability-admission-inventory-source-authorities.py \
+            scripts/validate-memory-os-operability-admission-inventory-atomic-replacement-negative.py \
             scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py \
             scripts/validate-memory-os-operability-admission-inventory-registry-negative.py \
             scripts/register-memory-os-production-equivalent-environment-generation.py \
@@ -229,6 +232,8 @@ jobs:
         run: python scripts/validate-memory-os-operability-admission-inventory.py
       - name: Prove inventory source authorities
         run: python scripts/validate-memory-os-operability-admission-inventory-source-authorities.py
+      - name: Prove inventory atomic replacement is fail-closed
+        run: python scripts/validate-memory-os-operability-admission-inventory-atomic-replacement-negative.py
       - name: Prove inventory promotion remains fail-closed
         run: python scripts/validate-memory-os-operability-admission-inventory-promotion-negative.py
       - name: Prove inventory registries remain fail-closed
