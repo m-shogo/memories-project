@@ -205,7 +205,7 @@ jobs:
             exit 75
           fi
           python - <<'PY'
-          import json, os
+          import json, os, tempfile
           from pathlib import Path
           text = Path('/tmp/production-equivalent-environment-generation.log').read_text(encoding='utf-8', errors='replace')
           value = {
@@ -223,7 +223,19 @@ jobs:
           }
           path = Path('docs/fixtures/memory-os-operability/production-equivalent-environment-generation-diagnostic.last.json')
           path.parent.mkdir(parents=True, exist_ok=True)
-          path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+          payload = (json.dumps(value, indent=2) + '\n').encode('utf-8')
+          fd, tmp_name = tempfile.mkstemp(prefix=f'.{path.name}.', suffix='.tmp', dir=path.parent)
+          try:
+              with os.fdopen(fd, 'wb') as handle:
+                  handle.write(payload)
+                  handle.flush()
+                  os.fsync(handle.fileno())
+              os.replace(tmp_name, path)
+          finally:
+              try:
+                  os.unlink(tmp_name)
+              except FileNotFoundError:
+                  pass
           PY
           git add docs/fixtures/memory-os-operability/production-equivalent-environment-generation-diagnostic.last.json
           git config user.name "github-actions[bot]"
