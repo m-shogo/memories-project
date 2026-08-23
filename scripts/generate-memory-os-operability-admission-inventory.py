@@ -14,6 +14,23 @@ STATUS = ROOT / "contracts/operations/production-operability-status.json"
 INVENTORY_VALIDATOR = ROOT / "scripts" / "validate-memory-os-operability-admission-inventory.py"
 
 
+def require_generator_authority_identity() -> None:
+    authorities = (
+        (OUTPUT, Path("contracts/operations/operability-admission-inventory.v1.json"), "operability inventory output"),
+        (STATUS, Path("contracts/operations/production-operability-status.json"), "production operability status"),
+        (INVENTORY_VALIDATOR, Path("scripts/validate-memory-os-operability-admission-inventory.py"), "operability inventory validator"),
+    )
+    root = ROOT.resolve()
+    for path, expected, label in authorities:
+        try:
+            lexical = path.relative_to(ROOT)
+            resolved = path.resolve(strict=True).relative_to(root)
+        except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+            raise SystemExit(f"canonical {label} missing or escapes repository") from exc
+        if lexical != expected or resolved != expected or not path.is_file():
+            raise SystemExit(f"canonical {label} path drift: {lexical}")
+
+
 def load(relative: str) -> dict[str, Any]:
     path = ROOT / relative
     value = json.loads(path.read_text(encoding="utf-8"))
@@ -177,6 +194,7 @@ def p0_status(status: dict[str, Any], area_id: str) -> dict[str, Any]:
 
 
 def main() -> int:
+    require_generator_authority_identity()
     status = load("contracts/operations/production-operability-status.json")
     if status.get("productionDecision") != "NO_GO":
         raise SystemExit("inventory generation refuses productionDecision != NO_GO")
